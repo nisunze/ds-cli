@@ -54,7 +54,17 @@ token the caller had to keep.
   token is opaque and carries its own integrity digest and the fingerprint of
   the query it answered; a hand-built one, or one replayed under a different
   filter, is `feedback_cursor_rejected`.
-* `--all` ignores the remembered watermark and reads the whole backlog. It is
+* A read that NARROWS — `--component` or `--query` — is a lookup, not a chunk
+  of the sweep. "Which reports are about this?" has the same true answer every
+  time it is asked, so it is answered in full, and it neither reads nor advances
+  where the sweep left off. Draining it instead would answer it once and answer
+  `changed: false` ever after, which is how a second triage session goes blind
+  to the reports it came to match against its own work. A caller that really
+  wants to drain a narrowed question echoes that read's `cursor`.
+* `--all` ignores the watermark and reads the newest matching reports from the
+  top. It is a peek, not an enumeration: it returns `--limit` rows and neither
+  reads nor advances where this account has read, so calling it again returns
+  the same rows. The way to see every matching report is the drain below. It is
   also what an older client does implicitly: opting into the watermark is an
   explicit flag on the wire, so a client that predates it sees no change.
 * `--view not_addressed` (the default), `addressed`, or `all`, narrowed by
@@ -71,12 +81,30 @@ says whether they all came back, and `truncated` means only that `--limit` held
 rows back — never that older records were out of reach. `feedback_backlog_too_large`
 refuses rather than presenting a partial answer as a whole one.
 
+A `truncated` answer on the unfiltered sweep is a DRAIN, not a rescan. The watermark only advances past
+reports it actually handed over, and a limited read hands over the ones it has
+gone longest without showing this account. So listing again returns the NEXT
+chunk, never the rows already delivered, until the backlog answers
+`changed: false` — and each visit costs less than the one before. A backlog
+larger than `--limit` is therefore read once in bounded pieces; it is never
+re-read in full. The rendered answer says which of the two it is (`drains`), so
+the line under the rows reads `list again for the next chunk` on a drain and
+`narrow with --component or --query` on a lookup or an `--all` read — narrowing a drain
+would start a different question, with its own watermark, and abandon it.
+
 ### A row decides on its own
 
 Each row carries `status`, `severity`, `component`, `title`, plus `blocked` and
 `blocked_on`, `note_count` and `latest_note`, `supersedes` and `superseded_by`,
 and the `id` and `version` a close or a note takes. That is enough to decide
 "do I care about this" without opening anything.
+
+Without `--detail` a row carries the first 240 characters of the report and
+says `detail_truncated: true`. That number is the mountain, measured: the long
+acceptance text of 124 reports at 1200 characters each is about 37 000 tokens
+for ONE visit, which is how a handful of visits came to cost 1.5 million. The
+watermark stops the re-reading; the excerpt stops the first read from being a
+mountain on its own.
 
 `--detail` returns each report's full text — including the acceptance condition
 its author wrote down. Reach for it only for the handful of ids about to be

@@ -32,20 +32,32 @@ Keep **nothing** locally. No corpus file, no index, no timestamp. There is no
 file on one machine and a full rescan on every other one. The watermark lives
 in the API, so every machine, every agent and every fresh checkout inherits it.
 
-- `--all` reads the whole backlog, ignoring the watermark. Use it when asked
-  for the complete picture, not by habit.
+- A read that NARROWS — `--component` or `--query` — is a LOOKUP, and it is
+  answered in full every time. It never reads or moves the sweep's position, so
+  searching for the reports this session touched (step 1) always returns them,
+  however often you ask.
+- `--all` ignores the watermark and reads the newest matching reports from the
+  top. It is a peek: calling it again returns the same rows, so it is never how
+  you read the whole backlog — the drain below is. Use it only to re-see
+  something already read.
 - `--cursor <token>` reads the difference since a token the backlog issued —
   useful for handing an exact position to another agent. Never build one.
 - Enumeration is complete. `total` is how many reports match; `truncated`
   means only that `--limit` held rows back, never that older reports were out
   of reach. `scan_incomplete` no longer exists.
+- `truncated: true` on the unfiltered sweep is a DRAIN, not a rescan: list again
+  and the next chunk comes back, never the rows already delivered, until
+  `changed: false`. That is how the whole backlog gets read. Do NOT narrow the
+  filter to make the sweep fit — a narrower question is a lookup, not the next
+  chunk, and the sweep is left half-drained.
 
 **Work from the rows.** Each row carries `status`, `severity`, `component`,
 `title`, `blocked` and `blocked_on`, `note_count` and `latest_note`, and the
 `id` and `version`. That is enough to decide what a task touches.
 
-**`--detail` is the expensive thing here.** Pull the full acceptance text only
-for the handful of ids about to be verified or closed.
+**`--detail` is the expensive thing here.** A row carries only the first 240
+characters of the report and says `detail_truncated`. Pull the full acceptance
+text only for the handful of ids about to be verified or closed.
 
 **Fan out by partition, never by repetition.** Give each agent a disjoint slice
 of ids. Never hand the whole corpus to every agent.

@@ -19,12 +19,14 @@ pub static COMMAND: Command = Command {
 Reads the same deduplicated backlog the `fb` tab shows, through the native \
 signed-in user, without a selected project or Desktop. The backlog remembers \
 how far this account has read, so a visit that changed nothing answers \
-`changed: false` with no rows and no local file to keep; `--all` reads the \
-whole thing regardless. Enumeration is complete — every matching report is \
-counted in `total`, and `truncated` says only that `--limit` held rows back. \
-Each row decides on its own: status, whether it is blocked and on what, \
-whether anyone has left a note and the latest one, and the id and version a \
-close must carry.",
+`changed: false` with no rows and no local file to keep. Enumeration is \
+complete: a `--limit` that holds rows back holds them for the NEXT call, so \
+listing again returns the next chunk until nothing is left — the backlog is \
+read once in pieces, never re-read in full. Narrowing with `--component` or \
+`--query` asks a different question, so it is answered in full and leaves the \
+sweep where it was; `--all` reads the top the same way. \
+Each row decides on its own: status, whether it is blocked and on what, the \
+latest note, and the id and version a close must carry.",
     chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessUser,
@@ -60,14 +62,16 @@ close must carry.",
         ),
         Arg::switch(
             "all",
-            "Read the whole backlog, ignoring how far this account has read.",
+            "Read the newest reports from the top, ignoring the watermark.",
         ),
         crate::LANE_ARG,
     ],
     output: "\
 `changed` (false means nothing moved since this account last read), `total`, \
-`complete`, `truncated`, `cursor`, `cursor_source`, `backlog` counts on a full \
-read, and `reports` rows with `id`, `status`, `kind`, `severity`, `component`, \
+`complete`, `truncated`, `drains` (true when listing again returns the next \
+chunk), `cursor`, `cursor_source`, `backlog` counts on a full read, \
+`unreadable` when a stored report could not be decoded, and `reports` rows \
+with `id`, `status`, `kind`, `severity`, `component`, \
 `surface`, `title`, `detail`, `detail_truncated`, `occurrences`, `reporters`, \
 `resolution`, `version`, `blocked`, `blocked_on`, `note_count`, `latest_note`, \
 `supersedes`, `superseded_by`, `last_seen_at` and `updated_by`. The `id` and \
@@ -141,11 +145,25 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn render(data: &Value) -> String {
+    // A document the backlog could not decode is left out of the answer and
+    // passed over by the watermark, so it is missing from every later
+    // difference too. It rides on EVERY answer, including the cheap one: an
+    // unchanged read still enumerated, so it is exactly where a silent skip
+    // would hide the longest.
+    let unreadable = match data["unreadable"].as_u64().filter(|count| *count > 0) {
+        Some(count) => format!(
+            "  ! {} could not be read and {} missing from this answer; \
+             the backlog logged the ids\n",
+            ds_cli_contract::args::plural(count, "stored report"),
+            if count == 1 { "is" } else { "are" },
+        ),
+        None => String::new(),
+    };
     // The cheapest possible answer, and the one this command exists to make
     // cheap: nothing moved, so there is nothing to read.
     if data["changed"].as_bool() == Some(false) {
         return format!(
-            "{} · unchanged since this account last read it\n",
+            "{} · unchanged since this account last read it\n{unreadable}",
             data["view"].as_str().unwrap_or("backlog"),
         );
     }
@@ -179,9 +197,104 @@ pub fn render(data: &Value) -> String {
         }
     }
     if data["truncated"].as_bool().unwrap_or(false) {
-        out.push_str(&format!(
-            "  … {rows} of {total} shown; narrow with --component or --query\n"
-        ));
+        // The same truncation means opposite things, and telling the caller to
+        // narrow when it should list again is the costly mistake: a narrower
+        // question is a DIFFERENT question, with its own watermark, so it
+        // rescans from the top and abandons the drain half-finished.
+        if data["drains"].as_bool().unwrap_or(false) {
+            out.push_str(&format!(
+                "  … {rows} of {total} shown; list again for the next chunk\n"
+            ));
+        } else {
+            out.push_str(&format!(
+                "  … {rows} of {total} shown; narrow with --component or --query\n"
+            ));
+        }
     }
+    out.push_str(&unreadable);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A truncated answer means one of two opposite things, and the line under
+    /// the rows is the only place a person learns which.
+    ///
+    /// A watermark read DRAINS: the rows it held back are the rows the next
+    /// call delivers, so listing again finishes the backlog. Telling that
+    /// caller to narrow instead would be the expensive mistake — a narrower
+    /// question is a different question with its own watermark, so it reads
+    /// from the top again and abandons the drain half-done. `--all` is the
+    /// read where narrowing IS the remedy, because it always returns the top.
+    #[test]
+    fn a_truncated_drain_says_list_again_and_a_truncated_top_read_says_narrow() {
+        let page = |drains: bool| {
+            json!({
+                "view": "not_addressed", "total": 45, "truncated": true, "drains": drains,
+                "reports": [{"id":"fb_1","status":"open","severity":"major",
+                             "component":"ds-brain","title":"list rescans the backlog"}]
+            })
+        };
+        let drained = render(&page(true));
+        assert!(
+            drained.contains("list again for the next chunk"),
+            "a drain must name the next call, not a narrower question: {drained}"
+        );
+        assert!(!drained.contains("narrow with"));
+
+        let top = render(&page(false));
+        assert!(
+            top.contains("narrow with --component"),
+            "a top read returns these same rows forever; narrowing is the remedy: {top}"
+        );
+        assert!(!top.contains("list again"));
+    }
+
+    /// The cheapest answer has no rows to read, and the row above it carries
+    /// the blocker a reader would otherwise open the full report to find.
+    #[test]
+    fn nothing_changed_prints_one_line_and_a_blocked_row_names_its_blocker() {
+        let quiet = render(&json!({"view":"not_addressed","changed":false,"reports":[]}));
+        assert_eq!(quiet.lines().count(), 1, "{quiet}");
+        assert!(quiet.contains("unchanged since this account last read it"));
+
+        let blocked = render(&json!({
+            "view":"not_addressed","total":1,"truncated":false,
+            "reports":[{"id":"fb_1","status":"open","blocked":true,
+                        "blocked_on":"deploy:ds-brain-canary","severity":"major",
+                        "component":"ds-brain","title":"waits on a deploy"}]
+        }));
+        assert!(blocked.contains("blocked") && blocked.contains("waits on deploy:ds-brain-canary"));
+    }
+
+    /// The cheap answer is the one place a partial read could hide forever.
+    ///
+    /// A stored report the backlog cannot decode is left out AND passed over by
+    /// the watermark, so it never appears in a later difference either. An
+    /// unchanged read still enumerated the store, so it can carry that count —
+    /// and printing one line and stopping would be exactly the silent partial
+    /// answer `scan_incomplete` was removed for being, minus the admission.
+    #[test]
+    fn a_report_the_backlog_could_not_read_is_named_even_on_the_cheap_answer() {
+        let quiet = render(&json!({
+            "view":"not_addressed","changed":false,"reports":[],"unreadable":2
+        }));
+        assert!(
+            quiet.contains("unchanged since this account last read it"),
+            "{quiet}"
+        );
+        assert!(
+            quiet.contains("2 stored reports could not be read"),
+            "an unchanged answer still hides a document nobody can see: {quiet}"
+        );
+
+        let clean = render(&json!({"view":"not_addressed","changed":false,"reports":[]}));
+        assert_eq!(
+            clean.lines().count(),
+            1,
+            "a read with nothing wrong says nothing about a failure that did not happen: {clean}"
+        );
+    }
 }
