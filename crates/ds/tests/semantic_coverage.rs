@@ -457,6 +457,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.publish-version", "global_write", "project"),
     ("feedback.close", "global_write", "headless_user"),
     ("feedback.list", "read_only", "headless_user"),
+    ("feedback.note", "global_write", "headless_user"),
     ("feedback.submit", "global_write", "headless_user"),
     ("library.catalog", "read_only", "none"),
     ("library.global.read", "read_only", "headless_user"),

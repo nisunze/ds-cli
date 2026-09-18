@@ -1352,11 +1352,15 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // which is the same "one host's own layers" workflow as the local
             // tile references beside it.
             "layers" => 19,
-            // Fifteen operations leaves plus bootstrap. The one that raised
-            // this from sixteen is `ds desktop list`: every instance-targeted
+            // Sixteen operations leaves plus bootstrap. The one that raised
+            // this from seventeen on 2026-09-18 is `ds feedback note`: an
+            // operations agent that can read the backlog and close a report but
+            // cannot say why a report it touched stays open leaves the next
+            // reader nothing but the full text to rescan.
+            // The one before that is `ds desktop list`: every instance-targeted
             // refusal an agent can meet tells it to name an instance, and this
             // is the only tool that says which instances exist.
-            "operations" => 17,
+            "operations" => 18,
             _ => 16,
         };
         assert!(

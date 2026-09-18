@@ -209,14 +209,21 @@ impl Profile {
             // operator workflow as the local tile references beside it — one
             // host's own layers — so it is not a second profile.
             Self::Layers => 19,
-            // Fifteen leaves plus both bootstrap tools. The one that raised
-            // this from sixteen is `ds desktop list`: with several DS
+            // Sixteen leaves plus both bootstrap tools. The one that raised
+            // this from seventeen on 2026-09-18 is `ds feedback note`: with
+            // three feedback verbs the only way to say anything about a report
+            // was to close it, so a report parked on a deploy or a ruling left
+            // no record and every later visit re-read its full text to
+            // rediscover the same blocker. An operations profile that can read
+            // the backlog and close a report, but cannot say why a report it
+            // touched stays open, forces the next reader to rescan everything.
+            // The one before that is `ds desktop list`: with several DS
             // GridDesign instances live on a machine, every instance-targeted
             // refusal tells the caller to name one, and this is the only tool
             // that says which exist. A profile that could refuse an operation
             // for ambiguity and not publish the answer to it would not be a
             // smaller surface, only a stuck one.
-            Self::Operations => 17,
+            Self::Operations => 18,
             _ => 16,
         }
     }
