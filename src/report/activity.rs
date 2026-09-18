@@ -256,7 +256,12 @@ pub fn project(snapshot: &Snapshot) -> Result<View<'_>, String> {
             );
             if matches!(
                 receipt.outcome.as_str(),
-                "failed" | "refused" | "conflict" | "error" | "retry_deferred"
+                "failed"
+                    | "refused"
+                    | "conflict"
+                    | "error"
+                    | "retry_deferred"
+                    | "engine_build_not_admitted"
             ) && outbox
                 .latest_issue_at_ms
                 .is_none_or(|at| receipt.at_ms >= at)

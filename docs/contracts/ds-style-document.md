@@ -109,3 +109,13 @@ hosts parse cannot carry them.
 | render-ready preview assembly (`renderReadyStyleForMap`, `buildLocalStyleState`) | a presentation mirror of ds-brain's runtime image and companion minting — a preview, never the published truth |
 | `StyleCenterDialog.svelte` banners, tabs, local save | chrome over the kernel's answer; the issue and warning *text* is now the kernel's |
 | `layers/user-data-style.ts` opening the dialog | which surface opens, not what is asked for or accepted |
+
+## Independent symbol icon placement
+
+Guided appearance accepts optional `icon_overlap: bool` for symbol documents.
+It sets `layout.icon-allow-overlap` and `layout.icon-ignore-placement` together.
+On keeps a separate label layer from displacing its own icon. Off restores both
+flags to false. The operation preserves label overlap, icon identity, paint,
+field dimensions and other authorship. Non-symbol or non-boolean requests refuse.
+Only the explicitly addressed screen or print document changes; a seed or clone
+is a starting copy, never a live link between those targets.

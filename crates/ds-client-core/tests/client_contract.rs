@@ -5766,6 +5766,7 @@ fn headless_style_plan_publishes_only_on_apply_and_checks_the_returned_target() 
     fixture["data"]["style_editors"] = serde_json::json!([{"style_ref":"master/roads","style_target":"design","layer_name":"roads"}]);
     fixture["data"]["warnings"] = serde_json::json!(["catalog omission"]);
     let instruction = StyleInstruction::Appearance {
+        icon_overlap: None,
         color: Some("#ff0000".into()),
         icon: None,
         size: None,
@@ -5837,6 +5838,7 @@ fn headless_style_publish_normalises_issue_warnings_and_refuses_a_foreign_receip
         serde_json::json!({"master/roads":{"type":"line","paint":{"line-width":3}}});
     fixture["data"]["style_editors"] = serde_json::json!([{"style_ref":"master/roads","style_target":"design","layer_name":"roads"}]);
     let instruction = StyleInstruction::Appearance {
+        icon_overlap: None,
         color: Some("#00ff00".into()),
         icon: None,
         size: None,

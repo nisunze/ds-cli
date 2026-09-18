@@ -17,6 +17,8 @@ pub enum StyleInstruction {
         color: Option<String>,
         icon: Option<String>,
         size: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        icon_overlap: Option<bool>,
     },
     /// Point a style's governed label at one exact declared data field. The
     /// backend-provided label model supplies defaults only when the style has
@@ -747,9 +749,14 @@ pub fn plan_style_edit(
     // `describe_style` is where it is reported.
     let mut receipt = json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"published":false,"dryRun":true});
     match instruction {
-        StyleInstruction::Appearance { color, icon, size } => {
-            if color.is_none() && icon.is_none() && size.is_none() {
-                return Err("choose colour, icon or size".into());
+        StyleInstruction::Appearance {
+            color,
+            icon,
+            size,
+            icon_overlap,
+        } => {
+            if color.is_none() && icon.is_none() && size.is_none() && icon_overlap.is_none() {
+                return Err("choose colour, icon, size or icon overlap".into());
             }
             let mut change = json!({});
             if let Some(color) = color {
@@ -789,8 +796,14 @@ pub fn plan_style_edit(
                     change["size"] = json!(size);
                 }
             }
+            if let Some(overlap) = icon_overlap {
+                change["icon_overlap"] = json!(overlap);
+            }
             next = apply_appearance(next, &change)?;
             receipt["requested"] = json!({"color":color,"icon":icon,"size":size});
+            if let Some(overlap) = icon_overlap {
+                receipt["requested"]["icon_overlap"] = json!(overlap);
+            }
             receipt["baseSizeUpdatedAsFallback"] = json!(size_is_second);
         }
         StyleInstruction::Label {
@@ -1656,11 +1669,31 @@ mod tests {
         .contains("limited to declared print context"));
     }
     #[test]
+    fn icon_overlap_only_uses_the_exact_governed_target_and_preserves_labels() {
+        let state = snapshot(
+            json!({"type":"symbol","layout":{"icon-image":"school"},"label":{"layout":{"text-field":["get","name"]}}}),
+        );
+        let edit: StyleInstruction =
+            serde_json::from_value(json!({"kind":"appearance","icon_overlap":true})).unwrap();
+        let plan = plan_style_edit(&state, "master/poles", &edit).unwrap();
+        assert_eq!(plan.document["layout"]["icon-allow-overlap"], true);
+        assert_eq!(plan.document["layout"]["icon-ignore-placement"], true);
+        assert_eq!(
+            plan.document["label"],
+            state["styles"]["master/poles"]["label"]
+        );
+        assert_eq!(plan.payload["layer_name"], "poles");
+        assert_eq!(plan.payload["style_ref"], "master/poles");
+        assert_eq!(plan.receipt["requested"]["icon_overlap"], true);
+    }
+
+    #[test]
     fn guided_appearance_changes_only_size_fallback_and_checks_server_bounds() {
         let state = snapshot(
             json!({"type":"circle","paint":{"circle-radius":["match",["get","status"],"built",8,4]}}),
         );
         let edit = StyleInstruction::Appearance {
+            icon_overlap: None,
             color: None,
             icon: None,
             size: Some(6.),
@@ -1676,6 +1709,7 @@ mod tests {
             &state,
             "master/poles",
             &StyleInstruction::Appearance {
+                icon_overlap: None,
                 color: None,
                 icon: None,
                 size: Some(100.)

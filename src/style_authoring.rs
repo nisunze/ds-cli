@@ -281,9 +281,17 @@ pub fn apply_appearance(mut style: Value, change: &Value) -> Result<Value, Strin
     let change = object(change)?;
     if change
         .keys()
-        .any(|k| !matches!(k.as_str(), "color" | "icon" | "size"))
+        .any(|k| !matches!(k.as_str(), "color" | "icon" | "size" | "icon_overlap"))
     {
         return Err("unknown appearance property".into());
+    }
+    if let Some(overlap) = change.get("icon_overlap") {
+        if kind != "symbol" || !overlap.is_boolean() {
+            return Err("icon overlap requires a boolean on a symbol style".into());
+        }
+        let layout = bucket(&mut style, "layout")?;
+        layout.insert("icon-allow-overlap".into(), overlap.clone());
+        layout.insert("icon-ignore-placement".into(), overlap.clone());
     }
     let (color, size, icon) = match kind.as_str() {
         "circle" => (Some("circle-color"), Some("circle-radius"), None),
@@ -616,5 +624,24 @@ mod line_scale_tests {
             json!({"dash":0}).as_object().unwrap()
         )
         .is_err());
+    }
+}
+
+#[cfg(test)]
+mod icon_collision_tests {
+    use super::*;
+    #[test]
+    fn independent_icon_placement_keeps_labels_and_other_authorship() {
+        let style = json!({"type":"symbol","layout":{"icon-image":"school","icon-allow-overlap":false},"label":{"layout":{"text-field":["get","name"],"text-allow-overlap":false}}});
+        let updated = apply_appearance(style.clone(), &json!({"icon_overlap":true})).unwrap();
+        assert_eq!(updated["layout"]["icon-allow-overlap"], true);
+        assert_eq!(updated["layout"]["icon-ignore-placement"], true);
+        assert_eq!(updated["label"], style["label"]);
+        assert_eq!(updated["layout"]["icon-image"], "school");
+        let off = apply_appearance(updated, &json!({"icon_overlap":false})).unwrap();
+        assert_eq!(off["layout"]["icon-allow-overlap"], false);
+        assert_eq!(off["layout"]["icon-ignore-placement"], false);
+        assert!(apply_appearance(json!({"type":"line"}), &json!({"icon_overlap":true})).is_err());
+        assert!(apply_appearance(style, &json!({"icon_overlap":"on"})).is_err());
     }
 }
