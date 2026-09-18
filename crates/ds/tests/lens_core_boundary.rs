@@ -58,6 +58,9 @@ enum Layer {
 /// they always should have had, and `ds-cli-feedback`, `ds-cli-tile` and
 /// `ds-cli-style` followed — the last two by collapsing two routes to the
 /// native one they already had, and in `ds style`'s case already defaulted to.
+/// `ds-cli-sre` left on 2026-09-18 as well: both of its commands were pure
+/// server reads of platform health, which is exactly the thing a server must
+/// be able to read.
 const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds", Layer::Host, 1),
     ("ds-cli-map", Layer::Lens, 4),
@@ -79,8 +82,6 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds-cli-dsgrid", Layer::CorePending, 1),
     // Solar runs read the workspace the application holds open.
     ("ds-cli-solar", Layer::CorePending, 2),
-    // Diagnostics inspect the live application.
-    ("ds-cli-sre", Layer::CorePending, 1),
     // Project Work tasks read the window's selection.
     ("ds-cli-work", Layer::CorePending, 1),
 ];

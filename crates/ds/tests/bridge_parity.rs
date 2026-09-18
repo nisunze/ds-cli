@@ -54,7 +54,6 @@ struct App {
     assets: String,
     dsgrid: String,
     dsgrid_contract: String,
-    sre: String,
     style_fill_pattern: String,
     style_line_type: String,
     sync_center: String,
@@ -65,6 +64,7 @@ struct App {
     solar_portfolio_run: String,
     solar_batch_adapter: String,
     solar_portfolio_receipt: String,
+    reliability_page: String,
 }
 
 fn app() -> Option<App> {
@@ -88,7 +88,6 @@ fn app() -> Option<App> {
         assets: read("src/lib/desktop/cli-assets.ts")?,
         dsgrid: read("src/lib/desktop/cli-dsgrid.ts")?,
         dsgrid_contract: read("docs/dsgrid-local-model-and-project-publication-contract.md")?,
-        sre: read("src/lib/desktop/cli-sre.ts")?,
         style_fill_pattern: read("src/lib/styles/fill-pattern.ts")?,
         style_line_type: read("src/lib/styles/line-type.ts")?,
         sync_center: read("src/lib/desktop/cli-sync-center.ts")?,
@@ -98,6 +97,7 @@ fn app() -> Option<App> {
         solar_seed_adapter: read("src/lib/desktop/cli-solar-seed.ts")?,
         solar_batch_adapter: read("src/lib/desktop/cli-solar-portfolio-batch.ts")?,
         solar_portfolio_run: read("src/lib/solar/native-batch.ts")?,
+        reliability_page: read("src/routes/sre/+page.svelte")?,
         solar_portfolio_receipt: read("src/lib/solar/native-portfolio-batches.ts")?,
     })
 }
@@ -1689,7 +1689,18 @@ fn design_collaboration_bounds_match_the_desktop_owner() {
 }
 
 #[test]
-fn every_sre_command_has_one_closed_operation_owner_and_exact_arguments() {
+fn platform_reliability_no_longer_travels_through_the_window() {
+    // `ds sre overview` and `ds sre events` were `paired_availability`, so on a
+    // machine with no window they refused with `desktop_not_paired` — and a
+    // server with no window is exactly where an operator asks how the platform
+    // is. Both were pure server reads: the desktop adapter called
+    // `brainGet('/api/v1/sre/overview')` and the tabular `query_table` stream,
+    // held no state of its own, and never touched an active project.
+    //
+    // Since 2026-09-18 there is one route, through `ds-client-core::sre`. The
+    // desktop's two operations are retired, its adapter is deleted, and the
+    // crate no longer depends on `ds-cli-desktop` (`lens_core_boundary.rs`
+    // holds that).
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
@@ -1699,141 +1710,29 @@ fn every_sre_command_has_one_closed_operation_owner_and_exact_arguments() {
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
     );
-    let mut seen = BTreeSet::new();
-    for operation in ds_cli_sre::BRIDGE_OPS {
-        assert!(
-            seen.insert(operation.operation),
-            "`{}` is declared twice by ds sre",
-            operation.operation
+    for retired in ["sre.overview", "sre.events"] {
+        assert_eq!(
+            count(allowlist, &format!("\"{retired}\"")),
+            0,
+            "{retired} is still admitted as a CLI bridge operation, but `ds sre` \
+             no longer sends it"
         );
         assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "`{}` must appear exactly once in the desktop allowlist",
-            operation.operation
-        );
-        assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
-            1,
-            "`{}` must have exactly one frontend handler",
-            operation.operation
-        );
-        assert!(
-            has_operation_contract(&app.sre, operation.operation),
-            "`{}` has no typed SRE adapter argument contract",
-            operation.operation
-        );
-        let accepted = quoted_contract_items(operation_contract(&app.sre, operation.operation));
-        let declared = operation
-            .arguments
-            .iter()
-            .map(|argument| (*argument).to_string())
-            .collect::<BTreeSet<_>>();
-        assert_eq!(
-            accepted, declared,
-            "`{}` arguments drifted between ds and the desktop",
-            operation.operation
-        );
-    }
-}
-
-#[test]
-fn sre_bounds_outputs_and_typed_refusals_match_the_desktop_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-    for (name, value) in [
-        ("CLI_SRE_MAX_DAYS", ds_cli_sre::MAX_DAYS),
-        ("CLI_SRE_MAX_EVENTS", ds_cli_sre::MAX_EVENTS),
-        ("CLI_SRE_MAX_SCAN_EVENTS", ds_cli_sre::MAX_SCAN_EVENTS),
-        (
-            "CLI_SRE_MAX_EVENT_TEXT_CHARS",
-            ds_cli_sre::MAX_EVENT_TEXT_CHARS as i64,
-        ),
-        (
-            "CLI_SRE_MAX_ERROR_MESSAGE_CHARS",
-            ds_cli_sre::MAX_ERROR_MESSAGE_CHARS as i64,
-        ),
-    ] {
-        let plain = format!("export const {name} = {value};");
-        let grouped = format!("export const {name} = {};", grouped(value as usize));
-        assert!(
-            app.sre.contains(&plain) || app.sre.contains(&grouped),
-            "the desktop's {name} must match ds sre"
-        );
-    }
-
-    let overview = between(
-        &app.sre,
-        "export function projectCliSreOverview",
-        "function same",
-    );
-    assert!(
-        !overview.is_empty(),
-        "the bounded SRE overview projection is absent"
-    );
-    for field in [
-        "generated_at",
-        "fleet",
-        "combined_reports",
-        "services",
-        "service_ops",
-        "stale",
-        "incidents",
-        "error_catalog",
-        "totals",
-        "more",
-    ] {
-        assert!(
-            projects_field(overview, field),
-            "the desktop SRE owner no longer projects `{field}`"
-        );
-    }
-
-    let events = between(
-        &app.sre,
-        "export function projectCliSreEvents",
-        "export async function readCliSreOverview",
-    );
-    assert!(
-        !events.is_empty(),
-        "the bounded SRE event projection is absent"
-    );
-    for field in [
-        "filters", "scanned", "matching", "returned", "events", "more",
-    ] {
-        assert!(
-            projects_field(events, field),
-            "the desktop SRE event projection no longer projects `{field}`"
-        );
-    }
-    let events_read = between(&app.sre, "export async function readCliSreEvents", "\n}");
-    assert!(!events_read.is_empty(), "the SRE events owner is absent");
-    for field in ["generated_at", "window_days", "scan_limit"] {
-        assert!(
-            projects_field(events_read, field),
-            "the desktop SRE event owner no longer projects `{field}`"
-        );
-    }
-
-    let lowered = app.sre.to_ascii_lowercase();
-    for marker in ds_cli_sre::NOT_PERMITTED_MARKERS {
-        assert!(
-            lowered.contains(marker),
-            "the SRE permission marker `{marker}` no longer appears in the owner"
+            switch_case_count(&app.frontend, retired),
+            0,
+            "{retired} still has a frontend handler"
         );
     }
     assert!(
-        ds_cli_sre::SRE_SIGNED_OUT_MARKERS
-            .iter()
-            .any(|marker| lowered.contains(marker)),
-        "no SRE sign-in marker remains in the owner"
+        !ds_web()
+            .expect("the checkout was found above")
+            .join("src/lib/desktop/cli-sre.ts")
+            .exists(),
+        "the paired SRE adapter outlived its last caller"
     );
-    assert!(
-        !app.sre.contains("activeProject") && !app.sre.contains("getActiveProject"),
-        "platform-global SRE reads must not require an active project"
-    );
+    // The Reliability page itself is untouched: a person at a window still
+    // reads the same two owner answers on /sre.
+    assert!(app.reliability_page.contains("fetchSreOverview"));
 }
 
 #[test]

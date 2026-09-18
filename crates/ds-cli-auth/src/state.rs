@@ -1190,6 +1190,14 @@ mod tests {
                 "list_datasets".to_owned(),
                 "query_print_context".to_owned(),
             ],
+            sre_overview_method: ds_client_core::SRE_OVERVIEW_METHOD.to_owned(),
+            sre_overview_path: ds_client_core::SRE_OVERVIEW_PATH.to_owned(),
+            sre_events_method: ds_client_core::SRE_EVENTS_METHOD.to_owned(),
+            sre_events_path: ds_client_core::SRE_EVENTS_PATH.to_owned(),
+            sre_events_actions: ds_client_core::SRE_EVENTS_ACTIONS
+                .iter()
+                .map(|action| (*action).to_owned())
+                .collect(),
             admin_bounds_method: ds_client_core::ADMIN_BOUNDS_METHOD.to_owned(),
             admin_bounds_path: ds_client_core::ADMIN_BOUNDS_PATH.to_owned(),
             admin_bounds_actions: ds_client_core::ADMIN_BOUNDS_ACTIONS

@@ -5957,6 +5957,12 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/admin/rwanda",
                 "actions": ["children", "geometry"]
             },
+            "sre_overview": { "method": "GET", "path": "/api/v1/sre/overview" },
+            "sre_events": {
+                "method": "POST",
+                "path": "/api/v1/data",
+                "actions": ["query_table"]
+            },
             "design_attachments": {
                 "method": "POST",
                 "path": "/api/v1/design/attachments",
@@ -5973,7 +5979,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v28",
+            "schema_version": "ds.native-client-profiles/v29",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -8643,10 +8649,9 @@ fn sre_is_two_global_read_only_commands_with_stable_defaults() {
     for command in commands {
         assert_eq!(command["effect"], "read_only");
         assert_eq!(
-            command["authority"], "desktop_user",
-            "SRE is global to the signed-in user, not project authority"
+            command["authority"], "headless_user",
+            "platform reliability is global to the signed-in user, and needs no window"
         );
-        assert_eq!(command["availability"], "available");
     }
 
     let events = ok(&["capabilities", "sre.events", "--output", "json"]);
@@ -8723,7 +8728,9 @@ fn capability_search_finds_terrain_waterfall_and_visible_deviation_labels() {
 }
 
 #[test]
-fn sre_validates_bounds_and_filters_before_pairing() {
+fn sre_validates_bounds_and_filters_before_the_window_is_opened() {
+    // Every one of these is refused by name on a machine that has never signed
+    // in, because a typo is a local answer and not a round trip.
     for (flag, value, expected) in [
         ("days", "0", "invalid_number"),
         ("days", "366", "invalid_number"),
@@ -8732,9 +8739,10 @@ fn sre_validates_bounds_and_filters_before_pairing() {
         ("scan-limit", "0", "invalid_number"),
         ("scan-limit", "5001", "invalid_number"),
         ("service", " ds-brain", "invalid_text"),
+        ("event-lane", "canary ", "invalid_text"),
     ] {
         assert_eq!(
-            refusal(&[
+            native_refusal(&[
                 "sre",
                 "events",
                 &format!("--{flag}"),
@@ -8743,21 +8751,28 @@ fn sre_validates_bounds_and_filters_before_pairing() {
                 "json"
             ]),
             expected,
-            "--{flag} {value} reached the bridge"
+            "--{flag} {value} reached the reliability authority"
         );
     }
     assert_eq!(
-        refusal(&["sre", "events", "--outcome", "unknown", "--output", "json"]),
+        native_refusal(&["sre", "events", "--outcome", "unknown", "--output", "json"]),
+        "invalid_choice"
+    );
+    // `--lane` means the caller's credential lane here exactly as it does
+    // everywhere else in `ds`; the lane an event was recorded on is a filter
+    // with its own name.
+    assert_eq!(
+        native_refusal(&["sre", "events", "--lane", "production", "--output", "json"]),
         "invalid_choice"
     );
 }
 
 #[test]
-fn well_formed_sre_reads_reach_only_the_global_runtime_boundary() {
-    let descriptor = temp_root("sre-smoke-unreachable")
-        .join("session.json")
-        .display()
-        .to_string();
+fn well_formed_sre_reads_reach_only_the_native_authentication_boundary() {
+    // Neither read asks for a window and neither asks for a project. On a
+    // machine with no restored user they stop at authentication — which is the
+    // whole point: before 2026-09-18 they stopped at `desktop_not_paired`, so
+    // platform health was unreadable from a server.
     for args in [
         vec!["sre", "overview"],
         vec![
@@ -8775,7 +8790,7 @@ fn well_formed_sre_reads_reach_only_the_global_runtime_boundary() {
             "all",
             "--category",
             "timeout",
-            "--lane",
+            "--event-lane",
             "stable",
             "--action",
             "query_table",
@@ -8786,13 +8801,20 @@ fn well_formed_sre_reads_reach_only_the_global_runtime_boundary() {
         ],
     ] {
         let mut argv = args.clone();
-        argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
-        let code = refusal(&argv);
+        argv.extend(["--output", "json"]);
+        let code = native_refusal(&argv);
         assert!(
             code.is_empty()
-                || PAIRING_CODES.contains(&code.as_str())
+                || NATIVE_AUTH_CODES.contains(&code.as_str())
                 || code == "sre_not_permitted",
-            "`ds {}` failed with `{code}` before or beyond its paired read boundary",
+            "`ds {}` failed with `{code}`, which is neither an answer nor an \
+             authentication outcome",
+            args.join(" ")
+        );
+        assert_ne!(
+            code,
+            "desktop_not_paired",
+            "`ds {}` still asks for a window",
             args.join(" ")
         );
     }

@@ -3,7 +3,7 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 pub static COMMAND: Command = Command {
     id: "sre.overview",
@@ -12,15 +12,16 @@ pub static COMMAND: Command = Command {
     summary: "Read fleet health, service SLOs, stale work and incidents.",
     purpose: "\
 Start here for recent platform health. Returns the same bounded, read-only \
-fleet and service projection as DS GridDesign's Reliability page. The paired \
-application performs the governed read under its signed-in user; an active \
-project is not required. `incidents` is the owner's currently unpopulated feed; \
-an empty list is not proof that external incident systems have no incidents.",
+fleet and service projection as DS GridDesign's Reliability page. The read is \
+performed under this machine's restored native user; no Desktop and no active \
+project are required, and none is sent. `incidents` is the owner's currently \
+unpopulated feed; an empty list is not proof that external incident systems \
+have no incidents.",
     chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[crate::DESCRIPTOR_ARG],
+    args: &[crate::LANE_ARG],
     output: "\
 `generated_at`, `fleet`, `combined_reports`, bounded `services`, `service_ops`, \
 `stale`, `incidents`, and `error_catalog`; `totals` carries exact owner counts \
@@ -30,30 +31,16 @@ and `more` identifies each truncated collection.",
         note: "Read totals and more before treating a bounded list as complete.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::SRE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-    ],
+    refusals: &crate::native_refusals::<
+        2,
+        { 2 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
+    >([crate::NOT_PERMITTED, crate::UNREADABLE]),
     reference: Some("docs/reference/sre.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::OVERVIEW,
-        json!({}),
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_sre_failure)
+    crate::invoke_native(inputs, &ds_client_core::sre::Command::Overview)
 }
 
 pub fn render(data: &Value) -> String {
@@ -93,6 +80,7 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn missing_fleet_telemetry_is_not_rendered_as_a_false_zero() {

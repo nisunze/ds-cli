@@ -1872,6 +1872,30 @@ pub fn admin_bounds(
     client.admin_bounds(command, now()).map_err(map_client)
 }
 
+/// One bounded read of platform reliability.
+///
+/// Global means there is no project: fleet health, SLO burn and the request
+/// event window belong to the platform, so this helper acquires no project
+/// context lease, loads no saved selection, and cannot leak one into the
+/// request. The authority is the restored native user; ds-brain refuses both
+/// routes without the `platform.admin` capability.
+///
+/// Until 2026-09-18 these two reads travelled through a paired desktop, which
+/// held the same user session and made the same requests. The window was never
+/// part of the contract, only of the route — and it was the one host least
+/// likely to be running when platform health is what you need.
+pub fn sre(
+    lane_value: &str,
+    command: &ds_client_core::sre::Command,
+) -> Result<serde_json::Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client.sre(command, now()).map_err(map_client)
+}
+
 /// One governed action on the GLOBAL DS Grid library and example catalog.
 ///
 /// Global means there is no project to select and none to fence: a library

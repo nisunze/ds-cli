@@ -1,30 +1,33 @@
-//! `ds sre` — bounded platform reliability reads through the paired desktop.
+//! `ds sre` — bounded platform reliability reads through the native user.
 //!
-//! The Reliability page and ds-brain own every value returned here. This
-//! crate only validates flags, sends one operation from a closed bridge set,
-//! and renders the owner's bounded projection. It never reads Cloud
-//! Monitoring, BigQuery, Firestore, or browser storage itself.
+//! The Reliability page, ds-brain and `ds-client-core::sre` own every value
+//! returned here. This crate validates flags, names one of two reads, and
+//! renders the owner's bounded projection. It never reads Cloud Monitoring,
+//! BigQuery, Firestore or browser storage itself.
 //!
-//! Unlike project domains, SRE is platform-global. A signed-in desktop user
-//! is required, but an active project is not. The owner separately enforces
-//! reliability access (currently platform admin).
+//! Unlike project domains, reliability is platform-global. A restored native
+//! user is required; an active project is not, and none is ever sent. The owner
+//! separately enforces reliability access, which today is `platform.admin`.
+//!
+//! ## Why there is one route
+//!
+//! Until 2026-09-18 both commands travelled through a paired desktop window,
+//! and both were pure server reads: the window held the session, made the same
+//! request, and handed the answer back. That put platform health behind the one
+//! host least likely to be running when it matters — on a server, where an
+//! agent is asking why a job failed, `ds sre overview` refused with
+//! `desktop_not_paired`. A read that needs no window does not get one.
 
 pub mod events;
 pub mod overview;
 
-use std::time::Duration;
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Domain, Refusal};
-use serde_json::json;
+use ds_client_core::sre;
 
-// Neutral argument helpers: a numeric bound and an English count say
-// nothing about a paired window, so they come from the contract crate.
+// Neutral argument helpers: a numeric bound and an English count say nothing
+// about a paired window, so they come from the contract crate.
 pub use ds_cli_contract::args::{INVALID_NUMBER, integer};
-pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN,
-    UNREACHABLE, UNREADABLE, UNSUPPORTED, invoke, paired, paired_availability,
-};
 
 pub static DOMAIN: Domain = Domain {
     id: "sre",
@@ -32,56 +35,21 @@ pub static DOMAIN: Domain = Domain {
     commands: &[&overview::COMMAND, &events::COMMAND],
 };
 
-pub const OVERVIEW: BridgeOp = BridgeOp {
-    operation: "sre.overview",
-    arguments: &[],
+/// Every bound this domain enforces is the owner's. A second copy here would be
+/// a second contract, and the first thing to go stale.
+pub use sre::{
+    MAX_DAYS, MAX_ERROR_MESSAGE_CHARS, MAX_EVENT_TEXT_CHARS, MAX_EVENTS, MAX_FILTER_CHARS,
+    MAX_OVERVIEW_ROWS, MAX_SCAN_EVENTS,
 };
 
-pub const EVENTS: BridgeOp = BridgeOp {
-    operation: "sre.events",
-    arguments: &[
-        "days",
-        "limit",
-        "scanLimit",
-        "service",
-        "outcome",
-        "category",
-        "lane",
-        "action",
-        "project",
-        "source",
-    ],
-};
-
-/// Every operation this domain may send, walked by the desktop parity suite.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[&OVERVIEW, &EVENTS];
-
-pub const MAX_DAYS: i64 = 365;
-pub const MAX_EVENTS: i64 = 250;
-pub const MAX_SCAN_EVENTS: i64 = 5_000;
-pub const MAX_FILTER_CHARS: usize = 200;
-pub const MAX_EVENT_TEXT_CHARS: usize = 128;
-pub const MAX_ERROR_MESSAGE_CHARS: usize = 1_000;
-
-/// Both owner reads may wait on Cloud Monitoring or a bounded BigQuery scan.
-pub const READ_TIMEOUT: Duration = Duration::from_secs(3 * 60);
-
-pub const SRE_REFUSED: Refusal = Refusal {
-    code: "desktop_refused",
-    when: "the paired Reliability adapter or its owner declined the read",
-    remedy: "read detail.detail for the owner's bounded message",
-};
-
-/// This wording is intentionally global: SRE requires sign-in, not a project.
-pub const SIGNED_OUT: Refusal = Refusal {
-    code: "desktop_signed_out",
-    when: "the paired application is running but has no signed-in user",
-    remedy: "sign in to DS GridDesign; no project selection is required",
-};
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native credential lane.")
+        .choices(&["stable", "canary"])
+        .default("stable");
 
 pub const NOT_PERMITTED: Refusal = Refusal {
     code: "sre_not_permitted",
-    when: "the signed-in user does not have reliability access",
+    when: "the signed-in account may not read platform reliability",
     remedy: "ask a platform administrator to grant reliability access",
 };
 
@@ -91,56 +59,55 @@ pub const INVALID_TEXT: Refusal = Refusal {
     remedy: "pass one exact trimmed filter value no longer than 200 characters",
 };
 
-/// Owner refusal prose that has a stable, actionable CLI classification.
-pub const NOT_PERMITTED_MARKERS: &[&str] = &["reliability access", "platform admin"];
-pub const SRE_SIGNED_OUT_MARKERS: &[&str] = &["sign in", "signed out"];
+pub const UNREADABLE: Refusal = Refusal {
+    code: "unreadable_response",
+    when: "the reliability authority answered with something other than the read it was asked for, \
+or an event window that lost rows on the way",
+    remedy: "run the read again; a window that lost rows is refused rather than returned short",
+};
 
-pub fn classify_sre_failure(failure: Failure) -> Failure {
-    if failure.code() != "desktop_refused" {
-        return failure;
+/// This domain's own refusals, then the native user's. There is no host to
+/// choose, so no target refusal is appended.
+pub const fn native_refusals<const N: usize, const M: usize>(old: [Refusal; N]) -> [Refusal; M] {
+    let mut out = [INVALID_TEXT; M];
+    let mut i = 0;
+    while i < N {
+        out[i] = old[i];
+        i += 1;
     }
-    let detail = failure
-        .detail_value()
-        .and_then(|value| value["detail"].as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-
-    if SRE_SIGNED_OUT_MARKERS
-        .iter()
-        .any(|marker| detail.contains(marker))
-    {
-        return Failure::unauthorized(
-            "desktop_signed_out",
-            "the paired session has no signed-in user",
-        )
-        .remedy(SIGNED_OUT.remedy)
-        .next("ds desktop status");
+    let mut j = 0;
+    while j < ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() {
+        out[i] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals[j];
+        i += 1;
+        j += 1;
     }
-    if NOT_PERMITTED_MARKERS
-        .iter()
-        .any(|marker| detail.contains(marker))
-    {
-        return Failure::unauthorized(
-            "sre_not_permitted",
-            "the signed-in user does not have reliability access",
-        )
-        .remedy(NOT_PERMITTED.remedy);
-    }
-    failure
+    out
 }
 
+/// One bounded, trimmed, non-empty filter, named by the flag that carried it.
+///
+/// The owner refuses the same values; this refuses them first, so a typo is a
+/// local answer with a flag name in it rather than a round trip.
 pub fn bounded_filter<'a>(raw: &'a str, flag: &str) -> Result<&'a str, Failure> {
     if raw.is_empty() || raw.trim() != raw || raw.chars().count() > MAX_FILTER_CHARS {
         return Err(Failure::invalid(
-            "invalid_text",
+            INVALID_TEXT.code,
             format!(
                 "`--{flag}` must be non-empty, trimmed, and at most {MAX_FILTER_CHARS} characters"
             ),
         )
         .remedy(INVALID_TEXT.remedy)
-        .detail(json!({ "flag": flag, "max_chars": MAX_FILTER_CHARS })));
+        .detail(serde_json::json!({ "flag": flag, "max_chars": MAX_FILTER_CHARS })));
     }
     Ok(raw)
+}
+
+/// The one route: platform reliability through the restored native user.
+pub fn invoke_native(
+    inputs: &ds_cli_contract::Inputs,
+    command: &sre::Command,
+) -> Result<serde_json::Value, Failure> {
+    ds_cli_auth::sre(inputs.value("lane").unwrap_or("stable"), command)
 }
 
 pub fn truncate(text: &str, width: usize) -> String {
@@ -155,52 +122,17 @@ pub fn truncate(text: &str, width: usize) -> String {
 mod tests {
     use super::*;
 
+    /// The CLI states the owner's bounds, it does not hold its own.
     #[test]
-    fn bridge_operations_are_closed_and_exact() {
-        assert_eq!(OVERVIEW.operation, "sre.overview");
-        assert!(OVERVIEW.arguments.is_empty());
-        assert_eq!(EVENTS.operation, "sre.events");
-        assert_eq!(
-            EVENTS.arguments,
-            [
-                "days",
-                "limit",
-                "scanLimit",
-                "service",
-                "outcome",
-                "category",
-                "lane",
-                "action",
-                "project",
-                "source",
-            ]
-        );
-        assert_eq!(BRIDGE_OPS.len(), DOMAIN.commands.len());
+    fn the_declared_bounds_are_the_owners() {
+        assert_eq!(MAX_DAYS, sre::MAX_DAYS);
+        assert_eq!(MAX_EVENTS, sre::MAX_EVENTS);
+        assert_eq!(MAX_SCAN_EVENTS, sre::MAX_SCAN_EVENTS);
+        assert_eq!(MAX_FILTER_CHARS, sre::MAX_FILTER_CHARS);
     }
 
     #[test]
-    fn permission_and_global_sign_in_refusals_are_typed() {
-        let refused = |detail: &str| {
-            classify_sre_failure(
-                Failure::failed("desktop_refused", "refused").detail(json!({ "detail": detail })),
-            )
-        };
-        assert_eq!(
-            refused("Reliability access requires platform admin.").code(),
-            "sre_not_permitted"
-        );
-        assert_eq!(
-            refused("Sign in to DS GridDesign before using SRE commands.").code(),
-            "desktop_signed_out"
-        );
-        assert_eq!(
-            refused("The request-event query failed.").code(),
-            "desktop_refused"
-        );
-    }
-
-    #[test]
-    fn event_filters_are_bounded_before_pairing() {
+    fn event_filters_are_bounded_before_the_read_is_opened() {
         assert_eq!(bounded_filter("ds-brain", "service").unwrap(), "ds-brain");
         for bad in ["", " ds-brain", "ds-brain "] {
             assert_eq!(

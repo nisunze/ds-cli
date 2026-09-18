@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v28",
+  "schema_version": "ds.native-client-profiles/v29",
   "development": true,
   "profiles": {
     "stable": {
@@ -118,6 +118,17 @@
         "actions": [
           "children",
           "geometry"
+        ]
+      },
+      "sre_overview": {
+        "method": "GET",
+        "path": "/api/v1/sre/overview"
+      },
+      "sre_events": {
+        "method": "POST",
+        "path": "/api/v1/data",
+        "actions": [
+          "query_table"
         ]
       },
       "project_report": {
@@ -325,6 +336,17 @@
         "actions": [
           "children",
           "geometry"
+        ]
+      },
+      "sre_overview": {
+        "method": "GET",
+        "path": "/api/v1/sre/overview"
+      },
+      "sre_events": {
+        "method": "POST",
+        "path": "/api/v1/data",
+        "actions": [
+          "query_table"
         ]
       },
       "project_report": {
