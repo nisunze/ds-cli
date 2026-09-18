@@ -58,8 +58,12 @@ it refuses `conflicting_selector` rather than silently combining with
 
 The counts are a ledger of work owed, not a description of the product: a
 `window` command is one the host-transparency backlog has not yet given a
-headless owner. `crates/ds/tests/lens_core_boundary.rs` freezes them per
-crate and lets them fall, never rise.
+headless owner. `crates/ds/tests/lens_core_boundary.rs` freezes them twice —
+per crate, as declaration sites, and per domain, as the commands this filter
+reports — and lets both fall, never rise. `crates/ds/tests/contract.rs`
+checks the fact against the authority beside it, because an authority that
+names the running application and a `server` command are the same claim
+twice, one of them wrong.
 
 **Compact discovery never replaces help.** Root, domain and command help are
 permanent first-class interfaces for people and remain complete at their own
