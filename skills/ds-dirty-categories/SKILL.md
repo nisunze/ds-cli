@@ -26,6 +26,15 @@ Read fresh configuration for the same project used by the report. Discover
 optional complete configuration artifact. Inspect the live declarations;
 do not infer flags from this skill.
 
+Read the `hazards` the catalog read returns before reading its rows. They name
+what the rows cannot: which category unrecognised values are counted as and
+whether anything chose it (`decided_by: catalog_order` means nothing did but
+the seeding order), which source labels two canonical categories both claim,
+how many rows carry no canonical name, and which client/country vocabularies
+the project was seeded with. A contested label resolves to neither owner: its
+customers land in the fallback, so its quantity is missing from one section
+total and inflating another.
+
 | Diagnostic Source | Configuration owner and fields |
 |---|---|
 | Customers Categories | Data Cleaning / Cust Category: `cust_category`, canonical `clean_name`, `misspelled_names`, demand metadata; project `default_category` |
@@ -61,11 +70,21 @@ An unfamiliar category never authorizes inventing its demand or cable rating.
 
 ## Apply and verify
 
-Within the user's authorized scope, discover the configuration owner:
+Within the user's authorized scope, discover the configuration owner.
 `design.meter-types.ensure` adds a distinct meter type and
 `design.customer-categories.alias` assigns an alias to an existing customer
-category. Other catalog repairs require their own supported owner; report
-a confirmed missing capability through `ds feedback` instead of bypassing it.
+category — those two are the only verbs that create anything. Housekeeping on a
+catalog that is already wrong has its own verbs, each of which orders, renames
+or removes what is already there: `design.customer-categories.retire`,
+`design.customer-categories.retire-unnamed`,
+`design.customer-categories.rename`, `design.customer-categories.unbind` and
+`design.meter-types.default`. Resolve a contested label by unbinding it from
+the category that should not own it, then aliasing it to the one that should.
+Before retiring the category the hazards name as the `catalog_order` fallback,
+store the choice as the project's `default_category`, or retiring it moves every
+unrecognised customer somewhere nobody asked for. Any further catalog repair
+requires its own supported owner; report a confirmed missing capability through
+`ds feedback` instead of bypassing it.
 
 Verify a fresh saved catalog, then regenerate with the same intended scope
 through `ds report`. Do not edit or split workbook cells to hide diagnostics.

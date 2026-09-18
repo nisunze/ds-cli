@@ -1707,6 +1707,31 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::category_catalog::render,
     },
     Entry {
+        command: &ds_cli_design::category_catalog::METER_DEFAULT,
+        handler: ds_cli_design::category_catalog::meter_default,
+        render: ds_cli_design::category_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_design::category_catalog::CUSTOMER_UNBIND,
+        handler: ds_cli_design::category_catalog::customer_unbind,
+        render: ds_cli_design::category_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_design::category_catalog::CUSTOMER_RENAME,
+        handler: ds_cli_design::category_catalog::customer_rename,
+        render: ds_cli_design::category_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_design::category_catalog::CUSTOMER_RETIRE,
+        handler: ds_cli_design::category_catalog::customer_retire,
+        render: ds_cli_design::category_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_design::category_catalog::CUSTOMER_RETIRE_UNNAMED,
+        handler: ds_cli_design::category_catalog::customer_retire_unnamed,
+        render: ds_cli_design::category_catalog::render,
+    },
+    Entry {
         command: &ds_cli_design::known_columns::set::COMMAND,
         handler: ds_cli_design::known_columns::set::run,
         render: ds_cli_design::known_columns::set::render,

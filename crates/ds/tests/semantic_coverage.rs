@@ -232,6 +232,31 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
+        "design.customer-categories.unbind",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.customer-categories.rename",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.customer-categories.retire",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.customer-categories.retire-unnamed",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.meter-types.default",
+        "global_write",
+        "headless_project",
+    ),
+    (
         "design.config.sheets",
         "local_auth_state",
         "headless_project",

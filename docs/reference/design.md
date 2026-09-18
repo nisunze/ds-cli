@@ -475,6 +475,52 @@ seeds an explicit source-label mapping while preserving Commercial's demand
 settings. Both commands use the native selected project, retain unrelated
 catalog rows, and verify fresh saved configuration without Desktop.
 
+### What the catalog does to a report, and how to repair it
+
+Reporting validates every grouped customer and meter description against the
+catalog's canonical names, and a description that is not among them is rewritten
+to a fallback rather than left out. The row totals a report prints therefore
+depend on three catalog facts the rows themselves do not show, and
+`ds design categories read` returns all three under `hazards`:
+
+- `fallback` — the category unrecognised values are counted as, and
+  `decided_by`: `project_setting` when `default_category` is stored, otherwise
+  `catalog_order`, meaning nothing chose it but the seeding order.
+- `ambiguous_aliases` — source labels two canonical categories both claim.
+  A contested label is dropped from the alias map entirely, so the customers
+  spelled that way stop resolving and land in the fallback.
+- `unnamed_rows` and `scopes` — rows with no canonical name, and the
+  client/country mixture a merged seed leaves in a single-country project.
+
+Seeding alone cannot repair a catalog that is already wrong, so four verbs
+order, rename and remove what is already there. None of them creates a row;
+`ensure` and `alias` remain the only way to add one.
+
+`ds design customer-categories retire --name Pauvre --yes` drops one canonical
+category — a second client's vocabulary, a duplicate — so reporting stops
+validating against it. It refuses while that category is the fallback only
+because it is first in the catalog; store the choice first with
+`ds design config set --sheet project_settings --parameter default_category
+--value "<category>" --yes`, then retire.
+
+`ds design customer-categories retire-unnamed --yes` drops the blank rows a
+seeding pass left behind. They group nothing and validate nothing, but they are
+still listed wherever the catalog is offered.
+
+`ds design customer-categories rename --from Education_I --to "Primary School"
+--yes` changes the name reports total under, keeping the demand settings and
+every source label — including the old name, which stored customer records
+still carry. It refuses a name another category already claims.
+
+`ds design customer-categories unbind --alias "Ecole Primaire" --category School
+--yes` resolves a contested label by naming the category that loses it; follow
+it with `alias` to bind the label to the intended owner.
+
+`ds design meter-types default --name "Three Phase" --yes` moves a meter type to
+the front of the catalog. Reporting has no governed setting for the phase-type
+fallback — it reads the first named row — so until it has one, this is how a
+project states that choice on purpose.
+
 `ds design feeder-limits read` reads the native selected project's feeder
 bounds, LV cable bounds and transformer cable catalog from fresh configuration,
 without Desktop. Optional `--out` retains this configuration at a new JSON path.
