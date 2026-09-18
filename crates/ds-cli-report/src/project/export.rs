@@ -1571,6 +1571,14 @@ pub fn render(data: &Value) -> String {
         data["batch"]["completed"].as_u64().unwrap_or(0),
         data["batch"]["failed"].as_u64().unwrap_or(0),
     );
+    // A run that delivered its artifacts and still lost a format counts as
+    // completed. If this screen said only "86 completed" an operator would
+    // ship a sheet set with 59 sheets missing and never be told: the loss has
+    // to be as visible as the delivery.
+    let partial = data["batch"]["partial_formats"].as_u64().unwrap_or(0);
+    if partial > 0 {
+        out.push_str(&format!(" · {partial} partial"));
+    }
     if preview {
         out.push_str(&format!(
             "\n  preview {} (layout {})\n",
@@ -1586,10 +1594,51 @@ pub fn render(data: &Value) -> String {
             data["batch"]["receipt"].as_str().unwrap_or(""),
         ));
     }
+    // Every lost format is named, and the naming is bounded: past this many
+    // the screen says how many it did not print and where the rest are.
+    const MAX_LOST_LISTED: usize = 10;
+    let mut listed = 0_usize;
+    let mut more = 0_usize;
     for row in data["results"].as_array().into_iter().flatten() {
         let name = row["transformer"].as_str().unwrap_or("?");
+        let lost = row["failed_formats"].as_array().map_or(&[][..], |l| l);
         if let Some(path) = row["page"]["path"].as_str() {
             out.push_str(&format!("  ok     {name:<28} page  {path}\n"));
+        } else if row["status"] == "ok" && !lost.is_empty() {
+            // The artifacts are delivered and publishable, so this is not an
+            // error row — but it is not `ok` either, and it says what is
+            // missing and which member of the printing setup decides it.
+            // One column narrower than `ok`/`error` so the columns line up.
+            out.push_str(&format!(
+                "  partial {name:<27} {} artifact(s), {} lost  {}\n",
+                row["artifacts"].as_u64().unwrap_or(0),
+                lost.len(),
+                row["receipt"].as_str().unwrap_or(""),
+            ));
+            for format in lost {
+                if listed >= MAX_LOST_LISTED {
+                    more += 1;
+                    continue;
+                }
+                listed += 1;
+                let knob = &format["layout"];
+                let member = match (knob["knob"].as_str(), knob["element_id"].as_str()) {
+                    (Some(knob), Some(element)) => format!(" · {knob} on {element}"),
+                    (Some(knob), None) => format!(" · {knob}"),
+                    _ => String::new(),
+                };
+                out.push_str(&format!(
+                    "           lost {} · {}{}\n             {}\n             fix: {}\n",
+                    format["output_id"].as_str().unwrap_or("?"),
+                    format["code"].as_str().unwrap_or("?"),
+                    member,
+                    knob["detail"]
+                        .as_str()
+                        .or_else(|| format["message"].as_str())
+                        .unwrap_or(""),
+                    format["remedy"].as_str().unwrap_or(""),
+                ));
+            }
         } else if row["status"] == "ok" {
             out.push_str(&format!(
                 "  ok     {name:<28} {} artifact(s)  {}\n",
@@ -1604,11 +1653,93 @@ pub fn render(data: &Value) -> String {
             ));
         }
     }
+    if more > 0 {
+        out.push_str(&format!(
+            "  more   {more} further lost format(s) — every one is in \
+             results[].failed_formats and in each run's report-run.json\n"
+        ));
+    }
     out
 }
 
 #[cfg(test)]
 mod tests {
+    /// The batch screen an operator actually reads. A run that delivered four
+    /// artifacts and lost its A0 must not print as plain `ok`: on Gisagara
+    /// that would be 86 `ok` rows over 59 missing sheets, the same work lost
+    /// — now silently rather than loudly.
+    #[test]
+    fn a_partial_run_is_visible_on_the_screen_with_the_member_that_lost_it() {
+        let data = serde_json::json!({
+            "project": {"project_name": "Gisagara", "ds_project": "gisagara"},
+            "lane": "stable",
+            "batch": {
+                "status": "completed", "completed": 2, "failed": 0,
+                "partial_formats": 1, "concurrency": 4, "receipt": "/out/report-batch.json",
+            },
+            "engine": {"engine_version": "ds-network-reporter@0.1.0", "publication_state": "pending"},
+            "results": [
+                {"transformer": "upgrade_ruturo", "status": "ok",
+                 "receipt": "upgrade_ruturo/report-run.json", "artifacts": 4,
+                 "failed_formats": [{
+                     "output_id": "pdf__a0-landscape-gisagara-cjic",
+                     "format": "pdf__a0-landscape-gisagara-cjic",
+                     "code": "format_build_failed",
+                     "message": "table lv_schedule has 212 rows; needs 3 panels",
+                     "remedy": "raise `panels` on `lv_schedule` in this printing setup",
+                     "layout": {"element_id": "lv_schedule", "knob": "panels",
+                                "detail": "212 rows need 3 panels; the layout permits 1"}
+                 }]},
+                {"transformer": "tx_b", "status": "ok", "receipt": "tx_b/report-run.json",
+                 "artifacts": 5},
+            ],
+        });
+        let screen = super::render(&data);
+        assert!(screen.contains("1 partial"), "{screen}");
+        assert!(screen.contains("partial upgrade_ruturo"), "{screen}");
+        assert!(screen.contains("4 artifact(s), 1 lost"), "{screen}");
+        assert!(
+            screen.contains("pdf__a0-landscape-gisagara-cjic"),
+            "{screen}"
+        );
+        assert!(screen.contains("panels on lv_schedule"), "{screen}");
+        assert!(screen.contains("the layout permits 1"), "{screen}");
+        assert!(screen.contains("fix: raise `panels`"), "{screen}");
+        // A run that lost nothing still reads exactly as it did.
+        assert!(screen.contains("  ok     tx_b"), "{screen}");
+    }
+
+    /// The naming is bounded, and the truncation says how much it did not
+    /// print and where the rest is.
+    #[test]
+    fn a_batch_that_lost_many_formats_bounds_what_it_prints() {
+        let row = |name: &str| {
+            serde_json::json!({
+                "transformer": name, "status": "ok", "receipt": format!("{name}/report-run.json"),
+                "artifacts": 4,
+                "failed_formats": [{"output_id": "pdf__a0", "format": "pdf__a0",
+                    "code": "format_build_failed", "message": "m", "remedy": "r"}],
+            })
+        };
+        let names: Vec<_> = (0..14).map(|i| format!("tx_{i:02}")).collect();
+        let data = serde_json::json!({
+            "project": {"project_name": "Gisagara", "ds_project": "gisagara"},
+            "lane": "stable",
+            "batch": {"status": "completed", "completed": 14, "failed": 0,
+                      "partial_formats": 14, "concurrency": 4, "receipt": "/out/report-batch.json"},
+            "engine": {"engine_version": "e", "publication_state": "pending"},
+            "results": names.iter().map(|n| row(n)).collect::<Vec<_>>(),
+        });
+        let screen = super::render(&data);
+        assert_eq!(screen.matches("           lost ").count(), 10, "{screen}");
+        assert!(screen.contains("4 further lost format(s)"), "{screen}");
+        // Every transformer is still named, bounded or not.
+        assert!(
+            names.iter().all(|name| screen.contains(name.as_str())),
+            "{screen}"
+        );
+    }
+
     #[test]
     fn raster_only_contexts_resolve_the_named_layout_once() {
         for value in [
