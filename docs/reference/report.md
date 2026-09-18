@@ -577,7 +577,24 @@ publication identity — `state` is `pending` for a release engine and
 every result in the kernel's stable order; a transformer the engine refused is
 one `error` row with its typed blockers, never the end of the batch. The
 command exits non-zero only when no transformer completed
-(`report_batch_failed`). Nothing here publishes: the receipts carry what a
+(`report_batch_failed`).
+
+**A transformer that produced some of its formats is a result, not an error.**
+One A0 that will not lay out never discards the A3, the KMZ, the shapefile and
+the workbook beside it: those are finished work, and finished work has to be
+able to leave the machine. Its row stays `ok`, its artifacts are placed,
+verified and receipted like any other run's, `--publish` seals them, and every
+format it did not get is named in `failed_formats` — the `output_id`, the
+engine's `code` and bounded `message`, a `remedy`, and, for a print that did
+not fit, the `layout` element and the knob that decides it (`panels`,
+`overflow` or `row_mm`). `report-run.json` carries `status: "partial"` and the
+same `failed_formats`; `report-batch.json` counts those runs in
+`partial_formats` while still counting them as completed. `--output text`
+prints such a run as a `partial` row — never a bare `ok` — with the format it
+lost, the member that decides it and the remedy; past ten lost formats the
+screen says how many more there are and leaves them to the receipts.
+`export_blocked` is now only the case where the engine produced nothing at
+all. Nothing here publishes: the receipts carry what a
 publication needs, but no publication row is enqueued by this command unless
 you explicitly pass `--publish`. That opt-in rechecks the native UID, lane,
 credential audience, selected project and credential generation immediately
