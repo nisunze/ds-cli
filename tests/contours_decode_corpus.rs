@@ -228,3 +228,74 @@ fn the_decode_action_answers_the_corpus_through_the_request_door() {
         }
     }
 }
+
+/// A contour is one line, and the decoder admits it as one.
+///
+/// The tiler joins every marching-squares crossing of one level into
+/// continuous polylines, so a line arrives with hundreds of vertices and a
+/// closed contour arrives as a ring whose last vertex is its first. Both used
+/// to arrive as piles of two-vertex fragments, and a decoder that only ever saw
+/// fragments could have been reading the first two coordinates of each. This
+/// asserts it reads the whole line, keeps every vertex, and closes the ring.
+#[test]
+fn a_long_polyline_and_a_closed_ring_are_admitted_whole() {
+    let area = json!({"type":"Polygon","coordinates":[[
+        [30.0,-2.0],[30.02,-2.0],[30.02,-1.98],[30.0,-1.98],[30.0,-2.0]]]});
+    let polyline: Vec<Value> = (0..400)
+        .map(|step| {
+            json!([
+                30.001 + step as f64 * 0.000_04,
+                -1.999 - (step % 7) as f64 * 0.000_01
+            ])
+        })
+        .collect();
+    let ring: Vec<Value> = (0..=24)
+        .map(|step| {
+            let angle = std::f64::consts::TAU * step as f64 / 24.;
+            json!([30.01 + 0.002 * angle.cos(), -1.99 + 0.002 * angle.sin()])
+        })
+        .collect();
+    let line = |kind: &str, elevation: i64, coordinates: &[Value]| {
+        json!({"type":"Feature",
+            "properties":{"elevation_m":elevation,"contour_kind":kind,
+                "contour_label":if kind == "index" {format!("{elevation} m")} else {String::new()},
+                "interval_m":10,"source":"rwanda_dem_10m"},
+            "geometry":{"type":"LineString","coordinates":coordinates}})
+    };
+    let response = json!({
+        "status": "success",
+        "layers": {
+            "contours_intermediate": {"type":"FeatureCollection",
+                "features":[line("intermediate", 1_640, &polyline)]},
+            "contours_index": {"type":"FeatureCollection",
+                "features":[line("index", 1_650, &ring)]},
+        },
+        "source": "rwanda_dem_10m",
+        "source_version": "https://storage.googleapis.com/edcl/reference/rwanda_dem/2026-08-28",
+        "minor_interval_m": 10, "index_interval_m": 50,
+        "requested_spacing_m": 10.0, "effective_spacing_m": 10.0,
+        "grid": [113, 113], "sampled_points": 12769, "unresolved_points": 0,
+        "intermediate_features": 1, "index_features": 1,
+    });
+    let page = decode_contours(&response, &area).expect("both lines are admitted");
+    let features = page["features"].as_array().expect("features");
+    assert_eq!(features.len(), 2, "two lines, not two piles of fragments");
+    let coordinates = |index: usize| {
+        features[index]["geometry"]["coordinates"]
+            .as_array()
+            .expect("coordinates")
+            .clone()
+    };
+    assert_eq!(
+        coordinates(0).len(),
+        400,
+        "every vertex of the line is kept"
+    );
+    let closed = coordinates(1);
+    assert_eq!(closed.len(), 25);
+    assert_eq!(
+        closed.first(),
+        closed.last(),
+        "a closed contour stays closed through admission",
+    );
+}
