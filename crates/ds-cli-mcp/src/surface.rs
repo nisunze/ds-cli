@@ -528,8 +528,6 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "map.design.delete",
     "map.design.geometry",
     "map.design.setup",
-    "map.design.version.begin",
-    "map.design.version.list",
     "map.design.version.play",
     "map.design.version.compare",
     "map.design.upload.inspect",
