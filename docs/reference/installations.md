@@ -103,8 +103,11 @@ who recorded the removal, when and why, and excluded from the default view;
 `--include-retired` brings it back. That matters because this family exists to
 investigate use, and a dropped row is destroyed evidence.
 
-A retired installation that keeps checking in is NOT silently un-retired. It is
-reported as `retired_but_reporting`, because either the removal did not happen
-or the record was wrong, and both are things an operator needs to see.
+A retired installation that refreshed its licence AFTER the removal was
+recorded is NOT silently un-retired. It is reported as `retired_but_reporting`,
+because either the removal did not happen or the record was wrong, and both are
+things an operator needs to see. That reading does not lapse when the machine
+falls silent again: the contradiction is the order of the two events, and it
+stays readable as evidence however long ago the check-in was.
 
 Silence is never read as an uninstallation.

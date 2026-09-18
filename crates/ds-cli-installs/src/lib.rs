@@ -220,15 +220,24 @@ pub fn render_row(row: &Value) -> String {
     } else {
         format!(" · {}", marks.join(" · "))
     };
+    // "never" and "ahead" are not ages, so they are not printed as one. A row
+    // that reads "last seen never ago" is a row an operator stops trusting.
+    let seen = match row["last_seen"]["bucket"].as_str().unwrap_or("never") {
+        "never" => "never seen: no licence refresh has ever been recorded".to_owned(),
+        "ahead" => "last seen ahead of this host's clock, via licence refresh".to_owned(),
+        bucket => format!(
+            "last seen {bucket} ago ({}, via licence refresh)",
+            row["last_seen"]["staleness"].as_str().unwrap_or("silent"),
+        ),
+    };
     format!(
-        "  {} {} {} [{}]\n    {} · last seen {} ago ({}, via licence refresh){}\n    {} · remedy {}\n",
+        "  {} {} {} [{}]\n    {} · {}{}\n    {} · remedy {}\n",
         identity["platform"].as_str().unwrap_or("?"),
         identity["version"].as_str().unwrap_or("?"),
         identity["lane"].as_str().unwrap_or("?"),
         identity["host_kind"].as_str().unwrap_or("?"),
         who,
-        row["last_seen"]["bucket"].as_str().unwrap_or("never"),
-        row["last_seen"]["staleness"].as_str().unwrap_or("silent"),
+        seen,
         marks,
         row["install_id"].as_str().unwrap_or("?"),
         row["remedy"].as_str().unwrap_or("none"),
@@ -279,5 +288,20 @@ mod tests {
             "{rendered}"
         );
         assert!(rendered.contains("remedy blocked_by_operator"));
+    }
+
+    /// An installation that has never refreshed a licence has no age, so it is
+    /// not given one. "last seen never ago" is not a fact about a machine.
+    #[test]
+    fn an_installation_with_no_age_is_not_given_one() {
+        let row = json!({
+            "install_id": "id", "identity": {}, "principal": {},
+            "last_seen": {"at_ms": 0, "bucket": "never", "staleness": "silent"},
+            "state": {"governed": "allowed", "device": "active", "licence": "active", "lease": "handshake_required", "retired": false},
+            "remedy": "never_handshaked",
+        });
+        let rendered = render_row(&row);
+        assert!(rendered.contains("never seen"), "{rendered}");
+        assert!(!rendered.contains("never ago"), "{rendered}");
     }
 }
