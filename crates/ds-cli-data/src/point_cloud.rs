@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops::{
@@ -201,6 +201,7 @@ pub static PLAN_COMMAND: Command = Command {
         DESKTOP_UNSUPPORTED,
     ],
     reference: Some("docs/reference/data.md"),
+    requires: Requires::Window,
     availability: paired_availability,
 };
 
@@ -256,6 +257,7 @@ pub static EXTRACT_COMMAND: Command = Command {
         DESKTOP_UNSUPPORTED,
     ],
     reference: Some("docs/reference/data.md"),
+    requires: Requires::Window,
     availability: paired_availability,
 };
 

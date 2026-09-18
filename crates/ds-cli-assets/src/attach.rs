@@ -10,7 +10,9 @@
 //! resolved into a guess.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -91,6 +93,7 @@ slice, and so is an offline device: the link is a ds-brain write.",
         crate::ASSETS_OFFLINE_WRITE,
     ],
     reference: Some("docs/reference/assets.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

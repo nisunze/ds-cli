@@ -1,5 +1,7 @@
 //! Shared producer references; no artifact upload or copy.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::assets::{Link, ReportReference};
 use serde_json::Value;
@@ -83,6 +85,7 @@ pub static RESOLVE: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static MAPS: Command = Command {
@@ -113,6 +116,7 @@ pub static MAPS: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static PUBLISH_MAP: Command = Command {
@@ -153,6 +157,7 @@ pub static PUBLISH_MAP: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub fn publish_map(i: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -232,6 +237,7 @@ pub static REFERENCE: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub fn link(inputs: &Inputs) -> Result<Link, Failure> {

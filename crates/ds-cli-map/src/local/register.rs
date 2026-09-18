@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use ds_layer_store::prepared::{self, Op, Register};
 use serde_json::{Value, json};
@@ -56,6 +58,7 @@ pub static COMMAND: Command = Command {
         super::UNSUPPORTED_SOURCE_KIND,
     ],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Server,
     availability: super::availability,
 };
 

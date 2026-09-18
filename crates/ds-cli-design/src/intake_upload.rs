@@ -1,7 +1,7 @@
 //! Headless Standard design intake through the shared Rust upload state machine.
 use ds_cli_auth::StatusUploadDomain;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Map, Value};
@@ -72,6 +72,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

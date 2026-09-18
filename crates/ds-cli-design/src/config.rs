@@ -3,7 +3,7 @@
 use ds_cli_contract::{
     Context, Inputs,
     outcome::Failure,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use ds_client_core::ProjectConfigurationChange as Change;
 use ds_command_kernel::design_config::{self, Request};
@@ -124,6 +124,7 @@ const fn command(
         examples: &[],
         refusals: REFUSALS,
         reference: Some("docs/reference/design.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     }
 }

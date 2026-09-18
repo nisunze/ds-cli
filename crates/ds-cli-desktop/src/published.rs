@@ -2,7 +2,7 @@
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -92,6 +92,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 fn bounded(value: &str, max: usize) -> Result<String, Failure> {

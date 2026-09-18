@@ -150,7 +150,7 @@ pub fn command(command: &Command) -> String {
         out,
         "CONTRACT\n  \
          effect     {}  ({})\n{}  \
-         authority  {}  ({})\n  \
+         authority  {}  ({})\n{}  \
          execution  {}\n  \
          id         {}   contract v{}",
         command.effect,
@@ -158,6 +158,7 @@ pub fn command(command: &Command) -> String {
         confirmation_contract_line(command),
         command.authority,
         command.authority.gloss(),
+        requires_contract_line(command),
         command.execution.token(),
         command.id,
         command.contract,
@@ -290,6 +291,7 @@ fn command_json_with_availability(
         "authority": command.authority.token(),
         "execution": command.execution.token(),
         "confirmation_required": command.effect.needs_confirmation(),
+        "requires": command.requires.token(),
         "availability": availability.as_ref().map_or("unchecked", |value| value.token()),
         "inputs": command.args.iter().map(arg_json).collect::<Vec<_>>(),
         "output": command.output,
@@ -386,6 +388,23 @@ fn confirmation_contract_line(command: &Command) -> &'static str {
         return "  confirm    --yes  (required with --write)\n";
     }
     ""
+}
+
+/// Where the command runs, printed only when that is not "here".
+///
+/// A `server` command saying so on every help screen would cost every reader
+/// a line to learn nothing: headless is what a command is unless it says
+/// otherwise. The window case is the one a caller has to plan around, so it
+/// is the one that prints.
+fn requires_contract_line(command: &Command) -> String {
+    if command.requires.is_window() {
+        return format!(
+            "  requires   {}  ({})\n",
+            command.requires,
+            command.requires.gloss()
+        );
+    }
+    String::new()
 }
 
 fn usage_tail(args: &[Arg]) -> String {

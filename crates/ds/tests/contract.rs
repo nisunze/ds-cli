@@ -64,6 +64,14 @@ const AUTHORITIES: &[&str] = &[
     "headless_user",
     "headless_project",
 ];
+/// Where a command can run at all. Two values, written out here for the same
+/// reason the others are: asking the surface what its own vocabulary is would
+/// prove nothing.
+const REQUIRES: &[&str] = &["server", "window"];
+/// The authorities whose own definition names the running application:
+/// a paired bridge, its signed-in user, or the project runtime the window
+/// holds open.
+const DESKTOP_AUTHORITIES: &[&str] = &["desktop_pairing", "desktop_user", "project"];
 /// The closed chapter catalog, spelled the way a caller receives it. Written
 /// out rather than read from the binary on purpose: a test that asks the
 /// surface what its own vocabulary is proves nothing.
@@ -150,12 +158,62 @@ fn every_command_is_fully_described() {
             AUTHORITIES.contains(&command["authority"].as_str().expect("authority")),
             "`{id}` declares an authority outside the closed vocabulary"
         );
+        assert!(
+            REQUIRES.contains(&command["requires"].as_str().expect("requires")),
+            "`{id}` declares a place to run outside the closed vocabulary"
+        );
 
         assert!(
             command["contract"].as_u64().unwrap_or(0) >= 1,
             "`{id}` has no contract version"
         );
     }
+}
+
+/// Where a command runs and the authority it needs are one fact, and the
+/// descriptor states it twice.
+///
+/// `requires` is written by hand beside the paired availability that
+/// implements it, so the two halves `lens_core_boundary.rs` compares are the
+/// two halves one editor writes together: a wrong pair is self-consistent.
+/// `authority` is the independent witness. `desktop_pairing`, `desktop_user`
+/// and `project` each name the running application in their own definition;
+/// `headless_*` and `none` each deny it. A command that claims a desktop
+/// authority and `server` tells an operator their work will run on a machine
+/// where it cannot — which is the one failure this whole declaration exists
+/// to make impossible. The reverse hides a command a server could have run.
+#[test]
+fn where_a_command_runs_agrees_with_the_authority_it_needs() {
+    // One command has two routes and so cannot satisfy the rule: with --path
+    // `ds dsgrid publish-version` publishes through the native owner with no
+    // application at all, and without it falls back to the Desktop working
+    // copy. `server` is the true answer to "can this run on a server", and
+    // the `project` authority describes the paired route it still owns.
+    // Giving that route a headless owner removes this exception with it; a
+    // second entry here is a design decision, not a refactor.
+    const HYBRID: &[&str] = &["dsgrid.publish-version"];
+
+    let mut wrong = Vec::new();
+    for command in descriptors() {
+        let id = command["id"].as_str().expect("id");
+        if HYBRID.contains(&id) {
+            continue;
+        }
+        let authority = command["authority"].as_str().expect("authority");
+        let requires = command["requires"].as_str().expect("requires");
+        if DESKTOP_AUTHORITIES.contains(&authority) != (requires == "window") {
+            wrong.push(format!("{id}: authority {authority}, requires {requires}"));
+        }
+    }
+
+    assert!(
+        wrong.is_empty(),
+        "these commands disagree with themselves about where they run: {wrong:#?}\n\
+         An authority that names the running application means `requires: \
+         Requires::Window`; a headless authority means `Requires::Server`. If \
+         the command really did gain a headless route, the authority it \
+         declares is the half that is now stale."
+    );
 }
 
 #[test]

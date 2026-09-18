@@ -2,7 +2,7 @@
 use crate::{BridgeOp, DESCRIPTOR_ARG, LIMIT_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution},
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires},
 };
 use serde_json::{Value, json};
 
@@ -59,6 +59,7 @@ const fn command(
             crate::CONFIRMATION_REQUIRED,
         ],
         reference: None,
+        requires: Requires::Window,
         availability: crate::paired_availability,
     }
 }

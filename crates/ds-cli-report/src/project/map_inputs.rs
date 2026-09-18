@@ -1,6 +1,6 @@
 //! Native source acquisition only; overview projection and extents are kernel-owned.
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::{printing, report_export::InputReceipt};
 use serde_json::{Value, json};
@@ -42,6 +42,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: super::export::REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 fn invalid(e: impl std::fmt::Display) -> Failure {

@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{SURVEY_ENTRIES_SELECT_MAX_LIMIT, SurveyEntriesSelectRequest};
@@ -224,6 +224,7 @@ pub static COMMAND: Command = Command {
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

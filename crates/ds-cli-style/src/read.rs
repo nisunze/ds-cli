@@ -1,7 +1,7 @@
 //! `ds style read` — one style document, its fields, and what the map shows.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -27,6 +27,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: crate::native::REFUSALS,
     reference: Some("docs/reference/style.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

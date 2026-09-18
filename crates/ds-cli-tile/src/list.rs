@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -62,6 +62,7 @@ reference tiles. This is the catalogue `ds tile remove` takes ids from.",
     }],
     refusals: crate::NATIVE_LIST_REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

@@ -1,7 +1,9 @@
 //! `ds data inspect` — what a local source contains, before converting it.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -44,6 +46,7 @@ source that already carries geometry. Converted GeoParquet returns its exact foo
     }],
     refusals: &[crate::UNREADABLE, crate::UNSUPPORTED],
     reference: Some("docs/reference/data.md"),
+    requires: Requires::Server,
     availability: crate::available,
 };
 

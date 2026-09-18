@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -52,6 +52,7 @@ receipt, never raw design features. The project design is not changed.",
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

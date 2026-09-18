@@ -1,7 +1,9 @@
 //! `ds feedback list` — the shared backlog, as the `fb` tab reads it.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -74,6 +76,7 @@ original sighting wrote down, and how many times the gap was seen.",
         crate::NOT_PERMITTED,
     ]),
     reference: Some("docs/reference/feedback.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

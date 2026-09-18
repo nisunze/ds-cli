@@ -8,7 +8,9 @@
 use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -113,6 +115,7 @@ pub static START_COMMAND: Command = Command {
     ],
     refusals: paired::START_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 
@@ -142,6 +145,7 @@ pub static PROGRESS_COMMAND: Command = Command {
     }],
     refusals: paired::REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 
@@ -171,6 +175,7 @@ pub static RESULT_COMMAND: Command = Command {
     }],
     refusals: paired::REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 
@@ -200,6 +205,7 @@ pub static CANCEL_COMMAND: Command = Command {
     }],
     refusals: paired::REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 
@@ -235,6 +241,7 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: paired::REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 

@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -83,6 +83,7 @@ pub static COMMAND: Command = Command {
         crate::UNREADABLE,
     ],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

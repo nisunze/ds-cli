@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
@@ -48,6 +48,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: super::native::LAYER_ORDER_REFUSALS,
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

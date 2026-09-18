@@ -1,7 +1,7 @@
 //! `ds work task read` — one work item, with everything hanging off it.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -43,6 +43,7 @@ collection; plus the project's `permissions`, graph `revision`, and `link`.",
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/work.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

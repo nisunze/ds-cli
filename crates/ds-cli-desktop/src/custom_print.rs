@@ -2,7 +2,7 @@
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -65,6 +65,7 @@ pub static AREA_COMMAND: Command = Command {
         INVALID,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 pub fn area(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -99,7 +100,7 @@ pub static EXPORT_COMMAND: Command = Command {
     args:&[Arg::value("request","<json-file>","Path to a JSON file containing project, id, family (custom-map or mv-map), codes (sector or district codes), paper (A3 or A0), optional page_mode (per-area by default, or combined for one MV overview), authored layout, and DPI (default 300, range 72–1200).").required(),DESCRIPTOR_ARG],
     output:"Canonical filename, verified path/SHA-256/bytes/page count, source inventory, local preview reference and source warnings. Incomplete inputs remain explicitly warned.",
     examples:&[],refusals:&[ops::NOT_PAIRED,ops::AMBIGUOUS,ops::UNREACHABLE,ops::PAIRING_REJECTED,ops::REFUSED,ops::UNSUPPORTED,ops::UNREADABLE,ops::SIGNED_OUT,INVALID],
-    reference:Some("docs/reference/desktop.printing.md"),availability:ops::paired_availability,
+    reference:Some("docs/reference/desktop.printing.md"),requires: Requires::Window, availability:ops::paired_availability,
 };
 pub static LIST_COMMAND: Command = Command {
     id: "desktop.printing.map.list",
@@ -130,6 +131,7 @@ pub static LIST_COMMAND: Command = Command {
         INVALID,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 pub fn export(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -225,6 +227,7 @@ pub static ATTACH_COMMAND: Command = Command {
         ops::SIGNED_OUT,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 pub fn attach(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

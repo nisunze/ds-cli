@@ -1,7 +1,7 @@
 //! `ds design consumer-grouping read | archive` — the persisted plan itself.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -44,6 +44,7 @@ does.",
         crate::NOT_PERMITTED,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 
@@ -81,6 +82,7 @@ new one to be applied.",
         crate::NOT_PERMITTED,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

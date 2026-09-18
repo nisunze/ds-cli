@@ -13,7 +13,9 @@
 //! count them here.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -87,6 +89,7 @@ it holds unsaved edits, the per-layer feature counts and the total. With \
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

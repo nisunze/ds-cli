@@ -1,7 +1,7 @@
 //! Persist one backend-declared print-context source style exactly once.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -49,6 +49,7 @@ pub mod plan {
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
 
@@ -82,6 +83,7 @@ pub mod create {
         }],
         refusals: crate::native::PUBLISH_REFUSALS,
         reference: Some("docs/reference/style.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
 

@@ -2,7 +2,7 @@
 use crate::project::{invoke, render};
 use ds_cli_auth::{SolarProjectCommand, SolarProjectOutput};
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use fs2::FileExt;
@@ -78,6 +78,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability,
 };
 fn availability() -> Availability {

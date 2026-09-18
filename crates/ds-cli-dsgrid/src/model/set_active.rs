@@ -8,7 +8,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Availability, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Availability, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -52,6 +52,7 @@ project catalogue revision.",
     }],
     refusals: workspace::REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 

@@ -3,7 +3,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -229,6 +229,15 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &publication_refusals(),
     reference: Some("docs/reference/dsgrid.md"),
+    // The only command in the CLI that reaches the paired window without
+    // declaring a paired availability: `--path` publishes through the native
+    // owner with no application at all, and omitting it falls back to the
+    // Desktop working copy. `requires` answers "can this run on a server",
+    // and with `--path` it can — so `server` is the true answer, and the
+    // paired route is the part still owed a headless form. Do not "fix" this
+    // to `window`: that would report the native path as unavailable on the
+    // machine it was built for.
+    requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };
 

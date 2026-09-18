@@ -9,7 +9,7 @@
 use ds_cli_auth::{TransformerStatusList, TransformerStatusRow};
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::design_health::{TransformerHealth, summarize, transformer_health};
@@ -123,6 +123,7 @@ per finding; with a selector, `query` carries the options each filter may offer.
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

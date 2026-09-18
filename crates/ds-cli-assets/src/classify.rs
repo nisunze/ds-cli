@@ -14,7 +14,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -133,6 +133,7 @@ offline, because a queued access change is a queued exposure.",
         crate::UNKNOWN_FOLDER,
     ],
     reference: Some("docs/reference/assets.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

@@ -1,7 +1,9 @@
 //! Global Form Factory commands. These never require a map or active project.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -40,6 +42,7 @@ pub static LIST_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -67,6 +70,7 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -89,6 +93,7 @@ pub static TYPES_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -119,6 +124,7 @@ pub static CREATE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -156,6 +162,7 @@ pub static UPDATE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -201,6 +208,7 @@ pub static LIFECYCLE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

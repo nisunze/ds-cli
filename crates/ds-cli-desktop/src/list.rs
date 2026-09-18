@@ -23,7 +23,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Authority, Availability, Chapter, Command, Effect, Example, Execution,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::desktop_instance as kernel;
@@ -71,6 +71,7 @@ file that cannot be used, and why. Never a token, an address or an account.",
     ],
     refusals: &[],
     reference: Some("docs/reference/desktop.md"),
+    requires: Requires::Server,
     availability: available,
 };
 

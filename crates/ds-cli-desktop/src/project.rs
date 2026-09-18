@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -110,6 +110,7 @@ The current `activeProject`, lifecycle bucket, match count, and bounded \
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/desktop.project.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -167,6 +168,7 @@ project's bounded summary. No project data is written.",
         INVALID_TEXT,
     ],
     reference: Some("docs/reference/desktop.project.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 

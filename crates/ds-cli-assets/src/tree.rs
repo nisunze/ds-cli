@@ -8,7 +8,9 @@
 //! read but never unpacked.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -115,6 +117,7 @@ tab and the Project work page search, computed by the same kernel.",
         crate::ORIGIN_READ_UNAVAILABLE,
     ],
     reference: Some("docs/reference/assets.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

@@ -1,5 +1,5 @@
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::parse_catalog;
@@ -30,6 +30,7 @@ pub static COMMAND: Command = Command {
         remedy: "use a catalogue emitted by the governed library service",
     }],
     reference: Some("docs/reference/library.md"),
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 

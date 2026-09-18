@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{SurveyEntryCreateOrigin, SurveyEntryCreateReceipt, SurveyEntryCreateRequest};
@@ -286,6 +286,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: available,
 };
 

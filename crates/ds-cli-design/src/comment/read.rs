@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -57,6 +57,7 @@ whether there is `more` than one page of comments, and rows of `comment`, \
         crate::NOT_PERMITTED,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

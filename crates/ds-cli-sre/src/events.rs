@@ -1,7 +1,9 @@
 //! `ds sre events` — bounded request-event investigation.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -88,6 +90,7 @@ matches and `more.scan` reports a saturated owner scan. Each event's \
         crate::UNREADABLE,
     ]),
     reference: Some("docs/reference/sre.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

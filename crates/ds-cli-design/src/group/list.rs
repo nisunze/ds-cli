@@ -1,7 +1,7 @@
 //! `ds design group list` — the governed vocabularies and what a set carries.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -50,6 +50,7 @@ transformer's current `value` and `modelState`.",
         crate::group::LISTING_TOO_MANY,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

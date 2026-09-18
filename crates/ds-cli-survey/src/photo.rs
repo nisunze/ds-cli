@@ -1,6 +1,8 @@
 //! Filesystem adapter for the native Rust photo owner. CLI and MCP share these commands.
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::survey_photo::{self, Manifest, Receipt};
 use serde_json::{Value, json};
@@ -76,6 +78,7 @@ pub static ROTATE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static PUBLISH_COMMAND: Command = Command {
@@ -106,6 +109,7 @@ pub static PUBLISH_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 fn invalid(message: &str) -> Failure {
@@ -269,6 +273,7 @@ pub static LOCAL_COMMAND: Command = Command {
     }],
     refusals: &[DOCUMENT],
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };
 pub fn rotate_local(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

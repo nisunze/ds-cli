@@ -1,6 +1,6 @@
 use crate::{CONSUMER_GROUPING_PREVIEW, DESCRIPTOR_ARG};
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 pub static COMMAND: Command = Command {
@@ -29,6 +29,7 @@ pub static COMMAND: Command = Command {
         crate::TOO_MANY,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

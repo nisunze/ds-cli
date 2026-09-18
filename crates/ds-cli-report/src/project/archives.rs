@@ -3,7 +3,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -41,6 +41,7 @@ spent: `download_url_expires_at`, `download_url_seconds_remaining`, \
     }],
     refusals: super::NATIVE_READ_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

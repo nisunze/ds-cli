@@ -8,7 +8,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -112,6 +112,7 @@ pub static PLAN_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.status.md"),
+    requires: Requires::Server,
     availability: available,
 };
 

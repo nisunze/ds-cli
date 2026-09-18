@@ -1,7 +1,7 @@
 //! Thin adapters to the Rust Design workspace and existing report owner.
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use ds_design_workspace::{Error, Workspace};
 use serde_json::{Value, json};
@@ -78,6 +78,7 @@ const fn command(
             },
         ],
         reference: Some("docs/reference/design-project.md"),
+        requires: Requires::Server,
         availability: || Availability::Available,
     }
 }

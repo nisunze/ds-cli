@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 
@@ -123,6 +123,7 @@ report, and the report's current occurrence count.",
         },
     ]),
     reference: Some("docs/reference/feedback.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

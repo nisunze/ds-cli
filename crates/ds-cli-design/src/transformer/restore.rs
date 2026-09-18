@@ -2,7 +2,7 @@
 
 use ds_cli_auth::{RetirementAction, RetirementRequest};
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -37,6 +37,7 @@ a closed `refusal` (`not_found`, `not_retired`, `no_retirement_record`, \
     }],
     refusals: super::NATIVE_WRITE_REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

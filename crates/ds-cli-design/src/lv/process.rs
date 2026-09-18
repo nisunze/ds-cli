@@ -5,7 +5,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_network::network::native_fast_lv::{
@@ -94,6 +94,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 

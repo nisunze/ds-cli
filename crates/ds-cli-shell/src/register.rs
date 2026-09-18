@@ -1,7 +1,7 @@
 //! `ds shell register` — make new shells find this executable.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -43,6 +43,7 @@ report `ds shell status` gives.",
         crate::LINK_FOREIGN,
     ],
     reference: Some("docs/reference/shell.md"),
+    requires: Requires::Server,
     availability: crate::always,
 };
 

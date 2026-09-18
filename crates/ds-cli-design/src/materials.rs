@@ -1,7 +1,9 @@
 //! Explicit, preview-pinned catalog replication through the governed owner.
 use crate::{BridgeOp, DESCRIPTOR_ARG};
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -77,6 +79,7 @@ pub static PREVIEW: Command = Command {
         crate::CONFLICT,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 pub static APPLY: Command = Command {
@@ -107,6 +110,7 @@ pub static APPLY: Command = Command {
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 fn run(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {

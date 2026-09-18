@@ -1,5 +1,5 @@
 //! Native portfolio governance and the fixed Solar owner file handoff.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
 
@@ -48,6 +48,7 @@ pub static PUBLISHED_READ: Command = Command {
     examples: &[],
     refusals: PUBLISHED_READ_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 static PUBLISHED_READ_REFUSALS: &[ds_cli_contract::spec::Refusal] = &[
@@ -115,6 +116,7 @@ pub static CALCULATE: Command = Command {
     examples: &[],
     refusals: crate::project::RUN.refusals,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static PUBLISH: Command = Command {
@@ -136,6 +138,7 @@ pub static PUBLISH: Command = Command {
     examples: &[],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub fn calculate(i: &Inputs, _: &Context) -> Result<Value, Failure> {

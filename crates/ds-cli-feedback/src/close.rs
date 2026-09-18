@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -78,6 +78,7 @@ The report stays in the backlog and remains readable with \
         CONFIRMATION_REQUIRED,
     ]),
     reference: Some("docs/reference/feedback.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

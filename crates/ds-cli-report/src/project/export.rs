@@ -35,7 +35,7 @@ use std::time::{Duration, Instant};
 use ds_cli_auth::{TransformerKind, TransformerLifecycle};
 use ds_cli_contract::outcome::{ExitClass, Failure};
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::{
@@ -331,6 +331,7 @@ error. --publish adds the Server-sync queue identity.",
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability,
 };
 

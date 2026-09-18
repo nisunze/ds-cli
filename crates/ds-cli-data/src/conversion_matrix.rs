@@ -5,7 +5,9 @@
 //! inspection; this command states the installed surfaces and file boundaries.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Availability, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{
+    Authority, Availability, Chapter, Command, Effect, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -26,6 +28,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: &[],
     reference: Some("docs/contracts/conversion-capability-matrix.json"),
+    requires: Requires::Server,
     availability: available,
 };
 

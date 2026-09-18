@@ -30,7 +30,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use context::CredentialProvider;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Domain, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
@@ -617,6 +617,7 @@ pub static STATUS_COMMAND: Command = Command {
     }],
     refusals: STATUS_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    requires: Requires::Server,
     availability: native_availability,
 };
 
@@ -639,6 +640,7 @@ pub static LOGIN_COMMAND: Command = Command {
     }],
     refusals: LOGIN_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    requires: Requires::Server,
     availability: native_availability,
 };
 
@@ -661,6 +663,7 @@ pub static LOGOUT_COMMAND: Command = Command {
     }],
     refusals: LOGOUT_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    requires: Requires::Server,
     availability: native_availability,
 };
 
@@ -683,6 +686,7 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     }],
     refusals: PROJECT_LIST_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    requires: Requires::Server,
     availability: native_availability,
 };
 
@@ -705,6 +709,7 @@ pub static PROJECT_USE_COMMAND: Command = Command {
     }],
     refusals: PROJECT_USE_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    requires: Requires::Server,
     availability: native_availability,
 };
 
@@ -727,6 +732,7 @@ pub static PROJECT_STATUS_COMMAND: Command = Command {
     }],
     refusals: PROJECT_STATUS_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    requires: Requires::Server,
     availability: native_availability,
 };
 

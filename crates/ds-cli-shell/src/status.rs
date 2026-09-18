@@ -1,7 +1,7 @@
 //! `ds shell status` — this shell, and the next one.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -43,6 +43,7 @@ would not find this one.",
     ],
     refusals: &[crate::EXECUTABLE_UNRESOLVED, crate::REGISTRATION_UNREADABLE],
     reference: Some("docs/reference/shell.md"),
+    requires: Requires::Server,
     availability: crate::always,
 };
 

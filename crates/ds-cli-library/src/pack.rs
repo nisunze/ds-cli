@@ -1,6 +1,6 @@
 use crate::{engine_failure, read, write_new};
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::{
@@ -48,6 +48,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/library.md"),
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 

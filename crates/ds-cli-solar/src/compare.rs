@@ -5,7 +5,7 @@ use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value};
@@ -83,6 +83,7 @@ publication or mutation authority and does not contact the desktop or network.",
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability,
 };
 

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -51,6 +51,7 @@ the same weather. It reads the file and writes nothing.",
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability,
 };
 

@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -55,6 +55,7 @@ each sets a truncation flag and reports its full count when cut.",
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/work.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

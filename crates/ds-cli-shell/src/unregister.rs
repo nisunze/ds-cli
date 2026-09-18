@@ -1,7 +1,7 @@
 //! `ds shell unregister` — the exact inverse of `register`.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -36,6 +36,7 @@ Idempotent. The desktop uninstaller runs this before removing files.",
         crate::REGISTRATION_UNWRITABLE,
     ],
     reference: Some("docs/reference/shell.md"),
+    requires: Requires::Server,
     availability: crate::always,
 };
 

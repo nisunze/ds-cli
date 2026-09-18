@@ -17,7 +17,7 @@ use std::io::Read;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 #[cfg(test)]
@@ -155,6 +155,7 @@ with their formats and suffixes, the `papers` of the named printouts, \
     }],
     refusals: CONFIG_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -189,6 +190,7 @@ outputs it resolves to and their placements, and `saved`.",
     }],
     refusals: WRITE_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

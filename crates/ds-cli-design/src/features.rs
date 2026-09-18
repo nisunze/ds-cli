@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_geo::feature_selection::{
@@ -347,6 +347,7 @@ pub static COMMAND: Command = Command {
         MATCH_LIMIT,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

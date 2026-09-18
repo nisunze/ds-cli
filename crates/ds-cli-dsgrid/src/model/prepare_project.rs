@@ -1,7 +1,9 @@
 //! `ds dsgrid model prepare-project` — verify and fill governed MV heads.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -46,6 +48,7 @@ pub static COMMAND: Command = Command {
         AUTH_CONTEXT_MISMATCH,
     ],
     reference: Some("docs/reference/dsgrid.md"),
+    requires: Requires::Window,
     availability: crate::model::paired_availability,
 };
 

@@ -13,7 +13,9 @@
 
 use ds_cli_auth::TransformerStatusList;
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -61,6 +63,7 @@ holds none of the live diagnostics the application folds in.",
     ],
     refusals: super::NATIVE_READ_REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

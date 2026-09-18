@@ -12,7 +12,9 @@
 //! one.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -86,6 +88,7 @@ With --sample, matched features and their properties; with --ids, their ids. \
         super::TOO_MANY_IDS,
     ],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 
