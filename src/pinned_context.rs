@@ -48,11 +48,18 @@ pub const ANCHOR_LAYER: &str = "tr";
 /// The read projection a context fetch asks for: ds-brain drops non-scalar
 /// properties server side, so the nested bags never cross the wire at all.
 pub const CONTEXT_PROJECTION: &str = "context";
-/// The one source every merged pinned layer belongs to.
-pub const PINNED_SOURCE_NAME: &str = "Pinned transformers";
+/// The one source every merged pinned layer belongs to. It is the SAME
+/// constant the prepared-local-layer catalogue names a pinned row's source
+/// with, because a merged pinned layer is a prepared local layer: two spellings
+/// of one source would split the panel group in half.
+pub use crate::local_layers::PINNED_SOURCE_NAME;
 /// The property that names a merged feature's transformer. It ends in
 /// `transformer_name`, which is how the popup already promotes it.
 pub const PINNED_TRANSFORMER_PROPERTY: &str = "pinned_transformer_name";
+/// The suffix a design class's PINNED style variant is published under.
+/// `transformer-pinning.ts` mints `<designRef>_pinned`; the variant is read in
+/// preference to the plain document wherever it exists.
+pub const PINNED_STYLE_SUFFIX: &str = "_pinned";
 
 /// Layer spellings that mean the anchor. `layer-aliases.ts` maps these to
 /// `tr`; the completeness gate must read them the same way or a room spelled
@@ -66,6 +73,7 @@ const ANCHOR_ALIASES: [&str; 4] = ["tr", "transformer", "transformers", "transfo
 pub enum Request {
     Plan(PlanRequest),
     Merge(MergeRequest),
+    Styles(StylesRequest),
 }
 
 #[derive(Debug, Deserialize)]
@@ -151,6 +159,25 @@ pub struct Room {
     pub layers: BTreeMap<String, Value>,
 }
 
+/// Resolve each design class to the style document a PINNED row of it is
+/// painted with, out of the project's published style catalogue.
+///
+/// A browser resolves this from the `MapState` it already holds. A Server holds
+/// no map, so it asks here with the catalogue ds-brain published — and gets the
+/// same answer, because the rule is the same rule and it lives in one place.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StylesRequest {
+    pub schema: String,
+    /// The published style catalogue: `styles` keyed by style ref.
+    pub catalog: Value,
+    #[serde(default)]
+    pub classes: Vec<String>,
+    /// Fields to keep whatever the documents read.
+    #[serde(default)]
+    pub keep: Vec<String>,
+}
+
 // ── Answer ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -229,6 +256,30 @@ pub struct MergedFeature {
 }
 
 #[derive(Debug, Serialize, PartialEq)]
+pub struct Styles {
+    pub schema: &'static str,
+    pub op: &'static str,
+    pub classes: Vec<ClassStyle>,
+    /// The keep-set per class, ready to hand straight back as `merge.styles`
+    /// would compute it — so a caller never re-derives fields itself.
+    pub keep: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct ClassStyle {
+    pub class_name: String,
+    /// The style ref the document came from, or null when the catalogue
+    /// publishes none for this class.
+    pub style_ref: Option<String>,
+    /// True when the ref is the class's `_pinned` variant rather than the
+    /// design document it falls back to.
+    pub pinned_variant: bool,
+    /// Every property name the resolved document reads.
+    pub fields: Vec<String>,
+    pub document: Value,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
 pub struct MergeTotals {
     pub rooms: usize,
     pub hidden: usize,
@@ -266,6 +317,15 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
         Request::Merge(merge) => {
             let answer = self::merge(merge)?;
+            serde_json::to_string(&answer).map_err(|error| error.to_string())
+        }
+        Request::Styles(styles) => {
+            if input.len() > MAX_PLAN_BYTES {
+                return Err(
+                    "A pinned context style request carries a catalogue, not payloads.".into(),
+                );
+            }
+            let answer = self::styles(styles)?;
             serde_json::to_string(&answer).map_err(|error| error.to_string())
         }
     }
@@ -456,20 +516,109 @@ fn canonical(value: &str) -> String {
         .collect()
 }
 
-/// The identity of a layer key for completeness: compacted (letters and digits
-/// only) and anchor aliases folded together, so a room whose marker is spelled
-/// `transformers` is the same room as one spelling it `tr`.
+/// The identity of a design class: its canonical name, with the anchor's
+/// spellings folded together so a room whose marker is spelled `transformers`
+/// is the same room as one spelling it `tr`.
+///
+/// Folding compares the COMPACTED form (letters and digits only, so
+/// `transformer_point` meets `transformerpoint` in the alias list) but the
+/// answer is the canonical name, underscores and all: this key names the merged
+/// layer, and `lv_lines` must stay `lv_lines` or nothing downstream — the
+/// design layer catalogue, the style ref, the humanised label — can match it.
 fn layer_key(value: &str) -> String {
-    let compact: String = value
-        .trim()
-        .to_lowercase()
+    let canonical = canonical(value);
+    let compact: String = canonical
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())
         .collect();
     if ANCHOR_ALIASES.contains(&compact.as_str()) {
         return ANCHOR_LAYER.to_owned();
     }
-    compact
+    canonical
+}
+
+// ── The keep-set's source: which document paints a pinned class ─────────
+
+/// The style document a pinned row of each named class is painted with, and
+/// therefore the fields that row must keep.
+///
+/// A pinned layer deliberately has no style ref of its own (`sketchStyleRef`
+/// returns null for `sourceKind: 'pinned'`), so the document is always the
+/// design class's: its `_pinned` variant where the project publishes one, the
+/// plain design document otherwise. Matching is on the ref's LAST segment,
+/// canonicalised, because the target half (`master/`, `ds_grid/`, …) is the
+/// publisher's, not the class's.
+pub fn styles(request: StylesRequest) -> Result<Styles, String> {
+    check_schema(&request.schema)?;
+    let published = request
+        .catalog
+        .get("styles")
+        .and_then(Value::as_object)
+        .ok_or("The style catalogue publishes no styles.")?;
+
+    // ref → its last segment, canonicalised, and whether it is a pinned variant.
+    let mut plain: BTreeMap<String, &str> = BTreeMap::new();
+    let mut variant: BTreeMap<String, &str> = BTreeMap::new();
+    for reference in published.keys() {
+        let leaf = reference.rsplit('/').next().unwrap_or(reference);
+        let key = canonical(leaf);
+        match key.strip_suffix(PINNED_STYLE_SUFFIX) {
+            Some(class) if !class.is_empty() => {
+                variant.insert(layer_key(class), reference.as_str());
+            }
+            _ => {
+                plain.insert(layer_key(&key), reference.as_str());
+            }
+        }
+    }
+
+    let base: BTreeSet<String> = request
+        .keep
+        .iter()
+        .map(|field| field.trim().to_owned())
+        .filter(|field| !field.is_empty())
+        .collect();
+
+    let mut classes: Vec<ClassStyle> = Vec::new();
+    let mut keep: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    for raw in &request.classes {
+        let class_name = layer_key(raw);
+        if class_name.is_empty() || !seen.insert(class_name.clone()) {
+            continue;
+        }
+        let pinned_variant = variant.contains_key(&class_name);
+        let reference = variant
+            .get(&class_name)
+            .or_else(|| plain.get(&class_name))
+            .copied();
+        let document = reference
+            .and_then(|reference| published.get(reference))
+            .cloned()
+            .unwrap_or(Value::Null);
+        let mut fields = base.clone();
+        collect_fields(&document, &mut fields);
+        let fields: Vec<String> = fields.into_iter().collect();
+        let mut kept = fields.clone();
+        kept.push(PINNED_TRANSFORMER_PROPERTY.to_owned());
+        kept.sort();
+        kept.dedup();
+        keep.insert(class_name.clone(), kept);
+        classes.push(ClassStyle {
+            class_name,
+            style_ref: reference.map(str::to_owned),
+            pinned_variant,
+            fields,
+            document,
+        });
+    }
+
+    Ok(Styles {
+        schema: SCHEMA,
+        op: "styles",
+        classes,
+        keep,
+    })
 }
 
 // ── 2 + 3. One layer per (source, class), carrying only what is read ────
@@ -1094,6 +1243,13 @@ mod tests {
         )
         .expect("merge");
         assert!(merged.contains("\"op\":\"merge\""));
+        let styles = evaluate(
+            json!({"schema": SCHEMA, "op": "styles", "catalog": {"styles": {}}, "classes": []})
+                .to_string()
+                .as_bytes(),
+        )
+        .expect("styles");
+        assert!(styles.contains("\"op\":\"styles\""));
         let error = evaluate(
             json!({"schema": SCHEMA, "op": "paint"})
                 .to_string()
@@ -1101,5 +1257,123 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("malformed"), "{error}");
+    }
+
+    fn catalog() -> Value {
+        json!({"styles": {
+            "master/customers": {
+                "type": "circle",
+                "paint": {"circle-color": ["match", ["get", "existing_status"], "new", "#f00", "#888"]},
+            },
+            "master/customers_pinned": {
+                "type": "circle",
+                "paint": {"circle-color": "#64748b"},
+                "label": {"layout": {"text-field": ["coalesce", ["get", "name"], ["get", "customer_name"]]}},
+            },
+            "master/lv_lines": {
+                "type": "line",
+                "paint": {"line-color": ["match", ["get", "cable_size"], "50", "#0f0", "#333"]},
+            },
+        }})
+    }
+
+    /// The merged layer's class name is what the rest of the system matches on
+    /// — the design layer catalogue's key, the style ref's leaf, the humanised
+    /// label. Compacting it to fold anchor aliases turned `lv_lines` into
+    /// `lvlines`, which matched nothing anywhere.
+    #[test]
+    fn a_merged_class_keeps_its_canonical_name_underscores_and_all() {
+        let merged = merge(merge_request(json!({
+            "schema": SCHEMA,
+            "rooms": [{"name": "T1", "layers": {
+                "lv_lines": {"features": [{
+                    "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]},
+                    "properties": {},
+                }]},
+                "unconnected_customers": {"features": [point("c1", json!({}))]},
+                "TRANSFORMERS": {"features": [point("t1", json!({}))]},
+            }}],
+        })))
+        .expect("merge");
+
+        let names: Vec<&str> = merged
+            .layers
+            .iter()
+            .map(|layer| layer.class_name.as_str())
+            .collect();
+        // Underscores survive; only the ANCHOR's spellings are folded.
+        assert!(names.contains(&"lv_lines"), "{names:?}");
+        assert!(names.contains(&"unconnected_customers"), "{names:?}");
+        assert!(names.contains(&"tr"), "{names:?}");
+    }
+
+    /// The variant is the point: a project that published a quiet grey pinned
+    /// document must not be painted with the loud design one.
+    #[test]
+    fn a_pinned_class_is_resolved_to_its_pinned_variant_when_one_is_published() {
+        let answer = styles(
+            serde_json::from_value(json!({
+                "schema": SCHEMA, "catalog": catalog(),
+                "classes": ["customers", "lv_lines", "spans"],
+            }))
+            .expect("request"),
+        )
+        .expect("styles");
+
+        let customers = &answer.classes[0];
+        assert_eq!(
+            customers.style_ref.as_deref(),
+            Some("master/customers_pinned")
+        );
+        assert!(customers.pinned_variant);
+        // The variant reads name/customer_name; `existing_status` belongs to the
+        // DESIGN document and must not leak into a pinned keep-set.
+        assert_eq!(customers.fields, vec!["customer_name", "name"]);
+
+        let lines = &answer.classes[1];
+        assert_eq!(lines.style_ref.as_deref(), Some("master/lv_lines"));
+        assert!(!lines.pinned_variant);
+        assert_eq!(lines.fields, vec!["cable_size"]);
+
+        // A class the catalogue never published keeps nothing but its identity.
+        let spans = &answer.classes[2];
+        assert_eq!(spans.style_ref, None);
+        assert!(spans.fields.is_empty());
+        assert_eq!(
+            answer.keep["spans"],
+            vec![PINNED_TRANSFORMER_PROPERTY.to_owned()]
+        );
+    }
+
+    /// The resolved keep-set is the merge's input, not a second opinion: what
+    /// `styles` says to keep is exactly what `merge` then keeps.
+    #[test]
+    fn the_resolved_keep_set_is_what_the_merge_keeps() {
+        let resolved = styles(
+            serde_json::from_value(json!({
+                "schema": SCHEMA, "catalog": catalog(), "classes": ["customers"],
+            }))
+            .expect("request"),
+        )
+        .expect("styles");
+        let document = resolved.classes[0].document.clone();
+
+        let merged = merge(merge_request(json!({
+            "schema": SCHEMA,
+            "styles": {"customers": document},
+            "rooms": [{"name": "T1", "layers": {"customers": {"features": [
+                point("c1", json!({
+                    "name": "Ada", "customer_name": "Ada L", "existing_status": "new",
+                    "network_properties": {"a": 1}, "geohash": "xyz",
+                })),
+            ]}}}],
+        })))
+        .expect("merge");
+
+        assert_eq!(merged.layers[0].fields, resolved.keep["customers"]);
+        assert_eq!(
+            merged.layers[0].fields,
+            vec!["customer_name", "name", PINNED_TRANSFORMER_PROPERTY]
+        );
     }
 }
