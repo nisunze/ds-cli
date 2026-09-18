@@ -972,7 +972,7 @@ fn latest_action(row: &Map<String, Value>, client: &Client, now_ms: i64) -> Late
     }
 }
 
-fn phase_stamp(meta: Option<&Map<String, Value>>) -> Option<Stamp> {
+pub(crate) fn phase_stamp(meta: Option<&Map<String, Value>>) -> Option<Stamp> {
     let meta = meta?;
     let when_ms = ["when", "processing_when", "drafted_at", "sketched_at"]
         .into_iter()
