@@ -286,10 +286,10 @@ impl HeldDirectory {
         let deadline = authority_deadline.min(Instant::now() + Duration::from_secs(2));
         loop {
             if Instant::now() >= deadline {
-                return Err(format!("{label} is busy; retry the operation"));
+                return Err(busy(label));
             }
             match self.try_lock_file(name, label) {
-                Err(error) if error == format!("{label} is busy; retry the operation") => {
+                Err(error) if error == busy(label) => {
                     std::thread::sleep(
                         Duration::from_millis(20)
                             .min(deadline.saturating_duration_since(Instant::now())),
@@ -742,6 +742,13 @@ fn open_regular_file_platform(
     Ok(file)
 }
 
+/// The one sentence contention is named with. `promotion_lock_until` retries on
+/// exactly this, so every platform branch must produce it for "another owner
+/// holds the marker" and for nothing else.
+fn busy(label: &str) -> String {
+    format!("{label} is busy; retry the operation")
+}
+
 #[cfg(unix)]
 fn lock_file_platform(
     parent: &HeldDirectory,
@@ -777,7 +784,7 @@ fn lock_file_platform(
         let error = std::io::Error::last_os_error();
         let code = error.raw_os_error();
         if code == Some(libc::EWOULDBLOCK) || code == Some(libc::EAGAIN) {
-            return Err(format!("{label} is busy; retry the operation"));
+            return Err(busy(label));
         }
         return Err(format!("could not acquire {label}: {error}"));
     }
@@ -803,9 +810,12 @@ fn lock_file_platform(
 
     const FILE_SHARE_READ: u32 = 0x0000_0001;
     const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    const ERROR_LOCK_VIOLATION: i32 = 33;
+
     let path = parent.path().join(name);
     let mut options = OpenOptions::new();
-    let mut file = options
+    let opened = options
         .read(true)
         .write(true)
         .create(true)
@@ -814,8 +824,21 @@ fn lock_file_platform(
         // handle, so no timestamp-based stale-lock break is necessary.
         .share_mode(FILE_SHARE_READ)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(&path)
-        .map_err(|error| format!("could not acquire {label}; it may be busy: {error}"))?;
+        .open(&path);
+    // The refusal a live owner produces is a sharing violation, which is
+    // contention and not failure. Naming it as such is what gives Windows the
+    // same bounded retry the POSIX branch gets from EWOULDBLOCK; without it a
+    // second report finishing in the same second failed outright.
+    let mut file = match opened {
+        Ok(file) => file,
+        Err(error)
+            if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION)
+                || error.raw_os_error() == Some(ERROR_LOCK_VIOLATION) =>
+        {
+            return Err(busy(label));
+        }
+        Err(error) => return Err(format!("could not acquire {label}: {error}")),
+    };
     verify_open_file_at(parent, name, &file, label)?;
     file.set_len(0)
         .map_err(|error| format!("could not reset {label} owner evidence: {error}"))?;
