@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::printing::table_rows::PrintWarning;
+use crate::printing::table_rows::{PrintWarning, ONE_PANEL_PRESENTATION};
 use crate::printing::ArtifactPresentation;
 use crate::report::{publication_state, PublicationState, LOCAL_ONLY_SCHEMA};
 use crate::report_formats::{self, DesignOutputSelection, Output};
@@ -893,7 +893,7 @@ fn remedy(code: &str, layout: Option<&LayoutKnob>) -> String {
             "raise `panels`{element} in this printing setup, or set its table `overflow` to `truncate_warn` to print the rows that fit with a truncation warning"
         ),
         Some(KNOB_OVERFLOW) => format!(
-            "set the table `overflow`{element} to `truncate_warn`, or move rows off this sheet: the layout is already at its panel ceiling"
+            "set the table `overflow`{element} to `truncate_warn`, or lower `row_mm` so more rows fit each panel: `panels` cannot rise for this table"
         ),
         Some(KNOB_ROW_MM) => format!(
             "lower `row_mm`{element}, or clear it for automatic spacing, so the rows fit the frame at the authored type size"
@@ -936,6 +936,19 @@ fn count_before(message: &str, suffix: &str) -> Option<usize> {
         .ok()
 }
 
+/// The count immediately after `marker`, read digit by digit. The permitted
+/// panel count is read this way and not from the first `)` in the message:
+/// one bracket anywhere in a wrapping prefix would otherwise be read as the
+/// ceiling, and an operator would be told to raise `panels` to a number the
+/// layout already permits.
+fn count_after(message: &str, marker: &str) -> Option<usize> {
+    let tail = &message[message.find(marker)? + marker.len()..];
+    let digits = tail
+        .find(|character: char| !character.is_ascii_digit())
+        .map_or(tail, |end| &tail[..end]);
+    digits.parse().ok()
+}
+
 /// Read the layout knob out of a table message `printing::table_rows::plan`
 /// wrote, wherever the engine wrapped it. `None` when the failure is not one
 /// of the layout shortfalls this kernel raises — a caller then still has the
@@ -943,20 +956,34 @@ fn count_before(message: &str, suffix: &str) -> Option<usize> {
 pub fn layout_knob(message: &str) -> Option<LayoutKnob> {
     const PANELS: &str = " panels at the authored type size";
     const TYPE: &str = " row height cannot contain its readable type";
+    const FRAME: &str = " frame ";
     if message.contains(PANELS) {
         let rows = count_before(message, " rows; needs ")?;
         let panels = count_before(message, PANELS)?;
-        let permitted = count_before(message, ")")?;
+        let permitted = count_after(message, "(maximum ")?;
+        // A workbook table prints in one panel whatever the setup authors,
+        // so `panels` is not the member that decides it. Naming `panels`
+        // there sends an operator to re-run a whole batch against a number
+        // that cannot move.
+        let forced = message.contains(ONE_PANEL_PRESENTATION);
+        let at_ceiling = permitted >= MAX_TABLE_PANELS;
         return Some(LayoutKnob {
             element_id: table_element(message, " has "),
-            // At the panel ceiling there is no larger `panels` to author, so
-            // the knob that decides the sheet is the overflow rule.
-            knob: if permitted < MAX_TABLE_PANELS {
-                KNOB_PANELS
-            } else {
+            knob: if forced || at_ceiling {
                 KNOB_OVERFLOW
+            } else {
+                KNOB_PANELS
             },
-            detail: format!("{rows} rows need {panels} panels; the layout permits {permitted}"),
+            detail: if forced {
+                format!("{rows} rows need {panels} panels; {ONE_PANEL_PRESENTATION}")
+            } else if at_ceiling {
+                format!(
+                    "{rows} rows need {panels} panels; the layout is already at its \
+                     {permitted}-panel ceiling"
+                )
+            } else {
+                format!("{rows} rows need {panels} panels; the layout permits {permitted}")
+            },
         });
     }
     if message.contains(TYPE) {
@@ -970,9 +997,17 @@ pub fn layout_knob(message: &str) -> Option<LayoutKnob> {
         || message.contains("no room for data and a truncation warning")
     {
         return Some(LayoutKnob {
-            element_id: None,
+            // The frame refusals name their table too, so the remedy says
+            // which table to lower. A message from an older engine that did
+            // not name one still reads, and simply names no element.
+            element_id: table_element(message, FRAME),
             knob: KNOB_ROW_MM,
-            detail: "the table frame has no room for a title, a header and one row".to_string(),
+            detail: if message.contains("no room for data and a truncation warning") {
+                "the frame has no room for both a row of data and the truncation warning"
+                    .to_string()
+            } else {
+                "the table frame has no room for a title, a header and one row".to_string()
+            },
         });
     }
     None
@@ -2384,7 +2419,8 @@ mod tests {
         .expect("a knob");
         assert_eq!(ceiling.knob, KNOB_OVERFLOW);
         assert_eq!(ceiling.element_id.as_deref(), Some("schedule"));
-        assert!(remedy("format_build_failed", Some(&ceiling)).contains("panel ceiling"));
+        assert!(ceiling.detail.contains("8-panel ceiling"));
+        assert!(remedy("format_build_failed", Some(&ceiling)).contains("`panels` cannot rise"));
 
         let type_size = layout_knob(
             "render a3-portrait: table lv_print_info row height cannot contain its readable type",
@@ -2393,11 +2429,47 @@ mod tests {
         assert_eq!(type_size.knob, KNOB_ROW_MM);
         assert_eq!(type_size.element_id.as_deref(), Some("lv_print_info"));
 
-        let frame = layout_knob("table frame needs room for its title, header and one row")
-            .expect("a knob");
+        // The frame refusals name their own table, so the remedy says which
+        // table to lower — and a message from an engine built before they did
+        // still reads, naming no element rather than the wrong one.
+        let frame =
+            layout_knob("table lv_schedule frame needs room for its title, header and one row")
+                .expect("a knob");
         assert_eq!(frame.knob, KNOB_ROW_MM);
-        assert_eq!(frame.element_id, None);
-        assert!(remedy("format_build_failed", Some(&frame)).contains("`row_mm`"));
+        assert_eq!(frame.element_id.as_deref(), Some("lv_schedule"));
+        assert!(remedy("format_build_failed", Some(&frame)).contains("`row_mm` on `lv_schedule`"));
+        let older = layout_knob("table frame needs room for its title, header and one row")
+            .expect("a knob");
+        assert_eq!(older.knob, KNOB_ROW_MM);
+        assert_eq!(older.element_id, None);
+
+        // A workbook table is held to one panel whatever `panels` the setup
+        // authors, so the knob it names is the one that can actually move.
+        // Naming `panels` here sent an operator to re-run 86 sheets against a
+        // number that cannot change.
+        let workbook = layout_knob(
+            "table lv_print_info has 212 rows; needs 10 panels at the authored type size \
+             (maximum 1; a workbook table prints in one panel)",
+        )
+        .expect("a knob");
+        assert_eq!(workbook.knob, KNOB_OVERFLOW);
+        assert!(workbook.detail.contains(ONE_PANEL_PRESENTATION));
+        assert!(!remedy("format_build_failed", Some(&workbook)).contains("raise `panels`"));
+
+        // The permitted count is read from `(maximum N)` itself. A bracket in
+        // whatever prefix an engine wraps the message with used to be read as
+        // the ceiling, and told an operator to raise `panels` to the number
+        // the layout already permits.
+        let wrapped = layout_knob(
+            "render a0 (sheet 2 of 3): table lv_schedule has 212 rows; needs 3 panels at the \
+             authored type size (maximum 1)",
+        )
+        .expect("a knob");
+        assert_eq!(wrapped.knob, KNOB_PANELS);
+        assert_eq!(
+            wrapped.detail,
+            "212 rows need 3 panels; the layout permits 1"
+        );
 
         assert!(layout_knob("Invalid table row geometry.").is_none());
         assert!(layout_knob("the reporter ran out of memory").is_none());
@@ -2426,6 +2498,44 @@ mod tests {
         let knob = layout_knob(&raised).expect("the planner's own message is readable");
         assert_eq!(knob.element_id.as_deref(), Some("lv_schedule"));
         assert_eq!(knob.knob, KNOB_PANELS);
+        // Every shortfall the planner can raise, read back from the words it
+        // actually wrote: the knob it names must be one the operator can turn.
+        let raise = |rows, height: f64, row_mm, panels, styled, overflow| {
+            let message = crate::printing::table_rows::plan(
+                "lv_schedule",
+                rows,
+                height,
+                7.,
+                Some(row_mm),
+                panels,
+                styled,
+                overflow,
+            )
+            .unwrap_err();
+            let knob = layout_knob(&message)
+                .unwrap_or_else(|| panic!("the planner's own message is readable: {message}"));
+            assert_eq!(knob.element_id.as_deref(), Some("lv_schedule"), "{message}");
+            (knob.knob, message)
+        };
+        use crate::printing::TableOverflow;
+        // A workbook section cannot be cut into panels, whatever `panels`
+        // the setup authors — here four.
+        assert_eq!(
+            raise(212, 99., 4., 4, true, TableOverflow::Error).0,
+            KNOB_OVERFLOW
+        );
+        assert_eq!(
+            raise(212, 99., 4., 4, false, TableOverflow::Error).0,
+            KNOB_PANELS
+        );
+        assert_eq!(
+            raise(10, 10., 4., 1, false, TableOverflow::Error).0,
+            KNOB_ROW_MM
+        );
+        assert_eq!(
+            raise(10, 12., 4., 1, false, TableOverflow::TruncateWarn).0,
+            KNOB_ROW_MM
+        );
     }
 
     fn context_layer(id: &str) -> (String, Value) {
