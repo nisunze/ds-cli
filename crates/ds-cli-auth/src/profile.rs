@@ -102,6 +102,10 @@ struct Entry {
     data_distribution: Tiles,
     /// The national administrative hierarchy: exact children, one polygon.
     admin_bounds: Tiles,
+    /// Platform reliability: the fleet top line, and the bounded event window
+    /// the reusable tabular stream answers.
+    sre_overview: FixedRoute,
+    sre_events: Tiles,
     provenance: Provenance,
 }
 
@@ -413,6 +417,11 @@ fn load_path(
         admin_bounds_method: entry.admin_bounds.method,
         admin_bounds_path: entry.admin_bounds.path,
         admin_bounds_actions: entry.admin_bounds.actions,
+        sre_overview_method: entry.sre_overview.method,
+        sre_overview_path: entry.sre_overview.path,
+        sre_events_method: entry.sre_events.method,
+        sre_events_path: entry.sre_events.path,
+        sre_events_actions: entry.sre_events.actions,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -483,6 +492,8 @@ mod tests {
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},
                     "admin_bounds": {"method":"GET","path":"/api/v1/admin/rwanda","actions":["children","geometry"]},
+                    "sre_overview": {"method":"GET","path":"/api/v1/sre/overview"},
+                    "sre_events": {"method":"POST","path":"/api/v1/data","actions":["query_table"]},
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -515,6 +526,8 @@ mod tests {
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},
                     "admin_bounds": {"method":"GET","path":"/api/v1/admin/rwanda","actions":["children","geometry"]},
+                    "sre_overview": {"method":"GET","path":"/api/v1/sre/overview"},
+                    "sre_events": {"method":"POST","path":"/api/v1/data","actions":["query_table"]},
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }

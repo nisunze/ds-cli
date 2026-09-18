@@ -40,11 +40,11 @@ use ds_client_core::{
     DATA_DISTRIBUTION_ACTIONS, DESIGN_SELECTIONS_ACTIONS, DESIGN_VERSIONS_ACTIONS, DeploymentLane,
     LAYERS_ACTIONS, PRINTING_ACTIONS, PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS,
     PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError,
-    SOLAR_SNAPSHOT_ACTION, STYLES_ACTION, SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD,
-    SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
-    SURVEY_ENTRY_CREATE_OPERATION, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS,
-    TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
-    TRANSFORMER_CONTEXT_PATH,
+    SOLAR_SNAPSHOT_ACTION, SRE_EVENTS_ACTIONS, STYLES_ACTION, SURVEY_CONTROL_ROUTES,
+    SURVEY_ENTRIES_CHANGES_METHOD, SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD,
+    SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_OPERATION, SURVEY_QUERY_METHOD,
+    SURVEY_QUERY_PATH, TILES_ACTIONS, TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS,
+    TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
 };
 
 /// Every registry operation `ds` can issue, and which of its typed calls does.
@@ -77,6 +77,8 @@ const CLI_ISSUED: &[(&str, &str)] = &[
         "ds-cli-auth data_distribution (headless seeding host; its commands land in a later slice)",
     ),
     ("domains.admin_bounds.action", "ds data admin-bounds"),
+    ("domains.sre.overview", "ds sre overview"),
+    ("domains.sre.events", "ds sre events"),
 ];
 
 fn op(id: &str) -> &'static GatewayOperation {
@@ -144,6 +146,8 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
     let (data_distribution_method, data_distribution_path) =
         route("domains.data_distribution.action");
     let (admin_bounds_method, admin_bounds_path) = route("domains.admin_bounds.action");
+    let (sre_overview_method, sre_overview_path) = route("domains.sre.overview");
+    let (sre_events_method, sre_events_path) = route("domains.sre.events");
     let (design_versions_method, design_versions_path) =
         route("domains.design_collaboration.versions");
 
@@ -231,6 +235,11 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         // The registry declares this vocabulary too; it is asserted separately
         // in `the_action_vocabularies_the_cli_may_send_are_declared`.
         admin_bounds_actions: ADMIN_BOUNDS_ACTIONS.map(str::to_owned).to_vec(),
+        sre_overview_method,
+        sre_overview_path,
+        sre_events_method,
+        sre_events_path,
+        sre_events_actions: SRE_EVENTS_ACTIONS.map(str::to_owned).to_vec(),
         design_attachments_method: route("domains.design_collaboration.attachments").0,
         design_attachments_path: route("domains.design_collaboration.attachments").1,
         design_attachments_actions: ds_client_core::DESIGN_ATTACHMENTS_ACTIONS
@@ -301,6 +310,12 @@ fn a_drifted_registry_route_is_refused() {
         }),
         ("admin_bounds_path", |input| {
             input.admin_bounds_path = "/api/v2/admin/rwanda".to_owned()
+        }),
+        ("sre_overview_path", |input| {
+            input.sre_overview_path = "/api/v1/sre/summary".to_owned()
+        }),
+        ("sre_events_actions", |input| {
+            input.sre_events_actions = vec!["query_entries".to_owned()]
         }),
     ];
     for (field, drift) in cases {
@@ -392,6 +407,17 @@ fn the_action_vocabularies_the_cli_may_send_are_declared() {
     assert!(!admin.allows_action("descendants"));
     assert!(!admin.allows_action("enrich"));
     assert_eq!(admin.timeout_s, 60);
+    // Reliability: one read that takes nothing, and one that borrows the
+    // reusable tabular stream for exactly one of the many actions it answers.
+    let overview = op("domains.sre.overview");
+    assert!(overview.actions.is_empty());
+    assert_eq!(overview.timeout_s, 30);
+    let events = op("domains.sre.events");
+    assert_eq!(events.actions, &SRE_EVENTS_ACTIONS[..]);
+    assert!(!events.allows_action("query_entries"));
+    assert!(!events.allows_action("save_transformers_data"));
+    assert_eq!(events.transport, "ndjson");
+    assert_eq!(events.retry_class, "none");
     assert_eq!(op("domains.styles.update").actions, &[STYLES_ACTION]);
     assert_eq!(
         op("domains.solar.desktop_snapshot").actions,

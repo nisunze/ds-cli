@@ -981,6 +981,73 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    fn sre_overview(
+        &mut self,
+        call: ds_client_core::SreOverviewCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "GET");
+        debug_assert_eq!(call.path(), "/api/v1/sre/overview");
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        // The whole request is the path: reliability is global, so there is no
+        // project, no query and no body to carry one.
+        let result = ureq::get(call.url())
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .call();
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
+    fn sre_events(
+        &mut self,
+        call: ds_client_core::SreEventsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/api/v1/data");
+        debug_assert_eq!(call.action(), "query_table");
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        // The route answers NDJSON: one row per line, closed by a summary. This
+        // reads the whole bounded window and hands the bytes back; the line
+        // grammar belongs to the core, not to a transport.
+        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+            .header("Accept", call.accept())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
     fn global_tiles(
         &mut self,
         call: ds_client_core::GlobalTilesCall<'_>,

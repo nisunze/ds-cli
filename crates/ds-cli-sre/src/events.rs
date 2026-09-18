@@ -3,7 +3,7 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 
 const DAYS: Arg = Arg::value("days", "<n>", "Newest event window in days; 1..365.").default("3");
 const LIMIT: Arg = Arg::value("limit", "<n>", "Matching events to return; 1..250.").default("50");
@@ -22,7 +22,15 @@ const OUTCOME: Arg = Arg::value(
 .choices(&["failure", "success", "all"])
 .default("failure");
 const CATEGORY: Arg = Arg::value("category", "<name>", "Match one exact error category.");
-const LANE: Arg = Arg::value("lane", "<name>", "Match one exact deployment lane.");
+/// The lane an EVENT was recorded on, which is not the lane this machine signs
+/// in to. `--lane` means the caller's credential lane everywhere else in `ds`,
+/// and it means that here too, so the filter carries its own name: a caller on
+/// stable credentials may well be reading canary's errors.
+const EVENT_LANE: Arg = Arg::value(
+    "event-lane",
+    "<name>",
+    "Match one exact deployment lane the event was recorded on.",
+);
 const ACTION: Arg = Arg::value("action", "<name>", "Match one exact action name.");
 const PROJECT: Arg = Arg::value(
     "project",
@@ -38,13 +46,14 @@ pub static COMMAND: Command = Command {
     summary: "Read and filter a bounded newest-first request-event window.",
     purpose: "\
 Investigate recent errors in diagnostic request-event logs, or include \
-successful requests when needed. The owner scans a bounded newest-first \
-Reliability event window, applies exact case-insensitive filters, and returns \
-a bounded projection. This is a global read: --project filters event metadata \
-and never selects a project.",
+successful requests when needed. The read scans a bounded newest-first \
+Reliability event window under this machine's restored native user, applies \
+exact case-insensitive filters, and returns a bounded projection. This is a \
+global read: --project filters event metadata and never selects a project. A \
+window that lost rows on the way is refused, not returned short.",
     chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         DAYS,
@@ -53,11 +62,11 @@ and never selects a project.",
         SERVICE,
         OUTCOME,
         CATEGORY,
-        LANE,
+        EVENT_LANE,
         ACTION,
         PROJECT,
         SOURCE,
-        crate::DESCRIPTOR_ARG,
+        crate::LANE_ARG,
     ],
     output: "\
 `generated_at`, `window_days`, `scan_limit`, applied `filters`, `scanned`, \
@@ -69,24 +78,22 @@ matches and `more.scan` reports a saturated owner scan. Each event's \
         note: "Defaults to failures from the last three days, returning at most 50.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::SRE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
+    refusals: &crate::native_refusals::<
+        4,
+        { 4 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
+    >([
         crate::INVALID_NUMBER,
         crate::INVALID_TEXT,
-    ],
+        crate::NOT_PERMITTED,
+        crate::UNREADABLE,
+    ]),
     reference: Some("docs/reference/sre.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    // Every flag is validated before the read is opened, so an input error is
+    // the same answer on CI, on a server and on a machine with no credential.
     let days = crate::integer(inputs.require("days")?, "days", 1, crate::MAX_DAYS)?;
     let limit = crate::integer(inputs.require("limit")?, "limit", 1, crate::MAX_EVENTS)?;
     let scan_limit = crate::integer(
@@ -95,36 +102,43 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         1,
         crate::MAX_SCAN_EVENTS,
     )?;
+    let outcome = ds_client_core::sre::Outcome::parse(inputs.require("outcome")?)
+        .map_err(|_| unknown_outcome())?;
 
-    let mut arguments = Map::from_iter([
-        ("days".into(), json!(days)),
-        ("limit".into(), json!(limit)),
-        ("scanLimit".into(), json!(scan_limit)),
-        ("outcome".into(), json!(inputs.require("outcome")?)),
-    ]);
-    for (flag, key) in [
-        ("service", "service"),
-        ("category", "category"),
-        ("lane", "lane"),
-        ("action", "action"),
-        ("project", "project"),
-        ("source", "source"),
-    ] {
-        if let Some(value) = inputs.value(flag) {
-            arguments.insert(key.into(), json!(crate::bounded_filter(value, flag)?));
+    // Each filter is one exact value, bounded and named by its own flag.
+    let filter = |flag: &str| -> Result<Option<String>, Failure> {
+        match inputs.value(flag) {
+            None => Ok(None),
+            Some(value) => Ok(Some(crate::bounded_filter(value, flag)?.to_string())),
         }
-    }
+    };
+    let filters = ds_client_core::sre::Filters {
+        service: filter("service")?,
+        category: filter("category")?,
+        lane: filter("event-lane")?,
+        action: filter("action")?,
+        project: filter("project")?,
+        source: filter("source")?,
+    };
 
-    // Validate every local flag before resolving the desktop. This keeps an
-    // input error observable on CI and on a machine where the app is closed.
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::EVENTS,
-        Value::Object(arguments),
-        crate::READ_TIMEOUT,
+    crate::invoke_native(
+        inputs,
+        &ds_client_core::sre::Command::Events {
+            days,
+            limit,
+            scan_limit,
+            outcome,
+            filters,
+        },
     )
-    .map_err(crate::classify_sre_failure)
+}
+
+fn unknown_outcome() -> Failure {
+    Failure::invalid(
+        "invalid_text",
+        "`--outcome` must be failure, success or all",
+    )
+    .remedy("pass one of failure, success or all")
 }
 
 pub fn render(data: &Value) -> String {
