@@ -1,7 +1,9 @@
 //! `ds feedback note` — say what an open report is waiting on, without closing it.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -28,6 +30,17 @@ has been met and verification is what remains.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
+    // An outsider looking for this reaches for the words below, not "note".
+    search: &[
+        "blocked",
+        "blocker",
+        "dependency",
+        "annotate",
+        "comment",
+        "parked",
+    ],
+    // Nothing here needs a window: the backlog is a governed read/write.
+    requires: Requires::Server,
     args: &[
         Arg::value(
             "id",
