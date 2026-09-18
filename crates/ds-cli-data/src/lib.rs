@@ -41,18 +41,25 @@ pub static DOMAIN: Domain = Domain {
     ],
 };
 
-/// The paired operations in this otherwise local domain. File operations stay
-/// mapless; the exact boundary read can ask the frontend to materialize a
-/// Desktop-local layer while the bridge still returns only bounded evidence.
-/// The project-cache commands left this list on 2026-09-12: they run
-/// headlessly on this machine's holdings through `ds-project-data`.
+/// The paired operations left in this otherwise local domain.
+///
+/// The project-cache commands left this list on 2026-09-12, when they gained
+/// their headless holdings through `ds-project-data`. The two boundary reads
+/// left it on 2026-09-18: national reference data has no project and nothing
+/// to render, so they call the gateway directly as the native user.
+///
+/// What remains is paired for one reason, stated per command: the native
+/// elevation engine and the Rwanda DEM component manager live in the desktop
+/// shell (`ds-web/src-tauri/src/native_elevation.rs`,
+/// `native_point_cloud.rs`, `rwanda_dem_resource.rs`), and admin attachment
+/// needs the ACTIVE PROJECT's digest-pinned reference asset that the same
+/// component manager installs. Each is local file compute, not presentation —
+/// so each is core work awaiting an extracted owner, not a lens command.
 pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[
     &elevation::OPERATION,
     &point_cloud::PLAN_OPERATION,
     &point_cloud::EXTRACT_OPERATION,
     &admin_bounds::OPERATION,
-    &admin_bounds::LIST_OPERATION,
-    &admin_bounds::READ_OPERATION,
 ];
 
 pub const SOURCE_ARG: Arg = Arg {

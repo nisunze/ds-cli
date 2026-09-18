@@ -913,6 +913,7 @@ dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
+ "ds-client-core",
  "ds-columnar",
  "ds-command-kernel",
  "ds-io",

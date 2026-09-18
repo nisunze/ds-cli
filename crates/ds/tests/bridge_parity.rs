@@ -47,10 +47,8 @@ struct App {
     design_collaboration: String,
     data: String,
     project_data: String,
-    admin_boundary: String,
     cli_errors: String,
     materialize: String,
-    sketches: String,
     analysis: String,
     work: String,
     assets: String,
@@ -84,10 +82,8 @@ fn app() -> Option<App> {
         design_collaboration: read("src/lib/desktop/cli-design.ts")?,
         data: read("src/lib/desktop/cli-data.ts")?,
         project_data: read("src/lib/desktop/cli-project-data.ts")?,
-        admin_boundary: read("src/lib/search-place/cli-boundary.ts")?,
         cli_errors: read("src/lib/desktop/cli-errors.ts")?,
         materialize: read("src/lib/search-place/materialize.ts")?,
-        sketches: read("src/lib/stores/sketches.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
         assets: read("src/lib/desktop/cli-assets.ts")?,
@@ -1545,7 +1541,13 @@ fn the_dsgrid_bridge_admits_no_conversion_verb_no_revision_activation_and_no_byt
 }
 
 #[test]
-fn admin_boundaries_have_one_closed_typed_desktop_operation_each() {
+fn the_admin_hierarchy_no_longer_travels_through_the_window() {
+    // A country's boundaries are national reference data: no project, no
+    // selection, nothing to render. They nevertheless reached the gateway
+    // through the paired application, so `ds data admin-bounds list|read`
+    // refused on any machine without a window — including the server where an
+    // agent reads a hierarchy. Since 2026-09-18 both reads call the same
+    // `/api/v1/admin/rwanda` through `ds-client-core::admin_bounds`.
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
@@ -1555,6 +1557,49 @@ fn admin_boundaries_have_one_closed_typed_desktop_operation_each() {
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
     );
+    assert!(
+        !allowlist.is_empty(),
+        "the desktop CLI operation allowlist is absent"
+    );
+    for retired in ["data.admin_bounds.list", "data.admin_bounds.read"] {
+        assert_eq!(
+            count(allowlist, &format!("\"{retired}\"")),
+            0,
+            "{retired} is still admitted as a CLI bridge operation, but `ds` no longer sends it"
+        );
+        assert_eq!(switch_case_count(&app.frontend, retired), 0);
+        assert!(
+            !has_operation_contract(&app.data, retired),
+            "{retired} still has a typed desktop adapter contract"
+        );
+    }
+    assert!(
+        !ds_web()
+            .expect("the checkout was found above")
+            .join("src/lib/search-place/cli-boundary.ts")
+            .exists(),
+        "the CLI boundary adapter outlived its last caller"
+    );
+    // Search place itself is untouched: the application still materialises a
+    // boundary as a local sketch layer when an operator asks it to. What went
+    // is the CLI's way of driving that gesture from outside the window.
+    assert!(app.materialize.contains("materializeAdminBoundaries"));
+}
+
+#[test]
+fn the_data_domain_sends_only_operations_the_desktop_owns() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    // What is left is local compute this application's own components serve:
+    // the Rwanda DEM engine and the project's pinned boundary asset.
+    assert_eq!(ds_cli_data::BRIDGE_OPS.len(), 4);
     for operation in ds_cli_data::BRIDGE_OPS {
         assert_eq!(
             count(allowlist, &format!("\"{}\"", operation.operation)),
@@ -1591,33 +1636,6 @@ fn admin_boundaries_have_one_closed_typed_desktop_operation_each() {
     }
     assert!(!app.data.contains("mapInstance"));
     assert!(!app.data.contains("maplibre-gl"));
-
-    for code in [
-        "invalid_admin_scope",
-        "admin_authority_unavailable",
-        "admin_authority_unreadable",
-    ] {
-        assert!(
-            app.data.contains(code) || app.admin_boundary.contains(code),
-            "the Desktop authority owner no longer emits `{code}` as a structured refusal"
-        );
-    }
-    for geometry_type in ["'Polygon'", "'MultiPolygon'"] {
-        assert!(
-            app.admin_boundary.contains(geometry_type),
-            "exact boundary reads no longer validate {geometry_type} geometry"
-        );
-    }
-    assert!(app.admin_boundary.contains("transported_to_cli: false"));
-    assert!(
-        app.admin_boundary
-            .contains("materializeAdminBoundariesPersisted")
-    );
-    assert!(
-        app.materialize
-            .contains("await persistSketchLayerAcknowledged")
-    );
-    assert!(app.sketches.contains("enqueueAcknowledgedIDBWrite"));
 
     // Typed frontend errors must remain objects across the shell and the CLI;
     // otherwise every authority failure silently regresses to desktop_refused.

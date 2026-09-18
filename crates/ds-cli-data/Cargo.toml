@@ -15,6 +15,9 @@ ds-cli-desktop = { workspace = true }
 # Headless project-cache status and seed restore the native user through the
 # fixed client: the reference catalogue and the governed print-context door.
 ds-cli-auth = { workspace = true }
+# The national boundary authority's own closed client: one path, two exact
+# reads, no project and no window.
+ds-client-core = { path = "../../../ds-command-kernel/crates/ds-client-core" }
 # The decisions (coverage, identity, seed order, decode, overview) are the
 # kernel's; the holdings, acquisition loop and bundle installation are
 # ds-project-data's, shared with the desktop shell; the rooms are ds-layer-store's.

@@ -36,11 +36,11 @@ use ds_client_core::gateway::{
     GatewayOperation, OPERATIONS, PROFILE_CONSTANTS_WITHOUT_REGISTRY_ENTRY, operation,
 };
 use ds_client_core::{
-    CLIENT_PROFILE_SCHEMA, ClientProfile, ClientProfileInput, DATA_DISTRIBUTION_ACTIONS,
-    DESIGN_SELECTIONS_ACTIONS, DESIGN_VERSIONS_ACTIONS, DeploymentLane, LAYERS_ACTIONS,
-    PRINTING_ACTIONS, PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS, PROJECT_FORM_EDITOR_ACTION,
-    PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError, SOLAR_SNAPSHOT_ACTION,
-    STYLES_ACTION, SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD,
+    ADMIN_BOUNDS_ACTIONS, CLIENT_PROFILE_SCHEMA, ClientProfile, ClientProfileInput,
+    DATA_DISTRIBUTION_ACTIONS, DESIGN_SELECTIONS_ACTIONS, DESIGN_VERSIONS_ACTIONS, DeploymentLane,
+    LAYERS_ACTIONS, PRINTING_ACTIONS, PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS,
+    PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError,
+    SOLAR_SNAPSHOT_ACTION, STYLES_ACTION, SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD,
     SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
     SURVEY_ENTRY_CREATE_OPERATION, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS,
     TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
@@ -76,6 +76,7 @@ const CLI_ISSUED: &[(&str, &str)] = &[
         "domains.data_distribution.action",
         "ds-cli-auth data_distribution (headless seeding host; its commands land in a later slice)",
     ),
+    ("domains.admin_bounds.action", "ds data admin-bounds"),
 ];
 
 fn op(id: &str) -> &'static GatewayOperation {
@@ -142,6 +143,7 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         route("domains.design_collaboration.selections");
     let (data_distribution_method, data_distribution_path) =
         route("domains.data_distribution.action");
+    let (admin_bounds_method, admin_bounds_path) = route("domains.admin_bounds.action");
     let (design_versions_method, design_versions_path) =
         route("domains.design_collaboration.versions");
 
@@ -224,6 +226,11 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         // The registry declares this vocabulary too; it is asserted separately
         // in `the_action_vocabularies_the_cli_may_send_are_declared`.
         data_distribution_actions: DATA_DISTRIBUTION_ACTIONS.map(str::to_owned).to_vec(),
+        admin_bounds_method,
+        admin_bounds_path,
+        // The registry declares this vocabulary too; it is asserted separately
+        // in `the_action_vocabularies_the_cli_may_send_are_declared`.
+        admin_bounds_actions: ADMIN_BOUNDS_ACTIONS.map(str::to_owned).to_vec(),
         design_attachments_method: route("domains.design_collaboration.attachments").0,
         design_attachments_path: route("domains.design_collaboration.attachments").1,
         design_attachments_actions: ds_client_core::DESIGN_ATTACHMENTS_ACTIONS
@@ -291,6 +298,9 @@ fn a_drifted_registry_route_is_refused() {
         }),
         ("data_distribution_path", |input| {
             input.data_distribution_path = "/api/v1/data_distribution".to_owned()
+        }),
+        ("admin_bounds_path", |input| {
+            input.admin_bounds_path = "/api/v2/admin/rwanda".to_owned()
         }),
     ];
     for (field, drift) in cases {
@@ -375,6 +385,13 @@ fn the_action_vocabularies_the_cli_may_send_are_declared() {
     assert!(!distribution.allows_action("query_dataset"));
     assert!(!distribution.allows_action("publish_dataset"));
     assert_eq!(distribution.timeout_s, 180);
+    // The national hierarchy sends the two exact reads and nothing else: the
+    // unbounded descendants pull and the spatial joins stay off this wire.
+    let admin = op("domains.admin_bounds.action");
+    assert_eq!(admin.actions, &ADMIN_BOUNDS_ACTIONS[..]);
+    assert!(!admin.allows_action("descendants"));
+    assert!(!admin.allows_action("enrich"));
+    assert_eq!(admin.timeout_s, 60);
     assert_eq!(op("domains.styles.update").actions, &[STYLES_ACTION]);
     assert_eq!(
         op("domains.solar.desktop_snapshot").actions,

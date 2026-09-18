@@ -1855,6 +1855,23 @@ pub fn global_tiles(
     client.global_tiles(command, now()).map_err(map_client)
 }
 
+/// One exact read of a national administrative hierarchy.
+///
+/// National reference data: no project is selected and none is fenced, because
+/// a country's boundaries belong to the country. A restored native user is the
+/// identity the gateway sees, exactly as it saw the paired desktop's.
+pub fn admin_bounds(
+    lane_value: &str,
+    command: &ds_client_core::admin_bounds::Command,
+) -> Result<ds_client_core::admin_bounds::Answer, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let _user = require_restore_before_context(&mut client)?;
+    client.admin_bounds(command, now()).map_err(map_client)
+}
+
 /// One governed action on the GLOBAL DS Grid library and example catalog.
 ///
 /// Global means there is no project to select and none to fence: a library
