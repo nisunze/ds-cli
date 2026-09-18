@@ -1721,29 +1721,17 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
         "workstation.configure",
     ];
     const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|server>";
-    /// `ds style` chose its execution host as `--host native|desktop` before
-    /// the host became one flag, and `ds mcp install --host` names an MCP host
-    /// program, which is a different thing entirely. Both are published
-    /// contracts and are listed rather than renamed; what this closes is the
-    /// *next* one.
-    const OLDER_HOST_SPELLING: &[&str] = &[
-        "style.list",
-        "style.read",
-        "style.seed.plan",
-        "style.seed.create",
-        "style.print.plan",
-        "style.print.create",
-        "style.appearance.plan",
-        "style.appearance.set",
-        "style.label.plan",
-        "style.label.set",
-        "style.dimension.plan",
-        "style.dimension.set",
-        "style.dimension.clear",
-        "style.cartography.plan",
-        "style.cartography.set",
-        "mcp.install",
-    ];
+    /// `ds mcp install --host` names an MCP host *program* — Claude Code,
+    /// Codex — which is a different thing from the machine that runs a
+    /// command. It is a published contract and is listed rather than renamed;
+    /// what this closes is the *next* one.
+    ///
+    /// The fifteen `ds style` commands were here too, until 2026-09-18: they
+    /// chose between a native user and a paired window as `--host
+    /// native|desktop` before the host became one flag. Collapsing them onto
+    /// the one route a style document has took the question away rather than
+    /// renaming it, which is why the list is one entry again.
+    const OLDER_HOST_SPELLING: &[&str] = &["mcp.install"];
 
     let index = cli(&["capabilities", "--output", "json"]);
     let mut hosts = Vec::new();

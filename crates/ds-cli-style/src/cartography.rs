@@ -23,7 +23,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
+use crate::{LANE_ARG, REF_ARG};
 
 /// The one line type that draws markers instead of a dash pattern.
 const DIRECTIONAL: &str = "directional";
@@ -218,40 +218,14 @@ const ARGS: &[Arg] = &[
     PATTERN_BACKGROUND_ARG,
     PATTERN_SPACING_ARG,
     PATTERN_STROKE_ARG,
-    HOST_ARG,
-    PROJECT_ARG,
     LANE_ARG,
-    DESCRIPTOR_ARG,
 ];
 
-const PLAN_REFUSALS: &[ds_cli_contract::spec::Refusal] = &[
-    crate::NOT_PAIRED,
-    crate::AMBIGUOUS,
-    crate::UNREACHABLE,
-    crate::PAIRING_REJECTED,
-    crate::STYLE_REFUSED,
-    crate::UNSUPPORTED,
-    crate::UNREADABLE,
-    crate::SIGNED_OUT,
-    crate::INVALID_CARTOGRAPHY,
-    crate::INVALID_COLOR,
-    crate::INVALID_NUMBER,
-];
-
-const SET_REFUSALS: &[ds_cli_contract::spec::Refusal] = &[
-    crate::NOT_PAIRED,
-    crate::AMBIGUOUS,
-    crate::UNREACHABLE,
-    crate::PAIRING_REJECTED,
-    crate::STYLE_REFUSED,
-    crate::UNSUPPORTED,
-    crate::UNREADABLE,
-    crate::SIGNED_OUT,
-    crate::CONFIRMATION_REQUIRED,
-    crate::INVALID_CARTOGRAPHY,
-    crate::INVALID_COLOR,
-    crate::INVALID_NUMBER,
-];
+/// The whole domain's set, not a hand-picked subset. Picking is what left
+/// these two commands documenting a window's seven refusals and none of the
+/// native ones they could actually raise.
+const PLAN_REFUSALS: &[ds_cli_contract::spec::Refusal] = crate::native::REFUSALS;
+const SET_REFUSALS: &[ds_cli_contract::spec::Refusal] = crate::native::PUBLISH_REFUSALS;
 
 /// Parse a finite numeric option inside its inclusive bounds.
 pub(crate) fn bounded(raw: &str, flag: &str, min: f64, max: f64) -> Result<f64, Failure> {
@@ -275,7 +249,7 @@ fn refuse(why: &str) -> Failure {
         .remedy(crate::INVALID_CARTOGRAPHY.remedy)
 }
 
-fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
+pub(crate) fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     let line_type = inputs
         .value("line-type")
         .map(str::trim)
@@ -546,12 +520,15 @@ apply the reviewed flags with `set`.",
         ],
         refusals: PLAN_REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-        let arguments = arguments(inputs, false)?;
-        crate::native::execute(inputs, context, &crate::CARTOGRAPHY_SET, arguments)
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        crate::native::edit(
+            inputs,
+            crate::native::Edit::Cartography,
+            arguments(inputs, false)?,
+        )
     }
 
     pub fn render(data: &Value) -> String {
@@ -597,12 +574,15 @@ leave their properties unchanged.",
         ],
         refusals: SET_REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-        let arguments = arguments(inputs, true)?;
-        crate::native::execute(inputs, context, &crate::CARTOGRAPHY_SET, arguments)
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        crate::native::edit(
+            inputs,
+            crate::native::Edit::Cartography,
+            arguments(inputs, true)?,
+        )
     }
 
     pub fn render(data: &Value) -> String {
@@ -781,12 +761,6 @@ mod tests {
             "every cartography flag must enter the typed Rust instruction builder"
         );
         assert_eq!(
-            crate::CARTOGRAPHY_SET.arguments,
-            ["project", "ref", "instruction", "apply"],
-            "the desktop receives only the shared kernel instruction envelope"
-        );
-
-        assert_eq!(
             planned,
             json!({
                 "ref": "master/water_mains",
@@ -813,7 +787,7 @@ mod tests {
     }
 
     #[test]
-    fn a_call_that_changes_nothing_is_refused_before_the_bridge() {
+    fn a_call_that_changes_nothing_is_refused_before_the_gateway() {
         let tokens = argv(&["--ref", "master/mv_lines"]);
         let inputs = parse(&plan::COMMAND, &tokens).expect("inputs");
         assert_eq!(

@@ -11,7 +11,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
+use crate::{LANE_ARG, REF_ARG};
 
 const COLOR_ARG: Arg = Arg {
     name: "color",
@@ -43,7 +43,7 @@ const SIZE_ARG: Arg = Arg {
 
 const ICON_OVERLAP_ARG: Arg = Arg::value("icon-overlap", "<on|off>", "Symbol icon collision policy. On sets both icon-allow-overlap and icon-ignore-placement, so its own label cannot displace the icon; off restores collision placement. Changes only the addressed screen or print document.").choices(&["on", "off"]);
 
-fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
+pub(crate) fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     let colour = inputs
         .value("color")
         .map(|value| crate::color(value, "color"))
@@ -145,10 +145,7 @@ the fallback when size already carries the second dimension. Icon overlap change
             ICON_ARG,
             SIZE_ARG,
             ICON_OVERLAP_ARG,
-            HOST_ARG,
-            PROJECT_ARG,
             LANE_ARG,
-            DESCRIPTOR_ARG,
         ],
         output: "`requested`, the resolved guided `appearance`, whether base size updated an existing fallback, `dryRun: true`, `published: false`, and the exact `document`.",
         examples: &[Example {
@@ -158,12 +155,15 @@ the fallback when size already carries the second dimension. Icon overlap change
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-        let arguments = arguments(inputs, false)?;
-        crate::native::execute(inputs, context, &crate::APPEARANCE_SET, arguments)
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        crate::native::edit(
+            inputs,
+            crate::native::Edit::Appearance,
+            arguments(inputs, false)?,
+        )
     }
 
     pub fn render(data: &Value) -> String {
@@ -193,10 +193,7 @@ Flat colour or icon replaces a field-driven primary expression; plan first. Icon
             ICON_ARG,
             SIZE_ARG,
             ICON_OVERLAP_ARG,
-            HOST_ARG,
-            PROJECT_ARG,
             LANE_ARG,
-            DESCRIPTOR_ARG,
         ],
         output: "The plan receipt with `published: true`, ds-brain `warnings`, and the exact persisted `document`.",
         examples: &[Example {
@@ -204,14 +201,17 @@ Flat colour or icon replaces a field-driven primary expression; plan first. Icon
             note: "Publishes one governed base appearance; use `style dimension set` separately for a second field.",
             runnable: false,
         }],
-        refusals: crate::native::REFUSALS,
+        refusals: crate::native::PUBLISH_REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-        let arguments = arguments(inputs, true)?;
-        crate::native::execute(inputs, context, &crate::APPEARANCE_SET, arguments)
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        crate::native::edit(
+            inputs,
+            crate::native::Edit::Appearance,
+            arguments(inputs, true)?,
+        )
     }
 
     pub fn render(data: &Value) -> String {

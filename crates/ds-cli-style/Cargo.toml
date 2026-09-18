@@ -10,11 +10,10 @@ publish.workspace = true
 
 [dependencies]
 ds-cli-contract = { workspace = true }
-# Styles are governed shared documents behind ds-brain, rendered and edited by
-# the paired application's Style Center. Every command here is one named
-# bridge operation the application performs under its own session with the
-# same pure module and the same save payload its human UI uses.
-ds-cli-desktop = { workspace = true }
+# Styles are governed shared documents behind ds-brain. The restored native
+# user reads the catalogue and publishes the document through ds-client-core;
+# the transformations in between are the command kernel's, the same module the
+# Style Center runs as WASM. No window is part of any of that.
 ds-cli-auth = { workspace = true }
 ds-command-kernel = { workspace = true }
 serde_json = { workspace = true }

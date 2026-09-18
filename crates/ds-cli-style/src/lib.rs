@@ -2,7 +2,7 @@
 //! The shared command kernel owns transformations; native auth owns transport.
 //! The visual Style Center uses the same transformations through WASM.
 
-pub use native::{HOST_ARG, LANE_ARG, PROJECT_ARG};
+pub use native::LANE_ARG;
 pub mod appearance;
 pub mod cartography;
 pub mod dimension;
@@ -13,8 +13,6 @@ pub mod print_variant;
 pub mod read;
 pub mod seed;
 
-use std::time::Duration;
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
 use serde_json::{Value, json};
@@ -22,11 +20,6 @@ use serde_json::{Value, json};
 // Neutral argument helpers: a numeric bound and an English count say
 // nothing about a paired window, so they come from the contract crate.
 pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
-pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED,
-    SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out,
-    invoke, paired, paired_availability,
-};
 
 pub(crate) const MIN_ZOOM_ARG: Arg = Arg::value(
     "min-zoom",
@@ -61,90 +54,21 @@ pub static DOMAIN: Domain = Domain {
     ],
 };
 
-// ---------------------------------------------------------------------------
-// The declared wire contract
-// ---------------------------------------------------------------------------
-
-pub const STYLE_LIST: BridgeOp = BridgeOp {
-    operation: "style.list",
-    arguments: &["project", "query", "limit"],
-};
-pub const STYLE_READ: BridgeOp = BridgeOp {
-    operation: "style.read",
-    arguments: &["project", "ref"],
-};
-pub const APPEARANCE_SET: BridgeOp = BridgeOp {
-    operation: "style.appearance.set",
-    arguments: &["project", "ref", "instruction", "apply"],
-};
-pub const LABEL_SET: BridgeOp = BridgeOp {
-    operation: "style.label.set",
-    arguments: &["project", "ref", "instruction", "apply"],
-};
-pub const PRINT_VARIANT_CREATE: BridgeOp = BridgeOp {
-    operation: "style.print.create",
-    arguments: &["project", "ref", "instruction", "apply"],
-};
-pub const STYLE_SEED_CREATE: BridgeOp = BridgeOp {
-    operation: "style.seed.create",
-    arguments: &["project", "ref", "instruction", "apply"],
-};
-pub const DIMENSION_SET: BridgeOp = BridgeOp {
-    operation: "style.dimension.set",
-    arguments: &["project", "ref", "instruction", "apply"],
-};
-pub const DIMENSION_CLEAR: BridgeOp = BridgeOp {
-    operation: "style.dimension.clear",
-    arguments: &["project", "ref", "instruction", "apply"],
-};
-/// Line type, flow direction, contrast casing and fill hatching — the
-/// cartographic axis, which carries no field and so shares no key with the
-/// second dimension.
-pub const CARTOGRAPHY_SET: BridgeOp = BridgeOp {
-    operation: "style.cartography.set",
-    arguments: &["project", "ref", "instruction", "apply"],
-};
-
-/// Every operation this domain can send, for the parity test to walk. `plan`
-/// and `set` are one operation — `apply` false or true — so the list is
-/// shorter than the command list.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[
-    &STYLE_LIST,
-    &STYLE_READ,
-    &STYLE_SEED_CREATE,
-    &APPEARANCE_SET,
-    &LABEL_SET,
-    &PRINT_VARIANT_CREATE,
-    &DIMENSION_SET,
-    &DIMENSION_CLEAR,
-    &CARTOGRAPHY_SET,
-];
-
 /// The seamless pattern tile sizes. MapLibre repeats a pattern image by
 /// tiling it, so a size that is not a power of two seams visibly at every
 /// tile edge. Declared here as one number list because both the CLI choice
 /// set and the parity test read it.
 pub const PATTERN_SPACINGS: &[i64] = &[4, 8, 16, 32];
 
-/// The most values one dimension names. Matches the adapter's own bound so an
-/// over-long list is refused once, locally.
+/// The most values one dimension names. Matches the shared kernel planner's
+/// own 1..50 bound, so an over-long list is refused once, locally, before a
+/// round trip that would only refuse it again.
 pub const MAX_VALUES: usize = 50;
 
-/// The metadata host has a 120-second API deadline; leave time to return its
-/// typed failure rather than misreporting a responsive desktop as unreachable.
-pub const READ_TIMEOUT: Duration = Duration::from_secs(150);
-/// One metadata read followed by the governed style publication.
-pub const WRITE_TIMEOUT: Duration = Duration::from_secs(240);
-
 // ---------------------------------------------------------------------------
-// Refusals this domain adds to the shared pairing set
+// The input grammars this domain parses for itself
 // ---------------------------------------------------------------------------
 
-pub const STYLE_REFUSED: Refusal = Refusal {
-    code: "desktop_refused",
-    when: "no such style ref, an unknown field or channel, a cartography property this layer type has no place for, or ds-brain declined the document",
-    remedy: "check the ref with `ds style list`, and the fields, channels and layer type with `ds style read`; read detail.detail for the message",
-};
 pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     code: "confirmation_required",
     when: "--yes was not given for a command that publishes a style document",
@@ -175,12 +99,6 @@ pub const INVALID_CARTOGRAPHY: Refusal = Refusal {
     when: "no cartography flag was supplied, or direction/pattern detail contradicts the line type or fill pattern set in the same call",
     remedy: "pass at least one cartography flag; keep --direction-* with `--line-type directional`, and --pattern-* with a --fill-pattern other than solid",
 };
-
-/// Ordinary operation refusals stay `desktop_refused`; only the signed-out
-/// condition has its own code here, by the shared rule.
-pub fn classify_style_failure(failure: Failure) -> Failure {
-    classify_signed_out(failure)
-}
 
 // ---------------------------------------------------------------------------
 // Flag shapes shared across the domain
@@ -290,44 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn every_declared_operation_is_listed_for_the_parity_test_to_walk() {
-        let mut names: Vec<&str> = BRIDGE_OPS.iter().map(|op| op.operation).collect();
-        names.sort_unstable();
-        let mut unique = names.clone();
-        unique.dedup();
-        assert_eq!(names, unique, "an operation is declared twice");
-        // Appearance, dimension and cartography each pair one plan with one
-        // set over a single operation, so three commands have no operation of
-        // their own.
-        assert_eq!(
-            names.len(),
-            9,
-            "every desktop-host style operation is bridged"
-        );
-        for op in BRIDGE_OPS {
-            let mut keys = op.arguments.to_vec();
-            keys.sort_unstable();
-            let mut unique = keys.clone();
-            unique.dedup();
-            assert_eq!(keys, unique, "`{}` declares a key twice", op.operation);
-        }
-    }
-
-    #[test]
-    fn desktop_edits_share_only_the_closed_kernel_instruction_envelope() {
-        let envelope = ["project", "ref", "instruction", "apply"];
-        for other in [
-            &APPEARANCE_SET,
-            &LABEL_SET,
-            &STYLE_SEED_CREATE,
-            &PRINT_VARIANT_CREATE,
-            &DIMENSION_SET,
-            &DIMENSION_CLEAR,
-            &CARTOGRAPHY_SET,
-        ] {
-            assert_eq!(other.arguments, envelope);
-        }
-        // The seamless tile sizes and the flag's closed choices are one list.
+    fn the_seamless_tile_sizes_are_one_list_the_flag_reads() {
         let declared: Vec<String> = PATTERN_SPACINGS
             .iter()
             .map(|size| size.to_string())
@@ -343,5 +224,27 @@ mod tests {
             declared, offered,
             "--pattern-spacing must offer exactly the power-of-two tile sizes MapLibre repeats seamlessly"
         );
+    }
+
+    /// Fifteen commands, one route. A style document is governed state behind
+    /// ds-brain, so every one of them names its lane and none of them names a
+    /// window.
+    #[test]
+    fn no_style_command_takes_a_host_or_a_pairing_descriptor() {
+        for command in DOMAIN.commands {
+            let flags: Vec<&str> = command.args.iter().map(|arg| arg.name).collect();
+            assert!(
+                flags.contains(&"lane"),
+                "`{}` does not name the deployment lane it authenticates on",
+                command.id
+            );
+            for windowed in ["host", "project", "desktop-descriptor", "target"] {
+                assert!(
+                    !flags.contains(&windowed),
+                    "`{}` still declares `--{windowed}`, which only a paired window needed",
+                    command.id
+                );
+            }
+        }
     }
 }

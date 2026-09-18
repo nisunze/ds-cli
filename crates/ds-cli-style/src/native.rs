@@ -1,8 +1,17 @@
+//! One route to the governed style documents: the restored native user.
+//!
+//! A style document is governed shared state behind ds-brain — it has a
+//! project, a ref and a publication, and no window is part of any of that.
+//! `ds-client-core` reads the catalogue through `get_style_catalog` and
+//! publishes through `update_style`, and the transformations in between are
+//! `ds_command_kernel::style_plan`, the same module the Style Center runs as
+//! WASM. So the answer does not depend on where the command is typed.
+
+use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
-use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops::BridgeOp;
 use serde_json::{Value, json};
+
 pub const LANE_ARG: Arg = Arg::value(
     "lane",
     "<stable|canary>",
@@ -10,240 +19,144 @@ pub const LANE_ARG: Arg = Arg::value(
 )
 .default("stable")
 .choices(&["stable", "canary"]);
-pub const HOST_ARG: Arg = Arg::value(
-    "host",
-    "<native|desktop>",
-    "Execution host; native uses protected headless auth, desktop uses the paired signed-in application.",
-)
-.default("native")
-.choices(&["native", "desktop"]);
-pub const PROJECT_ARG: Arg = Arg::value(
-    "project",
-    "<project-id>",
-    "Exact project used by --host desktop. It does not switch the GUI project.",
-);
 pub const TRANSFORMER_ARG: Arg = Arg::value(
     "transformer",
     "<name>",
     "Canonical project data to read this layer's values, counts and field types from. Omit and nothing is observed.",
 );
-pub const STYLE_REFUSED: Refusal = Refusal {
-    code: "style_refused",
-    when: "the guided style instruction violates the backend document contract",
-    remedy: "inspect ds style read for the exact fields, channels, and property bounds",
-};
-macro_rules! native_refusal {
-    ($name:ident, $code:literal, $when:literal, $remedy:literal) => {
-        pub const $name: Refusal = Refusal {
-            code: $code,
-            when: $when,
-            remedy: $remedy,
-        };
-    };
+
+/// The two ways to read the governed style catalogue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Read {
+    /// A bounded page of the project's style editor refs.
+    List,
+    /// One editor's document, field vocabulary and — with `--transformer` —
+    /// what the canonical data behind it holds.
+    Describe,
 }
 
-native_refusal!(
-    NATIVE_PROFILE,
-    "native_profile_not_configured",
-    "the exact packaged native profile is unavailable",
-    "install one complete ds release"
-);
-native_refusal!(
-    NATIVE_PROFILE_DIGEST,
-    "native_profile_digest_mismatch",
-    "the packaged catalogue differs from the build pin",
-    "reinstall one complete ds release"
-);
-native_refusal!(
-    NATIVE_PROFILE_UNSAFE,
-    "native_profile_unsafe",
-    "the packaged native catalogue is unsafe or malformed",
-    "reinstall one complete ds release"
-);
-native_refusal!(
-    HEADLESS_SIGNED_OUT,
-    "headless_signed_out",
-    "the selected lane has no restorable native user",
-    "run ds auth login --email <address>"
-);
-native_refusal!(
-    HEADLESS_NO_PROJECT,
-    "headless_project_not_selected",
-    "the user has no audience-fenced selected project",
-    "run ds auth project use --project <exact-id>"
-);
-native_refusal!(
-    PROJECT_CONTEXT_STALE,
-    "project_context_stale",
-    "the saved project belongs to another identity, lane, or audience",
-    "select the project again with ds auth project use"
-);
-native_refusal!(
-    PROJECT_CONTEXT_CHANGED,
-    "project_context_changed",
-    "the selected project changed between the status and preflight reads",
-    "run ds tile plan again against the current selected project"
-);
-native_refusal!(
-    NATIVE_STATE_UNSAFE,
-    "native_state_unsafe",
-    "protected native state is unsafe or unreadable",
-    "repair the owner-only DS config directory"
-);
-native_refusal!(
-    NATIVE_STATE_UNAVAILABLE,
-    "native_state_unavailable",
-    "protected native state cannot be accessed",
-    "repair the owner-only DS config directory"
-);
-native_refusal!(
-    NATIVE_STATE_PROTECTION,
-    "native_state_protection_unavailable",
-    "this build has no protected-state adapter",
-    "install a supported native ds build"
-);
-native_refusal!(
-    NATIVE_STATE_ROOT,
-    "native_state_root_invalid",
-    "the configured state root is not absolute",
-    "unset it or provide an absolute path"
-);
-native_refusal!(
-    NATIVE_STATE_CONFLICT,
-    "native_state_conflict",
-    "another native operation holds the state lease",
-    "retry after that operation finishes"
-);
-native_refusal!(
-    NATIVE_CLEANUP,
-    "native_cleanup_required",
-    "revoked identity cleanup could not clear context",
-    "repair protected state and run auth logout"
-);
-native_refusal!(
-    AUTH_CONTEXT_MISMATCH,
-    "auth_context_mismatch",
-    "the protected native providers disagree on identity or selected project",
-    "sign out or revoke the unintended provider before retrying"
-);
-native_refusal!(
-    AUTH_INPUT,
-    "auth_input_invalid",
-    "the selected project identity violates the fixed request bound",
-    "select a freshly visible project again"
-);
-native_refusal!(
-    AUTH_REJECTED,
-    "auth_rejected",
-    "the fixed gateway rejects the verified request",
-    "verify the account and its selected-project access"
-);
-native_refusal!(
-    AUTH_REVOKED,
-    "auth_revoked",
-    "the native session was permanently revoked",
-    "sign in again interactively"
-);
-native_refusal!(
-    AUTH_IDENTITY_MISMATCH,
-    "auth_identity_mismatch",
-    "the restored identity differs from the bound native session",
-    "sign in again and report a repeated mismatch"
-);
-native_refusal!(
-    AUTH_TRANSIENT,
-    "auth_transient",
-    "the fixed native service is temporarily unavailable",
-    "retry without changing local state"
-);
-native_refusal!(
-    AUTH_UNREADABLE,
-    "auth_response_unreadable",
-    "the style response violates its closed bounded contract",
-    "retry once, then update ds if it persists"
-);
-native_refusal!(
-    TRANSFORMER_NOT_FOUND,
-    "transformer_not_found",
-    "the named canonical source does not exist in the selected project",
-    "pass one exact transformer name from that project, or omit --transformer"
-);
-native_refusal!(
-    FIELD_DOMAIN_REFUSED,
-    "field_domain_refused",
-    "the canonical features of the named source violate the field-domain bound",
-    "narrow the source, or omit --transformer and read fieldDomains instead"
-);
+/// The guided edits, closed. `plan` and `set` are one edit with `apply` false
+/// or true, so there are fewer edits than there are commands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Edit {
+    Seed,
+    PrintVariant,
+    Appearance,
+    Label,
+    Dimension,
+    ClearDimension,
+    Cartography,
+}
 
-pub const REFUSALS: &[Refusal] = &[
-    ds_cli_desktop::ops::NOT_PAIRED,
-    ds_cli_desktop::ops::AMBIGUOUS,
-    ds_cli_desktop::ops::UNREACHABLE,
-    ds_cli_desktop::ops::PAIRING_REJECTED,
-    ds_cli_desktop::ops::UNSUPPORTED,
-    ds_cli_desktop::ops::UNREADABLE,
-    ds_cli_desktop::ops::SIGNED_OUT,
-    NATIVE_PROFILE,
-    NATIVE_PROFILE_DIGEST,
-    NATIVE_PROFILE_UNSAFE,
-    HEADLESS_SIGNED_OUT,
+pub const STYLE_REFUSED: Refusal = Refusal {
+    code: "style_refused",
+    when: "no such style ref, an unknown field or channel, a cartography property this layer type has no place for, or ds-brain declined the document",
+    remedy: "check the ref with `ds style list`, and the fields, channels and layer type with `ds style read`",
+};
+pub const HEADLESS_NO_PROJECT: Refusal = Refusal {
+    code: "headless_project_not_selected",
+    when: "the user has no audience-fenced selected project",
+    remedy: "run ds auth project use --project <exact-id>",
+};
+pub const PROJECT_CONTEXT_STALE: Refusal = Refusal {
+    code: "project_context_stale",
+    when: "the saved project belongs to another identity, lane, or audience",
+    remedy: "select the project again with ds auth project use",
+};
+pub const AUTH_CONTEXT_MISMATCH: Refusal = Refusal {
+    code: "auth_context_mismatch",
+    when: "the protected native providers disagree on identity or selected project",
+    remedy: "sign out or revoke the unintended provider before retrying",
+};
+pub const AUTH_INPUT: Refusal = Refusal {
+    code: "auth_input_invalid",
+    when: "the selected project identity violates the fixed request bound",
+    remedy: "select a freshly visible project again",
+};
+pub const TRANSFORMER_NOT_FOUND: Refusal = Refusal {
+    code: "transformer_not_found",
+    when: "the named canonical source does not exist in the selected project",
+    remedy: "pass one exact transformer name from that project, or omit --transformer",
+};
+pub const FIELD_DOMAIN_REFUSED: Refusal = Refusal {
+    code: "field_domain_refused",
+    when: "the canonical features of the named source violate the field-domain bound",
+    remedy: "narrow the source, or omit --transformer and read fieldDomains instead",
+};
+
+/// What this domain decides for itself: the project fence it needs on top of a
+/// restored user, the two identity disagreements a fenced call can end in, the
+/// canonical observation `--transformer` asks for, the backend's own verdict on
+/// a document, and the five input grammars parsed here.
+const OWN: &[Refusal] = &[
     HEADLESS_NO_PROJECT,
     PROJECT_CONTEXT_STALE,
-    NATIVE_STATE_UNSAFE,
-    NATIVE_STATE_UNAVAILABLE,
-    NATIVE_STATE_PROTECTION,
-    NATIVE_STATE_ROOT,
-    NATIVE_STATE_CONFLICT,
-    NATIVE_CLEANUP,
     AUTH_CONTEXT_MISMATCH,
     AUTH_INPUT,
-    AUTH_REJECTED,
-    AUTH_REVOKED,
-    AUTH_IDENTITY_MISMATCH,
-    AUTH_TRANSIENT,
-    AUTH_UNREADABLE,
     TRANSFORMER_NOT_FOUND,
     FIELD_DOMAIN_REFUSED,
+    STYLE_REFUSED,
     crate::INVALID_NUMBER,
     crate::INVALID_VALUE_SPEC,
     crate::INVALID_COLOR,
     crate::INVALID_APPEARANCE,
     crate::INVALID_LABEL,
     crate::INVALID_CARTOGRAPHY,
-    STYLE_REFUSED,
-    crate::CONFIRMATION_REQUIRED,
 ];
 
-pub fn execute(
-    inputs: &Inputs,
-    _context: &Context,
-    operation: &BridgeOp,
-    mut args: Value,
-) -> Result<Value, Failure> {
-    let host = inputs.value("host").unwrap_or("native");
-    let desktop = host == "desktop";
-    if !desktop && inputs.value("project").is_some() {
-        return Err(refused("--project requires --host desktop"));
+/// Every refusal the native user path can return, taken from the owner's own
+/// declaration rather than copied. Copying is what let `ds style cartography`
+/// document a paired window's seven refusals and none of the fifteen the
+/// native route it actually used could raise.
+const OWNER: &[Refusal] = ds_cli_auth::PROJECT_LIST_COMMAND.refusals;
+
+const PLANNING_LEN: usize = OWN.len() + OWNER.len();
+const fn planning() -> [Refusal; PLANNING_LEN] {
+    let mut all = [STYLE_REFUSED; PLANNING_LEN];
+    let mut index = 0;
+    while index < OWN.len() {
+        all[index] = OWN[index];
+        index += 1;
     }
+    let mut owner = 0;
+    while owner < OWNER.len() {
+        all[OWN.len() + owner] = OWNER[owner];
+        owner += 1;
+    }
+    all
+}
+const PLANNING_SET: [Refusal; PLANNING_LEN] = planning();
+
+const PUBLISHING_LEN: usize = PLANNING_LEN + 1;
+const fn publishing() -> [Refusal; PUBLISHING_LEN] {
+    let mut all = [crate::CONFIRMATION_REQUIRED; PUBLISHING_LEN];
+    let planned = planning();
+    let mut index = 0;
+    while index < PLANNING_LEN {
+        all[index + 1] = planned[index];
+        index += 1;
+    }
+    all
+}
+const PUBLISHING_SET: [Refusal; PUBLISHING_LEN] = publishing();
+
+/// For the commands that publish nothing. `confirmation_required` is absent
+/// because a plan has nothing to confirm.
+pub const REFUSALS: &[Refusal] = &PLANNING_SET;
+/// For the commands that write a style document.
+pub const PUBLISH_REFUSALS: &[Refusal] = &PUBLISHING_SET;
+
+/// Read the project's governed style catalogue as the restored native user.
+pub fn read(inputs: &Inputs, action: Read, args: Value) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
-    if operation.operation == "style.list" || operation.operation == "style.read" {
-        if desktop {
-            let project = inputs
-                .value("project")
-                .ok_or_else(|| refused("--host desktop requires --project <exact-id>"))?;
-            args["project"] = json!(project);
-            let descriptor = ds_cli_desktop::ops::paired(inputs.value("desktop-descriptor"))?;
-            return ds_cli_desktop::ops::invoke(&descriptor, operation, args, crate::READ_TIMEOUT)
-                .map_err(crate::classify_style_failure);
-        }
-        let snapshot = ds_cli_auth::style_catalog(lane)?;
-        let result = if operation.operation == "style.list" {
-            ds_command_kernel::style_plan::list_styles(
-                snapshot.result().document(),
-                args["query"].as_str(),
-                args["limit"].as_u64().unwrap_or(100) as usize,
-            )
-        } else {
+    let snapshot = ds_cli_auth::style_catalog(lane)?;
+    let result = match action {
+        Read::List => ds_command_kernel::style_plan::list_styles(
+            snapshot.result().document(),
+            args["query"].as_str(),
+            args["limit"].as_u64().unwrap_or(100) as usize,
+        ),
+        Read::Describe => {
             let reference = inputs.require("ref")?;
             let observed =
                 observe_canonical(lane, snapshot.result().document(), reference, inputs)?;
@@ -252,27 +165,49 @@ pub fn execute(
                 reference,
                 observed.as_ref(),
             )
-        };
-        return result
-            .map(|mut data| {
-                data["lane"] = json!(snapshot.lane());
-                data["warnings"] = snapshot.result().document()["warnings"].clone();
-                data
-            })
-            .map_err(refused);
-    }
+        }
+    };
+    result
+        .map(|mut data| {
+            data["lane"] = json!(snapshot.lane());
+            data["warnings"] = snapshot.result().document()["warnings"].clone();
+            data
+        })
+        .map_err(refused)
+}
+
+/// Plan or publish one guided edit against the project's style document.
+pub fn edit(inputs: &Inputs, action: Edit, args: Value) -> Result<Value, Failure> {
+    let lane = inputs.require("lane")?;
     let reference = inputs.require("ref")?;
     let apply = args["apply"].as_bool().unwrap_or(false);
-    let instruction = match operation.operation {
-        "style.seed.create" => ds_cli_auth::StyleInstruction::Seed,
-        "style.print.create" => ds_cli_auth::StyleInstruction::PrintVariant,
-        "style.appearance.set" => ds_cli_auth::StyleInstruction::Appearance {
+    let instruction = instruction(action, args, inputs)?;
+    let receipt = ds_cli_auth::style_edit(lane, reference, &instruction, apply)?;
+    let mut data = receipt.result().data().clone();
+    data["lane"] = json!(receipt.lane());
+    Ok(data)
+}
+
+/// The typed instruction one edit carries.
+///
+/// The kernel's `StyleInstruction` and its `CartographyChange` are both
+/// `deny_unknown_fields`, so this is where a key no decoder accepts stops: the
+/// closed vocabulary is the kernel's own, and nothing here re-states it.
+pub(crate) fn instruction(
+    action: Edit,
+    args: Value,
+    inputs: &Inputs,
+) -> Result<ds_cli_auth::StyleInstruction, Failure> {
+    Ok(match action {
+        Edit::Seed => ds_cli_auth::StyleInstruction::Seed,
+        Edit::PrintVariant => ds_cli_auth::StyleInstruction::PrintVariant,
+        Edit::Appearance => ds_cli_auth::StyleInstruction::Appearance {
             color: args["color"].as_str().map(str::to_owned),
             icon: args["icon"].as_str().map(str::to_owned),
             size: args["size"].as_f64(),
             icon_overlap: args["icon_overlap"].as_bool(),
         },
-        "style.label.set" => ds_cli_auth::StyleInstruction::Label {
+        Edit::Label => ds_cli_auth::StyleInstruction::Label {
             field: args["field"].as_str().unwrap_or_default().to_owned(),
             options: if args["options"].is_null() {
                 Default::default()
@@ -281,7 +216,7 @@ pub fn execute(
                     .map_err(|_| refused("invalid label options"))?
             },
         },
-        "style.dimension.set" => ds_cli_auth::StyleInstruction::Dimension {
+        Edit::Dimension => ds_cli_auth::StyleInstruction::Dimension {
             field: args["field"].as_str().unwrap_or_default().to_owned(),
             channel: args["channel"].as_str().unwrap_or("halo").to_owned(),
             values: serde_json::from_value(args["values"].clone())
@@ -291,8 +226,9 @@ pub fn execute(
             field_type: inputs.value("field-type").map(str::to_owned),
             keep_other_channels: inputs.switch("keep-other-channels"),
         },
-        "style.dimension.clear" => ds_cli_auth::StyleInstruction::ClearDimension,
-        "style.cartography.set" => {
+        Edit::ClearDimension => ds_cli_auth::StyleInstruction::ClearDimension,
+        Edit::Cartography => {
+            let mut args = args;
             let obj = args
                 .as_object_mut()
                 .ok_or_else(|| refused("invalid cartography arguments"))?;
@@ -303,36 +239,9 @@ pub fn execute(
                     .map_err(|_| refused("invalid cartography arguments"))?,
             }
         }
-        _ => return Err(refused("unsupported guided style operation")),
-    };
-    if desktop {
-        let project = inputs
-            .value("project")
-            .ok_or_else(|| refused("--host desktop requires --project <exact-id>"))?;
-        let descriptor = ds_cli_desktop::ops::paired(inputs.value("desktop-descriptor"))?;
-        return ds_cli_desktop::ops::invoke(
-            &descriptor,
-            operation,
-            json!({
-                "project": project,
-                "ref": reference,
-                "instruction": serde_json::to_value(&instruction)
-                    .map_err(|_| refused("style instruction could not be encoded"))?,
-                "apply": apply,
-            }),
-            if apply {
-                crate::WRITE_TIMEOUT
-            } else {
-                crate::READ_TIMEOUT
-            },
-        )
-        .map_err(crate::classify_style_failure);
-    }
-    let receipt = ds_cli_auth::style_edit(lane, reference, &instruction, apply)?;
-    let mut data = receipt.result().data().clone();
-    data["lane"] = json!(receipt.lane());
-    Ok(data)
+    })
 }
+
 fn refused(message: impl Into<String>) -> Failure {
     Failure::invalid("style_refused", message).remedy(STYLE_REFUSED.remedy)
 }
@@ -427,4 +336,229 @@ fn normalized_layer(value: &str) -> String {
         .unwrap_or_default()
         .trim_end_matches("_vt")
         .to_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use ds_cli_contract::parse;
+
+    use super::*;
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|part| (*part).to_string()).collect()
+    }
+
+    /// Every edit, with every flag it declares set, must reach a typed
+    /// instruction — the decoder being `deny_unknown_fields` on both the
+    /// instruction and its flattened cartography change is what makes that a
+    /// real bound and not a shape check. The handlers' own argument builders
+    /// are the input, so a key a handler invents but no variant names is red
+    /// here rather than at the gateway.
+    #[test]
+    fn every_edit_builds_only_keys_the_kernel_decoder_accepts() {
+        let seeded =
+            parse(&crate::seed::create::COMMAND, &argv(&["--ref", "pc/c"])).expect("seed inputs");
+        for (edit, built) in [
+            (
+                Edit::Seed,
+                json!({"ref": "print_context/contours_index", "apply": true}),
+            ),
+            (
+                Edit::PrintVariant,
+                json!({"ref": "master/lv_lines", "apply": true}),
+            ),
+            (
+                Edit::ClearDimension,
+                json!({"ref": "master/lv_poles", "apply": true}),
+            ),
+        ] {
+            let instruction = instruction(edit, built, &seeded).expect("typed instruction");
+            serde_json::to_value(&instruction).expect("the kernel encodes its own instruction");
+        }
+
+        let appearance = parse(
+            &crate::appearance::set::COMMAND,
+            &argv(&[
+                "--ref",
+                "master/lv_poles",
+                "--color",
+                "#00ff00",
+                "--icon",
+                "pole",
+                "--size",
+                "4",
+                "--icon-overlap",
+                "on",
+            ]),
+        )
+        .expect("appearance inputs");
+        let built = crate::appearance::arguments(&appearance, true).expect("appearance arguments");
+        let encoded = serde_json::to_value(
+            instruction(Edit::Appearance, built, &appearance).expect("appearance instruction"),
+        )
+        .expect("encoded");
+        assert_eq!(
+            encoded,
+            json!({"kind":"appearance","color":"#00FF00","icon":"pole","size":4.0,"icon_overlap":true}),
+            "every appearance flag must reach the closed instruction"
+        );
+
+        let label = parse(
+            &crate::label::set::COMMAND,
+            &argv(&[
+                "--ref",
+                "gt/roads_print",
+                "--field",
+                "road_no",
+                "--size",
+                "12",
+            ]),
+        )
+        .expect("label inputs");
+        let built = crate::label::arguments(&label, true).expect("label arguments");
+        let encoded = serde_json::to_value(
+            instruction(Edit::Label, built, &label).expect("label instruction"),
+        )
+        .expect("encoded");
+        assert_eq!(encoded["kind"], "label");
+        assert_eq!(encoded["field"], "road_no");
+        assert_eq!(encoded["options"]["size"], json!(12.0));
+
+        let dimension = parse(
+            &crate::dimension::set::COMMAND,
+            &argv(&[
+                "--ref",
+                "master/lv_poles",
+                "--field",
+                "drafting_status",
+                "--field-type",
+                "string",
+                "--channel",
+                "halo",
+                "--keep-other-channels",
+                "--value",
+                "draft=3:#ffffff",
+                "--other",
+                "0",
+                "--color",
+                "#112233",
+            ]),
+        )
+        .expect("dimension inputs");
+        let built = crate::dimension::arguments(&dimension, true).expect("dimension arguments");
+        let encoded = serde_json::to_value(
+            instruction(Edit::Dimension, built, &dimension).expect("dimension instruction"),
+        )
+        .expect("encoded");
+        assert_eq!(
+            encoded,
+            json!({
+                "kind": "dimension",
+                "field": "drafting_status",
+                "channel": "halo",
+                "values": [{"value": "draft", "amount": 3.0, "color": "#FFFFFF"}],
+                "other": 0.0,
+                "color": "#112233",
+                "field_type": "string",
+                "keep_other_channels": true,
+            }),
+            "--field-type and --keep-other-channels are read from the inputs, not the args, \
+             so they are the two keys a builder-only check would miss"
+        );
+
+        let cartography = parse(
+            &crate::cartography::set::COMMAND,
+            &argv(&[
+                "--ref",
+                "master/water_mains",
+                "--line-type",
+                "directional",
+                "--direction-size",
+                "14",
+                "--direction-spacing",
+                "140",
+                "--casing-color",
+                "#0f172a",
+                "--casing-width",
+                "2.5",
+            ]),
+        )
+        .expect("cartography inputs");
+        let built =
+            crate::cartography::arguments(&cartography, true).expect("cartography arguments");
+        let encoded = serde_json::to_value(
+            instruction(Edit::Cartography, built, &cartography).expect("cartography instruction"),
+        )
+        .expect("encoded");
+        assert_eq!(encoded["kind"], "cartography");
+        assert_eq!(encoded["lineType"], "directional");
+        assert_eq!(encoded["casingWidth"], json!(2.5));
+        assert!(
+            encoded.get("ref").is_none() && encoded.get("apply").is_none(),
+            "the addressing keys are the call's, never the change's"
+        );
+    }
+
+    /// The flattened cartography change is `deny_unknown_fields`, so a key the
+    /// kernel does not name is refused here — in `ds`, with this domain's
+    /// code — rather than being posted to ds-brain and returned as prose.
+    #[test]
+    fn a_cartography_key_the_kernel_does_not_name_is_refused_locally() {
+        let inputs = parse(
+            &crate::cartography::set::COMMAND,
+            &argv(&["--ref", "master/water_mains", "--casing-width", "2"]),
+        )
+        .expect("cartography inputs");
+        let failure = instruction(
+            Edit::Cartography,
+            json!({"ref": "master/water_mains", "apply": true, "glowRadius": 4}),
+            &inputs,
+        )
+        .expect_err("an unnamed property must not travel");
+        assert_eq!(failure.code(), "style_refused");
+    }
+
+    /// Composition, not a copy: the owner's list arrives whole, this domain's
+    /// own arrives whole, and only a publishing command documents the
+    /// confirmation it is the only one that can require.
+    #[test]
+    fn the_refusals_are_composed_from_the_native_owner_and_this_domain() {
+        let planning: BTreeSet<&str> = REFUSALS.iter().map(|refusal| refusal.code).collect();
+        for owner in OWNER {
+            assert!(
+                planning.contains(owner.code),
+                "`{}` is a refusal the native user path can return and this domain drops it",
+                owner.code
+            );
+        }
+        for own in OWN {
+            assert!(planning.contains(own.code), "`{}` was dropped", own.code);
+        }
+        assert!(
+            !planning.contains("confirmation_required"),
+            "a plan publishes nothing and has nothing to confirm"
+        );
+        let publishing: BTreeSet<&str> = PUBLISH_REFUSALS
+            .iter()
+            .map(|refusal| refusal.code)
+            .collect();
+        assert!(publishing.contains("confirmation_required"));
+        assert_eq!(
+            publishing.len(),
+            planning.len() + 1,
+            "publishing adds the confirmation and nothing else"
+        );
+        for code in [
+            "desktop_not_paired",
+            "desktop_refused",
+            "desktop_signed_out",
+        ] {
+            assert!(
+                !publishing.contains(code),
+                "`{code}` belongs to a window this domain no longer opens"
+            );
+        }
+    }
 }
