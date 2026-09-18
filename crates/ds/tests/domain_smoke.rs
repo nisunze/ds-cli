@@ -11225,6 +11225,298 @@ fn vector_processing_answers_geodesically_with_no_project_and_no_window() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The three ways this family could still hand back a confident wrong answer.
+///
+/// Each of these passed a smoke test before it was fixed: the envelope was
+/// well formed every time. What was wrong was the answer inside it — a
+/// multi-point silently produced nothing, a compared document was cut without
+/// a word, and "these two networks do not cross" came back as a failure whose
+/// remedy blamed the caller's coordinate system. An agent branching on
+/// `status` reads that last one as "this tool is broken" and goes to fetch
+/// geopandas, which is the incident this whole family exists to end.
+#[test]
+fn a_bounded_or_empty_vector_answer_says_which_it_is() {
+    let root = temp_root("vector-honesty");
+    let (feeder, _road) = vector_fixture(&root);
+    let feeder = feeder.to_str().expect("utf-8 path");
+
+    // Every point of a MultiPoint is buffered. The engine's point entry takes
+    // one position, so a MultiPoint carried whole was planned, counted as
+    // processed, and produced nothing.
+    let cluster = root.join("cluster.geojson");
+    std::fs::write(
+        &cluster,
+        r#"{"type":"MultiPoint","coordinates":[[30.0619,-1.9441],[30.0639,-1.9441],[30.0659,-1.9441]]}"#,
+    )
+    .expect("cluster fixture");
+    let buffered = ok(&[
+        "data",
+        "vector",
+        "buffer",
+        "--source",
+        cluster.to_str().expect("utf-8 path"),
+        "--radius-m",
+        "25",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        buffered["produced"], 3,
+        "each point of a MultiPoint is its own zone"
+    );
+
+    // Nothing crossing is an answer, in the caller's own terms, on a run that
+    // succeeded.
+    let elsewhere = root.join("elsewhere.geojson");
+    std::fs::write(
+        &elsewhere,
+        r#"{"type":"LineString","coordinates":[[29.0,-3.0],[29.01,-3.0]]}"#,
+    )
+    .expect("elsewhere fixture");
+    let none = ok(&[
+        "data",
+        "vector",
+        "intersect",
+        "--source",
+        feeder,
+        "--against",
+        elsewhere.to_str().expect("utf-8 path"),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(none["produced"], 0);
+    assert!(
+        none["note"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("No crossing"),
+        "a run that found nothing has to say so: {none}"
+    );
+
+    // The document a caller passes to --against is bounded by the same limit,
+    // and it is the one they cannot see being cut.
+    let crowd = root.join("crowd.geojson");
+    let mut lines = String::from(r#"{"type":"FeatureCollection","features":["#);
+    for step in 0..3 {
+        if step > 0 {
+            lines.push(',');
+        }
+        let lng = 30.0629 + f64::from(step) * 0.001;
+        lines.push_str(&format!(
+            r#"{{"type":"Feature","geometry":{{"type":"LineString","coordinates":[[{lng},-1.9491],[{lng},-1.9391]]}}}}"#
+        ));
+    }
+    lines.push_str("]}");
+    std::fs::write(&crowd, lines).expect("crowd fixture");
+    let bounded = ok(&[
+        "data",
+        "vector",
+        "intersect",
+        "--source",
+        feeder,
+        "--against",
+        crowd.to_str().expect("utf-8 path"),
+        "--limit",
+        "2",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(bounded["produced"], 2);
+    assert!(
+        bounded["more"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("--against"),
+        "a cut --against document has to be stated in `more`: {bounded}"
+    );
+
+    // A refusal writes nothing. An empty FeatureCollection left at --out is a
+    // wrong answer on disk, and it takes the path the caller's retry needs.
+    let taken = root.join("taken.geojson");
+    assert_eq!(
+        refusal(&[
+            "data",
+            "vector",
+            "buffer",
+            "--source",
+            feeder,
+            "--radius-m",
+            "999999",
+            "--out",
+            taken.to_str().expect("utf-8 path"),
+            "--output",
+            "json",
+        ]),
+        "vector_distance_out_of_range"
+    );
+    assert!(
+        !taken.exists(),
+        "a refused run left {} behind",
+        taken.display()
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Three ways a well-formed vector answer was still the wrong answer.
+///
+/// Each of these passed a smoke test that read the envelope and not the
+/// numbers, which is exactly the failure mode this family was built to stop
+/// repeating on an outside agent that cannot read our code.
+#[test]
+fn a_vector_answer_counts_what_it_says_it_counted() {
+    let root = temp_root("vector-arithmetic");
+    std::fs::create_dir_all(&root).expect("fixture directory");
+
+    // ── A hole is a hole ────────────────────────────────────────────────
+    // The same outer ring, once solid and once with a courtyard cut out of
+    // it, plus that courtyard on its own. The donut has to be the square
+    // less the courtyard: before this the holes were dropped at the door and
+    // a donut measured exactly as large as the square it came from.
+    let outer = "[[30.0619,-1.9441],[30.0719,-1.9441],[30.0719,-1.9341],[30.0619,-1.9341],[30.0619,-1.9441]]";
+    let hole = "[[30.0639,-1.9421],[30.0699,-1.9421],[30.0699,-1.9361],[30.0639,-1.9361],[30.0639,-1.9421]]";
+    let area_of = |name: &str, rings: String| -> f64 {
+        let path = root.join(name);
+        std::fs::write(
+            &path,
+            format!(r#"{{"type":"Polygon","coordinates":[{rings}]}}"#),
+        )
+        .expect("polygon fixture");
+        let measured = ok(&[
+            "data",
+            "vector",
+            "measure",
+            "--source",
+            path.to_str().expect("utf-8 path"),
+            "--output",
+            "json",
+        ]);
+        measured["totals"]["area_m2"].as_f64().expect("area")
+    };
+    let square = area_of("square.geojson", outer.to_string());
+    let courtyard = area_of("courtyard.geojson", hole.to_string());
+    let donut = area_of("donut.geojson", format!("{outer},{hole}"));
+    assert!(
+        (donut - (square - courtyard)).abs() < 1.0,
+        "a donut is its outer ring less its hole: {square} - {courtyard} is \
+         not {donut}"
+    );
+    assert!(courtyard > 100_000.0, "the hole is not a rounding error");
+
+    // ── A total counts the whole document ───────────────────────────────
+    // Twelve identical lines, listed five at a time. The total length is
+    // twelve lines' worth however few rows come back; before this it was the
+    // length of the first five and nothing said so.
+    let many = root.join("twelve.geojson");
+    let mut features = String::from(r#"{"type":"FeatureCollection","features":["#);
+    for step in 0..12 {
+        if step > 0 {
+            features.push(',');
+        }
+        let lat = -1.9441 + f64::from(step) * 0.001;
+        features.push_str(&format!(
+            r#"{{"type":"Feature","geometry":{{"type":"LineString","coordinates":[[30.0619,{lat}],[30.0719,{lat}]]}}}}"#
+        ));
+    }
+    features.push_str("]}");
+    std::fs::write(&many, features).expect("twelve fixture");
+    let many = many.to_str().expect("utf-8 path");
+    let whole = ok(&[
+        "data", "vector", "measure", "--source", many, "--output", "json",
+    ]);
+    let whole_length = whole["totals"]["length_m"].as_f64().expect("length");
+    let listed = ok(&[
+        "data", "vector", "measure", "--source", many, "--limit", "5", "--output", "json",
+    ]);
+    assert_eq!(listed["totals"]["features"], 12);
+    assert_eq!(
+        listed["features"].as_array().expect("rows").len(),
+        5,
+        "the limit bounds the rows"
+    );
+    assert!(
+        (listed["totals"]["length_m"].as_f64().expect("length") - whole_length).abs() < 0.001,
+        "a bounded list must not shorten the network: {listed}"
+    );
+    let cut = listed["more"].as_str().unwrap_or_default();
+    assert!(
+        cut.contains("7 more") && cut.contains("the totals count every one"),
+        "a cut list has to say the totals were not cut: {cut}"
+    );
+
+    // ── What a run MAKES is bounded too ─────────────────────────────────
+    // One 1.1 km line stationed every 10 m is 111 points from a single
+    // eligible feature. `--limit` bounded the features READ, so the whole
+    // collection came back inline with `more` silent.
+    let route = root.join("route.geojson");
+    std::fs::write(
+        &route,
+        r#"{"type":"LineString","coordinates":[[30.0619,-1.9441],[30.0719,-1.9441]]}"#,
+    )
+    .expect("route fixture");
+    let route = route.to_str().expect("utf-8 path");
+    let inline = ok(&[
+        "data",
+        "vector",
+        "sample",
+        "--source",
+        route,
+        "--interval-m",
+        "10",
+        "--limit",
+        "20",
+        "--output",
+        "json",
+    ]);
+    let produced = inline["produced"].as_u64().expect("produced");
+    assert!(produced > 100, "a 1.1 km route at 10 m is over 100 points");
+    assert_eq!(
+        inline["result"]["features"]
+            .as_array()
+            .expect("inline features")
+            .len(),
+        20,
+        "an inline answer is bounded by --limit: {inline}"
+    );
+    let withheld = inline["more"].as_str().unwrap_or_default();
+    assert!(
+        withheld.contains("--out"),
+        "a cut inline answer has to name the flag that writes them all: {withheld}"
+    );
+
+    // …and the file the flag names holds every one of them, because a file is
+    // not a context cost.
+    let written = root.join("stations.geojson");
+    let whole_file = ok(&[
+        "data",
+        "vector",
+        "sample",
+        "--source",
+        route,
+        "--interval-m",
+        "10",
+        "--limit",
+        "20",
+        "--out",
+        written.to_str().expect("utf-8 path"),
+        "--output",
+        "json",
+    ]);
+    assert!(
+        whole_file["more"].is_null(),
+        "nothing was withheld: {whole_file}"
+    );
+    let on_disk: Value = serde_json::from_slice(&std::fs::read(&written).expect("written file"))
+        .expect("written GeoJSON");
+    assert_eq!(
+        on_disk["features"].as_array().expect("file features").len() as u64,
+        produced,
+        "--out writes every station the run produced"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The search half of the same failure.
 ///
 /// Before this slice `--search buffer` returned three results and none was a
@@ -11243,6 +11535,10 @@ fn an_outsiders_word_for_an_operation_finds_it_first() {
         ("overlay", "data.vector.intersect"),
         ("chainage", "data.vector.sample"),
         ("line", "map.line-difference"),
+        // The plural is what a stranger types. `buffers` used to return one
+        // row, and it was a project-cache command.
+        ("buffers", "data.vector.buffer"),
+        ("polygons", "data.vector.buffer"),
     ] {
         let found = ok(&["capabilities", "--search", query, "--output", "json"]);
         let first = found["results"][0]["id"].as_str().unwrap_or("<nothing>");
