@@ -63,6 +63,19 @@ word *version* means two things. (Its fix belongs to the versioning lane.)
   one paired window.
 - **Core command** — every other command. Decides over governed state and names
   its project.
+- **Foreign application control** — launching a third-party application and
+  driving edits inside it. Not a `ds` command at all: it belongs to that
+  application's own MCP surface. The clearest case is PLS-CADD (owner,
+  2026-09-18): *running* PLS-CADD and editing in it is a third-party MCP's job,
+  while `ds pls …` — which reads and writes PLS-CADD **files** through typed
+  tasks, `Authority::None`, no window and no network — is ordinary core.
+
+  This is not the forbidden third set. That one is core work stranded behind
+  our own window. This is the boundary of `ds` itself: **`ds` acts on data and
+  on our own surfaces; controlling somebody else's application is a foreign
+  surface's job.** So a future "drive PLS-CADD from an agent" is neither a
+  `map.*` command nor a bridge operation — the lens layer is our window's
+  crate, never a general remote-control layer.
 
 ## 4. The contract (each rule is testable)
 
@@ -211,6 +224,8 @@ nothing else in this plan is gated on it.
 |---|---|---|
 | 2026-09-18 | 0a | `ds-cli/crates/ds/tests/lens_core_boundary.rs` — the fence, seeded at 15 dependents (ds-cli `6c8078a`) |
 | 2026-09-18 | 0b | `integer`/`INVALID_NUMBER`/`plural` moved to `ds-cli-contract::args`, so the door dependency means only "has window-bound commands"; **`ds-cli-survey` freed** (its `BRIDGE_OPS` had been empty since its control plane moved to the kernel); `ds-cli-tile`'s ceiling 3 → 2. Thirteen core crates left (ds-cli `1e5d195`) |
+| 2026-09-18 | 0b | **`ds-cli-library` freed.** Its thirteen governed global-catalog operations gained the headless owner they always should have had: `ds-client-core::grid_catalog` (closed action enum, per-action body keys, bounded governed objects) plus `grid_models::ForkExample`. The artifact upload and the prepared-directory publication the desktop used to compose are performed in the CLI. The desktop's thirteen bridge operations and its adapter are deleted. Twelve left (kernel `6883594`, ds-cli `a4430f4`, ds-web `6ca38d96`) |
+| 2026-09-18 | 0b | **`ds-cli-feedback` freed.** It had two routes to one backlog; the native one was already the default, so the paired one and its prose-marker refusal recovery are gone, with `--target`, `--desktop-descriptor`, the three BridgeOps and the desktop adapter. Eleven left (ds-cli `c0d712c`, ds-web `7c9817c2`) |
 
 ## 6. Owner decisions needed
 
