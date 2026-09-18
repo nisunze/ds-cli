@@ -7707,7 +7707,7 @@ fn feedback_row(status: &str, version: u64) -> serde_json::Value {
     serde_json::json!({"id":"f1","status":status,"kind":"bug","severity":"major","component":"ds-cli","surface":"cli","title":"Headless feedback","detail":"Must work without a selected project","occurrences":1,"reporters":["operator@example.com"],"reporter_kind":"agent","version":version,"last_seen_at":"2026-09-13T12:00:00Z","updated_at":"2026-09-13T12:00:00Z","updated_by":"operator@example.com"})
 }
 #[test]
-fn headless_feedback_reads_without_project_and_filters_recent_backlog() {
+fn headless_feedback_reads_the_difference_and_never_narrows_after_the_answer() {
     use ds_client_core::feedback::Command;
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     let mut client = signed_in(transport.clone(), MemoryStore::default());
@@ -7716,30 +7716,157 @@ fn headless_feedback_reads_without_project_and_filters_recent_backlog() {
         .lock()
         .unwrap()
         .feedback
-        .push_back(project_response(
-            serde_json::json!({"reports":[feedback_row("open",1),feedback_row("resolved",2)]}),
-        ));
+        .push_back(project_response(serde_json::json!({
+            "reports":[feedback_row("open",1)],
+            "count":1,"matched":1,"complete":true,"changed":true,"scanned":144,
+            "cursor":"fb1.abc.def","cursor_source":"reader",
+            "backlog":{"total":144,"open":1,"blocked":0,"settled":143}
+        })));
     let request = Command::List {
         view: "not_addressed".into(),
-        component: None,
+        component: Some("ds-cli".into()),
         query: None,
         limit: 50,
         detail: true,
-        since: Some("2026-09-12T00:00:00Z".into()),
+        cursor: None,
+        all: false,
     };
     let result = client.feedback(&request, NOW + 1).unwrap();
     assert_eq!(result["reports"].as_array().unwrap().len(), 1);
-    assert_eq!(result["scan_incomplete"], false);
     assert_eq!(result["reports"][0]["id"], "f1");
+    // The horizon field is gone: the backlog enumerates completely, so there is
+    // no "older records may exist" for a caller to cope with.
+    assert!(result.get("scan_incomplete").is_none());
+    assert_eq!(result["changed"], true);
+    assert_eq!(result["complete"], true);
+    assert_eq!(result["cursor"], "fb1.abc.def");
+    assert_eq!(result["backlog"]["settled"], 143);
+    // Every filter went to the backlog. A filter applied HERE would have hidden
+    // rows the server's watermark had already counted as read.
     assert_eq!(
         transport.0.lock().unwrap().feedback_bodies[0],
-        serde_json::json!({"action":"list","limit":200})
+        serde_json::json!({"action":"list","limit":50,"filter":{
+            "view":"not_addressed","component_contains":"ds-cli","query":"","limit":50}})
     );
     assert!(serde_json::from_value::<Command>(
         serde_json::json!({"operation":"list","view":"all","limit":50,"project":"injected"})
     )
     .is_err());
 }
+
+#[test]
+fn headless_feedback_says_nothing_changed_without_the_caller_holding_anything() {
+    use ds_client_core::feedback::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .feedback
+        .push_back(project_response(serde_json::json!({
+            "reports":[],"count":0,"matched":0,"complete":true,"changed":false,
+            "scanned":0,"cursor":"fb1.abc.def","cursor_source":"reader"
+        })));
+    let request = Command::List {
+        view: "not_addressed".into(),
+        component: None,
+        query: None,
+        limit: 20,
+        detail: false,
+        cursor: None,
+        all: false,
+    };
+    let result = client.feedback(&request, NOW + 1).unwrap();
+    // The cheap answer is a FIELD, not an empty list to interpret — and the
+    // caller reached it having sent no cursor, no timestamp and no local file.
+    assert_eq!(result["changed"], false);
+    assert_eq!(result["total"], 0);
+    assert_eq!(result["cursor_source"], "reader");
+    assert!(result.get("backlog").is_none());
+    assert!(transport.0.lock().unwrap().feedback_bodies[0]
+        .get("cursor")
+        .is_none());
+}
+
+#[test]
+fn headless_feedback_note_names_a_blocker_without_moving_the_report() {
+    use ds_client_core::feedback::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let mut blocked = feedback_row("open", 3);
+    blocked["blocked"] = serde_json::json!(true);
+    blocked["blocked_on"] = serde_json::json!("deploy:ds-brain-canary");
+    blocked["note_count"] = serde_json::json!(1);
+    blocked["latest_note"] = serde_json::json!({
+        "author":"operator@example.com","at":"2026-09-18T12:00:00Z",
+        "text":"Merged on run; waits on the canary deploy.",
+        "blocked_on":"deploy:ds-brain-canary"});
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .feedback
+        .push_back(project_response(serde_json::json!({"report":blocked})));
+    let request = Command::Note {
+        id: "f1".into(),
+        text: "Merged on run; waits on the canary deploy.".into(),
+        blocked_on: Some("deploy:ds-brain-canary".into()),
+        unblock: false,
+        expected_version: Some(2),
+    };
+    let result = client.feedback(&request, NOW + 1).unwrap();
+    assert_eq!(result["blocked"], true);
+    assert_eq!(result["blocked_on"], "deploy:ds-brain-canary");
+    assert_eq!(result["report"]["status"], "open");
+    assert_eq!(
+        transport.0.lock().unwrap().feedback_bodies[0],
+        serde_json::json!({"action":"note","id":"f1","expected_version":2,
+            "note":{"text":"Merged on run; waits on the canary deploy.",
+                    "blocked_on":"deploy:ds-brain-canary"}})
+    );
+    // One note cannot both raise a dependency and clear one.
+    assert!(Command::Note {
+        id: "f1".into(),
+        text: "both".into(),
+        blocked_on: Some("x".into()),
+        unblock: true,
+        expected_version: None,
+    }
+    .validate()
+    .is_err());
+}
+
+#[test]
+fn headless_feedback_refuses_a_settled_report_by_its_own_name() {
+    use ds_client_core::feedback::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .feedback
+        .push_back(ds_client_core::TransportResponse {
+            status: 409,
+            body: br#"{"success":false,"error":{"code":"FEEDBACK_SETTLED","message":"settled"}}"#
+                .to_vec(),
+        });
+    let request = Command::Note {
+        id: "f1".into(),
+        text: "still broken".into(),
+        blocked_on: None,
+        unblock: false,
+        expected_version: None,
+    };
+    // A settled report and a version conflict both arrive as 409 and want
+    // opposite things: one wants a NEW report, the other wants a re-read.
+    assert_eq!(
+        client.feedback(&request, NOW + 1).unwrap_err().to_string(),
+        "feedback_settled"
+    );
+}
+
 #[test]
 fn headless_feedback_close_preserves_the_callers_version_fence() {
     use ds_client_core::feedback::Command;
