@@ -551,7 +551,6 @@ pub const READ_ONLY_MARKERS: &[&str] = &["archived", "expired", "read-only"];
 pub const TAG_VALUE_CASE_MISMATCH_MARKERS: &[&str] =
     &["authored spelling exactly", "differ only by case"];
 
-/// What the application says when a file exceeds its bounded path reader.
 
 /// The identities still open to refinement by [`classify_design_failure`].
 ///
