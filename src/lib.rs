@@ -1715,6 +1715,7 @@ pub fn collisions_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
 }
 
 pub mod local_layers;
+pub mod local_models;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = localLayers)]
 pub fn local_layers_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
