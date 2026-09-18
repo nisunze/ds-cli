@@ -34,6 +34,22 @@ pub enum ProjectConfigurationChange {
         alias: String,
         category: String,
     },
+    /// Drop one canonical customer category, or — with no name — every row
+    /// that declares none.
+    RetireCustomerCategory {
+        name: Option<String>,
+    },
+    RenameCustomerCategory {
+        from: String,
+        to: String,
+    },
+    UnbindCustomerAlias {
+        alias: String,
+        category: String,
+    },
+    DefaultMeterType {
+        name: String,
+    },
     /// The project's whole `project_settings` sheet, already carrying the
     /// design output selection its author chose. The rows are the caller's
     /// because the kernel writes them — `report_formats::apply_output_selection`
@@ -110,6 +126,211 @@ pub(crate) fn customer_category_alias(
         aliases.push(alias.to_owned());
     }
     rows[index]["misspelled_names"] = json!(aliases);
+    Ok(rows)
+}
+
+/// A vocabulary sheet's rows, under the bounds the alias path already accepts:
+/// a row is an object and its canonical name is text or absent.
+fn catalog_rows(document: &Value, sheet: &str) -> Result<Vec<Value>, ClientError> {
+    Ok(document["sheets"][sheet]
+        .as_array()
+        .filter(|rows| {
+            rows.len() < 1000
+                && rows.iter().all(|row| {
+                    row.is_object()
+                        && (row["clean_name"].is_string() || row["clean_name"].is_null())
+                })
+        })
+        .ok_or_else(invalid_response)?
+        .clone())
+}
+
+fn catalog_name(value: &str) -> Result<(), ClientError> {
+    if value.trim() != value
+        || value.is_empty()
+        || value.len() > 100
+        || value.chars().any(char::is_control)
+    {
+        return Err(ClientError::new(
+            ErrorKind::InvalidInput,
+            "category names must be trimmed and between 1 and 100 bytes",
+        ));
+    }
+    Ok(())
+}
+
+fn position(rows: &[Value], name: &str) -> Option<usize> {
+    rows.iter().position(|row| {
+        ds_command_kernel::design_config::canonical(row)
+            .is_some_and(|clean| clean.eq_ignore_ascii_case(name))
+    })
+}
+
+/// Drop one canonical customer category, or every row that declares none.
+///
+/// Reporting rewrites any customer description its catalogue does not know
+/// into a fallback, and with no `default_category` setting stored that
+/// fallback is whichever named row comes first. Retiring that row therefore
+/// moves every unrecognised customer to a different category without anyone
+/// asking for it, so this refuses instead and says which setting decides.
+pub(crate) fn retire_customer_category(
+    document: &Value,
+    name: Option<&str>,
+) -> Result<Vec<Value>, ClientError> {
+    let rows = catalog_rows(document, "cust_category")?;
+    let Some(name) = name else {
+        let kept: Vec<Value> = rows
+            .iter()
+            .filter(|row| ds_command_kernel::design_config::canonical(row).is_some())
+            .cloned()
+            .collect();
+        if kept.len() == rows.len() {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "the customer catalog has no rows without a canonical name",
+            ));
+        }
+        return Ok(kept);
+    };
+    catalog_name(name)?;
+    let index = position(&rows, name).ok_or_else(|| {
+        ClientError::new(
+            ErrorKind::InvalidInput,
+            "target customer category does not exist",
+        )
+    })?;
+    let hazards = ds_command_kernel::design_config::catalog_hazards(&document["sheets"]);
+    let fallback = &hazards["customer"]["fallback"];
+    if fallback["decided_by"] == "catalog_order"
+        && fallback["category"]
+            .as_str()
+            .is_some_and(|current| current.eq_ignore_ascii_case(name))
+    {
+        return Err(ClientError::new(
+            ErrorKind::InvalidInput,
+            "this category is the report fallback only because it is first in the catalog; store a default_category project setting before retiring it",
+        ));
+    }
+    if rows
+        .iter()
+        .filter(|row| ds_command_kernel::design_config::canonical(row).is_some())
+        .count()
+        <= 1
+    {
+        return Err(ClientError::new(
+            ErrorKind::InvalidInput,
+            "a project needs at least one canonical customer category",
+        ));
+    }
+    let mut rows = rows;
+    rows.remove(index);
+    Ok(rows)
+}
+
+/// Give one customer category a different canonical name, keeping every source
+/// label that already resolves to it — including the old name, which existing
+/// customer records still carry.
+pub(crate) fn rename_customer_category(
+    document: &Value,
+    from: &str,
+    to: &str,
+) -> Result<Vec<Value>, ClientError> {
+    for name in [from, to] {
+        catalog_name(name)?;
+    }
+    let mut rows = catalog_rows(document, "cust_category")?;
+    let index = position(&rows, from).ok_or_else(|| {
+        ClientError::new(
+            ErrorKind::InvalidInput,
+            "target customer category does not exist",
+        )
+    })?;
+    for (other, row) in rows.iter().enumerate() {
+        if other == index {
+            continue;
+        }
+        let mut owned = ds_command_kernel::design_config::alias_list(&row["misspelled_names"]);
+        if let Some(clean) = ds_command_kernel::design_config::canonical(row) {
+            owned.push(clean);
+        }
+        if owned.iter().any(|name| name.eq_ignore_ascii_case(to)) {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "the new name is already claimed by another customer category",
+            ));
+        }
+    }
+    let mut aliases =
+        ds_command_kernel::design_config::alias_list(&rows[index]["misspelled_names"]);
+    if !aliases.iter().any(|name| name.eq_ignore_ascii_case(from)) {
+        aliases.push(from.to_owned());
+    }
+    rows[index]["misspelled_names"] = json!(aliases);
+    rows[index]["clean_name"] = json!(to);
+    Ok(rows)
+}
+
+/// Take one source label away from one customer category.
+///
+/// A label two categories claim is dropped from the alias map entirely, so the
+/// customers carrying it stop resolving and land in the fallback. Naming both
+/// the label and the category that loses it is what makes the repair a
+/// decision rather than a guess about which owner was intended.
+pub(crate) fn unbind_customer_alias(
+    document: &Value,
+    alias: &str,
+    category: &str,
+) -> Result<Vec<Value>, ClientError> {
+    for name in [alias, category] {
+        catalog_name(name)?;
+    }
+    let mut rows = catalog_rows(document, "cust_category")?;
+    let index = position(&rows, category).ok_or_else(|| {
+        ClientError::new(
+            ErrorKind::InvalidInput,
+            "target customer category does not exist",
+        )
+    })?;
+    if alias.eq_ignore_ascii_case(category) {
+        return Err(ClientError::new(
+            ErrorKind::InvalidInput,
+            "a category's own canonical name is not an alias; rename or retire the category instead",
+        ));
+    }
+    let aliases = ds_command_kernel::design_config::alias_list(&rows[index]["misspelled_names"]);
+    let kept: Vec<String> = aliases
+        .iter()
+        .filter(|name| !name.eq_ignore_ascii_case(alias))
+        .cloned()
+        .collect();
+    if kept.len() == aliases.len() {
+        return Err(ClientError::new(
+            ErrorKind::InvalidInput,
+            "that customer category does not carry the requested alias",
+        ));
+    }
+    rows[index]["misspelled_names"] = json!(kept);
+    Ok(rows)
+}
+
+/// Put one meter type first in the catalogue.
+///
+/// Reporting has no governed setting for the phase-type fallback: it takes the
+/// first named row of `cust_meter_type`, so a meter reading nothing in the
+/// catalogue recognises is counted as whichever type was seeded first. Moving
+/// a row to the front is how a project states that choice on purpose until the
+/// reporter reads a setting for it.
+pub(crate) fn default_meter_type(document: &Value, name: &str) -> Result<Vec<Value>, ClientError> {
+    catalog_name(name)?;
+    let mut rows = catalog_rows(document, "cust_meter_type")?;
+    let index = position(&rows, name).ok_or_else(|| {
+        ClientError::new(
+            ErrorKind::InvalidInput,
+            "target meter type does not exist in the project catalog",
+        )
+    })?;
+    let row = rows.remove(index);
+    rows.insert(0, row);
     Ok(rows)
 }
 
@@ -458,5 +679,181 @@ mod tests {
                 .map(crate::ServiceRefusal::status),
             Some(403)
         );
+    }
+}
+
+#[cfg(test)]
+mod vocabulary_housekeeping_tests {
+    use super::*;
+
+    /// A project seeded from a catalogue merged across two clients: an
+    /// unnamed row, a label two categories claim, and no stored default.
+    fn merged() -> Value {
+        json!({"sheets":{
+            "project_settings":[],
+            "cust_meter_type":[
+                {"clean_name":"Single Phase","misspelled_names":["Residential"]},
+                {"clean_name":"Three Phase","misspelled_names":["3"]}
+            ],
+            "cust_category":[
+                {"clean_name":"Health Post","country":"Rwanda","misspelled_names":["Health Post","Centre de Sante"]},
+                {"clean_name":"School","country":"Rwanda","misspelled_names":["School","Ecole Primaire"]},
+                {"clean_name":null,"country":"Rwanda","misspelled_names":[]},
+                {"clean_name":"Education_I","country":"Tchad","misspelled_names":["Education_I","Ecole Primaire"]}
+            ]
+        }})
+    }
+
+    fn names(rows: &[Value]) -> Vec<Value> {
+        rows.iter().map(|row| row["clean_name"].clone()).collect()
+    }
+
+    #[test]
+    fn retiring_the_first_row_is_refused_while_catalog_order_decides_the_fallback() {
+        let error = retire_customer_category(&merged(), Some("Health Post")).unwrap_err();
+        assert!(
+            error.to_string().contains("default_category"),
+            "the refusal must name the setting that takes the decision away from row order: {error}"
+        );
+    }
+
+    #[test]
+    fn a_stored_default_category_frees_the_first_row_to_be_retired() {
+        let mut document = merged();
+        document["sheets"]["project_settings"] =
+            json!([{"parameter":"default_category","value":"School"}]);
+        let rows = retire_customer_category(&document, Some("Health Post")).unwrap();
+        assert_eq!(
+            names(&rows),
+            vec![json!("School"), Value::Null, json!("Education_I")]
+        );
+    }
+
+    #[test]
+    fn retiring_without_a_name_removes_only_the_rows_that_declare_none() {
+        let rows = retire_customer_category(&merged(), None).unwrap();
+        assert_eq!(
+            names(&rows),
+            vec![json!("Health Post"), json!("School"), json!("Education_I")]
+        );
+        let cleaned = json!({"sheets":{"cust_category":rows}});
+        let error = retire_customer_category(&cleaned, None).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("no rows without a canonical name"),
+            "a second sweep must say there is nothing to sweep: {error}"
+        );
+    }
+
+    #[test]
+    fn the_last_canonical_category_cannot_be_retired() {
+        let document = json!({"sheets":{
+            "project_settings":[{"parameter":"default_category","value":"Residential"}],
+            "cust_category":[{"clean_name":"Residential"},{"clean_name":null}]
+        }});
+        let error = retire_customer_category(&document, Some("Residential")).unwrap_err();
+        assert!(
+            error.to_string().contains("at least one"),
+            "an empty catalogue validates nothing: {error}"
+        );
+    }
+
+    #[test]
+    fn retiring_a_category_the_catalog_does_not_hold_is_refused() {
+        let error = retire_customer_category(&merged(), Some("Readyboard")).unwrap_err();
+        assert!(error.to_string().contains("does not exist"), "{error}");
+    }
+
+    #[test]
+    fn renaming_keeps_every_source_label_including_the_name_it_replaces() {
+        let rows = rename_customer_category(&merged(), "Education_I", "Primary School").unwrap();
+        assert_eq!(rows[3]["clean_name"], "Primary School");
+        assert_eq!(
+            rows[3]["misspelled_names"],
+            json!(["Education_I", "Ecole Primaire"]),
+            "customer records still carry the old canonical name"
+        );
+        assert_eq!(
+            names(&rows[..3]),
+            names(&merged()["sheets"]["cust_category"].as_array().unwrap()[..3])
+        );
+    }
+
+    #[test]
+    fn renaming_onto_a_name_another_category_already_claims_is_refused() {
+        for taken in ["School", "Centre de Sante"] {
+            let error = rename_customer_category(&merged(), "Education_I", taken).unwrap_err();
+            assert!(
+                error.to_string().contains("already claimed"),
+                "a rename must not manufacture the ambiguity this family exists to remove: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn unbinding_names_the_category_that_loses_the_contested_label() {
+        let rows = unbind_customer_alias(&merged(), "Ecole Primaire", "School").unwrap();
+        assert_eq!(rows[1]["misspelled_names"], json!(["School"]));
+        assert_eq!(
+            rows[3]["misspelled_names"],
+            json!(["Education_I", "Ecole Primaire"]),
+            "the surviving owner keeps the label"
+        );
+        let resolved = json!({"sheets":{"project_settings":[],"cust_category":rows}});
+        let hazards = ds_command_kernel::design_config::catalog_hazards(&resolved["sheets"]);
+        assert_eq!(hazards["customer"]["ambiguous_aliases"], json!([]));
+    }
+
+    #[test]
+    fn unbinding_a_label_the_named_category_does_not_carry_is_refused() {
+        let error = unbind_customer_alias(&merged(), "Ecole Primaire", "Health Post").unwrap_err();
+        assert!(error.to_string().contains("does not carry"), "{error}");
+        let error = unbind_customer_alias(&merged(), "School", "School").unwrap_err();
+        assert!(
+            error.to_string().contains("rename or retire"),
+            "a canonical name is not an alias: {error}"
+        );
+    }
+
+    #[test]
+    fn promoting_a_meter_type_moves_it_to_the_row_reporting_reads_first() {
+        let rows = default_meter_type(&merged(), "Three Phase").unwrap();
+        assert_eq!(
+            names(&rows),
+            vec![json!("Three Phase"), json!("Single Phase")]
+        );
+        assert_eq!(
+            rows[0]["misspelled_names"],
+            json!(["3"]),
+            "promotion moves the row whole, it does not rebuild it"
+        );
+        let unchanged = default_meter_type(&merged(), "single phase").unwrap();
+        assert_eq!(
+            unchanged,
+            merged()["sheets"]["cust_meter_type"]
+                .as_array()
+                .cloned()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn promoting_a_meter_type_the_catalog_lacks_is_refused_rather_than_created() {
+        let error = default_meter_type(&merged(), "Readyboard").unwrap_err();
+        assert!(
+            error.to_string().contains("does not exist"),
+            "seeding is `ensure`; this verb only orders what is already there: {error}"
+        );
+    }
+
+    #[test]
+    fn a_catalog_sheet_that_is_not_a_bounded_row_list_is_unreadable() {
+        for broken in [
+            json!({"sheets":{"cust_category":"rows"}}),
+            json!({"sheets":{}}),
+        ] {
+            assert!(retire_customer_category(&broken, None).is_err());
+        }
     }
 }
