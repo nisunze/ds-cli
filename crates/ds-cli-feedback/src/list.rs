@@ -80,7 +80,7 @@ original sighting wrote down, and how many times the gap was seen.",
         ops::REFUSED,
         ops::UNSUPPORTED,
         ops::UNREADABLE,
-        ops::INVALID_NUMBER,
+        ds_cli_contract::args::INVALID_NUMBER,
         crate::NOT_SIGNED_IN,
         crate::INVALID_TEXT,
         crate::NOT_FOUND,
@@ -111,7 +111,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(limit) = inputs.value("limit") {
         arguments.insert(
             "limit".into(),
-            json!(ops::integer(limit, "limit", 1, MAX_LIST_LIMIT)?),
+            json!(ds_cli_contract::args::integer(
+                limit,
+                "limit",
+                1,
+                MAX_LIST_LIMIT
+            )?),
         );
     }
     if inputs.switch("detail") {
@@ -140,7 +145,7 @@ pub fn render(data: &Value) -> String {
     let mut out = format!(
         "{} · {}\n",
         data["view"].as_str().unwrap_or("backlog"),
-        ops::plural(total, "report")
+        ds_cli_contract::args::plural(total, "report")
     );
     for report in data["reports"].as_array().into_iter().flatten() {
         out.push_str(&format!(

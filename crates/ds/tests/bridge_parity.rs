@@ -489,17 +489,19 @@ fn every_survey_control_plane_command_has_one_api_only_owner_and_exact_arguments
     // one absent file skipped every check in it — a skipped parity suite being
     // exactly what this file says is worse than no parity suite.
     //
-    // What is left to hold is the door itself: the moment `ds survey` declares
-    // a bridge operation again, it needs a named adapter owner and the
-    // argument-contract assertions that used to live here, not an empty loop
-    // that keeps reporting green.
-    assert!(
-        ds_cli_survey::BRIDGE_OPS.is_empty(),
-        "`ds survey` declares {} bridge operation(s) again; give each one a typed \
-         desktop adapter owner, add that file to `App`, and restore the \
-         allowlist/handler/argument assertions here",
-        ds_cli_survey::BRIDGE_OPS.len()
-    );
+    // What is left to hold is the door itself, and it is now held one level
+    // lower than an empty list can hold it. `ds-cli-survey` does not depend on
+    // `ds-cli-desktop` at all, so the crate cannot name a bridge operation,
+    // declare one, or send one — the symbols do not exist in it. That is
+    // `lens_core_boundary.rs`'s inventory, which refuses a crate that reaches
+    // for the bridge again, and it is why the empty `BRIDGE_OPS` const this
+    // assertion used to read was deleted rather than kept as a marker.
+    //
+    // The moment `ds survey` needs the window again, that suite fails first
+    // and the command has to be classified before it can compile: either it
+    // gains the headless owner this control plane already has, or it becomes a
+    // `map.*` command in the lens crate with a typed adapter owner and the
+    // argument-contract assertions that used to live here.
 
     // The three survey operations that do cross the bridge belong to `ds map
     // survey`, and their owner is the map's own adapter. They are checked with

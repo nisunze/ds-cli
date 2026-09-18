@@ -174,7 +174,7 @@ fn invoke(
     .map_err(ops::classify_signed_out)
 }
 pub fn catalog(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let limit = ops::integer(inputs.require("limit")?, "limit", 1, 200)?;
+    let limit = ds_cli_contract::args::integer(inputs.require("limit")?, "limit", 1, 200)?;
     let mut args = json!({"domain": inputs.require("domain")?, "limit": limit});
     if let Some(value) = inputs.value("search") {
         args["search"] = json!(value);
@@ -193,7 +193,7 @@ pub fn list(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 pub fn generate(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let maxzoom = ops::integer(inputs.require("maxzoom")?, "maxzoom", 1, 22)?;
+    let maxzoom = ds_cli_contract::args::integer(inputs.require("maxzoom")?, "maxzoom", 1, 22)?;
     invoke(
         inputs,
         &GENERATE_OP,

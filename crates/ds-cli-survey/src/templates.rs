@@ -4,7 +4,6 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops;
 use serde_json::{Map, Value, json};
 
 use crate::{
@@ -222,7 +221,12 @@ pub static CREATE_PROJECT_COMMAND: Command = Command {
 pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut args = Map::from_iter([(
         "limit".into(),
-        json!(ops::integer(inputs.require("limit")?, "limit", 1, 500)?),
+        json!(ds_cli_contract::args::integer(
+            inputs.require("limit")?,
+            "limit",
+            1,
+            500
+        )?),
     )]);
     crate::optional_text(inputs, "query", "query", 200, &mut args)?;
     if inputs.switch("detail") {
@@ -239,7 +243,7 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ),
         (
             "formOffset".into(),
-            json!(ops::integer(
+            json!(ds_cli_contract::args::integer(
                 inputs.require("form-offset")?,
                 "form-offset",
                 0,
@@ -248,7 +252,7 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ),
         (
             "formLimit".into(),
-            json!(ops::integer(
+            json!(ds_cli_contract::args::integer(
                 inputs.require("form-limit")?,
                 "form-limit",
                 1,

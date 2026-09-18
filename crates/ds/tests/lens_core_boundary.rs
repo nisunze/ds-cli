@@ -50,7 +50,10 @@ enum Layer {
 /// non-test source files reach for it.
 ///
 /// Measured 2026-09-18 at `52b1292`. `files` is a ceiling, never a target: a
-/// crate may drop to zero and leave, but it may not climb.
+/// crate may drop to zero and leave, but it may not climb. `ds-cli-survey`
+/// left on the same day: its control plane had already moved to the kernel and
+/// all that remained was an empty `BRIDGE_OPS` const holding the dependency
+/// open.
 const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds", Layer::Host, 1),
     ("ds-cli-map", Layer::Lens, 4),
@@ -76,10 +79,8 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds-cli-sre", Layer::CorePending, 1),
     // Styling saves round-trip through the open map's layer state.
     ("ds-cli-style", Layer::CorePending, 2),
-    // Survey capture and form work read the application's project.
-    ("ds-cli-survey", Layer::CorePending, 4),
     // Tile regeneration is requested through the application.
-    ("ds-cli-tile", Layer::CorePending, 3),
+    ("ds-cli-tile", Layer::CorePending, 2),
     // Project Work tasks read the window's selection.
     ("ds-cli-work", Layer::CorePending, 1),
 ];

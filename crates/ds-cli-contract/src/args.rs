@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use serde_json::json;
 
 use crate::outcome::Failure;
-use crate::spec::{Arg, ArgKind, Command};
+use crate::spec::{Arg, ArgKind, Command, Refusal};
 
 /// Parsed inputs for one command, validated against its declaration.
 #[derive(Debug, Default)]
@@ -292,6 +292,42 @@ fn distance(left: &str, right: &str) -> usize {
     previous[right.len()]
 }
 
+/// A numeric flag that is not a number, or is outside the bound its own
+/// summary states.
+pub const INVALID_NUMBER: Refusal = Refusal {
+    code: "invalid_number",
+    when: "a numeric flag is not a number, or falls outside the bound in its summary",
+    remedy: "the refusal carries the accepted range",
+};
+
+/// A whole-number flag, held to the bound stated in its own summary.
+pub fn integer(raw: &str, flag: &str, min: i64, max: i64) -> Result<i64, Failure> {
+    let parsed = raw.parse::<i64>().map_err(|_| {
+        Failure::invalid(
+            "invalid_number",
+            format!("`--{flag}` must be a whole number"),
+        )
+        .remedy(format!("pass {min}..{max}"))
+    })?;
+    if parsed < min || parsed > max {
+        return Err(
+            Failure::invalid("invalid_number", format!("`--{flag}` is outside its bound"))
+                .remedy(format!("pass {min}..{max}"))
+                .detail(json!({ "given": parsed, "min": min, "max": max })),
+        );
+    }
+    Ok(parsed)
+}
+
+/// Render a count with its noun, so a human line reads as English.
+pub fn plural(count: u64, noun: &str) -> String {
+    if count == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{count} {noun}s")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse;
@@ -364,5 +400,26 @@ mod tests {
         let inputs = parse(&WITH_OPERAND, &tokens(&["--"])).expect("parsed");
         assert_eq!(inputs.value("subject"), None);
         assert_eq!(inputs.value("model"), None);
+    }
+}
+
+#[cfg(test)]
+mod numeric_tests {
+    use super::{integer, plural};
+
+    #[test]
+    fn a_numeric_flag_is_held_to_the_bound_its_summary_states() {
+        assert_eq!(integer("7", "limit", 1, 200).expect("in bound"), 7);
+        let refused = integer("0", "limit", 1, 200).unwrap_err();
+        assert_eq!(refused.code(), "invalid_number");
+        let unparsed = integer("seven", "limit", 1, 200).unwrap_err();
+        assert_eq!(unparsed.code(), "invalid_number");
+    }
+
+    #[test]
+    fn a_count_reads_as_english() {
+        assert_eq!(plural(1, "report"), "1 report");
+        assert_eq!(plural(0, "report"), "0 reports");
+        assert_eq!(plural(4, "report"), "4 reports");
     }
 }

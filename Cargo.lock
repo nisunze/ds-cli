@@ -1168,7 +1168,6 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
- "ds-cli-desktop",
  "ds-client-core",
  "libc",
  "serde",

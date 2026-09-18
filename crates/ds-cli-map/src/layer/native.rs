@@ -194,7 +194,7 @@ pub const NATIVE_REFUSALS: &[Refusal] = &[
     AUTH_UNREADABLE,
 ];
 pub const NATIVE_LIST_REFUSALS: &[Refusal] = &[
-    ds_cli_desktop::ops::INVALID_NUMBER,
+    ds_cli_contract::args::INVALID_NUMBER,
     NATIVE_PROFILE,
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,
@@ -307,7 +307,7 @@ pub const NATIVE_VISIBILITY_REFUSALS: &[Refusal] = &[
 // their other callers, which take no host.
 
 pub const LAYER_LIST_REFUSALS: &[Refusal] = &[
-    ds_cli_desktop::ops::INVALID_NUMBER,
+    ds_cli_contract::args::INVALID_NUMBER,
     NATIVE_PROFILE,
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,

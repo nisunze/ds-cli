@@ -66,10 +66,12 @@ use serde_json::json;
 // The paired-application primitives every bridge domain shares, re-exported
 // so this family declares them exactly once and a reader who learned
 // `--desktop-descriptor` from `ds map` has learned it here too.
+// Neutral argument helpers: a numeric bound and an English count say
+// nothing about a paired window, so they come from the contract crate.
+pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN,
-    REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, integer,
-    invoke, paired, paired_availability, plural,
+    AMBIGUOUS, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT,
+    UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, invoke, paired, paired_availability,
 };
 
 // ---------------------------------------------------------------------------

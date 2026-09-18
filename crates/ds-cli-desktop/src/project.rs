@@ -64,7 +64,7 @@ const COMMON_REFUSALS: &[Refusal] = &[
     ops::UNSUPPORTED,
     ops::UNREADABLE,
     ops::SIGNED_OUT,
-    ops::INVALID_NUMBER,
+    ds_cli_contract::args::INVALID_NUMBER,
     INVALID_TEXT,
 ];
 
@@ -171,7 +171,7 @@ project's bounded summary. No project data is written.",
 };
 
 pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let limit = ops::integer(inputs.require("limit")?, "limit", 1, 500)?;
+    let limit = ds_cli_contract::args::integer(inputs.require("limit")?, "limit", 1, 500)?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     let mut arguments = Map::from_iter([
         (

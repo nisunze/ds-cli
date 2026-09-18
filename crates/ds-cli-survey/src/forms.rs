@@ -3,7 +3,6 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops;
 use serde_json::{Map, Value, json};
 
 use crate::{
@@ -210,7 +209,12 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ("status".into(), json!(inputs.require("status")?)),
         (
             "limit".into(),
-            json!(ops::integer(inputs.require("limit")?, "limit", 1, 500)?),
+            json!(ds_cli_contract::args::integer(
+                inputs.require("limit")?,
+                "limit",
+                1,
+                500
+            )?),
         ),
     ]);
     crate::optional_text(inputs, "query", "query", 200, &mut args)?;
@@ -228,7 +232,7 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ),
         (
             "fieldOffset".into(),
-            json!(ops::integer(
+            json!(ds_cli_contract::args::integer(
                 inputs.require("field-offset")?,
                 "field-offset",
                 0,
@@ -237,7 +241,7 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ),
         (
             "fieldLimit".into(),
-            json!(ops::integer(
+            json!(ds_cli_contract::args::integer(
                 inputs.require("field-limit")?,
                 "field-limit",
                 1,
@@ -269,7 +273,7 @@ pub fn update(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ),
         (
             "expectedVersion".into(),
-            json!(ops::integer(
+            json!(ds_cli_contract::args::integer(
                 inputs.require("expect-version")?,
                 "expect-version",
                 1,
@@ -303,7 +307,12 @@ pub fn lifecycle(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
     if let Some(version) = inputs.value("expect-version") {
         args.insert(
             "expectedVersion".into(),
-            json!(ops::integer(version, "expect-version", 1, i64::MAX)?),
+            json!(ds_cli_contract::args::integer(
+                version,
+                "expect-version",
+                1,
+                i64::MAX
+            )?),
         );
     }
     if inputs.switch("force") {

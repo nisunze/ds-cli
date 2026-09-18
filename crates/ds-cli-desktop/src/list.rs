@@ -165,7 +165,7 @@ pub fn render(data: &Value) -> String {
         .as_array()
         .map(|ids| ids.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
-    let mut out = format!("{}\n", ops::plural(live, "live instance"));
+    let mut out = format!("{}\n", ds_cli_contract::args::plural(live, "live instance"));
     for instance in data["instances"].as_array().into_iter().flatten() {
         let id = instance["instance_id"].as_str().unwrap_or("");
         out.push_str(&format!(

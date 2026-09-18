@@ -19,10 +19,13 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
 use serde_json::{Value, json};
 
+// Neutral argument helpers: a numeric bound and an English count say
+// nothing about a paired window, so they come from the contract crate.
+pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED,
-    PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE,
-    UNSUPPORTED, classify_signed_out, integer, invoke, paired, paired_availability, plural,
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED,
+    SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out,
+    invoke, paired, paired_availability,
 };
 
 pub(crate) const MIN_ZOOM_ARG: Arg = Arg::value(

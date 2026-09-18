@@ -4,7 +4,6 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops;
 use serde_json::{Map, Value, json};
 
 use crate::{
@@ -131,7 +130,7 @@ pub static LIST_COMMAND: Command = Command {
             when: "the project-forms response violates its closed bounded contract",
             remedy: "retry once, then update ds if it persists",
         },
-        ops::INVALID_NUMBER,
+        ds_cli_contract::args::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/survey.md"),
     availability: ds_cli_auth::native_availability,
@@ -316,7 +315,12 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     args.insert("status".into(), json!(inputs.require("status")?));
     args.insert(
         "limit".into(),
-        json!(ops::integer(inputs.require("limit")?, "limit", 1, 500)?),
+        json!(ds_cli_contract::args::integer(
+            inputs.require("limit")?,
+            "limit",
+            1,
+            500
+        )?),
     );
     crate::optional_text(inputs, "query", "query", 200, &mut args)?;
     if inputs.switch("detail") {
@@ -326,7 +330,7 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let limit = ops::integer(inputs.require("limit")?, "limit", 1, 500)? as usize;
+    let limit = ds_cli_contract::args::integer(inputs.require("limit")?, "limit", 1, 500)? as usize;
     let headless = ds_cli_auth::project_forms(inputs.require("lane")?)?;
     let snapshot = headless.snapshot();
     let total = snapshot.forms().len() + snapshot.orphaned_project_forms().len();

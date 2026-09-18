@@ -83,7 +83,7 @@ The report stays in the backlog and remains readable with \
         ops::REFUSED,
         ops::UNSUPPORTED,
         ops::UNREADABLE,
-        ops::INVALID_NUMBER,
+        ds_cli_contract::args::INVALID_NUMBER,
         crate::NOT_SIGNED_IN,
         crate::INVALID_TEXT,
         crate::NOT_FOUND,
@@ -111,7 +111,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(version) = inputs.value("expect-version") {
         arguments.insert(
             "expected_version".into(),
-            json!(ops::integer(version, "expect-version", 1, i64::MAX)?),
+            json!(ds_cli_contract::args::integer(
+                version,
+                "expect-version",
+                1,
+                i64::MAX
+            )?),
         );
     }
     if matches!(ops::host(inputs.value("target"))?, ops::Host::Server) {

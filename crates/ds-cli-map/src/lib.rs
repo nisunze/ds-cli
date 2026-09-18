@@ -35,11 +35,13 @@ use serde_json::{Map, Value, json};
 // The paired-application primitives every bridge domain shares, declared once
 // in `ds-cli-desktop` and re-exported here so a caller of this domain — and
 // every command in it — keeps naming them as `crate::…`.
+// Neutral argument helpers: a numeric bound and an English count say
+// nothing about a paired window, so they come from the contract crate.
+pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, OFFLINE, PAIRING_REJECTED,
-    PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE,
-    UNSUPPORTED, classify_signed_out as classify_design_failure, integer, invoke, paired,
-    paired_availability, plural,
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, OFFLINE, PAIRING_REJECTED, PROJECT_NOT_OPEN,
+    REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED,
+    classify_signed_out as classify_design_failure, invoke, paired, paired_availability,
 };
 
 pub static DOMAIN: Domain = Domain {

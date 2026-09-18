@@ -67,7 +67,7 @@ reference tiles. This is the catalogue `ds tile remove` takes ids from.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let result = ds_cli_auth::tile_list(inputs.require("lane")?, inputs.switch("global"))?;
-    let limit = ds_cli_desktop::ops::integer(inputs.require("limit")?, "limit", 1, 500)? as usize;
+    let limit = ds_cli_contract::args::integer(inputs.require("limit")?, "limit", 1, 500)? as usize;
     let rows = &result.result().tiles;
     Ok(
         json!({"lane": result.lane(), "project": result.project_id(), "total": rows.len(),

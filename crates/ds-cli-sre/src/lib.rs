@@ -18,10 +18,12 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Domain, Refusal};
 use serde_json::json;
 
+// Neutral argument helpers: a numeric bound and an English count say
+// nothing about a paired window, so they come from the contract crate.
+pub use ds_cli_contract::args::{INVALID_NUMBER, integer};
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED,
-    PROJECT_NOT_OPEN, UNREACHABLE, UNREADABLE, UNSUPPORTED, integer, invoke, paired,
-    paired_availability,
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN,
+    UNREACHABLE, UNREADABLE, UNSUPPORTED, invoke, paired, paired_availability,
 };
 
 pub static DOMAIN: Domain = Domain {

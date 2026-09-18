@@ -96,10 +96,13 @@ use serde_json::{Map, Value, json};
 // declared once in `ds-cli-desktop` — the authority surface — so a caller who
 // learned `--desktop-descriptor` and the pairing refusals from `ds map` has
 // learned them here too.
+// Neutral argument helpers: a numeric bound and an English count say
+// nothing about a paired window, so they come from the contract crate.
+pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BACKEND_UNREACHABLE, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED,
-    PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED,
-    classify_signed_out, integer, invoke, paired, paired_availability, plural,
+    AMBIGUOUS, BACKEND_UNREACHABLE, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED,
+    PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED,
+    classify_signed_out, invoke, paired, paired_availability,
 };
 
 pub static DOMAIN: Domain = Domain {

@@ -21,7 +21,6 @@ use std::io::Read;
 use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Domain, Refusal};
-use ds_cli_desktop::ops::BridgeOp;
 use serde_json::{Map, Value, json};
 
 pub static DOMAIN: Domain = Domain {
@@ -75,8 +74,6 @@ pub const TEMPLATE_CREATE: &str = "survey.template.create";
 pub const TEMPLATE_APPLY: &str = "survey.template.apply";
 pub const TEMPLATE_LIFECYCLE: &str = "survey.template.lifecycle";
 pub const CREATE_PROJECT: &str = "survey.project.create_from_template";
-
-pub const BRIDGE_OPS: &[&BridgeOp] = &[];
 
 pub const INVALID_TEXT: Refusal = Refusal {
     code: "invalid_text",

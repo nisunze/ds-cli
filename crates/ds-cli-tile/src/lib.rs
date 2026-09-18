@@ -45,10 +45,13 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
 use serde_json::{Value, json};
 
+// Neutral argument helpers: a numeric bound and an English count say
+// nothing about a paired window, so they come from the contract crate.
+pub use ds_cli_contract::args::plural;
 pub use ds_cli_desktop::ops::{
     AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED,
     SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, invoke, paired,
-    paired_availability, plural,
+    paired_availability,
 };
 
 pub static DOMAIN: Domain = Domain {
@@ -265,7 +268,7 @@ pub const NATIVE_REFUSALS: &[Refusal] = &[
     AUTH_UNREADABLE,
 ];
 pub const NATIVE_LIST_REFUSALS: &[Refusal] = &[
-    ds_cli_desktop::ops::INVALID_NUMBER,
+    ds_cli_contract::args::INVALID_NUMBER,
     NATIVE_PROFILE,
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,

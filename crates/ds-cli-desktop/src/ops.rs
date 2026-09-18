@@ -637,43 +637,10 @@ pub const DESCRIPTOR_ARG: Arg = Arg {
     summary: "Use this bridge descriptor instead of discovering one; DS_DESKTOP_DESCRIPTOR sets the same default.",
 };
 
-pub const INVALID_NUMBER: Refusal = Refusal {
-    code: "invalid_number",
-    when: "a numeric flag is not a number, or falls outside the bound in its summary",
-    remedy: "the refusal carries the accepted range",
-};
-
-/// A whole-number flag, held to the bound stated in its own summary.
-pub fn integer(raw: &str, flag: &str, min: i64, max: i64) -> Result<i64, Failure> {
-    let parsed = raw.parse::<i64>().map_err(|_| {
-        Failure::invalid(
-            "invalid_number",
-            format!("`--{flag}` must be a whole number"),
-        )
-        .remedy(format!("pass {min}..{max}"))
-    })?;
-    if parsed < min || parsed > max {
-        return Err(
-            Failure::invalid("invalid_number", format!("`--{flag}` is outside its bound"))
-                .remedy(format!("pass {min}..{max}"))
-                .detail(json!({ "given": parsed, "min": min, "max": max })),
-        );
-    }
-    Ok(parsed)
-}
-
-/// Render a count with its noun, so a human line reads as English.
-pub fn plural(count: u64, noun: &str) -> String {
-    if count == 1 {
-        format!("1 {noun}")
-    } else {
-        format!("{count} {noun}s")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ds_cli_contract::args::integer;
 
     /// A minted instance id, in the kernel's grammar: 32 lowercase hex.
     const INSTANCE: &str = "11111111111111111111111111111111";

@@ -149,7 +149,7 @@ pub static TRANSFORMERS_COMMAND: Command = Command {
         ops::UNSUPPORTED,
         ops::UNREADABLE,
         ops::SIGNED_OUT,
-        ops::INVALID_NUMBER,
+        ds_cli_contract::args::INVALID_NUMBER,
         PRINTING_READ_INVALID,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
@@ -278,7 +278,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 pub fn transformers(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = bounded_project(inputs.require("project")?)?;
-    let limit = ops::integer(inputs.require("limit")?, "limit", 1, 500)?;
+    let limit = ds_cli_contract::args::integer(inputs.require("limit")?, "limit", 1, 500)?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(
         &descriptor,
