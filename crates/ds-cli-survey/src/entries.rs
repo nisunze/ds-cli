@@ -195,6 +195,7 @@ const REFUSALS: &[Refusal] = &[
         when: "native identity restoration returns an unreadable response before selection",
         remedy: "retry once, then sign in again or update ds if it persists",
     },
+    ds_cli_auth::SURVEY_ROUTE_UNAVAILABLE_REFUSAL,
 ];
 
 pub static COMMAND: Command = Command {

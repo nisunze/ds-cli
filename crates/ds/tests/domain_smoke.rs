@@ -9439,6 +9439,58 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         "survey_entries_changes_invalid"
     );
 
+    // A route the lane never published and a scope the caller may not read are
+    // both HTTP 404, and from 2026-08-20 to 2026-09-18 every one of the Survey
+    // read paths was the first while every operator was told the second. The
+    // two refusals therefore have to be separately documented on each of these
+    // commands, each with its own way out: one says update or publish the
+    // route, the other says check the project and the form.
+    for (id, scope_code) in [
+        ("survey.query", "survey_scope_not_found"),
+        ("survey.entries.select", "survey_entries_scope_not_found"),
+        ("survey.entries.changes", "survey_entries_scope_not_found"),
+    ] {
+        let refusals = ok(&["capabilities", id, "--output", "json"])["command"]["refusals"]
+            .as_array()
+            .expect("refusals")
+            .clone();
+        let codes = refusals
+            .iter()
+            .map(|refusal| refusal["code"].as_str().unwrap_or_default().to_owned())
+            .collect::<BTreeSet<_>>();
+        assert!(
+            codes.contains("survey_route_unavailable"),
+            "`{id}` can answer `survey_route_unavailable` and does not document it: {codes:?}"
+        );
+        assert!(
+            codes.contains(scope_code),
+            "`{id}` no longer documents `{scope_code}`: {codes:?}"
+        );
+        let route = refusals
+            .iter()
+            .find(|refusal| refusal["code"] == "survey_route_unavailable")
+            .expect("route refusal");
+        // The declaration and the refusal are one constant in ds-cli-auth, so
+        // this pins the text a caller plans against rather than a copy of it.
+        assert_eq!(
+            route["remedy"],
+            json!(ds_cli_auth::SURVEY_ROUTE_UNAVAILABLE_REFUSAL.remedy),
+            "`{id}` no longer declares the refusal the route itself emits"
+        );
+        assert_eq!(
+            route["code"],
+            json!(ds_cli_auth::SURVEY_ROUTE_UNAVAILABLE_REFUSAL.code)
+        );
+        let scope = refusals
+            .iter()
+            .find(|refusal| refusal["code"] == scope_code)
+            .expect("scope refusal");
+        assert_ne!(
+            route["remedy"], scope["remedy"],
+            "`{id}` gives the same remedy for an absent route and an invisible scope"
+        );
+    }
+
     let create = ok(&["capabilities", "survey.entries.create", "--output", "json"]);
     assert_eq!(create["command"]["authority"], "headless_project");
     assert_eq!(create["command"]["effect"], "global_write");

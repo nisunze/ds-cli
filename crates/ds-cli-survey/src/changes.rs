@@ -215,6 +215,7 @@ const REFUSALS: &[Refusal] = &[
         when: "identity restoration returns an unreadable response",
         remedy: "retry once; sign in again or update ds if it persists",
     },
+    ds_cli_auth::SURVEY_ROUTE_UNAVAILABLE_REFUSAL,
 ];
 
 pub static COMMAND: Command = Command {

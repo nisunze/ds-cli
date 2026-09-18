@@ -86,6 +86,7 @@ const QUERY_REFUSALS: &[Refusal] = &[
         when: "a repeated filter is oversized, not an exact JSON object, or violates its operator-specific fields",
         remedy: "pass one closed JSON object per --filter",
     },
+    ds_cli_auth::SURVEY_ROUTE_UNAVAILABLE_REFUSAL,
     Refusal {
         code: "survey_scope_not_found",
         when: "the selected project or governed form is unavailable to the verified user",
