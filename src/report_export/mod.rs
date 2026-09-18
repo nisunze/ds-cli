@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::printing::table_rows::PrintWarning;
+use crate::printing::table_rows::{PrintWarning, ONE_PANEL_PRESENTATION};
 use crate::printing::ArtifactPresentation;
 use crate::report::{publication_state, PublicationState, LOCAL_ONLY_SCHEMA};
 use crate::report_formats::{self, DesignOutputSelection, Output};
@@ -813,11 +813,217 @@ pub struct VerifiedArtifact {
     pub presentation: Option<ArtifactPresentation>,
 }
 
-/// A completed result that answers its plan. The host still has to prove the
-/// bytes on disk are the declared ones.
+/// The layout member an operator turns to make a sheet that did not fit,
+/// fit. "The A0 failed" is not actionable; "the A0's `lv_schedule` needs
+/// three panels and the layout permits one" is.
+pub const KNOB_PANELS: &str = "panels";
+pub const KNOB_OVERFLOW: &str = "overflow";
+pub const KNOB_ROW_MM: &str = "row_mm";
+/// The most panels `printing::table_rows::plan` will ever permit; at that
+/// ceiling the knob is no longer `panels`.
+const MAX_TABLE_PANELS: usize = 8;
+/// The bound on an engine blocker's own words where a failed format repeats
+/// them — the same bound [`blocker_summary`] applies.
+const MAX_BLOCKER_MESSAGE: usize = 180;
+
+/// Which layout member decides a print that did not fit, and on which
+/// element. Read out of the message `printing::table_rows::plan` wrote, so
+/// the knob is named by the code that authored the refusal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LayoutKnob {
+    /// The layout element the message named, when it named one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_id: Option<String>,
+    /// `panels`, `overflow` or `row_mm`.
+    pub knob: &'static str,
+    /// The measured shortfall, in the terms the layout is authored in.
+    pub detail: String,
+}
+
+/// One format this run asked for and did not get, named precisely enough to
+/// act on: the output id an operator selected, the engine's own typed code,
+/// its bounded words, the remedy, and — for a print that did not fit — the
+/// element and the layout knob that decides it.
+///
+/// This exists so a partial run can still be an answer. The formats that
+/// completed are on disk and publishable; these are what is missing, and
+/// nothing is left unaccounted between the two.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FailedFormat {
+    pub output_id: String,
+    pub format: String,
+    pub code: String,
+    pub message: String,
+    pub remedy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layout: Option<LayoutKnob>,
+}
+
+impl FailedFormat {
+    fn new(output: &Output, blocker: &Blocker) -> Self {
+        let layout = layout_knob(&blocker.message);
+        Self {
+            remedy: remedy(&blocker.code, layout.as_ref()),
+            output_id: output.output_id.clone(),
+            format: output.format.clone(),
+            code: bounded_words(&blocker.code),
+            message: bounded_words(&blocker.message),
+            layout,
+        }
+    }
+}
+
+fn bounded_words(message: &str) -> String {
+    message
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(MAX_BLOCKER_MESSAGE)
+        .collect()
+}
+
+/// What to do about one unbuilt format. A refusal that names no way forward
+/// is a dead end, so every code answers here, layout knob or not.
+fn remedy(code: &str, layout: Option<&LayoutKnob>) -> String {
+    let element = layout
+        .and_then(|knob| knob.element_id.as_deref())
+        .map(|id| format!(" on `{id}`"))
+        .unwrap_or_default();
+    match layout.map(|knob| knob.knob) {
+        Some(KNOB_PANELS) => format!(
+            "raise `panels`{element} in this printing setup, or set its table `overflow` to `truncate_warn` to print the rows that fit with a truncation warning"
+        ),
+        Some(KNOB_OVERFLOW) => format!(
+            "set the table `overflow`{element} to `truncate_warn`, or lower `row_mm` so more rows fit each panel: `panels` cannot rise for this table"
+        ),
+        Some(KNOB_ROW_MM) => format!(
+            "lower `row_mm`{element}, or clear it for automatic spacing, so the rows fit the frame at the authored type size"
+        ),
+        _ => match code {
+            "format_not_in_policy" => {
+                "add the format to the project's export policy, or drop it from the selection"
+                    .to_string()
+            }
+            "artifact_stage_failed" => {
+                "export into a fresh output directory: the engine could not write this file where it was asked to"
+                    .to_string()
+            }
+            "printing_execution_disabled" => {
+                "render this format on a device with printing enabled; the formats that completed are already publishable"
+                    .to_string()
+            }
+            _ => {
+                "re-run this format alone once what the message names is fixed; the formats that completed are already publishable"
+                    .to_string()
+            }
+        },
+    }
+}
+
+/// The element id a table message named, reading back from `marker` to the
+/// `table ` the message opened the name with.
+fn table_element(message: &str, marker: &str) -> Option<String> {
+    let head = &message[..message.find(marker)?];
+    let id = &head[head.rfind("table ")? + "table ".len()..];
+    crate::printing::identifier(id).then(|| id.to_string())
+}
+
+/// The count immediately before `suffix`.
+fn count_before(message: &str, suffix: &str) -> Option<usize> {
+    message[..message.find(suffix)?]
+        .rsplit(' ')
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// The count immediately after `marker`, read digit by digit. The permitted
+/// panel count is read this way and not from the first `)` in the message:
+/// one bracket anywhere in a wrapping prefix would otherwise be read as the
+/// ceiling, and an operator would be told to raise `panels` to a number the
+/// layout already permits.
+fn count_after(message: &str, marker: &str) -> Option<usize> {
+    let tail = &message[message.find(marker)? + marker.len()..];
+    let digits = tail
+        .find(|character: char| !character.is_ascii_digit())
+        .map_or(tail, |end| &tail[..end]);
+    digits.parse().ok()
+}
+
+/// Read the layout knob out of a table message `printing::table_rows::plan`
+/// wrote, wherever the engine wrapped it. `None` when the failure is not one
+/// of the layout shortfalls this kernel raises — a caller then still has the
+/// code, the message and a remedy, and claims no knob it cannot name.
+pub fn layout_knob(message: &str) -> Option<LayoutKnob> {
+    const PANELS: &str = " panels at the authored type size";
+    const TYPE: &str = " row height cannot contain its readable type";
+    const FRAME: &str = " frame ";
+    if message.contains(PANELS) {
+        let rows = count_before(message, " rows; needs ")?;
+        let panels = count_before(message, PANELS)?;
+        let permitted = count_after(message, "(maximum ")?;
+        // A workbook table prints in one panel whatever the setup authors,
+        // so `panels` is not the member that decides it. Naming `panels`
+        // there sends an operator to re-run a whole batch against a number
+        // that cannot move.
+        let forced = message.contains(ONE_PANEL_PRESENTATION);
+        let at_ceiling = permitted >= MAX_TABLE_PANELS;
+        return Some(LayoutKnob {
+            element_id: table_element(message, " has "),
+            knob: if forced || at_ceiling {
+                KNOB_OVERFLOW
+            } else {
+                KNOB_PANELS
+            },
+            detail: if forced {
+                format!("{rows} rows need {panels} panels; {ONE_PANEL_PRESENTATION}")
+            } else if at_ceiling {
+                format!(
+                    "{rows} rows need {panels} panels; the layout is already at its \
+                     {permitted}-panel ceiling"
+                )
+            } else {
+                format!("{rows} rows need {panels} panels; the layout permits {permitted}")
+            },
+        });
+    }
+    if message.contains(TYPE) {
+        return Some(LayoutKnob {
+            element_id: table_element(message, TYPE),
+            knob: KNOB_ROW_MM,
+            detail: "the authored row height is below the readable type size".to_string(),
+        });
+    }
+    if message.contains("room for its title, header and one row")
+        || message.contains("no room for data and a truncation warning")
+    {
+        return Some(LayoutKnob {
+            // The frame refusals name their table too, so the remedy says
+            // which table to lower. A message from an older engine that did
+            // not name one still reads, and simply names no element.
+            element_id: table_element(message, FRAME),
+            knob: KNOB_ROW_MM,
+            detail: if message.contains("no room for data and a truncation warning") {
+                "the frame has no room for both a row of data and the truncation warning"
+                    .to_string()
+            } else {
+                "the table frame has no room for a title, a header and one row".to_string()
+            },
+        });
+    }
+    None
+}
+
+/// A result that answers its plan: what completed, and what did not. The host
+/// still has to prove the bytes on disk are the declared ones.
+///
+/// `failed` is empty on a complete run. When it is not, the artifacts are
+/// still this run's answer — they are finished, correct and publishable — and
+/// every format missing from them is named here with its reason. Computed
+/// work that cannot leave the machine is the state the edge must never be in.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VerifiedResult {
     pub artifacts: Vec<VerifiedArtifact>,
+    pub failed: Vec<FailedFormat>,
     pub warnings: Vec<PrintWarning>,
     pub print_diagnostics: Vec<Value>,
     pub elapsed_ms: u64,
@@ -953,10 +1159,17 @@ pub fn typed_failure(document: &[u8], plan: &ExportPlan) -> Option<ResultRefusal
 }
 
 /// Prove one result document answers the plan: the same task, transformer
-/// and country; completed with no blocker; every requested format declared
-/// exactly once as a direct child of the staged output directory with a
-/// plausible name, size and digest; administrative evidence consistent with
-/// the country; and only the print warnings the kernel's tables can raise.
+/// and country; at least one format built; every declared artifact a direct
+/// child of the staged output directory with a plausible name, size and
+/// digest; every requested format either built or named as failed;
+/// administrative evidence consistent with the country; and only the print
+/// warnings the kernel's tables can raise.
+///
+/// A run that built some of its formats is an answer, not a refusal. The
+/// artifacts it did build are finished work: they must be able to leave the
+/// machine — verified, receipted, publishable — while the formats it did not
+/// build are named with the knob that would fix them. Only a run that built
+/// nothing is [`ResultRefusal::Blocked`].
 pub fn verify_result(
     document: &[u8],
     plan: &ExportPlan,
@@ -971,23 +1184,44 @@ pub fn verify_result(
             "Network Reporter result does not match its semantic request",
         ));
     }
-    if result.status != "completed" || !result.blockers.is_empty() {
+    let partial = match result.status.as_str() {
+        "completed" => false,
+        "partial" => true,
+        // `failed`, and any status this contract does not know, produced
+        // nothing to keep.
+        _ => {
+            return Err(ResultRefusal::Blocked {
+                status: result.status,
+                blockers: result.blockers,
+                artifacts: result.artifacts.len(),
+            })
+        }
+    };
+    if result.artifacts.is_empty() {
         return Err(ResultRefusal::Blocked {
             status: result.status,
             blockers: result.blockers,
-            artifacts: result.artifacts.len(),
+            artifacts: 0,
         });
     }
-    if result
-        .formats_requested
-        .iter()
-        .map(String::as_str)
-        .ne(plan.formats.iter().map(String::as_str))
-        || result.artifacts.len() != plan.formats.len()
-    {
+    if partial == result.blockers.is_empty() {
         return Err(ResultRefusal::invalid(
-            "Network Reporter did not complete every requested format",
+            "Network Reporter result status does not agree with its blockers",
         ));
+    }
+    // What the engine says it was asked for is this plan's formats, in this
+    // plan's order — possibly fewer, when the project's policy dropped one,
+    // and that drop is a blocker below.
+    let mut requested = 0_usize;
+    for format in &result.formats_requested {
+        match plan.formats[requested..].iter().position(|f| f == format) {
+            Some(offset) => requested += offset + 1,
+            None => {
+                return Err(ResultRefusal::invalid(
+                    "Network Reporter did not answer every requested format in the plan's order",
+                ))
+            }
+        }
     }
     if result.layers_decoded == 0 || result.features_decoded == 0 {
         return Err(ResultRefusal::invalid(
@@ -1016,9 +1250,31 @@ pub fn verify_result(
     }
     let mut filenames = HashSet::new();
     let mut artifacts = Vec::with_capacity(result.artifacts.len());
-    for (artifact, output) in result.artifacts.into_iter().zip(plan.outputs.iter()) {
-        if artifact.format != output.format
-            || content_type(&artifact.format)? != output.content_type
+    // Artifacts are matched to the outputs they answer BY FORMAT, walking the
+    // plan forward. A format the engine did not build shifts nothing: the
+    // sheets that did build are still matched to their own outputs.
+    let mut position = 0_usize;
+    for artifact in result.artifacts.into_iter() {
+        let Some(offset) = plan.formats[position..]
+            .iter()
+            .position(|format| *format == artifact.format)
+        else {
+            return Err(ResultRefusal::invalid(
+                "Network Reporter returned an artifact this run did not request, or out of the plan's order",
+            ));
+        };
+        let output = &plan.outputs[position + offset];
+        position += offset + 1;
+        if !result
+            .formats_requested
+            .iter()
+            .any(|format| *format == artifact.format)
+        {
+            return Err(ResultRefusal::invalid(
+                "Network Reporter built a format it did not declare as requested",
+            ));
+        }
+        if content_type(&artifact.format)? != output.content_type
             || !valid_artifact_filename(&artifact.filename, &artifact.format)
             || !filenames.insert(artifact.filename.clone())
             || artifact.bytes == 0
@@ -1051,6 +1307,41 @@ pub fn verify_result(
             presentation: artifact.presentation,
         });
     }
+    // Nothing between "built" and "failed" is left unsaid: every blocker
+    // names one distinct format of this run that produced no artifact, and
+    // every requested format that produced no artifact has a blocker.
+    let built = artifacts
+        .iter()
+        .map(|artifact| artifact.format.as_str())
+        .collect::<HashSet<_>>();
+    let mut blocked = BTreeMap::new();
+    for blocker in &result.blockers {
+        let named = blocker.format.as_deref().filter(|format| {
+            plan.formats.iter().any(|planned| planned == format) && !built.contains(format)
+        });
+        match named {
+            Some(format) if blocked.insert(format, blocker).is_none() => {}
+            _ => return Err(ResultRefusal::invalid(
+                "Network Reporter blocker does not name one distinct unbuilt format of this run",
+            )),
+        }
+    }
+    let failed = plan
+        .formats
+        .iter()
+        .zip(plan.outputs.iter())
+        .filter(|(format, _)| !built.contains(format.as_str()))
+        .map(|(format, output)| {
+            blocked
+                .get(format.as_str())
+                .map(|blocker| FailedFormat::new(output, blocker))
+                .ok_or_else(|| {
+                    ResultRefusal::invalid(
+                        "Network Reporter did not complete every requested format",
+                    )
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     if result.warnings.len() > MAX_PRINT_WARNINGS
         || result
             .warnings
@@ -1078,6 +1369,7 @@ pub fn verify_result(
     }
     Ok(VerifiedResult {
         artifacts,
+        failed,
         warnings: result.warnings,
         print_diagnostics: result.print_diagnostics,
         elapsed_ms: result.elapsed_ms,
@@ -1279,7 +1571,10 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
     Ok(json!({
         "schema": RUN_RECEIPT_SCHEMA,
         "task": REPORT_TASK,
-        "status": "completed",
+        // A run that built some of its formats says so here, beside the
+        // formats it did not build. A reader of this receipt can tell what
+        // is publishable from what is missing without opening the directory.
+        "status": if facts.result.failed.is_empty() { "completed" } else { "partial" },
         "project_id": facts.plan.project_id,
         "transformer": facts.plan.transformer,
         "transformer_revision": facts.plan.server_version,
@@ -1301,6 +1596,7 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
         "print_context_omitted": facts.print_context_omitted,
         "formats_requested": facts.plan.formats,
         "outputs": outputs,
+        "failed_formats": facts.result.failed,
         "warnings": facts.result.warnings,
         "print_diagnostics": facts.result.print_diagnostics,
         "admin_bounds": facts.result.admin_bounds,
@@ -1332,6 +1628,10 @@ pub struct BatchResult {
     pub receipt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artifacts: Option<usize>,
+    /// The formats this run asked for and did not get. Absent when it got
+    /// them all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed_formats: Option<Vec<FailedFormat>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<Value>,
 }
@@ -1343,8 +1643,17 @@ impl BatchResult {
             status: "ok",
             receipt: Some(receipt),
             artifacts: Some(artifacts),
+            failed_formats: None,
             error: None,
         }
+    }
+
+    /// Name what one otherwise-successful run did not build. The row stays
+    /// `ok` — its artifacts are on disk, receipted and publishable — and a
+    /// batch never reads as complete when part of a sheet set is missing.
+    pub fn with_failed_formats(mut self, failed: Vec<FailedFormat>) -> Self {
+        self.failed_formats = (!failed.is_empty()).then_some(failed);
+        self
     }
 
     pub fn error(transformer: &str, code: &str, message: &str, detail: Option<Value>) -> Self {
@@ -1357,6 +1666,7 @@ impl BatchResult {
             status: "error",
             receipt: None,
             artifacts: None,
+            failed_formats: None,
             error: Some(error),
         }
     }
@@ -1409,6 +1719,13 @@ pub fn batch_receipt(
         "requested_count": requested.len(),
         "completed": results.len() as u64 - failed,
         "failed": failed,
+        // Runs that delivered artifacts and still lost a format. They count
+        // as completed — their work is publishable — and the batch says how
+        // many of them a reader must look into.
+        "partial_formats": results
+            .iter()
+            .filter(|result| result.failed_formats.is_some())
+            .count(),
         "results": ordered,
     }))
 }
@@ -1862,29 +2179,34 @@ mod tests {
         assert_eq!(verified.artifacts[0].content_type, "application/zip");
         assert_eq!(verified.artifacts[1].size_bytes, 20);
 
-        let mut partial = document.clone();
-        partial["status"] = json!("partial");
-        partial["blockers"] =
-            json!([{"code": "format_build_failed", "message": "kmz OOM", "format": "kmz"}]);
-        match verify_result(&serde_json::to_vec(&partial).unwrap(), &plan, &out_dir).unwrap_err() {
+        assert!(verified.failed.is_empty());
+
+        // A run that built nothing is the refusal; the engine's own blockers
+        // say which format and why.
+        let mut nothing = document.clone();
+        nothing["status"] = json!("failed");
+        nothing["artifacts"] = json!([]);
+        nothing["blockers"] = json!([{"code": "format_build_failed", "message": "shp OOM", "format": "shp"},
+                   {"code": "format_build_failed", "message": "xlsx OOM", "format": "xlsx"}]);
+        match verify_result(&serde_json::to_vec(&nothing).unwrap(), &plan, &out_dir).unwrap_err() {
             ResultRefusal::Blocked {
                 status,
                 blockers,
                 artifacts,
             } => {
-                assert_eq!(status, "partial");
+                assert_eq!(status, "failed");
                 assert_eq!(blockers[0].code, "format_build_failed");
-                assert_eq!(artifacts, 2);
+                assert_eq!(artifacts, 0);
                 assert_eq!(
                     blocker_summary(&blockers),
-                    "format_build_failed/kmz: kmz OOM"
+                    "format_build_failed/shp: shp OOM; format_build_failed/xlsx: xlsx OOM"
                 );
             }
             other => panic!("{other:?}"),
         }
         // The typed failure read after a non-zero exit is the same refusal.
         assert!(matches!(
-            typed_failure(&serde_json::to_vec(&partial).unwrap(), &plan),
+            typed_failure(&serde_json::to_vec(&nothing).unwrap(), &plan),
             Some(ResultRefusal::Blocked { .. })
         ));
         assert!(typed_failure(&serde_json::to_vec(&document).unwrap(), &plan).is_none());
@@ -1901,8 +2223,29 @@ mod tests {
         assert!(invalid(&|d| d["transformer"] = json!("tx_b")).contains("semantic request"));
         assert!(
             invalid(&|d| d["formats_requested"] = json!(["xlsx", "shp"]))
-                .contains("every requested format")
+                .contains("in the plan's order")
         );
+        // A format silently dropped is the failure this whole shape exists to
+        // end: it is named, or the result is not an answer.
+        assert!(invalid(&|d| {
+            d["formats_requested"] = json!(["shp"]);
+            d["artifacts"] = json!([d["artifacts"][0].clone()]);
+            d["status"] = json!("partial");
+            d["blockers"] = json!([]);
+        })
+        .contains("does not agree with its blockers"));
+        assert!(invalid(&|d| {
+            d["artifacts"] = json!([d["artifacts"][0].clone()]);
+            d["status"] = json!("partial");
+            d["blockers"] = json!([{"code": "x", "message": "y", "format": "shp"}]);
+        })
+        .contains("distinct unbuilt format"));
+        assert!(invalid(&|d| {
+            d["artifacts"] = json!([d["artifacts"][0].clone()]);
+            d["status"] = json!("partial");
+            d["blockers"] = json!([{"code": "x", "message": "y"}]);
+        })
+        .contains("distinct unbuilt format"));
         assert!(
             invalid(&|d| d["artifacts"][1]["filename"] = json!("tx_a.shp.zip"))
                 .contains("invalid artifact")
@@ -1936,6 +2279,314 @@ mod tests {
             verify_result(&serde_json::to_vec(&stamped).unwrap(), &rwanda, &out_dir),
             Err(ResultRefusal::Invalid { .. })
         ));
+    }
+
+    /// The Gisagara incident, as the batch of 86 transformers met it: one A0
+    /// sheet fails to lay out and the A3, the KMZ, the shapefile and the
+    /// workbook beside it are finished. They were discarded — 59 of 86 sheets
+    /// of correct, computed work thrown away because something else failed
+    /// next to them, and nothing left the machine.
+    ///
+    /// They are now the answer: four verified artifacts a host can place,
+    /// receipt and publish, and one named failure an operator can act on —
+    /// the output id AND the layout knob, because "the A0 failed" is not
+    /// actionable and "the A0's `lv_schedule` needs 3 panels where 1 is
+    /// permitted" is.
+    #[test]
+    fn a_partial_run_keeps_what_completed_and_names_the_sheet_that_failed() {
+        let mut plan = plan_transformer_export(
+            "gisagara",
+            &simple_receipt("Rwanda"),
+            "upgrade_ruturo",
+            7,
+            &layers(),
+            None,
+        )
+        .unwrap();
+        let a0 = "pdf__a0-landscape-gisagara-cjic";
+        for format in ["kmz", "pdf_a3", a0] {
+            plan.formats.push(format.to_string());
+            plan.outputs
+                .push(report_formats::output(format).expect("a known output"));
+        }
+        let out_dir = PathBuf::from("/tmp/gisagara/out");
+        let path = |name: &str| out_dir.join(name);
+        let document = json!({
+            "task": REPORT_TASK, "status": "partial", "transformer": "upgrade_ruturo",
+            "country": "Rwanda", "layers_decoded": 9, "features_decoded": 312,
+            "admin_bounds": {"configured": true, "villages_loaded": 14920, "features_matched": 3, "features_requested": 3},
+            "geometry_changed": false, "formats_requested": plan.formats,
+            "artifacts": [
+                {"format": "shp", "filename": "upgrade_ruturo.shp.zip", "path": path("upgrade_ruturo.shp.zip"), "bytes": 10, "sha256": "1".repeat(64)},
+                {"format": "xlsx", "filename": "upgrade_ruturo.xlsx", "path": path("upgrade_ruturo.xlsx"), "bytes": 20, "sha256": "2".repeat(64)},
+                {"format": "kmz", "filename": "upgrade_ruturo.kmz", "path": path("upgrade_ruturo.kmz"), "bytes": 30, "sha256": "3".repeat(64)},
+                {"format": "pdf_a3", "filename": "upgrade_ruturo.a3.pdf", "path": path("upgrade_ruturo.a3.pdf"), "bytes": 40, "sha256": "4".repeat(64)},
+            ],
+            "blockers": [{
+                "code": "format_build_failed",
+                "message": "render a0-landscape-gisagara-cjic: table lv_schedule has 212 rows; needs 3 panels at the authored type size (maximum 1)",
+                "format": a0
+            }],
+            "elapsed_ms": 9_100
+        });
+        let verified =
+            verify_result(&serde_json::to_vec(&document).unwrap(), &plan, &out_dir).unwrap();
+
+        // Four completed, matched to their own outputs — the missing A0 in
+        // the middle of the plan shifts nothing.
+        let built: Vec<&str> = verified
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.format.as_str())
+            .collect();
+        assert_eq!(built, ["shp", "xlsx", "kmz", "pdf_a3"]);
+        assert!(verified
+            .artifacts
+            .iter()
+            .all(|artifact| artifact.output_id == artifact.format));
+        assert_eq!(verified.artifacts[3].filename, "upgrade_ruturo.a3.pdf");
+
+        // One failed format, named to the knob.
+        assert_eq!(verified.failed.len(), 1);
+        let failed = &verified.failed[0];
+        assert_eq!(failed.output_id, a0);
+        assert_eq!(failed.code, "format_build_failed");
+        let knob = failed.layout.as_ref().expect("the layout knob");
+        assert_eq!(knob.element_id.as_deref(), Some("lv_schedule"));
+        assert_eq!(knob.knob, KNOB_PANELS);
+        assert_eq!(knob.detail, "212 rows need 3 panels; the layout permits 1");
+        assert!(failed.remedy.contains("raise `panels` on `lv_schedule`"));
+        assert!(failed.remedy.contains("truncate_warn"));
+
+        // The receipt beside the artifacts declares the same two sets, so a
+        // reader knows what is publishable and what is missing without
+        // opening the directory.
+        let receipt = run_receipt(&RunReceiptFacts {
+            plan: &plan,
+            client_run_id: &format!("report-{}", "a".repeat(32)),
+            engine: &engine(),
+            result: &verified,
+            artifact_dir: "upgrade_ruturo",
+            now_ms: 1_700_000_000_000,
+            expected_content_digest: None,
+            print_context_sha256: None,
+            print_context_layers: &[],
+            print_context_omitted: &[],
+        })
+        .unwrap();
+        assert_eq!(receipt["status"], "partial");
+        assert_eq!(receipt["outputs"].as_array().unwrap().len(), 4);
+        assert_eq!(receipt["failed_formats"][0]["output_id"], a0);
+        assert_eq!(receipt["failed_formats"][0]["layout"]["knob"], "panels");
+        assert_eq!(receipt["formats_requested"].as_array().unwrap().len(), 5);
+        // Publication reads the receipt's publication facts, and they are the
+        // same facts a complete run would carry: the four artifacts are
+        // publishable exactly as they are.
+        assert_eq!(receipt["publication"]["state"], "pending");
+        assert_eq!(receipt["publication"]["transformer"], "upgrade_ruturo");
+
+        // The batch row stays `ok` — the work is on disk and publishable —
+        // and still says what is missing, so no batch reads as complete when
+        // part of a sheet set is not there.
+        let row = BatchResult::ok("upgrade_ruturo", "upgrade_ruturo/report-run.json".into(), 4)
+            .with_failed_formats(verified.failed.clone());
+        let batch = batch_receipt(
+            "gisagara",
+            "stable",
+            Some(&engine()),
+            4,
+            &["upgrade_ruturo".to_string()],
+            &[row],
+            1_700_000_000_000,
+        )
+        .unwrap();
+        assert_eq!(batch["status"], "completed");
+        assert_eq!(batch["completed"], 1);
+        assert_eq!(batch["failed"], 0);
+        assert_eq!(batch["partial_formats"], 1);
+        assert_eq!(batch["results"][0]["artifacts"], 4);
+        assert_eq!(batch["results"][0]["failed_formats"][0]["output_id"], a0);
+
+        // The format that is lost is not always the last one asked for. A gap
+        // in the MIDDLE of the plan is what used to shift every later artifact
+        // onto the wrong output and refuse the whole run as invalid, and it is
+        // the reason a batch reported `report_result_invalid` rather than the
+        // work it was holding. Lose the workbook and the A3 — one early, one
+        // late — and the three that built must still land on their own
+        // outputs, by name, in order.
+        let mut gapped = document.clone();
+        gapped["artifacts"] = json!([
+            document["artifacts"][0].clone(),
+            document["artifacts"][2].clone(),
+            {"format": a0, "filename": "upgrade_ruturo.a0-landscape-gisagara-cjic.pdf", "path": path("upgrade_ruturo.a0-landscape-gisagara-cjic.pdf"), "bytes": 50, "sha256": "5".repeat(64)},
+        ]);
+        gapped["blockers"] = json!([
+            {"code": "format_build_failed", "message": "workbook writer ran out of memory", "format": "xlsx"},
+            {"code": "printing_execution_disabled", "message": "printing is not enabled on this device", "format": "pdf_a3"},
+        ]);
+        let verified =
+            verify_result(&serde_json::to_vec(&gapped).unwrap(), &plan, &out_dir).unwrap();
+        let placed: Vec<(&str, &str, &str)> = verified
+            .artifacts
+            .iter()
+            .map(|artifact| {
+                (
+                    artifact.format.as_str(),
+                    artifact.output_id.as_str(),
+                    artifact.filename.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            placed,
+            [
+                ("shp", "shp", "upgrade_ruturo.shp.zip"),
+                ("kmz", "kmz", "upgrade_ruturo.kmz"),
+                (a0, a0, "upgrade_ruturo.a0-landscape-gisagara-cjic.pdf"),
+            ]
+        );
+        let lost: Vec<&str> = verified
+            .failed
+            .iter()
+            .map(|failed| failed.output_id.as_str())
+            .collect();
+        assert_eq!(lost, ["xlsx", "pdf_a3"]);
+        // Each one keeps its own code and its own way forward; neither claims
+        // a layout knob, because neither message names one.
+        assert_eq!(verified.failed[0].code, "format_build_failed");
+        assert_eq!(verified.failed[1].code, "printing_execution_disabled");
+        assert!(verified.failed.iter().all(|failed| failed.layout.is_none()));
+        assert!(verified.failed[1].remedy.contains("printing enabled"));
+    }
+
+    /// Every layout shortfall the kernel's own table planner raises is read
+    /// back into the member an operator turns, wherever the engine wrapped
+    /// the message. A failure it did not raise claims no knob.
+    #[test]
+    fn a_layout_shortfall_names_the_member_that_decides_it() {
+        let ceiling = layout_knob(
+            "table schedule has 900 rows; needs 9 panels at the authored type size (maximum 8)",
+        )
+        .expect("a knob");
+        assert_eq!(ceiling.knob, KNOB_OVERFLOW);
+        assert_eq!(ceiling.element_id.as_deref(), Some("schedule"));
+        assert!(ceiling.detail.contains("8-panel ceiling"));
+        assert!(remedy("format_build_failed", Some(&ceiling)).contains("`panels` cannot rise"));
+
+        let type_size = layout_knob(
+            "render a3-portrait: table lv_print_info row height cannot contain its readable type",
+        )
+        .expect("a knob");
+        assert_eq!(type_size.knob, KNOB_ROW_MM);
+        assert_eq!(type_size.element_id.as_deref(), Some("lv_print_info"));
+
+        // The frame refusals name their own table, so the remedy says which
+        // table to lower — and a message from an engine built before they did
+        // still reads, naming no element rather than the wrong one.
+        let frame =
+            layout_knob("table lv_schedule frame needs room for its title, header and one row")
+                .expect("a knob");
+        assert_eq!(frame.knob, KNOB_ROW_MM);
+        assert_eq!(frame.element_id.as_deref(), Some("lv_schedule"));
+        assert!(remedy("format_build_failed", Some(&frame)).contains("`row_mm` on `lv_schedule`"));
+        let older = layout_knob("table frame needs room for its title, header and one row")
+            .expect("a knob");
+        assert_eq!(older.knob, KNOB_ROW_MM);
+        assert_eq!(older.element_id, None);
+
+        // A workbook table is held to one panel whatever `panels` the setup
+        // authors, so the knob it names is the one that can actually move.
+        // Naming `panels` here sent an operator to re-run 86 sheets against a
+        // number that cannot change.
+        let workbook = layout_knob(
+            "table lv_print_info has 212 rows; needs 10 panels at the authored type size \
+             (maximum 1; a workbook table prints in one panel)",
+        )
+        .expect("a knob");
+        assert_eq!(workbook.knob, KNOB_OVERFLOW);
+        assert!(workbook.detail.contains(ONE_PANEL_PRESENTATION));
+        assert!(!remedy("format_build_failed", Some(&workbook)).contains("raise `panels`"));
+
+        // The permitted count is read from `(maximum N)` itself. A bracket in
+        // whatever prefix an engine wraps the message with used to be read as
+        // the ceiling, and told an operator to raise `panels` to the number
+        // the layout already permits.
+        let wrapped = layout_knob(
+            "render a0 (sheet 2 of 3): table lv_schedule has 212 rows; needs 3 panels at the \
+             authored type size (maximum 1)",
+        )
+        .expect("a knob");
+        assert_eq!(wrapped.knob, KNOB_PANELS);
+        assert_eq!(
+            wrapped.detail,
+            "212 rows need 3 panels; the layout permits 1"
+        );
+
+        assert!(layout_knob("Invalid table row geometry.").is_none());
+        assert!(layout_knob("the reporter ran out of memory").is_none());
+        // A failure with no knob still carries a way forward.
+        for code in [
+            "format_not_in_policy",
+            "artifact_stage_failed",
+            "printing_execution_disabled",
+            "format_build_failed",
+        ] {
+            assert!(!remedy(code, None).is_empty());
+        }
+        // The exact refusal `printing::table_rows::plan` writes is the one
+        // read here; if that wording moves, this fails rather than a batch.
+        let raised = crate::printing::table_rows::plan(
+            "lv_schedule",
+            212,
+            99.,
+            7.,
+            Some(4.),
+            1,
+            false,
+            crate::printing::TableOverflow::Error,
+        )
+        .unwrap_err();
+        let knob = layout_knob(&raised).expect("the planner's own message is readable");
+        assert_eq!(knob.element_id.as_deref(), Some("lv_schedule"));
+        assert_eq!(knob.knob, KNOB_PANELS);
+        // Every shortfall the planner can raise, read back from the words it
+        // actually wrote: the knob it names must be one the operator can turn.
+        let raise = |rows, height: f64, row_mm, panels, styled, overflow| {
+            let message = crate::printing::table_rows::plan(
+                "lv_schedule",
+                rows,
+                height,
+                7.,
+                Some(row_mm),
+                panels,
+                styled,
+                overflow,
+            )
+            .unwrap_err();
+            let knob = layout_knob(&message)
+                .unwrap_or_else(|| panic!("the planner's own message is readable: {message}"));
+            assert_eq!(knob.element_id.as_deref(), Some("lv_schedule"), "{message}");
+            (knob.knob, message)
+        };
+        use crate::printing::TableOverflow;
+        // A workbook section cannot be cut into panels, whatever `panels`
+        // the setup authors — here four.
+        assert_eq!(
+            raise(212, 99., 4., 4, true, TableOverflow::Error).0,
+            KNOB_OVERFLOW
+        );
+        assert_eq!(
+            raise(212, 99., 4., 4, false, TableOverflow::Error).0,
+            KNOB_PANELS
+        );
+        assert_eq!(
+            raise(10, 10., 4., 1, false, TableOverflow::Error).0,
+            KNOB_ROW_MM
+        );
+        assert_eq!(
+            raise(10, 12., 4., 1, false, TableOverflow::TruncateWarn).0,
+            KNOB_ROW_MM
+        );
     }
 
     fn context_layer(id: &str) -> (String, Value) {

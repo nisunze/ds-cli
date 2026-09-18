@@ -1,6 +1,13 @@
 //! Physical table spacing shared by renderer and editor. Automatic row height
 //! may use less padding; it never shrinks authored text. Overflow is explicitly
 //! counted, with one reserved warning row when truncation is allowed.
+/// Why a table's panel ceiling is one whatever the setup authors: a workbook
+/// section keeps its workbook order, so it cannot be cut into panels. The
+/// refusal says so in these words, and [`crate::report_export::layout_knob`]
+/// reads them back, so an operator is never sent to raise a `panels` that
+/// cannot move.
+pub const ONE_PANEL_PRESENTATION: &str = "a workbook table prints in one panel";
+
 #[derive(Debug)]
 pub struct RowPlan {
     pub step_mm: f64,
@@ -44,18 +51,28 @@ pub fn plan(
     let capacity = ((height / step + 1e-9).floor() as usize)
         .checked_sub(2)
         .filter(|n| *n > 0)
-        .ok_or("table frame needs room for its title, header and one row")?;
+        .ok_or_else(|| format!("table {id} frame needs room for its title, header and one row"))?;
     let mut panels = rows.max(1).div_ceil(capacity);
     let mut visible_rows = rows;
     if panels > permitted && overflow == super::TableOverflow::TruncateWarn {
         panels = permitted;
         visible_rows = capacity.saturating_mul(panels).saturating_sub(1);
         if visible_rows == 0 {
-            return Err("Table frame has no room for data and a truncation warning.".into());
+            return Err(format!(
+                "table {id} frame has no room for data and a truncation warning"
+            ));
         }
     }
     if panels > permitted {
-        return Err(format!("table {id} has {rows} rows; needs {panels} panels at the authored type size (maximum {permitted})"));
+        // Say WHY the ceiling is what it is: a workbook table is held to one
+        // panel whatever `panels` the setup authors, and a remedy that names
+        // `panels` there is a dead end.
+        let ceiling = if styled {
+            format!("{permitted}; {ONE_PANEL_PRESENTATION}")
+        } else {
+            permitted.to_string()
+        };
+        return Err(format!("table {id} has {rows} rows; needs {panels} panels at the authored type size (maximum {ceiling})"));
     }
     Ok(RowPlan {
         step_mm: step,

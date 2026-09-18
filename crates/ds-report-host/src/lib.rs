@@ -27,7 +27,7 @@ use ds_command_kernel::printing::table_rows::PrintWarning;
 use ds_command_kernel::report_export::{
     self as decisions, engine_identity, engine_request, plan_transformer_export, run_receipt,
     transformer_document_bytes, typed_failure, verify_result, BatchResult, EngineIdentity,
-    InputReceipt, ResultRefusal, RunReceiptFacts, StagedInputs, VerifiedArtifact,
+    FailedFormat, InputReceipt, ResultRefusal, RunReceiptFacts, StagedInputs, VerifiedArtifact,
     BATCH_RECEIPT_FILE, MAX_RESULT_BYTES, MAX_SEMANTIC_REQUEST_BYTES, RUN_RECEIPT_FILE,
 };
 use ds_command_kernel::report_formats::DesignOutputSelection;
@@ -208,8 +208,10 @@ pub struct RunExtras<'a> {
     pub media_grant: Option<&'a [u8]>,
 }
 
-/// One completed run: the artifacts are on disk under `artifact_dir`, the
-/// receipt beside them.
+/// One run that produced something: the artifacts are on disk under
+/// `artifact_dir`, the receipt beside them. `failed` is empty when every
+/// requested format was produced, and otherwise names each one that was not,
+/// so a partial run's finished work is still delivered and still declared.
 #[derive(Debug, Clone)]
 pub struct RunOutcome {
     pub transformer: String,
@@ -218,6 +220,7 @@ pub struct RunOutcome {
     pub receipt_path: PathBuf,
     pub receipt: Value,
     pub artifacts: Vec<VerifiedArtifact>,
+    pub failed: Vec<FailedFormat>,
     pub warnings: Vec<PrintWarning>,
     pub engine: EngineIdentity,
 }
@@ -732,6 +735,7 @@ pub fn run_transformer_report_with(
         receipt_path,
         receipt,
         artifacts: result.artifacts,
+        failed: result.failed,
         warnings: result.warnings,
         engine: identity_before,
     })
@@ -903,11 +907,14 @@ where
         for (name, outcome) in done_rx {
             match outcome {
                 Ok(run) => {
-                    results.push(BatchResult::ok(
-                        &name,
-                        format!("{}/{}", run.transformer, RUN_RECEIPT_FILE),
-                        run.artifacts.len(),
-                    ));
+                    results.push(
+                        BatchResult::ok(
+                            &name,
+                            format!("{}/{}", run.transformer, RUN_RECEIPT_FILE),
+                            run.artifacts.len(),
+                        )
+                        .with_failed_formats(run.failed.clone()),
+                    );
                     runs.push(run);
                 }
                 Err(failure) => results.push(failure_result(&name, &failure)),
@@ -1146,8 +1153,9 @@ pub(crate) mod tests {
         pub(crate) calls: AtomicUsize,
         concurrent: AtomicUsize,
         peak: AtomicUsize,
-        /// What to do with a transformer: `partial`, `crash`, `tamper`,
-        /// `extra`, `slow`; for a page, `not_svg`, `two_pages`, `oversized`.
+        /// What to do with a transformer: `partial`, `failed`, `crash`,
+        /// `tamper`, `extra`, `slow`; for a page, `not_svg`, `two_pages`,
+        /// `oversized`.
         pub(crate) behaviour: Mutex<BTreeMap<String, &'static str>>,
         /// The media grant bytes the last request named, read from the
         /// staged path, or `None` when the request named no grant.
@@ -1265,6 +1273,11 @@ pub(crate) mod tests {
                     );
                     continue;
                 }
+                // A format the engine could not build writes no file and
+                // declares no artifact: that is what "partial" means on disk.
+                if (behaviour == "partial" && format == "xlsx") || behaviour == "failed" {
+                    continue;
+                }
                 let filename = match format {
                     "shp" => format!("{transformer}.shp.zip"),
                     "xlsx" => format!("{transformer}.xlsx"),
@@ -1290,15 +1303,23 @@ pub(crate) mod tests {
                     summary: "segmentation fault".into(),
                 });
             }
-            let (status, blockers, exit) = if behaviour == "partial" {
-                artifacts.pop();
-                (
+            // `ds-report` exits zero on a partial run — the artifacts it did
+            // build are its answer — and non-zero only when it built nothing.
+            let (status, blockers, exit) = match behaviour {
+                "partial" => (
                     "partial",
-                    json!([{"code": "format_build_failed", "message": "xlsx exceeded memory", "format": "xlsx"}]),
+                    json!([{"code": "format_build_failed", "message": "table lv_schedule has 212 rows; needs 3 panels at the authored type size (maximum 1)", "format": "xlsx"}]),
+                    true,
+                ),
+                "failed" => (
+                    "failed",
+                    json!([
+                        {"code": "format_build_failed", "message": "shp exceeded memory", "format": "shp"},
+                        {"code": "format_build_failed", "message": "xlsx exceeded memory", "format": "xlsx"}
+                    ]),
                     false,
-                )
-            } else {
-                ("completed", json!([]), true)
+                ),
+                _ => ("completed", json!([]), true),
             };
             let document = json!({
                 "task": "export_transformer_report", "status": status, "transformer": transformer,
@@ -1380,6 +1401,107 @@ pub(crate) mod tests {
         )
         .unwrap_err();
         assert_eq!(again.code, CODE_OUTPUT_EXISTS);
+    }
+
+    /// A partial run delivers. The formats that built are placed under the
+    /// output root with their receipt, exactly as a complete run's are, and
+    /// the format that did not is named in the receipt and in the outcome.
+    ///
+    /// This is the whole point: computed artifacts must never stack on the
+    /// compute in a state nothing can read. Either they are declared and
+    /// publishable, or they are named as failed with a reason.
+    #[test]
+    fn a_partial_run_delivers_what_completed_and_declares_what_did_not() {
+        let temp = tempfile::tempdir().unwrap();
+        let out = temp.path().join("out");
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        engine
+            .behaviour
+            .lock()
+            .unwrap()
+            .insert("tx_a".into(), "partial");
+        let outcome = run_transformer_report(
+            &engine,
+            &settings(&receipt, &out, &staging),
+            &inputs("tx_a"),
+        )
+        .unwrap();
+
+        // What built is on disk, verified, beside its receipt — and nothing
+        // else is: no half-written xlsx, no undeclared file.
+        assert_eq!(outcome.artifacts.len(), 1);
+        assert_eq!(outcome.artifacts[0].format, "shp");
+        let mut names: Vec<_> = fs::read_dir(&outcome.artifact_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["report-run.json", "tx_a.shp.zip"]);
+
+        // What did not build is named, with the layout knob that decides it.
+        assert_eq!(outcome.failed.len(), 1);
+        assert_eq!(outcome.failed[0].output_id, "xlsx");
+        assert_eq!(outcome.receipt["status"], "partial");
+        assert_eq!(outcome.receipt["failed_formats"][0]["format"], "xlsx");
+        assert_eq!(
+            outcome.receipt["failed_formats"][0]["layout"]["knob"],
+            "panels"
+        );
+        assert!(!outcome.receipt["failed_formats"][0]["remedy"]
+            .as_str()
+            .unwrap()
+            .is_empty());
+        // Re-running does not duplicate what already succeeded: the delivered
+        // report is declared by content, and a second run into the same root
+        // is refused rather than silently doubling it.
+        let again = run_transformer_report(
+            &engine,
+            &settings(&receipt, &out, &staging),
+            &inputs("tx_a"),
+        )
+        .unwrap_err();
+        assert_eq!(again.code, CODE_OUTPUT_EXISTS);
+        // The same room through the same engine produces the same artifact
+        // identity, so a completed artifact from a partial run is that same
+        // artifact wherever it is delivered again.
+        let fresh = temp.path().join("fresh");
+        let repeat = run_transformer_report(
+            &engine,
+            &settings(&receipt, &fresh, &staging),
+            &inputs("tx_a"),
+        )
+        .unwrap();
+        assert_eq!(repeat.artifacts[0].sha256, outcome.artifacts[0].sha256);
+        assert_eq!(
+            repeat.receipt["room_content_sha256"],
+            outcome.receipt["room_content_sha256"]
+        );
+
+        // In a batch the row stays `ok` — its work is publishable — and the
+        // batch receipt counts it as a run to look into.
+        let batch_out = temp.path().join("batch");
+        let batch = run_batch(
+            &engine,
+            &BatchSettings {
+                run: settings(&receipt, &batch_out, &staging),
+                lane: "stable",
+                concurrency: 1,
+            },
+            &["tx_a".to_string()],
+            |name| Ok(inputs(name)),
+        )
+        .unwrap();
+        assert_eq!(batch.receipt["status"], "completed");
+        assert_eq!(batch.receipt["failed"], 0);
+        assert_eq!(batch.receipt["partial_formats"], 1);
+        assert_eq!(batch.receipt["results"][0]["status"], "ok");
+        assert_eq!(batch.receipt["results"][0]["artifacts"], 1);
+        assert_eq!(
+            batch.receipt["results"][0]["failed_formats"][0]["output_id"],
+            "xlsx"
+        );
     }
 
     #[test]
@@ -1502,7 +1624,7 @@ pub(crate) mod tests {
         let engine = FakeEngine::release();
         {
             let mut behaviour = engine.behaviour.lock().unwrap();
-            behaviour.insert("tx_partial".into(), "partial");
+            behaviour.insert("tx_failed".into(), "failed");
             behaviour.insert("tx_crash".into(), "crash");
             behaviour.insert("tx_tamper".into(), "tamper");
             behaviour.insert("tx_extra".into(), "extra");
@@ -1511,13 +1633,16 @@ pub(crate) mod tests {
             run_transformer_report(&engine, &settings(&receipt, &out, &staging), &inputs(name))
                 .unwrap_err()
         };
-        let partial = run("tx_partial");
-        assert_eq!(partial.code, CODE_EXPORT_BLOCKED);
+        // Nothing completed: the run is still a refusal, with the engine's
+        // own typed blockers.
+        let nothing = run("tx_failed");
+        assert_eq!(nothing.code, CODE_EXPORT_BLOCKED);
         assert_eq!(
-            partial.detail.as_ref().unwrap()["blockers"][0]["code"],
+            nothing.detail.as_ref().unwrap()["blockers"][0]["code"],
             "format_build_failed"
         );
-        assert!(partial.message.contains("xlsx exceeded memory"));
+        assert_eq!(nothing.detail.as_ref().unwrap()["artifacts"], 0);
+        assert!(nothing.message.contains("shp exceeded memory"));
         assert_eq!(run("tx_crash").code, CODE_ENGINE_REFUSED);
         assert_eq!(run("tx_tamper").code, CODE_RESULT_INVALID);
         assert!(run("tx_extra").message.contains("undeclared"));
@@ -1569,7 +1694,7 @@ pub(crate) mod tests {
             .behaviour
             .lock()
             .unwrap()
-            .insert("tx_c".into(), "partial");
+            .insert("tx_c".into(), "failed");
         for name in ["tx_a", "tx_b", "tx_d", "tx_e"] {
             engine.behaviour.lock().unwrap().insert(name.into(), "slow");
         }
