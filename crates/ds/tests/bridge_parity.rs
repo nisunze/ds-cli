@@ -62,7 +62,6 @@ struct App {
     style_line_type: String,
     sync_center: String,
     feedback: String,
-    catalog: String,
     feedback_submit: String,
     solar_seed_client: String,
     solar_seed_pure: String,
@@ -101,7 +100,6 @@ fn app() -> Option<App> {
         style_line_type: read("src/lib/styles/line-type.ts")?,
         sync_center: read("src/lib/desktop/cli-sync-center.ts")?,
         feedback: read("src/lib/desktop/cli-feedback.ts")?,
-        catalog: read("src/lib/desktop/cli-catalog.ts")?,
         feedback_submit: read("src/lib/feedback/submit.ts")?,
         solar_seed_client: read("src/lib/api/solar-seed.ts")?,
         solar_seed_pure: read("src/lib/solar/seed.ts")?,
@@ -2137,7 +2135,22 @@ fn every_feedback_command_has_one_closed_operation_owner() {
 }
 
 #[test]
-fn every_global_catalog_command_has_one_closed_map_independent_owner() {
+fn the_global_catalog_no_longer_travels_through_the_window() {
+    // `ds library global …` governs a GLOBAL catalog: a library release
+    // belongs to the product, not to a project, and never to a window. It
+    // reached the gateway through the paired desktop anyway, which forwarded
+    // the same bodies to the same path — so the commands declared `Available`
+    // and then refused `not_paired` on any machine without a desktop.
+    //
+    // Since 2026-09-18 they call `ds-client-core`'s closed `grid_catalog`
+    // owner directly, so there is no CLI bridge operation left to hold in
+    // parity with a desktop adapter. What replaces this suite's loop is one
+    // level lower: `ds-cli-library` does not depend on `ds-cli-desktop`, which
+    // `lens_core_boundary.rs` pins, so the crate cannot name a bridge
+    // operation at all.
+    //
+    // The desktop's own catalogue adapter stays: the Library screen uses it.
+    // Only the CLI's door is gone.
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
@@ -2147,43 +2160,26 @@ fn every_global_catalog_command_has_one_closed_map_independent_owner() {
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
     );
-    let mut seen = BTreeSet::new();
-    for operation in ds_cli_library::global_catalog::BRIDGE_OPS {
-        assert!(
-            seen.insert(operation.operation),
-            "catalog operation is declared twice: {}",
-            operation.operation
-        );
+    for retired in [
+        "catalog.library.list",
+        "catalog.library.read",
+        "catalog.library.releases",
+        "catalog.example.list",
+        "catalog.example.revisions",
+        "catalog.artifact.upload",
+        "catalog.library.publish",
+        "catalog.example.publish",
+        "catalog.library.publish-prepared",
+        "catalog.example.publish-prepared",
+        "catalog.library.lifecycle",
+        "catalog.example.lifecycle",
+        "catalog.fork-example",
+    ] {
         assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "{} must appear once in the native allowlist",
-            operation.operation
-        );
-        assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
-            1,
-            "{} must have one frontend handler",
-            operation.operation
-        );
-        assert!(
-            app.catalog.contains(&format!("'{}':", operation.operation)),
-            "{} has no typed catalogue adapter contract",
-            operation.operation
-        );
-        for argument in operation.arguments {
-            assert!(
-                app.catalog.contains(&format!("'{argument}'"))
-                    || app.catalog.contains(&format!("\"{argument}\"")),
-                "ds catalogue sends `{argument}` to `{}` but the typed adapter does not accept it",
-                operation.operation
-            );
-        }
-    }
-    for purpose in ["library_asset", "example_project"] {
-        assert!(
-            app.catalog.contains(&format!("'{purpose}'")),
-            "catalogue adapter must admit the backend's `{purpose}` upload purpose"
+            count(allowlist, &format!("\"{retired}\"")),
+            0,
+            "{retired} is still admitted as a CLI bridge operation; `ds library global` \
+             no longer sends it, so the desktop must not keep a door open for it"
         );
     }
 }

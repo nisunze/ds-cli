@@ -53,7 +53,9 @@ enum Layer {
 /// crate may drop to zero and leave, but it may not climb. `ds-cli-survey`
 /// left on the same day: its control plane had already moved to the kernel and
 /// all that remained was an empty `BRIDGE_OPS` const holding the dependency
-/// open.
+/// open. `ds-cli-library` left the same day too, by the other route: its
+/// thirteen governed global-catalog operations were given the headless owner
+/// they always should have had.
 const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds", Layer::Host, 1),
     ("ds-cli-map", Layer::Lens, 4),
@@ -71,8 +73,6 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds-cli-dsgrid", Layer::CorePending, 1),
     // Backlog capture attaches what the window can see.
     ("ds-cli-feedback", Layer::CorePending, 4),
-    // Library seeding reaches the working copy through the application.
-    ("ds-cli-library", Layer::CorePending, 1),
     // Solar runs read the workspace the application holds open.
     ("ds-cli-solar", Layer::CorePending, 2),
     // Diagnostics inspect the live application.

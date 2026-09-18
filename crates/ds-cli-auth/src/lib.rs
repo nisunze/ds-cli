@@ -1837,6 +1837,30 @@ pub fn style_edit(
     })
 }
 
+/// One governed action on the GLOBAL DS Grid library and example catalog.
+///
+/// Global means there is no project to select and none to fence: a library
+/// release belongs to the product, not to a project, so this helper
+/// deliberately does not acquire a project context lease, does not load a
+/// saved selection, and cannot leak one into the request. The authority is the
+/// restored native user; the gateway refuses a write without its own publish
+/// capability.
+///
+/// Until 2026-09-18 these actions travelled through the paired desktop, which
+/// held the same user session and posted the same body to the same path. The
+/// window was never part of the contract, only of the route.
+pub fn grid_catalog(
+    lane_value: &str,
+    command: &ds_client_core::grid_catalog::Command,
+) -> Result<serde_json::Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let _user = require_restore_before_context(&mut client)?;
+    client.grid_catalog(command, now()).map_err(map_client)
+}
+
 pub fn layer_config(lane_value: &str, refresh: bool) -> Result<HeadlessLayerSnapshot, Failure> {
     let lane = Lane::parse(lane_value)?;
     if let Some((mut device, selected)) = restored_device_project(lane)? {

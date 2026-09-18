@@ -1005,10 +1005,12 @@ dependencies = [
 name = "ds-cli-library"
 version = "0.1.0"
 dependencies = [
+ "ds-cli-auth",
  "ds-cli-contract",
- "ds-cli-desktop",
+ "ds-client-core",
  "ds-grid-exchange",
  "ds-grid-model",
+ "ds-sync-runtime",
  "serde_json",
  "sha2",
  "zip",
