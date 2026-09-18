@@ -35,6 +35,7 @@ timestamps and bounded diagnostics.",
     }],
     refusals: crate::NATIVE_WRITE_REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

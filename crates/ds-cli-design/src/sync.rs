@@ -59,6 +59,7 @@ const fn command(
             crate::CONFIRMATION_REQUIRED,
         ],
         reference: None,
+        search: &[],
         requires: Requires::Window,
         availability: crate::paired_availability,
     }

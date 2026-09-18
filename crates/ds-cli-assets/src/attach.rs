@@ -93,6 +93,7 @@ slice, and so is an offline device: the link is a ds-brain write.",
         crate::ASSETS_OFFLINE_WRITE,
     ],
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

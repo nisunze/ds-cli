@@ -88,6 +88,7 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.printing.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -138,6 +139,7 @@ pub static COPY_COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/desktop.printing.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };

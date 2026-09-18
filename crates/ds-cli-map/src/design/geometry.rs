@@ -91,6 +91,7 @@ The layer and id addressed, the geometry type written, and `staged` and \
         },
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

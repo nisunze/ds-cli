@@ -52,6 +52,7 @@ receipt, never raw design features. The project design is not changed.",
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

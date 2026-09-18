@@ -42,6 +42,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: super::export::REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

@@ -70,6 +70,7 @@ and closeout states this project's engine accepts.",
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/work.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

@@ -83,6 +83,7 @@ each with its own `truncated` count.",
         crate::INVALID_MEMBER,
     ],
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

@@ -57,6 +57,7 @@ The project, the `schema`, ordered `definitionIds`, the \
         crate::TOO_MANY,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

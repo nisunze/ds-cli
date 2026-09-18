@@ -159,6 +159,7 @@ refuses, never returning an empty set for a value the project never authored.",
         crate::BACKEND_UNREACHABLE,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

@@ -80,6 +80,7 @@ the exchange report.",
     ],
     refusals: &REFUSALS,
     reference: Some("docs/reference/dsgrid-exchange.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

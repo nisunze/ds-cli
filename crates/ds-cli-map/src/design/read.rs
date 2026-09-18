@@ -89,6 +89,7 @@ it holds unsaved edits, the per-layer feature counts and the total. With \
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

@@ -285,6 +285,7 @@ const fn command(
         examples,
         refusals,
         reference: Some("docs/reference/server.md"),
+        search: &[],
         requires: Requires::Server,
         availability: || {
             if cfg!(target_os = "linux") {
@@ -322,6 +323,7 @@ pub static ENGINE: Command = Command {
         remedy: "rebuild the executable from the pinned engine sources and retry",
     }],
     reference: Some("docs/reference/server.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
@@ -369,6 +371,7 @@ pub static SERVE: Command = Command {
     }],
     refusals: SERVE_REFUSALS,
     reference: Some("docs/reference/server.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || {
         if cfg!(target_os = "linux") {

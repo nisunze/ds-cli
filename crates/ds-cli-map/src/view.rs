@@ -78,6 +78,7 @@ when --limit cut the list.",
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

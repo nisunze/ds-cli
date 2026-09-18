@@ -55,6 +55,7 @@ each sets a truncation flag and reports its full count when cut.",
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/work.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

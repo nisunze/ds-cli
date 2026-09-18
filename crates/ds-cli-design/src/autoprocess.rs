@@ -58,6 +58,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: local,
 };

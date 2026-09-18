@@ -95,6 +95,7 @@ credential.",
         ops::DESCRIPTOR_UNUSABLE,
     ],
     reference: Some("docs/reference/desktop.status.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

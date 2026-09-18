@@ -80,6 +80,7 @@ nothing governed: publishing a revision is `ds dsgrid publish-version`.",
     }],
     refusals: CREATE_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

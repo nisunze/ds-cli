@@ -65,6 +65,7 @@ causes, bounded errors and registry-write failure.",
     }],
     refusals: super::NATIVE_WRITE_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

@@ -50,6 +50,7 @@ pub static TRANSFORMERS: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -108,6 +109,7 @@ pub static PLAN: Command = Command {
     }],
     refusals: &[INVALID],
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

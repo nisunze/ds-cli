@@ -101,6 +101,7 @@ is `ds dsgrid-exchange`'s act, not this one's.",
     }],
     refusals: IMPORT_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

@@ -96,6 +96,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::project::availability,
 };

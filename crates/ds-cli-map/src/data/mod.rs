@@ -114,6 +114,7 @@ pub mod inspect {
         }],
         refusals: &[FILE],
         reference: Some("docs/reference/map.md"),
+        search: &[],
         requires: Requires::Server,
         availability: super::super::layer::local_availability,
     };
@@ -150,6 +151,7 @@ pub mod upload {
         }],
         refusals: &UPLOAD_REFUSALS,
         reference: Some("docs/reference/map.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
@@ -197,6 +199,7 @@ pub mod list {
         }],
         refusals: &UPLOAD_REFUSALS,
         reference: Some("docs/reference/map.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
@@ -250,6 +253,7 @@ pub mod remove {
         }],
         refusals: &UPLOAD_REFUSALS,
         reference: Some("docs/reference/map.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };

@@ -197,6 +197,7 @@ pub static COMMAND: Command = Command {
         DESKTOP_UNSUPPORTED,
     ],
     reference: Some("docs/reference/data.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired_availability,
 };
@@ -227,6 +228,7 @@ pub static LIST_COMMAND: Command = Command {
     ],
     refusals: LIST_REFUSALS,
     reference: Some("docs/reference/data.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -257,6 +259,7 @@ pub static READ_COMMAND: Command = Command {
     ],
     refusals: READ_REFUSALS,
     reference: Some("docs/reference/data.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

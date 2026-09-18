@@ -21,10 +21,11 @@ pub mod elevation;
 pub mod inspect;
 pub mod point_cloud;
 pub mod project_cache;
+pub mod vector;
 
 pub static DOMAIN: Domain = Domain {
     id: "data",
-    summary: "Local data: inspect, convert, and attach governed reference fields.",
+    summary: "Local data: inspect, convert, vector geoprocessing, reference fields.",
     commands: &[
         &inspect::COMMAND,
         &convert::COMMAND,
@@ -38,6 +39,10 @@ pub static DOMAIN: Domain = Domain {
         &city_vectors::COMMAND,
         &project_cache::STATUS_COMMAND,
         &project_cache::SEED_COMMAND,
+        &vector::MEASURE_COMMAND,
+        &vector::BUFFER_COMMAND,
+        &vector::SAMPLE_COMMAND,
+        &vector::INTERSECT_COMMAND,
     ],
 };
 

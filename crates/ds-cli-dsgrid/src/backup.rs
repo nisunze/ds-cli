@@ -58,6 +58,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: None,
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

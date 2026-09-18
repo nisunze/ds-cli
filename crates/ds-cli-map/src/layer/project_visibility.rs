@@ -55,6 +55,7 @@ const fn command(
         examples,
         refusals: super::native::LAYER_VISIBILITY_REFUSALS,
         reference: Some("docs/reference/map.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     }

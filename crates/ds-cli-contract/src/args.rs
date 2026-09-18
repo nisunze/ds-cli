@@ -364,6 +364,7 @@ mod tests {
             remedy: "pass inputs as `--name value`",
         }],
         reference: None,
+        search: &[],
         requires: Requires::Server,
         availability: available,
     };

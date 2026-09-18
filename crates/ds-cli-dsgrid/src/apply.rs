@@ -172,6 +172,7 @@ also returns the new package path, package revision, byte length and SHA-256.",
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

@@ -48,6 +48,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: super::native::LAYER_ORDER_REFUSALS,
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

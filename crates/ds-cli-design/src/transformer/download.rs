@@ -71,6 +71,7 @@ reports staged=false, persisted=false and context_changed=false.",
         super::INVALID_SCOPE,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

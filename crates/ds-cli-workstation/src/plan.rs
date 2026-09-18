@@ -62,6 +62,7 @@ pub static COMMAND: Command = Command {
         crate::PLAN_INVALID,
     ],
     reference: Some("docs/reference/workstation.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::always,
 };

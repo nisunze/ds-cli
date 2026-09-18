@@ -48,6 +48,7 @@ pub static COMMAND: Command = Command {
         AUTH_CONTEXT_MISMATCH,
     ],
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::model::paired_availability,
 };

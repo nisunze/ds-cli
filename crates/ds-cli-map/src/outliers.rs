@@ -114,6 +114,14 @@ were taken against, and the new layer holding the flagged features. Up to \
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[
+        "geoprocessing",
+        "gis",
+        "cleaning",
+        "validity",
+        "quality",
+        "anomaly",
+    ],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

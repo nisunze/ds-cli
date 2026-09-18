@@ -118,6 +118,7 @@ projections not requested and any collection that was truncated.",
         },
     ],
     reference: Some("docs/reference/dsgrid.inspect.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

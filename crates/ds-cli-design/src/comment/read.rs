@@ -57,6 +57,7 @@ whether there is `more` than one page of comments, and rows of `comment`, \
         crate::NOT_PERMITTED,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

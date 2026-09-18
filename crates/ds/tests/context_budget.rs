@@ -353,7 +353,20 @@ fn discovery_indexes_are_cheap_in_json() {
         // Native auth adds one compact domain context line; result count is
         // still capped and command prose remains below this tier. Fast LV
         // adds one more compact Design result to this same fixed projection.
-        1_390,
+        //
+        // 2026-09-18: raised ninety bytes, measured, for ranked search. Two
+        // things grew and neither is prose. Forty-two are the `more` line:
+        // this query has sixty-seven matches and returned ten, and until now
+        // it said so nowhere — an agent read ten rows believing it had read
+        // the surface. Truncation a caller cannot see is the failure this
+        // whole slice exists to end, so search now reports it in `more` like
+        // every other bounded answer, in the fewest words that carry the
+        // count and the flag. The remaining forty-seven are the ten rows
+        // themselves: ranking by where a term was found replaced rows that
+        // merely mentioned the words with the ones named for them, and the
+        // better answers happen to have longer ids. The ten-row cap is
+        // unchanged, and no command's prose reaches this tier.
+        1_480,
     );
 }
 

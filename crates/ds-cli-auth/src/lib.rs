@@ -617,6 +617,7 @@ pub static STATUS_COMMAND: Command = Command {
     }],
     refusals: STATUS_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    search: &[],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -640,6 +641,7 @@ pub static LOGIN_COMMAND: Command = Command {
     }],
     refusals: LOGIN_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    search: &[],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -663,6 +665,7 @@ pub static LOGOUT_COMMAND: Command = Command {
     }],
     refusals: LOGOUT_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    search: &[],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -686,6 +689,7 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     }],
     refusals: PROJECT_LIST_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    search: &[],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -709,6 +713,7 @@ pub static PROJECT_USE_COMMAND: Command = Command {
     }],
     refusals: PROJECT_USE_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    search: &[],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -732,6 +737,7 @@ pub static PROJECT_STATUS_COMMAND: Command = Command {
     }],
     refusals: PROJECT_STATUS_REFUSALS,
     reference: Some("docs/reference/auth.md"),
+    search: &[],
     requires: Requires::Server,
     availability: native_availability,
 };

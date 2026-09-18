@@ -84,6 +84,7 @@ selection could not resolve, and the `committedRevision` the plan moved to.",
     }],
     refusals: super::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

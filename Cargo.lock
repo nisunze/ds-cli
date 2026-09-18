@@ -916,6 +916,7 @@ dependencies = [
  "ds-client-core",
  "ds-columnar",
  "ds-command-kernel",
+ "ds-geo-ops",
  "ds-io",
  "ds-layer-store",
  "ds-project-data",

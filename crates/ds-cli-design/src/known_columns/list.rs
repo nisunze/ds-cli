@@ -37,6 +37,7 @@ pub static COMMAND: Command = Command {
         crate::NOT_PERMITTED,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

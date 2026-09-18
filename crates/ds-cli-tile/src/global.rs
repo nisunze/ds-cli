@@ -74,6 +74,7 @@ pub static CATALOG: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -92,6 +93,7 @@ pub static LIST: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -132,6 +134,7 @@ pub static GENERATE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -158,6 +161,7 @@ pub static STATUS: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -212,7 +216,7 @@ pub static ACCESS: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
-    requires: Requires::Server,
+    search: &[], requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

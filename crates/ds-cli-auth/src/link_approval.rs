@@ -86,6 +86,7 @@ pub static COMMAND: Command = Command {
         RECEIPT_UNREADABLE,
     ],
     reference: Some("docs/contracts/unified-identity.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };

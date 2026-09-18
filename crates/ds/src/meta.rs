@@ -137,6 +137,7 @@ authority, requires, availability, inputs, refusals and examples. The \
         },
     ],
     reference: None,
+    search: &[],
     requires: Requires::Server,
     availability: always,
 };
@@ -359,14 +360,111 @@ fn requires(
     Ok(result)
 }
 
-/// Word-overlap search over ids, summaries and purposes. Deliberately simple
-/// and deliberately shallow: it returns a shortlist to choose from, not an
-/// answer, so precision matters far less than never hiding a real match.
+/// Where a term was found. A hit in a command's own name is evidence of what
+/// the command *is*; a hit deep in a paragraph is evidence it was mentioned.
+/// Ranking by that difference is the whole reason this is not `contains`.
+#[derive(Clone, Copy)]
+enum Field {
+    /// The dotted id and invocation path — what the command is called.
+    Name,
+    /// The declared finding aid: the outside words for this command.
+    Term,
+    /// The one-line summary.
+    Summary,
+    /// The paragraph. A mention, not a name.
+    Purpose,
+}
+
+impl Field {
+    /// The weight of one whole-word hit in this field.
+    const fn weight(self) -> u32 {
+        match self {
+            Self::Name => 100,
+            Self::Term => 90,
+            Self::Summary => 40,
+            Self::Purpose => 10,
+        }
+    }
+
+    /// The weight of a hit that is only a prefix of a longer word — `buffer`
+    /// inside `buffered`. Real, but never worth more than an exact name hit,
+    /// so a stem can surface a command and still not outrank the command
+    /// actually called that.
+    const fn stem_weight(self) -> u32 {
+        self.weight() / 4
+    }
+}
+
+/// Split text into lowercase words. Anything that is not a letter or a digit
+/// separates: `map.layer.add`, `map layer add` and `map-layer-add` are the
+/// same three words, which is what lets an id be searched like prose.
+fn words(text: &str) -> Vec<String> {
+    text.split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// Score one term against one field's words.
+///
+/// A whole word scores full. A word that *starts with* the term scores a
+/// quarter, which is how `buffer` still finds `buffered` without `line`
+/// finding `Link` — `Link` neither equals `line` nor starts with it. That
+/// single distinction is what stopped a search for `line` returning
+/// `assets.attach` ("**Lin**k an asset…") ahead of every real line command.
+fn score_term(term: &str, haystack: &[String], field: Field) -> u32 {
+    let mut best = 0;
+    for word in haystack {
+        let hit = if word == term {
+            field.weight()
+        } else if term.len() >= 4 && word.starts_with(term) {
+            field.stem_weight()
+        } else {
+            0
+        };
+        best = best.max(hit);
+    }
+    best
+}
+
+/// How well one command answers a query, and how many of the query's terms it
+/// accounted for.
+fn score_command(terms: &[String], command: &'static Command) -> (u32, usize) {
+    let name = words(&format!("{} {}", command.id, command.path.join(" ")));
+    let declared = words(&command.search.join(" "));
+    let summary = words(command.summary);
+    let purpose = words(command.purpose);
+
+    let mut total = 0;
+    let mut matched = 0;
+    for term in terms {
+        let best = score_term(term, &name, Field::Name)
+            .max(score_term(term, &declared, Field::Term))
+            .max(score_term(term, &summary, Field::Summary))
+            .max(score_term(term, &purpose, Field::Purpose));
+        if best > 0 {
+            matched += 1;
+            total += best;
+        }
+    }
+    // A command that answers every word of the query is a different kind of
+    // answer from one that answers half of it, however loudly.
+    if matched == terms.len() {
+        total += 50 * matched as u32;
+    }
+    (total, matched)
+}
+
+/// Ranked search over ids, declared terms, summaries and purposes.
+///
+/// It returns a shortlist to choose from, not an answer. What it owes the
+/// caller is that the shortlist's FIRST entry is the one they meant: an agent
+/// that has to read ten rows to find a buffer command has already paid more
+/// context than the search saved.
 fn search(query: &str, limit: &str) -> Result<Value, Failure> {
     let limit: usize = limit.parse().unwrap_or(10).clamp(1, 50);
-    let terms: Vec<String> = query
-        .split_whitespace()
-        .map(|term| term.to_lowercase())
+    let terms: Vec<String> = words(query)
+        .into_iter()
         .filter(|term| term.len() > 1)
         .collect();
 
@@ -377,38 +475,52 @@ fn search(query: &str, limit: &str) -> Result<Value, Failure> {
         );
     }
 
-    let mut scored: Vec<(usize, &'static Command)> = registry::all_commands()
+    let mut scored: Vec<(u32, usize, &'static Command)> = registry::all_commands()
         .into_iter()
         .filter_map(|command| {
-            let haystack =
-                format!("{} {} {}", command.id, command.summary, command.purpose).to_lowercase();
-            let score = terms
-                .iter()
-                .filter(|term| haystack.contains(term.as_str()))
-                .count();
-            (score > 0).then_some((score, command))
+            let (score, matched) = score_command(&terms, command);
+            (score > 0).then_some((score, matched, command))
         })
         .collect();
 
-    // Highest score first, then by id so equal matches are stably ordered.
-    scored.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.id.cmp(right.1.id)));
+    // Best score first, then by id so equal matches are stably ordered.
+    scored.sort_by(|left, right| right.0.cmp(&left.0).then(left.2.id.cmp(right.2.id)));
     let total = scored.len();
     scored.truncate(limit);
 
-    Ok(json!({
+    let mut result = json!({
         "tier": "search",
         "query": query,
         "matched": total,
         "results": scored
             .iter()
-            .map(|(score, command)| json!({
+            .map(|(_, matched, command)| json!({
                 "id": command.id,
                 "summary": command.summary,
-                "terms_matched": score,
+                "terms_matched": matched,
             }))
             .collect::<Vec<_>>(),
         "next": "ds capabilities <command-id>",
-    }))
+    });
+
+    // Nothing found is an answer too, and the worst possible version of it is
+    // an empty list with no next step: that is where an outside agent gives
+    // up on `ds` and installs its own toolchain instead.
+    if total == 0 {
+        result["next"] = json!(
+            "nothing matched; `ds capabilities` lists every domain, and \
+             `ds feedback submit` records a capability that is missing"
+        );
+    } else if total > scored.len() {
+        // Terse on purpose. Every search pays for this line, and what the
+        // caller needs from it is two facts: that the list was cut, and the
+        // flag that uncuts it.
+        result["more"] = json!(format!(
+            "{} not shown; --limit up to 50",
+            total - scored.len()
+        ));
+    }
+    Ok(result)
 }
 
 fn render_capabilities(data: &Value) -> String {
@@ -527,6 +639,7 @@ install status, and shell reach. With --all, every command.",
     ],
     refusals: &[],
     reference: None,
+    search: &[],
     requires: Requires::Server,
     availability: always,
 };
@@ -660,6 +773,7 @@ has to come from the build rather than from a string someone maintains.",
     }],
     refusals: &[],
     reference: None,
+    search: &[],
     requires: Requires::Server,
     availability: always,
 };
@@ -682,4 +796,136 @@ fn render_version(data: &Value) -> String {
         data["target"].as_str().unwrap_or(""),
         data["profile"].as_str().unwrap_or(""),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn top_hit(query: &str) -> Option<&'static str> {
+        let mut scored: Vec<(u32, &'static Command)> = registry::all_commands()
+            .into_iter()
+            .filter_map(|command| {
+                let (score, _) = score_command(&words(query), command);
+                (score > 0).then_some((score, command))
+            })
+            .collect();
+        scored.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.id.cmp(right.1.id)));
+        scored.first().map(|(_, command)| command.id)
+    }
+
+    /// The failure this matcher was rewritten for.
+    ///
+    /// Searching `line` used to return 40 results led by `assets.attach`,
+    /// whose summary begins "**Lin**k an asset…". An outside agent reading
+    /// from the top found link management where it asked for lines, and gave
+    /// up on `ds`. A word is a word: `Link` neither equals `line` nor starts
+    /// with it, so it scores nothing at all now.
+    #[test]
+    fn a_term_does_not_match_inside_an_unrelated_word() {
+        let haystack = words("Link an asset to a task or a DS object.");
+        assert_eq!(score_term("line", &haystack, Field::Summary), 0);
+        assert_eq!(
+            score_term("link", &haystack, Field::Summary),
+            Field::Summary.weight()
+        );
+    }
+
+    /// A stem still finds its word, at a quarter weight, so a command named
+    /// for the term always outranks one that merely inflects it.
+    #[test]
+    fn a_stem_is_found_but_never_outranks_the_real_name() {
+        let inflected = words("buffered corridor");
+        assert_eq!(
+            score_term("buffer", &inflected, Field::Summary),
+            Field::Summary.stem_weight()
+        );
+        assert!(Field::Summary.stem_weight() < Field::Name.weight());
+        // Three letters is noise, not a stem: `map` must not match `mapping
+        // reports` everywhere in the surface.
+        assert_eq!(score_term("lin", &words("linear"), Field::Summary), 0);
+    }
+
+    /// An id hit is evidence of what a command IS. A purpose hit is evidence
+    /// it was mentioned. Ranking has to tell those apart or the shortlist is
+    /// alphabetical noise, which is what it was.
+    #[test]
+    fn where_a_term_was_found_decides_the_order() {
+        assert!(Field::Name.weight() > Field::Summary.weight());
+        assert!(Field::Summary.weight() > Field::Purpose.weight());
+        assert!(Field::Term.weight() > Field::Summary.weight());
+    }
+
+    /// The measured queries an engineer's agent actually typed, each pinned to
+    /// the command it should have found. Before this slice every one of these
+    /// returned nothing, or returned the wrong command first.
+    #[test]
+    fn an_outsiders_words_land_on_the_right_command_first() {
+        for (query, expected) in [
+            ("buffer", "data.vector.buffer"),
+            ("geoprocessing", "data.vector.buffer"),
+            ("intersect", "data.vector.intersect"),
+            ("overlay", "data.vector.intersect"),
+            ("line", "map.line-difference"),
+            ("chainage", "data.vector.sample"),
+            ("crs", "data.convert"),
+            ("shapefile", "data.convert"),
+            ("length", "data.vector.measure"),
+        ] {
+            assert_eq!(
+                top_hit(query),
+                Some(expected),
+                "`ds capabilities --search {query}` must lead with `{expected}`"
+            );
+        }
+    }
+
+    /// A declared term is a finding aid, not a second description. Nothing
+    /// reads these but the matcher, and the one-description rule holds only
+    /// while they stay words.
+    #[test]
+    fn declared_search_terms_are_words_not_prose() {
+        for command in registry::all_commands() {
+            let mut seen: Vec<&str> = Vec::new();
+            for term in command.search {
+                assert!(
+                    term.len() >= 2 && term.len() <= 24,
+                    "`{}` declares `{term}`; a search term is a word, not a sentence",
+                    command.id
+                );
+                assert!(
+                    *term == term.to_lowercase(),
+                    "`{}` declares `{term}`; search terms are lowercase",
+                    command.id
+                );
+                assert!(
+                    term.split_whitespace().count() <= 2,
+                    "`{}` declares `{term}`; at most two words per term",
+                    command.id
+                );
+                assert!(
+                    !seen.contains(term),
+                    "`{}` declares `{term}` twice",
+                    command.id
+                );
+                seen.push(term);
+            }
+        }
+    }
+
+    /// Terms that only repeat what the id or summary already says cost bytes
+    /// and buy nothing. The field is for the words we did NOT choose.
+    #[test]
+    fn a_declared_term_says_something_the_command_does_not_already_say() {
+        for command in registry::all_commands() {
+            let own = words(&format!("{} {}", command.id, command.summary));
+            for term in command.search {
+                assert!(
+                    !own.contains(&term.to_string()),
+                    "`{}` declares `{term}`, which its id or summary already says",
+                    command.id
+                );
+            }
+        }
+    }
 }

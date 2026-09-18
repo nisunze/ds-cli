@@ -83,6 +83,7 @@ publication or mutation authority and does not contact the desktop or network.",
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability,
 };

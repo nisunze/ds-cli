@@ -97,6 +97,7 @@ transformer's files and combined atlas/joined pages at archive root.",
     ],
     refusals: ALL_REFUSALS,
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

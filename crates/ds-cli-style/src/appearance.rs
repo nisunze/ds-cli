@@ -155,6 +155,7 @@ the fallback when size already carries the second dimension. Icon overlap change
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
@@ -204,6 +205,7 @@ Flat colour or icon replaces a field-driven primary expression; plan first. Icon
         }],
         refusals: crate::native::PUBLISH_REFUSALS,
         reference: Some("docs/reference/style.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };

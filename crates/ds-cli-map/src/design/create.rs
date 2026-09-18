@@ -126,6 +126,7 @@ and `persisted` separately.",
         crate::INVALID_PAIR,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

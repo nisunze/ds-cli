@@ -155,6 +155,7 @@ with their formats and suffixes, the `papers` of the named printouts, \
     }],
     refusals: CONFIG_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -190,6 +191,7 @@ outputs it resolves to and their placements, and `saved`.",
     }],
     refusals: WRITE_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

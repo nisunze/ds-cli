@@ -109,6 +109,7 @@ the `committedRevision`, and any `warnings`.",
         TOO_MANY_ASSIGNEES,
     ],
     reference: Some("docs/reference/work.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

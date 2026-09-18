@@ -83,6 +83,7 @@ pub static COMMAND: Command = Command {
         crate::UNREADABLE,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

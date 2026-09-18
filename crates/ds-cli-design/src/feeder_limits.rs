@@ -112,6 +112,7 @@ const fn command(
         examples: &[],
         refusals: REFUSALS,
         reference: Some("docs/reference/design.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     }

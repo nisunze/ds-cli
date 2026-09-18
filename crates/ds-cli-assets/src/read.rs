@@ -81,6 +81,7 @@ The `path` written, its `bytes` and `digest` (sha256), and the `asset_id` and \
         crate::INVALID_MEMBER,
     ],
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

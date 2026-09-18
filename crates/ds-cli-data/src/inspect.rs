@@ -46,6 +46,16 @@ source that already carries geometry. Converted GeoParquet returns its exact foo
     }],
     refusals: &[crate::UNREADABLE, crate::UNSUPPORTED],
     reference: Some("docs/reference/data.md"),
+    search: &[
+        "crs",
+        "schema",
+        "fields",
+        "shapefile",
+        "kml",
+        "kmz",
+        "preview",
+        "profile",
+    ],
     requires: Requires::Server,
     availability: crate::available,
 };

@@ -78,6 +78,7 @@ publish. The receipt contains no credential, cache path, or raw city input.",
     ],
     refusals: paired::REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired::available,
 };

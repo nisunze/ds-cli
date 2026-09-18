@@ -90,6 +90,7 @@ matches and `more.scan` reports a saturated owner scan. Each event's \
         crate::UNREADABLE,
     ]),
     reference: Some("docs/reference/sre.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

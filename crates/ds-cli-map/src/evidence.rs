@@ -133,6 +133,7 @@ zoom`, `ds map ui open` and the design commands, then capture it.",
             REPLACE_UNCONFIRMED,
         ],
         reference: Some("docs/reference/map.md"),
+        search: &[],
         requires: Requires::Window,
         availability: crate::paired_availability,
     };

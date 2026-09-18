@@ -43,6 +43,7 @@ would not find this one.",
     ],
     refusals: &[crate::EXECUTABLE_UNRESOLVED, crate::REGISTRATION_UNREADABLE],
     reference: Some("docs/reference/shell.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::always,
 };

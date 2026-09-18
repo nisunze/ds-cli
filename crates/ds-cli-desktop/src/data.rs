@@ -107,6 +107,7 @@ pub static STATUS_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -126,6 +127,7 @@ pub static CATALOG_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -145,6 +147,7 @@ pub static PUBLISH_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -164,6 +167,7 @@ pub static INSTALL_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -183,6 +187,7 @@ pub static STORAGE_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -202,6 +207,7 @@ pub static REMOVE_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };

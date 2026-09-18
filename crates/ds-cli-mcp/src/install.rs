@@ -295,6 +295,7 @@ siblings, and refuses conflicts. It never writes workspace configuration.",
         },
     ],
     reference: Some("docs/reference/mcp.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::always,
 };

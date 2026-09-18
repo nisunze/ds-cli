@@ -78,6 +78,7 @@ for `ds style` once it is ready.",
         crate::ASSET_NOT_GEOGRAPHIC,
     ],
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

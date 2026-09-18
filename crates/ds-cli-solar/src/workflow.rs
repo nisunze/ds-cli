@@ -157,6 +157,7 @@ pub static RESULTS_READ_COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::project::availability,
 };
@@ -183,6 +184,7 @@ pub static SYNC_STATUS_COMMAND: Command = Command {
     }],
     refusals: paired::REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired::available,
 };
@@ -209,6 +211,7 @@ pub static PORTFOLIO_LIST_COMMAND: Command = Command {
     }],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -243,6 +246,7 @@ pub static PORTFOLIO_ANALYSIS_COMMAND: Command = Command {
     }],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -281,6 +285,7 @@ pub static PORTFOLIO_READ_COMMAND: Command = Command {
     ],
     refusals: PORTFOLIO_READ_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired::available,
 };
@@ -314,6 +319,7 @@ pub static FINAL_IMPORT_COMMAND: Command = Command {
     }],
     refusals: paired::REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired::available,
 };
@@ -341,6 +347,7 @@ pub static FINAL_SUBMIT_COMMAND: Command = Command {
     }],
     refusals: paired::REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired::available,
 };

@@ -30,6 +30,7 @@ pub static COMMAND: Command = Command {
         remedy: "use a catalogue emitted by the governed library service",
     }],
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

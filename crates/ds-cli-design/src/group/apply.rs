@@ -76,6 +76,7 @@ outstanding worklist exactly. Never infer model behavior from the definition id.
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

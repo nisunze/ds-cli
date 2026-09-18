@@ -224,6 +224,7 @@ copy no longer says what that exact template version says.",
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

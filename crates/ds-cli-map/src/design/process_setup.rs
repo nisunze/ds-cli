@@ -209,6 +209,7 @@ inside DS GridDesign. No design features or cloud data are changed.",
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

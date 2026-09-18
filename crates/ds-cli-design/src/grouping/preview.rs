@@ -29,6 +29,7 @@ pub static COMMAND: Command = Command {
         crate::TOO_MANY,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

@@ -104,6 +104,7 @@ rows the read considered, and `truncated` when a scan bound stopped it early.",
         crate::UNKNOWN_FOLDER,
     ],
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

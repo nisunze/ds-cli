@@ -36,6 +36,7 @@ Idempotent. The desktop uninstaller runs this before removing files.",
         crate::REGISTRATION_UNWRITABLE,
     ],
     reference: Some("docs/reference/shell.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::always,
 };

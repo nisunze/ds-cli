@@ -35,6 +35,7 @@ false`, `wouldDispatch`, `reason`, the status used for the decision, and \
     }],
     refusals: crate::NATIVE_PLAN_REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

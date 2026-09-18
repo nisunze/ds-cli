@@ -58,6 +58,7 @@ answers with an empty catalogue rather than a refusal.",
     }],
     refusals: crate::model::workspace::REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

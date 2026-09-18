@@ -62,6 +62,7 @@ reference tiles. This is the catalogue `ds tile remove` takes ids from.",
     }],
     refusals: crate::NATIVE_LIST_REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

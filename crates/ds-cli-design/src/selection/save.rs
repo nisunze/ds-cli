@@ -84,6 +84,7 @@ noise on every later read.",
     }],
     refusals: super::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

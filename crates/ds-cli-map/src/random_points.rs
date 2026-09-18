@@ -95,6 +95,13 @@ were skipped for lack of a buffer. With elevation, how many points had none.",
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[
+        "geoprocessing",
+        "gis",
+        "sampling",
+        "monte-carlo",
+        "synthetic",
+    ],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

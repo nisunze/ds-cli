@@ -111,6 +111,7 @@ The project, the `taskId`, `applied`, the `committedRevision`, the list of \
         },
     ],
     reference: Some("docs/reference/work.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

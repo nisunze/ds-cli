@@ -76,6 +76,7 @@ original sighting wrote down, and how many times the gap was seen.",
         crate::NOT_PERMITTED,
     ]),
     reference: Some("docs/reference/feedback.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

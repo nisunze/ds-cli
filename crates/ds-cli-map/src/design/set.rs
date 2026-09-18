@@ -121,6 +121,7 @@ types are preserved; `staged` and `persisted` remain separate.",
         },
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

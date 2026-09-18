@@ -79,6 +79,7 @@ pub static PREVIEW: Command = Command {
         crate::CONFLICT,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };
@@ -110,6 +111,7 @@ pub static APPLY: Command = Command {
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

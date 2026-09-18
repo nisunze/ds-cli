@@ -63,6 +63,7 @@ pub static START_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired::available,
 };
@@ -88,6 +89,7 @@ pub static STATUS_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired::available,
 };
@@ -113,6 +115,7 @@ pub static CANCEL_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired::available,
 };

@@ -90,7 +90,7 @@ pub static COMMAND: Command = Command {
         crate::RESULT_ENCODING_REFUSAL,
     ],
     reference: Some("docs/reference/pls.md"),
-    requires: Requires::Server,
+    search: &[], requires: Requires::Server,
     availability: || Availability::Available,
 };
 

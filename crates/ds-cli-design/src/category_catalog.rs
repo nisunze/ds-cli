@@ -50,6 +50,7 @@ pub static READ: Command = Command {
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -116,6 +117,7 @@ pub static METER: Command = Command {
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -134,6 +136,7 @@ pub static ALIAS_SET: Command = Command {
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -173,6 +176,7 @@ pub static CUSTOMER_RETIRE: Command = Command {
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -192,6 +196,7 @@ pub static CUSTOMER_RETIRE_UNNAMED: Command = Command {
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -215,6 +220,7 @@ pub static CUSTOMER_RENAME: Command = Command {
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -243,6 +249,7 @@ pub static CUSTOMER_UNBIND: Command = Command {
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -262,6 +269,7 @@ pub static METER_DEFAULT: Command = Command {
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

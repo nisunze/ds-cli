@@ -28,7 +28,7 @@ pub static COMMAND: Command = Command {
         remedy: "use project/download with at most 100 rows and known event IDs",
     }],
     reference: None,
-    requires: Requires::Server,
+    search: &[], requires: Requires::Server,
     availability: || Availability::Available,
 };
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

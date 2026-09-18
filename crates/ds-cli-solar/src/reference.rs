@@ -31,6 +31,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: crate::seed::REFERENCE_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

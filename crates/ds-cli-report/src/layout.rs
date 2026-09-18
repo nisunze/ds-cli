@@ -84,6 +84,7 @@ pub static NEW: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: local,
 };
@@ -111,6 +112,7 @@ pub static EDIT: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: local,
 };
@@ -133,6 +135,7 @@ pub static SCHEMA: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: local,
 };
@@ -187,6 +190,7 @@ pub static CONTEXT: Command = Command {
     ],
     refusals: CONTEXT_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: local,
 };
@@ -238,6 +242,7 @@ pub static SESSION: Command = Command {
     ],
     refusals: SESSION_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: local,
 };
@@ -321,6 +326,7 @@ pub static ADD: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: local,
 };
@@ -369,6 +375,7 @@ pub static STYLE_REF_COMMAND: Command = Command {
     }],
     refusals: STYLE_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: local,
 };
@@ -444,6 +451,7 @@ pub static PENS: Command = Command {
     ],
     refusals: PENS_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: local,
 };
@@ -490,6 +498,7 @@ pub static RENDER: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: reporter,
 };
@@ -512,6 +521,7 @@ pub static LIST: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -538,6 +548,7 @@ pub static GET: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -560,6 +571,7 @@ pub static SAVE: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -578,6 +590,7 @@ pub static CREATE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -596,6 +609,7 @@ pub static UPDATE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -624,6 +638,7 @@ pub static DELETE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -642,6 +657,7 @@ pub static COPY: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

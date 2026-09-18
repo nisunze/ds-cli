@@ -56,6 +56,7 @@ transports feature rows. Nothing is staged into transformer design data.",
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

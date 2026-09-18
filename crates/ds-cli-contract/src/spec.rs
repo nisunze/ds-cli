@@ -610,6 +610,20 @@ pub struct Command {
     /// One line. Appears in domain help and in search results. Keep under 70
     /// characters — every domain index pays for it.
     pub summary: &'static str,
+    /// The words a stranger would type looking for this command, when they
+    /// are not already in its id or summary.
+    ///
+    /// This is a *finding aid*, not a second description: `ds capabilities
+    /// --search` matches these terms and nothing else reads them, so they
+    /// cannot drift from behaviour the way a duplicated sentence would. Each
+    /// entry is one lowercase word or a short phrase — the outside name for
+    /// what this does (`geoprocessing`, `crs`), a synonym we did not pick
+    /// (`overlay` for an intersection), or the tool another stack calls it
+    /// (`st_buffer`). `contract.rs` holds this shape.
+    ///
+    /// Empty is the right answer for a command whose own words already say
+    /// what it is.
+    pub search: &'static [&'static str],
     /// A short paragraph. Command-level help only; never in an index.
     pub purpose: &'static str,
     pub effect: Effect,
@@ -705,6 +719,7 @@ mod tests {
             examples: &[],
             refusals: &[],
             reference: None,
+            search: &[],
             requires: Requires::Server,
             availability: available,
         }

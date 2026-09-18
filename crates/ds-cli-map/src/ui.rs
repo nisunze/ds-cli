@@ -115,7 +115,7 @@ published. Navigate with `ds map zoom`; edit with `ds map design set`.",
             REF_NOT_SEMANTIC,
         ],
         reference: Some("docs/reference/map.md"),
-        requires: Requires::Window,
+        search: &[], requires: Requires::Window,
         availability: crate::paired_availability,
     };
 

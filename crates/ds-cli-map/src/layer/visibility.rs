@@ -31,6 +31,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[super::LOCAL_STORE_REFUSAL, crate::INVALID_NUMBER],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Server,
     availability: super::local_availability,
 };

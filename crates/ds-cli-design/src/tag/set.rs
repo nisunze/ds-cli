@@ -120,6 +120,7 @@ edit of the object-level one.",
         crate::BACKEND_UNREACHABLE,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

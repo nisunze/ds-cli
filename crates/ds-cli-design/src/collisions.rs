@@ -64,6 +64,7 @@ detection run would cover.",
     ],
     refusals: super::transformer::status::REFUSALS_READ,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

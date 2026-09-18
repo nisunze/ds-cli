@@ -61,6 +61,14 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
          caught at the boundary, not situations a caller can create",
     ),
     (
+        "vector_refusal_undeclared",
+        "raised only if `ds-command-kernel`'s vector_ops refuses with a code \
+         no `ds data vector` command declares. The match in \
+         ds-cli-data/src/vector.rs is what makes the two sets one set; this \
+         is its fallback arm, and reaching it is a defect in ds caught at the \
+         crate edge rather than a situation a caller can create",
+    ),
+    (
         "undeclared_bridge_argument",
         "raised only if a ds map handler builds an argument key its own \
          BridgeOp does not declare — a defect in ds caught at the boundary, \

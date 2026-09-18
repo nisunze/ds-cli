@@ -41,6 +41,7 @@ spent: `download_url_expires_at`, `download_url_seconds_remaining`, \
     }],
     refusals: super::NATIVE_READ_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

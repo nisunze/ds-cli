@@ -28,6 +28,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[crate::COMPONENT_UNKNOWN],
     reference: Some("docs/reference/workstation.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::always,
 };

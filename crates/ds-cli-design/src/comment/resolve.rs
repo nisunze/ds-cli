@@ -58,6 +58,7 @@ resolve refuses the resolve rather than closing a conversation that just moved."
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

@@ -29,6 +29,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
