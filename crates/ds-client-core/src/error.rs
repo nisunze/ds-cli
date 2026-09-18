@@ -16,6 +16,14 @@ pub enum ErrorKind {
     Transient,
     UnreadableResponse,
     DurableState,
+    /// The deployment this lane talks to does not expose the route at all.
+    ///
+    /// Distinct from `ResourceNotFound`, which is a fact about the caller's
+    /// project or object. A gateway that has never been taught a path answers
+    /// the same 404 as a backend that looked and found nothing, and collapsing
+    /// the two told every operator of the three unrouted Survey read paths
+    /// that their project or form was invisible to them.
+    RouteUnavailable,
 }
 
 /// Shared authority refusal returned by each governed Survey read route.

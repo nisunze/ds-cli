@@ -125,10 +125,16 @@ struct FormWire {
     settings_revision: u64,
     #[serde(default)]
     geometry_type: Option<String>,
+    // ds-brain marshals a form that carries no drawing configuration and no
+    // metadata map as an explicit `null`, not as an absent key, and serde's
+    // `default` only covers the absent key. Declaring these optional is what
+    // lets the real activation payload decode: nine of the thirteen forms on
+    // zimebnlu_edcl2 send `"drawing_settings": null`, and every one of them
+    // used to fail the whole snapshot with `auth_response_unreadable`.
     #[serde(default)]
-    drawing_settings: DrawingSettingsWire,
+    drawing_settings: Option<DrawingSettingsWire>,
     #[serde(default)]
-    metadata: MetadataWire,
+    metadata: Option<MetadataWire>,
 }
 
 #[derive(Default, Deserialize)]
@@ -190,7 +196,9 @@ pub(crate) fn decode_project_forms(
         {
             return Err(unreadable());
         }
-        let geometry_type = form.geometry_type.or(form.drawing_settings.geometry_type);
+        let geometry_type = form
+            .geometry_type
+            .or(form.drawing_settings.unwrap_or_default().geometry_type);
         if geometry_type
             .as_deref()
             .is_some_and(|value| !bounded(value, MAX_GEOMETRY_TYPE_CHARS))
@@ -201,7 +209,7 @@ pub(crate) fn decode_project_forms(
             slug: form.slug,
             display_name: form.display_name,
             enabled: form.enabled,
-            available: !form.metadata.unavailable,
+            available: !form.metadata.unwrap_or_default().unavailable,
             settings_revision: form.settings_revision,
             geometry_type,
         });
