@@ -420,6 +420,47 @@ fn an_unauthorized_identity_moves_no_byte_and_advances_nothing() {
     );
 }
 
+/// The other way a row can end a run uncovered: the request SUCCEEDED and the
+/// authority issued a grant for a scope nobody asked about. The row must say
+/// that, not "none was asked for on this run" — which would put a second
+/// guess exactly where the first one was removed.
+#[test]
+fn a_grant_issued_for_another_scope_is_not_reported_as_no_request() {
+    let harness = Harness::new();
+    let row = local_row(b"first report");
+    {
+        let mut world = fakes::lock(&harness.world);
+        world.issue_release = Some("ds-network-reporter@9.9.9+beef".into());
+    }
+
+    let outcome = harness.run(vec![row], sync::Trigger::Startup);
+
+    assert_eq!(
+        outcomes(&outcome),
+        vec!["open_grant:granted", "upload:grant_open_failed"],
+        "the door answered, and what it answered does not cover this row",
+    );
+    let upload = outcome
+        .receipts
+        .iter()
+        .find(|receipt| receipt.action == "upload")
+        .expect("an upload receipt");
+    let detail = upload.detail.clone().expect("the row states a cause");
+    assert!(
+        detail.contains("ds-network-reporter@9.9.9+beef") && detail.contains("issued instead"),
+        "the row must name the scope that was issued: {detail}"
+    );
+    assert!(
+        !detail.contains("none was asked for"),
+        "a request WAS made this run: {detail}"
+    );
+    let world = fakes::lock(&harness.world);
+    assert_eq!(
+        world.commits, 0,
+        "nothing publishes under a grant for another release"
+    );
+}
+
 #[test]
 fn one_failed_resource_grant_does_not_refuse_other_uploads_in_the_batch() {
     let harness = Harness::new();

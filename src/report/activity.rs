@@ -254,7 +254,12 @@ pub fn project(snapshot: &Snapshot) -> Result<View<'_>, String> {
                     .last_attempt_at_ms
                     .map_or(receipt.at_ms, |at| at.max(receipt.at_ms)),
             );
-            if matches!(
+            // A publication held for want of grant scope is an issue whatever
+            // name it now carries. These rows used to arrive as `failed`; they
+            // state their own cause since, and the outbox must still count
+            // them or the one surface that says why nothing publishes goes
+            // quiet exactly when it matters.
+            if (matches!(
                 receipt.outcome.as_str(),
                 "failed"
                     | "refused"
@@ -262,9 +267,10 @@ pub fn project(snapshot: &Snapshot) -> Result<View<'_>, String> {
                     | "error"
                     | "retry_deferred"
                     | "engine_build_not_admitted"
-            ) && outbox
-                .latest_issue_at_ms
-                .is_none_or(|at| receipt.at_ms >= at)
+            ) || crate::sync::is_scope_problem(receipt.outcome.as_str()))
+                && outbox
+                    .latest_issue_at_ms
+                    .is_none_or(|at| receipt.at_ms >= at)
             {
                 outbox.latest_issue_at_ms = Some(receipt.at_ms);
                 outbox.latest_issue = Some(receipt.detail.as_deref().unwrap_or(&receipt.outcome));
@@ -454,5 +460,35 @@ mod tests {
         assert_eq!(v.outbox.latest_issue, Some("link unavailable"));
         s.receipts[0].scope.project = "project_b".into();
         assert!(project(&s).is_err());
+    }
+
+    /// A publication held for want of grant scope states its own cause on the
+    /// row now, instead of the flat `failed` this view used to match on. Every
+    /// one of those codes has to remain an outbox issue, or the panel that
+    /// tells an operator why nothing publishes says nothing at all — which is
+    /// the fault, not the fix.
+    #[test]
+    fn a_row_that_names_its_own_grant_problem_is_still_an_outbox_issue() {
+        for code in crate::sync::SCOPE_PROBLEMS {
+            let mut s = snapshot();
+            s.receipts = serde_json::from_value(json!([{
+                "receipt_id": "attempt1",
+                "scope": {"kind": "project", "project": "project_a"},
+                "action": "upload",
+                "identity": {"engine": "network_reporter"},
+                "outcome": code,
+                "detail": "the signer certificate request timed out",
+                "at_ms": 200000
+            }]))
+            .unwrap();
+            let v = project(&s).unwrap();
+            assert_eq!(v.outbox.recorded_attempts, 1, "for {code}");
+            assert_eq!(
+                v.outbox.latest_issue,
+                Some("the signer certificate request timed out"),
+                "{code} must reach the operator as the issue it is"
+            );
+            assert_eq!(v.outbox.latest_issue_at_ms, Some(200000), "for {code}");
+        }
     }
 }

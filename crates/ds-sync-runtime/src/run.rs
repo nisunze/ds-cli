@@ -427,6 +427,25 @@ fn open_grants(
         };
         match host.open_work(&request) {
             Ok(grant) => {
+                // A grant that came back for a different scope than the one
+                // asked for covers nothing here. Recording it keeps the row
+                // honest: without this the row would say no request was made
+                // this run, which would be a second guess in place of the
+                // first one this slice removed.
+                if grant.scope() != scope {
+                    failures.insert(
+                        scope.clone(),
+                        format!(
+                            "a grant for {} of {} was issued instead, which covers no publication of this one",
+                            grant.engine_release,
+                            if grant.resource.is_empty() {
+                                "no named resource"
+                            } else {
+                                &grant.resource
+                            }
+                        ),
+                    );
+                }
                 let mut receipt = Receipt::new("open_grant", "granted").about(&row.identity);
                 receipt.grant_id = Some(grant.grant_id.clone());
                 grants.retain(|held| held.scope() != grant.scope());

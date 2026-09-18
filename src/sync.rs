@@ -542,6 +542,29 @@ pub fn scope_problem(
     )
 }
 
+/// Every code this module can put on a held publication, as one closed
+/// vocabulary.
+///
+/// It is public because a reader that switches on these codes — the Activity
+/// outbox does — must not have to restate the list and then silently fall
+/// behind it. A row that gained the ability to name its own cause must not
+/// thereby become a row no reader classifies.
+pub const SCOPE_PROBLEMS: [&str; 7] = [
+    "no_grant",
+    "grant_expired",
+    "grant_engine_missing",
+    "grant_resource_missing",
+    "grant_project_mismatch",
+    "grant_install_mismatch",
+    "grant_open_failed",
+];
+
+/// Whether this receipt outcome is one of [`SCOPE_PROBLEMS`]: a publication
+/// held for want of grant scope, whatever the reason.
+pub fn is_scope_problem(code: &str) -> bool {
+    SCOPE_PROBLEMS.contains(&code)
+}
+
 /// What to do about a scope problem, naming an action rather than a state.
 ///
 /// A refusal that says only what is wrong leaves the operator to guess what to
@@ -1162,6 +1185,50 @@ mod tests {
             scope_remedy("no_grant"),
             "a failed request and an absent grant are not the same row"
         );
+    }
+
+    /// The vocabulary is closed and every member of it is answerable. A code
+    /// that a row can carry but no reader recognises is how the cause reaches
+    /// the receipt and still never reaches the operator.
+    #[test]
+    fn every_code_a_held_row_can_carry_is_in_the_closed_vocabulary() {
+        let scope = scope_key(REL, "TX-1");
+        for grants in [
+            vec![],
+            vec![grant_for(1, "TX-1")],
+            vec![grant_for(10_000_000, "TX-9")],
+            {
+                let mut g = grant_for(10_000_000, "TX-1");
+                g.engines[0].release = "ds-network-reporter@9.9.9+beef".into();
+                vec![g]
+            },
+            {
+                let mut g = grant_for(10_000_000, "TX-1");
+                g.project = "another".into();
+                vec![g]
+            },
+            {
+                let mut g = grant_for(10_000_000, "TX-1");
+                g.install_id = "another-install".into();
+                vec![g]
+            },
+        ] {
+            let problem = scope_problem("p", "install-1", 10_000, &grants, &scope)
+                .expect("none of these cover the scope");
+            assert!(
+                is_scope_problem(problem),
+                "{problem} is emitted but not declared"
+            );
+        }
+        assert!(is_scope_problem("grant_open_failed"));
+        assert!(!is_scope_problem("published"));
+        let fallback = scope_remedy("something_else_entirely");
+        let mut remedies: BTreeSet<&str> = BTreeSet::new();
+        for code in SCOPE_PROBLEMS {
+            let remedy = scope_remedy(code);
+            assert_ne!(remedy, fallback, "{code} has no remedy of its own");
+            assert!(remedies.insert(remedy), "{code} restates another remedy");
+        }
     }
 
     #[test]

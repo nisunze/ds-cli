@@ -58,6 +58,10 @@ pub struct FakeWorld {
     /// Refuse only the grant for this resource. This exercises independent
     /// resource authority inside one concurrent project batch.
     pub refuse_open_resource: Option<String>,
+    /// Mint the grant for this engine release instead of the one asked for.
+    /// A door that answers about a scope nobody asked about is the one way a
+    /// row can be uncovered after a request that reported success.
+    pub issue_release: Option<String>,
     pub refuse_publish: Option<String>,
     pub refuse_list: Option<String>,
     /// Answer every publish with this state instead of the two-phase flow.
@@ -86,6 +90,7 @@ impl Default for FakeWorld {
             grant_expires_at: "2100-01-01T00:00:00Z".to_string(),
             refuse_open: None,
             refuse_open_resource: None,
+            issue_release: None,
             refuse_publish: None,
             refuse_list: None,
             publish_state: None,
@@ -239,11 +244,14 @@ impl Gateway for FakeGateway {
                 }
                 world.grants_minted += 1;
                 let engine = body["engine"].as_str().unwrap_or_default();
-                let release = body["engine_release"].as_str().unwrap_or_default();
+                let release = world
+                    .issue_release
+                    .clone()
+                    .unwrap_or_else(|| body["engine_release"].as_str().unwrap_or_default().into());
                 let engines: Vec<Value> = world
                     .admitted_builds
                     .iter()
-                    .map(|digest| json!({"name": engine, "release": release, "manifest_sha256": digest}))
+                    .map(|digest| json!({"name": engine, "release": &release, "manifest_sha256": digest}))
                     .collect();
                 Ok(json!({
                     "grant": {
