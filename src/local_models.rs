@@ -236,7 +236,11 @@ pub enum Op {
         model_revision: u64,
         bytes: u64,
         sha256: String,
-        created_at: String,
+        /// RFC3339. `None` asks the host to read its own clock once, before
+        /// anything is decided, the way `ds-layer-store` already does for a
+        /// prepared local layer — the kernel has no clock and will refuse a
+        /// registration that still carries none.
+        created_at: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         project: Option<ProjectPin>,
         /// Open it as the active model once it is registered. A machine's first
@@ -293,12 +297,14 @@ pub fn evaluate(catalogue: &Catalogue, scope: &Scope, op: Op) -> Result<Outcome,
                     "a local model id is one lowercase path segment of at most 64 characters",
                 );
             }
-            if !bounded(&display_name) || !bounded(&crs) || !bounded(&created_at) {
+            let created_at = created_at.filter(|value| bounded(value));
+            if !bounded(&display_name) || !bounded(&crs) || created_at.is_none() {
                 return refusal(
                     MALFORMED,
                     "a local model needs a bounded name, coordinate system and creation time",
                 );
             }
+            let created_at = created_at.expect("checked above");
             if bytes == 0 {
                 return refusal(MALFORMED, "a local model package cannot be empty");
             }
@@ -383,7 +389,7 @@ mod tests {
             model_revision: 0,
             bytes: 2048,
             sha256: "a".repeat(64),
-            created_at: "2026-09-18T10:00:00Z".into(),
+            created_at: Some("2026-09-18T10:00:00Z".into()),
             project: None,
             activate: false,
         }
@@ -509,6 +515,21 @@ mod tests {
         assert_eq!(
             evaluate(&catalogue, &scope(), op).unwrap_err().code,
             MALFORMED
+        );
+    }
+
+    #[test]
+    fn a_registration_without_the_hosts_clock_is_refused_rather_than_invented() {
+        let mut op = register("m-1", "A");
+        if let Op::Register { created_at, .. } = &mut op {
+            *created_at = None;
+        }
+        assert_eq!(
+            evaluate(&Catalogue::empty(scope()), &scope(), op)
+                .unwrap_err()
+                .code,
+            MALFORMED,
+            "the kernel invented a creation time"
         );
     }
 

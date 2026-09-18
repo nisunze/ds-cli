@@ -167,6 +167,41 @@ fn write_atomic(path: &Path, dir: &Path, bytes: &[u8]) -> Result<(), StoreError>
     Ok(())
 }
 
+/// This host's clock, in the one shape the catalogue keeps.
+fn now_rfc3339() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or_default();
+    // A plain civil-time conversion: the catalogue only needs an instant an
+    // operator can read and sort, and a date library would be a dependency for
+    // one line.
+    let days = (seconds / 86_400) as i64;
+    let time = seconds % 86_400;
+    let (year, month, day) = civil_from_days(days);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        time / 3600,
+        (time % 3600) / 60,
+        time % 60
+    )
+}
+
+/// Howard Hinnant's `civil_from_days`, transcribed. Proleptic Gregorian, which
+/// is what an RFC3339 instant after 1970 needs and all this store ever writes.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
 fn refused(refusal: ds_command_kernel::local_models::Refusal) -> StoreError {
     StoreError::Refused {
         code: refusal.code.to_owned(),
@@ -201,6 +236,35 @@ pub fn execute_at(
             )));
         }
     }
+    // The clock is read once, here, before anything is asked — so the
+    // provisional answer and the authoritative one below are the same question
+    // about the same instant, and the kernel stays clockless.
+    let op = match op {
+        Op::Register {
+            created_at,
+            id,
+            display_name,
+            origin,
+            crs,
+            model_revision,
+            bytes,
+            sha256,
+            project,
+            activate,
+        } => Op::Register {
+            created_at: Some(created_at.unwrap_or_else(now_rfc3339)),
+            id,
+            display_name,
+            origin,
+            crs,
+            model_revision,
+            bytes,
+            sha256,
+            project,
+            activate,
+        },
+        other => other,
+    };
     let registering = matches!(op, Op::Register { .. });
     if registering != package.is_some() {
         return Err(StoreError::Store(
@@ -301,7 +365,7 @@ mod tests {
             model_revision: 0,
             bytes: 4,
             sha256: "c".repeat(64),
-            created_at: "2026-09-18T10:00:00Z".into(),
+            created_at: None,
             project: None,
             activate: false,
         }
@@ -310,8 +374,13 @@ mod tests {
     #[test]
     fn a_registered_package_is_on_disk_before_the_row_that_names_it() {
         let root = tempfile::tempdir().expect("temp root");
-        let outcome = execute_at(root.path(), &scope(), register("m-1", "Feeder A"), Some(b"pkg"))
-            .expect("registers");
+        let outcome = execute_at(
+            root.path(),
+            &scope(),
+            register("m-1", "Feeder A"),
+            Some(b"pkg"),
+        )
+        .expect("registers");
         let dir = scope_dir(root.path(), &scope()).unwrap();
         let package = package_path(&dir, "m-1").unwrap();
         assert!(package.is_file(), "the package was not written");
@@ -348,7 +417,13 @@ mod tests {
     #[test]
     fn a_refusal_leaves_the_store_exactly_as_it_was() {
         let root = tempfile::tempdir().expect("temp root");
-        execute_at(root.path(), &scope(), register("m-1", "Feeder A"), Some(b"pkg")).unwrap();
+        execute_at(
+            root.path(),
+            &scope(),
+            register("m-1", "Feeder A"),
+            Some(b"pkg"),
+        )
+        .unwrap();
         let before = read_at(root.path(), &scope()).unwrap();
 
         let refused = execute_at(
@@ -389,6 +464,21 @@ mod tests {
     }
 
     #[test]
+    fn the_store_reads_the_clock_the_kernel_does_not_have() {
+        let root = tempfile::tempdir().expect("temp root");
+        let outcome = execute_at(root.path(), &scope(), register("m-1", "A"), Some(b"pkg"))
+            .expect("registers");
+        let stamp = &outcome.model.expect("model").created_at;
+        // RFC3339 to the second, which is what the catalogue keeps.
+        assert_eq!(stamp.len(), 20, "{stamp} is not one RFC3339 second");
+        assert!(stamp.ends_with('Z') && stamp.contains('T'));
+        assert!(
+            stamp.starts_with("20"),
+            "{stamp} is not a plausible instant"
+        );
+    }
+
+    #[test]
     fn one_machine_keeps_two_accounts_apart() {
         let root = tempfile::tempdir().expect("temp root");
         let theirs = Scope {
@@ -396,9 +486,21 @@ mod tests {
             uid: "uid-2".into(),
         };
         execute_at(root.path(), &scope(), register("m-1", "Mine"), Some(b"pkg")).unwrap();
-        execute_at(root.path(), &theirs, register("m-1", "Theirs"), Some(b"pkg")).unwrap();
+        execute_at(
+            root.path(),
+            &theirs,
+            register("m-1", "Theirs"),
+            Some(b"pkg"),
+        )
+        .unwrap();
 
-        assert_eq!(read_at(root.path(), &scope()).unwrap().models[0].display_name, "Mine");
-        assert_eq!(read_at(root.path(), &theirs).unwrap().models[0].display_name, "Theirs");
+        assert_eq!(
+            read_at(root.path(), &scope()).unwrap().models[0].display_name,
+            "Mine"
+        );
+        assert_eq!(
+            read_at(root.path(), &theirs).unwrap().models[0].display_name,
+            "Theirs"
+        );
     }
 }
