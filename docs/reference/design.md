@@ -995,3 +995,50 @@ live capabilities for exact flags, limits and refusal remedies.
 For a prepared native Design workspace, `ds design project revisions` lists
 retained content digests and `ds design project compare` compares those exact
 revisions or its head. These are explicitly local, not server vN ordinals.
+
+## Pinned context
+
+A pinned transformer is READ-ONLY CONTEXT: dumb GeoJSON an operator glances at
+while working on something else. It is not editable, not a selection target and
+carries no session. `ds design pinned preview` answers what one costs, on a
+Server, with no browser, using the same kernel decision (`ds.pinned-context/v1`)
+the map executes.
+
+**What to fetch.** `--held` is a JSON array of what a machine already holds —
+`[{name, layers: {class: count}, version, complete}]` — an inventory of counts,
+never payloads. A room the machine holds is reused. A room missing ONE design
+class asks for that class rather than the whole room again; the classes a
+displayable room must carry are `--require`, defaulting to the transformer's
+own `tr` anchor, whose other spellings (`transformer`, `transformers`,
+`transformer_point`) resolve to the same class. A held copy is refetched WHOLE
+only when the project's status register proves its head revision has moved: a
+copy whose own revision is simply unknown is not stale on that basis. A room
+already read whole (`complete: true`) that still lacks a required class does
+not have one on the server either, and is never asked for again. `--force` is
+the operator's Refresh: every pinned room, held or not. `--focus` is the
+transformer being edited, which is never pinned context as well and is dropped
+from the plan rather than fetched twice. Every context read asks for the
+`context` projection, so the non-scalar property bags are dropped server side.
+
+**What one layer is.** Every pinned room of the same design class folds into ONE
+FeatureCollection per (source, class): fifty pinned transformers across six
+classes are six map sources, not three hundred. Each merged feature carries
+`pinned_transformer_name`, so a popup, an attribute-table row and a hide choice
+can all still name the transformer it came from, and merged feature ids are
+namespaced by transformer so two rooms sharing a document id stay two features.
+`--hide <name>` is how a single pinned transformer is switched off: it is an
+input to the fold, not a render filter, so its rows are simply not in the
+payload.
+
+**Which attributes survive.** The fields the class's resolved style document
+actually reads, and nothing else. The document is the class's `_pinned` variant
+where the project publishes one and the plain design document otherwise; the
+field names are computed by walking it for every `get`/`has`, aliases included,
+because the documents are backend-authored and arrive at runtime — a list in
+code would be a guess that silently paints the layer wrong. The nested
+`*_properties` bags, the topology helpers and the survey columns are dropped
+before the payload reaches a renderer or a store.
+
+The receipt is bounded: whole-room fetches are counted rather than listed,
+`--plan-only` reads nothing from the project at all, and a per-transformer read
+failure is reported beside the answer rather than ending it.
