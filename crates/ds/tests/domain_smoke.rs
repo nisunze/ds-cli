@@ -4570,6 +4570,107 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
 /// document the report owner wrote; it starts no detection and takes no
 /// project, transformer or descriptor.
 #[test]
+fn the_vocabulary_housekeeping_family_names_the_report_defect_each_verb_removes() {
+    // Reporting rewrites any customer or meter description its catalog does
+    // not know into a fallback, so the catalog silently decides engineering
+    // totals. Seeding alone cannot repair a catalog that is already wrong:
+    // these four verbs retire, rename, unbind and reorder, and each one's
+    // contract has to say which part of that rewrite it governs — otherwise a
+    // caller reaches for the wrong one and moves the fallback by accident.
+    for (id, path, promise, complete) in [
+        (
+            "design.customer-categories.retire",
+            ["design", "customer-categories", "retire"],
+            "first in the catalog",
+            vec!["--name", "Pauvre"],
+        ),
+        (
+            "design.customer-categories.retire-unnamed",
+            ["design", "customer-categories", "retire-unnamed"],
+            "no canonical name",
+            vec![],
+        ),
+        (
+            "design.customer-categories.rename",
+            ["design", "customer-categories", "rename"],
+            "the old name",
+            vec!["--from", "Education_I", "--to", "Primary School"],
+        ),
+        (
+            "design.customer-categories.unbind",
+            ["design", "customer-categories", "unbind"],
+            "a label two categories claim",
+            vec!["--alias", "Ecole Primaire", "--category", "School"],
+        ),
+        (
+            "design.meter-types.default",
+            ["design", "meter-types", "default"],
+            "first named row",
+            vec!["--name", "Three Phase"],
+        ),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        assert_eq!(command["path"], serde_json::json!(path));
+        assert_eq!(command["authority"], "headless_project");
+        assert_eq!(
+            command["effect"], "global_write",
+            "`{id}` edits the project's shared vocabulary"
+        );
+        let purpose = command["purpose"].as_str().expect("purpose");
+        assert!(
+            purpose.contains(promise),
+            "`{id}` must say which part of the report rewrite it governs: {purpose}"
+        );
+        // The project is the session's own, as everywhere else on this spine.
+        let inputs = command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>();
+        assert!(inputs.contains("lane"));
+        assert!(!inputs.contains("project"));
+        // A vocabulary edit reaches the confirmation gate before it reaches a
+        // credential: nothing about a catalog is read until the caller means
+        // it.
+        let mut gated: Vec<&str> = path.to_vec();
+        gated.extend(complete);
+        gated.extend(["--output", "json"]);
+        assert_eq!(
+            native_ds(&gated).envelope["error"]["code"],
+            "confirmation_required",
+            "`{id}` must stop at the global write gate"
+        );
+    }
+
+    // Only `ensure` may create a row. Every verb above orders, renames or
+    // removes what is already seeded, so none of them can quietly invent the
+    // category a caller misspelled.
+    let ensure = ok(&[
+        "capabilities",
+        "design.meter-types.ensure",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        ensure["command"]["path"],
+        serde_json::json!(["design", "meter-types", "ensure"])
+    );
+
+    // The catalog read is what tells a caller the rewrite is coming. Its
+    // contract has to promise the three facts the rows themselves never show.
+    let read = ok(&["capabilities", "design.categories.read", "--output", "json"]);
+    let output = read["command"]["output"].as_str().expect("output");
+    for promised in ["fallback", "two categories claim", "Unnamed rows"] {
+        assert!(
+            output.to_lowercase().contains(&promised.to_lowercase()),
+            "`design categories read` must promise `{promised}`: {output}"
+        );
+    }
+}
+
+#[test]
 fn design_collisions_reads_the_project_document_and_starts_nothing() {
     let descriptor = ok(&["capabilities", "design.collisions", "--output", "json"]);
     let command = &descriptor["command"];
@@ -6669,7 +6770,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        91, // + design.intake.upload (headless, 2026-09-15).
+        96, // + the vocabulary housekeeping family (headless, 2026-09-18).
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -6694,7 +6795,12 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.feeder-limits.set"
                     | "design.categories.read"
                     | "design.meter-types.ensure"
+                    | "design.meter-types.default"
                     | "design.customer-categories.alias"
+                    | "design.customer-categories.unbind"
+                    | "design.customer-categories.rename"
+                    | "design.customer-categories.retire"
+                    | "design.customer-categories.retire-unnamed"
                     | "design.lv.project-export"
                     | "design.lv.project-save"
                     | "design.status"

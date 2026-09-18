@@ -2668,6 +2668,21 @@ pub fn customer_category_alias(
     .map(|receipt| receipt.result)
 }
 
+/// One vocabulary housekeeping edit over the same selected-project transport
+/// as the seeding verbs: the core resolves it against the document it just
+/// fetched and proves the save by reading the sheet back.
+pub fn catalog_housekeeping(
+    lane: &str,
+    change: ds_client_core::ProjectConfigurationChange,
+) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.feeder_configuration(project, Some(&change)),
+        |client, project| client.feeder_configuration(project, Some(&change), now()),
+    )
+    .map(|receipt| receipt.result)
+}
+
 fn headless_project_report<T>(
     lane_value: &str,
     device_call: impl FnOnce(&mut device::DeviceSession, &str) -> Result<T, ClientError>,
