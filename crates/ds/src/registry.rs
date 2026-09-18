@@ -1360,6 +1360,11 @@ static TILE_ENTRIES: &[Entry] = &[
         render: ds_cli_tile::global::render,
     },
     Entry {
+        command: &ds_cli_tile::global::ACCESS,
+        handler: ds_cli_tile::global::access,
+        render: ds_cli_tile::global::render,
+    },
+    Entry {
         command: &ds_cli_tile::status::COMMAND,
         handler: ds_cli_tile::status::run,
         render: ds_cli_tile::status::render,

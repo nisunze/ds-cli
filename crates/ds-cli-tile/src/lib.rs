@@ -63,6 +63,7 @@ pub static DOMAIN: Domain = Domain {
         &global::LIST,
         &global::GENERATE,
         &global::STATUS,
+        &global::ACCESS,
     ],
 };
 

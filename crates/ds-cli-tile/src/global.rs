@@ -10,7 +10,7 @@ use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal},
 };
-use ds_client_core::global_tiles::{Command as Global, Domain, Source};
+use ds_client_core::global_tiles::{Allowlists, Command as Global, Domain, Source, Visibility};
 use serde_json::Value;
 
 const DOMAIN: Arg = Arg::value("domain", "<domain>", "Governed Reference Layers domain.")
@@ -23,8 +23,8 @@ const INVALID_NUMBER: Refusal = Refusal {
 };
 const INVALID_SELECTION: Refusal = Refusal {
     code: "global_tile_selection_invalid",
-    when: "a source is not an exact project.dataset.table identity, two sources share a table name, or a required text is empty",
-    remedy: "take each source from `ds tile global catalog` and give the publication a name and country",
+    when: "a source is not an exact project.dataset.table identity, two sources share a table name, an allowed reader is repeated or is not one token, or a required text is empty",
+    remedy: "take each source from `ds tile global catalog`, give the publication a name and country, and name each allowed reader by the address or role it signs in with",
 };
 /// This domain's own refusals, then every refusal the native user path can
 /// return, composed so a new one reaches these commands rather than going
@@ -158,6 +158,59 @@ pub static STATUS: Command = Command {
     availability: ds_cli_auth::native_availability,
 };
 
+pub static ACCESS: Command = Command {
+    id: "tile.global.access",
+    path: &["tile", "global", "access"],
+    contract: 1,
+    summary: "Set who may mount one governed reference publication.",
+    purpose: "Replaces one publication's whole access policy through the same governed action Reference Layers uses, without touching its archive, its layers or its styles. `all` admits every member of a project whose country the publication matches; `restricted` admits only the readers named here, plus a system administrator. Restricted with nobody named is how a publication stops being mounted product-wide while it is still recoverable — the reversible alternative to removing it. What this call carries becomes the entire policy: a reader kept out of it loses the grant.",
+    chapter: Chapter::VectorTiles,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value(
+            "tile",
+            "<tile-id>",
+            "Exact tile_id, as `ds tile global list` reports it.",
+        )
+        .required(),
+        Arg::value(
+            "mode",
+            "<all|restricted>",
+            "Who reads the publication: everybody the country admits, or only the readers named below.",
+        )
+        .required()
+        .choices(&["all", "restricted"]),
+        Arg::repeated(
+            "allow-user",
+            "<email>",
+            "Sign-in address admitted under restricted; repeat up to 50 times.",
+        ),
+        Arg::repeated(
+            "allow-app-role",
+            "<role>",
+            "Application role admitted under restricted; repeat up to 50 times.",
+        ),
+        Arg::repeated(
+            "allow-project-role",
+            "<role>",
+            "Project role admitted under restricted; repeat up to 50 times.",
+        ),
+        Arg::repeated(
+            "allow-project",
+            "<ds-project-id>",
+            "DS project whose members are admitted under restricted; repeat up to 50 times.",
+        ),
+        LANE,
+    ],
+    output: "tile_id and the access policy now stored: mode and the four allowlists exactly as the catalog holds them.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/tile.md"),
+    availability: ds_cli_auth::native_availability,
+};
+
 fn selection(error: ds_client_core::ClientError) -> Failure {
     Failure::invalid(INVALID_SELECTION.code, error.to_string()).remedy(INVALID_SELECTION.remedy)
 }
@@ -167,6 +220,10 @@ fn domain(inputs: &Inputs) -> Result<Domain, Failure> {
 }
 
 fn run(inputs: &Inputs, command: Global) -> Result<Value, Failure> {
+    // The owner's own bounds, applied before a native user is restored: an
+    // unusable selection is the caller's mistake and naming it here costs no
+    // session, no round trip and no half-applied governed write.
+    command.validate().map_err(selection)?;
     ds_cli_auth::global_tiles(inputs.require("lane")?, &command)
 }
 
@@ -219,6 +276,25 @@ pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         inputs,
         Global::Status {
             tile_id: inputs.require("tile")?.to_owned(),
+        },
+    )
+}
+
+/// The non-destructive lever. An allowlist is only meaningful under
+/// `restricted`, so one given under `all` is refused by the owner rather than
+/// recorded where nothing reads it.
+pub fn access(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    run(
+        inputs,
+        Global::Access {
+            tile_id: inputs.require("tile")?.to_owned(),
+            visibility: Visibility::parse(inputs.require("mode")?).map_err(selection)?,
+            allowed: Allowlists {
+                users: inputs.repeated("allow-user").to_vec(),
+                app_roles: inputs.repeated("allow-app-role").to_vec(),
+                project_roles: inputs.repeated("allow-project-role").to_vec(),
+                projects: inputs.repeated("allow-project").to_vec(),
+            },
         },
     )
 }

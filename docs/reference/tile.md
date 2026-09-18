@@ -60,6 +60,37 @@ outputs, outputs `ds tile add` referenced from other projects, and with
 list; removing an owned output reclaims its storage, removing a reference only
 unlinks it.
 
+## The governed reference publications
+
+`ds tile global …` is the other catalog: the product's reference layers, which
+belong to no project. They carry no project id and no project fence — the
+gateway's `global_tiles.manage` is the whole of their authority — so every one
+of these commands takes `--lane` and nothing about a host.
+
+```bash
+ds tile global catalog --domain network_template --search school   # eligible sources
+ds tile global generate --domain network_template --name "Rwanda schools"     --country Rwanda --source engineering-data-solutions.reference.schools     --maxzoom 12 --yes                                             # publish
+ds tile global status --tile <tile-id>                             # follow the run
+ds tile global list --domain network_template                      # what is live
+ds tile global access --tile <tile-id> --mode restricted --yes     # stop it being mounted
+```
+
+A publication exposes one layer per source table, and a layer's style document
+is keyed by that layer name — `gt/<layer>`, with `gt/<layer>_print` for paper.
+Two publications may therefore not expose the same layer name; the backend
+refuses the second one and names the publication that holds it.
+
+`access` is the reversible lever. `--mode restricted` with nobody named leaves
+the publication, its archive and its styles intact and stops every project
+mounting it; a later `--mode all` puts it back. What the call carries becomes
+the whole policy, so an allowed reader left out of it loses the grant.
+
+`ds tile remove --tile-id <id> --scope global --yes` is the irreversible one.
+It retires the row, reclaims the archive, and deletes the style documents of
+every layer no other live publication exposes — naming the ones it keeps and
+who keeps them. When it cannot reclaim an archive, it removes nothing and says
+which object it cannot delete.
+
 ## What the backend enforces for you
 
 - **The governed generation endpoint decides the run**: never built, dirty,
