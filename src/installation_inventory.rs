@@ -77,6 +77,28 @@ fn epoch_ms(value: &str) -> Option<i64> {
     if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 {
         return None;
     }
+    // An offset is read, never ignored. Firestore hands these back in UTC, but
+    // a row that comes straight out of a write on a host that is not on UTC
+    // carries `+02:00`, and reading that as UTC would place "last seen" two
+    // hours in the future — the one direction an inventory must not err in.
+    let offset_seconds = match value[19..].find(['+', '-']) {
+        Some(at) => {
+            let tail = &value[19 + at..];
+            let sign = if tail.starts_with('-') { -1 } else { 1 };
+            let (offset_hour, offset_minute) = match tail[1..].split_once(':') {
+                Some((hours, minutes)) => (hours, minutes),
+                None if tail.len() == 5 => (&tail[1..3], &tail[3..5]),
+                None => return None,
+            };
+            let offset_hour: i64 = offset_hour.parse().ok()?;
+            let offset_minute: i64 = offset_minute.parse().ok()?;
+            if offset_hour > 23 || offset_minute > 59 {
+                return None;
+            }
+            sign * (offset_hour * 3_600 + offset_minute * 60)
+        }
+        None => 0,
+    };
     // Days from the civil calendar, Howard Hinnant's algorithm. Exact for the
     // whole proleptic Gregorian range and free of any leap-second fiction.
     let y = if month <= 2 { year - 1 } else { year };
@@ -85,7 +107,7 @@ fn epoch_ms(value: &str) -> Option<i64> {
     let day_of_year = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
     let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     let days = era * 146_097 + day_of_era - 719_468;
-    Some((days * 86_400 + hour * 3_600 + minute * 60 + second.min(59)) * 1_000)
+    Some((days * 86_400 + hour * 3_600 + minute * 60 + second.min(59) - offset_seconds) * 1_000)
 }
 
 /// Compare two dotted numeric versions. Anything unparsable sorts as zero,
@@ -223,12 +245,14 @@ fn project_row(
 
     let retired_at_ms = optional(record, "retired_at").and_then(|value| epoch_ms(&value));
     let retired = retired_at_ms.is_some();
-    // A retired install that kept its check-in is the one contradiction worth
-    // showing loudly: it is either a removal that did not take, or a record
-    // that was wrong. It is never resolved silently.
-    let reporting_after_retirement = retired
-        && retired_at_ms.is_some_and(|at| last_seen_ms > at)
-        && staleness(age_seconds) == "current";
+    // A retired install that refreshed its licence AFTER the removal was
+    // recorded is the one contradiction worth showing loudly: either the
+    // removal did not take, or the record was wrong. It is never resolved
+    // silently, and it does not lapse — the contradiction is that the machine
+    // reported after it was declared gone, which stays true however long ago
+    // that was. Tying it to a fresh check-in would have erased the evidence a
+    // day later, in the family built to preserve exactly this.
+    let reporting_after_retirement = retired && retired_at_ms.is_some_and(|at| last_seen_ms > at);
 
     let principal_email = optional(record, "account_email");
     let principal_uid = optional(record, "account_uid");
@@ -393,16 +417,22 @@ fn project(request: &Value) -> Result<Value, String> {
     }
 
     let total = ordered.len();
-    let retired_total = ordered.iter().filter(|row| row.retired).count();
+    // What this view is hiding, not what the page happens to contain: a
+    // removal that the search would have excluded anyway was never hidden by
+    // the retirement filter, and counting it would overstate what one click on
+    // "show retired" brings back.
+    let retired_hidden = if include_retired {
+        0
+    } else {
+        ordered
+            .iter()
+            .filter(|row| row.retired && matches(row, &needle))
+            .count()
+    };
     let mut kept: Vec<Projected> = ordered
         .into_iter()
         .filter(|row| (include_retired || !row.retired) && matches(row, &needle))
         .collect();
-    let retired_hidden = if include_retired {
-        0
-    } else {
-        retired_total.min(total)
-    };
 
     // Freshest first: the machine that spoke most recently is the one an
     // operator is most likely to be asking about. Ties fall back to the id so
@@ -596,6 +626,20 @@ mod tests {
         assert_eq!(epoch_ms("2026-09-18T02:27:48Z"), Some(1_789_698_468_000));
         assert_eq!(epoch_ms("2000-02-29T12:00:00Z"), Some(951_825_600_000));
         assert_eq!(epoch_ms("not a time"), None);
+        // An offset is honoured, so a record written on a host that is not on
+        // UTC cannot read as hours in the future.
+        assert_eq!(
+            epoch_ms("2026-09-18T04:27:48+02:00"),
+            epoch_ms("2026-09-18T02:27:48Z")
+        );
+        assert_eq!(
+            epoch_ms("2026-09-17T21:27:48.500-05:00"),
+            epoch_ms("2026-09-18T02:27:48Z")
+        );
+        assert_eq!(
+            epoch_ms("2026-09-18T02:27:48.123456789Z"),
+            Some(1_789_698_468_000)
+        );
     }
 
     #[test]
@@ -759,6 +803,52 @@ mod tests {
         let row = &projected["groups"][0]["rows"][0];
         assert_eq!(row["state"]["reporting_after_retirement"], true);
         assert_eq!(row["remedy"], "retired_but_reporting");
+    }
+
+    /// The contradiction is "it reported after it was declared gone", and that
+    /// does not stop being true once the machine falls silent again. An
+    /// operator reading this row a month later is reading evidence.
+    #[test]
+    fn a_check_in_after_a_recorded_removal_stays_visible_once_the_machine_goes_quiet() {
+        let projected = project_of(
+            vec![record(
+                "b2",
+                "2026-06-10T00:00:00Z",
+                json!({"retired_at": "2026-06-02T00:00:00Z", "account_email": "a@example.test"}),
+            )],
+            json!({"include_retired": true}),
+        );
+        let row = &projected["groups"][0]["rows"][0];
+        assert_eq!(row["last_seen"]["staleness"], "silent");
+        assert_eq!(row["state"]["reporting_after_retirement"], true);
+        assert_eq!(row["remedy"], "retired_but_reporting");
+    }
+
+    /// A removal the search would have dropped anyway was never hidden by the
+    /// retirement filter, so the count of what one toggle brings back is the
+    /// count of removals in THIS view.
+    #[test]
+    fn the_hidden_removal_count_describes_this_view_and_not_the_whole_page() {
+        let rows = vec![
+            record(
+                "a1",
+                "2026-09-18T02:00:00Z",
+                json!({"account_email": "alice@example.test"}),
+            ),
+            record(
+                "b2",
+                "2026-06-01T02:00:00Z",
+                json!({"retired_at": "2026-06-02T00:00:00Z", "account_email": "bob@example.test"}),
+            ),
+        ];
+        assert_eq!(
+            project_of(rows.clone(), json!({"search": "alice"}))["totals"]["retired_hidden"],
+            0
+        );
+        assert_eq!(
+            project_of(rows, json!({"search": "bob"}))["totals"]["retired_hidden"],
+            1
+        );
     }
 
     #[test]
