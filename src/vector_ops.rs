@@ -247,6 +247,23 @@ impl VectorPlan {
     pub fn eligible(&self) -> usize {
         self.source_features - self.skipped.len()
     }
+
+    /// The sentence owed for a *second* document the same limit cut.
+    ///
+    /// `more` speaks for the document an operation produces from. An
+    /// operation that compares two documents has another one, and a caller
+    /// who is told "500 crossings" while the document being compared against
+    /// was quietly cut at 500 has been given a wrong answer, not a bounded
+    /// one. Named by the argument it arrived on so the remedy is the flag the
+    /// caller typed.
+    pub fn withheld_note(&self, argument: &str) -> Option<String> {
+        let withheld = self.withheld();
+        (withheld > 0).then(|| {
+            format!(
+                "{withheld} feature(s) from --{argument} were not compared; raise --limit (max {MAX_LIMIT}) to include them"
+            )
+        })
+    }
 }
 
 /// Validate a caller's result limit against the family's bounds.
@@ -335,7 +352,7 @@ pub fn plan(
         return Err(VectorRefusal::new(
             "vector_no_eligible_feature",
             format!(
-                "None of the {source_features} features can be {}ed.",
+                "Not one of the {source_features} features is a geometry class `{}` acts on.",
                 operation.token()
             ),
             operation.empty_remedy(),
@@ -446,7 +463,16 @@ fn feature_id(feature: &Value) -> Option<String> {
 fn flatten_parts(type_name: &str, coordinates: &Value) -> Option<Vec<Vec<f64>>> {
     let parts = match type_name {
         "Point" => vec![position(coordinates)?],
-        "MultiPoint" | "LineString" => vec![positions(coordinates)?],
+        "LineString" => vec![positions(coordinates)?],
+        // Each point of a MultiPoint is its own part. The engine's point
+        // entry takes exactly one position and answers nothing for a packet
+        // holding several, so a MultiPoint carried as a single part would be
+        // planned, counted as processed, and then silently produce nothing.
+        "MultiPoint" => coordinates
+            .as_array()?
+            .iter()
+            .map(position)
+            .collect::<Option<Vec<_>>>()?,
         "MultiLineString" => coordinates
             .as_array()?
             .iter()
@@ -651,6 +677,70 @@ mod tests {
         let refusal =
             resolve_distance_m(1_000.0, "--radius-m", 0.1, 100.0).expect_err("over range");
         assert!(refusal.message.contains("0.1 m to 100 m"));
+    }
+
+    /// Each point of a MultiPoint has to arrive as its own part. The engine's
+    /// point entry answers nothing for a packet holding several positions, so
+    /// a MultiPoint carried whole was planned, counted as processed, and then
+    /// produced nothing at all — the run refused with advice about coordinate
+    /// systems for coordinates that were perfectly good.
+    #[test]
+    fn every_point_of_a_multi_point_is_its_own_part() {
+        let document = json!({
+            "type": "MultiPoint",
+            "coordinates": [[30.0, -2.0], [30.02, -2.0], [30.04, -2.0]],
+        });
+        let decided = plan(&document, VectorOperation::Buffer, DEFAULT_LIMIT).expect("plan");
+        assert_eq!(decided.planned.len(), 1);
+        assert_eq!(decided.planned[0].kind, GeometryKind::Point);
+        assert_eq!(decided.planned[0].parts.len(), 3);
+        assert!(decided.planned[0].parts.iter().all(|part| part.len() == 2));
+        assert_eq!(decided.planned[0].vertex_count(), 3);
+    }
+
+    /// A comparison reads two documents under one limit, and the second one
+    /// is the one a caller cannot see being cut.
+    #[test]
+    fn a_compared_document_says_how_much_of_it_was_not_compared() {
+        let features: Vec<Value> = (0..5)
+            .map(|index| {
+                let offset = f64::from(index) / 100.0;
+                line(json!([[30.0 + offset, -2.0], [30.01 + offset, -2.0]]))
+            })
+            .collect();
+        let decided = plan(&collection(features), VectorOperation::Intersect, 2).expect("plan");
+        let note = decided.withheld_note("against").expect("note");
+        assert!(note.starts_with("3 feature(s) from --against"), "{note}");
+        assert!(note.contains("--limit"), "{note}");
+
+        let whole = plan(
+            &collection(vec![line(json!([[30.0, -2.0], [30.01, -2.0]]))]),
+            VectorOperation::Intersect,
+            DEFAULT_LIMIT,
+        )
+        .expect("plan");
+        assert_eq!(whole.withheld_note("against"), None);
+    }
+
+    /// The refusal a caller reads when a document holds the wrong classes has
+    /// to be a sentence, not a verb with `ed` glued on: `sample` became
+    /// "sampleed" and `measure` became "measureed".
+    #[test]
+    fn the_nothing_eligible_refusal_reads_as_english_for_every_operation() {
+        let points = collection(vec![
+            json!({ "type": "Feature", "geometry": { "type": "Point", "coordinates": [30.0, -2.0] } }),
+        ]);
+        for operation in [VectorOperation::Sample, VectorOperation::Intersect] {
+            let refusal = plan(&points, operation, DEFAULT_LIMIT).expect_err("refusal");
+            assert_eq!(refusal.code, "vector_no_eligible_feature");
+            assert!(
+                !refusal.message.contains("eed"),
+                "{}: {}",
+                operation.token(),
+                refusal.message
+            );
+            assert!(refusal.message.contains(operation.token()));
+        }
     }
 
     #[test]
