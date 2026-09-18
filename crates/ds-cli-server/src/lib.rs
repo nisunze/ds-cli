@@ -184,6 +184,11 @@ const UNSUPPORTED: Refusal = Refusal {
     remedy: "update ds, or read ds server --help for what this host serves",
 };
 const SERVE_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "invalid_input",
+        when: "a served HTTP request has malformed fields, query parameters or body",
+        remedy: "send the documented route query and request body",
+    },
     PLATFORM,
     REFUSED,
     OWNER_CHANGED,
