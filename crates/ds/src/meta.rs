@@ -407,17 +407,35 @@ fn words(text: &str) -> Vec<String> {
 
 /// Score one term against one field's words.
 ///
-/// A whole word scores full. A word that *starts with* the term scores a
+/// A whole word scores full. A word that shares a stem with the term scores a
 /// quarter, which is how `buffer` still finds `buffered` without `line`
-/// finding `Link` — `Link` neither equals `line` nor starts with it. That
-/// single distinction is what stopped a search for `line` returning
+/// finding `Link` — `Link` neither equals `line` nor shares a stem with it.
+/// That single distinction is what stopped a search for `line` returning
 /// `assets.attach` ("**Lin**k an asset…") ahead of every real line command.
+///
+/// The stem is read in BOTH directions, because a stranger types the plural
+/// as readily as the singular: `buffers` has to find `buffer`, or the one
+/// query most likely to be typed at this family returns a cache command and
+/// nothing else. Four characters is the floor in either direction, so a
+/// fragment like `lin` still matches nothing.
+///
+/// The two directions are not symmetrical, though. A term that *extends* a
+/// word by more than an inflection is a different word — `overlay` is not a
+/// kind of `over`, and `shapefile` is not a kind of `shape` — so that
+/// direction is capped at two extra characters, which is a plural and little
+/// else. A term the word extends keeps the looser rule: `print` genuinely is
+/// what `printing` is about.
 fn score_term(term: &str, haystack: &[String], field: Field) -> u32 {
     let mut best = 0;
     for word in haystack {
+        let inflection = word.len() >= 4
+            && term.len() > word.len()
+            && term.len() - word.len() <= 2
+            && term.starts_with(word.as_str());
+        let shares_stem = (term.len() >= 4 && word.starts_with(term)) || inflection;
         let hit = if word == term {
             field.weight()
-        } else if term.len() >= 4 && word.starts_with(term) {
+        } else if shares_stem {
             field.stem_weight()
         } else {
             0
@@ -850,6 +868,25 @@ mod tests {
         // Three letters is noise, not a stem: `map` must not match `mapping
         // reports` everywhere in the surface.
         assert_eq!(score_term("lin", &words("linear"), Field::Summary), 0);
+
+        // The plural a stranger actually types has to reach the singular we
+        // chose. `buffers` found only a cache command before this.
+        assert_eq!(
+            score_term("buffers", &words("buffer a geometry"), Field::Summary),
+            Field::Summary.stem_weight()
+        );
+        assert_eq!(score_term("king", &words("kin"), Field::Summary), 0);
+
+        // …but a longer word an outsider's term merely begins with is a
+        // different word: `overlay` is not a kind of `over`.
+        assert_eq!(
+            score_term("overlay", &words("over the wire"), Field::Summary),
+            0
+        );
+        assert_eq!(
+            score_term("shapefile", &words("shape and size"), Field::Summary),
+            0
+        );
     }
 
     /// An id hit is evidence of what a command IS. A purpose hit is evidence
