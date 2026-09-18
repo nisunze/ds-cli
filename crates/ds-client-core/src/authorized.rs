@@ -394,7 +394,7 @@ pub(crate) fn survey_query<T: AuthorizedTransport>(
         {
             return Err(error);
         }
-        return Err(classify_survey_query_error(response.status));
+        return Err(classify_survey_query_error(&response));
     }
     crate::survey_query::decode(response, SURVEY_QUERY_RESPONSE_LIMIT, query)
 }
@@ -423,7 +423,7 @@ pub(crate) fn survey_entries_select<T: AuthorizedTransport>(
             &response,
             SURVEY_ENTRIES_SELECT_RESPONSE_LIMIT,
         )
-        .unwrap_or_else(|| classify_survey_entries_select_error(response.status)));
+        .unwrap_or_else(|| classify_survey_entries_select_error(&response)));
     }
     crate::survey_entries_select::decode(
         response,
@@ -457,7 +457,7 @@ pub(crate) fn survey_entries_changes<T: AuthorizedTransport>(
             &response,
             SURVEY_ENTRIES_CHANGES_RESPONSE_LIMIT,
         )
-        .unwrap_or_else(|| classify_survey_entries_changes_error(response.status)));
+        .unwrap_or_else(|| classify_survey_entries_changes_error(&response)));
     }
     crate::survey_entries_changes::decode(
         response,
@@ -796,27 +796,27 @@ fn classify_solar_snapshot_error(status: u16) -> ClientError {
         )
     }
 }
-fn classify_survey_query_error(status: u16) -> ClientError {
+fn classify_survey_query_error(response: &TransportResponse) -> ClientError {
     classify_survey(
-        status,
+        response,
         &[400, 409],
         "the governed survey aggregate service is temporarily unavailable",
         "the governed survey aggregate service refused the typed question",
         "the governed survey aggregate service refused the verified user",
     )
 }
-fn classify_survey_entries_select_error(status: u16) -> ClientError {
+fn classify_survey_entries_select_error(response: &TransportResponse) -> ClientError {
     classify_survey(
-        status,
+        response,
         &[400, 409, 413],
         "the governed survey entry selection service is temporarily unavailable",
         "the governed survey entry selection service refused the bounded selection",
         "the governed survey entry selection service refused the verified user",
     )
 }
-fn classify_survey_entries_changes_error(status: u16) -> ClientError {
+fn classify_survey_entries_changes_error(response: &TransportResponse) -> ClientError {
     classify_survey(
-        status,
+        response,
         &[400, 409, 410, 413],
         "the governed survey entry changes service is temporarily unavailable",
         "the governed survey entry changes service refused the bounded page",
@@ -961,14 +961,46 @@ fn classified(status: u16, transient: &'static str, rejected: &'static str) -> C
     }
 }
 
+/// The longest body this boundary will read only to learn who wrote it.
+const MAX_AUTHORSHIP_BODY_BYTES: usize = 64 * 1024;
+
+/// Whether ds-brain authored this refusal at all.
+///
+/// Every ds-brain answer, refusal included, is the DS envelope, and the DS
+/// envelope always carries `success`. API Gateway, asked for a path its spec
+/// was never taught, answers its own `{"message": …, "code": 404}` and
+/// ds-brain is never reached. The two carry the same status and share nothing
+/// else, so the presence of `success` is the whole discriminator — and it has
+/// to be presence rather than a well-formed code, because a malformed code
+/// from the service is still the service. Nothing from the body crosses this
+/// boundary; only this one boolean does.
+fn service_authored(response: &TransportResponse) -> bool {
+    #[derive(serde::Deserialize)]
+    struct Envelope {
+        success: Option<bool>,
+    }
+    if response.body.len() > MAX_AUTHORSHIP_BODY_BYTES {
+        // Far too large to be the Gateway's own one-sentence refusal.
+        return true;
+    }
+    serde_json::from_slice::<Envelope>(&response.body)
+        .is_ok_and(|envelope| envelope.success.is_some())
+}
+
 fn classify_survey(
-    status: u16,
+    response: &TransportResponse,
     invalid_statuses: &[u16],
     transient: &'static str,
     invalid: &'static str,
     rejected: &'static str,
 ) -> ClientError {
-    if status == 404 {
+    let status = response.status;
+    if status == 404 && !service_authored(response) {
+        ClientError::new(
+            ErrorKind::RouteUnavailable,
+            "this deployment does not serve the governed Survey read route",
+        )
+    } else if status == 404 {
         ClientError::new(
             ErrorKind::ResourceNotFound,
             "the selected project or survey form is not available to this user",

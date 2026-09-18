@@ -2041,6 +2041,51 @@ fn project_forms_is_one_fixed_selected_project_activation_call() {
 }
 
 #[test]
+fn project_forms_decodes_the_activation_payload_ds_brain_actually_sends() {
+    // Captured from POST /api/v1/project-forms {"action":"activate"} against
+    // zimebnlu_edcl2 on the stable gateway: ds-brain marshals a form with no
+    // drawing configuration as `"drawing_settings": null`, nine of thirteen
+    // forms on that project included. Serde's `default` covers an absent key,
+    // never a present one whose value is null, so the whole snapshot used to
+    // fail and `ds survey project-forms list` refused
+    // `auth_response_unreadable` on every project the user has.
+    let body = serde_json::json!({
+        "status": "success",
+        "project_id": "active-project",
+        "resolved_at": 1_789_739_530_434_u64,
+        "user": { "email": "user@example.com", "roles": [], "is_owner": false, "is_admin": false },
+        "forms": [
+            {
+                "slug": "field_notes", "display_name": "Field Notes", "enabled": false,
+                "settings_revision": 0, "geometry_type": "point",
+                "drawing_settings": serde_json::Value::Null,
+                "metadata": {}
+            },
+            {
+                "slug": "lv_lines_survey", "display_name": "LV Lines - Survey", "enabled": true,
+                "settings_revision": 0, "geometry_type": serde_json::Value::Null,
+                "drawing_settings": { "geometry_type": "LineString" },
+                "metadata": serde_json::Value::Null
+            }
+        ],
+        "field_types": [], "condition_operators": [], "type_aliases": {},
+        "settings_registry": []
+    });
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project_forms(200, &serde_json::to_vec(&body).unwrap());
+    let mut client = signed_in(transport, MemoryStore::default());
+    let snapshot = client.project_forms("active-project", NOW + 1).unwrap();
+
+    assert_eq!(snapshot.forms().len(), 2);
+    assert_eq!(snapshot.forms()[0].slug(), "field_notes");
+    assert_eq!(snapshot.forms()[0].geometry_type(), Some("point"));
+    // A null metadata map is not a claim that the form is unavailable.
+    assert!(snapshot.forms()[1].available());
+    assert_eq!(snapshot.forms()[1].geometry_type(), Some("LineString"));
+    assert!(snapshot.orphaned_project_forms().is_empty());
+}
+
+#[test]
 fn project_forms_profile_and_response_fail_closed() {
     for mutate in [
         |input: &mut ClientProfileInput| input.project_forms_method = "GET".to_owned(),
@@ -3029,6 +3074,74 @@ fn survey_query_preserves_missing_view_and_other_exact_service_outcomes() {
             .unwrap_err();
         assert_eq!(error.survey_query_service_code(), Some(expected));
         assert_eq!(error.survey_form_read_service_code(), None);
+    }
+}
+
+#[test]
+fn survey_reads_separate_an_unpublished_route_from_an_invisible_scope() {
+    // API Gateway answers its own 404 for a path its spec was never taught,
+    // before ds-brain is reached. All three governed Survey read paths were in
+    // exactly that state on both lanes, and the core reported every one of them
+    // as `the selected project or survey form is not available to this user` —
+    // an authority sentence about a route that does not exist.
+    let gateway_404 =
+        br#"{"message":"The current request is not defined by this API.","code":404}"#;
+
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_survey_query(404, gateway_404);
+    let mut client = signed_in(transport, MemoryStore::default());
+    assert_eq!(
+        client
+            .survey_query("active-project", &survey_query_request(), NOW + 1)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::RouteUnavailable
+    );
+
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_survey_entries_select(404, gateway_404);
+    let mut client = signed_in(transport, MemoryStore::default());
+    assert_eq!(
+        client
+            .survey_entries_select("active-project", &survey_entries_select_request(), NOW + 1)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::RouteUnavailable
+    );
+
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_survey_entries_changes(404, gateway_404);
+    let mut client = signed_in(transport, MemoryStore::default());
+    assert_eq!(
+        client
+            .survey_entries_changes("active-project", &survey_entries_changes_request(), NOW + 1)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::RouteUnavailable
+    );
+
+    // And the converse: ds-brain's own 404 is still a fact about the caller's
+    // scope — with a code this core does not type, and with a code that is not
+    // even well formed, because a malformed answer from the service is still
+    // the service and not a missing route.
+    for body in [
+        survey_entries_select_error_envelope("NOT_FOUND"),
+        serde_json::to_vec(&serde_json::json!({
+            "success": false,
+            "error": { "code": 42, "message": "Project or form not found" }
+        }))
+        .unwrap(),
+    ] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_survey_query(404, &body);
+        let mut client = signed_in(transport, MemoryStore::default());
+        assert_eq!(
+            client
+                .survey_query("active-project", &survey_query_request(), NOW + 1)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::ResourceNotFound
+        );
     }
 }
 
