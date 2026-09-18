@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -79,6 +79,7 @@ total/succeeded/failed counts. Successful rows report staged=true and persisted=
         },
     ],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

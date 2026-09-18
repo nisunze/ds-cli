@@ -1,6 +1,6 @@
 //! Headless public city vectors; geometry and acquisition belong to owners.
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::city_vectors::{self as policy, Bounds, MicrosoftTile};
@@ -56,6 +56,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/data.md"),
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 struct PublicFetch;

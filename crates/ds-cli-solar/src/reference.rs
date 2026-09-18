@@ -1,5 +1,5 @@
 //! One authenticated acquisition, with Solar-owned request and cache semantics.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
 
@@ -31,6 +31,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: crate::seed::REFERENCE_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {

@@ -6,7 +6,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -155,6 +155,7 @@ the fallback when size already carries the second dimension. Icon overlap change
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
 
@@ -203,6 +204,7 @@ Flat colour or icon replaces a field-driven primary expression; plan first. Icon
         }],
         refusals: crate::native::PUBLISH_REFUSALS,
         reference: Some("docs/reference/style.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
 

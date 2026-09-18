@@ -11,7 +11,9 @@
 //! the one thing §12.12 forbids — and it would vanish on the next refresh.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -146,6 +148,7 @@ projected, not declared, and are refused by name.",
         crate::UNKNOWN_FOLDER,
     ],
     reference: Some("docs/reference/assets.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

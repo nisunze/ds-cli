@@ -1,7 +1,7 @@
 //! `ds report project scope` — the plan: who participates in a compounded run.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -39,6 +39,7 @@ retirement reason, the project-level `mv_data` row, and `compounded_ready` \
     }],
     refusals: super::NATIVE_READ_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

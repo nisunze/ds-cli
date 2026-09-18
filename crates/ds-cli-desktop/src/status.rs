@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde::Deserialize;
@@ -95,6 +95,7 @@ credential.",
         ops::DESCRIPTOR_UNUSABLE,
     ],
     reference: Some("docs/reference/desktop.status.md"),
+    requires: Requires::Server,
     availability: available,
 };
 

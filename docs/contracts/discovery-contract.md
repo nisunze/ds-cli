@@ -34,10 +34,32 @@ ds capabilities                    # tier 1 — domain index
 ds capabilities dsgrid            # tier 2 — one domain's commands
 ds capabilities dsgrid.inspect    # tier 3 — one full descriptor
 ds capabilities --search "text"    # ids and one-liners, nothing more
+ds capabilities --requires window  # where commands can run, counted by domain
 ```
 
 Search deliberately returns identifiers and summaries only. The caller then
 asks for the one descriptor it chose. Two cheap calls beat one expensive one.
+
+## Where a command runs is declared, not probed
+
+Every descriptor carries `requires`: `server` when the command answers
+identically on a bare Server, `window` when it cannot answer without the
+paired application. It is a declared fact, so it reads the same on a machine
+where the application is running and on one where it was never installed —
+which is exactly what `availability` cannot do, because `availability`
+answers about the machine in hand and every paired command deliberately
+reports `available` there so its descriptor stays useful.
+
+`--requires <server|window>` asks that question in the aggregate, optionally
+narrowed to one domain. It returns the total, the per-domain counts and a
+bounded page of ids capped like search, with `more` naming what was left out;
+it refuses `conflicting_selector` rather than silently combining with
+`--search` or with a command id, whose descriptor already carries the fact.
+
+The counts are a ledger of work owed, not a description of the product: a
+`window` command is one the host-transparency backlog has not yet given a
+headless owner. `crates/ds/tests/lens_core_boundary.rs` freezes them per
+crate and lets them fall, never rise.
 
 **Compact discovery never replaces help.** Root, domain and command help are
 permanent first-class interfaces for people and remain complete at their own

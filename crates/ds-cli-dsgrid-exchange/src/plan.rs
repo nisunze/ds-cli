@@ -15,7 +15,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_exchange::conversion::{ConversionPlan, plan_conversion};
@@ -68,6 +68,7 @@ full. Long lists are truncated and the withheld count reported.",
     ],
     refusals: &REFUSALS,
     reference: Some("docs/reference/dsgrid-exchange.md"),
+    requires: Requires::Server,
     availability: available,
 };
 

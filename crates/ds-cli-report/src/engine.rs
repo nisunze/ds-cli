@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -43,6 +43,7 @@ and the first thing to compare when two machines disagree.",
         },
     ],
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability,
 };
 

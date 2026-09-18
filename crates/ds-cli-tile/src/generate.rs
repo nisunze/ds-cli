@@ -1,7 +1,7 @@
 //! `ds tile generate` — start one fixed backend run after CLI confirmation.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -35,6 +35,7 @@ timestamps and bounded diagnostics.",
     }],
     refusals: crate::NATIVE_WRITE_REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

@@ -6,7 +6,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops;
@@ -288,6 +288,7 @@ class counts, document count, asset counts and `mutated`.",
     ],
     refusals: &PREVIEW_ALL_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: native_available,
 };
 
@@ -330,6 +331,7 @@ and `idempotent`.",
     }],
     refusals: &APPLY_ALL_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: native_available,
 };
 

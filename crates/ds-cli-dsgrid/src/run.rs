@@ -10,7 +10,7 @@ use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::TaggedAlignmentLengthsRequest;
@@ -146,6 +146,7 @@ descriptor identity, a typed bounded result, staged:false and persisted:false. \
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
+    requires: Requires::Server,
     availability: available,
 };
 

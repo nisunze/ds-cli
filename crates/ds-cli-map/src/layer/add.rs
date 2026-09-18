@@ -1,7 +1,9 @@
 //! `ds map layer add` — persist a third-party XYZ or raster PMTiles overlay.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -47,6 +49,7 @@ pub static COMMAND: Command = Command {
     ],
     refusals: &[super::LOCAL_STORE_REFUSAL, crate::INVALID_NUMBER],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Server,
     availability: super::local_availability,
 };
 

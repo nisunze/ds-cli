@@ -3,7 +3,7 @@ use crate::discover::Descriptor;
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use serde_json::{Map, Value, json};
 use std::time::Duration;
@@ -107,6 +107,7 @@ pub static STATUS_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -125,6 +126,7 @@ pub static CATALOG_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -143,6 +145,7 @@ pub static PUBLISH_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -161,6 +164,7 @@ pub static INSTALL_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -179,6 +183,7 @@ pub static STORAGE_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -197,6 +202,7 @@ pub static REMOVE_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.data.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 

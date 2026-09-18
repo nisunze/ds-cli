@@ -1,6 +1,6 @@
 use crate::engine_failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::open_release;
@@ -40,6 +40,7 @@ pub static COMMAND: Command = Command {
         remedy: "install that exact id/version into the store, then retry",
     }],
     reference: Some("docs/reference/library.md"),
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 

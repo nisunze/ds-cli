@@ -4,7 +4,7 @@ use crate::discover::Descriptor;
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use serde_json::{Map, Value, json};
 use std::time::Duration;
@@ -121,6 +121,7 @@ pub static STATUS_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -139,6 +140,7 @@ pub static RETRY_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -157,6 +159,7 @@ pub static SANITIZE_PREVIEW_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -184,6 +187,7 @@ pub static SANITIZE_APPLY_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 

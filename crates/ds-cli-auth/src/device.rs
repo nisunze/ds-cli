@@ -12,7 +12,7 @@ use windows_sys::Win32::Security::Cryptography::{
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_client_core::{
@@ -142,6 +142,7 @@ pub const BEGIN_COMMAND: Command = Command {
     }],
     refusals: BEGIN_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    requires: Requires::Server,
     availability: super::native_availability,
 };
 
@@ -175,6 +176,7 @@ pub const STATUS_COMMAND: Command = Command {
     }],
     refusals: PENDING_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    requires: Requires::Server,
     availability: super::native_availability,
 };
 
@@ -197,6 +199,7 @@ pub const COMPLETE_COMMAND: Command = Command {
     }],
     refusals: PENDING_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    requires: Requires::Server,
     availability: super::native_availability,
 };
 
@@ -219,6 +222,7 @@ pub const LIST_COMMAND: Command = Command {
     }],
     refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    requires: Requires::Server,
     availability: super::native_availability,
 };
 
@@ -241,6 +245,7 @@ pub const READ_COMMAND: Command = Command {
     }],
     refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    requires: Requires::Server,
     availability: super::native_availability,
 };
 
@@ -263,6 +268,7 @@ pub const REVOKE_COMMAND: Command = Command {
     }],
     refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    requires: Requires::Server,
     availability: super::native_availability,
 };
 

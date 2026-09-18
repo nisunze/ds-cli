@@ -74,10 +74,17 @@ fn command_help_ceiling(command: &Value) -> usize {
     const FRAME: usize = 1_200;
     const PER_INPUT: usize = 180;
     const PER_REFUSAL: usize = 220;
+    // A command that still needs the paired window says so in its CONTRACT
+    // block, on one line, and only then (2026-09-18). This is the derived
+    // allowance for that line — not a relaxation: a server command's budget
+    // is unchanged, and a window command that gains its headless owner drops
+    // the line and the allowance with it.
+    const WINDOW_LINE: usize = 70;
 
     let inputs = command["inputs"].as_array().map_or(0, Vec::len);
     let refusals = command["refusals"].as_array().map_or(0, Vec::len);
-    FRAME + PER_INPUT * inputs + PER_REFUSAL * refusals
+    let window = usize::from(command["requires"] == "window");
+    FRAME + PER_INPUT * inputs + PER_REFUSAL * refusals + WINDOW_LINE * window
 }
 
 #[test]

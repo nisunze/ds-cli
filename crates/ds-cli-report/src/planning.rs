@@ -1,7 +1,7 @@
 //! Native print inventory and pure report planning; IO stays in the host.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -50,6 +50,7 @@ pub static TRANSFORMERS: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub fn transformers(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -107,6 +108,7 @@ pub static PLAN: Command = Command {
     }],
     refusals: &[INVALID],
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: available,
 };
 pub fn plan(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

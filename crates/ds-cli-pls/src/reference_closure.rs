@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_tasks::{
@@ -77,6 +77,7 @@ translations. `more.next_offset` when the closure continues.",
         crate::RESULT_ENCODING_REFUSAL,
     ],
     reference: Some("docs/reference/pls.md"),
+    requires: Requires::Server,
     availability: available,
 };
 

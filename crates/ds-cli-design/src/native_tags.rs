@@ -1,5 +1,7 @@
 //! Headless tag vocabulary and digest-pinned report projection.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::Value;
 const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
@@ -20,6 +22,7 @@ pub static DEFINITIONS: Command = Command {
     examples: &[],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static PROJECTION: Command = Command {
@@ -50,6 +53,7 @@ pub static PROJECTION: Command = Command {
     examples: &[],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub fn definitions(i: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -121,6 +125,7 @@ pub static PREVIEW: Command = Command {
     examples: &[],
     refusals: BATCH_REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static APPLY: Command = Command {
@@ -153,6 +158,7 @@ pub static APPLY: Command = Command {
     examples: &[],
     refusals: BATCH_REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 fn batch(i: &Inputs, apply: bool) -> Result<Value, Failure> {

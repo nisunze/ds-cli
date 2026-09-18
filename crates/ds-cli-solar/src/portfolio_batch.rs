@@ -3,7 +3,7 @@ use crate::paired;
 use ds_cli_contract::{
     Context, Inputs,
     outcome::Failure,
-    spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal},
+    spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires},
 };
 use ds_command_kernel::solar_batch::{MAX_BYTES, Request};
 use serde_json::{Value, json};
@@ -63,6 +63,7 @@ pub static START_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 pub static STATUS_COMMAND: Command = Command {
@@ -87,6 +88,7 @@ pub static STATUS_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 pub static CANCEL_COMMAND: Command = Command {
@@ -111,6 +113,7 @@ pub static CANCEL_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 fn invalid(error: impl std::fmt::Display) -> Failure {

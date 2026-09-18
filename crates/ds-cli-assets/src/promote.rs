@@ -12,7 +12,9 @@
 //! promoting reads a source and writes nothing back to it.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -76,6 +78,7 @@ for `ds style` once it is ready.",
         crate::ASSET_NOT_GEOGRAPHIC,
     ],
     reference: Some("docs/reference/assets.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

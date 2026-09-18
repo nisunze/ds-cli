@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::{CONSUMER_GROUPING_APPLY, DESCRIPTOR_ARG};
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -68,6 +68,7 @@ the folder and section authority a compounded archive files by.",
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

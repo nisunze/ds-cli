@@ -8,7 +8,7 @@
 //! the wire did not change.
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use ds_client_core::global_tiles::{Allowlists, Command as Global, Domain, Source, Visibility};
 use serde_json::Value;
@@ -74,6 +74,7 @@ pub static CATALOG: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static LIST: Command = Command {
@@ -91,6 +92,7 @@ pub static LIST: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static GENERATE: Command = Command {
@@ -130,6 +132,7 @@ pub static GENERATE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static STATUS: Command = Command {
@@ -155,6 +158,7 @@ pub static STATUS: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -208,6 +212,7 @@ pub static ACCESS: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

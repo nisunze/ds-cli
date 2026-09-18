@@ -2,7 +2,9 @@
 //! families, roles, this machine's remembered visibility and zoom range.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -55,6 +57,7 @@ pub static COMMAND: Command = Command {
     ],
     refusals: super::native::LAYER_LIST_REFUSALS,
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

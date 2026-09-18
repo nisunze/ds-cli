@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -67,6 +67,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: || ds_cli_report::DS_REPORT.availability(),
 };
 

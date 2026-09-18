@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -295,6 +295,7 @@ siblings, and refuses conflicts. It never writes workspace configuration.",
         },
     ],
     reference: Some("docs/reference/mcp.md"),
+    requires: Requires::Server,
     availability: crate::always,
 };
 

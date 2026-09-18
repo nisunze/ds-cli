@@ -1,7 +1,7 @@
 //! CLI/MCP transport for the closed Server-owned Solar application surface.
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution},
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires},
 };
 use serde_json::Value;
 pub static COMMAND: Command = Command {
@@ -40,6 +40,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: ds_cli_server::STATUS.refusals,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub fn execute(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
@@ -72,6 +73,7 @@ pub static SCHEMA: Command = Command {
         remedy: "list operation names without --operation and select one exact name",
     }],
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };
 pub fn schema(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -88,6 +88,7 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.printing.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -137,6 +138,7 @@ pub static COPY_COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/desktop.printing.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 

@@ -25,6 +25,17 @@
 //! The finish line is two dependents — `ds-cli-map` (the window's own crate)
 //! and `ds` (the one binary, which is Server + window). At that point L0a
 //! holds by construction and this suite is the proof, not the reminder.
+//!
+//! The crate inventory answers "who *can* open a window". It cannot answer
+//! the question an operator actually asks — "can this command run on my
+//! server?" — because a crate is not a command: one `ds-cli-design`
+//! dependency line stands for twenty-eight desktop-bound commands, and
+//! `ds-cli-map` holds server commands next to window ones. That fact is now
+//! declared per command, as `Requires` on the descriptor, and the second half
+//! of this suite pins it the same way: a window command may only live where
+//! the bridge does, the declared fact may never disagree with the paired
+//! availability that implements it, and the per-crate counts are ceilings
+//! that may only fall.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -232,5 +243,207 @@ fn the_target_layers_are_exactly_the_window_and_the_binary() {
         host,
         vec!["ds"],
         "one binary is the host: the desktop is Server + window"
+    );
+}
+
+// ── the declared fact: which commands still need the window ────────────────
+
+/// How many window commands each crate declares today.
+///
+/// A ceiling, never a target, exactly like `INVENTORY`'s file counts — and
+/// measured the same way, by reading the source rather than the registry,
+/// because a crate is a directory and the registry does not know which one a
+/// command came from. What is counted is a *declaration site*: a `Command`
+/// value carrying `requires: Requires::Window`. `ds-cli-design` builds three
+/// of its paired commands from one shared constructor, so its twenty-eight
+/// registered window commands are twenty-six declarations here. Lowering a
+/// number is the entire point of the host-transparency backlog; raising one
+/// is a new desktop-bound command, which is the thing this suite exists to
+/// refuse.
+///
+/// `ds-cli-desktop` is on this list and deliberately not on `INVENTORY`: it
+/// *is* the bridge, so it cannot "depend on" it, but its commands are window
+/// commands like any other and its count has to be able to fall too.
+///
+/// Measured 2026-09-18 against the run tip.
+const WINDOW_COMMANDS: &[(&str, usize)] = &[
+    // The bridge's own domain: pairing, sync, printing, published artifacts.
+    ("ds-cli-desktop", 25),
+    // The lens crate. Window commands are its purpose; its server commands
+    // (the machine-local layer catalogue) are not counted here.
+    ("ds-cli-map", 39),
+    // ── core, pending a headless form ───────────────────────────────────────
+    ("ds-cli-assets", 9),
+    ("ds-cli-auth", 1),
+    ("ds-cli-data", 4),
+    ("ds-cli-design", 26),
+    ("ds-cli-dsgrid", 1),
+    ("ds-cli-solar", 16),
+    ("ds-cli-work", 9),
+];
+
+/// Non-test source lines in this crate that declare a window command.
+fn window_declarations(crate_dir: &Path) -> usize {
+    source_lines(crate_dir, |line| {
+        line.contains("requires: Requires::Window")
+    })
+}
+
+/// Non-test source lines that hand a command a paired availability — the
+/// function that implements "ask the running application", under any of the
+/// names the domains import it as.
+fn paired_availability_declarations(crate_dir: &Path) -> usize {
+    source_lines(crate_dir, |line| {
+        line.contains("availability:") && line.contains("paired")
+    })
+}
+
+/// Count non-comment source lines that match, under this crate's `src`.
+///
+/// Comments are skipped deliberately: both of the things counted here are
+/// discussed in prose right next to the code that does them — the one command
+/// that reaches the window without declaring a paired availability explains
+/// itself in a comment — and a ledger that counted its own documentation
+/// would be unmaintainable.
+fn source_lines(crate_dir: &Path, matches: impl Fn(&str) -> bool + Copy) -> usize {
+    fn walk(dir: &Path, matches: &dyn Fn(&str) -> bool, hits: &mut usize) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, matches, hits);
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                let text = std::fs::read_to_string(&path).unwrap_or_default();
+                *hits += text
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with("//"))
+                    .filter(|line| matches(line))
+                    .count();
+            }
+        }
+    }
+    let mut hits = 0;
+    walk(&crate_dir.join("src"), &matches, &mut hits);
+    hits
+}
+
+#[test]
+fn a_window_command_lives_only_where_the_window_is_reachable() {
+    let mut incoherent = Vec::new();
+    for (name, dir) in crate_dirs() {
+        if window_declarations(&dir) == 0 {
+            continue;
+        }
+        if name == BRIDGE || declares_bridge(&dir.join("Cargo.toml")) {
+            continue;
+        }
+        incoherent.push(name);
+    }
+
+    assert!(
+        incoherent.is_empty(),
+        "these crates declare `Requires::Window` but cannot reach {BRIDGE}, so the \
+         declaration is a claim the crate cannot honour: {incoherent:?}\n\
+         Either the command is server-first and the declaration is wrong, or it \
+         belongs in ds-cli-map (ds-lens-core-boundary.md §4 L0a)."
+    );
+}
+
+#[test]
+fn the_declared_fact_never_disagrees_with_the_availability_behind_it() {
+    let mut disagreements = Vec::new();
+    for (name, dir) in crate_dirs() {
+        let declared = window_declarations(&dir);
+        let paired = paired_availability_declarations(&dir);
+        if declared != paired {
+            disagreements.push(format!(
+                "{name}: {declared} declare window, {paired} use a paired availability"
+            ));
+        }
+    }
+
+    assert!(
+        disagreements.is_empty(),
+        "the descriptor and the implementation disagree about which commands need \
+         the window: {disagreements:#?}\n\
+         `requires: Requires::Window` and a paired availability are two halves of \
+         one fact. A command that asks the application for its answer declares it; \
+         one that no longer does drops both in the same change."
+    );
+}
+
+#[test]
+fn window_command_counts_never_grow() {
+    let measured: BTreeMap<String, usize> = crate_dirs()
+        .into_iter()
+        .map(|(name, dir)| (name, window_declarations(&dir)))
+        .collect();
+    let frozen: BTreeMap<&str, usize> = WINDOW_COMMANDS.iter().copied().collect();
+
+    let mut regressions = Vec::new();
+    let mut gains = Vec::new();
+    for (name, ceiling) in &frozen {
+        let now = measured.get(*name).copied().unwrap_or_default();
+        if now > *ceiling {
+            regressions.push(format!("{name}: {now} window commands, ceiling {ceiling}"));
+        } else if now < *ceiling {
+            gains.push(format!(
+                "{name}: {now} window commands, ceiling still {ceiling}"
+            ));
+        }
+    }
+    let arrivals: Vec<&String> = measured
+        .iter()
+        .filter(|(name, count)| **count > 0 && !frozen.contains_key(name.as_str()))
+        .map(|(name, _)| name)
+        .collect();
+
+    assert!(
+        arrivals.is_empty(),
+        "these crates gained their first window command: {arrivals:?}\n\
+         A new desktop-bound command is a decision, not a refactor — give it its \
+         headless owner instead (ds-lens-core-boundary.md §4 L0)."
+    );
+    assert!(
+        regressions.is_empty(),
+        "window commands multiplied: {regressions:#?}\n\
+         Every one of these is a command an operator cannot run on a server."
+    );
+    assert!(
+        gains.is_empty(),
+        "these ceilings are now too high — lower them in WINDOW_COMMANDS so the \
+         fence keeps the ground gained: {gains:#?}"
+    );
+}
+
+#[test]
+fn the_window_ledger_and_the_bridge_inventory_name_the_same_crates() {
+    let ledger: BTreeSet<&str> = WINDOW_COMMANDS.iter().map(|(name, _)| *name).collect();
+    let inventory: BTreeSet<&str> = INVENTORY
+        .iter()
+        // The one binary links the bridge because it *is* Server + window; it
+        // registers no command of its own that needs one.
+        .filter(|(_, layer, _)| *layer != Layer::Host)
+        .map(|(name, _, _)| *name)
+        .collect();
+
+    let untracked: Vec<&&str> = inventory.difference(&ledger).collect();
+    assert!(
+        untracked.is_empty(),
+        "these crates depend on {BRIDGE} but declare no window commands: {untracked:?}\n\
+         If the last one is gone, drop the dependency and leave INVENTORY too — \
+         that is the whole point of the entry."
+    );
+
+    let unexplained: Vec<&&str> = ledger
+        .difference(&inventory)
+        .filter(|name| ***name != *BRIDGE)
+        .collect();
+    assert!(
+        unexplained.is_empty(),
+        "these crates declare window commands without an INVENTORY entry \
+         explaining why they may reach the bridge: {unexplained:?}"
     );
 }

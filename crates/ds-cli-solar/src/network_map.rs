@@ -1,5 +1,5 @@
 //! Thin adapter: native media copy followed by the Solar owner's fenced save.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
 use std::io::Read;
@@ -38,6 +38,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: crate::network_form::COMMAND.refusals,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: || crate::DS_SOLAR.availability(),
 };
 pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {

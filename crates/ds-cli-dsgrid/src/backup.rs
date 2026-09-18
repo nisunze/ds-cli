@@ -1,6 +1,6 @@
 //! Thin offline transport for the exchange owner's archived-transformer preview.
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
@@ -58,6 +58,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: None,
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

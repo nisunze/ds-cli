@@ -1,7 +1,9 @@
 //! `ds map design discard` — restore one transformer room from the cloud.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -41,6 +43,7 @@ pub static COMMAND: Command = Command {
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

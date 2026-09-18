@@ -2,7 +2,7 @@
 //! client and delivery uses one fixed reporter process task.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -84,6 +84,7 @@ pub static NEW: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: local,
 };
 pub static EDIT: Command = Command {
@@ -110,6 +111,7 @@ pub static EDIT: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: local,
 };
 pub static SCHEMA: Command = Command {
@@ -131,6 +133,7 @@ pub static SCHEMA: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: local,
 };
 const ACTION: Arg = Arg::value(
@@ -184,6 +187,7 @@ pub static CONTEXT: Command = Command {
     ],
     refusals: CONTEXT_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: local,
 };
 const CONTEXT_REFUSALS: &[Refusal] = &[
@@ -234,6 +238,7 @@ pub static SESSION: Command = Command {
     ],
     refusals: SESSION_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: local,
 };
 const SESSION_REFUSALS: &[Refusal] = &[
@@ -316,6 +321,7 @@ pub static ADD: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: local,
 };
 const STYLE_ACTION: Arg = Arg::value(
@@ -363,6 +369,7 @@ pub static STYLE_REF_COMMAND: Command = Command {
     }],
     refusals: STYLE_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: local,
 };
 const PENS_ACTION: Arg = Arg::value(
@@ -437,6 +444,7 @@ pub static PENS: Command = Command {
     ],
     refusals: PENS_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: local,
 };
 const PENS_REFUSALS: &[Refusal] = &[
@@ -482,6 +490,7 @@ pub static RENDER: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: reporter,
 };
 pub static LIST: Command = Command {
@@ -503,6 +512,7 @@ pub static LIST: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static GET: Command = Command {
@@ -528,6 +538,7 @@ pub static GET: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static SAVE: Command = Command {
@@ -549,6 +560,7 @@ pub static SAVE: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static CREATE: Command = Command {
@@ -566,6 +578,7 @@ pub static CREATE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static UPDATE: Command = Command {
@@ -583,6 +596,7 @@ pub static UPDATE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static DELETE: Command = Command {
@@ -610,6 +624,7 @@ pub static DELETE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static COPY: Command = Command {
@@ -627,6 +642,7 @@ pub static COPY: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

@@ -249,6 +249,77 @@ impl fmt::Display for Authority {
     }
 }
 
+/// Where a command can answer at all: on a bare Server, or only with the
+/// paired application window in front of it.
+///
+/// This is the environment-independent half of the question `availability`
+/// cannot carry. `availability` is resolved on the machine in hand and every
+/// paired command deliberately answers `available` there, because a
+/// descriptor stays useful on a laptop where the application is not running.
+/// `requires` is the *declared* fact instead: it does not change when the
+/// application starts, stops, or was never installed, so it is the one a
+/// caller can trace — "is this command server-first?" — without owning the
+/// machine it would run on.
+///
+/// The desktop is the Server plus a window
+/// (`ds-command-kernel/docs/contracts/ds-lens-core-boundary.md` §4 L0a), so
+/// [`Requires::Window`] is never a property of a domain, only of the command
+/// that has not been given its headless owner yet. Every entry is work the
+/// host-transparency backlog still owes; the ceilings in
+/// `crates/ds/tests/lens_core_boundary.rs` may only fall.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Requires {
+    /// Answers identically on a bare Server and on the desktop. The default,
+    /// and what every new command is expected to be.
+    Server,
+    /// Cannot answer without the running application: its map, its selection,
+    /// its open project cache, or an authenticated workflow that still lives
+    /// inside the shell.
+    Window,
+}
+
+impl Requires {
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Server => "server",
+            Self::Window => "window",
+        }
+    }
+
+    /// One line for command help. Only the window case is ever printed — a
+    /// server command saying "runs on the server" would be noise on every
+    /// help screen in the product.
+    pub const fn gloss(self) -> &'static str {
+        match self {
+            Self::Server => "runs headless; no application window needed",
+            Self::Window => "needs the paired DS GridDesign window",
+        }
+    }
+
+    pub const fn is_window(self) -> bool {
+        matches!(self, Self::Window)
+    }
+
+    /// Parse the token a descriptor carries, so a filter and an MCP
+    /// projection read the same vocabulary the JSON prints.
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token {
+            "server" => Some(Self::Server),
+            "window" => Some(Self::Window),
+            _ => None,
+        }
+    }
+
+    /// The accepted tokens, in the order a refusal should list them.
+    pub const TOKENS: &'static [&'static str] = &["server", "window"];
+}
+
+impl fmt::Display for Requires {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.token())
+    }
+}
+
 /// How a command answers: inside the invocation, or as a durable job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Execution {
@@ -552,6 +623,9 @@ pub struct Command {
     /// Repository-relative path to the deep reference for this command.
     /// Named in help; never inlined into it.
     pub reference: Option<&'static str>,
+    /// Where this command can run at all. Declared, not probed: it is the
+    /// same answer on every machine, which is what makes it traceable.
+    pub requires: Requires,
     /// Resolves availability *without* touching another domain. Cheap: help
     /// and the domain index both call it.
     pub availability: fn() -> Availability,
@@ -605,6 +679,7 @@ impl Domain {
 mod tests {
     use super::{
         Arg, Authority, AuthorityCapability, Availability, Chapter, Command, Effect, Execution,
+        Requires,
     };
 
     fn available() -> Availability {
@@ -630,6 +705,7 @@ mod tests {
             examples: &[],
             refusals: &[],
             reference: None,
+            requires: Requires::Server,
             availability: available,
         }
     }

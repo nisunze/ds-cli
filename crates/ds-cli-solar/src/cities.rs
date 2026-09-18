@@ -1,5 +1,5 @@
 //! Native project Solar city discovery.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::Value;
 pub static COMMAND: Command = Command {
@@ -29,6 +29,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {

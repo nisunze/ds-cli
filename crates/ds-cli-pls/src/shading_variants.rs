@@ -5,7 +5,7 @@
 //! into the task's typed request and presents its receipt.
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_tasks::{CreatePlsShadingVariantsRequest, create_pls_shading_variants};
@@ -84,6 +84,7 @@ pub static COMMAND: Command = Command {
         crate::RESULT_ENCODING_REFUSAL,
     ],
     reference: Some("docs/reference/pls.md"),
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 

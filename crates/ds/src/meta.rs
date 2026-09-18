@@ -9,6 +9,7 @@
 //!   ds capabilities dsgrid          one domain's command index
 //!   ds capabilities dsgrid.inspect  one complete descriptor
 //!   ds capabilities --search "…"     ids and one-liners, nothing more
+//!   ds capabilities --requires window  what still cannot run on a Server
 //!
 //! Search returns identifiers and summaries only. The agent then asks for the
 //! one descriptor it chose. That two-step is the whole point: the expensive
@@ -16,7 +17,7 @@
 
 use ds_cli_contract::help;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
@@ -60,7 +61,9 @@ The machine face of help. With no selector it lists domains. With a domain it \
 lists that domain's commands. With a command id it returns that one command's \
 complete descriptor. Use --search to find a command by words, then ask for the \
 descriptor of the one you chose — search returns ids and summaries only, so \
-finding a command costs almost nothing.",
+finding a command costs almost nothing. Use --requires to ask the other \
+question — where a command can run at all — across every domain, or inside \
+one of them.",
     chapter: Chapter::Catalog,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -76,12 +79,19 @@ finding a command costs almost nothing.",
             "<text>",
             "Match commands by words; returns ids and summaries.",
         ),
+        Arg::value(
+            "requires",
+            "<server|window>",
+            "Keep only commands that can run there.",
+        )
+        .choices(Requires::TOKENS),
         Arg::value("limit", "<n>", "Cap search results.").default("10"),
     ],
     output: "\
-A `tier` field naming what came back — `domains`, `commands`, `command` or \
-`search` — and the matching payload. Descriptors carry effect, authority, \
-availability, inputs, refusals and examples.",
+A `tier` field naming what came back — `domains`, `commands`, `command`, \
+`search` or `requires` — and the matching payload. Descriptors carry effect, \
+authority, requires, availability, inputs, refusals and examples. The \
+`requires` tier adds the total and the per-domain counts.",
     examples: &[
         Example {
             command: "ds capabilities --output json",
@@ -103,18 +113,46 @@ availability, inputs, refusals and examples.",
             note: "Ids and one-liners; fetch the descriptor you want next.",
             runnable: true,
         },
+        Example {
+            command: "ds capabilities --requires window --output json",
+            note: "What still needs the application, counted by domain.",
+            runnable: true,
+        },
+        Example {
+            command: "ds capabilities survey --requires window --output json",
+            note: "`matched` 0 proves a domain is server-first.",
+            runnable: true,
+        },
     ],
-    refusals: &[Refusal {
-        code: "unknown_selector",
-        when: "the selector is neither a domain nor a command id",
-        remedy: "run `ds capabilities` for the domain index",
-    }],
+    refusals: &[
+        Refusal {
+            code: "unknown_selector",
+            when: "the selector is neither a domain nor a command id",
+            remedy: "run `ds capabilities` for the domain index",
+        },
+        Refusal {
+            code: "conflicting_selector",
+            when: "--requires is combined with --search or a command id",
+            remedy: "ask `ds capabilities --requires <server|window> [<domain>]` on its own",
+        },
+    ],
     reference: None,
+    requires: Requires::Server,
     availability: always,
 };
 
 fn capabilities(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let schema_only = std::env::var_os("DS_CLI_SCHEMA_ONLY").is_some_and(|value| !value.is_empty());
+
+    if let Some(token) = inputs.value("requires") {
+        return requires(
+            token,
+            inputs.value("selector"),
+            inputs.value("search"),
+            inputs.value("limit").unwrap_or("10"),
+        );
+    }
+
     if let Some(query) = inputs.value("search") {
         return search(query, inputs.value("limit").unwrap_or("10"));
     }
@@ -196,6 +234,131 @@ fn capabilities(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .detail(json!({ "domains": known })))
 }
 
+/// Where commands can run, asked as a question instead of read one
+/// descriptor at a time.
+///
+/// This is the aggregate the per-command fact exists for: "what still needs
+/// the window?" is a single call, and "is this domain server-first?" is the
+/// same call with the domain named. It answers from the declared
+/// [`Requires`] fact, never from a live probe, so the answer does not change
+/// when the application happens to be running.
+///
+/// Bounded like every other projection here: the total and the per-domain
+/// counts always come back — they are what the question is usually for — and
+/// the ids themselves are a page capped the same way search is, with `more`
+/// naming what was left out.
+fn requires(
+    token: &str,
+    selector: Option<&str>,
+    search_query: Option<&str>,
+    limit: &str,
+) -> Result<Value, Failure> {
+    // Two filters over the same set would leave the caller guessing which one
+    // shaped the answer, and a command id already carries `requires` in its
+    // own descriptor.
+    let conflict = |what: &str, instead: String| {
+        Err(Failure::invalid(
+            "conflicting_selector",
+            format!("--requires cannot be combined with {what}"),
+        )
+        .remedy(instead)
+        .next("ds capabilities --requires window"))
+    };
+    if search_query.is_some() {
+        return conflict(
+            "--search",
+            "ask one question at a time: `ds capabilities --requires window`, \
+             or `ds capabilities --search \"…\"`"
+                .to_owned(),
+        );
+    }
+
+    let wanted = Requires::from_token(token).ok_or_else(|| {
+        Failure::invalid(
+            "conflicting_selector",
+            format!("`{token}` is not a place a command can run"),
+        )
+        .remedy(format!("use one of: {}", Requires::TOKENS.join(", ")))
+    })?;
+
+    let mut domains: Vec<&'static registry::Registered> = Vec::new();
+    match selector {
+        None => domains.extend(registry::domains()),
+        Some(name) => match registry::find_domain(name) {
+            Some(registered) => domains.push(registered),
+            None if registry::find_by_id(name).is_some() => {
+                return conflict(
+                    "a command id",
+                    format!("read `requires` in `ds capabilities {name}`"),
+                );
+            }
+            None => {
+                return Err(Failure::invalid(
+                    "unknown_selector",
+                    format!("`{name}` is not a domain"),
+                )
+                .remedy("run `ds capabilities` for the domain index")
+                .next("ds capabilities"));
+            }
+        },
+    }
+
+    let limit: usize = limit.parse().unwrap_or(10).clamp(1, 50);
+    let mut counts: Vec<Value> = Vec::new();
+    let mut matched: Vec<(&'static str, &'static Command)> = Vec::new();
+    for registered in domains {
+        let hits: Vec<&'static Command> = registered
+            .entries
+            .iter()
+            .map(|entry| entry.command)
+            .filter(|command| command.requires == wanted)
+            .collect();
+        if hits.is_empty() {
+            continue;
+        }
+        counts.push(json!({
+            "id": registered.domain.id,
+            "commands": hits.len(),
+        }));
+        matched.extend(
+            hits.into_iter()
+                .map(|command| (registered.domain.id, command)),
+        );
+    }
+
+    let total = matched.len();
+    matched.sort_by_key(|(_, command)| command.id);
+    matched.truncate(limit);
+
+    let mut result = json!({
+        "tier": "requires",
+        "requires": wanted.token(),
+        "matched": total,
+        "domains": counts,
+        "results": matched
+            .iter()
+            .map(|(domain, command)| json!({
+                "id": command.id,
+                "domain": domain,
+                "summary": command.summary,
+            }))
+            .collect::<Vec<_>>(),
+        "next": "ds capabilities <command-id>",
+    });
+    if let Some(name) = selector {
+        result["domain"] = json!(name);
+    }
+    if total > matched.len() {
+        result["more"] = json!({
+            "reason": "limit_reached",
+            "shown": matched.len(),
+            "matched": total,
+            "next": "read `domains` for the whole count, or raise --limit (max 50)",
+        });
+    }
+    Ok(result)
+}
+
 /// Word-overlap search over ids, summaries and purposes. Deliberately simple
 /// and deliberately shallow: it returns a shortlist to choose from, not an
 /// answer, so precision matters far less than never hiding a real match.
@@ -259,6 +422,30 @@ fn render_capabilities(data: &Value) -> String {
                     domain["commands"],
                     domain["summary"].as_str().unwrap_or(""),
                 ));
+            }
+        }
+        "requires" => {
+            for domain in data["domains"].as_array().into_iter().flatten() {
+                out.push_str(&format!(
+                    "{:<10}  {:>3}\n",
+                    domain["id"].as_str().unwrap_or(""),
+                    domain["commands"],
+                ));
+            }
+            out.push_str(&format!(
+                "\n{} command(s) require {}\n",
+                data["matched"],
+                data["requires"].as_str().unwrap_or(""),
+            ));
+            for command in data["results"].as_array().into_iter().flatten() {
+                out.push_str(&format!(
+                    "{:<26}  {}\n",
+                    command["id"].as_str().unwrap_or(""),
+                    command["summary"].as_str().unwrap_or(""),
+                ));
+            }
+            if let Some(more) = data["more"]["next"].as_str() {
+                out.push_str(&format!("({more})\n"));
             }
         }
         "commands" | "search" => {
@@ -340,6 +527,7 @@ install status, and shell reach. With --all, every command.",
     ],
     refusals: &[],
     reference: None,
+    requires: Requires::Server,
     availability: always,
 };
 
@@ -472,6 +660,7 @@ has to come from the build rather than from a string someone maintains.",
     }],
     refusals: &[],
     reference: None,
+    requires: Requires::Server,
     availability: always,
 };
 

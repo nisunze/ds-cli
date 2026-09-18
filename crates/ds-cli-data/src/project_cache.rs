@@ -27,7 +27,7 @@ use ds_cli_auth::{
 };
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::project_dataset_cache::{
@@ -340,6 +340,7 @@ pub static STATUS_COMMAND: Command = Command {
     ],
     refusals: STATUS_REFUSALS,
     reference: Some("docs/reference/data.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -369,6 +370,7 @@ pub static SEED_COMMAND: Command = Command {
     ],
     refusals: SEED_REFUSALS,
     reference: Some("docs/reference/data.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

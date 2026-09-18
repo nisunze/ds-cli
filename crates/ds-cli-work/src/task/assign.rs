@@ -11,7 +11,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -109,6 +109,7 @@ the `committedRevision`, and any `warnings`.",
         TOO_MANY_ASSIGNEES,
     ],
     reference: Some("docs/reference/work.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

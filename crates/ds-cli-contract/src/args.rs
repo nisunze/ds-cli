@@ -331,7 +331,9 @@ pub fn plural(count: u64, noun: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::parse;
-    use crate::spec::{Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal};
+    use crate::spec::{
+        Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
+    };
 
     fn available() -> Availability {
         Availability::Available
@@ -362,6 +364,7 @@ mod tests {
             remedy: "pass inputs as `--name value`",
         }],
         reference: None,
+        requires: Requires::Server,
         availability: available,
     };
 

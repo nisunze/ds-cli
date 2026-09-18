@@ -1,5 +1,7 @@
 //! CLI/MCP host over verified Solar source IO and shared Rust composition.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
 use std::io::Write;
@@ -94,6 +96,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability: crate::project::availability,
 };
 fn io(error: impl std::fmt::Display) -> Failure {

@@ -12,7 +12,7 @@ use std::time::Duration;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -150,6 +150,7 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
     ],
     refusals: EXPORT_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 
@@ -189,6 +190,7 @@ pub static REPORT_BUNDLE_COMMAND: Command = Command {
     }],
     refusals: EXPORT_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 
@@ -253,6 +255,7 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
     ],
     refusals: EXPORT_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 

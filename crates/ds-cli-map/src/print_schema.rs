@@ -1,6 +1,8 @@
 //! Printing authority discovery; schemas come directly from their Rust owner.
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -28,6 +30,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Server,
     availability: crate::layer::local_availability,
 };
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

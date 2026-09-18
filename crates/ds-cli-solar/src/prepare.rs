@@ -8,7 +8,9 @@
 //! application's bounded receipt.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -76,6 +78,7 @@ publish. The receipt contains no credential, cache path, or raw city input.",
     ],
     refusals: paired::REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Window,
     availability: paired::available,
 };
 

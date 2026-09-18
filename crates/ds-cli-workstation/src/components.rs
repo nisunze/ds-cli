@@ -1,5 +1,5 @@
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -24,6 +24,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[crate::COMPONENT_UNKNOWN],
     reference: Some("docs/reference/workstation.md"),
+    requires: Requires::Server,
     availability: crate::always,
 };
 

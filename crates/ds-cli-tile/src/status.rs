@@ -1,7 +1,7 @@
 //! `ds tile status` — the published state of the project's tile outputs.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value};
 
@@ -35,6 +35,7 @@ state, decision and bounded diagnostics.",
     }],
     refusals: crate::NATIVE_REFUSALS,
     reference: Some("docs/reference/tile.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

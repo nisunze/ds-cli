@@ -3,7 +3,7 @@
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -59,6 +59,7 @@ application's effective connectivity, never this CLI process's).",
             },
         ],
         reference: None,
+        requires: Requires::Window,
         availability: ops::paired_availability,
     }
 }

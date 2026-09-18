@@ -15,7 +15,7 @@
 use ds_cli_auth::TransformerStatusList;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -136,6 +136,7 @@ verb.",
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -215,6 +216,7 @@ per artifact name with the copy it resolved to and why.",
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -330,6 +332,7 @@ with its base and current version.",
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -396,6 +399,7 @@ plus message key behind each.",
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -501,6 +505,7 @@ one row per transformer with the room state this client can report.",
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

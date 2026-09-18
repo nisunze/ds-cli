@@ -1,7 +1,9 @@
 //! Publish an exact native result through the selected user's fenced save owner.
 use std::io::Read;
 
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_network::network::native_fast_lv::{
     MAX_NATIVE_FAST_LV_INPUT_BYTES, MAX_NATIVE_FAST_LV_OUTPUT_BYTES, project_native_fast_lv_result,
@@ -104,6 +106,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

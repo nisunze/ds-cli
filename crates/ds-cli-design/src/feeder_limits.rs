@@ -2,7 +2,7 @@
 use ds_cli_contract::{
     Context, Inputs,
     outcome::Failure,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use serde_json::{Value, json};
 use std::io::Write;
@@ -112,6 +112,7 @@ const fn command(
         examples: &[],
         refusals: REFUSALS,
         reference: Some("docs/reference/design.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     }
 }

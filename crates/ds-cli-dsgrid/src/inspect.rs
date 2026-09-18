@@ -17,7 +17,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::GridSession;
@@ -118,6 +118,7 @@ projections not requested and any collection that was truncated.",
         },
     ],
     reference: Some("docs/reference/dsgrid.inspect.md"),
+    requires: Requires::Server,
     availability: available,
 };
 

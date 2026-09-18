@@ -2,7 +2,7 @@
 //! step before a retirement or restoration.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -37,6 +37,7 @@ retirement record (reason, who, when, restoration) when one exists.",
     }],
     refusals: super::NATIVE_READ_REFUSALS,
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 

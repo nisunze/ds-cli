@@ -1,7 +1,7 @@
 //! Headless version adapters: one explicit project and server-assigned history.
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use ds_client_core::design_versions::Command as Request;
 use serde_json::{Value, json};
@@ -62,6 +62,7 @@ const fn command(
         examples: &[],
         refusals: REFUSALS,
         reference: Some("docs/reference/design.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     }
 }

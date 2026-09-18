@@ -1,7 +1,7 @@
 //! Headless camera commands use the same owner as Profile's WASM adapter.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
@@ -42,6 +42,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/map.md"),
+    requires: Requires::Server,
     availability: crate::layer::local_availability,
 };
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

@@ -11,6 +11,7 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::local_models::{Op, Origin};
@@ -100,6 +101,7 @@ is `ds dsgrid-exchange`'s act, not this one's.",
     }],
     refusals: IMPORT_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 

@@ -1,7 +1,7 @@
 //! File-only adapters to the Solar-owned offline project lifecycle.
 use crate::{DISCOVERY_TIMEOUT, DS_SOLAR, RUN_TIMEOUT};
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
@@ -91,6 +91,7 @@ const fn command(
             },
         ],
         reference: Some("docs/reference/solar.md"),
+        requires: Requires::Server,
         availability,
     }
 }

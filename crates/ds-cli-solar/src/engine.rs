@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -42,6 +42,7 @@ starting a batch, and to record which exact engine produced a result.",
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    requires: Requires::Server,
     availability,
 };
 

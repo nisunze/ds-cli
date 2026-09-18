@@ -1,5 +1,7 @@
 //! Governed model discovery and exact-byte download through the native owner.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::Value;
 use std::io::Write;
@@ -44,6 +46,7 @@ pub static LIST: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 pub static DOWNLOAD: Command = Command {
@@ -66,6 +69,7 @@ pub static DOWNLOAD: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 fn failure(e: impl std::fmt::Display) -> Failure {

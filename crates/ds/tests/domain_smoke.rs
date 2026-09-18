@@ -801,6 +801,133 @@ fn copy_tree(source: &std::path::Path, destination: &std::path::Path) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// capabilities --requires
+// ---------------------------------------------------------------------------
+
+/// The aggregate an operator asks before trusting a server: what still needs
+/// the window, and is this domain clear?
+///
+/// Asserted against named commands on both sides, because a filter that
+/// returns *something* proves nothing — the bug this shape of code actually
+/// produces is a comparison that matches everything or nothing.
+#[test]
+fn capabilities_requires_separates_the_window_from_the_server() {
+    // The lens domain is the one that must come back, and its page is bounded
+    // and reported, not silently cut.
+    let window = ok(&[
+        "capabilities",
+        "map",
+        "--requires",
+        "window",
+        "--limit",
+        "5",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(window["tier"], "requires");
+    assert_eq!(window["requires"], "window");
+    assert_eq!(window["domain"], "map");
+    assert_eq!(window["matched"], 39, "map's window commands");
+    let ids: Vec<&str> = window["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .map(|row| row["id"].as_str().expect("id"))
+        .collect();
+    assert_eq!(ids.len(), 5, "--limit is honoured");
+    assert!(
+        ids.contains(&"map.camera.set"),
+        "moving the camera is the window's own work: {ids:?}"
+    );
+    assert_eq!(window["more"]["shown"], 5);
+    assert_eq!(window["more"]["matched"], 39);
+
+    // Survey moved to the server. If a survey command ever needs the window
+    // again, this is where it is noticed.
+    let survey = ok(&[
+        "capabilities",
+        "survey",
+        "--requires",
+        "window",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(survey["matched"], 0, "survey is server-first");
+    assert!(
+        survey["results"].as_array().expect("results").is_empty(),
+        "a domain with no window commands returns none: {survey}"
+    );
+    assert!(
+        survey["more"].is_null(),
+        "nothing was truncated, so nothing is reported as truncated"
+    );
+
+    // …and the same command appears on the server side, so "0 window" is an
+    // answer about where it runs, not a command that vanished from the filter.
+    let headless = ok(&[
+        "capabilities",
+        "survey",
+        "--requires",
+        "server",
+        "--limit",
+        "50",
+        "--output",
+        "json",
+    ]);
+    let headless_ids: Vec<&str> = headless["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .map(|row| row["id"].as_str().expect("id"))
+        .collect();
+    assert!(
+        headless_ids.contains(&"survey.form.read"),
+        "reading a form is a server read: {headless_ids:?}"
+    );
+
+    // Every command in a domain is one or the other, and the descriptor
+    // carries the same fact the filter sorted on.
+    let index = ok(&["capabilities", "survey", "--output", "json"]);
+    let registered = index["commands"].as_array().expect("commands").len();
+    assert_eq!(
+        headless["matched"].as_u64().expect("matched") as usize,
+        registered,
+        "survey's whole index answers on the server"
+    );
+    let descriptor = ok(&["capabilities", "survey.form.read", "--output", "json"]);
+    assert_eq!(descriptor["command"]["requires"], "server");
+    let paired = ok(&["capabilities", "map.camera.set", "--output", "json"]);
+    assert_eq!(paired["command"]["requires"], "window");
+
+    // One question at a time: two filters over one set would leave the caller
+    // guessing which one shaped the answer.
+    assert_eq!(
+        refusal(&[
+            "capabilities",
+            "--requires",
+            "window",
+            "--search",
+            "map",
+            "--output",
+            "json",
+        ]),
+        "conflicting_selector"
+    );
+    assert_eq!(
+        refusal(&[
+            "capabilities",
+            "map.camera.set",
+            "--requires",
+            "window",
+            "--output",
+            "json",
+        ]),
+        "conflicting_selector",
+        "a command id already carries `requires` in its own descriptor"
+    );
+}
+
 fn ok(args: &[&str]) -> Value {
     let run = ds(args);
     assert_eq!(

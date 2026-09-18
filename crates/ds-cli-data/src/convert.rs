@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -84,6 +84,7 @@ detectable and the artifact can be reclaimed later by identity.",
         crate::OUTPUT_REFUSED,
     ],
     reference: Some("docs/reference/data.md"),
+    requires: Requires::Server,
     availability: crate::available,
 };
 

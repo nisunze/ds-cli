@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_tasks::{CompareDonAssignmentRequest, compare_don_assignment};
@@ -117,6 +117,7 @@ Both sources with their digests, the alignment evidence, and the three counts \
         crate::RESULT_ENCODING_REFUSAL,
     ],
     reference: Some("docs/reference/pls.md"),
+    requires: Requires::Server,
     availability: available,
 };
 

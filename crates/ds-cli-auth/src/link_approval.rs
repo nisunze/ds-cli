@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_cli_desktop::ops::{self, BridgeOp, DESCRIPTOR_ARG};
@@ -86,6 +86,7 @@ pub static COMMAND: Command = Command {
         RECEIPT_UNREADABLE,
     ],
     reference: Some("docs/contracts/unified-identity.md"),
+    requires: Requires::Window,
     availability: ops::paired_availability,
 };
 

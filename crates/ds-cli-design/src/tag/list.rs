@@ -1,7 +1,7 @@
 //! `ds design tag list` — the project's vocabulary and this object's values.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -50,6 +50,7 @@ and template origin.",
         crate::INVALID_ANCHOR,
     ],
     reference: Some("docs/reference/design.md"),
+    requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

@@ -1,7 +1,7 @@
 //! Project GIS file lifecycle. File IO is a host effect; ingestion remains server-owned.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -114,6 +114,7 @@ pub mod inspect {
         }],
         refusals: &[FILE],
         reference: Some("docs/reference/map.md"),
+        requires: Requires::Server,
         availability: super::super::layer::local_availability,
     };
     pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -149,6 +150,7 @@ pub mod upload {
         }],
         refusals: &UPLOAD_REFUSALS,
         reference: Some("docs/reference/map.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
     pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -195,6 +197,7 @@ pub mod list {
         }],
         refusals: &UPLOAD_REFUSALS,
         reference: Some("docs/reference/map.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
     pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -247,6 +250,7 @@ pub mod remove {
         }],
         refusals: &UPLOAD_REFUSALS,
         reference: Some("docs/reference/map.md"),
+        requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
     pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

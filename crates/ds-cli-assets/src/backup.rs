@@ -1,6 +1,6 @@
 //! Offline backup-ledger planning; archive access stays with the authenticated gateway.
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::Value;
@@ -28,6 +28,7 @@ pub static COMMAND: Command = Command {
         remedy: "use project/download with at most 100 rows and known event IDs",
     }],
     reference: None,
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

@@ -18,7 +18,8 @@ use ds_cli_contract::{
     Context, Failure, Inputs,
     outcome::ExitClass,
     spec::{
-        Arg, Authority, Availability, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
+        Arg, Authority, Availability, Chapter, Command, Domain, Effect, Example, Execution,
+        Refusal, Requires,
     },
 };
 // The kernel's own rule on a project id, named rather than copied: a value it
@@ -284,6 +285,7 @@ const fn command(
         examples,
         refusals,
         reference: Some("docs/reference/server.md"),
+        requires: Requires::Server,
         availability: || {
             if cfg!(target_os = "linux") {
                 Availability::Available
@@ -320,6 +322,7 @@ pub static ENGINE: Command = Command {
         remedy: "rebuild the executable from the pinned engine sources and retry",
     }],
     reference: Some("docs/reference/server.md"),
+    requires: Requires::Server,
     availability: || Availability::Available,
 };
 pub fn engine(_: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -366,6 +369,7 @@ pub static SERVE: Command = Command {
     }],
     refusals: SERVE_REFUSALS,
     reference: Some("docs/reference/server.md"),
+    requires: Requires::Server,
     availability: || {
         if cfg!(target_os = "linux") {
             Availability::Available

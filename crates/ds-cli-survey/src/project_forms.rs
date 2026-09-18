@@ -2,7 +2,9 @@
 //! control plane independent of the map and selected-project UI state.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -133,6 +135,7 @@ pub static LIST_COMMAND: Command = Command {
         ds_cli_contract::args::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -172,6 +175,7 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -197,6 +201,7 @@ pub static SETTINGS_COMMAND: Command = Command {
     }],
     refusals: LIST_COMMAND.refusals,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -228,6 +233,7 @@ pub static EDITOR_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -264,6 +270,7 @@ pub static PLAN_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
@@ -300,6 +307,7 @@ pub static APPLY_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
