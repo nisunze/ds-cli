@@ -1,0 +1,1161 @@
+{
+  "schema": "ds.design-activities-store-cases/v1",
+  "about": "Every decision the Design Activities store makes, replayed with exact equality. A case with `refusal` must be refused with those words; every other case must answer its recorded reply. Re-record with DS_RECORD_CORPUS=1.",
+  "cases": [
+    {
+      "id": "validate-admits-a-true-capture",
+      "why": "the envelope a sweep writes: its ledger is the project it names, its digest is the ledger it carries",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "validate",
+        "snapshot": {
+          "schema": "ds.design-activities-snapshot/v1",
+          "ds_project": "arjgpydw_nyam",
+          "project_name": "nyam",
+          "display_name": "Nyamagabe - Nyaruguru, TBEA",
+          "status": "active",
+          "lane": "stable",
+          "captured_at_ms": 1788992800000,
+          "captured_by": "owner@example.com",
+          "source": {
+            "rows": 4,
+            "fast_lane": true,
+            "diagnostics_source": "server"
+          },
+          "ledger": {
+            "schema": "ds.design-activity-ledger/v1",
+            "ds_project": "arjgpydw_nyam",
+            "captured_at_ms": 1788992800000,
+            "row_count": 4,
+            "transformer_count": 2,
+            "transformers": [
+              {
+                "name": "MUS_001",
+                "district": "Nyamagabe",
+                "sector": "Gasaka",
+                "created_by": "owner@example.com",
+                "created_at_ms": 1786400800000,
+                "updated_by": "intruder@example.com",
+                "updated_at_ms": 1788982000000,
+                "designed": {
+                  "when_ms": 1788978400000,
+                  "user": "intruder@example.com"
+                },
+                "phases": {
+                  "sketch": {
+                    "status": "success",
+                    "when_ms": 1787264800000,
+                    "user": "owner@example.com"
+                  },
+                  "draft": {
+                    "status": "success",
+                    "when_ms": 1788978400000,
+                    "user": "intruder@example.com"
+                  },
+                  "process": {
+                    "status": "success",
+                    "when_ms": 1788982000000,
+                    "user": "intruder@example.com"
+                  }
+                },
+                "latest": {
+                  "label_key": "dsr_action_process",
+                  "when_ms": 1788982000000,
+                  "user": "intruder@example.com"
+                },
+                "health": {
+                  "tone": "green",
+                  "error_count": 0,
+                  "warning_count": 0
+                }
+              },
+              {
+                "name": "MUS_002",
+                "district": "Nyamagabe",
+                "sector": "Kaduha",
+                "created_by": "owner@example.com",
+                "created_at_ms": 1786832800000,
+                "phases": {
+                  "draft": {
+                    "status": "error",
+                    "when_ms": 1788215200000,
+                    "user": "owner@example.com"
+                  }
+                },
+                "latest": {
+                  "label_key": "dsr_action_draft",
+                  "when_ms": 1788215200000,
+                  "user": "owner@example.com"
+                },
+                "health": {
+                  "tone": "red",
+                  "error_count": 1,
+                  "warning_count": 0,
+                  "user": "owner@example.com"
+                }
+              }
+            ]
+          },
+          "digest": "sha256:f9d3a7c43bbcd28cb31111a7f5b09b37185868b171a302ae4259cb3f156c4f8b"
+        }
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "ok": true,
+        "ds_project": "arjgpydw_nyam",
+        "captured_at_ms": 1788992800000,
+        "digest": "sha256:f9d3a7c43bbcd28cb31111a7f5b09b37185868b171a302ae4259cb3f156c4f8b",
+        "ledger_transformers": 2
+      }
+    },
+    {
+      "id": "validate-refuses-a-tampered-ledger",
+      "why": "someone edited the stored ledger and left the digest alone",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "validate",
+        "snapshot": {
+          "schema": "ds.design-activities-snapshot/v1",
+          "ds_project": "arjgpydw_nyam",
+          "project_name": "nyam",
+          "display_name": "Nyamagabe - Nyaruguru, TBEA",
+          "status": "active",
+          "lane": "stable",
+          "captured_at_ms": 1788992800000,
+          "captured_by": "owner@example.com",
+          "source": {
+            "rows": 4,
+            "fast_lane": true,
+            "diagnostics_source": "server"
+          },
+          "ledger": {
+            "schema": "ds.design-activity-ledger/v1",
+            "ds_project": "arjgpydw_nyam",
+            "captured_at_ms": 1788992800000,
+            "row_count": 4,
+            "transformer_count": 2,
+            "transformers": [
+              {
+                "name": "MUS_001",
+                "district": "Nyamagabe",
+                "sector": "Gasaka",
+                "created_by": "owner@example.com",
+                "created_at_ms": 1786400800000,
+                "updated_by": "intruder@example.com",
+                "updated_at_ms": 1788982000000,
+                "designed": {
+                  "when_ms": 1788978400000,
+                  "user": "intruder@example.com"
+                },
+                "phases": {
+                  "sketch": {
+                    "status": "success",
+                    "when_ms": 1787264800000,
+                    "user": "owner@example.com"
+                  },
+                  "draft": {
+                    "status": "success",
+                    "when_ms": 1788978400000,
+                    "user": "intruder@example.com"
+                  },
+                  "process": {
+                    "status": "success",
+                    "when_ms": 1788982000000,
+                    "user": "intruder@example.com"
+                  }
+                },
+                "latest": {
+                  "label_key": "dsr_action_process",
+                  "when_ms": 1788982000000,
+                  "user": "intruder@example.com"
+                },
+                "health": {
+                  "tone": "green",
+                  "error_count": 0,
+                  "warning_count": 0
+                }
+              }
+            ]
+          },
+          "digest": "sha256:f9d3a7c43bbcd28cb31111a7f5b09b37185868b171a302ae4259cb3f156c4f8b"
+        }
+      },
+      "refusal": "snapshot.ledger.transformer_count"
+    },
+    {
+      "id": "validate-refuses-another-projects-ledger",
+      "why": "a capture filed under one project may never carry another's record",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "validate",
+        "snapshot": {
+          "schema": "ds.design-activities-snapshot/v1",
+          "ds_project": "arjgpydw_nyam",
+          "project_name": "nyam",
+          "display_name": "Nyamagabe - Nyaruguru, TBEA",
+          "status": "active",
+          "lane": "stable",
+          "captured_at_ms": 1788992800000,
+          "captured_by": "owner@example.com",
+          "source": {
+            "rows": 4,
+            "fast_lane": true,
+            "diagnostics_source": "server"
+          },
+          "ledger": {
+            "schema": "ds.design-activity-ledger/v1",
+            "ds_project": "rulindo_mv",
+            "captured_at_ms": 1788992800000,
+            "row_count": 4,
+            "transformer_count": 2,
+            "transformers": [
+              {
+                "name": "MUS_001",
+                "district": "Nyamagabe",
+                "sector": "Gasaka",
+                "created_by": "owner@example.com",
+                "created_at_ms": 1786400800000,
+                "updated_by": "intruder@example.com",
+                "updated_at_ms": 1788982000000,
+                "designed": {
+                  "when_ms": 1788978400000,
+                  "user": "intruder@example.com"
+                },
+                "phases": {
+                  "sketch": {
+                    "status": "success",
+                    "when_ms": 1787264800000,
+                    "user": "owner@example.com"
+                  },
+                  "draft": {
+                    "status": "success",
+                    "when_ms": 1788978400000,
+                    "user": "intruder@example.com"
+                  },
+                  "process": {
+                    "status": "success",
+                    "when_ms": 1788982000000,
+                    "user": "intruder@example.com"
+                  }
+                },
+                "latest": {
+                  "label_key": "dsr_action_process",
+                  "when_ms": 1788982000000,
+                  "user": "intruder@example.com"
+                },
+                "health": {
+                  "tone": "green",
+                  "error_count": 0,
+                  "warning_count": 0
+                }
+              },
+              {
+                "name": "MUS_002",
+                "district": "Nyamagabe",
+                "sector": "Kaduha",
+                "created_by": "owner@example.com",
+                "created_at_ms": 1786832800000,
+                "phases": {
+                  "draft": {
+                    "status": "error",
+                    "when_ms": 1788215200000,
+                    "user": "owner@example.com"
+                  }
+                },
+                "latest": {
+                  "label_key": "dsr_action_draft",
+                  "when_ms": 1788215200000,
+                  "user": "owner@example.com"
+                },
+                "health": {
+                  "tone": "red",
+                  "error_count": 1,
+                  "warning_count": 0,
+                  "user": "owner@example.com"
+                }
+              }
+            ]
+          },
+          "digest": "sha256:f9d3a7c43bbcd28cb31111a7f5b09b37185868b171a302ae4259cb3f156c4f8b"
+        }
+      },
+      "refusal": "snapshot.ledger.ds_project"
+    },
+    {
+      "id": "digest-names-the-canonical-ledger-bytes",
+      "why": "a host that cannot reproduce the canonical bytes asks the kernel for them",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "digest",
+        "ledger": {
+          "schema": "ds.design-activity-ledger/v1",
+          "ds_project": "arjgpydw_nyam",
+          "captured_at_ms": 1788992800000,
+          "row_count": 4,
+          "transformer_count": 2,
+          "transformers": [
+            {
+              "name": "MUS_001",
+              "district": "Nyamagabe",
+              "sector": "Gasaka",
+              "created_by": "owner@example.com",
+              "created_at_ms": 1786400800000,
+              "updated_by": "intruder@example.com",
+              "updated_at_ms": 1788982000000,
+              "designed": {
+                "when_ms": 1788978400000,
+                "user": "intruder@example.com"
+              },
+              "phases": {
+                "sketch": {
+                  "status": "success",
+                  "when_ms": 1787264800000,
+                  "user": "owner@example.com"
+                },
+                "draft": {
+                  "status": "success",
+                  "when_ms": 1788978400000,
+                  "user": "intruder@example.com"
+                },
+                "process": {
+                  "status": "success",
+                  "when_ms": 1788982000000,
+                  "user": "intruder@example.com"
+                }
+              },
+              "latest": {
+                "label_key": "dsr_action_process",
+                "when_ms": 1788982000000,
+                "user": "intruder@example.com"
+              },
+              "health": {
+                "tone": "green",
+                "error_count": 0,
+                "warning_count": 0
+              }
+            },
+            {
+              "name": "MUS_002",
+              "district": "Nyamagabe",
+              "sector": "Kaduha",
+              "created_by": "owner@example.com",
+              "created_at_ms": 1786832800000,
+              "phases": {
+                "draft": {
+                  "status": "error",
+                  "when_ms": 1788215200000,
+                  "user": "owner@example.com"
+                }
+              },
+              "latest": {
+                "label_key": "dsr_action_draft",
+                "when_ms": 1788215200000,
+                "user": "owner@example.com"
+              },
+              "health": {
+                "tone": "red",
+                "error_count": 1,
+                "warning_count": 0,
+                "user": "owner@example.com"
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "ds_project": "arjgpydw_nyam",
+        "captured_at_ms": 1788992800000,
+        "digest": "sha256:f9d3a7c43bbcd28cb31111a7f5b09b37185868b171a302ae4259cb3f156c4f8b",
+        "ledger_transformers": 2
+      }
+    },
+    {
+      "id": "digest-refuses-a-document-that-is-not-a-ledger",
+      "why": "a Dashboard model is not a ledger",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "digest",
+        "ledger": {
+          "schema": "ds.design-dashboard/v1",
+          "ds_project": "arjgpydw_nyam",
+          "captured_at_ms": 1788992800000,
+          "row_count": 0,
+          "transformer_count": 0,
+          "transformers": []
+        }
+      },
+      "refusal": "ledger.schema"
+    },
+    {
+      "id": "key-places-a-canary-capture",
+      "why": "the account is hashed into the path, never spelled, and the file name sorts by itself",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "key",
+        "principal_uid": "uid-owner-0001",
+        "lane": "canary",
+        "audience_sha256": "9f2c1a0000000000000000000000000000000000000000000000000000000000",
+        "ds_project": "arjgpydw_nyam",
+        "captured_at_ms": 1788992800000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "segments": [
+          "design-activities",
+          "canary",
+          "83039325deebf96ded7a7ff99818cd04",
+          "arjgpydw_nyam"
+        ],
+        "file_name": "1788992800000.json"
+      }
+    },
+    {
+      "id": "key-refuses-a-project-that-would-escape-its-store",
+      "why": "a project name is one path component or it is not a project name",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "key",
+        "principal_uid": "uid-owner-0001",
+        "lane": "stable",
+        "audience_sha256": "9f2c1a0000000000000000000000000000000000000000000000000000000000",
+        "ds_project": "../../etc",
+        "captured_at_ms": 1788992800000
+      },
+      "refusal": "ds_project"
+    },
+    {
+      "id": "retain-ten-days-of-four-captures-a-day",
+      "why": "the last thirty stay whole and the days they do not reach keep their newest",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "retain",
+        "existing": [
+          33696000000,
+          33717600000,
+          33739200000,
+          33760800000,
+          33782400000,
+          33804000000,
+          33825600000,
+          33847200000,
+          33868800000,
+          33890400000,
+          33912000000,
+          33933600000,
+          33955200000,
+          33976800000,
+          33998400000,
+          34020000000,
+          34041600000,
+          34063200000,
+          34084800000,
+          34106400000,
+          34128000000,
+          34149600000,
+          34171200000,
+          34192800000,
+          34214400000,
+          34236000000,
+          34257600000,
+          34279200000,
+          34300800000,
+          34322400000,
+          34344000000,
+          34365600000,
+          34387200000,
+          34408800000,
+          34430400000,
+          34452000000,
+          34473600000,
+          34495200000,
+          34516800000,
+          34538400000
+        ],
+        "keep_last": 30,
+        "keep_days": 90,
+        "now_ms": 34560000000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "keep": [
+          33760800000,
+          33847200000,
+          33912000000,
+          33933600000,
+          33955200000,
+          33976800000,
+          33998400000,
+          34020000000,
+          34041600000,
+          34063200000,
+          34084800000,
+          34106400000,
+          34128000000,
+          34149600000,
+          34171200000,
+          34192800000,
+          34214400000,
+          34236000000,
+          34257600000,
+          34279200000,
+          34300800000,
+          34322400000,
+          34344000000,
+          34365600000,
+          34387200000,
+          34408800000,
+          34430400000,
+          34452000000,
+          34473600000,
+          34495200000,
+          34516800000,
+          34538400000
+        ],
+        "drop": [
+          33696000000,
+          33717600000,
+          33739200000,
+          33782400000,
+          33804000000,
+          33825600000,
+          33868800000,
+          33890400000
+        ]
+      }
+    },
+    {
+      "id": "retain-an-empty-store",
+      "why": "a project nobody has captured yet keeps and drops nothing",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "retain",
+        "existing": [],
+        "now_ms": 34560000000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "keep": [],
+        "drop": []
+      }
+    },
+    {
+      "id": "retain-a-store-of-one",
+      "why": "the only capture is the history",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "retain",
+        "existing": [
+          34559700000
+        ],
+        "now_ms": 34560000000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "keep": [
+          34559700000
+        ],
+        "drop": []
+      }
+    },
+    {
+      "id": "retain-exactly-the-last-thirty",
+      "why": "thirty captures in one hour are thirty captures nobody may thin",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "retain",
+        "existing": [
+          34560000000,
+          34559940000,
+          34559880000,
+          34559820000,
+          34559760000,
+          34559700000,
+          34559640000,
+          34559580000,
+          34559520000,
+          34559460000,
+          34559400000,
+          34559340000,
+          34559280000,
+          34559220000,
+          34559160000,
+          34559100000,
+          34559040000,
+          34558980000,
+          34558920000,
+          34558860000,
+          34558800000,
+          34558740000,
+          34558680000,
+          34558620000,
+          34558560000,
+          34558500000,
+          34558440000,
+          34558380000,
+          34558320000,
+          34558260000
+        ],
+        "now_ms": 34560000000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "keep": [
+          34558260000,
+          34558320000,
+          34558380000,
+          34558440000,
+          34558500000,
+          34558560000,
+          34558620000,
+          34558680000,
+          34558740000,
+          34558800000,
+          34558860000,
+          34558920000,
+          34558980000,
+          34559040000,
+          34559100000,
+          34559160000,
+          34559220000,
+          34559280000,
+          34559340000,
+          34559400000,
+          34559460000,
+          34559520000,
+          34559580000,
+          34559640000,
+          34559700000,
+          34559760000,
+          34559820000,
+          34559880000,
+          34559940000,
+          34560000000
+        ],
+        "drop": []
+      }
+    },
+    {
+      "id": "retain-thirty-one-spanning-more-than-ninety-days",
+      "why": "the thirty-first is only kept if its day is still inside the window",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "retain",
+        "existing": [
+          8640000000,
+          17280000000,
+          34473601000,
+          34560000000,
+          34559940000,
+          34559880000,
+          34559820000,
+          34559760000,
+          34559700000,
+          34559640000,
+          34559580000,
+          34559520000,
+          34559460000,
+          34559400000,
+          34559340000,
+          34559280000,
+          34559220000,
+          34559160000,
+          34559100000,
+          34559040000,
+          34558980000,
+          34558920000,
+          34558860000,
+          34558800000,
+          34558740000,
+          34558680000,
+          34558620000,
+          34558560000,
+          34558500000,
+          34558440000,
+          34558380000,
+          34558320000,
+          34558260000
+        ],
+        "now_ms": 34560000000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "keep": [
+          34558260000,
+          34558320000,
+          34558380000,
+          34558440000,
+          34558500000,
+          34558560000,
+          34558620000,
+          34558680000,
+          34558740000,
+          34558800000,
+          34558860000,
+          34558920000,
+          34558980000,
+          34559040000,
+          34559100000,
+          34559160000,
+          34559220000,
+          34559280000,
+          34559340000,
+          34559400000,
+          34559460000,
+          34559520000,
+          34559580000,
+          34559640000,
+          34559700000,
+          34559760000,
+          34559820000,
+          34559880000,
+          34559940000,
+          34560000000
+        ],
+        "drop": [
+          8640000000,
+          17280000000,
+          34473601000
+        ]
+      }
+    },
+    {
+      "id": "retain-several-captures-a-day",
+      "why": "a day is represented by its newest capture, not by all of them",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "retain",
+        "existing": [
+          34473600000,
+          34484400000,
+          34495200000,
+          34506000000,
+          34516800000,
+          34527600000,
+          34538400000,
+          34549200000,
+          34387200000,
+          34398000000,
+          34408800000,
+          34419600000,
+          34430400000,
+          34441200000,
+          34452000000,
+          34462800000
+        ],
+        "keep_last": 3,
+        "keep_days": 90,
+        "now_ms": 34560000000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "keep": [
+          34462800000,
+          34527600000,
+          34538400000,
+          34549200000
+        ],
+        "drop": [
+          34387200000,
+          34398000000,
+          34408800000,
+          34419600000,
+          34430400000,
+          34441200000,
+          34452000000,
+          34473600000,
+          34484400000,
+          34495200000,
+          34506000000,
+          34516800000
+        ]
+      }
+    },
+    {
+      "id": "retain-refuses-a-window-of-no-days",
+      "why": "keeping one capture per day for zero days is not a retention",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "retain",
+        "existing": [
+          33696000000,
+          33717600000,
+          33739200000,
+          33760800000,
+          33782400000,
+          33804000000,
+          33825600000,
+          33847200000,
+          33868800000,
+          33890400000,
+          33912000000,
+          33933600000,
+          33955200000,
+          33976800000,
+          33998400000,
+          34020000000,
+          34041600000,
+          34063200000,
+          34084800000,
+          34106400000,
+          34128000000,
+          34149600000,
+          34171200000,
+          34192800000,
+          34214400000,
+          34236000000,
+          34257600000,
+          34279200000,
+          34300800000,
+          34322400000,
+          34344000000,
+          34365600000,
+          34387200000,
+          34408800000,
+          34430400000,
+          34452000000,
+          34473600000,
+          34495200000,
+          34516800000,
+          34538400000
+        ],
+        "keep_last": 30,
+        "keep_days": 0,
+        "now_ms": 34560000000
+      },
+      "refusal": "keep_days"
+    },
+    {
+      "id": "select-the-pair-the-fold-diffs",
+      "why": "the fold reads the latest capture against the one before it",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "select",
+        "existing": [
+          34300800000,
+          34560000000,
+          34473600000,
+          34560000000
+        ]
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "latest": 34560000000,
+        "previous": 34473600000
+      }
+    },
+    {
+      "id": "select-an-empty-store",
+      "why": "nothing captured is nothing to fold — a gap, not a placeholder",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "select",
+        "existing": []
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1"
+      }
+    },
+    {
+      "id": "select-refuses-a-capture-time-that-is-not-one",
+      "why": "a zero capture time names no file",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "select",
+        "existing": [
+          0
+        ]
+      },
+      "refusal": "existing"
+    },
+    {
+      "id": "plan-the-active-bucket",
+      "why": "a sweep asks for what is missing and what is behind, oldest first, and says why it skipped the rest",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "plan",
+        "visible": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "display_name": "Nyamagabe - Nyaruguru, TBEA"
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "status": "active",
+            "display_name": "Rulindo MV"
+          },
+          {
+            "ds_project": "karongi_lv",
+            "status": "active"
+          },
+          {
+            "ds_project": "old_pilot",
+            "status": "archived",
+            "display_name": "Pilot 2024"
+          },
+          {
+            "ds_project": "bench",
+            "status": "testing"
+          }
+        ],
+        "cached": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "captured_at_ms": 1788998200000
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "captured_at_ms": 1788967600000
+          },
+          {
+            "ds_project": "old_pilot",
+            "captured_at_ms": 1785544000000
+          }
+        ],
+        "now_ms": 1789000000000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "refresh": [
+          {
+            "ds_project": "rulindo_mv",
+            "display_name": "Rulindo MV",
+            "reason": "stale"
+          },
+          {
+            "ds_project": "karongi_lv",
+            "reason": "missing"
+          }
+        ],
+        "skip": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "reason": "fresh"
+          },
+          {
+            "ds_project": "old_pilot",
+            "reason": "bucket"
+          },
+          {
+            "ds_project": "bench",
+            "reason": "bucket"
+          }
+        ],
+        "pause_ms": 2000,
+        "sequential": true
+      }
+    },
+    {
+      "id": "plan-every-bucket",
+      "why": "the same directory, swept whole",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "plan",
+        "visible": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "display_name": "Nyamagabe - Nyaruguru, TBEA"
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "status": "active",
+            "display_name": "Rulindo MV"
+          },
+          {
+            "ds_project": "karongi_lv",
+            "status": "active"
+          },
+          {
+            "ds_project": "old_pilot",
+            "status": "archived",
+            "display_name": "Pilot 2024"
+          },
+          {
+            "ds_project": "bench",
+            "status": "testing"
+          }
+        ],
+        "cached": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "captured_at_ms": 1788998200000
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "captured_at_ms": 1788967600000
+          },
+          {
+            "ds_project": "old_pilot",
+            "captured_at_ms": 1785544000000
+          }
+        ],
+        "now_ms": 1789000000000,
+        "bucket": "all",
+        "max_age_ms": 21600000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "refresh": [
+          {
+            "ds_project": "old_pilot",
+            "display_name": "Pilot 2024",
+            "reason": "stale"
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "display_name": "Rulindo MV",
+            "reason": "stale"
+          },
+          {
+            "ds_project": "bench",
+            "reason": "missing"
+          },
+          {
+            "ds_project": "karongi_lv",
+            "reason": "missing"
+          }
+        ],
+        "skip": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "reason": "fresh"
+          }
+        ],
+        "pause_ms": 2000,
+        "sequential": true
+      }
+    },
+    {
+      "id": "plan-a-limit-leaves-the-rest-visible",
+      "why": "a project the sweep could not reach is skipped by name, never silently dropped",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "plan",
+        "visible": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "display_name": "Nyamagabe - Nyaruguru, TBEA"
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "status": "active",
+            "display_name": "Rulindo MV"
+          },
+          {
+            "ds_project": "karongi_lv",
+            "status": "active"
+          },
+          {
+            "ds_project": "old_pilot",
+            "status": "archived",
+            "display_name": "Pilot 2024"
+          },
+          {
+            "ds_project": "bench",
+            "status": "testing"
+          }
+        ],
+        "cached": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "captured_at_ms": 1788998200000
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "captured_at_ms": 1788967600000
+          },
+          {
+            "ds_project": "old_pilot",
+            "captured_at_ms": 1785544000000
+          }
+        ],
+        "now_ms": 1789000000000,
+        "bucket": "all",
+        "limit": 2,
+        "pause_ms": 4000
+      },
+      "expected": {
+        "schema": "ds.design-activities-store/v1",
+        "refresh": [
+          {
+            "ds_project": "old_pilot",
+            "display_name": "Pilot 2024",
+            "reason": "stale"
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "display_name": "Rulindo MV",
+            "reason": "stale"
+          }
+        ],
+        "skip": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "reason": "fresh"
+          },
+          {
+            "ds_project": "bench",
+            "reason": "limit"
+          },
+          {
+            "ds_project": "karongi_lv",
+            "reason": "limit"
+          }
+        ],
+        "pause_ms": 4000,
+        "sequential": true
+      }
+    },
+    {
+      "id": "plan-refuses-a-directory-that-lists-a-project-twice",
+      "why": "two entries for one project would capture it twice and count it twice",
+      "request": {
+        "schema": "ds.design-activities-store/v1",
+        "action": "plan",
+        "visible": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "display_name": "Nyamagabe - Nyaruguru, TBEA"
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "status": "active",
+            "display_name": "Rulindo MV"
+          },
+          {
+            "ds_project": "karongi_lv",
+            "status": "active"
+          },
+          {
+            "ds_project": "old_pilot",
+            "status": "archived",
+            "display_name": "Pilot 2024"
+          },
+          {
+            "ds_project": "bench",
+            "status": "testing"
+          },
+          {
+            "ds_project": "rulindo_mv"
+          }
+        ],
+        "cached": [
+          {
+            "ds_project": "arjgpydw_nyam",
+            "captured_at_ms": 1788998200000
+          },
+          {
+            "ds_project": "rulindo_mv",
+            "captured_at_ms": 1788967600000
+          },
+          {
+            "ds_project": "old_pilot",
+            "captured_at_ms": 1785544000000
+          }
+        ],
+        "now_ms": 1789000000000
+      },
+      "refusal": "listed twice"
+    }
+  ]
+}

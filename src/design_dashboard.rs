@@ -500,7 +500,10 @@ pub(crate) fn timestamp_ms(value: Option<&Value>) -> i64 {
 
 /// The first of the keys the phase blob actually carries, `??`-style: a key
 /// that is present but empty still wins, exactly as the page read it.
-pub(crate) fn first_present<'meta>(meta: &'meta Map<String, Value>, keys: &[&str]) -> Option<&'meta Value> {
+pub(crate) fn first_present<'meta>(
+    meta: &'meta Map<String, Value>,
+    keys: &[&str],
+) -> Option<&'meta Value> {
     for key in keys {
         match meta.get(*key) {
             Some(Value::Null) | None => continue,
@@ -510,7 +513,10 @@ pub(crate) fn first_present<'meta>(meta: &'meta Map<String, Value>, keys: &[&str
     None
 }
 
-pub(crate) fn phase_meta<'row>(row: &'row Map<String, Value>, key: &str) -> Option<&'row Map<String, Value>> {
+pub(crate) fn phase_meta<'row>(
+    row: &'row Map<String, Value>,
+    key: &str,
+) -> Option<&'row Map<String, Value>> {
     row.get(key).and_then(object)
 }
 
@@ -811,7 +817,10 @@ pub(crate) struct ComputeStamp {
     pub(crate) user: String,
 }
 
-pub(crate) fn design_stamp(row: &Map<String, Value>, output_never_saved: bool) -> Option<ComputeStamp> {
+pub(crate) fn design_stamp(
+    row: &Map<String, Value>,
+    output_never_saved: bool,
+) -> Option<ComputeStamp> {
     let mut candidates: Vec<ComputeStamp> = Vec::new();
     if let Some(legacy) = latest_legacy_phase(row) {
         if phase_succeeded(Some(legacy)) {
@@ -2159,7 +2168,7 @@ mod tests {
         // Forty single-count chips over 65: the page's float sum ended at
         // 100 - 1.54; the summed ROUNDED percents would have ended at 80.
         let mut counts = vec![25usize];
-        counts.extend(std::iter::repeat(1).take(40));
+        counts.extend(std::iter::repeat_n(1, 40));
         let last = *ring_geometry(&counts).last().unwrap();
         assert_eq!(last, (2, 98));
     }

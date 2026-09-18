@@ -128,6 +128,13 @@ pub mod design_activities;
 pub fn design_activities_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_activities::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod design_activities_store;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designActivitiesStore)]
+pub fn design_activities_store_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_activities_store::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod design_dashboard;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designDashboard)]

@@ -77,6 +77,62 @@ the status row's or `design_health`'s, called in-process.
   timeline, projects, changes) default to 500/200/500/500, may be raised to
   5000, and `more` says which lists were cut.
 
+## Where a capture lives
+
+**Owner:** `design_activities_store` (`src/design_activities_store.rs`),
+schema `ds.design-activities-store/v1`, native `evaluate` and WASM
+`designActivitiesStore`. The bytes and the atomic write are the host's; the
+identity, the admission, the retention, the selection and the order of the
+next sweep are the kernel's, so the Linux server's store under
+`$XDG_STATE_HOME/ds/design-activities/…` and the Governance page's IndexedDB
+hold the same history of the same captures.
+
+A retained capture is one envelope, `ds.design-activities-snapshot/v1`:
+`{schema, ds_project, project_name?, display_name?, status?, lane, captured_at_ms,
+captured_by, source:{rows, fast_lane, diagnostics_source}, ledger, dashboard?,
+digest}`. `digest` is `sha256:` over the canonical (compact) bytes of the
+ledger; `captured_by` is the account the capture was taken as — **not** a
+device, because the rows carry none.
+
+- `validate` admits an envelope only when it is internally true: the snapshot
+  schema, a valid project, a positive capture time that fits a 13-digit name,
+  a named capturer, the ledger's schema, its project and its capture time
+  equal to the envelope's, its `transformer_count` equal to what it carries,
+  `source.rows` no smaller than the ledger's `row_count`, and the digest
+  recomputed from the ledger it carries. A refusal names the field.
+- `digest` returns that digest for a ledger, so a host never has to reproduce
+  the canonical bytes itself.
+- `key` returns the segments `["design-activities", lane, <32 hex of
+  sha256(principal_uid + "\n" + audience_sha256)>, ds_project]` and the file
+  name `<captured_at_ms zero-padded to 13 digits>.json`. The account is
+  hashed, never spelled; two accounts, or one account on two credential
+  audiences, are two stores; every segment must be one safe path component.
+- `retain` keeps the newest `keep_last` (30) captures whole **plus** the
+  newest capture of each UTC day within `keep_days` (90), and drops the rest.
+  Thinning is not cache eviction: the record is the difference between
+  captures, so the older shape of the history is kept a day at a time. It is
+  idempotent and never drops the newest capture.
+- `select` names the pair the fold diffs: the latest capture and the newest
+  strictly older one.
+- `plan` takes the visible projects, the captures already held, `now_ms`, a
+  bucket (`active` by default; a project with no status counts as active),
+  `max_age_ms` (6 h), `limit` (500) and `pause_ms` (2000), and returns the
+  sweep: `refresh` ordered oldest capture first and then the projects with no
+  capture at all, `skip` naming every project left out and why (`fresh`,
+  `bucket`, `limit`), and the etiquette — `sequential: true` and `pause_ms` —
+  that a host must obey.
+
+**Nothing here schedules anything.** There is no timer, unit file, cron or
+background refresh in this contract and there is not meant to be one: a sweep
+happens because a person or an agent asked for one. A reader is stale-first
+and says which moment it is reading.
+
+`tests/design_activities_store_cases.rs` replays
+`tests/fixtures/design-activities-store-cases.json` with exact equality —
+every action, its refusals, and the retention edges (empty, one, exactly
+thirty, thirty-one spanning more than ninety days, several captures a day) —
+and re-records under `DS_RECORD_CORPUS=1`.
+
 ## Label keys
 
 Everything this module emits is an i18n key. Its own set, prefixed `gda_`, is
