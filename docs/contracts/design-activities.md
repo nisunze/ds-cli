@@ -62,6 +62,12 @@ the status row's or `design_health`'s, called in-process.
   exports, map views, edits held in a browser room and never saved, and
   anything else that leaves no phase stamp or document update on the status
   row do not exist to this module.
+- **`first_seen_ms` is not a first appearance and `last_seen_ms` is not a
+  presence.** Both are stamps inside the retained captures. A user whose
+  older stamps have all been overwritten since the first sweep has an
+  earliest retained stamp of yesterday and is not a new actor; a user who
+  read, downloaded and exported all day stamped nothing and does not move.
+  A host must spell both as what they are, never as arrival or activity.
 - A capture older than 24 h against `now_ms` is reported `stale`; the fold
   still reads it, it just says so.
 
@@ -137,8 +143,10 @@ and re-records under `DS_RECORD_CORPUS=1`.
 
 Everything this module emits is an i18n key. Its own set, prefixed `gda_`, is
 listed in the module rustdoc and is the source the web catalogue is authored
-from. Timeline, change and `latest` label keys are the status row's phase
-action keys (`dsr_action_*`), reused as-is.
+from. Timeline entries, changes and `latest` each carry a `label_key`: the status
+row's own phase action keys (`dsr_action_*`), reused as-is. A change carries
+both `phase` (the raw token, for a machine) and `label_key` (for a reader);
+a host that prints `phase` prints English on a French page.
 
 ## Parity
 

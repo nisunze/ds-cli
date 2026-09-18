@@ -276,11 +276,18 @@ pub struct UserEntry {
     /// Red transformers charged to this user.
     pub errors: usize,
     pub transformers_touched: usize,
+    /// The EARLIEST stamp this user holds in the retained captures — not the
+    /// day they joined. A capture carries only the latest stamp per phase, so
+    /// a long-standing user whose older stamps have all been overwritten
+    /// looks new here. A host must not spell this as a first appearance.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub first_seen_ms: Option<i64>,
-    /// Where the earliest stamp was.
+    /// Where the earliest retained stamp was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub first_project: Option<String>,
+    /// The latest stamp this user holds. It is not a sign-in, a session or a
+    /// presence: a person who read, downloaded or exported all day and
+    /// stamped nothing does not move it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_seen_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -352,6 +359,10 @@ pub struct Change {
     /// `sketch`, `draft`, `process`, `report`, `combined`, or `document` for
     /// the updater stamp and for a transformer appearing or vanishing.
     pub phase: String,
+    /// How a reader spells `phase`: the same `dsr_action_*` key the timeline
+    /// and the status row already use. A host renders the key, never the
+    /// token, or a French page reads `process` in English.
+    pub label_key: String,
     pub kind: ChangeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub when_ms: Option<i64>,
@@ -760,18 +771,34 @@ fn succeeded(stamp: Option<&PhaseStamp>) -> bool {
     stamp.is_some_and(|stamp| stamp.status == "success")
 }
 
+/// How a phase token is spelled, for every surface that shows one.
+///
+/// One mapping, used by the timeline, by the diff and by `stamps_of`, so a
+/// change and the stamp it came from can never be named differently.
+pub(crate) fn phase_label_key(phase: &str) -> &'static str {
+    match phase {
+        "sketch" => "dsr_action_sketch",
+        "draft" => "dsr_action_draft",
+        "process" => "dsr_action_process",
+        "report" => "dsr_action_report",
+        "combined" => "dsr_action_combined",
+        _ => "dsr_action_document_update",
+    }
+}
+
 /// The stamps a transformer carries, as `(phase, label_key, when_ms, user)`,
 /// in slot order then the document updater — the timeline's raw material.
 fn stamps_of(transformer: &LedgerTransformer) -> Vec<(&'static str, &'static str, i64, String)> {
     let phases = &transformer.phases;
     let mut out: Vec<(&'static str, &'static str, i64, String)> = Vec::new();
-    for (phase, label_key, stamp) in [
-        ("sketch", "dsr_action_sketch", phases.sketch.as_ref()),
-        ("draft", "dsr_action_draft", phases.draft.as_ref()),
-        ("process", "dsr_action_process", phases.process.as_ref()),
-        ("report", "dsr_action_report", phases.report.as_ref()),
-        ("combined", "dsr_action_combined", phases.combined.as_ref()),
+    for (phase, stamp) in [
+        ("sketch", phases.sketch.as_ref()),
+        ("draft", phases.draft.as_ref()),
+        ("process", phases.process.as_ref()),
+        ("report", phases.report.as_ref()),
+        ("combined", phases.combined.as_ref()),
     ] {
+        let label_key = phase_label_key(phase);
         if let Some(stamp) = stamp {
             if let Some(when_ms) = stamp.when_ms {
                 out.push((
@@ -786,7 +813,7 @@ fn stamps_of(transformer: &LedgerTransformer) -> Vec<(&'static str, &'static str
     if let Some(when_ms) = transformer.updated_at_ms {
         out.push((
             "document",
-            "dsr_action_document_update",
+            phase_label_key("document"),
             when_ms,
             transformer.updated_by.clone().unwrap_or_default(),
         ));
@@ -917,6 +944,7 @@ fn diff_project(ds_project: &str, current: &Ledger, previous: &Ledger) -> Vec<Ch
                 ds_project: ds_project.to_string(),
                 name: name.to_string(),
                 phase: "document".into(),
+                label_key: phase_label_key("document").into(),
                 kind: ChangeKind::NewTransformer,
                 when_ms: Some(latest.map_or(current.captured_at_ms, |l| l.when_ms)),
                 user: latest.and_then(|l| non_empty(l.user.clone())),
@@ -933,6 +961,7 @@ fn diff_project(ds_project: &str, current: &Ledger, previous: &Ledger) -> Vec<Ch
                     ds_project: ds_project.to_string(),
                     name: name.to_string(),
                     phase: phase.into(),
+                    label_key: phase_label_key(phase).into(),
                     kind: ChangeKind::NewStamp,
                     when_ms: held.0,
                     user: held.1.clone(),
@@ -944,6 +973,7 @@ fn diff_project(ds_project: &str, current: &Ledger, previous: &Ledger) -> Vec<Ch
                     ds_project: ds_project.to_string(),
                     name: name.to_string(),
                     phase: phase.into(),
+                    label_key: phase_label_key(phase).into(),
                     kind: ChangeKind::Restamped,
                     when_ms: held.0,
                     user: held.1.clone(),
@@ -957,6 +987,7 @@ fn diff_project(ds_project: &str, current: &Ledger, previous: &Ledger) -> Vec<Ch
                     ds_project: ds_project.to_string(),
                     name: name.to_string(),
                     phase: phase.into(),
+                    label_key: phase_label_key(phase).into(),
                     kind: ChangeKind::Restamped,
                     when_ms: Some(current.captured_at_ms),
                     user: None,
@@ -977,6 +1008,7 @@ fn diff_project(ds_project: &str, current: &Ledger, previous: &Ledger) -> Vec<Ch
             ds_project: ds_project.to_string(),
             name: name.to_string(),
             phase: "document".into(),
+            label_key: phase_label_key("document").into(),
             kind: ChangeKind::RemovedTransformer,
             // The removal happened before this capture; that is the
             // tightest date the two ledgers give.
