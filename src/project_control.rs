@@ -715,6 +715,9 @@ struct BulkPlanInput {
     /// The project uses the combined mirror UI.
     #[serde(default)]
     combined_mirror_ui: bool,
+    /// Native export currently regenerates; legacy cloud success is not reuse evidence.
+    #[serde(default)]
+    native_report_generation: bool,
     #[serde(default)]
     active_session_transformer: Option<String>,
     #[serde(default)]
@@ -779,7 +782,8 @@ pub fn plan_project_control_bulk_action(input_json: &[u8]) -> Result<String, Pro
         match bulk_verdict(action, truth) {
             Ok(fresh) => targets.push(BulkTarget {
                 name: truth.name.clone(),
-                fresh,
+                fresh: fresh
+                    && !(action == BulkAction::GenerateReports && input.native_report_generation),
             }),
             Err(reason) => skipped.push(BulkSkip {
                 name: truth.name.clone(),
@@ -1785,6 +1789,17 @@ mod tests {
     fn an_unknown_bulk_verb_is_refused_rather_than_guessed() {
         let input = json!({ "action": "detonate", "rows": [], "selection": [] });
         assert!(plan_project_control_bulk_action(&serde_json::to_vec(&input).unwrap()).is_err());
+    }
+
+    #[test]
+    fn native_generation_does_not_reuse_a_legacy_cloud_report_success() {
+        let input = json!({"action":"generate_reports", "rows":[{"name":"tx_1","computed":{"report_state":"success","report_has_files":true}}], "selection":["tx_1"], "capabilities":["design.download","reports.export"],"native_report_generation":true});
+        let result: Value = serde_json::from_str(
+            &plan_project_control_bulk_action(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result["fresh"], 0);
+        assert_eq!(result["stale"], 1);
     }
 
     fn bulk_plan(action: &str, capabilities: Value) -> Value {
