@@ -46,6 +46,13 @@ impl<E> From<String> for Error<E> {
     }
 }
 pub enum Command {
+    Object {
+        kind: String,
+        command: Box<Command>,
+    },
+    Status {
+        transformer: String,
+    },
     List {
         transformer: String,
     },
@@ -87,20 +94,37 @@ fn version(s: &str) -> bool {
 impl Command {
     pub fn transformer(&self) -> &str {
         match self {
-            Self::List { transformer }
+            Self::Object { command, .. } => command.transformer(),
+            Self::Status { transformer }
+            | Self::List { transformer }
             | Self::Compare { transformer, .. }
             | Self::Begin { transformer, .. }
             | Self::Restore { transformer, .. } => transformer,
         }
     }
+    pub fn kind(&self) -> &str {
+        match self {
+            Self::Object { kind, .. } => kind,
+            _ => "lv_transformer",
+        }
+    }
     pub fn validate(&self, project: &str) -> Result<(), String> {
+        if let Self::Object { kind, command } = self {
+            if !matches!(kind.as_str(), "lv_transformer" | "mv_model")
+                || matches!(command.as_ref(), Self::Object { .. })
+                || (kind == "mv_model" && matches!(command.as_ref(), Self::Restore { .. }))
+            {
+                return Err("MV restore is unavailable; download its pinned model revision through dsgrid model download".into());
+            }
+            return command.validate(project);
+        }
         if !identifier(project) || !identifier(self.transformer()) {
             return Err(invalid("invalid project or transformer identity"));
         }
         if let Self::Compare { from, to, .. } = self {
             if !version(from) || (to != "head" && !version(to)) || from == to {
                 return Err(invalid(
-                    "choose distinct canonical vN versions; --to may be head. Local browser versions must first be published.",
+                    "choose distinct canonical vN versions; --to may be head. Device-local drafts are not governance versions.",
                 ));
             }
         }
@@ -144,14 +168,16 @@ fn record(
     project: &str,
     transformer: &str,
     expected: Option<&str>,
+    kind: &str,
 ) -> Result<(), String> {
     let id = value["version_id"]
         .as_str()
         .ok_or_else(|| bad("missing version identity"))?;
     if value["project_id"] != project
-        || value["object"]["kind"] != "lv_transformer"
+        || value["object"]["kind"] != kind
         || value["object"]["id"] != transformer
         || !version(id)
+        || value["version"].as_u64() != Some(ordinal(id))
         || expected.is_some_and(|s| s != id)
     {
         return Err(bad(
@@ -161,7 +187,13 @@ fn record(
     Ok(())
 }
 fn snapshot(data: &Value, project: &str, transformer: &str, id: &str) -> Result<Value, String> {
-    record(&data["version"], project, transformer, Some(id))?;
+    record(
+        &data["version"],
+        project,
+        transformer,
+        Some(id),
+        "lv_transformer",
+    )?;
     if data["version"]["playback_available"] != true
         || data["snapshot"]["schema"] != "ds.transformer-version-snapshot/v1"
         || !data["snapshot"]["layers"].is_object()
@@ -171,7 +203,12 @@ fn snapshot(data: &Value, project: &str, transformer: &str, id: &str) -> Result<
     Ok(data["snapshot"].clone())
 }
 
-fn listed<'a>(data: &'a Value, project: &str, transformer: &str) -> Result<&'a [Value], String> {
+fn listed<'a>(
+    data: &'a Value,
+    project: &str,
+    transformer: &str,
+    kind: &str,
+) -> Result<&'a [Value], String> {
     let rows = data["versions"]
         .as_array()
         .ok_or_else(|| bad("missing versions list"))?;
@@ -179,7 +216,7 @@ fn listed<'a>(data: &'a Value, project: &str, transformer: &str) -> Result<&'a [
         return Err(bad("version list exceeds 200 records"));
     }
     for row in rows {
-        record(row, project, transformer, None)?;
+        record(row, project, transformer, None, kind)?;
     }
     Ok(rows)
 }
@@ -188,6 +225,101 @@ fn ordinal(id: &str) -> u64 {
     id.strip_prefix('v')
         .and_then(|value| value.parse().ok())
         .unwrap_or_default()
+}
+
+/// Hosts provide authenticated transport only. This facade plans server-owned
+/// history requests and validates their returned scope without local capture.
+pub fn authority_command(input: &[u8]) -> Result<Value, String> {
+    if input.len() > 64 * 1024 * 1024 {
+        return Err("version authority request exceeds 64 MiB".into());
+    }
+    let request: Value = serde_json::from_slice(input).map_err(|error| error.to_string())?;
+    let project = request["project"].as_str().ok_or("missing project")?;
+    let object = &request["object"];
+    let kind = object["kind"].as_str().ok_or("missing object kind")?;
+    let id = object["id"].as_str().ok_or("missing object identity")?;
+    if !identifier(project) || !identifier(id) || !matches!(kind, "lv_transformer" | "mv_model") {
+        return Err("invalid project or version object identity".into());
+    }
+    let operation = request["operation"].as_str().ok_or("missing operation")?;
+    if !matches!(
+        operation,
+        "create_version" | "list_versions" | "get_head" | "get_version"
+    ) {
+        return Err("unsupported version authority operation".into());
+    }
+    match request["action"].as_str() {
+        Some("plan") => {
+            let mut payload = json!({"action":operation,"project_id":project,"object":object});
+            if operation == "create_version" {
+                let reason = request["reason"].as_str().ok_or("missing reason")?;
+                let key = request["idempotency_key"]
+                    .as_str()
+                    .ok_or("missing idempotency key")?;
+                Command::Begin {
+                    transformer: id.into(),
+                    reason: reason.into(),
+                    idempotency_key: key.into(),
+                }
+                .validate(project)?;
+                payload["version"] = json!({"reason":reason,"idempotency_key":key});
+                if let Some(expected) = request.get("expected_source_update_time") {
+                    let expected = expected
+                        .as_str()
+                        .filter(|value| {
+                            !value.is_empty()
+                                && value.len() <= 128
+                                && !value.chars().any(char::is_control)
+                        })
+                        .ok_or("invalid expected source update time")?;
+                    payload["version"]["expected_source_revision"] = json!(expected);
+                }
+            }
+            if operation == "get_version" {
+                let version_id = request["version_id"]
+                    .as_str()
+                    .filter(|value| version(value))
+                    .ok_or("choose an assigned vN version")?;
+                payload["version_id"] = json!(version_id);
+            }
+            Ok(json!({"method":"POST","path":"/api/v1/design/versions","payload":payload}))
+        }
+        Some("accept") => {
+            let response = &request["response"];
+            if response["success"] != true || !response["data"].is_object() {
+                return Err("version server response is not successful".into());
+            }
+            let data = &response["data"];
+            let check = |row: &Value, assigned: bool| -> Result<(), String> {
+                if assigned {
+                    return record(row, project, id, None, kind);
+                }
+                if row["project_id"] != project
+                    || row["object"]["kind"] != kind
+                    || row["object"]["id"] != id
+                    || !row["source_revision"].is_string()
+                {
+                    return Err("saved head response belongs to another project or object".into());
+                }
+                Ok(())
+            };
+            match operation {
+                "list_versions" => {
+                    let rows = data["versions"].as_array().ok_or("missing versions list")?;
+                    if rows.len() > 200 {
+                        return Err("version list exceeds 200 records".into());
+                    }
+                    for row in rows {
+                        check(row, true)?;
+                    }
+                }
+                "get_head" => check(&data["head"], false)?,
+                _ => check(&data["version"], true)?,
+            }
+            Ok(data.clone())
+        }
+        _ => Err("choose plan or accept".into()),
+    }
 }
 fn kernel(request: Value) -> Result<Value, String> {
     let bytes =
@@ -205,15 +337,33 @@ pub fn run<S: Source>(
     let project = &scope.project;
     command.validate(project)?;
     let transformer = command.transformer();
-    if scope.object_kind != "lv_transformer" || scope.object_id != transformer {
+    let kind = command.kind();
+    if scope.object_kind != kind || scope.object_id != transformer {
         return Err(invalid("version scope does not match transformer").into());
     }
+    let command = match command {
+        Command::Object { command, .. } => command.as_ref(),
+        _ => command,
+    };
+    if kind == "mv_model" {
+        return run_model(scope, source, command);
+    }
     match command {
+        Command::Object { .. } => unreachable!("validated unwrapped object"),
+        Command::Status { .. } => {
+            let data = source
+                .current(project, transformer)
+                .map_err(Error::Source)?;
+            validate_head(&data["head"], scope)?;
+            Ok(
+                json!({"project":project,"object":{"kind":kind,"id":transformer},"head":data["head"],"mutated":false}),
+            )
+        }
         Command::List { .. } => {
             let data = source
                 .versions(project, transformer, None)
                 .map_err(Error::Source)?;
-            let rows = listed(&data, project, transformer)?;
+            let rows = listed(&data, project, transformer, kind)?;
             Ok(
                 json!({"project":project,"transformer":transformer,"versions":rows,"truncated":rows.len()==200,"scope":"published_versions","mutated":false}),
             )
@@ -226,7 +376,7 @@ pub fn run<S: Source>(
             let inventory = source
                 .versions(project, transformer, None)
                 .map_err(Error::Source)?;
-            let rows = listed(&inventory, project, transformer)?;
+            let rows = listed(&inventory, project, transformer, kind)?;
             if rows.len() < 200 {
                 let present = rows
                     .iter()
@@ -305,7 +455,7 @@ pub fn run<S: Source>(
             let data = source
                 .create(project, transformer, reason, idempotency_key)
                 .map_err(Error::Source)?;
-            record(&data["version"], project, transformer, None)?;
+            record(&data["version"], project, transformer, None, kind)?;
             Ok(json!({
                 "project": project,
                 "transformer": transformer,
@@ -343,7 +493,7 @@ pub fn run<S: Source>(
                     idempotency_key,
                 )
                 .map_err(Error::Source)?;
-            record(&data["version"], project, transformer, Some(version))?;
+            record(&data["version"], project, transformer, Some(version), kind)?;
             Ok(json!({
                 "project": project,
                 "transformer": transformer,
@@ -354,6 +504,61 @@ pub fn run<S: Source>(
         }
     }
 }
+fn validate_head(head: &Value, scope: &Scope) -> Result<(), String> {
+    if head["project_id"] != scope.project
+        || head["object"]["kind"] != scope.object_kind
+        || head["object"]["id"] != scope.object_id
+        || !head["source_revision"].is_string()
+    {
+        return Err("saved head belongs to another project or object".into());
+    }
+    Ok(())
+}
+
+fn run_model<S: Source>(
+    scope: &Scope,
+    source: &mut S,
+    command: &Command,
+) -> Result<Value, Error<S::Error>> {
+    let project = scope.project.as_str();
+    let object = scope.object_id.as_str();
+    let kind = scope.object_kind.as_str();
+    match command {
+        Command::List { .. } => {
+            let data = source.versions(project, object, None).map_err(Error::Source)?;
+            let rows = listed(&data, project, object, kind)?;
+            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"versions":rows,"truncated":rows.len()==200,"scope":"published_versions","mutated":false}))
+        }
+        Command::Status { .. } => {
+            let data = source.current(project, object).map_err(Error::Source)?;
+            validate_head(&data["head"], scope)?;
+            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"head":data["head"],"mutated":false}))
+        }
+        Command::Begin { reason, idempotency_key, .. } => {
+            let data = source.create(project, object, reason, idempotency_key).map_err(Error::Source)?;
+            record(&data["version"], project, object, None, kind)?;
+            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"version":data["version"],"mutated":true}))
+        }
+        Command::Compare { from, to, .. } => {
+            let left = source.versions(project, object, Some(from)).map_err(Error::Source)?;
+            record(&left["version"], project, object, Some(from), kind)?;
+            let right = if to == "head" {
+                let data = source.current(project, object).map_err(Error::Source)?;
+                validate_head(&data["head"], scope)?;
+                data["head"].clone()
+            } else {
+                let data = source.versions(project, object, Some(to)).map_err(Error::Source)?;
+                record(&data["version"], project, object, Some(to), kind)?;
+                data["version"].clone()
+            };
+            let keys = ["source_revision", "pinned_model_digest", "manifest_model_id", "manifest_model_revision"];
+            let changed: Vec<_> = keys.into_iter().filter(|key| left["version"][key] != right[key]).collect();
+            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"from":left["version"],"to":right,"comparison":{"scope":"published_model_revision_metadata","changed_fields":changed},"geometry_included":false,"mutated":false}))
+        }
+        _ => Err("MV restore is unavailable; download its pinned model revision through dsgrid model download".to_string().into()),
+    }
+}
+
 fn bound_comparison(value: &mut Value) {
     fn keys(v: &mut Value) {
         if let Some(map) = v["changedAttributeKeyCounts"].as_object_mut() {
@@ -386,6 +591,24 @@ fn bound_comparison(value: &mut Value) {
 mod tests {
     use super::*;
     #[test]
+    fn server_authority_facade_fences_interleaved_projects_and_forwards_source_guard() {
+        let invoke = |value: Value| authority_command(&serde_json::to_vec(&value).unwrap());
+        let plan = invoke(json!({"action":"plan","project":"a","object":{"kind":"lv_transformer","id":"tr"},"operation":"create_version","reason":"Reviewed baseline","idempotency_key":"retry-a","expected_source_update_time":"2026-09-18T12:00:00Z"})).unwrap();
+        assert_eq!(
+            plan["payload"]["version"]["expected_source_revision"],
+            "2026-09-18T12:00:00Z"
+        );
+        assert_eq!(plan["payload"]["project_id"], "a");
+        let response = json!({"success":true,"data":{"version":{"project_id":"a","object":{"kind":"lv_transformer","id":"tr"},"version_id":"v3","version":3}}});
+        let mut accept = json!({"action":"accept","project":"a","object":{"kind":"lv_transformer","id":"tr"},"operation":"create_version","response":response});
+        assert!(invoke(accept.clone()).is_ok());
+        accept["project"] = json!("b");
+        assert!(invoke(accept.clone()).is_err());
+        accept["project"] = json!("a");
+        accept["object"]["kind"] = json!("mv_model");
+        assert!(invoke(accept).is_err());
+    }
+    #[test]
     fn exact_scope_and_versions_are_required() {
         assert!(Command::Compare {
             transformer: "tr".into(),
@@ -397,11 +620,11 @@ mod tests {
         for id in ["v0", "v01", "v-1", "local-abc", "v18446744073709551615"] {
             assert!(!version(id));
         }
-        let row = json!({"project_id":"p","object":{"kind":"lv_transformer","id":"tr"},"version_id":"v1"});
-        assert!(record(&row, "p", "tr", Some("v1")).is_ok());
-        assert!(record(&row, "other", "tr", Some("v1")).is_err());
-        assert!(record(&row, "p", "other", Some("v1")).is_err());
-        assert!(record(&row, "p", "tr", Some("v2")).is_err());
+        let row = json!({"project_id":"p","object":{"kind":"lv_transformer","id":"tr"},"version_id":"v1","version":1});
+        assert!(record(&row, "p", "tr", Some("v1"), "lv_transformer").is_ok());
+        assert!(record(&row, "other", "tr", Some("v1"), "lv_transformer").is_err());
+        assert!(record(&row, "p", "other", Some("v1"), "lv_transformer").is_err());
+        assert!(record(&row, "p", "tr", Some("v2"), "lv_transformer").is_err());
         assert!(snapshot(&json!({"version":row}), "p", "tr", "v1").is_err());
     }
 }

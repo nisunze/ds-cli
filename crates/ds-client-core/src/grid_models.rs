@@ -163,7 +163,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 if !ids.insert(model.to_owned()) || row["project_id"] != project {
                     return Err(bad());
                 }
-                models.push(json!({"model_id":model,"display_name":row["display_name"],"model_kind":row["model_kind"],"head_revision_id":row["head_revision_id"],"head_model_digest":row["head_model_digest"],"state":row["state"],"lifecycle":row["lifecycle"]}));
+                models.push(json!({"model_id":model,"display_name":row["display_name"],"model_kind":row["model_kind"],"head_revision_id":row["head_revision_id"],"manifest_model_id":row["manifest_model_id"],"manifest_model_revision":row["manifest_model_revision"],"head_model_digest":row["head_model_digest"],"state":row["state"],"lifecycle":row["lifecycle"]}));
             }
             Ok(Receipt {
                 data: json!({"project":project,"models":models,"more":more,"next_cursor":cursor}),

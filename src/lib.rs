@@ -1514,6 +1514,15 @@ pub mod report_formats;
 pub mod design_versions;
 pub mod design_versions_headless;
 #[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designVersionAuthorityCommand)]
+pub fn design_version_authority_command_wasm(
+    input: &[u8],
+) -> Result<String, wasm_bindgen::JsValue> {
+    design_versions_headless::authority_command(input)
+        .and_then(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designVersionCommand)]
 pub fn design_version_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_versions::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))

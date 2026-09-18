@@ -69,6 +69,8 @@ pub fn prepare(request: &Request, bytes: &[u8]) -> Result<Intent, String> {
         model_id,
         model_kind: request.model_kind.clone(),
         expected_head_revision_id: expected,
+        manifest_model_id: decoded.manifest.model.model_id.as_str().into(),
+        manifest_model_revision: decoded.manifest.model.model_revision,
         source_revision_id: GridSession::open(decoded.snapshot)
             .current_revision()
             .revision_id

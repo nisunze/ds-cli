@@ -15,6 +15,8 @@ pub struct Intent {
     pub model_kind: String,
     pub expected_head_revision_id: String,
     pub source_revision_id: String,
+    pub manifest_model_id: String,
+    pub manifest_model_revision: u64,
     pub model_schema_version: String,
     pub engine_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -61,6 +63,11 @@ impl Intent {
             || self.source_revision_id.is_empty()
             || self.source_revision_id.len() > 160
             || self.source_revision_id.chars().any(char::is_control)
+            || self.manifest_model_id.is_empty()
+            || self.manifest_model_id.len() > 256
+            || self.manifest_model_id.trim() != self.manifest_model_id
+            || self.manifest_model_id.chars().any(char::is_control)
+            || self.manifest_model_revision > i64::MAX as u64
             || bytes.is_empty()
             || bytes.len() > MAX_MODEL_BYTES
         {
@@ -121,6 +128,7 @@ impl Plan {
         let mut version = json!({
             "model_id":self.intent.model_id,"model_kind":self.intent.model_kind,
             "revision_id":self.revision_id,"expected_head_revision_id":self.intent.expected_head_revision_id,
+            "manifest_model_id":self.intent.manifest_model_id,"manifest_model_revision":self.intent.manifest_model_revision,
             "model":self.artifact,"model_schema_version":self.intent.model_schema_version,
             "engine_version":self.intent.engine_version,"validation":{"state":"valid","issue_count":0}
         });
@@ -138,6 +146,8 @@ impl Plan {
         value["project_id"] == self.intent.project
             && value["model_id"] == self.intent.model_id
             && value["revision_id"] == self.revision_id
+            && value["manifest_model_id"] == self.intent.manifest_model_id
+            && value["manifest_model_revision"] == self.intent.manifest_model_revision
             && value["model_kind"] == self.intent.model_kind
             && value["model_schema_version"] == self.intent.model_schema_version
             && value["engine_version"] == self.intent.engine_version
@@ -161,6 +171,8 @@ mod tests {
             model_kind: "mv_line".into(),
             expected_head_revision_id: "rev-old".into(),
             source_revision_id: "rev:new".into(),
+            manifest_model_id: "native-model".into(),
+            manifest_model_revision: 1,
             model_schema_version: "19".into(),
             engine_version: "ds-grid@1".into(),
             display_name: None,

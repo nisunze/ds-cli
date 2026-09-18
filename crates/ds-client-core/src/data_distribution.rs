@@ -903,6 +903,11 @@ mod tests {
             project_report_method: "POST".to_owned(),
             project_report_path: "/report".to_owned(),
             project_report_actions: crate::PROJECT_REPORT_ACTIONS.map(str::to_owned).to_vec(),
+            design_attachments_method: "POST".into(),
+            design_attachments_path: "/api/v1/design/attachments".into(),
+            design_attachments_actions: crate::DESIGN_ATTACHMENTS_ACTIONS
+                .map(str::to_owned)
+                .to_vec(),
             design_versions_method: "POST".into(),
             design_versions_path: "/api/v1/design/versions".into(),
             design_versions_actions: crate::DESIGN_VERSIONS_ACTIONS.map(str::to_owned).to_vec(),

@@ -3,7 +3,7 @@ use std::fmt;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v26";
+pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v27";
 pub const DEVICE_CREDENTIAL_AUDIENCE_SCHEMA: &str = "ds.native-client-credential-audience/v1";
 pub const NATIVE_CLIENT_ID: &str = "ds-native-client";
 pub const AUTH_LINK_BEGIN_METHOD: &str = "POST";
@@ -81,6 +81,17 @@ pub const PROJECT_REPORT_ACTIONS: [&str; 6] = [
     "retire_transformer",
     "restore_transformer",
     "list_transformers_status",
+];
+pub const DESIGN_ATTACHMENTS_METHOD: &str = "POST";
+pub const DESIGN_ATTACHMENTS_PATH: &str = "/api/v1/design/attachments";
+pub const DESIGN_ATTACHMENTS_ACTIONS: [&str; 7] = [
+    "list",
+    "get",
+    "start_upload",
+    "finalize_upload",
+    "download",
+    "archive",
+    "archive_revision",
 ];
 pub const DESIGN_VERSIONS_METHOD: &str = "POST";
 pub const DESIGN_VERSIONS_PATH: &str = "/api/v1/design/versions";
@@ -191,6 +202,9 @@ pub struct ClientProfileInput {
     pub project_report_method: String,
     pub project_report_path: String,
     pub project_report_actions: Vec<String>,
+    pub design_attachments_method: String,
+    pub design_attachments_path: String,
+    pub design_attachments_actions: Vec<String>,
     pub design_versions_method: String,
     pub design_versions_path: String,
     pub design_versions_actions: Vec<String>,
@@ -350,6 +364,13 @@ impl ClientProfile {
         {
             return Err(ProfileError::ProjectReportRoute);
         }
+        if input.design_attachments_method != DESIGN_ATTACHMENTS_METHOD
+            || input.design_attachments_path != DESIGN_ATTACHMENTS_PATH
+            || input.design_attachments_actions
+                != DESIGN_ATTACHMENTS_ACTIONS.map(str::to_owned).to_vec()
+        {
+            return Err(ProfileError::DesignAttachmentsRoute);
+        }
         if input.design_versions_method != DESIGN_VERSIONS_METHOD
             || input.design_versions_path != DESIGN_VERSIONS_PATH
             || input.design_versions_actions != DESIGN_VERSIONS_ACTIONS.map(str::to_owned).to_vec()
@@ -471,6 +492,15 @@ impl ClientProfile {
             PROJECT_REPORT_ACTIONS[3],
             PROJECT_REPORT_ACTIONS[4],
             PROJECT_REPORT_ACTIONS[5],
+            DESIGN_ATTACHMENTS_METHOD,
+            DESIGN_ATTACHMENTS_PATH,
+            DESIGN_ATTACHMENTS_ACTIONS[0],
+            DESIGN_ATTACHMENTS_ACTIONS[1],
+            DESIGN_ATTACHMENTS_ACTIONS[2],
+            DESIGN_ATTACHMENTS_ACTIONS[3],
+            DESIGN_ATTACHMENTS_ACTIONS[4],
+            DESIGN_ATTACHMENTS_ACTIONS[5],
+            DESIGN_ATTACHMENTS_ACTIONS[6],
             DESIGN_VERSIONS_METHOD,
             DESIGN_VERSIONS_PATH,
             DESIGN_VERSIONS_ACTIONS[0],
@@ -611,6 +641,7 @@ pub enum ProfileError {
     TilesRoute,
     ProjectReportRoute,
     DesignVersionsRoute,
+    DesignAttachmentsRoute,
     DesignSelectionsRoute,
     DataDistributionRoute,
 }

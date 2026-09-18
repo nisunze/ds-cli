@@ -75,6 +75,7 @@ pub use profile::{
     SURVEY_QUERY_PATH, TILES_ACTIONS, TILES_METHOD, TILES_PATH, TRANSFORMER_CONTEXT_ACTION,
     TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
 };
+pub use profile::{DESIGN_ATTACHMENTS_ACTIONS, DESIGN_ATTACHMENTS_METHOD, DESIGN_ATTACHMENTS_PATH};
 pub use profile::{DESIGN_SELECTIONS_ACTIONS, DESIGN_SELECTIONS_METHOD, DESIGN_SELECTIONS_PATH};
 pub use profile::{DESIGN_VERSIONS_ACTIONS, DESIGN_VERSIONS_METHOD, DESIGN_VERSIONS_PATH};
 pub use profile::{LAYERS_ACTIONS, LAYERS_METHOD, LAYERS_PATH};
@@ -195,8 +196,9 @@ pub mod report_artifact;
 pub use transport::GridModelsCall;
 pub use transport::ReportArtifactCall;
 
+pub mod design_attachments;
 pub mod design_versions;
-pub use transport::DesignVersionsCall;
+pub use transport::{DesignAttachmentsCall, DesignVersionsCall};
 
 pub mod design_tags;
 pub use transport::DesignTagsCall;

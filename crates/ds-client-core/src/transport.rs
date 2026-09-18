@@ -1168,6 +1168,59 @@ impl DesignVersionsCall<'_> {
     }
 }
 
+pub struct DesignAttachmentsCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl DesignAttachmentsCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        crate::profile::DESIGN_ATTACHMENTS_PATH.into()
+    }
+    pub fn method(&self) -> &'static str {
+        crate::profile::DESIGN_ATTACHMENTS_METHOD
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        8 * 1024 * 1024
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        TILE_TIMEOUT_SECONDS
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(
+            serde_json::to_vec(&self.payload).expect("closed design attachment request"),
+        )
+    }
+}
+
 pub struct DesignTagsCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: serde_json::Value,
@@ -1974,6 +2027,18 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn design_attachments(
+        &mut self,
+        _call: DesignAttachmentsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+    fn design_attachment_upload(
+        &mut self,
+        _call: crate::design_attachments::UploadCall<'_>,
+    ) -> Result<(), TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn design_versions(
         &mut self,
         _call: DesignVersionsCall<'_>,
@@ -2182,6 +2247,18 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn design_attachments(
+        &mut self,
+        _call: DesignAttachmentsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+    fn design_attachment_upload(
+        &mut self,
+        _call: crate::design_attachments::UploadCall<'_>,
+    ) -> Result<(), TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn design_versions(
         &mut self,
         _call: DesignVersionsCall<'_>,
@@ -2370,6 +2447,18 @@ impl<T: Transport> AuthorizedTransport for T {
         call: SharedAssetsCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::shared_assets(self, call)
+    }
+    fn design_attachments(
+        &mut self,
+        call: DesignAttachmentsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::design_attachments(self, call)
+    }
+    fn design_attachment_upload(
+        &mut self,
+        call: crate::design_attachments::UploadCall<'_>,
+    ) -> Result<(), TransportError> {
+        Transport::design_attachment_upload(self, call)
     }
     fn design_versions(
         &mut self,

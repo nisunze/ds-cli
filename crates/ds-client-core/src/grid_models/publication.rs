@@ -165,6 +165,8 @@ mod tests {
             model_kind: "mv_line".into(),
             expected_head_revision_id: String::new(),
             source_revision_id: "rev:one".into(),
+            manifest_model_id: "native-one".into(),
+            manifest_model_revision: 1,
             model_schema_version: "19".into(),
             engine_version: "1".into(),
             display_name: None,

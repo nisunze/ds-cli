@@ -37,9 +37,10 @@ fn fetch<T: AuthorizedTransport>(
     project: &str,
     transformer: &str,
     id: Option<&str>,
+    kind: &str,
 ) -> Result<Value, ClientError> {
     let mut payload = json!({"action":if id.is_some() {"get_version"} else {"list_versions"},
-        "project_id":project,"object":{"kind":"lv_transformer","id":transformer}});
+        "project_id":project,"object":{"kind":kind,"id":transformer}});
     if let Some(id) = id {
         payload["version_id"] = json!(id);
     }
@@ -54,6 +55,7 @@ struct AuthenticatedSource<'a, T> {
     profile: &'a ClientProfile,
     transport: &'a mut T,
     authority: Authority<'a>,
+    kind: &'a str,
 }
 impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
     type Error = ClientError;
@@ -70,6 +72,7 @@ impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
             project,
             transformer,
             version,
+            self.kind,
         )
     }
     fn head(&mut self, project: &str, transformer: &str) -> Result<Value, ClientError> {
@@ -96,7 +99,7 @@ impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
         let payload = json!({
             "action": "create_version",
             "project_id": project,
-            "object": {"kind": "lv_transformer", "id": transformer},
+            "object": {"kind": self.kind, "id": transformer},
             "version": {
                 "reason": reason,
                 "idempotency_key": idempotency_key,
@@ -112,7 +115,7 @@ impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
         let payload = json!({
             "action": "get_head",
             "project_id": project,
-            "object": {"kind": "lv_transformer", "id": transformer},
+            "object": {"kind": self.kind, "id": transformer},
         });
         decode(self.transport.design_versions(DesignVersionsCall {
             profile: self.profile,
@@ -132,7 +135,7 @@ impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
         let payload = json!({
             "action": "restore_version",
             "project_id": project,
-            "object": {"kind": "lv_transformer", "id": transformer},
+            "object": {"kind": self.kind, "id": transformer},
             "version_id": version,
             "version": {
                 "reason": reason,
@@ -159,7 +162,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
         audience: profile.credential_audience_sha256().into(),
         lane: profile.lane().token().into(),
         project: project.into(),
-        object_kind: "lv_transformer".into(),
+        object_kind: command.kind().into(),
         object_id: command.transformer().into(),
     };
     owner::run(
@@ -168,6 +171,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
             profile,
             transport,
             authority,
+            kind: command.kind(),
         },
         command,
     )
