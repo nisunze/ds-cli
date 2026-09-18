@@ -274,14 +274,14 @@ remain public CLI/MCP inputs; composition requires no source-code inspection.
 
 ## Indexed table headings
 
-`table.heading_mode` is `auto_index` (default), `literal`, or `indexed`.
-`auto_index` chooses indices when any authored heading exceeds its data-sized,
-minimum/maximum-constrained column, so **a heading never widens its column**: one
-long name like "Service Area Length M" over short numbers no longer sets the
-column width and pushes real content off the sheet. A table whose headings
-already fit is unchanged, and `literal` remains available for a layout that
-deliberately wants full headings in the row. Indexed tables use stable column-order
-letters A–Z for every column and an untruncated explanatory key above each
+`table.heading_mode` is `auto_index` (default), `literal`, `indexed`, or
+`abbreviated`. `auto_index` aliases only titles wider than their data-sized,
+min/max-bounded columns; titles that already fit remain written out.
+This avoids long titles such as "Service Area Length M" setting a numeric
+column's width. The aliases skip retained literal letter titles so the key is
+unambiguous. `indexed` aliases every column. `abbreviated` may use a measured
+prefix with an ellipsis, falling back to a letter when necessary. Compact modes
+repeat an untruncated explanatory key above each
 panel. Full headings remain in the document; columns and values never change.
 The full key repeats above each measured data panel, wrapping at the authored
 type size within that panel width. It never extends into unused authored frame
@@ -289,7 +289,7 @@ width or creates a gap before an adjacent schedule. This corrects the former
 full-frame key behavior, which visibly separated the Zihare schedule bodies.
 The key consumes actual table height;
 row omission warnings must use that same remaining height. `measure_headings`
-continues to govern literal headings; indexed headings measure the letters.
+continues to govern literal headings; compact headings measure their displayed aliases.
 Per-transformer `table.heading_mode` overrides the project layout through the
 same existing print-instruction command. Old documents omit the default field
 when serialized, preserving compatibility and their existing presentation.
@@ -674,3 +674,15 @@ An optional `proportional` policy retains authored width weights. Workbook
 information/Excel presentation retains its existing proportional styling.
 Precision, complete rows, measured panel geometry and table parents are
 unchanged. White space is not introduced to equalize unrelated columns.
+
+### Lossless compact column titles
+
+The default `heading_mode: auto_index` keeps fitting titles written out and
+aliases only long titles: for example `A, Description, B, X, Y`, with
+`A: Number` and `B: Flying stay` in the full key above every panel. Literal
+letter titles are reserved before aliases are assigned, so an existing `A` or
+`X` cannot become ambiguous. All full definitions remain in source order.
+`indexed` labels every column; `literal` keeps authored titles. Optional
+`abbreviated` uses a measured prefix/ellipsis with the same full definition key,
+falling back to a letter when a prefix cannot fit or would be ambiguous. The
+native renderer owns font measurement; UI and CLI author the same closed mode.

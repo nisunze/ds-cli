@@ -7,17 +7,14 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum HeadingMode {
     Literal,
-    /// The default. A heading never widens its column: when any authored
-    /// heading is wider than the data beneath it, every column takes its
-    /// order letter and the full names move to the key above the panel.
-    ///
-    /// This was `literal`, which let one long heading — "Service Area Length
-    /// M" over a column of short numbers — set the column width and push real
-    /// content off the sheet. Indexing only engages when that would happen, so
-    /// a table whose headings already fit is unchanged.
+    /// Default: fitting titles stay literal; only wider titles receive
+    /// compact aliases and a full definition in the key above every panel.
     #[default]
     AutoIndex,
     Indexed,
+    /// Native typography may abbreviate a long title, retaining its full key;
+    /// stable letters remain the fallback when abbreviations collide or cannot fit.
+    Abbreviated,
 }
 impl HeadingMode {
     pub fn is_literal(&self) -> bool {
@@ -37,8 +34,7 @@ pub struct HeadingPlan {
 /// A full pole workbook can carry fourteen fields. Bound at one alphabet,
 /// rather than dropping workbook columns to satisfy the old twelve-field cap.
 pub const MAX_COLUMNS: usize = 26;
-/// All columns receive stable A..Z aliases if indexing is needed. Mixing literal
-/// headings named "A" with indexed "A" would make the explanatory key ambiguous.
+/// Wider headings receive deterministic aliases; literal letter titles are reserved.
 pub fn plan(
     mode: HeadingMode,
     headings: &[String],
@@ -57,34 +53,47 @@ pub fn plan(
     {
         return Err("Invalid table heading measurements.".into());
     }
-    let indexed = match mode {
-        HeadingMode::Literal => false,
-        HeadingMode::Indexed => true,
-        HeadingMode::AutoIndex => heading_widths
-            .iter()
-            .zip(data_widths)
-            .any(|(h, d)| *h > *d + 1e-7),
-    };
-    if !indexed {
-        return Ok(HeadingPlan {
-            headings: headings.to_vec(),
-            key: vec![],
-        });
-    }
-    if headings.iter().any(|h| h.trim().is_empty()) {
-        return Err("Indexed table headings require a full label for every column.".into());
-    }
-    let letters: Vec<_> = (0..count)
-        .map(|i| ((b'A' + i as u8) as char).to_string())
+    let indexed: Vec<_> = heading_widths
+        .iter()
+        .zip(data_widths)
+        .map(|(h, d)| match mode {
+            HeadingMode::Literal => false,
+            HeadingMode::Indexed => true,
+            HeadingMode::AutoIndex | HeadingMode::Abbreviated => *h > *d + 1e-7,
+        })
         .collect();
-    Ok(HeadingPlan {
-        key: letters
-            .iter()
-            .cloned()
-            .zip(headings.iter().cloned())
-            .collect(),
-        headings: letters,
-    })
+    if headings
+        .iter()
+        .zip(&indexed)
+        .any(|(heading, indexed)| *indexed && heading.trim().is_empty())
+    {
+        return Err("Indexed table headings require a full label for every aliased column.".into());
+    }
+    // Reserve fitting literal letter titles (including x/y) so aliases never
+    // ambiguously share their visible identity with another column.
+    let reserved: std::collections::BTreeSet<_> = headings
+        .iter()
+        .zip(&indexed)
+        .filter(|(_, indexed)| !**indexed)
+        .map(|(heading, _)| heading.trim().to_uppercase())
+        .collect();
+    let mut letters = (b'A'..=b'Z')
+        .map(|letter| (letter as char).to_string())
+        .filter(|letter| !reserved.contains(letter));
+    let mut result = HeadingPlan {
+        headings: Vec::with_capacity(count),
+        key: vec![],
+    };
+    for (heading, indexed) in headings.iter().zip(indexed) {
+        if indexed {
+            let alias = letters.next().ok_or("Table heading aliases exhausted.")?;
+            result.key.push((alias.clone(), heading.clone()));
+            result.headings.push(alias);
+        } else {
+            result.headings.push(heading.clone());
+        }
+    }
+    Ok(result)
 }
 #[cfg(test)]
 mod tests {
@@ -104,9 +113,9 @@ mod tests {
             &[5., 1., 4., 3.],
         )
         .unwrap();
-        assert_eq!(indexed.headings, ["A", "B", "C", "D"]);
-        assert_eq!(indexed.key[1], ("B".into(), "A".into()));
-        assert_eq!(indexed.key[3], ("D".into(), "Earthing".into()));
+        assert_eq!(indexed.headings, ["B", "A", "C", "D"]);
+        assert_eq!(indexed.key[0], ("B".into(), "House Number".into()));
+        assert_eq!(indexed.key[2], ("D".into(), "Earthing".into()));
         assert_eq!(
             plan(HeadingMode::Literal, &labels, &[20.; 4], &[2.; 4])
                 .unwrap()
@@ -121,6 +130,25 @@ mod tests {
             .unwrap()
             .key
             .is_empty());
+    }
+    #[test]
+    fn default_keeps_description_and_coordinates_literal_and_keys_long_titles() {
+        let labels = ["Number", "Description", "Flying stay", "X", "Y"].map(str::to_owned);
+        let result = plan(
+            HeadingMode::default(),
+            &labels,
+            &[12., 20., 18., 2., 2.],
+            &[4., 35., 4., 15., 15.],
+        )
+        .unwrap();
+        assert_eq!(result.headings, ["A", "Description", "B", "X", "Y"]);
+        assert_eq!(
+            result.key,
+            [
+                ("A".into(), "Number".into()),
+                ("B".into(), "Flying stay".into())
+            ]
+        );
     }
     #[test]
     fn invalid_geometry_is_refused() {
