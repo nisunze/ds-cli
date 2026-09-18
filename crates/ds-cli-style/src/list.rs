@@ -1,4 +1,4 @@
-//! `ds style list` — the style refs the paired application has open.
+//! `ds style list` — the project's governed style refs.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG};
+use crate::LANE_ARG;
 
 const QUERY_ARG: Arg = Arg {
     name: "query",
@@ -33,38 +33,24 @@ pub static COMMAND: Command = Command {
     path: &["style", "list"],
     contract: 2,
     summary: "Loaded style refs, including present Notes/PM geometry children.",
-    purpose: "Reads a bounded backend catalogue of governed style editor refs. Native project authentication is the default; --host desktop uses one explicit project through the paired application without switching its GUI.",
+    purpose: "Reads a bounded backend catalogue of governed style editor refs for the selected project. Nothing is read from a window, so a server answers exactly as a desktop does.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
-        QUERY_ARG,
-        LIMIT_ARG,
-        HOST_ARG,
-        PROJECT_ARG,
-        LANE_ARG,
-        DESCRIPTOR_ARG,
-    ],
+    args: &[QUERY_ARG, LIMIT_ARG, LANE_ARG],
     output: "Project, total, bounded styles with refs/type/target/colour field, and more.",
-    examples: &[
-        Example {
-            command: "ds style list --query lv_poles --output json",
-            note: "Pick the ref whose target is design_vt for tiled design layers.",
-            runnable: false,
-        },
-        Example {
-            command: "ds style list --host desktop --project PROJECT --query roads --output json",
-            note: "Use the paired signed-in application for this exact project without changing the GUI project.",
-            runnable: false,
-        },
-    ],
+    examples: &[Example {
+        command: "ds style list --query lv_poles --output json",
+        note: "Pick the ref whose target is design_vt for tiled design layers.",
+        runnable: false,
+    }],
     refusals: crate::native::REFUSALS,
     reference: Some("docs/reference/style.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
-pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let mut arguments = Map::new();
     if let Some(query) = inputs.value("query") {
         arguments.insert("query".into(), json!(query));
@@ -75,12 +61,7 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
             json!(crate::integer(limit, "limit", 1, 200)?),
         );
     }
-    crate::native::execute(
-        inputs,
-        context,
-        &crate::STYLE_LIST,
-        Value::Object(arguments),
-    )
+    crate::native::read(inputs, crate::native::Read::List, Value::Object(arguments))
 }
 
 pub fn render(data: &Value) -> String {
@@ -139,19 +120,7 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::render;
-    use ds_cli_contract::{Context, Format, Output, parse};
     use serde_json::json;
-
-    fn context() -> Context {
-        Context {
-            confirmed: false,
-            output: Output {
-                format: Format::Json,
-                pretty: false,
-                color: false,
-            },
-        }
-    }
 
     #[test]
     fn renders_runtime_source_freshness_without_changing_the_style_ref() {
@@ -169,32 +138,5 @@ mod tests {
         }));
         assert!(text.contains("ud/project_work_polygon"));
         assert!(text.contains("project_work / partial"));
-    }
-
-    #[test]
-    fn desktop_host_requires_an_explicit_project_and_never_becomes_a_native_fallback() {
-        let desktop = parse(
-            &super::COMMAND,
-            &["--host", "desktop"]
-                .into_iter()
-                .map(str::to_string)
-                .collect::<Vec<_>>(),
-        )
-        .expect("desktop inputs");
-        let failure = super::run(&desktop, &context()).expect_err("project is required");
-        assert_eq!(failure.code(), "style_refused");
-        assert!(failure.message().contains("requires --project"));
-
-        let native = parse(
-            &super::COMMAND,
-            &["--project", "huye"]
-                .into_iter()
-                .map(str::to_string)
-                .collect::<Vec<_>>(),
-        )
-        .expect("native inputs");
-        let failure = super::run(&native, &context()).expect_err("project is desktop-only");
-        assert_eq!(failure.code(), "style_refused");
-        assert!(failure.message().contains("requires --host desktop"));
     }
 }

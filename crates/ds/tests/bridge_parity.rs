@@ -57,7 +57,6 @@ struct App {
     dsgrid: String,
     dsgrid_contract: String,
     sre: String,
-    style: String,
     style_fill_pattern: String,
     style_line_type: String,
     sync_center: String,
@@ -94,7 +93,6 @@ fn app() -> Option<App> {
         dsgrid: read("src/lib/desktop/cli-dsgrid.ts")?,
         dsgrid_contract: read("docs/dsgrid-local-model-and-project-publication-contract.md")?,
         sre: read("src/lib/desktop/cli-sre.ts")?,
-        style: read("src/lib/desktop/cli-style.ts")?,
         style_fill_pattern: read("src/lib/styles/fill-pattern.ts")?,
         style_line_type: read("src/lib/styles/line-type.ts")?,
         sync_center: read("src/lib/desktop/cli-sync-center.ts")?,
@@ -1821,12 +1819,23 @@ fn sre_bounds_outputs_and_typed_refusals_match_the_desktop_owner() {
 }
 
 #[test]
-fn every_style_command_has_one_closed_operation_owner() {
+fn the_governed_style_documents_no_longer_travel_through_the_window() {
+    // A style document is governed shared state behind ds-brain: a project, a
+    // ref, a publication. `ds style` reached it two ways — the restored native
+    // user, which was the declared default, and, under `--host desktop`, the
+    // paired application calling `get_style_catalog` and `update_style` for
+    // the same project with the same kernel planner in between. Two routes to
+    // one document, and the windowed one silently ignored `--transformer`,
+    // so the same command answered `observed: null` on one host and the
+    // canonical field types on the other.
+    //
+    // Since 2026-09-18 there is one route. `ds-cli-style` does not depend on
+    // `ds-cli-desktop` (`lens_core_boundary.rs` holds that), the desktop's
+    // nine operations are retired, and the adapter is deleted.
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
     };
-    let mut seen = BTreeSet::new();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1836,79 +1845,50 @@ fn every_style_command_has_one_closed_operation_owner() {
         !allowlist.is_empty(),
         "the desktop CLI operation allowlist is absent"
     );
-    for operation in ds_cli_style::BRIDGE_OPS {
-        assert!(
-            seen.insert(operation.operation),
-            "`{}` is declared twice by ds style; one semantic operation has one owner",
-            operation.operation
+    for retired in [
+        "style.list",
+        "style.read",
+        "style.seed.create",
+        "style.appearance.set",
+        "style.label.set",
+        "style.print.create",
+        "style.dimension.set",
+        "style.dimension.clear",
+        "style.cartography.set",
+    ] {
+        assert_eq!(
+            count(allowlist, &format!("\"{retired}\"")),
+            0,
+            "{retired} is still admitted as a CLI bridge operation, but `ds style` \
+             no longer sends it"
         );
         assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "`{}` must appear exactly once in the desktop allowlist",
-            operation.operation
+            switch_case_count(&app.frontend, retired),
+            0,
+            "{retired} still has a frontend handler"
         );
-        assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
-            1,
-            "`{}` must have exactly one frontend handler",
-            operation.operation
-        );
-        let contract = operation_contract(&app.style, operation.operation);
-        assert!(
-            !contract.is_empty(),
-            "`{}` has no typed style adapter argument contract",
-            operation.operation
-        );
-        for argument in operation.arguments {
-            assert!(
-                contract.contains(&format!("'{argument}'"))
-                    || contract.contains(&format!("\"{argument}\"")),
-                "ds style sends `{argument}` to `{}`, but its typed adapter does not accept it",
-                operation.operation
-            );
-        }
     }
-    // The host adapter must delegate every edit to the shared Rust/WASM
-    // planner. It owns transport validation only; style grammar and bounds do
-    // not get a second TypeScript implementation.
-    // Whitespace-insensitive on purpose: the previous marker was a one-line
-    // spelling of this call, so reformatting the adapter — which is all that
-    // happened — read as the planner having been abandoned.
-    let style_call_sites: String = app.style.chars().filter(|c| !c.is_whitespace()).collect();
+    let Some(root) = ds_web() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
     assert!(
-        style_call_sites.contains("planStyle({snapshot,reference,instruction:"),
-        "the paired style adapter must delegate edits to the shared WASM planner"
+        !root.join("src/lib/desktop/cli-style.ts").exists(),
+        "the style adapter outlived its last caller"
     );
-    assert!(!app.style.contains("const MAX_VALUES"));
 }
 
 #[test]
-fn style_cartography_sends_exactly_the_arguments_and_bounds_the_desktop_owns() {
+fn style_cartography_offers_only_the_vocabulary_the_renderer_paints() {
+    // The bridge is gone, but this parity is not about a bridge. `ds style
+    // cartography` publishes a name — a fill pattern, a line type, a tile
+    // size — into a governed document that the map then has to paint. A name
+    // ds offers and the renderer does not know is a published style nothing
+    // draws, and neither the kernel nor the gateway would notice.
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
     };
-    let operation = ds_cli_style::CARTOGRAPHY_SET.operation;
-
-    // Ten camelCase keys hand-copied from the application's own input schema
-    // is the largest such copy in this domain, and `ds style appearance set`
-    // proves a subset check is not enough: a key the adapter accepts but ds
-    // never sends is a property no caller can reach. Hold both directions.
-    assert!(
-        has_operation_contract(&app.style, operation),
-        "`{operation}` has no typed style-adapter argument contract"
-    );
-    let accepted = quoted_contract_items(operation_contract(&app.style, operation));
-    let declared = ds_cli_style::CARTOGRAPHY_SET
-        .arguments
-        .iter()
-        .map(|argument| (*argument).to_string())
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
-        accepted, declared,
-        "`{operation}` arguments drifted between ds and the desktop"
-    );
 
     // MapLibre repeats a pattern image by tiling it, so a tile size that is
     // not a power of two seams at every edge. `ds` refuses the others at the
@@ -1922,26 +1902,26 @@ fn style_cartography_sends_exactly_the_arguments_and_bounds_the_desktop_owns() {
     assert!(
         app.style_fill_pattern
             .contains(&format!("const FILL_PATTERN_SPACINGS = [{spacings}]")),
-        "the desktop must rasterise exactly the seamless pattern tile sizes ds offers: [{spacings}]"
+        "the renderer must rasterise exactly the seamless pattern tile sizes ds offers: [{spacings}]"
     );
 
-    // The fill-pattern vocabulary is the adapter's own — unlike the dash
+    // The fill-pattern vocabulary is the renderer's own — unlike the dash
     // presets, which ds-brain publishes — so every name a caller may pass
     // must appear in it. `directional` is the one line type that is a marker
-    // rather than a dash, and the adapter is what knows that.
+    // rather than a dash, and the renderer is what knows that.
     let fill_patterns = ds_cli_style::cartography::plan::COMMAND
         .arg("fill-pattern")
         .expect("--fill-pattern is declared")
         .choices;
     for name in fill_patterns.iter().chain(["directional"].iter()) {
-        let named = [&app.style, &app.style_fill_pattern, &app.style_line_type]
+        let named = [&app.style_fill_pattern, &app.style_line_type]
             .iter()
             .any(|source| {
                 source.contains(&format!("'{name}'")) || source.contains(&format!("\"{name}\""))
             });
         assert!(
             named,
-            "ds style cartography offers `{name}`, but the desktop adapter does not name it"
+            "ds style cartography offers `{name}`, but the renderer does not name it"
         );
     }
 }

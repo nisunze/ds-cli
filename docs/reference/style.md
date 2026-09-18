@@ -1,16 +1,14 @@
 # Style authoring
 
-`ds style` reads and writes governed style documents through the native client by
-default. It requires a native sign-in and selected project; no desktop or map is
-required. Use `--lane stable|canary` to choose the deployment. Catalogue reads and
+`ds style` reads and writes governed style documents through the native client.
+It requires a native sign-in and selected project; no desktop, window or map is
+involved. Use `--lane stable|canary` to choose the deployment. Catalogue reads and
 publication need the backend to be reachable.
 
-When the native profile is intentionally unavailable, choose the paired host
-explicitly with `--host desktop --project <exact-id>`. The signed-in application
-loads that project's governed layer snapshot without changing the project shown in
-the GUI. There is no automatic fallback between hosts. The paired adapter delegates
-catalogue and authoring to the same Rust command kernel used by the native client
-and Style Center.
+There is one route, so a server answers exactly as a desktop does. The Style
+Center in the application authors the same documents through the same Rust
+command kernel compiled to WASM; what differs is who is typing, not what is
+decided.
 
 Start with `ds style list`, then `ds style read --ref <returned-ref> --output json`.
 Read returns the complete authored document, backend field vocabulary and domains,
@@ -78,7 +76,7 @@ placement tries the backend's point anchors and respects label collisions.
 Omitted options preserve existing settings. For example:
 
 ```sh
-ds style label plan --ref master/lv_poles_print --field pole_number --visible on --size 8 --paper A0 --placement auto --host desktop --project PROJECT
+ds style label plan --ref master/lv_poles_print --field pole_number --visible on --size 8 --paper A0 --placement auto
 ```
 
 Geometry and label zooms are independent. Both `cartography plan/set` and

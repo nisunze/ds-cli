@@ -55,8 +55,9 @@ enum Layer {
 /// all that remained was an empty `BRIDGE_OPS` const holding the dependency
 /// open. `ds-cli-library` left the same day too, by the other route: its
 /// thirteen governed global-catalog operations were given the headless owner
-/// they always should have had, and `ds-cli-feedback` followed by collapsing
-/// its two routes to the native one it already had.
+/// they always should have had, and `ds-cli-feedback`, `ds-cli-tile` and
+/// `ds-cli-style` followed — the last two by collapsing two routes to the
+/// native one they already had, and in `ds style`'s case already defaulted to.
 const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds", Layer::Host, 1),
     ("ds-cli-map", Layer::Lens, 4),
@@ -76,8 +77,6 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds-cli-solar", Layer::CorePending, 2),
     // Diagnostics inspect the live application.
     ("ds-cli-sre", Layer::CorePending, 1),
-    // Styling saves round-trip through the open map's layer state.
-    ("ds-cli-style", Layer::CorePending, 2),
     // Project Work tasks read the window's selection.
     ("ds-cli-work", Layer::CorePending, 1),
 ];

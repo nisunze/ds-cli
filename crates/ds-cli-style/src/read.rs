@@ -6,7 +6,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use crate::native::TRANSFORMER_ARG;
-use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
+use crate::{LANE_ARG, REF_ARG};
 
 pub static COMMAND: Command = Command {
     id: "style.read",
@@ -18,15 +18,8 @@ pub static COMMAND: Command = Command {
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
-        REF_ARG,
-        TRANSFORMER_ARG,
-        HOST_ARG,
-        PROJECT_ARG,
-        LANE_ARG,
-        DESCRIPTOR_ARG,
-    ],
-    output: "Project, ref, type, target, document, fields, fieldValues, fieldDomains, propertySchema, icons, channels, second, colorField, more, observed (derived, or a named refusal saying why this host holds none), and — when derived — fieldTypes, fieldTypeSource, fieldTypeConflicts, fieldCounts, fieldMatchLabels and fieldProvenance.",
+    args: &[REF_ARG, TRANSFORMER_ARG, LANE_ARG],
+    output: "Project, ref, type, target, document, fields, fieldValues, fieldDomains, propertySchema, icons, channels, second, colorField, more, observed (derived, or a named refusal saying why nothing was observed), and — when derived — fieldTypes, fieldTypeSource, fieldTypeConflicts, fieldCounts, fieldMatchLabels and fieldProvenance.",
     examples: &[Example {
         command: "ds style read --ref master/lv_poles --transformer T-1042 --output json",
         note: "Read .data.channels and .data.observed.types before `ds style dimension plan`.",
@@ -34,14 +27,13 @@ pub static COMMAND: Command = Command {
     }],
     refusals: crate::native::REFUSALS,
     reference: Some("docs/reference/style.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
-pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-    crate::native::execute(
+pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    crate::native::read(
         inputs,
-        context,
-        &crate::STYLE_READ,
+        crate::native::Read::Describe,
         json!({ "ref": inputs.require("ref")? }),
     )
 }

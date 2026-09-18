@@ -8687,7 +8687,7 @@ fn feedback_triage_bounds_are_enforced_before_the_call() {
 // style — the cartographic axis
 // ---------------------------------------------------------------------------
 
-/// Everything `ds style cartography` can decide without the application.
+/// Everything `ds style cartography` can decide before it authenticates.
 ///
 /// The axis is deliberately field-free, so unlike the second dimension there
 /// is no `ds style read` value list to check a flag against. That makes what
@@ -8695,7 +8695,7 @@ fn feedback_triage_bounds_are_enforced_before_the_call() {
 /// vocabularies, the seamless tile sizes, and the two contradictions that
 /// cannot be right under any document state.
 #[test]
-fn style_cartography_validates_its_own_inputs_before_it_opens_the_bridge() {
+fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
     for (case, args, expected) in [
         (
             "a call that asks for nothing",
@@ -8892,8 +8892,8 @@ fn style_cartography_validates_its_own_inputs_before_it_opens_the_bridge() {
 
     // Adjusting arrow spacing on a ref that already carries the directional
     // type is legitimate: `ds` has not read the document, so it must not
-    // invent a contradiction. This one is well formed and may only end at the
-    // bridge.
+    // invent a contradiction. This one is well formed and may only end where
+    // the native user is restored.
     let adjust = native_refusal(&[
         "style",
         "cartography",
@@ -8907,16 +8907,17 @@ fn style_cartography_validates_its_own_inputs_before_it_opens_the_bridge() {
     ]);
     assert!(
         adjust.is_empty() || NATIVE_AUTH_CODES.contains(&adjust.as_str()),
-        "adjusting arrow spacing alone failed with `{adjust}`, which is not a pairing outcome"
+        "adjusting arrow spacing alone failed with `{adjust}`, which is not an \
+         authentication outcome"
     );
 }
 
 /// Each of the three scenarios the cartography commands exist for is one
-/// well-formed call that reaches the bridge and stops there — never an input
-/// refusal, and never `undeclared_bridge_argument`, which would mean a
-/// handler built an argument key its own BridgeOp does not declare.
+/// well-formed call that gets as far as the native user and stops there —
+/// never an input refusal, and never `style_refused`, which here would mean a
+/// handler built a property key the kernel's closed instruction does not name.
 #[test]
-fn a_well_formed_cartography_call_stops_at_confirmation_or_pairing() {
+fn a_well_formed_cartography_call_stops_at_confirmation_or_authentication() {
     for args in [
         // Directional water-flow lines.
         vec![
@@ -8987,13 +8988,75 @@ fn a_well_formed_cartography_call_stops_at_confirmation_or_pairing() {
             "json",
         ],
     ] {
-        let code = refusal(&args);
+        let code = native_refusal(&args);
         assert!(
             code.is_empty() || NATIVE_AUTH_CODES.contains(&code.as_str()),
-            "`ds {}` failed with `{code}`, which is not a pairing outcome",
+            "`ds {}` failed with `{code}`, which is not an authentication outcome",
             args.join(" ")
         );
     }
+}
+
+/// `ds style` used to declare `paired_availability` on all fifteen commands
+/// while `--host` defaulted to `native`: the contract said a window was
+/// required, the default route never opened one, and a server was told the
+/// whole domain was unavailable. One route means one answer, and this is the
+/// shape of it — no host question in the descriptor, and a machine without a
+/// native profile refused by name rather than for want of a window.
+#[test]
+fn ds_style_asks_no_host_question_and_refuses_without_a_window() {
+    let domain = ok(&["capabilities", "style", "--output", "json"]);
+    let ids: Vec<String> = domain["commands"]
+        .as_array()
+        .expect("style commands")
+        .iter()
+        .filter_map(|command| command["id"].as_str())
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(ids.len(), 15, "the style domain publishes fifteen commands");
+    for id in &ids {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        let flags: Vec<&str> = command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .filter_map(|input| input["name"].as_str())
+            .collect();
+        assert!(
+            flags.contains(&"lane"),
+            "`{id}` does not name the lane it authenticates on"
+        );
+        for windowed in ["host", "project", "desktop-descriptor", "target"] {
+            assert!(
+                !flags.contains(&windowed),
+                "`{id}` still asks `--{windowed}`, which only a paired window needed"
+            );
+        }
+        let codes: Vec<&str> = command["refusals"]
+            .as_array()
+            .expect("refusals")
+            .iter()
+            .filter_map(|refusal| refusal["code"].as_str())
+            .collect();
+        assert!(
+            codes.contains(&"headless_signed_out")
+                && codes.contains(&"headless_project_not_selected"),
+            "`{id}` must document the two conditions its one route actually has: {codes:?}"
+        );
+        assert!(
+            !codes.iter().any(|code| code.starts_with("desktop_")),
+            "`{id}` still documents a paired window's refusal: {codes:?}"
+        );
+    }
+
+    // And the behaviour, not only the descriptor: with no native profile the
+    // refusal names the profile, never a missing window.
+    let code = native_refusal(&["style", "list", "--output", "json"]);
+    assert!(
+        code.is_empty() || NATIVE_AUTH_CODES.contains(&code.as_str()),
+        "`ds style list` refused with `{code}`"
+    );
 }
 
 #[test]

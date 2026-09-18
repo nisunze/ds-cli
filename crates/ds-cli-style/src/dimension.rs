@@ -14,7 +14,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
+use crate::{LANE_ARG, REF_ARG};
 
 const FIELD_ARG: Arg = Arg {
     name: "field",
@@ -68,7 +68,7 @@ const COLOR_ARG: Arg = Arg {
     summary: "Ring colour for values without their own (halo channel; default #FFFFFF).",
 };
 
-fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
+pub(crate) fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     let values = inputs.repeated("value");
     if values.len() > crate::MAX_VALUES {
         return Err(Failure::invalid(
@@ -156,10 +156,7 @@ saving. Read it, then `ds style dimension set` with the same flags.",
             VALUE_ARG,
             OTHER_ARG,
             COLOR_ARG,
-            HOST_ARG,
-            PROJECT_ARG,
             LANE_ARG,
-            DESCRIPTOR_ARG,
         ],
         output: "\
 `ref`, `field`, `fieldType` (as the map carries it, or null), `channel`, \
@@ -173,12 +170,15 @@ the project's data, not of an edit: read them from `ds style read --transformer`
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-        let arguments = arguments(inputs, false)?;
-        crate::native::execute(inputs, context, &crate::DIMENSION_SET, arguments)
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        crate::native::edit(
+            inputs,
+            crate::native::Edit::Dimension,
+            arguments(inputs, false)?,
+        )
     }
 
     pub fn render(data: &Value) -> String {
@@ -215,10 +215,7 @@ second dimension on the ref is replaced; the colour dimension is untouched.",
             VALUE_ARG,
             OTHER_ARG,
             COLOR_ARG,
-            HOST_ARG,
-            PROJECT_ARG,
             LANE_ARG,
-            DESCRIPTOR_ARG,
         ],
         output: "\
 The plan receipt with `published: true`, ds-brain `warnings`, and the \
@@ -228,14 +225,17 @@ The plan receipt with `published: true`, ds-brain `warnings`, and the \
             note: "Symbol layers: the ring is baked into the raster icon by ds-brain.",
             runnable: false,
         }],
-        refusals: crate::native::REFUSALS,
+        refusals: crate::native::PUBLISH_REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-        let arguments = arguments(inputs, true)?;
-        crate::native::execute(inputs, context, &crate::DIMENSION_SET, arguments)
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        crate::native::edit(
+            inputs,
+            crate::native::Edit::Dimension,
+            arguments(inputs, true)?,
+        )
     }
 
     pub fn render(data: &Value) -> String {
@@ -258,23 +258,22 @@ defaults apply again, and publishes. The colour dimension is untouched.",
         effect: Effect::GlobalWrite,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, HOST_ARG, PROJECT_ARG, LANE_ARG, DESCRIPTOR_ARG],
+        args: &[REF_ARG, LANE_ARG],
         output: "`ref`, `cleared` (what was removed), `properties`, `published: true`, `warnings`, `document`.",
         examples: &[Example {
             command: "ds style dimension clear --ref master/lv_poles --yes",
-            note: "Refused with desktop_refused when no second dimension is authored.",
+            note: "Refused with style_refused when no second dimension is authored.",
             runnable: false,
         }],
-        refusals: crate::native::REFUSALS,
+        refusals: crate::native::PUBLISH_REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-        crate::native::execute(
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        crate::native::edit(
             inputs,
-            context,
-            &crate::DIMENSION_CLEAR,
+            crate::native::Edit::ClearDimension,
             json!({ "ref": inputs.require("ref")?, "apply": true }),
         )
     }
