@@ -109,6 +109,10 @@ publication, also read back the requested destination/version/attachment identit
 through their owner. Check cross-machine visibility separately when requested.
 Do not describe a local file as synced or a pending transfer as published.
 
+PDF delivery never authorizes a physical print job. Paper is the operator's
+decision, asked for separately: a verified digital set is complete delivery,
+not a step before printing it.
+
 Check effects before choosing the route: some exports queue publication as part
 of generation. A local-only request requires a compatible route. Verify that any
 alternative local renderer can produce the full engineering content and provenance;
