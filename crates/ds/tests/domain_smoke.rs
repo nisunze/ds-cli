@@ -4283,6 +4283,112 @@ fn global_tile_list_is_a_domain_bounded_native_recovery_read() {
 }
 
 #[test]
+fn hiding_a_reference_publication_is_a_headless_governed_write() {
+    let descriptor = ok(&["capabilities", "tile.global.access", "--output", "json"]);
+    let command = &descriptor["command"];
+    // A publication belongs to the product: the restored native user and the
+    // lane are all this write carries, and no window is involved.
+    assert_eq!(command["authority"], "headless_user");
+    assert_eq!(command["effect"], "global_write");
+    let inputs = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        inputs,
+        BTreeSet::from([
+            "allow-app-role",
+            "allow-project",
+            "allow-project-role",
+            "allow-user",
+            "lane",
+            "mode",
+            "tile",
+        ])
+    );
+
+    // Restricting a publication changes what the whole product mounts, so it
+    // is confirmed like any other governed write.
+    assert_eq!(
+        refusal(&[
+            "tile",
+            "global",
+            "access",
+            "--tile",
+            "rwanda_data_elementary_schools",
+            "--mode",
+            "restricted",
+            "--output",
+            "json",
+        ]),
+        "confirmation_required"
+    );
+
+    // An allowlist under `all` is a grant nothing evaluates, and a reader
+    // named twice is silently collapsed by the catalog: both are refused
+    // before a native user is restored, not recorded.
+    for allowlist in [
+        vec!["--allow-user", "operator@example.com"],
+        vec!["--allow-project", "czgmdwth_gisagara"],
+    ] {
+        let mut argv = vec![
+            "tile",
+            "global",
+            "access",
+            "--tile",
+            "rwanda_data_elementary_schools",
+            "--mode",
+            "all",
+        ];
+        argv.extend(allowlist);
+        argv.extend(["--yes", "--output", "json"]);
+        assert_eq!(native_refusal(&argv), "global_tile_selection_invalid");
+    }
+    assert_eq!(
+        native_refusal(&[
+            "tile",
+            "global",
+            "access",
+            "--tile",
+            "rwanda_data_elementary_schools",
+            "--mode",
+            "restricted",
+            "--allow-user",
+            "operator@example.com",
+            "--allow-user",
+            "Operator@Example.com",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "global_tile_selection_invalid"
+    );
+
+    // A usable policy passes the owner's bounds and stops only at this
+    // machine's native identity — never at a paired window.
+    let code = native_refusal(&[
+        "tile",
+        "global",
+        "access",
+        "--tile",
+        "rwanda_data_elementary_schools",
+        "--mode",
+        "restricted",
+        "--allow-app-role",
+        "platform_admin",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        NATIVE_AUTH_CODES.contains(&code.as_str()),
+        "a usable access policy stopped at `{code}`, not the native reference catalog"
+    );
+}
+
+#[test]
 fn background_project_operations_are_map_independent_and_use_the_declared_project_context() {
     for (id, effect, inputs) in [
         (
