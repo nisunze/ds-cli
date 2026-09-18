@@ -1173,6 +1173,32 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One exact read of a national administrative hierarchy.
+    ///
+    /// No project: a country's boundaries belong to the country. The restored
+    /// user is the identity the gateway sees, and the answer is the same on
+    /// every host that asks.
+    pub fn admin_bounds(
+        &mut self,
+        command: &crate::admin_bounds::Command,
+        now: u64,
+    ) -> Result<crate::admin_bounds::Answer, ClientError> {
+        command.validate()?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::admin_bounds::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            command,
+        )
+    }
+
     /// One governed action on the GLOBAL library and example catalog.
     ///
     /// No project id, because this catalog has none: a library release belongs

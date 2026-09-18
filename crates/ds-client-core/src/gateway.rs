@@ -286,6 +286,11 @@ mod tests {
     #[test]
     fn registry_agrees_with_profile_constants() {
         use crate::profile::{
+            ADMIN_BOUNDS_ACTIONS, ADMIN_BOUNDS_METHOD, ADMIN_BOUNDS_PATH,
+            DATA_DISTRIBUTION_ACTIONS, DATA_DISTRIBUTION_METHOD, DATA_DISTRIBUTION_PATH,
+            DESIGN_SELECTIONS_ACTIONS, DESIGN_SELECTIONS_METHOD, DESIGN_SELECTIONS_PATH,
+        };
+        use crate::profile::{
             AUTH_DEVICE_LIST_METHOD, AUTH_DEVICE_LIST_PATH, AUTH_DEVICE_READ_METHOD,
             AUTH_DEVICE_READ_PATH_TEMPLATE, AUTH_DEVICE_REFRESH_METHOD, AUTH_DEVICE_REFRESH_PATH,
             AUTH_DEVICE_REVOKE_METHOD, AUTH_DEVICE_REVOKE_PATH_TEMPLATE, AUTH_LINK_BEGIN_METHOD,
@@ -297,10 +302,6 @@ mod tests {
             PROJECT_REPORT_ACTIONS, PROJECT_REPORT_METHOD, PROJECT_REPORT_PATH,
             SOLAR_SNAPSHOT_ACTION, SOLAR_SNAPSHOT_METHOD, SOLAR_SNAPSHOT_PATH, STYLES_ACTION,
             STYLES_METHOD, STYLES_PATH, TILES_ACTIONS, TILES_METHOD, TILES_PATH,
-        };
-        use crate::profile::{
-            DATA_DISTRIBUTION_ACTIONS, DATA_DISTRIBUTION_METHOD, DATA_DISTRIBUTION_PATH,
-            DESIGN_SELECTIONS_ACTIONS, DESIGN_SELECTIONS_METHOD, DESIGN_SELECTIONS_PATH,
         };
 
         let route_pairs: &[(&str, &str, &str)] = &[
@@ -396,6 +397,11 @@ mod tests {
                 DATA_DISTRIBUTION_METHOD,
                 DATA_DISTRIBUTION_PATH,
             ),
+            (
+                "domains.admin_bounds.action",
+                ADMIN_BOUNDS_METHOD,
+                ADMIN_BOUNDS_PATH,
+            ),
         ];
         for (id, method, path) in route_pairs {
             let entry = op(id);
@@ -433,6 +439,14 @@ mod tests {
         assert_eq!(distribution.response_cap_bytes, 32 * 1024 * 1024);
         assert!(!distribution.allows_action("query_dataset"));
         assert!(!distribution.allows_action("publish_dataset"));
+        // The national hierarchy: two exact reads, and none of the unbounded
+        // or duplicate actions the same path also answers.
+        let admin = op("domains.admin_bounds.action");
+        assert_eq!(admin.actions, &ADMIN_BOUNDS_ACTIONS[..]);
+        assert!(admin.allows_action("children"));
+        assert!(!admin.allows_action("descendants"));
+        assert!(!admin.allows_action("enrich"));
+        assert!(!admin.allows_action("locate"));
         let forms = op("domains.project_forms.action");
         assert!(forms.allows_action(PROJECT_FORMS_ACTION));
         assert!(forms.allows_action(PROJECT_FORM_EDITOR_ACTION));

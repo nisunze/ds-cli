@@ -1299,6 +1299,48 @@
           "resolution": { "web": "gateway", "desktop": "gateway" }
         }
       }
+    },
+    "admin_bounds": {
+      "summary": "The national administrative hierarchy: exact immediate children, and one unit's polygon.",
+      "doc": [
+        "The country is a PATH segment, not a parameter: `/api/v1/admin/rwanda`",
+        "is Rwanda's authority and a second country is a second reviewed route.",
+        "`actions` is exactly the closed vocabulary the native client may send",
+        "(ds-client-core ADMIN_BOUNDS_ACTIONS). Declaring it bumped the client",
+        "profile schema to v28.",
+        "",
+        "The backend (ds-brain `internal/bulk/handlers/admin_handler.go`) also",
+        "answers `hierarchy`, `descendants`, `query`, `locate` and a POST",
+        "`enrich`. None is declared: `descendants` pulls every unit of a level",
+        "WITH geometry in one unbounded answer, `hierarchy` and `query` say what",
+        "`children` and `geometry` already say exactly, and `locate` and `enrich`",
+        "are spatial joins a caller performs against the installed reference",
+        "asset. `geometry` and `wkt` are backend aliases for the same GeoJSON",
+        "read; this client sends the one that means it.",
+        "",
+        "ds-apis-tf declares the `action` query parameter with an enum that",
+        "predates `geometry` and `descendants`. The gateway does not enforce it",
+        "-- ds-web has read `action=geometry` in production since Search place",
+        "shipped -- but the enum is stale and worth correcting there."
+      ],
+      "operations": {
+        "action": {
+          "summary": "List one level's exact immediate children, or read one boundary's geometry.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["children", "geometry"],
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 60,
+          "response_cap_bytes": 8388608,
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/admin/rwanda",
+            "backend": "ds_brain_bulk_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
     }
   }
 }

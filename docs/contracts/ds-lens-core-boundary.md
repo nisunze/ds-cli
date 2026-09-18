@@ -228,6 +228,8 @@ nothing else in this plan is gated on it.
 | 2026-09-18 | 0b | **`ds-cli-feedback` freed.** It had two routes to one backlog; the native one was already the default, so the paired one and its prose-marker refusal recovery are gone, with `--target`, `--desktop-descriptor`, the three BridgeOps and the desktop adapter. Eleven left (ds-cli `c0d712c`, ds-web `7c9817c2`) |
 | 2026-09-18 | 0b | **`ds-cli-tile` freed.** `ds tile global catalog\|list\|generate\|status` call `ds-client-core::global_tiles` as the restored native user; `--lane` replaces `--desktop-descriptor` and the refusals are composed from the owner's own list. Ten left (kernel `7d89dd3`, ds-cli `57a49f9`, ds-web `3713c9e4`) |
 | 2026-09-18 | 0b | **`ds-cli-style` freed.** Its fifteen commands already ran natively by default — `--host` chose between the restored user and a paired window, and both ended at the same two gateway actions (`get_style_catalog`, `update_style`) with the same kernel planner in between. Two routes to one governed document meant a contract that declared `paired_availability` for a default that opened no window, a windowed route that silently ignored `--transformer`, and two cartography commands documenting a window's seven refusals and none of the fifteen native ones. `--host`, `--project`, `--desktop-descriptor`, the nine BridgeOps and the desktop adapter are gone; the refusals compose from `auth.project.list`'s. Nine left (ds-cli, ds-web) |
+| 2026-09-18 | 0b | **`ds-cli-data` half freed.** Its two national boundary READS are core and now behave like it: `ds-client-core::admin_bounds` (closed country/level vocabulary, prefix-code arithmetic, bounded evidence instead of coordinates, `--geometry-out` for the polygon) on a new declared route at profile v28. `--to-map` did not follow: materialising a boundary in a running desktop is a local overlay plus a camera move, which is lens, and no `map.*` command owns it yet (owner decision 5 below). The crate KEEPS the door at 4 files: `data.elevation.plan|extract|attach` and `data.admin_bounds.attach` are local file compute whose engine (`ds-web/src-tauri/src/native_elevation.rs`, `native_point_cloud.rs`, ~2,800 lines over `ds_elevation`, plus a 914-line component manager), DEM component manager (`rwanda_dem_resource.rs`) and project-pinned reference asset live in the desktop shell — core work needing an extracted crate, not lens (kernel `07d147c`, ds-cli `abe2800`, ds-web `deb7094b`) |
+| 2026-09-18 | 0b | **`ds dsgrid model` answers without a window.** A working copy is a fact about a machine, but its catalogue lived in the browser's IndexedDB, so `list|create-local|import-external|set-active` refused `desktop_not_paired` on a server — where the id every other command needs could not be read at all. `ds_command_kernel::local_models` decides (duplicate names, which copy stays open, an id that is one path segment) and `ds_layer_store::local_models` persists, beside the local-layer catalogue `ds map local` already keeps; the identity recorded is the package's own, read by the engine linked into `ds`. The crate KEEPS the door for `prepare-project` and `publish-version`, which are about the application's own open copy and project cache (kernel `d542a84`/`a1fe852`, ds-cli `f5a307f`, ds-web `d44fc8d9`) |
 
 ## 6. Owner decisions needed
 
@@ -241,6 +243,16 @@ nothing else in this plan is gated on it.
 4. Slice 6's names and install layout: what the lens binary is called, whether
    the desktop installs two binaries or one that links both, and what a lens
    install without a reachable core answers.
+5. Where the *rendering* half of a freed read goes. `ds data admin-bounds read
+   --to-map` put an exact boundary on the open desktop map through the sketch
+   store and fitted the camera. The read became core on 2026-09-18 and the
+   switch was removed, so that gesture is available inside Search place but no
+   longer from the CLI. Three answers are open: a `map.*` lens command that
+   renders a boundary the core read names; teaching the desktop to show the
+   prepared local layers `ds map local register` writes (today its catalogue is
+   IndexedDB and `ds`'s is the native layer store, and the two do not meet); or
+   accepting the file-plus-`ds map local register` composition as the answer.
+   The same question will arrive with every read that had a `--to-map` twin.
 
 ## 7. Non-goals
 

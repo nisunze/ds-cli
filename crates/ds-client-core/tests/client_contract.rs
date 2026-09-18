@@ -147,6 +147,9 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
             "list_datasets".to_owned(),
             "query_print_context".to_owned(),
         ],
+        admin_bounds_method: "GET".to_owned(),
+        admin_bounds_path: "/api/v1/admin/rwanda".to_owned(),
+        admin_bounds_actions: vec!["children".to_owned(), "geometry".to_owned()],
     }
 }
 
@@ -1550,10 +1553,16 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
     // the full profile authority.
     assert_eq!(
         stable.profile_sha256(),
-        "2a2c7954f468eb5068d958e9c188c70ac0a08c530e400c9ceeef06199396081b"
+        "264cabc267805e4324f3e615db07738d8136dddecbadccf2e68c29a1075eb037"
     );
     // A profile is a digest over the closed vocabulary, so adding one route is
-    // Profile v27 adds the reviewed closed design-attachment workflow.
+    // a new identity. Profile v27 added the reviewed closed design-attachment
+    // workflow; v28 adds the national administrative hierarchy, and this is
+    // the v27 vector a build must no longer produce.
+    assert_ne!(
+        stable.profile_sha256(),
+        "2a2c7954f468eb5068d958e9c188c70ac0a08c530e400c9ceeef06199396081b"
+    );
     assert_ne!(
         stable.profile_sha256(),
         "5773df53261e74ba9b1c8bd3439e75fdbceff31ab6a593d7c06612bd15aded83"
@@ -1689,6 +1698,9 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
             "list_datasets".to_owned(),
             "query_print_context".to_owned(),
         ],
+        admin_bounds_method: "GET".to_owned(),
+        admin_bounds_path: "/api/v1/admin/rwanda".to_owned(),
+        admin_bounds_actions: vec!["children".to_owned(), "geometry".to_owned()],
     })
     .unwrap_err();
     assert_eq!(error, ProfileError::ProjectRoute);

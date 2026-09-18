@@ -18,10 +18,29 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "638e82823c99f0937b04b33b749373f5b8530c87ed61ee7cd6ccc9d19e3fa952";
+    "8deff1226db2832c946821e31aabf47f9b64ede3e64ecd1f1690680944b50faa";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
+    GatewayOperation {
+        id: "domains.admin_bounds.action",
+        method: "GET",
+        path: "/api/v1/admin/rwanda",
+        path_params: &[],
+        action_key: "action",
+        actions: &["children", "geometry"],
+        transport: "json",
+        authority: "gateway",
+        principal: "user",
+        lane_header: false,
+        idempotency: "idempotent",
+        retry_class: "transport_and_5xx",
+        timeout_s: 60,
+        response_cap_bytes: 8388608,
+        resolution_web: "gateway",
+        resolution_desktop: "gateway",
+        native_command: "",
+    },
     GatewayOperation {
         id: "domains.app_installs.heartbeat",
         method: "POST",
