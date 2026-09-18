@@ -180,13 +180,37 @@ pub struct PlannedFeature {
     pub kind: GeometryKind,
     /// Flat `[lng, lat, lng, lat, …]` per simple part, WGS-84 degrees.
     pub parts: Vec<Vec<f64>>,
+    /// The polygon rings this feature encloses but does not cover: its holes,
+    /// flat in the same `[lng, lat, …]` form.
+    ///
+    /// An operation that *grows* a geometry is right to ignore them — a
+    /// buffer of a lake with an island is a zone around the lake. An
+    /// operation that *reports* one is not: a parcel with a courtyard cut out
+    /// of it is smaller than its outer ring, and answering the outer ring's
+    /// area is a wrong number, not a bounded one. Carrying the holes here is
+    /// what lets each operation make that choice deliberately instead of
+    /// never having been offered it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interior: Vec<Vec<f64>>,
 }
 
 impl PlannedFeature {
     /// Total coordinate count across every part. Used to price a run before
-    /// running it.
+    /// running it, so it counts what the engine will actually be handed.
     pub fn vertex_count(&self) -> usize {
         self.parts.iter().map(|part| part.len() / 2).sum()
+    }
+
+    /// Every coordinate the feature is written with, holes included. What a
+    /// caller asking "how big is this feature" means, as against what an
+    /// engine call will cost.
+    pub fn written_vertex_count(&self) -> usize {
+        self.vertex_count()
+            + self
+                .interior
+                .iter()
+                .map(|ring| ring.len() / 2)
+                .sum::<usize>()
     }
 }
 
@@ -312,6 +336,63 @@ pub fn resolve_distance_m(
     Ok(value)
 }
 
+/// Read a GeoJSON document and decide a run whose answer is a *summary* of
+/// the whole document rather than a feature-by-feature result.
+///
+/// A total that silently counts the first 500 features of a 600-feature
+/// network is a wrong length, and a caller has no way to tell it from a right
+/// one. So an operation like `measure` plans everything and bounds the rows
+/// it prints instead — `bound_inline` is the other half of that sentence.
+pub fn plan_over_whole_document(
+    document: &Value,
+    operation: VectorOperation,
+) -> Result<VectorPlan, VectorRefusal> {
+    plan(document, operation, usize::MAX)
+}
+
+/// Bound a list of rows an operation *produced*, and say what was withheld.
+///
+/// `limit` bounds the features an operation reads. What it makes is a
+/// different count entirely: stationing one 1 km line at 0.5 m makes 2,222
+/// points from a single eligible feature, and returning them inline sends
+/// 377 kB at a caller who asked one small question. That is the shape of
+/// answer that makes an agent stop trusting a surface.
+///
+/// The truncation applies to an answer returned *inline*. A caller who passed
+/// `--out` asked for a file, and a file is not a context cost, so nothing is
+/// cut there.
+pub fn bound_inline<T>(rows: &mut Vec<T>, limit: usize, noun: &str) -> Option<String> {
+    cut(rows, limit).map(|withheld| {
+        format!(
+            "{withheld} more {noun}(s) were produced than returned inline; pass --out <path> to write them all, or raise --limit (max {MAX_LIMIT})"
+        )
+    })
+}
+
+/// Bound the rows of an answer whose *totals* were computed over everything.
+///
+/// A different sentence from `bound_inline`, because it is a different fact
+/// and the remedy differs too: there is nothing to write to a file here, and
+/// what the caller most needs to know is that the numbers above the list were
+/// not cut with it.
+pub fn bound_listed_rows<T>(rows: &mut Vec<T>, limit: usize, noun: &str) -> Option<String> {
+    cut(rows, limit).map(|withheld| {
+        format!(
+            "{withheld} more {noun}(s) were measured than listed; the totals count every one. Raise --limit (max {MAX_LIMIT}) to list more"
+        )
+    })
+}
+
+/// Truncate to `limit` and report how many went, or leave a short list alone.
+fn cut<T>(rows: &mut Vec<T>, limit: usize) -> Option<usize> {
+    if rows.len() <= limit {
+        return None;
+    }
+    let withheld = rows.len() - limit;
+    rows.truncate(limit);
+    Some(withheld)
+}
+
 /// Read a GeoJSON document and decide the run.
 ///
 /// `document` may be a FeatureCollection, a single Feature, a GeometryCollection
@@ -430,7 +511,8 @@ fn classify(
     let Some(coordinates) = geometry.get("coordinates") else {
         return Err(SkipReason::NoGeometry);
     };
-    let parts = flatten_parts(type_name, coordinates).ok_or(SkipReason::BadCoordinates)?;
+    let (parts, interior) =
+        flatten_parts(type_name, coordinates).ok_or(SkipReason::BadCoordinates)?;
     if parts.is_empty() {
         return Err(SkipReason::EmptyGeometry);
     }
@@ -439,6 +521,7 @@ fn classify(
         id: feature_id(feature),
         kind,
         parts,
+        interior,
     })
 }
 
@@ -457,10 +540,17 @@ fn feature_id(feature: &Value) -> Option<String> {
     }
 }
 
-/// Split a GeoJSON geometry into flat simple parts. The outer ring alone is
-/// taken from a polygon: this family's operations are ring-level, and a hole
-/// silently treated as an outer ring would be a wrong answer, not a slow one.
-fn flatten_parts(type_name: &str, coordinates: &Value) -> Option<Vec<Vec<f64>>> {
+/// Split a GeoJSON geometry into flat simple parts, and the holes those parts
+/// enclose.
+///
+/// A polygon's outer ring is the part: a hole silently treated as an outer
+/// ring would be a wrong answer, not a slow one. But the holes are not thrown
+/// away either — they come back separately, so an operation that reports on a
+/// polygon can subtract what the polygon does not cover while an operation
+/// that grows one can ignore them. Dropping them here is what made a donut
+/// measure exactly as large as the square it was cut from.
+fn flatten_parts(type_name: &str, coordinates: &Value) -> Option<(Vec<Vec<f64>>, Vec<Vec<f64>>)> {
+    let mut interior: Vec<Vec<f64>> = Vec::new();
     let parts = match type_name {
         "Point" => vec![position(coordinates)?],
         "LineString" => vec![positions(coordinates)?],
@@ -478,15 +568,37 @@ fn flatten_parts(type_name: &str, coordinates: &Value) -> Option<Vec<Vec<f64>>> 
             .iter()
             .map(positions)
             .collect::<Option<Vec<_>>>()?,
-        "Polygon" => vec![positions(coordinates.as_array()?.first()?)?],
+        "Polygon" => {
+            let rings = coordinates.as_array()?;
+            collect_holes(&mut interior, rings)?;
+            vec![positions(rings.first()?)?]
+        }
         "MultiPolygon" => coordinates
             .as_array()?
             .iter()
-            .map(|polygon| positions(polygon.as_array()?.first()?))
+            .map(|polygon| {
+                let rings = polygon.as_array()?;
+                collect_holes(&mut interior, rings)?;
+                positions(rings.first()?)
+            })
             .collect::<Option<Vec<_>>>()?,
         _ => return None,
     };
-    Some(parts.into_iter().filter(|part| !part.is_empty()).collect())
+    Some((
+        parts.into_iter().filter(|part| !part.is_empty()).collect(),
+        interior
+            .into_iter()
+            .filter(|ring| !ring.is_empty())
+            .collect(),
+    ))
+}
+
+/// Every ring after the first: the holes of one polygon.
+fn collect_holes(interior: &mut Vec<Vec<f64>>, rings: &[Value]) -> Option<()> {
+    for ring in rings.iter().skip(1) {
+        interior.push(positions(ring)?);
+    }
+    Some(())
 }
 
 fn position(value: &Value) -> Option<Vec<f64>> {
@@ -553,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn a_polygon_keeps_its_outer_ring_and_drops_its_holes() {
+    fn a_polygon_parts_as_its_outer_ring_and_sets_its_holes_aside() {
         let document = json!({
             "type": "Polygon",
             "coordinates": [
@@ -565,6 +677,9 @@ mod tests {
         assert_eq!(decided.planned[0].parts.len(), 1);
         assert_eq!(decided.planned[0].vertex_count(), 5);
         assert_eq!(decided.planned[0].kind, GeometryKind::Polygon);
+        // A buffer grows the outer ring and ignores the hole — but the hole
+        // is carried, not discarded, so `measure` can answer with it.
+        assert_eq!(decided.planned[0].interior.len(), 1);
     }
 
     #[test]
@@ -611,6 +726,75 @@ mod tests {
             .as_deref()
             .expect("more")
             .starts_with("3 more eligible feature(s)"));
+    }
+
+    /// A total is not a row. An operation that answers "how long is this
+    /// network" has to read every feature, or it hands back a shorter network
+    /// than the caller owns and nothing in the answer says so.
+    #[test]
+    fn a_whole_document_plan_keeps_every_eligible_feature() {
+        let features: Vec<Value> = (0..5)
+            .map(|index| {
+                let offset = f64::from(index) / 100.0;
+                line(json!([[30.0 + offset, -2.0], [30.01 + offset, -2.0]]))
+            })
+            .collect();
+        let decided = plan_over_whole_document(&collection(features), VectorOperation::Measure)
+            .expect("plan");
+        assert_eq!(decided.planned.len(), 5);
+        assert_eq!(decided.withheld(), 0);
+        assert!(decided.more.is_none());
+    }
+
+    /// The other half: what the operation *made* is bounded, and the sentence
+    /// names the flag that lifts the bound and the one that writes the lot.
+    #[test]
+    fn a_produced_list_is_bounded_and_says_what_it_withheld() {
+        let mut rows: Vec<usize> = (0..12).collect();
+        let note = bound_inline(&mut rows, 5, "point").expect("a cut list says so");
+        assert_eq!(rows.len(), 5);
+        assert!(note.starts_with("7 more point(s)"), "{note}");
+        assert!(note.contains("--out"), "{note}");
+        assert!(note.contains("20000"), "{note}");
+
+        let mut short: Vec<usize> = (0..5).collect();
+        assert!(bound_inline(&mut short, 5, "point").is_none());
+        assert_eq!(short.len(), 5);
+    }
+
+    /// A cut list of measurements has to say that the totals above it were
+    /// not cut, and must not offer `--out` to a command that has no such flag.
+    #[test]
+    fn a_cut_list_of_measurements_says_the_totals_still_count_everything() {
+        let mut rows: Vec<usize> = (0..12).collect();
+        let note = bound_listed_rows(&mut rows, 5, "feature").expect("a cut list says so");
+        assert_eq!(rows.len(), 5);
+        assert!(
+            note.starts_with("7 more feature(s) were measured"),
+            "{note}"
+        );
+        assert!(note.contains("the totals count every one"), "{note}");
+        assert!(!note.contains("--out"), "{note}");
+    }
+
+    /// A donut is smaller than the square it was cut from, and the hole is
+    /// what says so. Dropping it made `measure` answer the outer ring.
+    #[test]
+    fn a_polygon_carries_the_holes_it_does_not_cover() {
+        let document = json!({
+            "type": "Polygon",
+            "coordinates": [
+                [[30.0, -2.0], [30.1, -2.0], [30.1, -2.1], [30.0, -2.1], [30.0, -2.0]],
+                [[30.02, -2.02], [30.03, -2.02], [30.03, -2.03], [30.02, -2.02]],
+            ],
+        });
+        let decided = plan(&document, VectorOperation::Measure, DEFAULT_LIMIT).expect("plan");
+        let planned = &decided.planned[0];
+        assert_eq!(planned.parts.len(), 1, "the outer ring is still the part");
+        assert_eq!(planned.interior.len(), 1);
+        assert_eq!(planned.interior[0].len() / 2, 4);
+        assert_eq!(planned.vertex_count(), 5, "what the engine is handed");
+        assert_eq!(planned.written_vertex_count(), 9, "what the file holds");
     }
 
     #[test]
