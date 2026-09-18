@@ -406,15 +406,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // requires — or may accept — a project. `local_ui` is the effect for the
     // three that change the application's own store and occupancy; nothing
     // durable is written outside it and nothing governed is published.
-    ("dsgrid.model.create-local", "local_ui", "desktop_pairing"),
-    (
-        "dsgrid.model.import-external",
-        "local_ui",
-        "desktop_pairing",
-    ),
-    ("dsgrid.model.list", "read_only", "desktop_pairing"),
+    ("dsgrid.model.create-local", "local_file_write", "none"),
+    ("dsgrid.model.import-external", "local_file_write", "none"),
+    ("dsgrid.model.list", "read_only", "none"),
     ("dsgrid.model.prepare-project", "local_ui", "project"),
-    ("dsgrid.model.set-active", "local_ui", "desktop_pairing"),
+    ("dsgrid.model.set-active", "local_file_write", "none"),
     // The one project act, and the only command in the family that carries
     // `project` authority: it registers one immutable revision in the paired
     // session's own selected project's catalogue, so it is `global_write` and

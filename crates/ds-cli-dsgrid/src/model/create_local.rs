@@ -1,20 +1,19 @@
-//! `ds dsgrid model create-local` — one empty local model.
+//! `ds dsgrid model create-local` — one empty working copy on this machine.
 //!
 //! Named `create-local` rather than `create` because the reverted family used
 //! the bare verb for something else entirely: registering a model in a
-//! project. This creates nothing outside the paired application.
+//! project. This creates nothing outside this machine.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use ds_command_kernel::local_models::{Op, Origin};
+use serde_json::{Value, json};
 
-use crate::model::{
-    AMBIGUOUS, AUTH_CONTEXT_MISMATCH, DESCRIPTOR_ARG, LOCAL_TIMEOUT, NOT_PAIRED, PAIRING_REJECTED,
-    REFUSED, UNREACHABLE, UNREADABLE, UNSUPPORTED, UNSUPPORTED_GRID_CRS,
-};
+use crate::model::UNSUPPORTED_GRID_CRS;
+use crate::model::workspace;
 
 const NAME_ARG: Arg = Arg {
     name: "name",
@@ -36,23 +35,40 @@ const CRS_ARG: Arg = Arg {
     summary: "Projected metric coordinate system, e.g. EPSG:32735. The app's default if omitted.",
 };
 
+/// This family's refusals, plus the engine's answer to a coordinate system it
+/// does not author.
+const CREATE_REFUSALS: &[Refusal; 1 + workspace::REFUSALS.len()] = &create_refusals();
+const fn create_refusals() -> [Refusal; 1 + workspace::REFUSALS.len()] {
+    let mut all = [UNSUPPORTED_GRID_CRS; 1 + workspace::REFUSALS.len()];
+    let mut index = 0;
+    while index < workspace::REFUSALS.len() {
+        all[1 + index] = workspace::REFUSALS[index];
+        index += 1;
+    }
+    all
+}
+
 pub static COMMAND: Command = Command {
     id: "dsgrid.model.create-local",
     path: &["dsgrid", "model", "create-local"],
     contract: 1,
-    summary: "Create one empty local DS Grid model and open it.",
+    summary: "Create one empty DS Grid working copy on this machine and open it.",
     purpose: "\
-Creates one empty model in the paired application's own local store, through \
-the same call its Grid Models panel makes for `New local model…`. The new \
-model opens as the active one — this is the single local command that changes \
-which model occupies Profile and editing — so the receipt says so rather than \
-leaving it to be discovered. It reaches no project and registers nothing in a \
-catalogue; publishing a revision is `ds dsgrid publish-version`.",
+Writes one empty model into this machine's own catalogue and opens it as the \
+active copy — the single local command that changes which copy an editing \
+session starts from, so the receipt says so rather than leaving it to be \
+discovered. It needs no sign-in, no project and no application, and reaches \
+nothing governed: publishing a revision is `ds dsgrid publish-version`.",
     chapter: Chapter::GridModel,
-    effect: Effect::LocalUi,
-    authority: Authority::DesktopPairing,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::None,
     execution: Execution::Sync,
-    args: &[NAME_ARG, CRS_ARG, DESCRIPTOR_ARG],
+    args: &[
+        NAME_ARG,
+        CRS_ARG,
+        workspace::LANE_ARG,
+        workspace::ACCOUNT_ARG,
+    ],
     output: "\
 `status: created`, the new opaque `model` id, its `name`, `crs` and first \
 `revision`, plus `active_model` and `became_active`.",
@@ -61,40 +77,57 @@ catalogue; publishing a revision is `ds dsgrid publish-version`.",
         note: "Read .data.model; the new model is already the active one.",
         runnable: false,
     }],
-    refusals: &[
-        NOT_PAIRED,
-        AMBIGUOUS,
-        UNREACHABLE,
-        PAIRING_REJECTED,
-        REFUSED,
-        UNSUPPORTED,
-        UNREADABLE,
-        AUTH_CONTEXT_MISMATCH,
-        UNSUPPORTED_GRID_CRS,
-    ],
+    refusals: CREATE_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    availability: crate::model::paired_availability,
+    availability: || Availability::Available,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    // The set of authorable coordinate systems belongs to the application, so
-    // it is not copied here: an unsupported one comes back as its own named
-    // refusal rather than as a guess made locally against a stale list.
-    let mut arguments = Map::new();
-    for (flag, key) in [("name", "name"), ("crs", "crs")] {
-        if let Some(value) = inputs.value(flag) {
-            arguments.insert(key.into(), json!(value));
-        }
-    }
+    // The engine authors the package and decides which coordinate systems it
+    // can author; nothing about a CRS is guessed here against a stale list.
+    let model = ds_grid_exchange::create_blank_model(&ds_grid_exchange::BlankModelRequest {
+        coordinate_system: inputs.value("crs"),
+        ..Default::default()
+    })
+    .map_err(|error| {
+        Failure::invalid(UNSUPPORTED_GRID_CRS.code, error.to_string())
+            .remedy(UNSUPPORTED_GRID_CRS.remedy)
+    })?;
+    let identity = workspace::identity(&model.bytes)?;
+    let id = workspace::mint_id();
+    let name = inputs
+        .value("name")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map_or_else(|| format!("Local model {id}"), str::to_owned);
 
-    let descriptor = crate::model::paired(inputs.value("desktop-descriptor"))?;
-    crate::model::invoke(
-        &descriptor,
-        &crate::model::MODEL_CREATE,
-        Value::Object(arguments),
-        LOCAL_TIMEOUT,
-    )
-    .map_err(crate::model::classify)
+    let outcome = workspace::execute(
+        inputs,
+        Op::Register {
+            id: id.clone(),
+            display_name: name,
+            origin: Origin::Created,
+            crs: identity.crs,
+            model_revision: identity.model_revision,
+            bytes: identity.bytes,
+            sha256: identity.sha256,
+            created_at: None,
+            project: None,
+            // A new empty model is what the operator is about to work on.
+            activate: true,
+        },
+        Some(&model.bytes),
+    )?;
+    let created = outcome
+        .model
+        .as_ref()
+        .ok_or_else(|| Failure::internal("local_model_store_unavailable", "nothing was created"))?;
+    Ok(json!({
+        "status": "created",
+        "model": workspace::row(created, outcome.catalogue.active.as_deref()),
+        "active_model": outcome.catalogue.active,
+        "became_active": outcome.active_changed,
+    }))
 }
 
 pub fn render(data: &Value) -> String {

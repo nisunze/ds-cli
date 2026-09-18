@@ -54,6 +54,7 @@ pub mod prepare_project;
 mod publish_native;
 pub mod publish_version;
 pub mod set_active;
+pub mod workspace;
 
 use std::path::Path;
 use std::time::Duration;
@@ -78,22 +79,6 @@ pub use ds_cli_desktop::ops::{
 // The declared wire contract
 // ---------------------------------------------------------------------------
 
-pub const MODEL_LIST: BridgeOp = BridgeOp {
-    operation: "dsgrid.model.list",
-    arguments: &["limit"],
-};
-pub const MODEL_CREATE: BridgeOp = BridgeOp {
-    operation: "dsgrid.model.create",
-    arguments: &["name", "crs"],
-};
-pub const MODEL_IMPORT: BridgeOp = BridgeOp {
-    operation: "dsgrid.model.import",
-    arguments: &["path", "name"],
-};
-pub const MODEL_SET_ACTIVE: BridgeOp = BridgeOp {
-    operation: "dsgrid.model.set_active",
-    arguments: &["model"],
-};
 pub const MODEL_PREPARE_PROJECT: BridgeOp = BridgeOp {
     operation: "dsgrid.model.prepare_project",
     arguments: &["downloadMissing"],
@@ -114,14 +99,12 @@ pub const MODEL_PUBLISH: BridgeOp = BridgeOp {
 /// Every operation this family can send, for `tests/bridge_parity.rs` to walk.
 /// An operation absent from this list is one the parity test never proves
 /// against the application.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[
-    &MODEL_LIST,
-    &MODEL_CREATE,
-    &MODEL_IMPORT,
-    &MODEL_SET_ACTIVE,
-    &MODEL_PREPARE_PROJECT,
-    &MODEL_PUBLISH,
-];
+/// What this domain can still send to the paired application: the working
+/// copy the application itself holds open, and the project cache it keeps.
+/// Model management left this door on 2026-09-18 — a working copy is a fact
+/// about a machine, so `ds dsgrid model list|create-local|import-external|
+/// set-active` answer from this machine's own catalogue.
+pub const BRIDGE_OPS: &[&BridgeOp] = &[&MODEL_PREPARE_PROJECT, &MODEL_PUBLISH];
 
 /// The largest page of local models one read returns. A hand copy of the
 /// adapter's own `MAX_LIST_LIMIT`, held to it by `tests/bridge_parity.rs`; the
@@ -208,7 +191,6 @@ pub const AUTH_CONTEXT_MISMATCH: Refusal = Refusal {
 /// adapter's source, and an unmatched refusal stays the untranslated one
 /// rather than a wrong one.
 pub const LOCAL_MODEL_MISSING_MARKERS: &[&str] = &["no local ds grid model"];
-pub const UNSUPPORTED_CRS_MARKERS: &[&str] = &["is not a supported ds grid coordinate system"];
 pub const EAGER_READ_MARKERS: &[&str] = &["exceeds the desktop eager-read limit"];
 pub const PROJECT_MODEL_MISSING_MARKERS: &[&str] = &["does not exist in"];
 pub const HEAD_MOVED_MARKERS: &[&str] = &["the project head moved"];
@@ -237,13 +219,9 @@ pub fn classify(failure: Failure) -> Failure {
             .remedy(LOCAL_MODEL_NOT_FOUND.remedy)
             .next("ds dsgrid model list");
     }
-    if says(UNSUPPORTED_CRS_MARKERS) {
-        return Failure::invalid(
-            "unsupported_grid_crs",
-            "that coordinate system is not one DS Grid can author against",
-        )
-        .remedy(UNSUPPORTED_GRID_CRS.remedy);
-    }
+    // An unsupported coordinate system was the application's answer to
+    // `create`, which no longer crosses this door: the engine linked into `ds`
+    // answers it directly now, so there is no prose left to translate.
     if says(EAGER_READ_MARKERS) {
         return Failure::invalid(
             "model_too_large",
@@ -345,12 +323,12 @@ mod tests {
         let mut unique = names.clone();
         unique.dedup();
         assert_eq!(names, unique, "an operation is declared twice");
-        // Six since `dsgrid.model.prepare-project` joined in 7a92551. BRIDGE_OPS
-        // already carried its operation and the dedup check above passed; only
-        // this count was left behind.
+        // Two since model management left this door on 2026-09-18: what is
+        // left is the working copy the application itself holds open and the
+        // project cache it keeps.
         assert_eq!(
             names.len(),
-            6,
+            2,
             "the family sends exactly one operation per command"
         );
         assert!(
@@ -401,15 +379,19 @@ mod tests {
         // contract rather than in prose: only `publish` may name project
         // state at all, and even it never names the project itself — the
         // application's own selected project is the destination.
-        for op in [&MODEL_LIST, &MODEL_CREATE, &MODEL_IMPORT, &MODEL_SET_ACTIVE] {
-            assert!(
-                !op.arguments
-                    .iter()
-                    .any(|argument| argument.contains("project")),
-                "`{}` is a local operation and must not carry project state",
-                op.operation
-            );
-        }
+        //
+        // The four model-management operations that used to be checked here
+        // no longer cross a wire at all: `ds dsgrid model list|create-local|
+        // import-external|set-active` answer from this machine's own
+        // catalogue, so their project-independence is now a fact about a
+        // store that has no project field (`ds_command_kernel::local_models`).
+        assert!(
+            !MODEL_PREPARE_PROJECT
+                .arguments
+                .iter()
+                .any(|argument| argument.contains("project")),
+            "the project cache read names the application's own project, never one of its own"
+        );
         assert!(
             !MODEL_PUBLISH.arguments.contains(&"project"),
             "publication targets the paired session's own selected project; \
@@ -460,9 +442,12 @@ mod tests {
             refused("No local DS Grid model m-9.").code(),
             "local_model_not_found"
         );
+        // An unsupported coordinate system is no longer one of these: the
+        // engine linked into `ds` answers `create-local` directly, so there is
+        // no application prose left to reclassify.
         assert_eq!(
             refused("crs EPSG:4326 is not a supported DS Grid coordinate system.").code(),
-            "unsupported_grid_crs"
+            "desktop_refused"
         );
         assert_eq!(
             refused("The .dsgrid package exceeds the desktop eager-read limit.").code(),

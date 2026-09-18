@@ -1494,8 +1494,8 @@ fn the_local_dsgrid_model_family_neither_requires_nor_accepts_a_project() {
         ]);
         let command = &descriptor["command"];
         assert_eq!(
-            command["authority"], "desktop_pairing",
-            "`{}` must prove a transport, never a project",
+            command["authority"], "none",
+            "`{}` is a fact about this machine: no project, no principal, no window",
             command["id"]
         );
         for input in command["inputs"].as_array().expect("inputs") {
@@ -1510,30 +1510,114 @@ fn the_local_dsgrid_model_family_neither_requires_nor_accepts_a_project() {
 }
 
 #[test]
-fn local_dsgrid_model_commands_reach_the_bridge_with_a_well_formed_call() {
-    // The other half of the same claim: a well-formed local call must end in a
-    // pairing state, never in an input refusal. Without this, the checks above
-    // could pass on a command that refuses everything.
-    for args in [
-        vec!["dsgrid", "model", "list", "--output", "json"],
-        vec!["dsgrid", "model", "create-local", "--output", "json"],
-        vec![
+fn a_machine_holds_creates_opens_and_lists_its_own_working_copies() {
+    // The whole point of the 2026-09-18 move: this runs with no application,
+    // no sign-in and no project, and the answers are about THIS machine. The
+    // store root is redirected so the test never touches the operator's own
+    // catalogue.
+    let home = temp_root("dsgrid-local-workspace");
+    let account = ["--lane", "stable", "--account", "uid-smoke"];
+    let with_home = |args: &[&str]| -> Run {
+        let mut argv: Vec<&str> = args.to_vec();
+        argv.extend(account);
+        argv.extend(["--output", "json"]);
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(&argv)
+            .env("DS_LAYER_HOME", &home)
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("ds binary runs");
+        let envelope: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| json!({}));
+        Run {
+            envelope,
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            code: output.status.code().unwrap_or(-1),
+        }
+    };
+
+    // A machine that has never held a working copy answers with an empty
+    // catalogue rather than a refusal.
+    let empty = with_home(&["dsgrid", "model", "list"]);
+    assert_eq!(
+        empty.code, 0,
+        "an empty catalogue refused: {:?}",
+        empty.envelope
+    );
+    assert_eq!(empty.envelope["data"]["total"], 0);
+    assert!(empty.envelope["data"]["active_model"].is_null());
+
+    let created = with_home(&["dsgrid", "model", "create-local", "--name", "Feeder A"]);
+    assert_eq!(created.code, 0, "create refused: {:?}", created.envelope);
+    let model = created.envelope["data"]["model"]["model"]
+        .as_str()
+        .expect("the new model's id")
+        .to_owned();
+    assert_eq!(
+        created.envelope["data"]["became_active"], true,
+        "a machine's first working copy is the one it opens"
+    );
+    // The engine's own reading, not the operator's description of it.
+    assert!(
+        created.envelope["data"]["model"]["crs"]
+            .as_str()
+            .is_some_and(|crs| crs.starts_with("EPSG:")),
+        "the package's coordinate system was not recorded"
+    );
+    assert_eq!(created.envelope["data"]["model"]["origin"], "created");
+
+    // Creating opens what it created: this is the one local command that
+    // changes which copy an editing session starts from, and the receipt says
+    // so rather than leaving it to be discovered.
+    let second = with_home(&["dsgrid", "model", "create-local", "--name", "Feeder B"]);
+    assert_eq!(second.code, 0);
+    assert_eq!(second.envelope["data"]["became_active"], true);
+    let opened = second.envelope["data"]["model"]["model"]
+        .as_str()
+        .expect("the second model's id")
+        .to_owned();
+
+    // Two copies may not share the name an operator reads.
+    let clash = with_home(&["dsgrid", "model", "create-local", "--name", "feeder a"]);
+    assert_eq!(clash.envelope["error"]["code"], "local_model_name_taken");
+
+    let listed = with_home(&["dsgrid", "model", "list"]);
+    assert_eq!(listed.envelope["data"]["total"], 2);
+    assert_eq!(listed.envelope["data"]["active_model"], opened);
+
+    // Opening the earlier copy moves the pointer; asking again changes
+    // nothing, so a retry after a lost answer is safe.
+    let moved = with_home(&["dsgrid", "model", "set-active", "--model", &model]);
+    assert_eq!(moved.envelope["data"]["changed"], true);
+    assert_eq!(moved.envelope["data"]["active_model"], model);
+    let reopen = with_home(&["dsgrid", "model", "set-active", "--model", &model]);
+    assert_eq!(reopen.envelope["data"]["changed"], false);
+    assert_eq!(reopen.envelope["data"]["status"], "unchanged");
+    let unknown = with_home(&["dsgrid", "model", "set-active", "--model", "local-nope"]);
+    assert_eq!(unknown.envelope["error"]["code"], "local_model_not_found");
+
+    // Another account on the same machine sees its own catalogue.
+    let theirs = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
             "dsgrid",
             "model",
-            "set-active",
-            "--model",
-            "gm-local-7",
+            "list",
+            "--lane",
+            "stable",
+            "--account",
+            "uid-other",
             "--output",
             "json",
-        ],
-    ] {
-        let code = refusal(&args);
-        assert!(
-            PAIRING_CODES.contains(&code.as_str()),
-            "`ds {}` ended in `{code}`, which is not a pairing state",
-            args.join(" ")
-        );
-    }
+        ])
+        .env("DS_LAYER_HOME", &home)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("ds binary runs");
+    let envelope: Value = serde_json::from_slice(&theirs.stdout).expect("json");
+    assert_eq!(
+        envelope["data"]["total"], 0,
+        "one account read another's working copies"
+    );
 }
 
 #[test]
@@ -1557,6 +1641,10 @@ fn external_import_is_dsgrid_only_and_routes_conversion_to_the_exchange_boundary
                 source,
                 "--name",
                 "Route",
+                // The catalogue this would join is named explicitly, so the
+                // source check is what refuses rather than a missing flag.
+                "--account",
+                "uid-smoke",
                 "--output",
                 "json",
             ],
@@ -1592,8 +1680,8 @@ fn external_import_is_dsgrid_only_and_routes_conversion_to_the_exchange_boundary
         }
     }
 
-    // A relative path is refused too: the application resolves it in its own
-    // working directory, where it means a different file or none.
+    // A relative path is refused too: it means a different file depending on
+    // where the command was run, or none at all.
     assert_eq!(
         refusal(&[
             "dsgrid",
@@ -1601,24 +1689,72 @@ fn external_import_is_dsgrid_only_and_routes_conversion_to_the_exchange_boundary
             "import-external",
             "--path",
             "route.dsgrid",
+            "--account",
+            "uid-smoke",
             "--output",
             "json",
         ]),
         "absolute_path_required"
     );
-    // And a well-formed one reaches the bridge rather than an input refusal.
-    let code = refusal(&[
-        "dsgrid",
-        "model",
-        "import-external",
-        "--path",
-        &package,
-        "--output",
-        "json",
-    ]);
+    // A path that names nothing says so by name rather than as a bound.
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "model",
+            "import-external",
+            "--path",
+            &package,
+            "--account",
+            "uid-smoke",
+            "--output",
+            "json",
+        ]),
+        "model_not_found"
+    );
+
+    // And a real package is acquired: `ds dsgrid create` writes one with no
+    // application in sight, and importing it reads the identity those bytes
+    // declare.
+    let created = ds(&["dsgrid", "create", "--out", &package, "--output", "json"]);
+    assert_eq!(
+        created.code, 0,
+        "ds dsgrid create refused: {}",
+        created.stdout
+    );
+    let home = temp_root("dsgrid-import-workspace");
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
+            "dsgrid",
+            "model",
+            "import-external",
+            "--path",
+            &package,
+            "--account",
+            "uid-smoke",
+            "--output",
+            "json",
+        ])
+        .env("DS_LAYER_HOME", &home)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("ds binary runs");
+    let envelope: Value = serde_json::from_slice(&output.stdout).expect("json");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "a valid .dsgrid was not acquired: {envelope}"
+    );
+    assert_eq!(envelope["data"]["status"], "imported");
+    assert_eq!(envelope["data"]["model"]["origin"], "imported");
+    assert_eq!(
+        envelope["data"]["became_active"], true,
+        "the first working copy a machine holds is the one it opens"
+    );
     assert!(
-        PAIRING_CODES.contains(&code.as_str()),
-        "a valid .dsgrid path ended in `{code}` instead of a pairing state"
+        envelope["data"]["model"]["content_digest"]
+            .as_str()
+            .is_some_and(|digest| digest.len() == 64),
+        "the package's digest was not recorded"
     );
     std::fs::remove_dir_all(&root).ok();
 }

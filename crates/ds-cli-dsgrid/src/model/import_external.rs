@@ -10,16 +10,15 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use ds_command_kernel::local_models::{Op, Origin};
+use serde_json::{Value, json};
 
-use crate::model::{
-    ABSOLUTE_PATH_REQUIRED, AMBIGUOUS, AUTH_CONTEXT_MISMATCH, DESCRIPTOR_ARG, LOCAL_TIMEOUT,
-    MODEL_TOO_LARGE, NAME_ARG, NOT_PAIRED, PAIRING_REJECTED, REFUSED, UNREACHABLE, UNREADABLE,
-    UNSUPPORTED, UNSUPPORTED_MODEL_SOURCE,
-};
+use crate::model::NAME_ARG;
+use crate::model::workspace;
+use crate::model::{ABSOLUTE_PATH_REQUIRED, MODEL_TOO_LARGE, UNSUPPORTED_MODEL_SOURCE};
 
 const PATH_ARG: Arg = Arg {
     name: "path",
@@ -28,27 +27,68 @@ const PATH_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "The .dsgrid package to acquire, by absolute path on the application's machine.",
+    summary: "The .dsgrid package to acquire, by absolute path on this machine.",
 };
+
+/// The local path refusals, this family's, and the engine's answer to bytes
+/// that are not a package it can open.
+const NOT_FOUND: Refusal = Refusal {
+    code: "model_not_found",
+    when: "the named path does not exist or is not a readable file",
+    remedy: "check the path; --path takes a .dsgrid file, not a directory",
+};
+const NOT_A_PACKAGE: Refusal = Refusal {
+    code: "not_a_dsgrid_package",
+    when: "the named file is not a .dsgrid package this build's engine can open",
+    remedy: "convert a PLS-CADD source with `ds dsgrid-exchange`, or pass a package this build accepts",
+};
+const IMPORT_OWN: [Refusal; 5] = [
+    ABSOLUTE_PATH_REQUIRED,
+    UNSUPPORTED_MODEL_SOURCE,
+    MODEL_TOO_LARGE,
+    NOT_FOUND,
+    NOT_A_PACKAGE,
+];
+const IMPORT_REFUSALS: &[Refusal; IMPORT_OWN.len() + workspace::REFUSALS.len()] =
+    &import_refusals();
+const fn import_refusals() -> [Refusal; IMPORT_OWN.len() + workspace::REFUSALS.len()] {
+    let mut all = [NOT_A_PACKAGE; IMPORT_OWN.len() + workspace::REFUSALS.len()];
+    let mut index = 0;
+    while index < IMPORT_OWN.len() {
+        all[index] = IMPORT_OWN[index];
+        index += 1;
+    }
+    let mut shared = 0;
+    while shared < workspace::REFUSALS.len() {
+        all[IMPORT_OWN.len() + shared] = workspace::REFUSALS[shared];
+        shared += 1;
+    }
+    all
+}
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.model.import-external",
     path: &["dsgrid", "model", "import-external"],
     contract: 1,
-    summary: "Acquire an external .dsgrid file as a local model.",
+    summary: "Acquire an external .dsgrid file as a working copy on this machine.",
     purpose: "\
-Brings one `.dsgrid` package the operator already has into the paired \
-application as a durable local model. This is source acquisition only: the \
-imported model does not take Profile/editing occupancy, so choose it with \
-`ds dsgrid model set-active` when you want to work in it. The path is read by \
-the application — no model bytes cross this command in either direction — and \
-a PLS-CADD workspace or `.bak` is refused by name, because converting one is \
-`ds dsgrid-exchange`'s act, not this one's.",
+Brings one `.dsgrid` package the operator already has into this machine's own \
+catalogue as a durable working copy, verifying with the engine that the bytes \
+are a package this build can open and recording the identity they declare. \
+This is source acquisition only: the imported copy does not become the open \
+one, so choose it with `ds dsgrid model set-active` when you want to work in \
+it. A PLS-CADD workspace or `.bak` is refused by name, because converting one \
+is `ds dsgrid-exchange`'s act, not this one's.",
     chapter: Chapter::GridModel,
-    effect: Effect::LocalUi,
-    authority: Authority::DesktopPairing,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::None,
     execution: Execution::Sync,
-    args: &[PATH_ARG, NAME_ARG, DESCRIPTOR_ARG],
+    args: &[
+        PATH_ARG,
+        NAME_ARG,
+        workspace::LANE_ARG,
+        workspace::ACCOUNT_ARG,
+    ],
     output: "\
 `status: imported`, the new opaque `model` id, its `name` and `revision`, the \
 `imported_from` file name, `source_path`, `size_bytes`, and \
@@ -58,39 +98,83 @@ a PLS-CADD workspace or `.bak` is refused by name, because converting one is \
         note: "Then `ds dsgrid model set-active --model <id>` to work in it.",
         runnable: false,
     }],
-    refusals: &[
-        NOT_PAIRED,
-        AMBIGUOUS,
-        UNREACHABLE,
-        PAIRING_REJECTED,
-        REFUSED,
-        UNSUPPORTED,
-        UNREADABLE,
-        AUTH_CONTEXT_MISMATCH,
-        ABSOLUTE_PATH_REQUIRED,
-        UNSUPPORTED_MODEL_SOURCE,
-        MODEL_TOO_LARGE,
-    ],
+    refusals: IMPORT_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    availability: crate::model::paired_availability,
+    availability: || Availability::Available,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let path = crate::model::external_dsgrid_path(inputs.require("path")?, "path")?;
-    let mut arguments = Map::new();
-    arguments.insert("path".into(), json!(path));
-    if let Some(name) = inputs.value("name") {
-        arguments.insert("name".into(), json!(name));
+    let file = std::path::Path::new(&path);
+    let metadata = std::fs::metadata(file).map_err(|error| {
+        Failure::invalid(NOT_FOUND.code, format!("{path} cannot be read: {error}"))
+            .remedy(NOT_FOUND.remedy)
+    })?;
+    if !metadata.is_file() {
+        return Err(
+            Failure::invalid(NOT_FOUND.code, format!("{path} is not a file"))
+                .remedy(NOT_FOUND.remedy),
+        );
     }
+    if metadata.len() > ds_layer_store::local_models::MAX_PACKAGE_BYTES {
+        return Err(Failure::invalid(
+            MODEL_TOO_LARGE.code,
+            format!(
+                "{path} is larger than the {} MiB a working copy may be",
+                ds_layer_store::local_models::MAX_PACKAGE_BYTES / (1024 * 1024)
+            ),
+        )
+        .remedy(MODEL_TOO_LARGE.remedy));
+    }
+    let bytes = std::fs::read(file).map_err(|error| {
+        Failure::invalid(NOT_FOUND.code, format!("{path} cannot be read: {error}"))
+            .remedy(NOT_FOUND.remedy)
+    })?;
+    // The engine decides whether these bytes are a package, and the identity
+    // recorded is the one they declare — never the operator's description of
+    // them.
+    let identity = workspace::identity(&bytes)?;
+    let id = workspace::mint_id();
+    let name = inputs
+        .value("name")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map_or_else(
+            || {
+                file.file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| format!("Imported model {id}"))
+            },
+            str::to_owned,
+        );
 
-    let descriptor = crate::model::paired(inputs.value("desktop-descriptor"))?;
-    crate::model::invoke(
-        &descriptor,
-        &crate::model::MODEL_IMPORT,
-        Value::Object(arguments),
-        LOCAL_TIMEOUT,
-    )
-    .map_err(crate::model::classify)
+    let outcome = workspace::execute(
+        inputs,
+        Op::Register {
+            id: id.clone(),
+            display_name: name,
+            origin: Origin::Imported,
+            crs: identity.crs,
+            model_revision: identity.model_revision,
+            bytes: identity.bytes,
+            sha256: identity.sha256,
+            created_at: None,
+            project: None,
+            // Acquisition is not a decision to work in it.
+            activate: false,
+        },
+        Some(&bytes),
+    )?;
+    let imported = outcome.model.as_ref().ok_or_else(|| {
+        Failure::internal("local_model_store_unavailable", "nothing was imported")
+    })?;
+    Ok(json!({
+        "status": "imported",
+        "model": workspace::row(imported, outcome.catalogue.active.as_deref()),
+        "active_model": outcome.catalogue.active,
+        "became_active": outcome.active_changed,
+        "source": path,
+    }))
 }
 
 pub fn render(data: &Value) -> String {

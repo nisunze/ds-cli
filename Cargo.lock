@@ -965,10 +965,12 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",
+ "ds-layer-store",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]

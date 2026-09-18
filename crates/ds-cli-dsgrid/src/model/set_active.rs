@@ -8,15 +8,13 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+    Arg, ArgKind, Authority, Availability, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::model::{
-    AMBIGUOUS, AUTH_CONTEXT_MISMATCH, DESCRIPTOR_ARG, LOCAL_MODEL_NOT_FOUND, LOCAL_TIMEOUT,
-    NOT_PAIRED, PAIRING_REJECTED, REFUSED, UNREACHABLE, UNREADABLE, UNSUPPORTED,
-};
+use crate::model::workspace;
+use ds_command_kernel::local_models::Op;
 
 const MODEL_ARG: Arg = Arg {
     name: "model",
@@ -25,26 +23,25 @@ const MODEL_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "The local model to open, by the id `ds dsgrid model list` reports.",
+    summary: "The working copy to open, by the id `ds dsgrid model list` reports.",
 };
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.model.set-active",
     path: &["dsgrid", "model", "set-active"],
     contract: 1,
-    summary: "Open one local model as the active model in Profile.",
+    summary: "Open one of this machine's working copies as the active one.",
     purpose: "\
-Makes one local model the single open session occupying Profile and editing, \
-reusing the application's own occupancy path — the same transition its \
-`Open in Profile…` row action performs. Idempotent: naming the model that is \
-already active reports `changed: false` and touches nothing, so a retry after \
-a lost answer is safe. This is local state and reaches no project; it is not \
-a claim about any project catalogue revision.",
+Makes one working copy the one an editing session starts from on this \
+machine. Idempotent: naming the copy that is already open reports \
+`changed: false` and touches nothing, so a retry after a lost answer is safe. \
+This is local state and reaches no project; it is not a claim about any \
+project catalogue revision.",
     chapter: Chapter::GridModel,
-    effect: Effect::LocalUi,
-    authority: Authority::DesktopPairing,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::None,
     execution: Execution::Sync,
-    args: &[MODEL_ARG, DESCRIPTOR_ARG],
+    args: &[MODEL_ARG, workspace::LANE_ARG, workspace::ACCOUNT_ARG],
     output: "\
 `status` (`active` or `unchanged`), `active_model`, `changed`, the model's \
 `name` and `revision`, and `previous_active_model` when it moved.",
@@ -53,32 +50,24 @@ a claim about any project catalogue revision.",
         note: "Read .data.changed; false means it was already the active model.",
         runnable: false,
     }],
-    refusals: &[
-        NOT_PAIRED,
-        AMBIGUOUS,
-        UNREACHABLE,
-        PAIRING_REJECTED,
-        REFUSED,
-        UNSUPPORTED,
-        UNREADABLE,
-        AUTH_CONTEXT_MISMATCH,
-        LOCAL_MODEL_NOT_FOUND,
-    ],
+    refusals: workspace::REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    availability: crate::model::paired_availability,
+    availability: || Availability::Available,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let arguments = json!({ "model": inputs.require("model")? });
-
-    let descriptor = crate::model::paired(inputs.value("desktop-descriptor"))?;
-    crate::model::invoke(
-        &descriptor,
-        &crate::model::MODEL_SET_ACTIVE,
-        arguments,
-        LOCAL_TIMEOUT,
-    )
-    .map_err(crate::model::classify)
+    let id = inputs.require("model")?.trim().to_owned();
+    let outcome = workspace::execute(inputs, Op::SetActive { id: id.clone() }, None)?;
+    let opened = outcome
+        .model
+        .as_ref()
+        .ok_or_else(|| Failure::internal("local_model_store_unavailable", "nothing was opened"))?;
+    Ok(json!({
+        "status": if outcome.active_changed { "active" } else { "unchanged" },
+        "active_model": outcome.catalogue.active,
+        "changed": outcome.active_changed,
+        "model": workspace::row(opened, outcome.catalogue.active.as_deref()),
+    }))
 }
 
 pub fn render(data: &Value) -> String {

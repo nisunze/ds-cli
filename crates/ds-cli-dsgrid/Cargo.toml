@@ -22,10 +22,12 @@ ds-grid-model = { workspace = true }
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
 serde = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 
 ds-cli-auth = { workspace = true }
 ds-command-kernel = { workspace = true }
+ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-design-workspace = { workspace = true }
 tempfile = "3"

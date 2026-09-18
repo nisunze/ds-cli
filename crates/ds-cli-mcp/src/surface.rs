@@ -228,6 +228,12 @@ impl Profile {
             Self::GridNative => {
                 tool.authority == ds_cli_contract::spec::Authority::None
                     && (tool.id.starts_with("dsgrid.") || tool.id.starts_with("dsgrid-exchange."))
+                    // The working-copy family became authority-free on
+                    // 2026-09-18 when it stopped asking an application for
+                    // this machine's catalogue. It is still a different job
+                    // from the file-in/file-out engine workflow, and it keeps
+                    // its own profile.
+                    && !GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str())
             }
             Self::Grid => {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
