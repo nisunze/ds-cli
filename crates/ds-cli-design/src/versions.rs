@@ -52,7 +52,7 @@ const fn command(
         path,
         contract: 2,
         summary,
-        purpose: "Use one explicit project and captured native identity without Desktop or active-project state. ds-brain alone assigns vN ordinals. LV comparison uses exact snapshots; MV comparison reports pinned content-revision metadata without claiming geometry comparison. Local browser rooms are not published history. Restore is LV-only.",
+        purpose: "Use one explicit project and captured identity without Desktop or active-project state. ds-brain alone assigns vN ordinals. LV comparison uses exact snapshots; MV comparison reports pinned content-revision metadata without claiming geometry comparison. Local browser rooms are not published history. Restore is LV-only.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessProject,

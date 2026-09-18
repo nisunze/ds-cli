@@ -5513,6 +5513,11 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/data-distribution",
                 "actions": ["list_datasets", "query_print_context"]
             },
+            "design_attachments": {
+                "method": "POST",
+                "path": "/api/v1/design/attachments",
+                "actions": ["list", "get", "start_upload", "finalize_upload", "download", "archive", "archive_revision"]
+            },
             "design_versions": {
                 "method": "POST",
                 "path": "/api/v1/design/versions",
@@ -6131,6 +6136,9 @@ fn every_design_write_refuses_without_confirmation() {
         ],
     ] {
         let mut argv = args.clone();
+        if args.get(1) == Some(&"attachment") {
+            argv.extend(["--project", "project_a"]);
+        }
         argv.extend(["--output", "json"]);
         assert_eq!(
             refusal(&argv),
@@ -6963,22 +6971,6 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     // Well-formed reads reach the paired bridge rather than silently asking
     // the map for local state or rejecting a valid shared-record request.
     for args in [
-        vec![
-            "design",
-            "attachment",
-            "list",
-            "--kind",
-            "lv_transformer",
-            "--object",
-            "T-smoke",
-        ],
-        vec![
-            "design",
-            "attachment",
-            "download",
-            "--attachment",
-            "att-smoke",
-        ],
         vec![
             "design",
             "tag",
@@ -10299,7 +10291,7 @@ fn native_design_attachments_need_identity_instead_of_desktop_pairing() {
         );
         assert_eq!(
             refused.envelope["error"]["detail"]["cause"],
-            "native_signed_out"
+            "headless_signed_out"
         );
     }
     let refused = native_ds(&[
@@ -10322,7 +10314,7 @@ fn native_design_attachments_need_identity_instead_of_desktop_pairing() {
         "design_attachment_refused"
     );
     assert_ne!(
-        refused.envelope["error"]["detail"]["cause"], "native_signed_out",
+        refused.envelope["error"]["detail"]["cause"], "headless_signed_out",
         "invalid governance pin must be refused before identity/transport"
     );
 }
