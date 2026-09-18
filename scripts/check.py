@@ -45,7 +45,40 @@ LOCAL_GAP_LEDGER = re.compile(
     r"|DSCLI-GAP-|gaps/README\.md",
     re.I,
 )
+# A skill that only says what `ds` does leaves an agent at a real boundary with
+# nowhere to go, so it improvises one. Every skill closes by naming what
+# continues where it stops; the entry skill carries the full set with the
+# condition that selects each. These two checks exist because the boundary was
+# added once and nothing held it there: a closing line is easy to drop in the
+# next condensation, and this file is what notices.
+STOPS_AT = "Stops at: "
+ENTRY_BOUNDARY_HEADING = "## Where `ds` stops, and who continues"
+ENTRY_BOUNDARY_MINIMUM = 4
 FAIL = []
+
+
+def closing_paragraph(text):
+    """The skill's last non-empty paragraph, or an empty string."""
+    paragraphs = [p for p in text.split("\n\n") if p.strip()]
+    return paragraphs[-1] if paragraphs else ""
+
+
+def entry_boundary_destinations(text):
+    """The bulleted destinations under the entry skill's boundary heading.
+
+    A destination is only useful with the condition that selects it, so the
+    separator is part of the shape this counts: a bullet that names a
+    destination and no condition is not a destination an agent can act on.
+    """
+    _, _, rest = text.partition(ENTRY_BOUNDARY_HEADING)
+    if not rest:
+        return None
+    section = rest.split("\n## ")[0]
+    return [
+        line
+        for line in section.splitlines()
+        if line.startswith("- ") and " — " in line
+    ]
 
 
 def frontmatter(text, where):
@@ -99,10 +132,29 @@ def check_skill(d):
         FAIL.append(f"{where}: missing agents/openai.yaml")
     if "\r" in text:
         FAIL.append(f"{where}: CRLF line endings")
+    if not closing_paragraph(text).startswith(STOPS_AT):
+        FAIL.append(
+            f"{where}: no closing '{STOPS_AT}' paragraph; end the skill by naming "
+            "what continues where it stops — the native application, a renderer, "
+            "a third-party tool, or the operator — and what that handover needs"
+        )
     scripts = d / "scripts"
     if scripts.exists() and any(path.is_file() for path in scripts.rglob("*")):
         FAIL.append(f"{where}: skill-local executables are forbidden; invoke ds directly")
     if d.name == "ds":
+        destinations = entry_boundary_destinations(text)
+        if destinations is None:
+            FAIL.append(
+                f"{where}: missing the '{ENTRY_BOUNDARY_HEADING}' section; the entry "
+                "skill is where an agent learns the boundary exists at all"
+            )
+        elif len(destinations) < ENTRY_BOUNDARY_MINIMUM:
+            FAIL.append(
+                f"{where}: {len(destinations)} boundary destinations named, "
+                f"{ENTRY_BOUNDARY_MINIMUM} required; write each as a bullet that "
+                "names the destination and, after an em dash, the condition that "
+                "selects it"
+            )
         for n, line in enumerate(text.splitlines(), 1):
             if DUPLICATED_FRONT_DOOR_CONTRACT.search(line):
                 FAIL.append(

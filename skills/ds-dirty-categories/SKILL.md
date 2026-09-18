@@ -95,3 +95,6 @@ the combined report and shapefile membership matches each scope.
 
 Return the seed correction or proven code defect, affected quantities,
 verified configuration/report receipts, and any unresolved diagnostic.
+
+Stops at: the repository — a proven code defect is fixed by a developer, not by
+another seed correction.

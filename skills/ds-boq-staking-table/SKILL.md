@@ -96,3 +96,6 @@ say which.
    guess a mapping silently, and never convert a unit without showing it.
 5. Return: unmatched poles, per-line deltas with their cause, the confirmed
    mapping, and the rows you could not classify.
+
+Stops at: the engineer's confirmation — an item-to-assembly equivalence no
+descriptor states is theirs to state, never a silent guess here.

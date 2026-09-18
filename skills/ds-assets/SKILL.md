@@ -75,3 +75,6 @@ Read the live contract before inventing flags:
 If `ds assets` answers `desktop_not_paired` or `desktop_signed_out`, the
 document surface is unavailable in this session. Say so and stop; do not look
 for the bytes by another route.
+
+Stops at: the document's own application — `ds` lists, previews, classifies and
+links the bytes; opening or editing them is the operator's tool.

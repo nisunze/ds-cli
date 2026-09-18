@@ -95,3 +95,6 @@ Git Bash/default-profile intent.
 When live discovery proves that install/configure or lifecycle proof is still
 absent, discover `feedback.submit` and send one bounded observation through
 `ds feedback submit`. Do not invent a workaround or claim an unrun proof.
+
+Stops at: the operating system — an install needing administrator rights is run
+by the operator; `ds` plans and verifies it.

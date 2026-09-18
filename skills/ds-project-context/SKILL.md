@@ -52,3 +52,6 @@ Touched version and attachment boundaries instead require explicit `--project`:
 `design.version.*` and `design.attachment.*` capture that project for native
 authorization and never consult the Web active project or require Desktop.
 Check each live descriptor; do not switch a saved project to satisfy these calls.
+
+Stops at: the operator's authority — a project outside the audience fence is
+granted to the identity, never switched to from here.

@@ -59,3 +59,6 @@ missing control. Never simulate an unsupported relief option with invented JSON,
 a screen capture presented as vector engineering output, or undocumented access.
 A renderer capability is not an end-to-end CLI capability until acquisition,
 recipe authoring, offline retention, rendering and preview all support it.
+
+Stops at: the installed renderer's ceiling — a missing capability is an
+acquisition for the operator, never a simulation.

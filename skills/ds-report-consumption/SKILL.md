@@ -97,3 +97,6 @@ sheets back.
 
 For a pole-by-pole staking comparison load `ds-boq-staking-table`; for a
 project BOQ against the combined workbook load `ds-boq-combined-report`.
+
+Stops at: the spreadsheet application — `ds` obtains and reads the workbook;
+editing or re-issuing it belongs to the operator's tools.

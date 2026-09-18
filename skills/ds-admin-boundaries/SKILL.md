@@ -29,3 +29,6 @@ another approximate geometry.
 
 Use `ds data admin-bounds attach` only when enriching a caller-owned point
 file with province-to-village attributes; it is a separate local-file write.
+
+Stops at: a boundary DS does not hold — another country, or a disputed edge.
+That is the operator's authoritative gazetteer, never an approximation made here.

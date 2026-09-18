@@ -27,10 +27,10 @@ existing cities.
 
 Preview first and inspect every city action, source/destination digest, input
 document and excluded media reference. Echo the returned plan digest to apply.
-By default changed cities remain untouched. When the user explicitly requests
-replacement, use the live overwrite option on both preview and apply: it binds
-replacement and removal of obsolete input documents to the preview. Retain the
-plan as the reviewable record; existing authorization need not be asked again.
+Changed cities stay untouched by default. On an explicit replacement request,
+use the live overwrite option on both preview and apply: it binds replacement
+and removal of obsolete input documents to the preview. Retain the plan as the
+reviewable record; do not re-ask existing authorization.
 A changed digest requires a fresh preview and inspection, never blind retry.
 
 Report applied/skipped cities and committed document counts exactly. Resolve
@@ -38,10 +38,12 @@ classified sizing tables and city maps through exact project tag assets, and
 transformer maps through transformer assets. Discover the Solar network form
 commands: resolution seeds editable values, even when every geographic source
 is missing. Save manual overrides through that form. Solar owns copies of the classified
-inputs and maps; refresh them explicitly and preserve operator edits. Discover
-the map-copy command for manually composed images. It retains verified local bytes for offline runs; draft packages include these maps with relative image links. Verify copied byte hashes
-and publish changed inputs through normal sync before claiming them online. Maps are optional for calculation. Read the
-live form contract for customer-category columns and engineering inputs.
+inputs and maps; refresh them explicitly, preserving operator edits. Discover
+the map-copy command for manually composed images: it retains verified local
+bytes for offline runs, and draft packages include them with relative image
+links. Verify copied byte hashes and publish changed inputs through normal sync
+before claiming them online. Maps are optional for calculation. Read the live
+form contract for customer-category columns and engineering inputs.
 
 ## Freeze the city request
 
@@ -53,13 +55,13 @@ Prepare only the requested contexts. Preparation may refresh authenticated
 weather or reference data inside the paired application; the skill never
 handles provider credentials, cache paths, or raw cache records. Require a
 successful prepared receipt for every requested city before launching compute.
-If any city is not ready, report its exact refusal and do not silently run the
-successful subset.
+If any city is not ready, report its exact refusal; never run the successful
+subset silently.
 
 ## Launch and observe one exact run
 
-Discover the city-capable run command and pass only the explicit contexts and
-options authorized by the user. Omit optional chart, concurrency, language, or
+Discover the city-capable run command and pass only the contexts and options
+the user authorized. Omit optional chart, concurrency, language, or
 serial settings unless the live contract and request supply them. Treat the
 launch response as a job receipt and retain its exact run id.
 
@@ -70,7 +72,7 @@ on the user's request or when unsafe; retain the cancellation receipt.
 ## Read calculated evidence
 
 The prompting draft is the endpoint of automated delivery. Compose a final
-document only as a separate deliberate task under close human supervision.
+document only as a separate task under close human supervision.
 
 Use the bounded result reader for a small semantic field projection. Use the
 named dashboard-section reader when the question needs Site, Plant, BOQ,
@@ -95,7 +97,7 @@ returned batch pins. Read each schema before execution. Paired exports are
 not Server delivery; their Desktop refusal does not prove headless absence.
 
 An operator-interpreted final report is a separate explicit
-import: use only the exact file the user selected and only the live command's
+import: use only the exact file the user selected, with the live command's
 required confirmation. Import creates local review state only. Submit it for
 publication only through the separate discovered final-submit command and only
 when the user explicitly asks to submit that exact run and city. Do not present
@@ -141,3 +143,6 @@ pass its explicit project and lane, and follow its confirmation contract.
 Detached workers retain that project and leave saved selection unchanged. Never treat a
 local result as published, substitute current inputs for a captured run, or
 automatically rebase a cloud conflict.
+
+Stops at: the document lane — a sealed city result continues in
+`ds-solar-final-authoring` and the installed document tools.

@@ -142,3 +142,6 @@ When this proven single-transformer flow is extended to the Huye backup batch,
 normalize a terminal Windows copy suffix ` (2)` out of the archive filename
 stem before transformer matching. Treat the suffixed and unsuffixed files as
 one transformer collision/revision choice, never as two transformer names.
+
+Stops at: the drafting application and the engineer — `ds` stages, revises and
+saves; drawing judgement and acceptance stay with them.

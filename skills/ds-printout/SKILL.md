@@ -16,8 +16,8 @@ Use `ds` for live operations and `ds-map-composition` for cartographic judgment.
 Recover project, source revision, audience, geography, papers, formats,
 destination and earlier decisions. Build the subject/layout/format matrix.
 “All” requires complete inventory, resolved pagination and explicit exclusions.
-Keep authorization, input/recipe revisions, receipts, QA coverage and next action
-in host task state or the designated deliverables directory.
+Keep authorization, input/recipe revisions, receipts, QA coverage and next
+action in host task state or the deliverables directory.
 
 Default to a signed-in headless server/workstation. Verify executable, lane and
 fenced selected project through `auth.status` and `auth.project.use`. Discover
@@ -30,8 +30,7 @@ and staged designs: see `ds-map-composition`.
 
 Distinguish a local proof, saved project recipe, queued publication and verified
 online delivery. Preserve existing authorization; ask only for material added
-scope while continuing independent work. PDF delivery never authorizes a
-physical print job. One writer owns rooms and recipes.
+scope while continuing independent work. One writer owns rooms and recipes.
 
 ## Prepare sources and context
 
@@ -48,11 +47,11 @@ named delivery limit.
 Acquire only context needed for the printed extent and purpose, including
 margins and disconnected clusters. Ready-empty, incomplete and stale differ.
 Seed through the governed project context route; reads never fetch missing
-providers silently. National bundles are machine holdings, while buildings and
-contours are project context. Do not seed every dataset by habit or substitute
-reference transformers for the actual project network. Check carried/omitted
+providers silently. National bundles are machine holdings;
+buildings and contours are project context. Do not seed every dataset by habit, or substitute
+reference transformers for the project network. Check carried/omitted
 layers, coverage, freshness and source digests. Optional exclusions are acceptable
-only where the map’s purpose remains satisfied.
+only where the map’s purpose survives.
 
 Full source rules: [sources and context](references/sources-and-context.md).
 
@@ -64,10 +63,9 @@ live-map styles, unselected output policy and per-subject exceptions. Compose
 each paper independently: mechanically reducing A0 does not establish readable
 A3. Prepare and inspect a concrete recipe before any required approval.
 
-Read the live schema and current optimistic revision. Local same-paper recipe
-proofs are supported by `report.project.export`; discover their exact inputs.
-They retain governed source provenance, leave saved recipes intact and cannot
-publish. Save a governed recipe before requesting publication. An error does
+Read the live schema and current optimistic revision. `report.project.export` supports local same-paper
+recipe proofs; discover their exact inputs. They keep governed source
+provenance, leave saved recipes intact and cannot publish. Save a governed recipe before requesting publication. An error does
 not imply rollback: read back ambiguous writes before retrying.
 
 Follow these printing contracts:
@@ -77,7 +75,7 @@ Follow these printing contracts:
   only when requested; snapping to information/legend retains the saved gap.
 - Plain pole/customer schedules use selected available source columns and an
   explicit Design/AsBuilt phase. Preserve requested fields and consultant X/Y;
-  do not invent coordinates or unavailable meter numbers. LV line number is not
+  do not invent coordinates or missing meter numbers. LV line number is not
   a default print column. Workbook/Excel presentation is for Network Information
   unless explicitly requested for schedules.
 - Headings never widen columns. Default indexed headings use order letters with
@@ -86,8 +84,8 @@ Follow these printing contracts:
   different heights and row counts; their actual footprints obstruct the map,
   not a padded rectangle. Flow followers remain with their movable root.
   Where authorized, schedule type may decrease by up to 30%; equal fits prefer
-  larger type. Discover the exact bounds and controls in the live schema.
-  The bounded search is a heuristic, not a global-optimum guarantee.
+  larger type. Discover exact bounds and controls in the live schema; the
+  bounded search is a heuristic, not a global optimum.
 - Protect titles, scale, legend and furniture in map fitting. Include existing
   and proposed MV context with distinct pens and meaningful legend labels.
   Retain engineering hierarchy, centered transformer names and requested scale
@@ -102,10 +100,9 @@ A0/A3 sets and project-wide numbering.
 
 Render representative density/geography cases for every layout/format through
 the intended route before batching. Check identity, source/recipe revisions,
-print-context digests, carried/omitted layers and warnings. Hidden map labels are
-informational placement notes; actual furniture overflow and missing schedule
-rows remain warnings. A local proof does
-not establish publication or remote renderer parity.
+print-context digests, carried/omitted layers and warnings. Hidden map labels are informational
+placement notes; furniture overflow and missing schedule rows remain warnings.
+A local proof establishes neither publication nor remote renderer parity.
 
 Inspect actual pages and readable crops. Margin first, then title block,
 legend/schedule edges, dense junctions, clipping, overlap, units, table scope and
@@ -114,10 +111,10 @@ adjacency remains and the full network fits vertically. Ground scale and
 quantities in owner output. A successful render is not visual QA.
 
 Revise, rerender and inspect. Review every page of a small set. For a large set,
-review templates and outliers and record the exact coverage; sampling never
-becomes an every-page claim. For workflow changes, use one independent blind
-smaller-model trial after implementation: give the job and limits, not source
-or command syntax. Its real artifact attempt is discovery evidence.
+review templates and outliers and record exact coverage; sampling never becomes
+an every-page claim. For workflow changes, run one independent blind
+smaller-model trial after implementation: give the job and limits, not source or
+command syntax; its real artifact attempt is the evidence.
 
 ## Deliver and recover
 
@@ -139,3 +136,6 @@ required data to appease an old validator. Report confirmed gaps through
 
 Use [procedure](references/procedure.md), [delivery record](references/delivery-record.md)
 and [acceptance](references/acceptance.md) for detailed execution and handoff.
+
+Stops at: the human eye and the printer — visual acceptance and the physical
+print job are the operator's; `ds` composes, renders and captures.

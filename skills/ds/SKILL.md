@@ -1,6 +1,6 @@
 ---
 name: ds
-description: "Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, and report confirmed gaps. Required before every DS task."
+description: "Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, hand over at a named boundary, report confirmed gaps. Required before every DS task."
 ---
 
 # Work through `ds`
@@ -11,27 +11,21 @@ program. Report capabilities proven absent through `ds`.
 
 Use `--output json` for agent calls.
 
-## Establish the installed surface
+## Find one command
+
+Establish the installed surface, then walk the tiers; each is small and names
+the next. Memory is not evidence.
 
 ```
 ds --version
 ds doctor --output json
-```
-
-These results identify the installed surface; memory is not evidence.
-
-## Find one command
-
-Walk the tiers; each is small and names the next:
-
-```
 ds capabilities --output json
 ds capabilities <domain> --output json
 ds capabilities --search '<words>' --output json
 ```
 
-Search is lexical. Try domain and product vocabulary before declaring a gap.
-Use help for readable contracts and capabilities for machine selection.
+Search is lexical: try domain and product vocabulary before declaring a gap.
+Use help for readable contracts, capabilities for machine selection.
 
 ## Read, then invoke, the live contract
 
@@ -49,23 +43,40 @@ reconstruct a refused answer.
 ## Recover headless identity
 
 When signed out or password login is rejected, do not loop it. Discover `auth`
-and follow device-link contracts from `auth.link.begin`. If required and in
-scope, launch the matching installed lane, then approve and complete as
-described. CLI and map lane/principal must match; mismatch is a refusal, never
-permission to borrow credentials, projects, or lanes.
+and follow the device-link contract from `auth.link.begin`; launch the matching
+installed lane only where that contract requires it. CLI and map lane/principal
+must match — a mismatch is a refusal, never permission to borrow credentials,
+projects, or lanes.
 
 ## Through MCP
 
-The broad server exposes `ds_catalog` and chapter routers. Select from the
-catalogue, `describe`, then invoke through that chapter with declared arguments.
-Set envelope `confirm: true` only when required.
+The broad server exposes `ds_catalog` and chapter routers: select from the
+catalogue, `describe`, then invoke with declared arguments. Set envelope
+`confirm: true` only when required. A typed profile advertises leaf tools
+instead. Branch on the DS envelope, follow typed remedies, and use
+`ds-mcp-host` for installation and profile selection.
 
-A typed profile advertises leaf tools. Always branch on the DS envelope and
-follow typed remedies. Use `ds-mcp-host` for installation/profile selection.
+## Where `ds` stops, and who continues
+
+`ds` owns DS data and DS effects. Four continuations are outside it. Hand over
+only on the condition that selects one, name that handover, then return to `ds`
+with the result:
+
+- Native PLS-CADD — the model must be opened, solved or visually accepted:
+  `ds` writes and reads workspaces, never drives that UI.
+- A document renderer — a reviewed draft must become DOCX/PDF: `ds` authors
+  and lints the text, installed document tools typeset it.
+- Third-party GIS and recorders — geometry is edited interactively or motion
+  captured: `ds` serves layers, tiles and still evidence only.
+- The operator — the effect needs authority `ds` will not grant: approval,
+  credentials, an OS install, a deploy, or a refusal's remedy. Report the
+  refusal code with that remedy; never route around it.
+
+A stop is not a gap: name it, and what it needs.
 
 ## When `ds` cannot
 
-After checking the likely domain and alternate vocabulary, discover feedback:
+After ruling out a stop, and trying alternate vocabulary, discover feedback:
 
 ```
 ds capabilities --search feedback --output json
@@ -75,22 +86,18 @@ ds capabilities feedback.submit --output json
 Submit one non-secret sighting with expected behavior, evidence, impact and
 acceptance. Never create a gap file, call the API, or bypass `ds`.
 
-## Route to a narrower skill when one fits
+## Route to a narrower skill
 
-- `ds-project-context` — active project and state boundary.
-- `ds-survey-lifecycle` — survey progress/coverage evidence, field capture, forms and templates.
-- `ds-assets` — a project's documents, previews and links.
-- `ds-map-composition` — engineering print hierarchy, relief and visual refinement.
-- `ds-map-local-data` — temporary map layers and viewport.
-- `ds-lv-design-revision` — revise one transformer's LV design safely.
-- `ds-pls-cadd-terrain-roundtrip` — PLS-CADD route and terrain delivery.
-- `ds-style-composite` — two-field cartography.
-- `ds-report-consumption` — obtain and read delivered workbooks.
-- `ds-dirty-categories` — diagnose category seeds before changing code.
-- `ds-boq-staking-table` — staking tables against a BOQ.
-- `ds-boq-combined-report` — combined workbook against a BOQ.
-- `ds-mcp-host` — compact chapters and typed MCP profiles.
-- `ds-workstation-setup` — prerequisites, component provenance, and safe setup planning.
-- `ds-feedback-close` — close backlog reports this session has fixed.
+- Project and data — `ds-project-context` (active project), `ds-assets`
+  (documents), `ds-survey-lifecycle` (coverage, capture, forms),
+  `ds-dirty-categories` (category seeds).
+- Maps — `ds-map-composition` (print hierarchy, relief), `ds-map-local-data`
+  (temporary layers, viewport), `ds-style-composite` (two-field cartography).
+- Design and delivery — `ds-lv-design-revision`, `ds-pls-cadd-terrain-roundtrip`,
+  `ds-report-consumption`, `ds-boq-staking-table`, `ds-boq-combined-report`.
+- Surface and backlog — `ds-mcp-host`, `ds-workstation-setup`,
+  `ds-feedback-close`.
 
-Those skills assume this one. Do not load them for ordinary discovery.
+These assume this one; do not load them for ordinary discovery.
+
+Stops at: the four continuations named above, each on its own condition.

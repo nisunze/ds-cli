@@ -141,3 +141,6 @@ workspace as a new authority candidate and compare it with `$LABELLED`.
 Resolve every native resource through an exact library id, immutable version,
 content-root digest, typed name, native kind and member digest. Never choose
 latest/basename or generate PLS-CADD assets from DS Grid bytes.
+
+Stops at: the native UI — spotting review, solving and visual acceptance are
+PLS-CADD's; `ds` prepares and delivers the branch.

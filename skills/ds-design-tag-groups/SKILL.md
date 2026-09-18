@@ -8,7 +8,7 @@ metadata:
 # Batch-edit project tags
 
 `ds design group` discovers active single-choice definitions for LV transformers.
-Never infer behavior from names such as `city` or `phasing`. Single-object edits
+Never infer behavior from names like `city` or `phasing`. Single-object edits
 can use `ds design tag set`.
 
 1. Read the vocabulary: `ds design group list --transformers a,b --output json`.
@@ -47,33 +47,33 @@ pins it.
 
 Report a missing, archived, inapplicable, or ambiguous selected definition; do
 not substitute a similarly named definition or fall back to a filename,
-coordinate, or consumer document. `.data.excluded` names values the projection
+coordinate or consumer document. `.data.excluded` names values the projection
 could not carry, with the reason.
 
 ## Purpose-scoped temporary tags
 
 An agent may propose a temporary choice definition when a one-off report needs
-a classification the project does not already govern. First list existing
+a classification the project does not govern. First list existing
 definitions and prefer a compatible one. If none exists:
 
-- choose a stable, purpose-specific definition id and explain its temporary
-  reporting purpose and intended retirement;
+- choose a stable, purpose-specific definition id and state its temporary
+  purpose and intended retirement;
 - define an exact closed vocabulary with `ds design tag define`;
-- assign values through `ds design tag set`, or through the batch group surface
-  when that definition is offered there;
-- preview every mutation and obtain explicit user confirmation before `--yes`;
-- never reuse `city`, `phasing`, or an administrative semantic key for another
+- assign values through `ds design tag set`, or the batch group surface when
+  that definition is offered there;
+- preview every mutation and get explicit confirmation before `--yes`;
+- never reuse `city`, `phasing` or an administrative semantic key for another
   meaning.
 
 After publication, clear the temporary assignments and archive the applied
 consumer grouping. Do not delete or silently repurpose the definition: its
-stable identity remains provenance for the published artifact even when no
-active object carries it.
+stable identity remains provenance for the published artifact even when
+nothing carries it.
 
 ## Governed administrative location
 
-Administrative location is not something an operator retypes and not something
-you infer. When the governed location path has resolved a transformer, one
+Administrative location is neither retyped by an operator nor inferred by
+you. When the governed location path has resolved a transformer, one
 reusable operation materializes that evidence as **system-managed tags**:
 
 ```
@@ -81,7 +81,7 @@ ds design tag enrich-preview --transformers a,b --output json
 ds design tag enrich-apply   --transformers a,b --digest <plan-digest> --yes
 ```
 
-Read `.data.counts` first — it is the answer to "how many change?" — then
+Read `.data.counts` first — the answer to "how many change?" — then
 `.data.outcomes`, one row per transformer and level. Every action is a state to
 report, not a step to retry:
 
@@ -96,8 +96,7 @@ report, not a step to retry:
 
 **`unsupported_jurisdiction` is not an error to work around.** A project in Chad
 groups by its own authored `city` or `region` definition instead; do not invent
-administrative values, and do not create empty levels to make a schema look
-complete.
+administrative values or create empty levels to make a schema look complete.
 
 Each administrative value locates the transformer itself, not every customer
 it serves. Network coverage is a spatial question about entity geometry; never
@@ -147,16 +146,19 @@ ds design consumer-grouping archive --purpose report_archive --yes
   Solar city id; `report_archive` binds nothing and is what a compounded
   archive's folders follow. Nothing else is a purpose.
 - **Order is identity.** `--definition-ids city,phase` and `phase,city` are
-  different plans with different digests. Pass the order the user asked for.
+  different plans with different digests. Pass the order the user asked.
 - **Omitting `--definition-ids` means one untagged group.** It never means
   "find the city tag".
 - `read` shows the stored plan without re-planning, so a stale plan is visible
   rather than refused. A consumer about to publish gets the refusal instead.
 - Report `member_count`, `unassigned_count` and the group keys as returned. The
-  UI, the CLI, the report receipt and the archive manifest all state the same
-  numbers because exactly one authority decides them.
+  UI, CLI, report receipt and archive manifest state the same numbers because
+  exactly one authority decides them.
 - Solar seeding/reporting consumes the applied `solar_report` plan. A combined
   or compounded report archive consumes the applied `report_archive` plan and
   the exact digest-pinned tag document for the same transformer inventory.
   Refuse publication when either projection coverage or its digest is stale;
   never regroup from administrative columns inside transformer data.
+
+Stops at: the report consumer — `ds` pins the projection; the document that
+quotes it is produced by the report lane.

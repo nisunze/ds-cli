@@ -135,3 +135,6 @@ scope.
 
 Keep `--exposure commands` without a profile only for temporary compatibility
 with hosts configured for the previous command-per-tool surface.
+
+Stops at: the agent host — installing, trusting and restarting it is the
+operator's; `ds` only writes the profile that host reads.
