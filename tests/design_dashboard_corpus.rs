@@ -11,11 +11,25 @@
 //! answers the same recorded bytes, and that the rules the page can no longer
 //! be asked about hold: special rows are excluded, the pile is ranked, and
 //! the reply is all keys and no English.
+//!
+//! Re-recording: an ADDITIVE change to the reply (a new field on an existing
+//! shape) invalidates every case's `expected` at once. Run the replay test
+//! with `DS_RECORD_CORPUS=1` and it rewrites each case's `expected` with the
+//! live reply — 2-space indent, keys in reply order, trailing newline — then
+//! asserts against what it wrote. `expected_ts` and `divergences` are never
+//! touched: they record the deleted TypeScript, which cannot be re-run. Copy
+//! the result to ds-web's `src/tests/fixtures/design-dashboard/corpus.json`
+//! byte for byte afterwards.
 
 use ds_command_kernel::design_dashboard::{evaluate, SCHEMA};
 use serde_json::Value;
 
 const CORPUS: &str = include_str!("fixtures/design-dashboard-corpus.json");
+const CORPUS_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/design-dashboard-corpus.json"
+);
+const RECORD_ENV: &str = "DS_RECORD_CORPUS";
 
 fn corpus() -> Value {
     let corpus: Value = serde_json::from_str(CORPUS).expect("corpus parses");
@@ -91,9 +105,31 @@ fn assert_same(left: &Value, right: &Value, id: &str) {
     }
 }
 
+/// `DS_RECORD_CORPUS=1`: every case's `expected` becomes the live reply and
+/// the fixture is rewritten in place. Nothing else in the document moves.
+fn recording() -> bool {
+    std::env::var(RECORD_ENV).is_ok_and(|value| value == "1")
+}
+
+fn record(corpus: &mut Value) {
+    let cases = corpus["cases"].as_array_mut().expect("cases");
+    for case in cases.iter_mut() {
+        let reply = answer(&case["request"]);
+        case.as_object_mut()
+            .expect("a case is an object")
+            .insert("expected".into(), reply);
+    }
+    let mut bytes = serde_json::to_vec_pretty(corpus).expect("corpus encodes");
+    bytes.push(b'\n');
+    std::fs::write(CORPUS_PATH, bytes).expect("the fixture is writable");
+}
+
 #[test]
 fn every_recorded_request_reads_the_same_in_rust_as_the_corpus_records() {
-    let corpus = corpus();
+    let mut corpus = corpus();
+    if recording() {
+        record(&mut corpus);
+    }
     let cases = corpus["cases"].as_array().expect("cases");
     assert!(cases.len() >= 7, "the corpus lost cases");
     let biggest = cases
@@ -244,6 +280,76 @@ fn every_label_is_a_key_and_the_only_english_is_the_backend_s_own_sentence() {
                 .starts_with("ddash_health_"),
             "{id}"
         );
+        for summary in dashboard["phase_summaries"]
+            .as_array()
+            .expect("phase summaries")
+        {
+            for bucket in summary["buckets"].as_array().expect("buckets") {
+                let status = bucket["status"].as_str().unwrap_or("");
+                assert_eq!(
+                    bucket["label_key"],
+                    format!("ddash_phase_status_{status}"),
+                    "{id}: a phase bucket spelled its own status"
+                );
+            }
+        }
+        if let Some(ring) = dashboard["health"]["ring"].as_array() {
+            for slice in ring {
+                let key = slice["key"].as_str().unwrap_or("");
+                assert_eq!(slice["label_key"], format!("ddash_ring_{key}"), "{id}");
+            }
+        }
+    }
+}
+
+/// The donut geometry the page used to sum for itself: each ring starts at
+/// zero, its offsets are the cumulative shares before each slice, and no
+/// slice claims more than the whole.
+#[test]
+fn every_ring_starts_at_zero_and_walks_its_offsets_forward() {
+    let corpus = corpus();
+    for case in corpus["cases"].as_array().expect("cases") {
+        let id = case["id"].as_str().expect("case id");
+        let reply = answer(&case["request"]);
+        let dashboard = &reply["dashboard"];
+        let total = dashboard["total"].as_u64().expect("total");
+        let rings: [(&str, Option<&Vec<Value>>); 3] = [
+            ("districts", dashboard["districts"].as_array()),
+            ("lanes", dashboard["lanes"].as_array()),
+            ("health.ring", dashboard["health"]["ring"].as_array()),
+        ];
+        for (name, slices) in rings {
+            let slices = slices.map(Vec::as_slice).unwrap_or(&[]);
+            if name == "health.ring" {
+                assert_eq!(
+                    slices.is_empty(),
+                    total == 0,
+                    "{id}: the health ring is drawn exactly when there are transformers"
+                );
+            }
+            let mut before = 0i64;
+            let mut counted = 0u64;
+            let whole: u64 = slices
+                .iter()
+                .map(|s| s["count"].as_u64().unwrap_or(0))
+                .sum();
+            for (index, slice) in slices.iter().enumerate() {
+                let percent = slice["percent"].as_i64().expect("percent");
+                let offset = slice["offset"].as_i64().expect("offset");
+                assert!((0..=100).contains(&percent), "{id}.{name}[{index}]");
+                assert!(offset >= before, "{id}.{name}[{index}] walked backwards");
+                assert_eq!(
+                    offset,
+                    ((counted as f64 / whole as f64) * 100.0 + 0.5).floor() as i64,
+                    "{id}.{name}[{index}] is not the cumulative share before it"
+                );
+                if index == 0 {
+                    assert_eq!(offset, 0, "{id}.{name} does not start at zero");
+                }
+                before = offset;
+                counted += slice["count"].as_u64().unwrap_or(0);
+            }
+        }
     }
 }
 

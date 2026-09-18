@@ -22,9 +22,25 @@
 //! the request so the 7-day split and the day buckets are deterministic.
 //!
 //! Labels are i18n KEYS. The only English that can leave here is backend text
-//! that `design_health` already sanitised. Chart geometry (pie slices, the
-//! phase-status word, the short date label) stays in the rendering client:
-//! this module says which day and how many, never how a day is spelled.
+//! that `design_health` already sanitised. The short date label stays in the
+//! rendering client: this module says which day and how many, never how a
+//! day is spelled.
+//!
+//! Ring geometry is decided here too. Every bucket list the page draws as a
+//! donut — the districts, the lanes and the health reading's `ring` — carries
+//! each slice's `percent` of the whole and its cumulative `offset` (the
+//! percent of everything ranked before it), both `Math.round`ed the way every
+//! other percentage in this reply is. The page used to sum unrounded floats
+//! in `pieSlices`; a cumulative share rounded once cannot drift, so 40
+//! one-count districts still end at 100. A phase-summary bucket names its
+//! status as a key too, so the page never spells `stale_processing` itself.
+//!
+//! The label keys added for that, exactly the set this module can emit:
+//! `ddash_ring_error`, `ddash_ring_warning`, `ddash_ring_info`,
+//! `ddash_ring_clean`, `ddash_phase_status_success`,
+//! `ddash_phase_status_warning`, `ddash_phase_status_processing`,
+//! `ddash_phase_status_stale_processing`, `ddash_phase_status_stale`,
+//! `ddash_phase_status_error`, `ddash_phase_status_none`.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -162,6 +178,11 @@ pub struct DistrictTag {
     pub count: usize,
     /// 0–1 weight vs the busiest district — drives chip size + ink.
     pub weight: f64,
+    /// Share of the district donut, 0–100, over the chips actually reported.
+    pub percent: i64,
+    /// Cumulative percent of the chips ranked before this one — the SVG ring's
+    /// dash offset.
+    pub offset: i64,
     #[serde(default, skip_serializing_if = "is_false")]
     pub unassigned: bool,
 }
@@ -169,6 +190,9 @@ pub struct DistrictTag {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PhaseBucket {
     pub status: String,
+    /// `ddash_phase_status_<status>` — how the status is spelled is the
+    /// catalogue's, not the page's.
+    pub label_key: String,
     pub count: usize,
 }
 
@@ -185,6 +209,10 @@ pub struct LaneSplit {
     pub lane: Lane,
     pub label_key: String,
     pub count: usize,
+    /// Share of the lane donut, 0–100, over the lanes actually reported.
+    pub percent: i64,
+    /// Cumulative percent of the lanes ranked before this one.
+    pub offset: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -211,6 +239,20 @@ pub struct AttentionNote {
     pub user: String,
 }
 
+/// One slice of the health ring: a severity band of the transformer set.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RingSlice {
+    /// `error`, `warning`, `info` or `clean`, in that order.
+    pub key: String,
+    /// `ddash_ring_<key>`.
+    pub label_key: String,
+    pub count: usize,
+    /// Share of the whole transformer set, 0–100.
+    pub percent: i64,
+    /// Cumulative percent of the bands ranked before this one.
+    pub offset: i64,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct HealthReading {
     pub score: i64,
@@ -219,6 +261,10 @@ pub struct HealthReading {
     pub warning_count: usize,
     pub info_count: usize,
     pub clean_count: usize,
+    /// The four counts as donut slices, red to green, empty bands dropped.
+    /// Omitted when there are no transformers to draw.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ring: Vec<RingSlice>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -405,11 +451,11 @@ struct Request {
 
 // ── reading JSON the way the page read it ───────────────────────────────
 
-fn object(value: &Value) -> Option<&Map<String, Value>> {
+pub(crate) fn object(value: &Value) -> Option<&Map<String, Value>> {
     value.as_object()
 }
 
-fn string_at(map: Option<&Map<String, Value>>, key: &str) -> String {
+pub(crate) fn string_at(map: Option<&Map<String, Value>>, key: &str) -> String {
     map.and_then(|map| map.get(key))
         .and_then(Value::as_str)
         .unwrap_or("")
@@ -417,7 +463,7 @@ fn string_at(map: Option<&Map<String, Value>>, key: &str) -> String {
         .to_string()
 }
 
-fn row_name(row: &Value) -> String {
+pub(crate) fn row_name(row: &Value) -> String {
     object(row)
         .and_then(|row| row.get("name"))
         .and_then(Value::as_str)
@@ -433,7 +479,7 @@ fn canonical(value: &str) -> String {
 
 /// `timestampMs`: a finite number is epoch millis, a string is whatever the
 /// crate's one ISO reader makes of it, everything else is "no timestamp".
-fn timestamp_ms(value: Option<&Value>) -> i64 {
+pub(crate) fn timestamp_ms(value: Option<&Value>) -> i64 {
     match value {
         Some(Value::Number(number)) => number
             .as_f64()
@@ -454,7 +500,10 @@ fn timestamp_ms(value: Option<&Value>) -> i64 {
 
 /// The first of the keys the phase blob actually carries, `??`-style: a key
 /// that is present but empty still wins, exactly as the page read it.
-fn first_present<'meta>(meta: &'meta Map<String, Value>, keys: &[&str]) -> Option<&'meta Value> {
+pub(crate) fn first_present<'meta>(
+    meta: &'meta Map<String, Value>,
+    keys: &[&str],
+) -> Option<&'meta Value> {
     for key in keys {
         match meta.get(*key) {
             Some(Value::Null) | None => continue,
@@ -464,24 +513,27 @@ fn first_present<'meta>(meta: &'meta Map<String, Value>, keys: &[&str]) -> Optio
     None
 }
 
-fn phase_meta<'row>(row: &'row Map<String, Value>, key: &str) -> Option<&'row Map<String, Value>> {
+pub(crate) fn phase_meta<'row>(
+    row: &'row Map<String, Value>,
+    key: &str,
+) -> Option<&'row Map<String, Value>> {
     row.get(key).and_then(object)
 }
 
 /// `phaseFilterValue`: the status the document wrote, or `none`.
-fn phase_status(meta: Option<&Map<String, Value>>) -> &str {
+pub(crate) fn phase_status(meta: Option<&Map<String, Value>>) -> &str {
     meta.and_then(|meta| meta.get("status"))
         .and_then(Value::as_str)
         .unwrap_or("none")
 }
 
-fn phase_succeeded(meta: Option<&Map<String, Value>>) -> bool {
+pub(crate) fn phase_succeeded(meta: Option<&Map<String, Value>>) -> bool {
     phase_status(meta) == "success"
 }
 
 /// `latestLegacyPhase`: draft and sketch write the same output, so the more
 /// recent of the two owns the merged cell.
-fn latest_legacy_phase(row: &Map<String, Value>) -> Option<&Map<String, Value>> {
+pub(crate) fn latest_legacy_phase(row: &Map<String, Value>) -> Option<&Map<String, Value>> {
     let draft = phase_meta(row, "draft_metadata");
     let sketch = phase_meta(row, "sketch_metadata");
     match (draft, sketch) {
@@ -501,7 +553,7 @@ fn latest_legacy_phase(row: &Map<String, Value>) -> Option<&Map<String, Value>> 
 }
 
 /// `shortUser`: the local part of an address, or the address itself.
-fn short_user(account: &str) -> String {
+pub(crate) fn short_user(account: &str) -> String {
     match account.split_once('@') {
         Some((local, _)) if !local.is_empty() => local.to_string(),
         _ => account.to_string(),
@@ -510,16 +562,33 @@ fn short_user(account: &str) -> String {
 
 /// `Math.round`, which rounds a half UP. Every value here is non-negative, so
 /// this is `f64::round` with the tie direction said out loud.
-fn js_round(value: f64) -> i64 {
+pub(crate) fn js_round(value: f64) -> i64 {
     (value + 0.5).floor() as i64
 }
 
-fn pct(part: usize, whole: usize) -> i64 {
+pub(crate) fn pct(part: usize, whole: usize) -> i64 {
     if whole == 0 {
         0
     } else {
         js_round((part as f64 / whole as f64) * 100.0)
     }
+}
+
+/// `pieSlices`, with the module's rounding: each bucket's share of the
+/// whole and the share of everything before it, as `(percent, offset)` in
+/// bucket order. The whole is the sum of the buckets handed in, exactly as
+/// the page summed what it fed the ring.
+fn ring_geometry(counts: &[usize]) -> Vec<(i64, i64)> {
+    let whole: usize = counts.iter().sum();
+    let mut before = 0usize;
+    counts
+        .iter()
+        .map(|count| {
+            let slice = (pct(*count, whole), pct(before, whole));
+            before += count;
+            slice
+        })
+        .collect()
 }
 
 /// The ASCII subset of the CLDR root order `localeCompare` applies to the
@@ -553,7 +622,7 @@ fn case_key(text: &str) -> Vec<u8> {
     text.chars().map(|c| u8::from(c.is_uppercase())).collect()
 }
 
-fn locale_compare(left: &str, right: &str) -> Ordering {
+pub(crate) fn locale_compare(left: &str, right: &str) -> Ordering {
     collate_key(left)
         .cmp(&collate_key(right))
         .then_with(|| case_key(left).cmp(&case_key(right)))
@@ -563,7 +632,7 @@ fn locale_compare(left: &str, right: &str) -> Ordering {
 /// Civil date at an offset, `YYYY-MM-DD` — the day key the timeline buckets
 /// by. Howard Hinnant's `civil_from_days`, which is what `new Date(ms)`
 /// reports for a fixed offset.
-fn day_key(ms: i64, tz_offset_minutes: i64) -> String {
+pub(crate) fn day_key(ms: i64, tz_offset_minutes: i64) -> String {
     let local = ms + tz_offset_minutes * 60_000;
     let days = local.div_euclid(DAY_MS);
     let z = days + 719_468;
@@ -743,12 +812,15 @@ fn row_truth(rows: &[Value], now_ms: i64) -> Vec<Option<RowReply>> {
 /// unified / Fast lane). A green process stamp whose saved output layers are
 /// missing does NOT count: that is `design_health`'s
 /// `processed_output_missing`, and it lands in the attention pile instead.
-struct ComputeStamp {
-    ms: i64,
-    user: String,
+pub(crate) struct ComputeStamp {
+    pub(crate) ms: i64,
+    pub(crate) user: String,
 }
 
-fn design_stamp(row: &Map<String, Value>, output_never_saved: bool) -> Option<ComputeStamp> {
+pub(crate) fn design_stamp(
+    row: &Map<String, Value>,
+    output_never_saved: bool,
+) -> Option<ComputeStamp> {
     let mut candidates: Vec<ComputeStamp> = Vec::new();
     if let Some(legacy) = latest_legacy_phase(row) {
         if phase_succeeded(Some(legacy)) {
@@ -783,7 +855,7 @@ fn design_stamp(row: &Map<String, Value>, output_never_saved: bool) -> Option<Co
 
 /// Who "owns" a transformer — the user who last designed it, then the last
 /// document updater. `""` when neither named one.
-fn stamp_user(row: &Map<String, Value>, stamp: Option<&ComputeStamp>) -> String {
+pub(crate) fn stamp_user(row: &Map<String, Value>, stamp: Option<&ComputeStamp>) -> String {
     let designed = stamp.map(|stamp| stamp.user.clone()).unwrap_or_default();
     if !designed.is_empty() {
         return designed;
@@ -814,7 +886,7 @@ fn counted_buckets(values: &[String], limit: usize) -> Vec<(String, usize)> {
     buckets
 }
 
-fn distinct_count(values: &[String]) -> usize {
+pub(crate) fn distinct_count(values: &[String]) -> usize {
     values
         .iter()
         .filter(|value| !value.trim().is_empty())
@@ -1265,19 +1337,28 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
         .max()
         .unwrap_or(1)
         .max(1);
+    let district_ring = ring_geometry(
+        &district_buckets
+            .iter()
+            .map(|(_, count)| *count)
+            .collect::<Vec<usize>>(),
+    );
     let districts: Vec<DistrictTag> = district_buckets
         .into_iter()
-        .map(|(label, count)| DistrictTag {
+        .zip(district_ring)
+        .map(|((label, count), (percent, offset))| DistrictTag {
             unassigned: label.is_empty(),
             weight: count as f64 / district_max as f64,
             label,
             count,
+            percent,
+            offset,
         })
         .collect();
     let district_count = distinct_count(&district_names);
     let sector_count = distinct_count(&sector_names);
 
-    let lanes: Vec<LaneSplit> = [
+    let lane_buckets: Vec<(Lane, &str, usize)> = [
         (
             Lane::Standard,
             if request.fast_lane {
@@ -1291,12 +1372,24 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
     ]
     .into_iter()
     .filter(|(_, _, count)| *count > 0)
-    .map(|(lane, label_key, count)| LaneSplit {
-        lane,
-        label_key: label_key.into(),
-        count,
-    })
     .collect();
+    let lane_ring = ring_geometry(
+        &lane_buckets
+            .iter()
+            .map(|(_, _, count)| *count)
+            .collect::<Vec<usize>>(),
+    );
+    let lanes: Vec<LaneSplit> = lane_buckets
+        .into_iter()
+        .zip(lane_ring)
+        .map(|((lane, label_key, count), (percent, offset))| LaneSplit {
+            lane,
+            label_key: label_key.into(),
+            count,
+            percent,
+            offset,
+        })
+        .collect();
     let fast_pct = pct(lane_fast, processed_rows);
 
     let governance: Vec<GovernanceMix> = [
@@ -1327,6 +1420,31 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
     } else {
         pct(clean_count, total)
     };
+    let ring_buckets: Vec<(&str, usize)> = [
+        ("error", error_count),
+        ("warning", warning_count),
+        ("info", info_count),
+        ("clean", clean_count),
+    ]
+    .into_iter()
+    .filter(|(_, count)| *count > 0)
+    .collect();
+    let ring: Vec<RingSlice> = ring_buckets
+        .iter()
+        .zip(ring_geometry(
+            &ring_buckets
+                .iter()
+                .map(|(_, count)| *count)
+                .collect::<Vec<usize>>(),
+        ))
+        .map(|((key, count), (percent, offset))| RingSlice {
+            key: (*key).into(),
+            label_key: format!("ddash_ring_{key}"),
+            count: *count,
+            percent,
+            offset,
+        })
+        .collect();
 
     let error_users: Vec<String> = notes
         .iter()
@@ -1384,6 +1502,7 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
                         .filter(|count| **count > 0)
                         .map(|count| PhaseBucket {
                             status: (*status).into(),
+                            label_key: format!("ddash_phase_status_{status}"),
                             count: *count,
                         })
                 })
@@ -1443,6 +1562,7 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
             warning_count,
             info_count,
             clean_count,
+            ring,
         },
         recent,
         facts,
@@ -1456,7 +1576,7 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
 /// worst, in phase-slot order inside a severity band. The two notes health
 /// does not carry — unsaved browser work and a superseded phase — come from
 /// `design_status_row`'s answer, not from a second reading of the document.
-fn attention_note(
+pub(crate) fn attention_note(
     row: &Map<String, Value>,
     name: &str,
     health: &TransformerHealth,
@@ -2036,5 +2156,89 @@ mod tests {
     fn the_request_is_bounded_and_its_schema_is_checked() {
         assert!(evaluate(&vec![b' '; MAX_INPUT_BYTES + 1]).is_err());
         assert!(evaluate(br#"{"schema":"ds.other/v1","rows":[]}"#).is_err());
+    }
+
+    #[test]
+    fn ring_geometry_rounds_each_share_once_so_the_offsets_never_drift() {
+        assert_eq!(ring_geometry(&[]), Vec::<(i64, i64)>::new());
+        assert_eq!(ring_geometry(&[3]), [(100, 0)]);
+        // 1/3 each: the summed rounded percents would end at 99; the
+        // cumulative share rounded once lands the last slice at 67.
+        assert_eq!(ring_geometry(&[1, 1, 1]), [(33, 0), (33, 33), (33, 67)]);
+        // Forty single-count chips over 65: the page's float sum ended at
+        // 100 - 1.54; the summed ROUNDED percents would have ended at 80.
+        let mut counts = vec![25usize];
+        counts.extend(std::iter::repeat_n(1, 40));
+        let last = *ring_geometry(&counts).last().unwrap();
+        assert_eq!(last, (2, 98));
+    }
+
+    #[test]
+    fn the_donuts_carry_their_own_geometry_and_the_health_ring_drops_empty_bands() {
+        let model = dashboard(json!([
+            {"name": "a", "admin_bounds": {"district": "Gasabo"},
+             "process_metadata": {"status": "success", "when": "2026-08-25T09:00:00Z", "user": "a@x", "lane": "fast"},
+             "layers": {"lv_poles": 1, "service_cables": 1, "spans": 1}},
+            {"name": "b", "admin_bounds": {"district": "Gasabo"},
+             "process_metadata": {"status": "success", "when": "2026-08-25T09:00:00Z", "user": "a@x", "lane": "standard"},
+             "layers": {"lv_poles": 1, "service_cables": 1, "spans": 1}},
+            {"name": "c", "admin_bounds": {"district": "Kicukiro"},
+             "process_metadata": {"status": "error", "when": "2026-08-25T09:00:00Z", "error_message": "bad"}},
+            {"name": "d"},
+        ]));
+        let districts = model["districts"].as_array().unwrap();
+        assert_eq!(districts[0]["label"], "Gasabo");
+        assert_eq!(districts[0]["percent"], 50);
+        assert_eq!(districts[0]["offset"], 0);
+        assert_eq!(districts[1]["percent"], 25);
+        assert_eq!(districts[1]["offset"], 50);
+        assert_eq!(districts[2]["unassigned"], true);
+        assert_eq!(districts[2]["offset"], 75);
+        // The errored run on `c` is a Standard-lane run too: 2 vs 1.
+        let lanes = model["lanes"].as_array().unwrap();
+        assert_eq!(lanes.len(), 2);
+        assert_eq!(lanes[0]["lane"], "standard");
+        assert_eq!(lanes[0]["percent"], 67);
+        assert_eq!(lanes[0]["offset"], 0);
+        assert_eq!(lanes[1]["percent"], 33);
+        assert_eq!(lanes[1]["offset"], 67);
+        let ring = model["health"]["ring"].as_array().unwrap();
+        assert_eq!(ring.len(), 2, "no warning or info band is drawn");
+        assert_eq!(ring[0]["key"], "error");
+        assert_eq!(ring[0]["label_key"], "ddash_ring_error");
+        assert_eq!(ring[0]["count"], 1);
+        assert_eq!(ring[0]["percent"], 25);
+        assert_eq!(ring[0]["offset"], 0);
+        assert_eq!(ring[1]["key"], "clean");
+        assert_eq!(ring[1]["label_key"], "ddash_ring_clean");
+        assert_eq!(ring[1]["percent"], 75);
+        assert_eq!(ring[1]["offset"], 25);
+        let empty = dashboard(json!([]));
+        assert!(
+            empty["health"].get("ring").is_none(),
+            "nothing to draw, nothing sent"
+        );
+    }
+
+    #[test]
+    fn a_phase_bucket_names_its_status_as_a_key() {
+        let model = dashboard(json!([
+            {"name": "a", "process_metadata": {"status": "stale_processing"}},
+            {"name": "b"},
+        ]));
+        let process = model["phase_summaries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|summary| summary["key"] == "process")
+            .unwrap();
+        let buckets = process["buckets"].as_array().unwrap();
+        assert_eq!(buckets[0]["status"], "stale_processing");
+        assert_eq!(
+            buckets[0]["label_key"],
+            "ddash_phase_status_stale_processing"
+        );
+        assert_eq!(buckets[1]["status"], "none");
+        assert_eq!(buckets[1]["label_key"], "ddash_phase_status_none");
     }
 }

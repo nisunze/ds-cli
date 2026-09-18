@@ -24,6 +24,18 @@ issuer, and expiry with one implementation. Password collection, HTTP calls,
 refresh-token persistence, Google UI, and session side effects remain host
 adapters.
 
+The Design Activities slice (`design_activities`,
+[contract](docs/contracts/design-activities.md)) compacts one project's raw
+transformer status rows into a complete per-transformer activity ledger and
+folds retained ledgers across projects — users, projects, a complete timeline,
+the changes since each project's previous capture, anomalies and facts — as
+the one authority behind `ds design activities read`, MCP and the Governance
+page. Hosts capture, retain and sweep; the kernel decides nothing a row does
+not carry. `design_activities_store` owns where a capture lives — the
+snapshot envelope and its digest, the hashed store key, retention, the pair
+the fold diffs, and the sequential sweep a host should run next; it schedules
+nothing.
+
 The second slice admits and projects sealed Solar portfolio results by calling
 the canonical `ds-solar-contracts` read operation. Native `ds` and browser WASM
 therefore share schema, digest, totals, membership, and representative-graph

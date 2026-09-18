@@ -122,6 +122,19 @@ pub fn desktop_instance_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
 }
 pub mod connectivity;
 pub mod design;
+pub mod design_activities;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designActivities)]
+pub fn design_activities_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_activities::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+pub mod design_activities_store;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designActivitiesStore)]
+pub fn design_activities_store_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_activities_store::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod design_dashboard;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designDashboard)]
