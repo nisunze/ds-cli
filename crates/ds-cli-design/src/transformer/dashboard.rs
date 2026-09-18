@@ -14,17 +14,55 @@
 use ds_cli_auth::TransformerStatusList;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use super::LANE_ARG;
+use super::{LANE_ARG, PROJECT_ARG};
+
+/// The reading day the momentum timeline buckets by.
+///
+/// The browser passes `-getTimezoneOffset()`; a terminal has to say which day
+/// it means, because "this week" is the one number on the page that a UTC
+/// default quietly gets wrong for anyone east or west of Greenwich.
+pub const TZ_OFFSET_ARG: Arg = Arg::value(
+    "tz-offset-minutes",
+    "<minutes>",
+    "Minutes to add to UTC for the reading day (-840..840); echoed in the receipt.",
+)
+.default("0");
 
 pub const FAST_ARG: Arg = Arg::switch(
     "fast",
     "Read the project as the Fast lane does: no Draft/Sketch summary or notes.",
 );
+
+/// The named-project read set plus the one numeric flag this command adds.
+const REFUSALS: &[Refusal] = &[
+    super::NATIVE_PROFILE,
+    super::NATIVE_PROFILE_DIGEST,
+    super::NATIVE_PROFILE_UNSAFE,
+    super::HEADLESS_SIGNED_OUT,
+    super::PROJECT_REQUIRED,
+    super::CONTEXT_CORRUPT,
+    super::NATIVE_STATE_UNSAFE,
+    super::NATIVE_STATE_UNAVAILABLE,
+    super::NATIVE_STATE_PROTECTION,
+    super::NATIVE_STATE_ROOT,
+    super::NATIVE_STATE_CONFLICT,
+    super::NATIVE_CLEANUP,
+    super::AUTH_CONTEXT_MISMATCH,
+    super::AUTH_INPUT,
+    super::AUTH_REJECTED,
+    super::AUTH_REVOKED,
+    super::AUTH_IDENTITY_MISMATCH,
+    super::AUTH_TRANSIENT,
+    super::AUTH_UNREADABLE,
+    super::NOT_FOUND,
+    super::INVALID_SCOPE,
+    ds_cli_contract::args::INVALID_NUMBER,
+];
 
 pub static COMMAND: Command = Command {
     id: "design.dashboard",
@@ -35,33 +73,35 @@ pub static COMMAND: Command = Command {
 The project's own progress story, folded by the shared kernel from the same \
 status rows `ds design status` returns. Every attention note is the shared \
 health verdict for that row, so this and the register cannot disagree. \
-Restores the native user and reads only that user's audience-fenced selected \
-project; no project, Desktop descriptor, URL, body or action override, and no \
-fallback to a browser. The reference document describes each member.",
+Restores the native user and reads the project named by --project; this \
+machine's saved selection is neither read nor changed, so the same question \
+about the same project answers the same from any terminal. No Desktop \
+descriptor, URL, body or action override, and no fallback to a browser. The \
+reference document describes each member.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE_ARG, FAST_ARG],
+    args: &[PROJECT_ARG, LANE_ARG, FAST_ARG, TZ_OFFSET_ARG],
     output: "\
-Lane and selected-project identity/status, then `dashboard`: the counts, \
+Lane and the named project, then `dashboard`: the counts, \
 `pipeline`, `momentum`, `crew`, `errors_by_user`, `districts`, \
 `phase_summaries`, `lanes`, `governance`, `attention`, `health`, `recent` and \
 `facts`. Labels are i18n keys, timestamps epoch millis, and a headless client \
 holds none of the live diagnostics the application folds in.",
     examples: &[
         Example {
-            command: "ds design dashboard --output json",
+            command: "ds design dashboard --project <id> --output json",
             note: "`.data.dashboard.health.score` is the project's health.",
             runnable: false,
         },
         Example {
-            command: "ds design dashboard --fast --output json",
+            command: "ds design dashboard --project <id> --fast --output json",
             note: "`.data.dashboard.attention` as the Fast lane reads it.",
             runnable: false,
         },
     ],
-    refusals: super::NATIVE_READ_REFUSALS,
+    refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -71,19 +111,29 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The whole project, always: a dashboard over a subset is a different
     // question, and every percentage here is measured against the fleet.
     let whole_project = super::transformer_set(inputs, false)?;
-    let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &whole_project)?;
-    let mut output = super::project_receipt(&headless);
-    let dashboard = dashboard_json(headless.result(), inputs.switch("fast"));
-    output
-        .as_object_mut()
-        .expect("receipt is an object")
-        .insert("dashboard".into(), dashboard);
+    let project = super::named_project(inputs)?;
+    let tz_offset_minutes = ds_cli_contract::args::integer(
+        inputs.require("tz-offset-minutes")?,
+        "tz-offset-minutes",
+        -840,
+        840,
+    )?;
+    let headless = ds_cli_auth::transformer_status_for_project(
+        inputs.require("lane")?,
+        &project,
+        &whole_project,
+    )?;
+    let mut output = super::named_project_receipt(headless.lane(), headless.project_id());
+    let dashboard = dashboard_json(headless.result(), inputs.switch("fast"), tz_offset_minutes);
+    let receipt = output.as_object_mut().expect("receipt is an object");
+    receipt.insert("tz_offset_minutes".into(), json!(tz_offset_minutes));
+    receipt.insert("dashboard".into(), dashboard);
     Ok(output)
 }
 
 /// One kernel call over the rows as the service sent them. Special rows travel
 /// with the list: which names are not transformers is the kernel's own table.
-fn dashboard_json(list: &TransformerStatusList, fast_lane: bool) -> Value {
+fn dashboard_json(list: &TransformerStatusList, fast_lane: bool, tz_offset_minutes: i64) -> Value {
     let rows: Vec<Value> = list.rows().iter().map(|row| row.row().clone()).collect();
     let request = json!({
         "schema": ds_command_kernel::design_dashboard::SCHEMA,
@@ -96,6 +146,7 @@ fn dashboard_json(list: &TransformerStatusList, fast_lane: bool) -> Value {
             .map(|elapsed| elapsed.as_millis() as i64)
             .unwrap_or(0),
         "fast_lane": fast_lane,
+        "tz_offset_minutes": tz_offset_minutes,
     });
     let Ok(input) = serde_json::to_vec(&request) else {
         return Value::Null;
@@ -115,8 +166,7 @@ pub fn render(data: &Value) -> String {
     let dashboard = &data["dashboard"];
     let health = &dashboard["health"];
     let mut out = format!(
-        "project {} ({}) · {} · {} transformers · health {} ({} clean, {} error, {} warning)\n",
-        data["project"]["project_name"].as_str().unwrap_or("?"),
+        "project {} · {} · {} transformers · health {} ({} clean, {} error, {} warning)\n",
         data["project"]["ds_project"].as_str().unwrap_or("?"),
         data["lane"].as_str().unwrap_or("?"),
         count(dashboard, "total"),

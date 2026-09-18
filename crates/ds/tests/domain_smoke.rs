@@ -4518,6 +4518,8 @@ fn hiding_a_reference_publication_is_a_headless_governed_write() {
 #[test]
 fn background_project_operations_are_map_independent_and_use_the_declared_project_context() {
     for (id, effect, inputs) in [
+        // Both name their project since 2026-09-18: a headless read whose
+        // answer depends on this machine's saved selection is not one answer.
         (
             "design.status",
             "local_auth_state",
@@ -4526,6 +4528,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
                 "filter",
                 "findings",
                 "lane",
+                "project",
                 "search",
                 "sort",
                 "transformer",
@@ -4534,7 +4537,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         (
             "design.dashboard",
             "local_auth_state",
-            BTreeSet::from(["fast", "lane"]),
+            BTreeSet::from(["fast", "lane", "project", "tz-offset-minutes"]),
         ),
         (
             "design.transformer.inventory",
@@ -4594,9 +4597,13 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, inputs, "{id}");
-        assert!(
-            !actual.contains("project"),
-            "{id} gained a project override"
+        // `design.status` and `design.dashboard` NAME their project since
+        // 2026-09-18; the rest still act on the saved selection, and a project
+        // flag appearing on one of those would be a silent override.
+        assert_eq!(
+            actual.contains("project"),
+            matches!(id, "design.status" | "design.dashboard"),
+            "{id} disagrees with how it is meant to reach a project"
         );
         assert!(
             !actual.contains("desktop-descriptor"),
@@ -5308,18 +5315,31 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
             "filter",
             "findings",
             "lane",
+            "project",
             "search",
             "sort",
             "transformer"
         ])
     );
 
-    // A flag the command does not declare is refused, not ignored: there is
-    // no project override on the headless read spine.
+    // The project is NAMED, not inherited. This was the opposite assertion
+    // until 2026-09-18: the read followed this machine's saved selection, so
+    // the same command answered differently on two terminals. A read an agent
+    // repeats has to mean one thing, so omitting `--project` is now the
+    // refusal and passing one is ordinary.
     assert_eq!(
-        native_ds(&["design", "status", "--project", "p-1", "--output", "json"]).envelope["error"]
-            ["code"],
-        "unknown_flag"
+        native_ds(&["design", "status", "--output", "json"]).envelope["error"]["code"],
+        "missing_input"
+    );
+    assert_eq!(
+        native_refusal(&["design", "status", "--project", " p-1", "--output", "json"]),
+        "project_required",
+        "a padded project id is named as such before any credential is restored"
+    );
+    assert_eq!(
+        native_refusal(&["design", "status", "--project", "a/b", "--output", "json"]),
+        "context_corrupt",
+        "a project id that is not one path segment is refused by name"
     );
 
     // A malformed scope is answered locally, before any credential restore.
@@ -5327,6 +5347,8 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
         native_refusal(&[
             "design",
             "status",
+            "--project",
+            "p_smoke",
             "--transformer",
             " tx_a",
             "--output",
@@ -5343,7 +5365,16 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
         ("admin-planet=x", "an unknown admin level"),
         ("sync=", "no value"),
     ] {
-        let run = native_ds(&["design", "status", "--filter", filter, "--output", "json"]);
+        let run = native_ds(&[
+            "design",
+            "status",
+            "--project",
+            "p_smoke",
+            "--filter",
+            filter,
+            "--output",
+            "json",
+        ]);
         assert_eq!(
             run.envelope["error"]["code"], "design_status_query_invalid",
             "--filter {filter} ({why})"
@@ -5354,6 +5385,8 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
         native_refusal(&[
             "design",
             "status",
+            "--project",
+            "p_smoke",
             "--filter",
             "admin-district=Karongi",
             "--filter",
@@ -5365,8 +5398,17 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
     );
     // A sort key outside the vocabulary is the CLI's own choices refusal.
     assert_eq!(
-        native_ds(&["design", "status", "--sort", "colour", "--output", "json"]).envelope["error"]
-            ["code"],
+        native_ds(&[
+            "design",
+            "status",
+            "--project",
+            "p_smoke",
+            "--sort",
+            "colour",
+            "--output",
+            "json",
+        ])
+        .envelope["error"]["code"],
         "invalid_choice"
     );
 
@@ -5374,10 +5416,19 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
     // stops at the native auth boundary — the same typed refusal every other
     // native read gives. Nothing here contacts a service or an application.
     for args in [
-        vec!["design", "status", "--output", "json"],
         vec![
             "design",
             "status",
+            "--project",
+            "p_smoke",
+            "--output",
+            "json",
+        ],
+        vec![
+            "design",
+            "status",
+            "--project",
+            "p_smoke",
             "--transformer",
             "tx_a",
             "--lane",
@@ -5427,7 +5478,10 @@ fn design_dashboard_is_the_same_headless_read_folded_once() {
         .collect::<BTreeSet<_>>();
     // No `--transformer`: every percentage here is measured against the fleet,
     // so a dashboard over a subset would be a different question.
-    assert_eq!(inputs, BTreeSet::from(["fast", "lane"]));
+    assert_eq!(
+        inputs,
+        BTreeSet::from(["fast", "lane", "project", "tz-offset-minutes"])
+    );
     // The descriptor says out loud that a headless client holds no live
     // diagnostics, so a reader is never surprised by their absence.
     assert!(
@@ -5437,23 +5491,23 @@ fn design_dashboard_is_the_same_headless_read_folded_once() {
             .contains("headless client holds none"),
     );
 
-    // No project override, and a malformed lane is answered locally.
+    // The project is the argument. Until 2026-09-18 this asserted the exact
+    // opposite — `--project` was an `unknown_flag` and the Dashboard followed
+    // the saved selection. It now refuses to guess which project was meant.
     assert_eq!(
-        native_ds(&[
-            "design",
-            "dashboard",
-            "--project",
-            "p-1",
-            "--output",
-            "json"
-        ])
-        .envelope["error"]["code"],
-        "unknown_flag"
+        native_ds(&["design", "dashboard", "--output", "json"]).envelope["error"]["code"],
+        "missing_input"
+    );
+    assert_eq!(
+        native_refusal(&["design", "dashboard", "--project", "..", "--output", "json"]),
+        "context_corrupt"
     );
     assert_eq!(
         native_ds(&[
             "design",
             "dashboard",
+            "--project",
+            "p_smoke",
             "--transformer",
             "tx_a",
             "--output",
@@ -5466,10 +5520,19 @@ fn design_dashboard_is_the_same_headless_read_folded_once() {
     // With no restorable native user the read stops at the auth boundary —
     // the same typed refusal the rest of the spine gives, and no network.
     for args in [
-        vec!["design", "dashboard", "--output", "json"],
         vec![
             "design",
             "dashboard",
+            "--project",
+            "p_smoke",
+            "--output",
+            "json",
+        ],
+        vec![
+            "design",
+            "dashboard",
+            "--project",
+            "p_smoke",
             "--fast",
             "--lane",
             "canary",
@@ -5493,6 +5556,95 @@ fn design_dashboard_is_the_same_headless_read_folded_once() {
             run.stderr
         );
     }
+}
+
+/// Design Activities is the one Design answer that spans projects, and the one
+/// most able to mislead: it is about people. So the smoke test checks the two
+/// things a reader's trust actually rests on — that a sweep cannot be taken
+/// casually or in parallel, and that every reply says out loud what a capture
+/// cannot show.
+#[test]
+fn design_activities_capture_is_deliberate_sequential_and_honest_about_its_gaps() {
+    let sweep = ok(&[
+        "capabilities",
+        "design.activities.sweep",
+        "--output",
+        "json",
+    ])["command"]
+        .clone();
+    assert_eq!(
+        sweep["path"],
+        serde_json::json!(["design", "activities", "sweep"])
+    );
+    assert_eq!(sweep["effect"], "artifact_write");
+    assert_eq!(sweep["authority"], "headless_user");
+    assert_eq!(sweep["requires"], "server");
+    // A durable capture of record, so `--yes` is mandatory — and the descriptor
+    // says why it must be walked one project at a time.
+    assert_eq!(sweep["confirmation_required"], true);
+    let purpose = sweep["purpose"].as_str().expect("purpose");
+    assert!(purpose.contains("ONE full"), "{purpose}");
+    assert!(purpose.contains("Nothing is scheduled"), "{purpose}");
+    assert!(purpose.contains("never aborts the sweep"), "{purpose}");
+    // The default bound is small on purpose: every full scan queues behind
+    // every other one on the same ds-brain instance.
+    let limit = sweep["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .find(|input| input["name"] == "limit")
+        .expect("--limit");
+    assert_eq!(limit["default"], "25");
+
+    let read =
+        ok(&["capabilities", "design.activities.read", "--output", "json"])["command"].clone();
+    assert_eq!(read["effect"], "read_only");
+    assert_eq!(read["authority"], "headless_user");
+    assert_eq!(read["confirmation_required"], false);
+    let purpose = read["purpose"].as_str().expect("purpose");
+    assert!(purpose.contains("no row carries a device"), "{purpose}");
+    assert!(purpose.contains("ENTIRE history"), "{purpose}");
+
+    // An unconfirmed sweep refuses before it reads a credential, let alone a
+    // project — the confirmation is the gate, not an afterthought.
+    assert_eq!(
+        native_refusal(&["design", "activities", "sweep", "--output", "json"]),
+        "confirmation_required"
+    );
+    // A relative store is refused locally, by name, before any credential.
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "activities",
+            "read",
+            "--state-dir",
+            "relative/store",
+            "--output",
+            "json"
+        ]),
+        "store_unsafe"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "activities",
+            "read",
+            "--limit",
+            "0",
+            "--output",
+            "json"
+        ]),
+        "invalid_number"
+    );
+    // With no restorable native user, reading the store stops at the auth
+    // boundary and never opens a socket.
+    let run = native_ds(&["design", "activities", "read", "--output", "json"]);
+    assert_eq!(run.envelope["error"]["code"], "headless_signed_out");
+    assert!(
+        run.stderr.is_empty() || !run.stderr.contains("http"),
+        "the offline read touched a network surface: {}",
+        run.stderr
+    );
 }
 
 #[test]
@@ -7009,7 +7161,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        96, // + the vocabulary housekeeping family (headless, 2026-09-18).
+        98, // + `design activities sweep|read` (headless, 2026-09-18).
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -7045,6 +7197,11 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.status"
                     | "design.collisions"
                     | "design.dashboard"
+                    // Design Activities reads the same native spine, once per
+                    // project, so it is honestly unavailable in a build with
+                    // no digest-pinned release catalog.
+                    | "design.activities.sweep"
+                    | "design.activities.read"
                     | "design.transformer.inventory"
                     | "design.transformer.retire"
                     | "design.transformer.restore"
@@ -7252,6 +7409,10 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 // Standard intake is a headless Rust upload/process workflow,
                 // not a paired collaboration record operation.
                 && !id.starts_with("design.intake.")
+                // Design Activities is a headless account-wide capture and an
+                // offline fold over what it retained. It holds no governed
+                // record and never reaches the bridge.
+                && !id.starts_with("design.activities.")
         })
         .collect();
     let expected: BTreeSet<&str> = [
@@ -7353,6 +7514,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.selection.")
             || id.starts_with("design.intake.")
             || id.starts_with("design.attachment.")
+            || id.starts_with("design.activities.")
         {
             continue;
         }

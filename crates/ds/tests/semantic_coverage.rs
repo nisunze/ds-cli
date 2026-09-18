@@ -400,6 +400,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("design.dashboard", "local_auth_state", "headless_project"),
+    // Design Activities: one sweep retains a durable capture of record per
+    // project, and the read folds those captures with no network at all.
+    // Neither reads a saved selection, so neither is a `headless_project`.
+    ("design.activities.sweep", "artifact_write", "headless_user"),
+    ("design.activities.read", "read_only", "headless_user"),
     ("design.intake.upload", "global_write", "headless_project"),
     ("design.transformer.download", "local_ui", "project"),
     (

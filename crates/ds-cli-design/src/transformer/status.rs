@@ -15,7 +15,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::design_health::{TransformerHealth, summarize, transformer_health};
 use serde_json::{Value, json};
 
-use super::{LANE_ARG, TRANSFORMER_ARG};
+use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
 
 pub const FINDINGS_ARG: Arg = Arg::switch(
     "findings",
@@ -64,13 +64,16 @@ pub const REFUSALS_READ: &[Refusal] = &[
     super::PROJECT_CONTEXT_STALE,
 ];
 
+/// The named-project read's own refusals: the shared native set with the two
+/// saved-selection codes replaced by the two ways `--project` can be wrong,
+/// plus this command's selector.
 const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE,
     super::NATIVE_PROFILE_DIGEST,
     super::NATIVE_PROFILE_UNSAFE,
     super::HEADLESS_SIGNED_OUT,
-    super::HEADLESS_NO_PROJECT,
-    super::PROJECT_CONTEXT_STALE,
+    super::PROJECT_REQUIRED,
+    super::CONTEXT_CORRUPT,
     QUERY_INVALID,
 ];
 
@@ -81,9 +84,9 @@ pub static COMMAND: Command = Command {
     summary: "Read the project's transformer status rows and verdicts, headlessly.",
     purpose: "\
 The read every headless Design answer starts from. Restores the native user \
-and reads only that user's audience-fenced selected project through the fixed \
-status call. Without --transformer it answers every transformer document; \
-with names, exactly those that exist. Rows come back as the service sent \
+and reads the project --project names; the saved selection is never read. \
+Without --transformer it answers every transformer document; with names, \
+exactly those that exist. Rows come back as the service sent \
 them, each with the shared kernel's verdict (health) and truth (view, phase \
 ownership, latest action, governance, retry, kind, allows). With --search, \
 --sort or --filter the rows are the register's own selection, in its order, \
@@ -94,6 +97,7 @@ browser; the reference describes each member.",
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        PROJECT_ARG,
         TRANSFORMER_ARG,
         LANE_ARG,
         FINDINGS_ARG,
@@ -103,7 +107,7 @@ browser; the reference describes each member.",
         FILTER_ARG,
     ],
     output: "\
-Lane and selected-project identity/status, the row count, the project's \
+Lane and the named project, the row count, the project's \
 severity summary, and one row per transformer as the service sent it — \
 process/report/draft/sketch metadata, layer counts, uploads, artifacts, \
 retry capabilities — plus `health`, `view`, `phase_ownership`, `latest_action`, \
@@ -111,12 +115,12 @@ retry capabilities — plus `health`, `view`, `phase_ownership`, `latest_action`
 per finding; with a selector, `query` carries the options each filter may offer.",
     examples: &[
         Example {
-            command: "ds design status --transformer TX-1 --output json",
+            command: "ds design status --project <id> --transformer TX-1 --output json",
             note: "`.data.transformers[0].health.severity` is the row's verdict.",
             runnable: false,
         },
         Example {
-            command: "ds design status --findings --output json",
+            command: "ds design status --project <id> --findings --output json",
             note: "`.data.findings` is the project's issue list.",
             runnable: false,
         },
@@ -131,8 +135,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The selector is validated before any credential is touched.
     let selector = selector_from_inputs(inputs)?;
     let requested = super::transformer_set(inputs, false)?;
-    let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &requested)?;
-    let mut output = super::project_receipt(&headless);
+    let project = super::named_project(inputs)?;
+    let headless =
+        ds_cli_auth::transformer_status_for_project(inputs.require("lane")?, &project, &requested)?;
+    let mut output = super::named_project_receipt(headless.lane(), headless.project_id());
     let mut rows = status_json(headless.result(), inputs.switch("findings"));
     if let Some(selector) = selector {
         apply_selector(headless.result(), &mut rows, selector)?;
@@ -380,8 +386,7 @@ fn fleet_findings(rows: &[TransformerStatusRow], health: &[TransformerHealth]) -
 pub fn render(data: &Value) -> String {
     let summary = &data["summary"];
     let mut out = format!(
-        "project {} ({}) · {} · {} transformers · {} processing · {} warning · {} error\n",
-        data["project"]["project_name"].as_str().unwrap_or("?"),
+        "project {} · {} · {} transformers · {} processing · {} warning · {} error\n",
         data["project"]["ds_project"].as_str().unwrap_or("?"),
         data["lane"].as_str().unwrap_or("?"),
         data["count"].as_u64().unwrap_or(0),

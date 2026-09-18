@@ -13,7 +13,9 @@
 //! `status` shares this module's credential path, scope flag and refusals but
 //! answers `ds design status`: the project's own transformer status rows, the
 //! read every other headless Design answer is built from. `dashboard` folds
-//! those same rows once into the project's whole progress story.
+//! those same rows once into the project's whole progress story. Those two
+//! take a REQUIRED `--project` and never consult the saved selection, because
+//! a read whose answer depends on where it was run is not one answer.
 //!
 //! Contract: ds-brain `docs/contracts/transformer-retirement.md`.
 
@@ -51,6 +53,18 @@ pub const LANE_ARG: Arg = Arg::value(
 )
 .default("stable")
 .choices(&["stable", "canary"]);
+/// The project a read is about, named rather than inherited.
+///
+/// A read that silently follows this machine's saved selection answers a
+/// different question depending on where it is run, which is exactly what an
+/// agent asking the same thing twice cannot tolerate. Naming it is one word
+/// more and one ambiguity less.
+pub const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<project-id>",
+    "Exact project this read is about; the saved selection is not consulted.",
+)
+.required();
 
 macro_rules! refusal {
     ($name:ident, $code:literal, $when:literal, $remedy:literal) => {
@@ -201,6 +215,19 @@ refusal!(
     "inspect with `ds design transformer inventory` first, then re-run with --yes"
 );
 
+refusal!(
+    PROJECT_REQUIRED,
+    "project_required",
+    "--project is absent, blank or untrimmed",
+    "pass one exact ds_project value from ds auth project list"
+);
+refusal!(
+    CONTEXT_CORRUPT,
+    "context_corrupt",
+    "--project is not one path segment: separator, traversal or whitespace",
+    "copy one exact ds_project value from ds auth project list"
+);
+
 pub const NATIVE_READ_REFUSALS: &[Refusal] = &[
     NATIVE_PROFILE,
     NATIVE_PROFILE_DIGEST,
@@ -280,6 +307,34 @@ pub fn transformer_set(
         Failure::invalid("invalid_transformer_scope", error.to_string())
             .remedy(INVALID_SCOPE.remedy)
     })
+}
+
+/// The project a named read is about, refused locally before any credential.
+///
+/// The parser already requires the flag; what it cannot know is that a blank
+/// or padded value is not a project id. Refusing it here, by name, means an
+/// agent that passed `--project ""` reads `project_required` rather than
+/// watching a credential restore fail for no stated reason.
+pub fn named_project(inputs: &ds_cli_contract::Inputs) -> Result<String, Failure> {
+    let project = inputs.require("project")?;
+    if project.trim().is_empty() || project.trim() != project {
+        return Err(Failure::invalid(
+            PROJECT_REQUIRED.code,
+            "--project must be one exact, trimmed, non-empty project id",
+        )
+        .remedy(PROJECT_REQUIRED.remedy)
+        .next("ds auth project list --output json"));
+    }
+    Ok(project.to_owned())
+}
+
+/// The receipt of a read whose project the caller named.
+///
+/// It carries the id it was given and nothing it did not read: no
+/// `project_name`, no `status`. Those live in the saved selection, and this
+/// read never opened it.
+pub fn named_project_receipt(lane: &str, ds_project: &str) -> Value {
+    json!({ "lane": lane, "project": { "ds_project": ds_project } })
 }
 
 pub fn reason(inputs: &ds_cli_contract::Inputs) -> Result<String, Failure> {
