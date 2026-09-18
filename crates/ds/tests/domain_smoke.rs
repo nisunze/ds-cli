@@ -3599,24 +3599,22 @@ fn map_design_save_cannot_run_without_confirmation() {
 }
 
 #[test]
-fn map_design_version_begin_cannot_run_without_confirmation() {
-    let run = ds(&[
-        "map",
-        "design",
-        "version",
-        "begin",
-        "--transformer",
-        "agasharu",
-        "--reason",
-        "Approved drafting baseline",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(
-        run.envelope["error"]["code"], "confirmation_required",
-        "design version creation reached past the confirmation gate"
+fn retired_map_version_twins_are_absent_from_live_discovery() {
+    let map = ok(&["capabilities", "map", "--output", "json"]);
+    let commands = map["commands"].as_array().unwrap();
+    for retired in ["map.design.version.begin", "map.design.version.list"] {
+        assert!(!commands.iter().any(|command| command["id"] == retired));
+    }
+    assert!(
+        commands
+            .iter()
+            .any(|command| command["id"] == "map.design.version.play")
     );
-    assert_ne!(run.code, 0);
+    assert!(
+        commands
+            .iter()
+            .any(|command| command["id"] == "map.design.version.compare")
+    );
 }
 
 #[test]
@@ -4482,49 +4480,37 @@ fn design_download_plan_answers_scope_urls_and_placement_headlessly() {
 }
 
 #[test]
-fn design_version_status_says_whether_a_cut_is_warranted() {
+fn design_version_status_uses_an_explicit_project_without_desktop_context() {
     let descriptor = ok(&["capabilities", "design.version.status", "--output", "json"]);
     let command = &descriptor["command"];
-    assert_eq!(
-        command["path"],
-        serde_json::json!(["design", "version", "status"])
-    );
     assert_eq!(command["authority"], "headless_project");
-    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(command["effect"], "read_only");
     assert_eq!(
         command["inputs"]
             .as_array()
-            .expect("inputs")
+            .unwrap()
             .iter()
-            .map(|input| input["name"].as_str().expect("input name"))
+            .map(|input| input["name"].as_str().unwrap())
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["lane", "transformer"])
-    );
-    // There is no project override on the headless read spine.
-    assert_eq!(
-        native_ds(&[
-            "design",
-            "version",
-            "status",
-            "--project",
-            "p-1",
-            "--output",
-            "json"
-        ])
-        .envelope["error"]["code"],
-        "unknown_flag"
+        BTreeSet::from(["project", "kind", "object", "transformer", "lane"])
     );
     assert_eq!(
         native_refusal(&[
             "design",
             "version",
             "status",
+            "--project",
+            "project_a",
+            "--kind",
+            "mv_model",
+            "--object",
+            "line",
             "--transformer",
-            " tx_a",
+            "tr",
             "--output",
             "json"
         ]),
-        "invalid_transformer_scope"
+        "invalid_input"
     );
 }
 
@@ -4546,13 +4532,23 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
             .iter()
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["idempotency-key", "lane", "reason", "transformer"])
+        BTreeSet::from([
+            "idempotency-key",
+            "lane",
+            "reason",
+            "transformer",
+            "project",
+            "kind",
+            "object"
+        ])
     );
 
     let unconfirmed = native_ds(&[
         "design",
         "version",
         "begin",
+        "--project",
+        "p-1",
         "--transformer",
         "tx_a",
         "--reason",
@@ -4584,7 +4580,7 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
             "json",
         ])
         .envelope["error"]["code"],
-        "unknown_flag"
+        "confirmation_required"
     );
 }
 
@@ -4612,12 +4608,17 @@ fn design_version_restore_is_a_confirmed_headless_project_write() {
             "reason",
             "transformer",
             "version",
+            "project",
+            "kind",
+            "object",
         ])
     );
     let unconfirmed = native_ds(&[
         "design",
         "version",
         "restore",
+        "--project",
+        "p-1",
         "--transformer",
         "tx_a",
         "--version",
@@ -4987,8 +4988,6 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.design.delete",
         "map.design.geometry",
         "map.design.setup",
-        "map.design.version.begin",
-        "map.design.version.list",
         "map.design.version.play",
         "map.design.version.compare",
         "map.design.process",
@@ -5136,11 +5135,6 @@ fn map_design_pin_exposes_complete_working_set_parity() {
 fn map_design_version_history_is_discoverable_and_governed() {
     let expected = [
         (
-            "map.design.version.list",
-            "read_only",
-            vec!["transformer", "desktop-descriptor"],
-        ),
-        (
             "map.design.version.play",
             "local_ui",
             vec!["transformer", "version", "desktop-descriptor"],
@@ -5170,10 +5164,6 @@ fn map_design_version_history_is_discoverable_and_governed() {
     }
 
     for (query, id) in [
-        (
-            "list retained transformer versions",
-            "map.design.version.list",
-        ),
         ("play transformer version", "map.design.version.play"),
         ("compare design version head", "map.design.version.compare"),
     ] {
@@ -5534,7 +5524,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v26",
+            "schema_version": "ds.native-client-profiles/v27",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -6480,6 +6470,10 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.version.compare"
                     | "design.version.begin"
                     | "design.version.restore"
+                    | "design.attachment.list"
+                    | "design.attachment.publish"
+                    | "design.attachment.download"
+                    | "design.attachment.retire"
                     | "design.conflict.list"
                     | "design.conflict.check"
                     | "design.presence.status"
@@ -6583,7 +6577,12 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
             "`{id}` declares the wrong blast radius"
         );
         assert_eq!(
-            descriptor["command"]["authority"], "project",
+            descriptor["command"]["authority"],
+            if id.starts_with("design.attachment.") {
+                "headless_project"
+            } else {
+                "project"
+            },
             "`{id}` must require a verified principal bound to a project"
         );
     }
@@ -6763,6 +6762,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.presence.")
             || id.starts_with("design.selection.")
             || id.starts_with("design.intake.")
+            || id.starts_with("design.attachment.")
         {
             continue;
         }
@@ -10234,5 +10234,95 @@ fn solar_city_creation_is_an_editable_offline_entry_point() {
             .as_str()
             .unwrap()
             .contains("Missing inputs are an editable draft")
+    );
+}
+
+#[test]
+fn native_design_attachments_need_identity_instead_of_desktop_pairing() {
+    let file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(file.path(), b"opaque file").unwrap();
+    let path = file.path().to_str().unwrap();
+    let commands = [
+        vec![
+            "design",
+            "attachment",
+            "list",
+            "--project",
+            "project_a",
+            "--kind",
+            "lv_transformer",
+            "--object",
+            "tr",
+        ],
+        vec![
+            "design",
+            "attachment",
+            "publish",
+            "--project",
+            "project_a",
+            "--kind",
+            "mv_model",
+            "--object",
+            "line",
+            "--path",
+            path,
+            "--version",
+            "rev_native",
+            "--yes",
+        ],
+        vec![
+            "design",
+            "attachment",
+            "download",
+            "--project",
+            "project_a",
+            "--attachment",
+            "file_one",
+        ],
+        vec![
+            "design",
+            "attachment",
+            "retire",
+            "--project",
+            "project_a",
+            "--attachment",
+            "file_one",
+            "--yes",
+        ],
+    ];
+    for mut arguments in commands {
+        arguments.extend(["--output", "json"]);
+        let refused = native_ds(&arguments);
+        assert_eq!(
+            refused.envelope["error"]["code"],
+            "design_attachment_refused"
+        );
+        assert_eq!(
+            refused.envelope["error"]["detail"]["cause"],
+            "native_signed_out"
+        );
+    }
+    let refused = native_ds(&[
+        "design",
+        "attachment",
+        "list",
+        "--project",
+        "project_a",
+        "--kind",
+        "mv_model",
+        "--object",
+        "line",
+        "--version",
+        "v2",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        refused.envelope["error"]["code"],
+        "design_attachment_refused"
+    );
+    assert_ne!(
+        refused.envelope["error"]["detail"]["cause"], "native_signed_out",
+        "invalid governance pin must be refused before identity/transport"
     );
 }

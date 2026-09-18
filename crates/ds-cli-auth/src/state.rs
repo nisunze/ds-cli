@@ -1165,6 +1165,11 @@ mod tests {
                 "restore_transformer".to_owned(),
                 "list_transformers_status".to_owned(),
             ],
+            design_attachments_method: "POST".into(),
+            design_attachments_path: "/api/v1/design/attachments".into(),
+            design_attachments_actions: ds_client_core::DESIGN_ATTACHMENTS_ACTIONS
+                .map(str::to_owned)
+                .to_vec(),
             design_versions_method: "POST".into(),
             design_versions_path: "/api/v1/design/versions".into(),
             design_versions_actions: vec![

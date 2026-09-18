@@ -40,3 +40,12 @@ Do not retry a moved-head conflict or change projects to force publication. Re-r
 ## PLS-CADD sources
 
 A PLS-CADD workspace or `.bak` is not a local-model import. Discover and use `dsgrid-exchange.inspect`, `dsgrid-exchange.plan`, and `dsgrid-exchange.convert` to produce a new `.dsgrid`; validate it, then acquire that package with `model import-external`. Never add a second convert-and-publish route to this workflow.
+
+Native package lineage is separate from governance `vN`: publish preserves the
+validated manifest model id and nonnegative revision (including zero). An append
+must retain model identity and advance changed package content; repeated identical
+checkpoints remain stable. A legacy head without lineage needs the server's stated
+recovery rather than guessing identity. Discover `design.version.*` for explicit-
+project MV governance metadata. MV attachments bind the exact content revision
+id from that descriptor, while LV attachments bind `vN`; neither attachment
+operation requires a paired Desktop.

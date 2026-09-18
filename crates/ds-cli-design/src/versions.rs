@@ -1,39 +1,64 @@
-//! Thin native history adapters: server snapshots, shared kernel comparison.
+//! Headless version adapters: one explicit project and server-assigned history.
 use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal},
 };
 use ds_client_core::design_versions::Command as Request;
 use serde_json::{Value, json};
+pub const PROJECT: Arg = Arg::value(
+    "project",
+    "<project-id>",
+    "Explicit project authorized for this request; saved selection is unused.",
+)
+.required();
 const TRANSFORMER: Arg = Arg::value(
     "transformer",
     "<name>",
-    "Exact transformer in the selected project.",
+    "Compatibility spelling for one LV object; use either this or --object.",
+);
+const KIND: Arg = Arg::value(
+    "kind",
+    "<kind>",
+    "Governed object kind; MV versions pin immutable content revisions.",
 )
-.required();
-const REFUSALS: &[Refusal] = &[Refusal {
-    code: "design_version_refused",
-    when: "The authenticated version read or kernel snapshot validation refuses the request",
-    remedy: "Read the nested cause and remedy; list published versions and choose playback_available=true. Sign in to the named lane if required.",
-}];
+.choices(&["lv_transformer", "mv_model"])
+.default("lv_transformer");
+const OBJECT: Arg = Arg::value(
+    "object",
+    "<id>",
+    "Exact LV transformer or MV project model identity.",
+);
+const REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "design_version_refused",
+        when: "The authenticated history call or shared Rust validation refuses the request",
+        remedy: "Read the nested cause; use one explicit project/kind/object and assigned vN identities. MV restore is unsupported; download its pinned content revision.",
+    },
+    Refusal {
+        code: "invalid_input",
+        when: "Object spelling is ambiguous or a local request is invalid",
+        remedy: "Pass --project and either --transformer or --kind with --object; never combine the two object spellings.",
+    },
+];
 const fn command(
     id: &'static str,
     path: &'static [&'static str],
     summary: &'static str,
     args: &'static [Arg],
+    effect: Effect,
 ) -> Command {
     Command {
         id,
         path,
-        contract: 1,
+        contract: 2,
         summary,
-        purpose: "Read published transformer history without a desktop. Compare exact vN snapshots or a saved server head pinned once, under one captured project/owner/lane. Rust supplies exact change counts and consistency findings; no mutation or geometry payload. Unpublished browser versions are not server history.",
+        purpose: "Use one explicit project and captured native identity without Desktop or active-project state. ds-brain alone assigns vN ordinals. LV comparison uses exact snapshots; MV comparison reports pinned content-revision metadata without claiming geometry comparison. Local browser rooms are not published history. Restore is LV-only.",
         chapter: Chapter::Design,
-        effect: Effect::ReadOnly,
+        effect,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args,
-        output: "Project, transformer, exact version descriptors and snapshot digests; bounded per-layer change counts and changed property names, consistency findings, and explicit truncation. Listing includes playback availability; at 200 rows truncation is reported.",
+        output: "Explicit project/object and validated bounded history, saved head or assigned vN receipt. MV comparison identifies changed lineage metadata; LV comparison returns bounded exact change counts.",
         examples: &[],
         refusals: REFUSALS,
         reference: Some("docs/reference/design.md"),
@@ -43,36 +68,57 @@ const fn command(
 pub static LIST: Command = command(
     "design.version.list",
     &["design", "version", "list"],
-    "List published transformer versions and playback availability.",
-    &[TRANSFORMER, crate::transformer::LANE_ARG],
+    "List governed LV or MV versions and their pinned source.",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
+        TRANSFORMER,
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::ReadOnly,
+);
+pub static STATUS: Command = command(
+    "design.version.status",
+    &["design", "version", "status"],
+    "Read the exact saved LV or MV version head.",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
+        TRANSFORMER,
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::ReadOnly,
 );
 pub static COMPARE: Command = command(
     "design.version.compare",
     &["design", "version", "compare"],
-    "Compare published transformer versions headlessly.",
+    "Compare governed LV snapshots or MV revision metadata.",
     &[
+        PROJECT,
+        KIND,
+        OBJECT,
         TRANSFORMER,
-        Arg::value("from", "<vN>", "Exact published version on the left.").required(),
+        Arg::value("from", "<vN>", "Exact assigned version on the left.").required(),
         Arg::value(
             "to",
             "<vN|head>",
-            "Exact published version or saved server head pinned once.",
+            "Exact assigned version or saved head pinned once.",
         )
         .required(),
         crate::transformer::LANE_ARG,
     ],
+    Effect::ReadOnly,
 );
-pub static BEGIN: Command = Command {
-    id: "design.version.begin",
-    path: &["design", "version", "begin"],
-    contract: 1,
-    summary: "Create one deliberate published transformer version (needs --yes).",
-    purpose: "Create an immutable version of the selected project's current saved transformer without a Desktop or open map. ds-brain assigns the next vN ordinal and snapshots the current governed state; Rust validates the exact returned project, transformer and version identity.",
-    chapter: Chapter::Design,
-    effect: Effect::GlobalWrite,
-    authority: Authority::HeadlessProject,
-    execution: Execution::Sync,
-    args: &[
+pub static BEGIN: Command = command(
+    "design.version.begin",
+    &["design", "version", "begin"],
+    "Create a governed LV or MV version (needs --yes).",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
         TRANSFORMER,
         Arg::value(
             "reason",
@@ -82,57 +128,68 @@ pub static BEGIN: Command = Command {
         .required(),
         Arg::value(
             "idempotency-key",
-            "<opaque-key>",
-            "Stable caller key; reuse it when retrying this exact version request.",
+            "<key>",
+            "Stable key for retries of this exact object/reason.",
         )
         .required(),
         crate::transformer::LANE_ARG,
     ],
-    output: "Lane, selected project, transformer, the server-assigned vN descriptor, and mutated=true.",
-    examples: &[],
-    refusals: REFUSALS,
-    reference: Some("docs/reference/design.md"),
-    availability: ds_cli_auth::native_availability,
-};
-pub static RESTORE: Command = Command {
-    id: "design.version.restore",
-    path: &["design", "version", "restore"],
-    contract: 1,
-    summary: "Restore one published transformer version (needs --yes).",
-    purpose: "Replace the selected project's saved transformer with one immutable published vN snapshot without a Desktop or open map. Rust reads and pins the exact current server head immediately before ds-brain performs one fenced transaction.",
-    chapter: Chapter::Design,
-    effect: Effect::GlobalWrite,
-    authority: Authority::HeadlessProject,
-    execution: Execution::Sync,
-    args: &[
+    Effect::GlobalWrite,
+);
+pub static RESTORE: Command = command(
+    "design.version.restore",
+    &["design", "version", "restore"],
+    "Restore an exact governed LV version (needs --yes).",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
         TRANSFORMER,
-        Arg::value("version", "<vN>", "Exact published version to restore.").required(),
+        Arg::value("version", "<vN>", "Exact assigned LV version to restore.").required(),
         Arg::value("reason", "<text>", "Why this version is being restored.").required(),
         Arg::value(
             "idempotency-key",
-            "<opaque-key>",
-            "Stable caller key; reuse it when retrying this exact restore.",
+            "<key>",
+            "Stable key for retries of this exact restore.",
         )
         .required(),
         crate::transformer::LANE_ARG,
     ],
-    output: "Lane, selected project, transformer, restored vN descriptor, the exact prepared source revision, and mutated=true.",
-    examples: &[],
-    refusals: REFUSALS,
-    reference: Some("docs/reference/design.md"),
-    availability: ds_cli_auth::native_availability,
-};
+    Effect::GlobalWrite,
+);
+fn object(i: &Inputs) -> Result<String, Failure> {
+    match (i.value("object"), i.value("transformer")) {
+        (Some(object), None) => Ok(object.into()),
+        (None, Some(transformer)) if i.require("kind")? == "lv_transformer" => {
+            Ok(transformer.into())
+        }
+        _ => Err(Failure::invalid(
+            "invalid_input",
+            "Choose either --kind/--object or the LV --transformer compatibility spelling",
+        )
+        .remedy("Pass exactly one object spelling and an explicit --project")),
+    }
+}
 fn ask(i: &Inputs, request: Request) -> Result<Value, Failure> {
-    ds_cli_auth::design_versions(i.require("lane")?, &request).map(|r|r.into_result()).map_err(|e|
-        Failure::failed("design_version_refused",e.to_string())
-            .detail(json!({"cause":e.code(),"detail":e.detail_value()}))
-            .remedy(e.remedy_text().unwrap_or("List published versions; use exact vN identifiers with playback_available=true. Unpublished browser versions must be published first.")))
+    let request = Request::Object {
+        kind: i.require("kind")?.into(),
+        command: Box::new(request),
+    };
+    ds_cli_auth::design_versions_for_project(i.require("lane")?,i.require("project")?,&request).map_err(|error|Failure::failed("design_version_refused",error.to_string()).detail(json!({"cause":error.code(),"detail":error.detail_value()})).remedy(error.remedy_text().unwrap_or("Choose exact assigned versions; MV restore is unavailable. Review a conflict without changing the accepted request.")))
 }
 pub fn list(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::List {
-            transformer: i.require("transformer")?.into(),
+            transformer: object(i)?,
+        },
+    )
+}
+pub fn status(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ask(
+        i,
+        Request::Status {
+            transformer: object(i)?,
         },
     )
 }
@@ -140,20 +197,18 @@ pub fn compare(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::Compare {
-            transformer: i.require("transformer")?.into(),
+            transformer: object(i)?,
             from: i.require("from")?.into(),
             to: i.require("to")?.into(),
         },
     )
 }
 pub fn begin(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let transformer = i.require("transformer")?;
-    let reason = i.require("reason")?;
     ask(
         i,
         Request::Begin {
-            transformer: transformer.into(),
-            reason: reason.into(),
+            transformer: object(i)?,
+            reason: i.require("reason")?.into(),
             idempotency_key: i.require("idempotency-key")?.into(),
         },
     )
@@ -162,7 +217,7 @@ pub fn restore(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::Restore {
-            transformer: i.require("transformer")?.into(),
+            transformer: object(i)?,
             version: i.require("version")?.into(),
             reason: i.require("reason")?.into(),
             idempotency_key: i.require("idempotency-key")?.into(),

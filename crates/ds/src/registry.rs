@@ -988,16 +988,6 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::design::process_setup::render,
     },
     Entry {
-        command: &ds_cli_map::design::version_create::COMMAND,
-        handler: ds_cli_map::design::version_create::run,
-        render: ds_cli_map::design::version_create::render,
-    },
-    Entry {
-        command: &ds_cli_map::design::version_list::COMMAND,
-        handler: ds_cli_map::design::version_list::run,
-        render: ds_cli_map::design::version_list::render,
-    },
-    Entry {
         command: &ds_cli_map::design::version_play::COMMAND,
         handler: ds_cli_map::design::version_play::run,
         render: ds_cli_map::design::version_play::render,
@@ -1947,9 +1937,9 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::versions::render,
     },
     Entry {
-        command: &ds_cli_design::preview::VERSION_STATUS,
-        handler: ds_cli_design::preview::run_version_status,
-        render: ds_cli_design::preview::render_version_status,
+        command: &ds_cli_design::versions::STATUS,
+        handler: ds_cli_design::versions::status,
+        render: ds_cli_design::versions::render,
     },
     Entry {
         command: &ds_cli_design::preview::CONFLICT_LIST,

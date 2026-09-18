@@ -720,6 +720,13 @@ impl DeviceSession {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, design_versions, project, command)
     }
+    pub fn design_attachments(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::design_attachments::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, design_attachments, project, command)
+    }
     pub fn design_tags(
         &mut self,
         project: &str,

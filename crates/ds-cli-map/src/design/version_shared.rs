@@ -1,9 +1,8 @@
 //! Shared validation and receipt shaping for transformer version history.
 
 use ds_cli_contract::outcome::Failure;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
-pub const MAX_VERSION_ROWS: usize = 200;
 pub const MAX_COMPARE_LAYERS: usize = 200;
 
 pub const REFUSAL_MARKERS: &[(&str, &str)] = &[
@@ -70,7 +69,7 @@ pub fn classify_failure(failure: Failure) -> Failure {
             "version_not_found",
             "the exact transformer version does not exist",
         )
-        .remedy("run `ds map design version list --transformer <name>` and pass an exact playable v<number>"),
+        .remedy("run `ds design version list --project <project-id> --transformer <name>` and pass an exact playable v<number>"),
         Some("playback_unavailable") => Failure::invalid(
             "playback_unavailable",
             "the retained version has metadata but no immutable playback snapshot",
@@ -110,16 +109,6 @@ pub fn nonempty_text<'a>(value: &'a Value, key: &str) -> Result<&'a str, Failure
     })
 }
 
-pub fn nullable_text(value: &Value, key: &str) -> Result<Value, Failure> {
-    match value.get(key) {
-        Some(Value::String(text)) => Ok(Value::String(text.clone())),
-        Some(Value::Null) => Ok(Value::Null),
-        _ => Err(unreadable(format!(
-            "the application omitted nullable `{key}`"
-        ))),
-    }
-}
-
 pub fn boolean(value: &Value, key: &str) -> Result<bool, Failure> {
     value[key]
         .as_bool()
@@ -130,25 +119,6 @@ pub fn count(value: &Value, key: &str) -> Result<u64, Failure> {
     value[key]
         .as_u64()
         .ok_or_else(|| unreadable(format!("the application omitted bounded count `{key}`")))
-}
-
-pub fn version_row(raw: &Value) -> Result<Value, Failure> {
-    let version_id = nonempty_text(raw, "versionId")?;
-    canonical_version(version_id, false)?;
-    let version = count(raw, "version")?;
-    if version == 0 || (!version_id.starts_with("local-") && version_id != format!("v{version}")) {
-        return Err(unreadable(
-            "the version id and assigned ordinal do not describe the same version",
-        ));
-    }
-    Ok(json!({
-        "version_id": version_id,
-        "version": version,
-        "reason": nullable_text(raw, "reason")?,
-        "created_at": nullable_text(raw, "createdAt")?,
-        "created_by": nullable_text(raw, "createdBy")?,
-        "playback_available": boolean(raw, "playbackAvailable")?,
-    }))
 }
 
 pub fn descriptor(raw: &Value, side: &str) -> Result<Value, Failure> {
@@ -228,28 +198,9 @@ pub fn require_true(result: &Value, key: &str) -> Result<(), Failure> {
     Ok(())
 }
 
-pub fn one_argument(key: &str, value: &str) -> Value {
-    let mut args = Map::new();
-    args.insert(key.into(), json!(value));
-    Value::Object(args)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn legacy_version_metadata_stays_readable_when_optional_fields_are_null() {
-        let row = version_row(&json!({
-            "versionId":"v1","version":1,"reason":null,"createdAt":null,
-            "createdBy":null,"playbackAvailable":false,
-        }))
-        .expect("legacy metadata row");
-        assert_eq!(row["reason"], Value::Null);
-        assert_eq!(row["created_at"], Value::Null);
-        assert_eq!(row["created_by"], Value::Null);
-        assert_eq!(row["playback_available"], false);
-    }
 
     #[test]
     fn version_tokens_and_saved_head_generations_are_bounded() {

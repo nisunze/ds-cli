@@ -63,6 +63,11 @@ const CLI_ISSUED: &[(&str, &str)] = &[
     ("domains.project_data.action", "ds map data"),
     ("domains.project_forms.action", "ds survey forms"),
     ("domains.project_report.action", "ds report"),
+    (
+        "domains.design_collaboration.attachments",
+        "ds design attachment",
+    ),
+    ("domains.design_collaboration.versions", "ds design version"),
     ("domains.styles.update", "ds style"),
     ("domains.tiles.action", "ds tile"),
     ("domains.solar.desktop_snapshot", "ds solar"),
@@ -219,6 +224,11 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         // The registry declares this vocabulary too; it is asserted separately
         // in `the_action_vocabularies_the_cli_may_send_are_declared`.
         data_distribution_actions: DATA_DISTRIBUTION_ACTIONS.map(str::to_owned).to_vec(),
+        design_attachments_method: route("domains.design_collaboration.attachments").0,
+        design_attachments_path: route("domains.design_collaboration.attachments").1,
+        design_attachments_actions: ds_client_core::DESIGN_ATTACHMENTS_ACTIONS
+            .map(str::to_owned)
+            .to_vec(),
         design_versions_method,
         design_versions_path,
         design_versions_actions: DESIGN_VERSIONS_ACTIONS.map(str::to_owned).to_vec(),

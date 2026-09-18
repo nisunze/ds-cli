@@ -4700,6 +4700,53 @@ pub fn design_versions(
         |client, project| client.design_versions(project, command, now()),
     )
 }
+/// Explicit request context: saved selection is neither read nor changed.
+pub fn design_versions_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &ds_client_core::design_versions::Command,
+) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    command.validate(&project).map_err(|error| {
+        Failure::invalid("invalid_input", error).remedy(
+            "Choose one exact kind/object and assigned vN versions; MV restore is unavailable",
+        )
+    })?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device
+            .design_versions(&project, command)
+            .map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .design_versions(&project, command, now())
+        .map_err(map_client)
+}
+pub fn design_attachments_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &ds_client_core::design_attachments::Command,
+) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    command.validate(&project).map_err(map_client)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device
+            .design_attachments(&project, command)
+            .map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .design_attachments(&project, command, now())
+        .map_err(map_client)
+}
 pub fn design_tags(
     lane: &str,
     command: &ds_client_core::design_tags::Command,

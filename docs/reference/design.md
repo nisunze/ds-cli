@@ -336,8 +336,10 @@ Saved selections, attachments, tags and comment threads are governed project
 state behind ds-brain, which is the only gateway and the only authority: it
 decides who may write, it arbitrates two people editing the same record in the
 same second, and it refuses a write authored against a version that has since
-moved. So an attachment, tag or comment command here is one named semantic
-operation the *paired application* performs under the session it already holds.
+moved. Attachment commands run headlessly under native authorization for the explicit
+`--project`. LV revision bindings use governance `vN`; MV bindings use the exact
+content `source_revision`, never the governance ordinal. Tag and comment commands
+remain named semantic operations the paired application performs under its session.
 `ds` sends a request and receives an outcome. It never receives a credential,
 and it never runs code inside the application — `docs/reference/desktop.status.md`
 has the pairing argument in full.
@@ -354,10 +356,10 @@ a read this process performed, never asserted from a flag; and the member digest
 drawn by lasso on a rendered map is a different thing and stays with the paired
 application as `ds map design select`.
 
-There is no `--project` flag anywhere in this domain. Attachment, tag and
-comment commands use the project open in the paired application; saved
-selections, the headless feature reads and the LV export commands use the exact
-audience-fenced context selected by `ds auth project use`.
+Version and attachment commands require explicit `--project` and native
+authorization independently of Desktop and the Web active project. Tag and
+comment commands still use the paired application project; saved selections,
+the headless feature reads and LV export use the audience-fenced selected context.
 
 ## Why this is not `ds map`
 
@@ -374,8 +376,8 @@ ds design selection read --selection sel-week-32          # who is in it, right 
 ds design selection assign --selection sel-week-32 \
   --title "Review LV designs" --owner nixon@example.com --yes
 
-ds design attachment list --kind mv_model --object mv_line_a
-ds design attachment publish --kind mv_model --object mv_line_a \
+ds design attachment list --project <project-id> --kind mv_model --object mv_line_a
+ds design attachment publish --project <project-id> --kind mv_model --object mv_line_a \
   --path ./MV_LINE_A.bak --version rev_2 --yes
 
 ds design tag list --kind lv_transformer --object kigali_a
@@ -646,12 +648,11 @@ for the same project by predicate — rather than with "pass fewer values".
 
 ## Where `ds` deliberately stops
 
-**Publishing a large attachment.** The paired desktop reads a named path
-through a bounded reader, so `ds design attachment publish` refuses a file
-larger than that bound with `attachment_too_large` and names the Attachments
-dialog, which streams from the file picker. Truncating the file to a preview
-and registering a revision against the wrong bytes would be worse than
-refusing.
+**Publishing a large attachment.** The native client reads the named path with
+a 512 MiB bound and uploads its exact opaque bytes through the server-granted
+Storage URL before finalization. Larger files are refused with a bounded-file
+remedy; no revision is finalized from truncated bytes. Desktop pairing is not
+required.
 
 **Redacting a comment.** Redaction is a moderator's audited action that clears
 text the server does not retain. It stays in the application, where the
@@ -781,16 +782,12 @@ member names by action. The plan-level `source_entries` is the selected scope's
 flat download list. `source_uploads` counts those inputs and how many have a
 URL. The fetch itself stays with the caller.
 
-`ds design version status [--transformer <name>…]` says whether beginning a
-deliberate version is warranted. Per row: `version` in force, `latest` ever
-assigned, `next` ordinal (one past the highest, so restoring to v7 and cutting
-again gives v11, never a second v8), `count`, `restored`, `unversioned`,
-`versionable`, the lead's `reason`, and `changed_since_version` — whether the
-SAVED state has moved since the lead was cut. That last one is the answer
-`ds map design version begin` never gave: a backend that reports neither the
-frozen save generation nor the current one cannot prove the document is
-unchanged, so it reports changed and the cut is offered rather than silently
-skipped. The ordinal itself stays ds-brain's to assign.
+`ds design version status --project <id> --kind <kind> --object <id>` reads
+that object's exact server head. The LV `--transformer <name>` spelling remains
+supported. For MV, source_revision identifies the immutable content, while
+published_version is the governance ordinal; manifest_model_revision is the
+native package's separate nonnegative lineage counter. Status never inspects
+an unsaved room or guesses whether its local contents need publication.
 
 `ds design conflict list` and `ds design conflict check --transformer <name>`
 answer overwrite admissibility. `list` applies the kernel's detection rule —
@@ -927,35 +924,27 @@ the containing download URL; it never invents standalone member URLs.
 `--format pdf` includes a ZIP when its indexed members contain matching PDFs.
 Unknown archive coverage is explicit and does not justify regeneration.
 
-### Headless transformer history
+### Governed design history
 
-`ds design version list --transformer <name>` reads the published version
-catalogue. `ds design version compare --transformer <name> --from v1 --to v2`
-compares immutable snapshots; `--to head` captures the saved server head once.
-Both accept `--lane stable|canary` and `--output json`. Neither opens a map,
-requires a desktop, creates history, or modifies a transformer.
+`design.version` names one explicit project and either an LV transformer or MV
+project model. The transformer flag remains the LV compatibility spelling.
+The server alone assigns governed `vN` identities; native Server and Web use
+shared Rust request planning and response validation. Creation snapshots saved
+server content, with an exact idempotency key, independently of an open map.
+LV comparisons use immutable snapshots; MV comparisons describe pinned content
+revision/digest/manifest lineage without claiming geometry comparison. Restore
+is LV-only and pins the source head before its fenced transaction.
 
-`ds design version begin --transformer <name> --reason <text>
---idempotency-key <opaque-key> --yes` creates one immutable version from the
-current saved server transformer. The selected project comes from the lane;
-there is no project override and no open-map dependency. Reuse the same
-idempotency key only when retrying the same request, so a lost response cannot
-cut a second version. ds-brain assigns the next ordinal and Rust verifies the
-returned project, transformer and version identity.
+Paired map version creation/listing have been retired. Playback and comparison
+rooms remain presentation adapters. Device-local snapshots are retained drafts,
+not governed history or queued publication work.
 
-`ds design version restore --transformer <name> --version <vN> --reason
-<text> --idempotency-key <opaque-key> --yes` replaces the current saved
-transformer with that immutable published snapshot. Rust reads the exact server
-head immediately before the write; ds-brain refuses if any concurrent writer
-moves it. The restore advances the save generation, preserves the highest
-assigned version and history count, and records the human actor and reason.
-
-The native client captures one authenticated project/owner/lane for the whole
-comparison. It verifies both returned object identities and delegates geometry,
-attribute and consistency decisions to the same Rust kernel used by WASM.
-Exact counts remain available when details are bounded; geometry is excluded.
-Legacy metadata-only history is explicitly unavailable for playback. Unpublished
-browser snapshots remain local: publish them before asking the server to compare.
+`design.attachment` uses the native authenticated client and an explicit project,
+without Desktop state. It lists opaque revisions, uploads through a server grant
+and verified native transfer, finalizes immutable bytes, authorizes generation-
+pinned downloads and performs fenced soft retirement. LV attachment versions
+are assigned `vN`; MV attachment versions are exact content revision IDs. Read
+live capabilities for exact flags, limits and refusal remedies.
 
 For a prepared native Design workspace, `ds design project revisions` lists
 retained content digests and `ds design project compare` compares those exact

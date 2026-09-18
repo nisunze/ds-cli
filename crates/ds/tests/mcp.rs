@@ -1193,11 +1193,7 @@ fn design_edit_profile_exposes_known_columns_as_the_external_field_authority() {
 
 #[test]
 fn map_design_version_history_projects_through_catalog_chapter_and_typed_profile() {
-    let ids = [
-        "map.design.version.list",
-        "map.design.version.play",
-        "map.design.version.compare",
-    ];
+    let ids = ["map.design.version.play", "map.design.version.compare"];
     let mut calls = Vec::new();
     for (index, id) in ids.iter().enumerate() {
         calls.push(json!({ "jsonrpc":"2.0", "id":index * 2 + 1, "method":"tools/call", "params":{ "name":"ds_catalog", "arguments":{ "command":id } } }));
@@ -1227,7 +1223,6 @@ fn map_design_version_history_projects_through_catalog_chapter_and_typed_profile
         .as_array()
         .expect("tools");
     for (name, required) in [
-        ("map_design_version_list", json!(["transformer"])),
         ("map_design_version_play", json!(["transformer", "version"])),
         (
             "map_design_version_compare",

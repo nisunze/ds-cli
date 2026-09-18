@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v26",
+  "schema_version": "ds.native-client-profiles/v27",
   "development": true,
   "profiles": {
     "stable": {
@@ -156,7 +156,8 @@
         "POST /api/v1/projects/templates: list,create,set_public,delete",
         "GET /api/v1/projects/templates/{slug}",
         "POST /api/v1/projects: apply_template",
-        "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"
+        "POST /api/v1/projects/from-template",
+        "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"
       ],
       "printing": {
         "method": "POST",
@@ -180,6 +181,19 @@
           "get_head",
           "create_version",
           "restore_version"
+        ]
+      },
+      "design_attachments": {
+        "method": "POST",
+        "path": "/api/v1/design/attachments",
+        "actions": [
+          "list",
+          "get",
+          "start_upload",
+          "finalize_upload",
+          "download",
+          "archive",
+          "archive_revision"
         ]
       }
     },
@@ -337,7 +351,8 @@
         "POST /api/v1/projects/templates: list,create,set_public,delete",
         "GET /api/v1/projects/templates/{slug}",
         "POST /api/v1/projects: apply_template",
-        "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"
+        "POST /api/v1/projects/from-template",
+        "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"
       ],
       "printing": {
         "method": "POST",
@@ -361,6 +376,19 @@
           "get_head",
           "create_version",
           "restore_version"
+        ]
+      },
+      "design_attachments": {
+        "method": "POST",
+        "path": "/api/v1/design/attachments",
+        "actions": [
+          "list",
+          "get",
+          "start_upload",
+          "finalize_upload",
+          "download",
+          "archive",
+          "archive_revision"
         ]
       }
     }

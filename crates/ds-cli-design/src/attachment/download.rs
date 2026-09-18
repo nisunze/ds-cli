@@ -5,9 +5,7 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
-
-use crate::DESCRIPTOR_ARG;
+use serde_json::Value;
 
 pub const ATTACHMENT_ARG: Arg = Arg {
     name: "attachment",
@@ -43,45 +41,33 @@ cannot be served in its place. The digest is returned alongside so the fetched \
 bytes can be checked.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[ATTACHMENT_ARG, REVISION_ARG, DESCRIPTOR_ARG],
+    args: &[
+        crate::versions::PROJECT,
+        crate::transformer::LANE_ARG,
+        ATTACHMENT_ARG,
+        REVISION_ARG,
+    ],
     output: "The project, the `attachment` and `revision`, the `file` name, its `bytes` and `digest`, the signed `url`, and when it `expiresAt`.",
     examples: &[Example {
-        command: "ds design attachment download --attachment att-site-a-bak --output json",
+        command: "ds design attachment download --project <id> --attachment att-site-a-bak --output json",
         note: "Read .data.url; it expires, so fetch promptly and verify .data.digest.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-    ],
+    refusals: &[super::NATIVE_REFUSED],
     reference: Some("docs/reference/design.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let mut arguments = Map::new();
-    arguments.insert("attachment".into(), json!(inputs.require("attachment")?));
-    if let Some(revision) = inputs.value("revision") {
-        arguments.insert("revision".into(), json!(revision));
-    }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ATTACHMENT_DOWNLOAD,
-        Value::Object(arguments),
-        crate::READ_TIMEOUT,
+pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    super::ask(
+        inputs,
+        ds_client_core::design_attachments::Command::Download {
+            attachment: inputs.require("attachment")?.into(),
+            revision: inputs.value("revision").map(str::to_owned),
+        },
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

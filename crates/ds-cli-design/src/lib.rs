@@ -183,7 +183,7 @@ pub static DOMAIN: Domain = Domain {
         &transformer::status::COMMAND,
         &preview::BULK_PLAN,
         &preview::DOWNLOAD_PLAN,
-        &preview::VERSION_STATUS,
+        &versions::STATUS,
         &versions::LIST,
         &versions::COMPARE,
         &versions::BEGIN,
@@ -203,30 +203,6 @@ pub static DOMAIN: Domain = Domain {
 // The declared wire contract
 // ---------------------------------------------------------------------------
 
-pub const ATTACHMENT_LIST: BridgeOp = BridgeOp {
-    operation: "design.attachment.list",
-    arguments: &["kind", "object", "version", "archived"],
-};
-pub const ATTACHMENT_PUBLISH: BridgeOp = BridgeOp {
-    operation: "design.attachment.publish",
-    arguments: &[
-        "kind",
-        "object",
-        "path",
-        "attachment",
-        "version",
-        "label",
-        "purpose",
-    ],
-};
-pub const ATTACHMENT_DOWNLOAD: BridgeOp = BridgeOp {
-    operation: "design.attachment.download",
-    arguments: &["attachment", "revision"],
-};
-pub const ATTACHMENT_RETIRE: BridgeOp = BridgeOp {
-    operation: "design.attachment.retire",
-    arguments: &["attachment", "revision", "restore"],
-};
 pub const TAG_LIST: BridgeOp = BridgeOp {
     operation: "design.tag.list",
     arguments: &["kind", "object", "version"],
@@ -357,10 +333,6 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &sync::STATUS_OP,
     &sync::CANCEL_OP,
     &sync::RESUME_OP,
-    &ATTACHMENT_LIST,
-    &ATTACHMENT_PUBLISH,
-    &ATTACHMENT_DOWNLOAD,
-    &ATTACHMENT_RETIRE,
     &TAG_LIST,
     &TAG_QUERY,
     &TAG_DEFINE,

@@ -95,6 +95,7 @@ struct Entry {
     /// Saved Transformer Status selections. Membership is ds-brain's decision;
     /// this route is only how a headless caller reaches the same answer.
     design_versions: Tiles,
+    design_attachments: Tiles,
     design_selections: Tiles,
     /// The seeding door: the reference catalogue and the derived buildings or
     /// contours acquisition. Bundle bytes are not a route; the core pins them.
@@ -395,6 +396,9 @@ fn load_path(
         project_report_method: entry.project_report.method,
         project_report_path: entry.project_report.path,
         project_report_actions: entry.project_report.actions,
+        design_attachments_method: entry.design_attachments.method,
+        design_attachments_path: entry.design_attachments.path,
+        design_attachments_actions: entry.design_attachments.actions,
         design_versions_method: entry.design_versions.method,
         design_versions_path: entry.design_versions.path,
         design_versions_actions: entry.design_versions.actions,
@@ -469,6 +473,7 @@ mod tests {
                     "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "get_style_catalog", "refresh", "reorder", "set_default_visibility"] },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
+                    "design_attachments": {"method":"POST","path":"/api/v1/design/attachments","actions":["list","get","start_upload","finalize_upload","download","archive","archive_revision"]},
                     "design_versions": {"method":"POST","path":"/api/v1/design/versions","actions":["list_versions","get_version","get_head","create_version","restore_version"]},
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},
@@ -499,6 +504,7 @@ mod tests {
                     "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "get_style_catalog", "refresh", "reorder", "set_default_visibility"] },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
+                    "design_attachments": {"method":"POST","path":"/api/v1/design/attachments","actions":["list","get","start_upload","finalize_upload","download","archive","archive_revision"]},
                     "design_versions": {"method":"POST","path":"/api/v1/design/versions","actions":["list_versions","get_version","get_head","create_version","restore_version"]},
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},

@@ -749,6 +749,46 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    fn design_attachments(
+        &mut self,
+        call: ds_client_core::DesignAttachmentsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let request = if call.method() == "GET" {
+            ureq::get(url).force_send_body()
+        } else {
+            ureq::post(url)
+        };
+        let result = request
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(if call.method() == "GET" {
+                &[]
+            } else {
+                body.as_bytes()
+            });
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
     fn design_tags(
         &mut self,
         call: ds_client_core::DesignTagsCall<'_>,
@@ -887,6 +927,28 @@ impl Transport for NativeTransport {
     fn grid_model_upload(
         &mut self,
         call: ds_client_core::grid_models::publication::UploadCall<'_>,
+    ) -> Result<(), TransportError> {
+        use ds_sync_runtime::native_transfer::{NativeTransferOutcome, drive_verified_output};
+        let result = drive_verified_output(
+            call.uri(),
+            call.bytes().len() as u64,
+            call.digest(),
+            std::io::Cursor::new(call.bytes()),
+            None,
+            None,
+            &|| false,
+            &mut |_| {},
+        )
+        .map_err(|_| TransportError::Unreachable)?;
+        if result.outcome == NativeTransferOutcome::Done {
+            Ok(())
+        } else {
+            Err(TransportError::Unreachable)
+        }
+    }
+    fn design_attachment_upload(
+        &mut self,
+        call: ds_client_core::design_attachments::UploadCall<'_>,
     ) -> Result<(), TransportError> {
         use ds_sync_runtime::native_transfer::{NativeTransferOutcome, drive_verified_output};
         let result = drive_verified_output(

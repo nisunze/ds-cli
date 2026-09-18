@@ -24,7 +24,7 @@ sequence, cache, IndexedDB, Svelte, WASM, or backend implementation.
 Two project contexts exist and they are not the same thing. The paired
 application's visible project (`ds desktop status`) governs every `map.*`
 command and paired local-cache write. The CLI-selected project (`ds auth project use`,
-`ds auth project status`) governs every `headless_project` command — tiling,
+`ds auth project status`) governs selected-project `headless_project` commands — tiling,
 background reports, transformer inventory and retirement — with no map, room
 or Desktop. `design.transformer.download` is the deliberate bridge between
 those ideas: it prepares the paired application's local cache in the
@@ -47,3 +47,8 @@ scope immediately before every durable operation.
 If multiple desktops are paired, require the intended descriptor rather than
 choosing one. Where `ds` lives, how to read its envelope, and what to do when
 it has no matching contract are the `ds` skill's rules; follow them here.
+
+Touched version and attachment boundaries instead require explicit `--project`:
+`design.version.*` and `design.attachment.*` capture that project for native
+authorization and never consult the Web active project or require Desktop.
+Check each live descriptor; do not switch a saved project to satisfy these calls.

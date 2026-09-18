@@ -102,18 +102,18 @@ pinned project layers.
 
 ## Version deliberately; save separately
 
-Discover `map.design.version.list` for the exact transformer. Treat
-`playback_available` as fact: legacy metadata-only history cannot be opened or
-compared as content. Play an exact returned `v<number>` and require
-`read_only=true`, `map_ready=true`, `staged=false`, and `persisted=false`.
-Compare with `map.design.version.compare --from <vN> --to <vN|head>` and retain
-its pinned descriptors and aggregate/per-layer counts. Playback and comparison
-are evidence, never restore, editing, feature transport, or force replacement.
+Discover `design.version.list` with the explicit project and transformer. Server
+`vN` history is authoritative; device-local drafts are separate retained work.
+Use `map.design.version.play` only for a returned version with
+`playback_available=true`; metadata-only history cannot be played as content.
+Playback and paired comparison are read-only evidence, never restore or editing.
 
-Decide explicitly whether an engineering edit needs a new version. If so,
-require a clean saved room and run `ds map design version begin --transformer
-<name> --reason <text> --yes`. Supply no version number: ds-brain assigns the
-next `v<number>` and writes bounded metadata without layer/report data.
+Decide explicitly whether an engineering edit needs a new governance version.
+If so, save the authorized engineering state first, then discover
+`design.version.begin`. Supply the explicit project, `--transformer <name>`, a
+reason and a stable idempotency key; ds-brain assigns `vN` from the saved server
+state. Beginning history does not publish an unsaved device-local room. Read the
+headless descriptor before using confirmation or LV-only restore.
 
 For an overwrite upload, enable its version option and reason only when the
 operator intends the bump. Never infer version intent from Replace, Save,

@@ -5,9 +5,9 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::{DESCRIPTOR_ARG, KIND_ARG, OBJECT_ARG, VERSION_ARG};
+use crate::{KIND_ARG, OBJECT_ARG, VERSION_ARG};
 
 const PATH_ARG: Arg = Arg {
     name: "path",
@@ -59,13 +59,13 @@ Uploads the file to a server-minted session and registers one immutable \
 revision. Earlier bytes are never touched: each revision owns its own storage \
 object, its own server-verified SHA-256 and its own generation, so a new \
 `.bak` for a later version sits alongside the earlier one rather than \
-replacing it. Pass --version to bind the revision to one exact object version. \
-Without --attachment this starts a new logical file; with it, the application \
+replacing it. Use an explicit --project without a desktop. LV --version is an assigned vN; MV --version is its content revision id, never governance vN. Pass --version to bind the revision to one exact object version. \
+Without --attachment this starts a new logical file; with it, the native owner \
 reads that file's current version and adds a revision under it, so a concurrent \
 publish is refused rather than overwritten.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         KIND_ARG,
@@ -75,51 +75,54 @@ publish is refused rather than overwritten.",
         VERSION_ARG,
         LABEL_ARG,
         PURPOSE_ARG,
-        DESCRIPTOR_ARG,
+        crate::versions::PROJECT,
+        crate::transformer::LANE_ARG,
     ],
     output: "The project, the object, the `attachment` and `revision` ids, the revision `ordinal`, the file's `bytes`, and the attachment's committed `version`.",
     examples: &[Example {
-        command: "ds design attachment publish --kind mv_model --object mv_line_a --path ./MV_LINE_A.bak --version rev_2 --yes",
+        command: "ds design attachment publish --project <id> --kind mv_model --object mv_line_a --path ./MV_LINE_A.bak --version rev_2 --yes",
         note: "A PLS-CADD backup is an ordinary opaque attachment; nothing parses it.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::READ_ONLY,
-        crate::CONFLICT,
-        crate::INVALID_ANCHOR,
-        crate::TOO_LARGE,
-        crate::CONFIRMATION_REQUIRED,
-    ],
+    refusals: &[super::NATIVE_REFUSED, crate::CONFIRMATION_REQUIRED],
     reference: Some("docs/reference/design.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let mut arguments = crate::anchor(inputs)?;
-    arguments.insert("path".into(), json!(inputs.require("path")?));
-    for flag in ["attachment", "label", "purpose"] {
-        if let Some(value) = inputs.value(flag) {
-            arguments.insert(flag.into(), json!(value));
-        }
-    }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ATTACHMENT_PUBLISH,
-        Value::Object(arguments),
-        crate::PUBLISH_TIMEOUT,
+pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    use std::io::Read;
+    let path = std::path::Path::new(inputs.require("path")?);
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| {
+            file.take(ds_client_core::design_attachments::MAX_BYTES as u64 + 1)
+                .read_to_end(&mut bytes)
+        })
+        .map_err(|error| {
+            Failure::invalid("design_attachment_refused", error.to_string())
+                .remedy("Choose a readable opaque file up to512MiB")
+        })?;
+    let file = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            Failure::invalid(
+                "design_attachment_refused",
+                "File name is not readable UTF-8",
+            )
+            .remedy("Use a portable file name")
+        })?;
+    super::ask(
+        inputs,
+        ds_client_core::design_attachments::Command::Publish {
+            object: super::object(inputs)?,
+            attachment: inputs.value("attachment").map(str::to_owned),
+            file: file.into(),
+            label: inputs.value("label").map(str::to_owned),
+            purpose: inputs.value("purpose").map(str::to_owned),
+            bytes,
+        },
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {
