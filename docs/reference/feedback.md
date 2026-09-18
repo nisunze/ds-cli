@@ -54,7 +54,9 @@ token the caller had to keep.
   token is opaque and carries its own integrity digest and the fingerprint of
   the query it answered; a hand-built one, or one replayed under a different
   filter, is `feedback_cursor_rejected`.
-* `--all` ignores the remembered watermark and reads the whole backlog.
+* `--all` ignores the remembered watermark and reads the whole backlog. It is
+  also what an older client does implicitly: opting into the watermark is an
+  explicit flag on the wire, so a client that predates it sees no change.
 * `--view not_addressed` (the default), `addressed`, or `all`, narrowed by
   `--component` or `--query`. Every filter goes to the backlog — nothing is
   narrowed after the answer arrives, because a row hidden here would still have
