@@ -289,6 +289,8 @@ mod tests {
             ADMIN_BOUNDS_ACTIONS, ADMIN_BOUNDS_METHOD, ADMIN_BOUNDS_PATH,
             DATA_DISTRIBUTION_ACTIONS, DATA_DISTRIBUTION_METHOD, DATA_DISTRIBUTION_PATH,
             DESIGN_SELECTIONS_ACTIONS, DESIGN_SELECTIONS_METHOD, DESIGN_SELECTIONS_PATH,
+            SRE_EVENTS_ACTIONS, SRE_EVENTS_METHOD, SRE_EVENTS_PATH, SRE_OVERVIEW_METHOD,
+            SRE_OVERVIEW_PATH,
         };
         use crate::profile::{
             AUTH_DEVICE_LIST_METHOD, AUTH_DEVICE_LIST_PATH, AUTH_DEVICE_READ_METHOD,
@@ -402,6 +404,12 @@ mod tests {
                 ADMIN_BOUNDS_METHOD,
                 ADMIN_BOUNDS_PATH,
             ),
+            (
+                "domains.sre.overview",
+                SRE_OVERVIEW_METHOD,
+                SRE_OVERVIEW_PATH,
+            ),
+            ("domains.sre.events", SRE_EVENTS_METHOD, SRE_EVENTS_PATH),
         ];
         for (id, method, path) in route_pairs {
             let entry = op(id);
@@ -447,6 +455,20 @@ mod tests {
         assert!(!admin.allows_action("descendants"));
         assert!(!admin.allows_action("enrich"));
         assert!(!admin.allows_action("locate"));
+        // Platform reliability: one read with no action at all, and one that
+        // borrows the reusable tabular stream for exactly one of its actions.
+        let overview = op("domains.sre.overview");
+        assert!(overview.actions.is_empty());
+        assert_eq!(overview.transport, "json");
+        let events = op("domains.sre.events");
+        assert_eq!(events.actions, &SRE_EVENTS_ACTIONS[..]);
+        assert!(events.allows_action("query_table"));
+        assert!(!events.allows_action("query_entries"));
+        assert!(!events.allows_action("save_transformers_data"));
+        // The window is a stream, and a stream that is silently retried bills a
+        // second scan for an answer nobody has been told is incomplete.
+        assert_eq!(events.transport, "ndjson");
+        assert_eq!(events.retry_class, "none");
         let forms = op("domains.project_forms.action");
         assert!(forms.allows_action(PROJECT_FORMS_ACTION));
         assert!(forms.allows_action(PROJECT_FORM_EDITOR_ACTION));

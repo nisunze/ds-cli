@@ -196,12 +196,17 @@ pub mod global_tiles;
 pub mod grid_catalog;
 pub mod grid_models;
 pub mod report_artifact;
+pub mod sre;
 pub use profile::{ADMIN_BOUNDS_ACTIONS, ADMIN_BOUNDS_METHOD, ADMIN_BOUNDS_PATH};
+pub use profile::{
+    SRE_EVENTS_ACTIONS, SRE_EVENTS_METHOD, SRE_EVENTS_PATH, SRE_OVERVIEW_METHOD, SRE_OVERVIEW_PATH,
+};
 pub use transport::AdminBoundsCall;
 pub use transport::GlobalTilesCall;
 pub use transport::GridCatalogCall;
 pub use transport::GridModelsCall;
 pub use transport::ReportArtifactCall;
+pub use transport::{SreEventsCall, SreOverviewCall};
 
 pub mod design_attachments;
 pub mod design_versions;

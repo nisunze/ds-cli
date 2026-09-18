@@ -1023,8 +1023,70 @@
       }
     },
     "sre": {
-      "summary": "Client observability ingest.",
+      "summary": "Platform reliability: the fleet top line, a bounded event window, and client observability ingest.",
+      "doc": [
+        "Reliability is platform-global: none of these operations carries a",
+        "project. `overview` and `events` are the two reads DS GridDesign's",
+        "Reliability page performs, and they are declared here because a server",
+        "is exactly where platform health is read from. ds-brain gates both",
+        "behind the `platform.admin` capability; the gateway is the access",
+        "guard, and the capability is the authorization.",
+        "",
+        "`events` is the SRE request-event store, and the route it travels is",
+        "the reusable tabular stream `/api/v1/data` `query_table`, not an",
+        "endpoint of its own. That path answers many actions; exactly one is",
+        "declared, and the client pins the only table it may name",
+        "(ds-client-core SRE_EVENTS_TABLE = `sre_requests`). Declaring these two",
+        "routes bumped the client profile schema to v29."
+      ],
       "operations": {
+        "overview": {
+          "summary": "Read fleet health, service SLOs, stale work and incidents.",
+          "doc": [
+            "A pure read with no body and no parameters. ds-brain composes it",
+            "from Cloud Monitoring inside a 25-second budget and degrades to",
+            "definitions rather than failing, so a slow monitoring backend",
+            "returns a thinner answer instead of an error."
+          ],
+          "transport": "json",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 8388608,
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/sre/overview",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "events": {
+          "summary": "Read one bounded newest-first window of request events.",
+          "doc": [
+            "The window is bounded by BigQuery days and a row cap, both clamped",
+            "by the source. The answer is NDJSON, one row per line, closed by a",
+            "`__type: summary` trailer whose count the client verifies against",
+            "the rows it received — a truncated stream is a refusal, not a",
+            "shorter answer.",
+            "",
+            "`retry_class` is `none` on purpose: a stream that failed partway",
+            "cannot be resumed, and re-sending it silently would bill a second",
+            "scan for an answer the caller has not yet been told is incomplete."
+          ],
+          "transport": "ndjson",
+          "action_key": "action",
+          "actions": ["query_table"],
+          "idempotency": "idempotent",
+          "retry_class": "none",
+          "timeout_s": 180,
+          "response_cap_bytes": 33554432,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/data",
+            "backend": "ds_brain_bulk_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
         "client_request_event": {
           "summary": "Report one browser-observed request outcome.",
           "doc": [

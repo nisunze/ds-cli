@@ -1199,6 +1199,32 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One bounded read of platform reliability.
+    ///
+    /// No project: a platform is not a project, and nothing about fleet health
+    /// is selected by one. The restored user is the identity the gateway sees,
+    /// and `platform.admin` is what decides whether there is an answer.
+    pub fn sre(
+        &mut self,
+        command: &crate::sre::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::sre::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            command,
+        )
+    }
+
     /// One governed action on the GLOBAL library and example catalog.
     ///
     /// No project id, because this catalog has none: a library release belongs

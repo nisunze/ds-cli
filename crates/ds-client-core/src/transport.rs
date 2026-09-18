@@ -23,6 +23,9 @@ pub use crate::profile::{
     TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
 };
 pub use crate::profile::{PROJECT_REPORT_METHOD, PROJECT_REPORT_PATH};
+pub use crate::profile::{
+    SRE_EVENTS_ACTIONS, SRE_EVENTS_METHOD, SRE_EVENTS_PATH, SRE_OVERVIEW_METHOD, SRE_OVERVIEW_PATH,
+};
 pub const AUTH_RESPONSE_LIMIT: usize = 256 * 1024;
 pub const PROJECT_RESPONSE_LIMIT: usize = 4 * 1024 * 1024;
 pub const TRANSFORMER_CONTEXT_RESPONSE_LIMIT: usize = 64 * 1024 * 1024;
@@ -50,6 +53,15 @@ pub const TILE_TIMEOUT_SECONDS: u64 = 120;
 pub const ADMIN_BOUNDS_RESPONSE_LIMIT: usize = 8 * 1024 * 1024;
 /// The gateway's own deadline for the route (`ds-apis-tf/api_rwanda_admin.tf`).
 pub const ADMIN_BOUNDS_TIMEOUT_SECONDS: u64 = 60;
+/// The overview is a handful of Cloud Monitoring projections; ds-brain composes
+/// it inside its own 25-second budget, and the gateway allows 30.
+pub const SRE_OVERVIEW_RESPONSE_LIMIT: usize = 8 * 1024 * 1024;
+pub const SRE_OVERVIEW_TIMEOUT_SECONDS: u64 = 30;
+/// A saturated event window is five thousand rows of NDJSON. The gateway allows
+/// the tabular route five minutes; this client asks for three, because an
+/// operator waiting on a terminal is not a batch job.
+pub const SRE_EVENTS_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
+pub const SRE_EVENTS_TIMEOUT_SECONDS: u64 = 180;
 pub const PROJECT_REPORT_RESPONSE_LIMIT: usize = 8 * 1024 * 1024;
 /// The compounded deliverable fans out reporter work and streams a ZIP; the
 /// gateway allows ten minutes for the `/report` route and so does the core.
@@ -1497,6 +1509,125 @@ impl AdminBoundsCall<'_> {
     }
 }
 
+/// The platform reliability top line.
+///
+/// No body, no parameters and no project: the whole request is a path, and the
+/// restored user's `platform.admin` capability is what decides the answer.
+pub struct SreOverviewCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl SreOverviewCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub const fn path(&self) -> &'static str {
+        SRE_OVERVIEW_PATH
+    }
+    pub const fn method(&self) -> &'static str {
+        SRE_OVERVIEW_METHOD
+    }
+    pub fn url(&self) -> String {
+        format!("{}{}", self.gateway_origin(), SRE_OVERVIEW_PATH)
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        SRE_OVERVIEW_RESPONSE_LIMIT
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        SRE_OVERVIEW_TIMEOUT_SECONDS
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+}
+
+/// One bounded newest-first window of platform request events.
+///
+/// The answer is NDJSON rather than one object, so a host reads it to the
+/// response limit and hands the bytes back whole; the line grammar and its
+/// closing summary belong to [`crate::sre`], not to a transport.
+pub struct SreEventsCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl SreEventsCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub const fn path(&self) -> &'static str {
+        SRE_EVENTS_PATH
+    }
+    pub const fn method(&self) -> &'static str {
+        SRE_EVENTS_METHOD
+    }
+    pub const fn action(&self) -> &'static str {
+        SRE_EVENTS_ACTIONS[0]
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    /// What the caller must accept. The route streams one JSON object per line
+    /// and closes with a summary, so a host that asked for `application/json`
+    /// would be asking for a document this route never produces.
+    pub const fn accept(&self) -> &'static str {
+        "application/x-ndjson"
+    }
+    pub const fn response_limit(&self) -> usize {
+        SRE_EVENTS_RESPONSE_LIMIT
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        SRE_EVENTS_TIMEOUT_SECONDS
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed sre event request"))
+    }
+}
+
 pub struct GridCatalogCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: serde_json::Value,
@@ -2256,6 +2387,18 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn sre_overview(
+        &mut self,
+        _call: SreOverviewCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+    fn sre_events(
+        &mut self,
+        _call: SreEventsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -2494,6 +2637,18 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn sre_overview(
+        &mut self,
+        _call: SreOverviewCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+    fn sre_events(
+        &mut self,
+        _call: SreEventsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -2712,6 +2867,15 @@ impl<T: Transport> AuthorizedTransport for T {
         call: AdminBoundsCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::admin_bounds(self, call)
+    }
+    fn sre_overview(
+        &mut self,
+        call: SreOverviewCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::sre_overview(self, call)
+    }
+    fn sre_events(&mut self, call: SreEventsCall<'_>) -> Result<TransportResponse, TransportError> {
+        Transport::sre_events(self, call)
     }
     fn shared_asset_bytes(
         &mut self,
