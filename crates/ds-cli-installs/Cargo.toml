@@ -1,0 +1,21 @@
+[package]
+name = "ds-cli-installs"
+description = "The `ds install` domain: the product's installation inventory, its licensing state, and the explicit verbs that govern it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The inventory is an authenticated, platform-global surface owned by ds-brain.
+# The restored native user performs each action; this crate holds no credential
+# and opens no second route. What a row MEANS is the kernel's decision, reached
+# here through the same projection the browser and the Server call, so a
+# terminal and a page can never disagree about a licence state.
+ds-cli-auth = { workspace = true }
+ds-cli-contract = { workspace = true }
+ds-client-core = { workspace = true }
+ds-command-kernel = { workspace = true }
+serde_json = { workspace = true }

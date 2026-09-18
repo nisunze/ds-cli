@@ -713,6 +713,7 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-work", &["work"]),
         ("ds-cli-assets", &["assets"]),
         ("ds-cli-sre", &["sre"]),
+        ("ds-cli-installs", &["install"]),
         ("ds-cli-survey", &["survey"]),
         ("ds-cli-style", &["style"]),
         ("ds-cli-tile", &["tile"]),

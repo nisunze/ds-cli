@@ -122,7 +122,14 @@ fn root_help_is_cheap() {
     // `assets` domain — the Project Assets surface: documents in folders,
     // previewed and linked. Measured 2,444 bytes with 21 domains; its nine
     // commands stay below this tier and cost the root exactly this line.
-    assert_within("root help", &["--help"], 2_460);
+    // 2026-09-18: raised from 2_460 by one domain line (90 bytes) for the
+    // `install` domain — the product's own installation inventory, its licence
+    // state and the verbs that govern it. Measured 2,546 bytes with 22
+    // domains. This inventory had no `ds` surface at all: it was reachable
+    // only from one Governance page in a browser, which is the host least
+    // likely to be running where an operator asks which installations exist
+    // and which licences are blocked. Its four commands stay below this tier.
+    assert_within("root help", &["--help"], 2_550);
 }
 
 #[test]
