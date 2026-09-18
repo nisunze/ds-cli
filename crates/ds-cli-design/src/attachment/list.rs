@@ -24,13 +24,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "attachment", "list"],
     contract: 1,
     summary: "List the files attached to a transformer or DS Grid model.",
-    purpose: "\
-Names every logical file on the object with all of its revisions: the file \
-name, byte size, server-verified digest, which object version each revision is \
-bound to, and which one the logical latest pointer names. Passing --version \
-narrows to the revisions bound to that exact object version, which is how you \
-answer \"what was attached when this model was at rev_2\". Every other command \
-in this family needs an id from here.",
+    purpose: "List server-owned file heads and immutable revisions for the explicit project/object. --version filters exact LV vN or MV content-revision bindings; use returned attachment_id and revision_id for subsequent operations.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
