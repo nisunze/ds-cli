@@ -137,10 +137,12 @@ pub fn plan_once(
         online: host.online(),
         trigger,
         remote_read_at_ms,
-        // The kernel's grant check is coarse — project, install, expiry, engine
-        // release. The per-resource claim check is the server's at publish, so
-        // the freshest held grant is the honest thing to show it.
+        // Coverage is decided over the whole held set: each grant covers one
+        // `(engine release, resource)` scope and this project publishes one
+        // row per transformer, so showing the kernel a single grant let one
+        // covered scope answer for every other row.
         grant: grants.last().map(kernel_grant),
+        grants: grants.iter().map(kernel_grant).collect(),
         source_grants: grants.iter().map(kernel_grant).collect(),
         local: local.iter().map(kernel_local).collect(),
         remote: remote.iter().map(kernel_remote).collect(),
