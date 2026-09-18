@@ -1148,6 +1148,31 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             command,
         )
     }
+    /// One governed action on the GLOBAL reference publications.
+    ///
+    /// No project: these tiles belong to the product. Publishing needs the
+    /// gateway's `global_tiles.manage`; reading needs a restored user.
+    pub fn global_tiles(
+        &mut self,
+        command: &crate::global_tiles::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::global_tiles::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            command,
+        )
+    }
+
     /// One governed action on the GLOBAL library and example catalog.
     ///
     /// No project id, because this catalog has none: a library release belongs

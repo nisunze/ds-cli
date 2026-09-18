@@ -67,7 +67,22 @@ pub const LAYERS_ACTIONS: [&str; 5] = [
 ];
 pub const TILES_METHOD: &str = "POST";
 pub const TILES_PATH: &str = "/api/v1/tiles";
-pub const TILES_ACTIONS: [&str; 6] = ["status", "preflight", "generate", "list", "add", "remove"];
+/// The closed `/api/v1/tiles` action vocabulary. The first six curate one
+/// project's tiles; the last four govern the product-wide reference
+/// publications, which have no project and are gated by `global_tiles.manage`
+/// at the gateway.
+pub const TILES_ACTIONS: [&str; 10] = [
+    "status",
+    "preflight",
+    "generate",
+    "list",
+    "add",
+    "remove",
+    "global_catalog",
+    "global_list",
+    "global_generate",
+    "global_status",
+];
 pub const PROJECT_REPORT_METHOD: &str = "POST";
 pub const PROJECT_REPORT_PATH: &str = "/report";
 /// The closed `/report` action vocabulary the core may send: the compounded
