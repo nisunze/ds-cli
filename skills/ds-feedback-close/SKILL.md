@@ -16,6 +16,42 @@ and makes the backlog count work that is done.
 Everything here goes through `ds`. Never edit the backlog through an API, a
 store, or the `fb` tab on the agent's behalf.
 
+## 0. Read the backlog once, then read the difference
+
+The backlog is large and every report carries a long acceptance text. Pulling
+all of it into a context window on every visit is the single most expensive
+mistake available here, and it buys nothing: the reports that mattered last
+time have not changed.
+
+Read it incrementally.
+
+- **The first read is the only full read.** Keep what comes back — id,
+  version, status, severity, component, title, and the detail — outside the
+  conversation, in a file.
+- **Every later read is `--since`**, with the newest `last_seen_at` from the
+  previous pull:
+
+  ```
+  ds feedback list --since <RFC3339> --detail --output json
+  ```
+
+  That returns only what was seen or updated after that moment. Merge it into
+  what you kept, by `id`, and advance the stored timestamp. A report whose
+  `version` is unchanged needs no re-reading.
+- **Work from a one-line-per-report index**, not from the detail. Severity,
+  component and title are enough to decide what a task touches. Open the full
+  `detail` only for the handful of ids you are actually about to verify or
+  close — that is the moment the acceptance condition matters.
+- **Fan out by partition, never by repetition.** When several agents triage
+  the backlog, give each one a disjoint slice of ids. Do not hand the whole
+  corpus to every agent.
+- **Closing is what makes this cheap.** Every report closed with evidence
+  leaves `not_addressed` permanently. A backlog nobody closes is re-read in
+  full forever.
+
+The same discipline governs any shared, slow-changing list this CLI exposes:
+read once, keep a timestamp cursor, then read only the difference.
+
 ## 1. Find what this session touched
 
 ```
