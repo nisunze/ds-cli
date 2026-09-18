@@ -993,6 +993,59 @@ fn expired_certificate_offline_fails_naming_its_own_window() {
     );
 }
 
+/// The real endpoint, not a fake: `GoogleCertificateSource` itself, driven
+/// with the network genuinely broken beneath it.
+///
+/// The tests above prove the LOGIC — that a retained certificate inside its
+/// own window is served without consulting a source. This one proves the
+/// OUTCOME on the code path the desktop actually runs: real DNS, real TLS,
+/// real timeouts. It is ignored by default because with a network it would
+/// reach Google. Run it deliberately:
+///
+/// ```text
+/// cargo test -- --ignored real_google_endpoint
+/// ```
+///
+/// with connectivity removed — a network namespace, or a `connect(2)` shim.
+#[test]
+#[ignore = "drives the real certificate endpoint; run it deliberately, with the network removed"]
+fn real_google_endpoint_is_not_a_precondition() {
+    let root = TestRoot::new();
+    let authority = verifier(&root);
+    let now = 1_787_059_200;
+    let cache = CertificateCache {
+        schema: 1,
+        contract: CERT_CACHE_CONTRACT.to_string(),
+        authority: pins().identity(),
+        signer: pins().signer,
+        // Days old: far past the hour the retired TTL allowed.
+        fetched_at_unix: now - 11 * 24 * 60 * 60,
+        certificates: BTreeMap::from([(CERT_KEY_ID.to_string(), CERTIFICATE.to_string())]),
+    };
+    atomic_replace(
+        &root.0.join(CERT_CACHE_FILE),
+        &encode_record(&cache, MAX_AUTHORITY_RECORD_BYTES).unwrap(),
+    )
+    .unwrap();
+
+    let source = GoogleCertificateSource;
+    let key = authority
+        .resolve_public_key(CERT_KEY_ID, &source, now)
+        .expect("the retained certificate resolves with the endpoint unreachable");
+    assert_eq!(key, parse_rsa_certificate(CERTIFICATE).unwrap());
+
+    // And the endpoint is genuinely unreachable: asking for a key nothing is
+    // held for has to go out, and says so.
+    let error = authority
+        .resolve_public_key("0000000000000000000000000000000000000000", &source, now)
+        .expect_err("an unheld key must still force a bounded fetch");
+    println!("unheld key, endpoint unreachable: {error}");
+    assert!(
+        error.contains("Google signer certificate"),
+        "unexpected error: {error}"
+    );
+}
+
 #[test]
 fn freshly_fetched_certificate_outside_its_window_is_refused() {
     let root = TestRoot::new();
