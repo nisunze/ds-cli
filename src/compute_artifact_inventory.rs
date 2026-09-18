@@ -45,6 +45,69 @@ fn id(value: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
+
+/// The published project head, independent of machine-local rooms or a shell.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Head {
+    pub work_id: String,
+    pub engine: String,
+    pub operation: String,
+    pub variant: String,
+    pub input_base_fingerprint: String,
+    pub head_revision: u64,
+    pub updated_at: String,
+    pub outputs: Vec<Declaration>,
+}
+
+pub fn valid_operation(engine: &str, operation: &str) -> bool {
+    if engine == "solar" {
+        ["calculate-", "report-", "portfolio-"]
+            .iter()
+            .any(|prefix| operation.strip_prefix(prefix).is_some_and(id))
+    } else {
+        id(operation)
+    }
+}
+
+/// Validate the safe discovery projection; unknown additive server metadata
+/// is allowed, but malformed identities and output declarations are refused.
+pub fn evaluate_head(input: &[u8]) -> Result<String, String> {
+    if input.is_empty() || input.len() > 512 * 1024 {
+        return Err("Artifact head exceeds its byte bound.".into());
+    }
+    let head: Head = serde_json::from_slice(input)
+        .map_err(|_| "Compute artifact response has an invalid head.".to_string())?;
+    if !matches!(
+        head.engine.as_str(),
+        "solar" | "print" | "vector_tiler" | "network_reporter"
+    ) || !id(&head.work_id)
+        || !valid_operation(&head.engine, &head.operation)
+        || !id(&head.variant)
+        || head.input_base_fingerprint.len() != 64
+        || !head
+            .input_base_fingerprint
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || head.head_revision == 0
+        || head.head_revision > 9_007_199_254_740_991
+        || time::OffsetDateTime::parse(
+            &head.updated_at,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .is_err()
+    {
+        return Err("Compute artifact response has an invalid head.".into());
+    }
+    // The same output owner validates inventory, head and downloads.
+    evaluate(
+        &serde_json::to_vec(&serde_json::json!({
+            "engine": head.engine, "operation": head.operation, "outputs": head.outputs
+        }))
+        .map_err(|e| e.to_string())?,
+    )?;
+    serde_json::to_string(&head).map_err(|e| e.to_string())
+}
+
 fn mime(format: &str) -> Option<&'static str> {
     Some(match format {
         "csv" => "text/csv",
@@ -175,6 +238,33 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn published_heads_accept_city_and_portfolio_families_without_local_rooms() {
+        let mut head = json!({"work_id":"work_1", "engine":"solar", "operation":"portfolio-gisagara", "variant":"default",
+            "input_base_fingerprint":"a".repeat(64), "head_revision":1, "updated_at":"2026-09-18T01:00:00Z",
+            "engine_version":"additive server metadata", "outputs":[{"output_id":"summary", "format":"json", "content_type":"application/json", "sha256":"b".repeat(64), "size_bytes":1}]});
+        for family in ["calculate", "report", "portfolio"] {
+            head["operation"] = json!(format!("{family}-c{}", "x".repeat(127)));
+            assert!(evaluate_head(&serde_json::to_vec(&head).unwrap()).is_ok());
+            head["operation"] = json!(format!("{family}-c{}", "x".repeat(128)));
+            assert!(evaluate_head(&serde_json::to_vec(&head).unwrap()).is_err());
+        }
+        head["operation"] = json!("portfolio-gisagara");
+        for (field, invalid) in [
+            ("head_revision", json!(0)),
+            ("input_base_fingerprint", json!("bad")),
+            ("updated_at", json!("yesterday")),
+            ("outputs", json!([])),
+            ("engine", json!("unknown")),
+        ] {
+            let mut malformed = head.clone();
+            malformed[field] = invalid;
+            assert!(
+                evaluate_head(&serde_json::to_vec(&malformed).unwrap()).is_err(),
+                "{field}"
+            );
+        }
+    }
     #[test]
     fn named_prints_keep_metadata_and_canonical_names() {
         for (format, mime, suffix) in [

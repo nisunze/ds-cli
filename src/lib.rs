@@ -1741,3 +1741,10 @@ pub mod tiling_placement;
 pub fn tiling_placement_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     tiling_placement::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactHead)]
+pub fn compute_artifact_head_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_inventory::evaluate_head(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}

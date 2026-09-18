@@ -288,3 +288,26 @@ tests at the bottom under the dual native / `wasm-pack test --node` attribute;
 fixtures are built in memory (`zip::write::ZipWriter`, hand-written XML, CSV
 and EML), never binary files. `src/lib.rs` exports `assetsCommand` and
 `assetsPreview` and holds the native / browser parity cases in `wasm_tests`.
+
+### Project assets and device helpers in a web host
+
+Published compute heads, uploaded project data, custom map assets and print
+setups belong to the explicit project and remain discoverable on the web.
+Dataset rooms are a device cache of reproducible inputs, not an uploaded
+project document. Local print artifacts are files retained by that device.
+They may be projected alongside project assets on a native host, but their
+absence on the web does not mean the project preview is incomplete.
+
+The host checks structural I/O capabilities before calling a device inventory.
+An unavailable inventory remains absent (never an invented empty list) and is
+recorded separately from a failed project-source read. Authentication, offline
+reads and genuine project-service failures retain their existing refusals.
+
+The shared `compute_artifact_inventory::evaluate_head` validator owns safe
+published-head decoding for native and WASM consumers. Solar operations are
+`calculate-<city>`, `report-<city>` and `portfolio-<portfolio>`; each governed
+identity has its own 128-byte bound. Portfolio identities are not city ids.
+Head identity, positive revision, RFC3339 time, SHA256 input fingerprint and
+bounded nonempty output declarations must all validate. Additive server
+metadata does not change the safe projection. A malformed cloud head remains
+a refused project read; it is not reclassified as an optional local helper.
