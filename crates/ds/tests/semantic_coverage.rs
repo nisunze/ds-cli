@@ -374,6 +374,13 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // inventory because restoring the native session may rotate it.
     ("design.status", "local_auth_state", "headless_project"),
     ("design.collisions", "local_auth_state", "headless_project"),
+    // Read-only pinned context: it plans the fetch, reads the rooms the plan
+    // named and folds them. Same native credential class, no map, no write.
+    (
+        "design.pinned.preview",
+        "local_auth_state",
+        "headless_project",
+    ),
     // Slice 14a: the previews the register kept to itself. Each reads the
     // same status rows on the same native credential class and answers from
     // the shared kernel, so an agent learns what a batch would skip.

@@ -7009,7 +7009,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        96, // + the vocabulary housekeeping family (headless, 2026-09-18).
+        97, // + `design pinned preview` (read-only pinned context, 2026-09-18).
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -7044,6 +7044,8 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.lv.project-save"
                     | "design.status"
                     | "design.collisions"
+                    // Pinned context reads the same native status spine.
+                    | "design.pinned.preview"
                     | "design.dashboard"
                     | "design.transformer.inventory"
                     | "design.transformer.retire"
@@ -7235,6 +7237,10 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 // The collision read answers from the same headless status
                 // call; it is not a governed record operation.
                 && *id != "design.collisions"
+                // Pinned context is READ-ONLY CONTEXT: it plans a fetch, folds
+                // rooms and projects their properties. It records nothing, so
+                // it is not a governed record operation either.
+                && *id != "design.pinned.preview"
                 // The slice-14a previews are the same spine folded by the
                 // shared kernel — a preview of a batch, a download, a version
                 // state, an overwrite gate or a lease pass. None reaches the
@@ -7345,6 +7351,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id == "design.status"
             || id == "design.dashboard"
             || id == "design.collisions"
+            || id == "design.pinned.preview"
             || id.starts_with("design.bulk.")
             || id.starts_with("design.download.")
             || id.starts_with("design.version.")
@@ -11012,5 +11019,247 @@ fn native_design_attachments_need_identity_instead_of_desktop_pairing() {
     assert_ne!(
         refused.envelope["error"]["detail"]["cause"], "headless_signed_out",
         "invalid governance pin must be refused before identity/transport"
+    );
+}
+
+/// `ds design pinned preview` answers what a read-only pinned working set
+/// costs, on a Server, with no browser in the process.
+///
+/// The three complaints it exists for are three NUMBERS, so they are asserted
+/// as numbers here rather than described:
+///
+///   1. a room the machine already holds but which is missing ONE design class
+///      asks for that class — one layer, not the room;
+///   2. fifty pinned transformers over two classes are TWO map sources, not a
+///      hundred;
+///   3. a feature that arrived carrying thirteen property keys keeps two.
+///
+/// The keep-set is the part that could not be guessed. It is computed by
+/// walking the project's OWN published style documents, so this runs against
+/// the real style catalogue `ds-client-core` recorded from the gateway — the
+/// same fixture `style_read_answers_what_canonical_data_holds_with_no_map`
+/// uses. In that catalogue `ds_grid/structures` reads exactly one field,
+/// `label`, through its label layer, and `ds_grid/routes` reads exactly
+/// `alignment_id`. Nothing else in either document names a property. A
+/// hard-coded keep-set would have had to guess those two names and would have
+/// been wrong for every other project.
+#[test]
+fn pinned_context_is_planned_folded_and_projected_with_no_browser() {
+    use ds_command_kernel::pinned_context::{
+        self, PINNED_TRANSFORMER_PROPERTY, SCHEMA as PINNED_SCHEMA,
+    };
+
+    let catalog: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(web_fixture("style-catalog-snapshot.json"))
+            .expect("the recorded style catalogue is readable"),
+    )
+    .expect("the recorded style catalogue is JSON");
+
+    // 1. WHAT TO FETCH. The machine holds `structures` for T1 and nothing for
+    //    T2; both classes are required. T1 must ask for the ONE class it lacks.
+    let plan = pinned_context::plan(
+        serde_json::from_value(serde_json::json!({
+            "schema": PINNED_SCHEMA,
+            "pins": ["T1", "T2"],
+            "require": ["structures", "routes"],
+            "held": [{"name": "T1", "layers": {"structures": 3}, "version": 7}],
+            "heads": [{"name": "T1", "version": 7}, {"name": "T2", "version": 2}],
+        }))
+        .expect("the plan request encodes"),
+    )
+    .expect("the kernel plans the pinned set");
+    assert_eq!(plan.counts.rooms_fetched, 1, "only T2 is unheld");
+    assert_eq!(plan.counts.layers_fetched, 1, "T1 asks for ONE class");
+    let partial = plan
+        .fetch
+        .iter()
+        .find(|item| !item.whole_room)
+        .expect("T1 is a layer-level fetch");
+    assert_eq!(partial.name, "T1");
+    assert_eq!(partial.layers, vec!["routes".to_owned()]);
+    assert_eq!(plan.projection, pinned_context::CONTEXT_PROJECTION);
+
+    // A head that has MOVED is still a whole room: a moved revision invalidates
+    // every layer of the held copy, so a partial repair would paint a lie.
+    let moved = pinned_context::plan(
+        serde_json::from_value(serde_json::json!({
+            "schema": PINNED_SCHEMA,
+            "pins": ["T1"],
+            "require": ["structures", "routes"],
+            "held": [{"name": "T1", "layers": {"structures": 3}, "version": 7}],
+            "heads": [{"name": "T1", "version": 8}],
+        }))
+        .expect("the plan request encodes"),
+    )
+    .expect("the kernel plans the pinned set");
+    assert_eq!(moved.counts.rooms_fetched, 1);
+    assert_eq!(moved.counts.layers_fetched, 0);
+    assert_eq!(moved.fetch[0].reason, "head_moved");
+
+    // 2 + 3. WHAT ONE LAYER IS, and WHAT IT CARRIES. The keep-set is resolved
+    //        from the recorded catalogue, never listed here.
+    let resolved = pinned_context::styles(
+        serde_json::from_value(serde_json::json!({
+            "schema": PINNED_SCHEMA,
+            "catalog": catalog,
+            "classes": ["structures", "routes"],
+        }))
+        .expect("the styles request encodes"),
+    )
+    .expect("the recorded catalogue resolves both classes");
+    let structures = &resolved.classes[0];
+    assert_eq!(structures.style_ref.as_deref(), Some("ds_grid/structures"));
+    assert!(
+        !structures.pinned_variant,
+        "this project publishes no _pinned variant, so the design document is used",
+    );
+    assert_eq!(
+        structures.fields,
+        vec!["label".to_owned()],
+        "the recorded ds_grid/structures document reads exactly `label`",
+    );
+    assert_eq!(resolved.classes[1].fields, vec!["alignment_id".to_owned()]);
+
+    // The bag an editable design feature carries. Thirteen keys, four of them
+    // the nested `*_properties` blobs a preview can do nothing with.
+    let bag = serde_json::json!({
+        "label": "S1",
+        "alignment_id": "A1",
+        "station_m": 137.5,
+        "type_id": 4,
+        "doc_id": "d-1",
+        "geohash": "kx7y",
+        "existing_status": "new",
+        "drafting_status": "draft",
+        "construction_status": "planned",
+        "network_properties": {"phase": "3"},
+        "computed_properties": {"span_m": 41.2},
+        "desirable_properties": {"pole": "9m"},
+        "surveyed_properties": {"by": "crew-2"},
+    });
+    assert_eq!(bag.as_object().expect("a bag").len(), 13);
+
+    let rooms: Vec<serde_json::Value> = (0..50)
+        .map(|index| {
+            serde_json::json!({
+                "name": format!("T{index}"),
+                "layers": {
+                    "structures": {"features": [{
+                        "id": "shared-doc-id",
+                        "geometry": {"type": "Point", "coordinates": [30.0, -1.9]},
+                        "properties": bag,
+                    }]},
+                    "routes": {"features": [{
+                        "id": "shared-doc-id",
+                        "geometry": {"type": "LineString", "coordinates": [[30.0, -1.9], [30.1, -1.8]]},
+                        "properties": bag,
+                    }]},
+                },
+            })
+        })
+        .collect();
+    let styles: serde_json::Map<String, serde_json::Value> = resolved
+        .classes
+        .iter()
+        .map(|class| (class.class_name.clone(), class.document.clone()))
+        .collect();
+
+    let merged = pinned_context::merge(
+        serde_json::from_value(serde_json::json!({
+            "schema": PINNED_SCHEMA,
+            "rooms": rooms,
+            "styles": styles,
+        }))
+        .expect("the merge request encodes"),
+    )
+    .expect("the kernel folds the pinned set");
+
+    // 2. Fifty transformers over two classes: a hundred map sources become two.
+    assert_eq!(merged.totals.sources_before, 100);
+    assert_eq!(merged.totals.sources_after, 2);
+    assert_eq!(merged.totals.layers_before, 100);
+    assert_eq!(merged.totals.layers_after, 2);
+    assert_eq!(merged.totals.features, 100);
+
+    // 3. Thirteen property keys arrived; two survive on a structures feature —
+    //    the one the style reads, and the transformer the row came from.
+    assert_eq!(merged.totals.properties_before, 13);
+    let structures_layer = merged
+        .layers
+        .iter()
+        .find(|layer| layer.class_name == "structures")
+        .expect("the fold keeps a structures layer");
+    assert_eq!(
+        structures_layer.fields,
+        vec!["label".to_owned(), PINNED_TRANSFORMER_PROPERTY.to_owned()],
+    );
+    assert_eq!(structures_layer.transformers.len(), 50);
+    assert_eq!(structures_layer.geometry_type, "Point");
+    assert_eq!(
+        merged
+            .layers
+            .iter()
+            .find(|layer| layer.class_name == "routes")
+            .expect("the fold keeps a routes layer")
+            .geometry_type,
+        "LineString",
+    );
+
+    // A popup on a merged feature still names its transformer, and fifty rooms
+    // that all carry the SAME document id stay fifty features.
+    let first = &structures_layer.features[0];
+    assert_eq!(
+        first.properties[PINNED_TRANSFORMER_PROPERTY], "T0",
+        "the identity is a property now, because the layer is no longer one transformer's",
+    );
+    assert_eq!(structures_layer.features.len(), 50);
+    let ids: std::collections::BTreeSet<&String> = structures_layer
+        .features
+        .iter()
+        .map(|feature| &feature.id)
+        .collect();
+    assert_eq!(ids.len(), 50, "ids are namespaced by the transformer");
+
+    // The nested bags never reach a renderer, whatever else changes.
+    for blob in [
+        "network_properties",
+        "computed_properties",
+        "desirable_properties",
+        "surveyed_properties",
+    ] {
+        assert!(
+            !first.properties.contains_key(blob),
+            "`{blob}` is not read by any pinned style document and must not be carried",
+        );
+    }
+}
+
+/// The command's own receipt is bounded and refuses with a remedy. The three
+/// numbers above are the kernel's; what this pins is that `ds` reaches them
+/// through `Requires::Server` — no window, no map, no paired application.
+#[test]
+fn pinned_preview_is_a_server_command_that_refuses_an_empty_pin_set() {
+    let command = &ds_cli_design::pinned::COMMAND;
+    assert_eq!(command.id, "design.pinned.preview");
+    assert!(matches!(
+        command.requires,
+        ds_cli_contract::spec::Requires::Server
+    ));
+    assert!(
+        command
+            .refusals
+            .iter()
+            .all(|refusal| !refusal.remedy.is_empty()),
+        "every refusal names what fixes it",
+    );
+
+    let refused = native_ds(&["design", "pinned", "preview", "--output", "json"]);
+    assert_eq!(refused.envelope["error"]["code"], "pinned_set_empty");
+    assert!(
+        refused.envelope["error"]["remedy"]
+            .as_str()
+            .expect("a remedy")
+            .contains("--transformer"),
+        "the refusal names the flag that fixes it",
     );
 }

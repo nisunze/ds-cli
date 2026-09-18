@@ -1937,6 +1937,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::collisions::render,
     },
     Entry {
+        command: &ds_cli_design::pinned::COMMAND,
+        handler: ds_cli_design::pinned::run,
+        render: ds_cli_design::pinned::render,
+    },
+    Entry {
         command: &ds_cli_design::preview::BULK_PLAN,
         handler: ds_cli_design::preview::run_bulk_plan,
         render: ds_cli_design::preview::render_bulk_plan,

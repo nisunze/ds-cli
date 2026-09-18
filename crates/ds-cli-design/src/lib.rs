@@ -77,6 +77,7 @@ pub mod known_columns;
 pub mod lv;
 pub mod materials;
 pub mod native_tags;
+pub mod pinned;
 pub mod preview;
 pub mod process_settings;
 pub mod project;
@@ -185,6 +186,7 @@ pub static DOMAIN: Domain = Domain {
         &lv::process::COMMAND,
         &process_settings::COMMAND,
         &collisions::COMMAND,
+        &pinned::COMMAND,
         &autoprocess::COMMAND,
         &force_gate::COMMAND,
         &data_lane::COMMAND,
