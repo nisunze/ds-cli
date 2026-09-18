@@ -7857,6 +7857,59 @@ fn headless_feedback_separates_a_drain_from_a_read_of_the_top() {
     assert!(sent.get("use_watermark").is_none());
 }
 
+/// A ROW DECIDES; IT DOES NOT EXPLAIN. The excerpt is the measured cost.
+///
+/// The backlog cost about 1.5 million tokens because every visit read the long
+/// acceptance text of every report. The watermark stops the RE-reading, but a
+/// row that carries 1200 characters of that text makes the FIRST read a
+/// mountain on its own — roughly 37 000 tokens for 124 reports. What decides
+/// "do I care about this" is the title, the status, the blocker and the latest
+/// note, and those are on the row in full. The acceptance condition decides
+/// something else — whether the report can be CLOSED — and that is the handful
+/// of ids `--detail` is for. `detail_truncated` says which of the two a row is.
+#[test]
+fn headless_feedback_rows_carry_a_decision_not_the_acceptance_text() {
+    use ds_client_core::feedback::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let mut long = feedback_row("open", 1);
+    long["detail"] = serde_json::json!("x".repeat(4000));
+    for _ in 0..2 {
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .feedback
+            .push_back(project_response(serde_json::json!({
+                "reports":[long.clone()],
+                "count":1,"matched":1,"complete":true,"changed":true,"scanned":1,
+                "cursor":"fb1.abc.def","cursor_source":"reader"
+            })));
+    }
+    let request = |detail: bool| Command::List {
+        view: "not_addressed".into(),
+        component: None,
+        query: None,
+        limit: 20,
+        detail,
+        cursor: None,
+        all: false,
+    };
+    let row = client.feedback(&request(false), NOW + 1).unwrap();
+    let excerpt = row["reports"][0]["detail"].as_str().unwrap();
+    assert!(
+        excerpt.chars().count() <= 240,
+        "a row carried {} characters of acceptance text; that is the mountain, per report",
+        excerpt.chars().count()
+    );
+    // Clipped is never silent: the row says so, and `--detail` is the remedy.
+    assert_eq!(row["reports"][0]["detail_truncated"], true);
+
+    let full = client.feedback(&request(true), NOW + 2).unwrap();
+    assert_eq!(full["reports"][0]["detail"].as_str().unwrap().len(), 4000);
+    assert_eq!(full["reports"][0]["detail_truncated"], false);
+}
+
 /// A LOOKUP IS NOT A SWEEP, and answering it with a difference makes the next
 /// session blind to the reports it came to find.
 ///

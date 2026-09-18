@@ -160,6 +160,23 @@ impl Command {
         }
     }
 }
+/// How much of the acceptance text a LIST ROW carries before `--detail`.
+///
+/// This number is the mountain, measured. The backlog reached 124 open reports
+/// whose acceptance text runs long, and a row that carried 1200 characters of
+/// it meant roughly 150 000 characters — about 37 000 tokens — for one visit,
+/// which is how a handful of visits came to cost 1.5 million. The watermark
+/// stops the RE-reading; this stops the first read from being a mountain in
+/// the first place.
+///
+/// A row exists to decide "do I care about this", and what decides that is the
+/// title, the status, whether it is blocked and on what, and the latest note —
+/// all of which are on the row in full. The acceptance condition decides
+/// something else entirely: whether the report can be CLOSED. That is the
+/// handful of ids at the end of a triage pass, and `--detail` is how they are
+/// read. `detail_truncated` says which of the two this row is.
+const ROW_DETAIL_CHARS: usize = 240;
+
 #[derive(Deserialize, Serialize)]
 struct Report {
     id: String,
@@ -239,9 +256,9 @@ impl Report {
         Ok(())
     }
     fn row(mut self, full: bool) -> Value {
-        let clipped = !full && self.detail.chars().count() > 1200;
+        let clipped = !full && self.detail.chars().count() > ROW_DETAIL_CHARS;
         if clipped {
-            self.detail = self.detail.chars().take(1200).collect();
+            self.detail = self.detail.chars().take(ROW_DETAIL_CHARS).collect();
         }
         let mut row = serde_json::to_value(self).expect("feedback row");
         row["detail_truncated"] = json!(clipped);
