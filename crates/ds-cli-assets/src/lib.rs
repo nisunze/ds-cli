@@ -38,6 +38,7 @@
 //! digest** — this surface composes the paths the project already has.
 
 pub mod attach;
+pub mod backup;
 pub mod classify;
 pub mod folder;
 pub mod ingest;
@@ -72,6 +73,7 @@ pub static DOMAIN: Domain = Domain {
     id: "assets",
     summary: "Project Assets: documents in folders, previewed and linked.",
     commands: &[
+        &backup::COMMAND,
         &shared::RESOLVE,
         &shared::MAPS,
         &shared::PUBLISH_MAP,
@@ -778,15 +780,16 @@ mod tests {
             DOMAIN
                 .commands
                 .iter()
-                .filter(|command| command.authority
-                    != ds_cli_contract::spec::Authority::HeadlessProject)
+                .filter(|command| command.authority == ds_cli_contract::spec::Authority::Project)
                 .count(),
             "every paired ds assets command sends exactly one operation, and every \
              declared operation belongs to a command"
         );
-        for command in DOMAIN.commands.iter().filter(|command| {
-            command.authority != ds_cli_contract::spec::Authority::HeadlessProject
-        }) {
+        for command in DOMAIN
+            .commands
+            .iter()
+            .filter(|command| command.authority == ds_cli_contract::spec::Authority::Project)
+        {
             assert!(
                 BRIDGE_OPS.iter().any(|op| op.operation == command.id),
                 "`{}` has no operation of the same name",

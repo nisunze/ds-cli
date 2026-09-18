@@ -7877,6 +7877,91 @@ fn shared_network_commands_expose_tag_identity_and_manual_entry() {
 }
 
 #[test]
+fn assets_backup_plans_files_and_zip_without_identity_or_a_desktop() {
+    let directory = tempfile::tempdir().unwrap();
+    let request = directory.path().join("ledger.json");
+    let request_path = request.display().to_string();
+    let rows = json!([
+        {
+            "ds_project": "archived-project",
+            "transformer_name": "alpha",
+            "backup_layer_uri": "gs://backup/transformers/alpha.dsgrid",
+            "deletion_reason": "Duplicate import",
+            "source_country": "RW",
+            "district": "Gisagara",
+            "source_admin_bounds_json": "{\"district\":\"Gisagara\"}"
+        },
+        {
+            "ds_project": "archived-project",
+            "transformer_name": "beta",
+            "backup_json_uri": "gs://backup/transformers/beta.firestore.json"
+        }
+    ]);
+    std::fs::write(
+        &request,
+        serde_json::to_vec(&json!({"action": "project", "rows": rows})).unwrap(),
+    )
+    .unwrap();
+    // Native dispatch runs with an empty identity home and an absent desktop.
+    // Planning must work from this ledger, without resolving an active project.
+    let projected = native_ds(&[
+        "assets",
+        "backup",
+        "plan",
+        "--request",
+        &request_path,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(projected.code, 0, "{}", projected.envelope);
+    let projected_rows = &projected.envelope["data"]["rows"];
+    assert_eq!(projected_rows[0]["archive"]["format"], "dsgrid");
+    assert_eq!(projected_rows[1]["archive"]["format"], "json");
+    assert_eq!(projected_rows[0]["deletion_reason"], "Duplicate import");
+    assert_eq!(
+        projected_rows[0]["administrative_location"]["district"],
+        "Gisagara"
+    );
+    assert_eq!(projected_rows[0]["location_missing"], false);
+
+    for (selected_ids, delivery, count) in [
+        (json!([projected_rows[0]["id"]]), "file", 1),
+        (
+            json!([projected_rows[0]["id"], projected_rows[1]["id"]]),
+            "zip",
+            2,
+        ),
+    ] {
+        std::fs::write(
+            &request,
+            serde_json::to_vec(
+                &json!({"action": "download", "rows": rows, "selected_ids": selected_ids}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let planned = native_ds(&[
+            "assets",
+            "backup",
+            "plan",
+            "--request",
+            &request_path,
+            "--output",
+            "json",
+        ]);
+        assert_eq!(planned.code, 0, "{}", planned.envelope);
+        assert_eq!(planned.envelope["data"]["delivery"], delivery);
+        assert_eq!(
+            planned.envelope["data"]["targets"]
+                .as_array()
+                .unwrap()
+                .len(),
+            count
+        );
+    }
+}
+
+#[test]
 fn every_assets_command_is_reachable_without_the_desktop_installed() {
     // Same reasoning as the map and work domains: dispatch checks availability
     // before parsing, so a discovery gate would put `--desktop-descriptor` and
@@ -7901,6 +7986,7 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "assets.resolve",
         "assets.maps",
         "assets.map.publish",
+        "assets.backup.plan",
     ]
     .into_iter()
     .collect();
@@ -7925,9 +8011,8 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
     for command in commands {
         let id = command["id"].as_str().expect("id");
         let expected = match id {
-            "assets.list" | "assets.tree" | "assets.preview" | "assets.resolve" | "assets.maps" => {
-                "read_only"
-            }
+            "assets.list" | "assets.tree" | "assets.preview" | "assets.resolve" | "assets.maps"
+            | "assets.backup.plan" => "read_only",
             "assets.read" => "local_file_write",
             "assets.promote" => "local_ui",
             _ => "global_write",

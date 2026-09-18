@@ -917,6 +917,7 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
             json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "chapter": "assets" } } }),
             json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_assets", "arguments": { "operation": "describe", "command": "assets.list" } } }),
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "ds_assets", "arguments": { "operation": "describe", "command": "assets.backup.plan" } } }),
         ],
     );
 
@@ -953,6 +954,7 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
         "assets.resolve",
         "assets.maps",
         "assets.map.publish",
+        "assets.backup.plan",
     ]
     .into_iter()
     .collect();
@@ -967,6 +969,10 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
     assert_eq!(
         response(&responses, 3)["result"]["structuredContent"],
         cli(&["capabilities", "assets.list", "--output", "json"])
+    );
+    assert_eq!(
+        response(&responses, 4)["result"]["structuredContent"],
+        cli(&["capabilities", "assets.backup.plan", "--output", "json"])
     );
 }
 
@@ -1392,6 +1398,21 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     }
     assert!(!published["grid"].contains("report_transformers"));
     assert!(!published["grid"].contains("report_plan"));
+    assert!(!published["grid"].contains("dsgrid_backup_preview"));
+    let (backup, _) = mcp(
+        &["--exposure", "chapters"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "command": "dsgrid.backup.preview" } } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_grid_model", "arguments": { "operation": "describe", "command": "dsgrid.backup.preview" } } }),
+        ],
+    );
+    assert_eq!(
+        response(&backup, 1)["result"]["structuredContent"]["next"]["tool"],
+        "ds_grid_model"
+    );
+    let global = cli(&["capabilities", "dsgrid.backup.preview", "--output", "json"]);
+    assert_eq!(global["data"]["command"]["availability"], "available");
+    assert_eq!(response(&backup, 2)["result"]["structuredContent"], global);
     for native in [
         "dsgrid_create",
         "dsgrid_inspect",

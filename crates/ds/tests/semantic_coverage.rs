@@ -389,6 +389,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.inspect", "discovery", "none"),
     ("dsgrid.run", "read_only", "none"),
     ("dsgrid.validate", "discovery", "none"),
+    // Archived transformer preview writes only its explicit local output;
+    // recorded origin is file evidence, not a live project authority.
+    ("dsgrid.backup.preview", "local_file_write", "none"),
     // The paired application's local model lifecycle. `desktop_pairing` is
     // the exact authority and the load-bearing half of this family's
     // contract: a local model is browser-local state, so none of these four
@@ -782,6 +785,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("assets.attach", "global_write", "project"),
     ("assets.reference", "global_write", "headless_project"),
     ("assets.map.publish", "global_write", "headless_project"),
+    // Backup planning reads only supplied deletion metadata. Archive fetch
+    // and publication remain outside this offline command.
+    ("assets.backup.plan", "read_only", "none"),
     ("assets.resolve", "read_only", "headless_project"),
     ("assets.maps", "read_only", "headless_project"),
     ("solar.network.resolve", "global_write", "headless_project"),

@@ -24,6 +24,7 @@
 //! nothing in it manufactures a `.dsgrid` either.
 
 pub mod apply;
+pub mod backup;
 pub mod create;
 pub mod describe;
 pub mod inspect;
@@ -39,6 +40,7 @@ pub static DOMAIN: Domain = Domain {
     id: "dsgrid",
     summary: "Canonical .dsgrid models: inspect, validate, revise, publish.",
     commands: &[
+        &backup::COMMAND,
         &project::LIST,
         &project::DOWNLOAD,
         &create::COMMAND,

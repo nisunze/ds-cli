@@ -103,6 +103,11 @@ static AUTH_ENTRIES: &[Entry] = &[
 /// and all three must be looking at the same thing.
 static DSGRID_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_dsgrid::backup::COMMAND,
+        handler: ds_cli_dsgrid::backup::run,
+        render: ds_cli_dsgrid::backup::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::project::LIST,
         handler: ds_cli_dsgrid::project::list,
         render: ds_cli_dsgrid::project::render,
@@ -1456,6 +1461,11 @@ static WORK_ENTRIES: &[Entry] = &[
 /// the asset, look at it, then act on it. Domain help prints this order
 /// verbatim, so the index doubles as the procedure.
 static ASSETS_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_assets::backup::COMMAND,
+        handler: ds_cli_assets::backup::run,
+        render: ds_cli_assets::backup::render,
+    },
     Entry {
         command: &ds_cli_assets::shared::PUBLISH_MAP,
         handler: ds_cli_assets::shared::publish_map,

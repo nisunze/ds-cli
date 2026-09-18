@@ -241,6 +241,10 @@ impl Profile {
                     // lifecycle surface. Keeping it out of this broad router
                     // preserves the profile's bounded tool budget.
                     && tool.id != "dsgrid.model.prepare-project"
+                    // Deleted LV snapshot recovery is an Assets workflow,
+                    // outside this engineering-model profile. The global
+                    // catalogue and Grid Model chapter retain its command.
+                    && tool.id != "dsgrid.backup.preview"
             }
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
