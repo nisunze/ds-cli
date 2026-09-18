@@ -57,9 +57,11 @@ pub struct LocalRow {
 }
 
 impl LocalRow {
-    /// The grant scope one upload of this row needs covered.
+    /// The grant scope one upload of this row needs covered, spelled by the
+    /// kernel's one constructor so this row and the grant offered for it can
+    /// never disagree about what the key is.
     pub fn scope(&self) -> String {
-        format!("{}\u{0}{}", self.engine_release, self.resource)
+        sync::scope_key(&self.engine_release, &self.resource)
     }
 }
 
@@ -118,10 +120,10 @@ pub struct HeldGrant {
 }
 
 impl HeldGrant {
-    /// The scope one upload needs covered: engine release plus the single
-    /// resource §1.3.1 admits per grant.
+    /// The scope this grant covers: engine release plus the single resource
+    /// §1.3.1 admits per grant. Same constructor as [`LocalRow::scope`].
     pub fn scope(&self) -> String {
-        format!("{}\u{0}{}", self.engine_release, self.resource)
+        sync::scope_key(&self.engine_release, &self.resource)
     }
 }
 
@@ -308,6 +310,9 @@ pub(crate) fn kernel_local(row: &LocalRow) -> sync::LocalArtifact {
         input_base_fingerprint: row.input_base_fingerprint.clone(),
         readable: row.readable,
         engine_release: row.engine_release.clone(),
+        // Without this the plan cannot tell one publication's scope from
+        // another's, and one covered row answers for every uncovered one.
+        resource: row.resource.clone(),
     }
 }
 
@@ -347,6 +352,7 @@ pub fn kernel_grant(grant: &HeldGrant) -> sync::Grant {
                 })
                 .collect()
         },
+        resource: grant.resource.clone(),
         expires_at_ms: grant.expires_at_ms,
         snapshot_base: grant.snapshot_base.clone(),
     }

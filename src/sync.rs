@@ -37,6 +37,27 @@ const MAX_ID_LEN: usize = 128;
 /// own retry; there is no poll.
 pub const GRANT_RENEW_LEAD_MS: u64 = 10 * 60 * 1000;
 
+/// The one key a grant scope is spelled with, everywhere.
+///
+/// §1.3.1 scopes an edge work grant to one engine release AND the single
+/// resource it admits, so "does a grant cover this upload" is membership in a
+/// set of these strings — never "is there a grant". The NUL join is not
+/// decorative: neither part may contain it, so `a\0b` and `ab\0` cannot
+/// collide, which a `:` join would allow for a resource carrying a colon.
+///
+/// It lives here because it is a kernel decision. `ds-sync-runtime` builds the
+/// same key for a local row and for a held grant; when those two spellings
+/// were independent, one of them drifting silently stopped every upload.
+pub fn scope_key(engine_release: &str, resource: &str) -> String {
+    format!("{engine_release}\u{0}{resource}")
+}
+
+/// The engine release half of a [`scope_key`]. The only reader of the key's
+/// shape besides the constructor, so the join stays one fact.
+pub fn scope_release(scope: &str) -> &str {
+    scope.split('\u{0}').next().unwrap_or(scope)
+}
+
 /// Why the host is asking now. Every plan is asked for a reason; none is
 /// asked because time passed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -96,10 +117,27 @@ pub struct Grant {
     pub project: String,
     #[serde(default)]
     pub engines: Vec<EngineRelease>,
+    /// The single resource §1.3.1 admits per grant — for the implemented
+    /// Network Reporter slice, one canonical transformer. A grant for the
+    /// right engine release and the WRONG resource covers nothing here.
+    #[serde(default)]
+    pub resource: String,
     pub expires_at_ms: u64,
     /// Source revisions pinned by this grant, keyed by operation.
     #[serde(default)]
     pub snapshot_base: BTreeMap<String, String>,
+}
+
+impl Grant {
+    /// Every `(engine release, resource)` scope this grant covers. A grant
+    /// registering several admitted builds of one release still covers one
+    /// scope; the digest is the server's per-row claim, not a scope.
+    fn scopes(&self) -> BTreeSet<String> {
+        self.engines
+            .iter()
+            .map(|engine| scope_key(&engine.release, &self.resource))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -123,6 +161,18 @@ pub struct LocalArtifact {
     #[serde(default = "default_true")]
     pub readable: bool,
     pub engine_release: String,
+    /// The resource this publication spends grant scope on. Empty is a real
+    /// value, not "any": a lane that scopes no resource needs a grant whose
+    /// resource is equally empty.
+    #[serde(default)]
+    pub resource: String,
+}
+
+impl LocalArtifact {
+    /// The grant scope one upload of this artifact spends.
+    pub fn scope(&self) -> String {
+        scope_key(&self.engine_release, &self.resource)
+    }
 }
 
 fn default_true() -> bool {
@@ -164,8 +214,15 @@ pub struct Input {
     /// when they never were. Never a reason to read again by itself.
     #[serde(default)]
     pub remote_read_at_ms: Option<u64>,
+    /// The grant whose expiry drives the renewal wake, when the host names
+    /// one. It is NOT "the grant": coverage is decided over `grants`.
     #[serde(default)]
     pub grant: Option<Grant>,
+    /// Every work grant this install holds for this project. Coverage is a
+    /// question about the whole set, because each grant covers exactly one
+    /// `(engine release, resource)` scope and a project publishes many.
+    #[serde(default)]
+    pub grants: Vec<Grant>,
     /// Resource-scoped grants for derived artifacts with source fingerprints.
     #[serde(default)]
     pub source_grants: Vec<Grant>,
@@ -315,37 +372,228 @@ fn valid_sha256(value: &str) -> bool {
             .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// Why the grant in hand cannot cover an upload, if it cannot.
-fn grant_problem(input: &Input, needed: &BTreeSet<&str>) -> Option<&'static str> {
-    let Some(grant) = &input.grant else {
-        return Some("no_grant");
-    };
-    grant_problem_for(input, grant, needed)
+/// How near a grant came to covering a scope. Reported as the HIGHEST any
+/// held grant reached, so an operator is told the nearest miss — "renew this
+/// grant" rather than "some other project's grant does not apply".
+fn nearness(problem: &'static str) -> u8 {
+    match problem {
+        "grant_project_mismatch" => 0,
+        "grant_install_mismatch" => 1,
+        "grant_engine_missing" => 2,
+        "grant_resource_missing" => 3,
+        "grant_expired" => 4,
+        _ => 0,
+    }
 }
 
-fn grant_problem_for(
-    input: &Input,
+/// Every grant this install holds, in the order the host offered them.
+///
+/// `grant` and `grants` may name the same grant; coverage is a membership
+/// test, so naming one twice changes no answer.
+fn held_grants(input: &Input) -> Vec<&Grant> {
+    input.grant.iter().chain(input.grants.iter()).collect()
+}
+
+/// Why the grants in hand cannot cover every scope these uploads spend, if
+/// they cannot.
+///
+/// The question is not "is a grant held". A grant covers ONE `(engine release,
+/// resource)` scope, and a project publishes one row per transformer, so a
+/// plan that asks only "is a grant held for this release" is answered `yes` by
+/// the first covered row and then never asks for the grants the other rows
+/// need. That is how one open grant left 166 rows refusing with no request
+/// attempted. Answer per scope, over the whole held set.
+fn grant_problem(input: &Input, needed: &BTreeSet<String>) -> Option<&'static str> {
+    let held = held_grants(input);
+    if needed.is_empty() {
+        // No upload is pending, so no scope needs covering. `grant_valid`
+        // still answers the narrower question the Sync Center renders — is the
+        // credential in hand usable at all — so a read-only plan holding an
+        // expired grant does not report a healthy one.
+        return nearest_problem(held.iter().map(|grant| grant_usable(input, grant)));
+    }
+    let mut nearest: Option<&'static str> = None;
+    for scope in needed {
+        let mut best: Option<&'static str> = None;
+        let mut covered = false;
+        for grant in &held {
+            match grant_problem_for(input, grant, scope) {
+                None => {
+                    covered = true;
+                    break;
+                }
+                Some(problem) => {
+                    if best.is_none_or(|held| nearness(problem) > nearness(held)) {
+                        best = Some(problem);
+                    }
+                }
+            }
+        }
+        if covered {
+            continue;
+        }
+        // Nothing was held at all for this scope, or the nearest miss.
+        let problem = best.unwrap_or("no_grant");
+        if nearest.is_none_or(|held| nearness(problem) < nearness(held)) {
+            nearest = Some(problem);
+        }
+    }
+    nearest
+}
+
+/// The nearest miss across a set of judgements, or `None` once any of them
+/// succeeded. An empty set is `no_grant`: nothing was held to judge.
+fn nearest_problem(judgements: impl Iterator<Item = Option<&'static str>>) -> Option<&'static str> {
+    let mut nearest: Option<&'static str> = None;
+    let mut judged = false;
+    for judgement in judgements {
+        judged = true;
+        match judgement {
+            None => return None,
+            Some(problem) => {
+                if nearest.is_none_or(|held| nearness(problem) > nearness(held)) {
+                    nearest = Some(problem);
+                }
+            }
+        }
+    }
+    if judged {
+        nearest
+    } else {
+        Some("no_grant")
+    }
+}
+
+/// Whether this grant is usable at all — right project, right install, not
+/// expired — before any question of what it covers. Asking about the scope it
+/// already declares can only answer that narrower question.
+fn grant_usable(input: &Input, grant: &Grant) -> Option<&'static str> {
+    let own = scope_key(
+        grant
+            .engines
+            .first()
+            .map_or("", |engine| engine.release.as_str()),
+        &grant.resource,
+    );
+    grant_problem_for(input, grant, &own)
+}
+
+/// Why this one grant cannot cover this one scope, if it cannot.
+fn grant_problem_for(input: &Input, grant: &Grant, needed: &str) -> Option<&'static str> {
+    grant_scope_problem(
+        &input.project,
+        &input.install_id,
+        input.now_ms,
+        grant,
+        needed,
+    )
+}
+
+/// Why this one grant cannot cover this one scope, without a whole plan input.
+fn grant_scope_problem(
+    project: &str,
+    install_id: &str,
+    now_ms: u64,
     grant: &Grant,
-    needed: &BTreeSet<&str>,
+    needed: &str,
 ) -> Option<&'static str> {
-    if grant.project != input.project {
+    if grant.project != project {
         return Some("grant_project_mismatch");
     }
-    if grant.install_id != input.install_id {
+    if grant.install_id != install_id {
         return Some("grant_install_mismatch");
     }
-    if grant.expires_at_ms <= input.now_ms {
+    if grant.expires_at_ms <= now_ms {
         return Some("grant_expired");
     }
-    if needed.iter().any(|release| {
-        !grant
-            .engines
-            .iter()
-            .any(|engine| engine.release == *release)
-    }) {
-        return Some("grant_engine_missing");
+    if grant.scopes().contains(needed) {
+        return None;
     }
-    None
+    // The release is the coarser half of the scope, so saying which half
+    // missed turns "no grant covers this" into something actionable.
+    if grant
+        .engines
+        .iter()
+        .any(|engine| engine.release == scope_release(needed))
+    {
+        Some("grant_resource_missing")
+    } else {
+        Some("grant_engine_missing")
+    }
+}
+
+/// Why the grants in hand do not cover one scope, if they do not.
+///
+/// The plan reads this to decide whether to ask for a grant; the sync runtime
+/// reads the SAME function to state, on the row that could not upload, which
+/// fact refused it. One vocabulary, so a row can never again print "no work
+/// grant covers this publication" over an expired grant or a wrong install.
+pub fn scope_problem(
+    project: &str,
+    install_id: &str,
+    now_ms: u64,
+    grants: &[Grant],
+    scope: &str,
+) -> Option<&'static str> {
+    nearest_problem(
+        grants
+            .iter()
+            .map(|grant| grant_scope_problem(project, install_id, now_ms, grant, scope)),
+    )
+}
+
+/// Every code this module can put on a held publication, as one closed
+/// vocabulary.
+///
+/// It is public because a reader that switches on these codes — the Activity
+/// outbox does — must not have to restate the list and then silently fall
+/// behind it. A row that gained the ability to name its own cause must not
+/// thereby become a row no reader classifies.
+pub const SCOPE_PROBLEMS: [&str; 7] = [
+    "no_grant",
+    "grant_expired",
+    "grant_engine_missing",
+    "grant_resource_missing",
+    "grant_project_mismatch",
+    "grant_install_mismatch",
+    "grant_open_failed",
+];
+
+/// Whether this receipt outcome is one of [`SCOPE_PROBLEMS`]: a publication
+/// held for want of grant scope, whatever the reason.
+pub fn is_scope_problem(code: &str) -> bool {
+    SCOPE_PROBLEMS.contains(&code)
+}
+
+/// What to do about a scope problem, naming an action rather than a state.
+///
+/// A refusal that says only what is wrong leaves the operator to guess what to
+/// do; every code this module can emit answers that here.
+pub fn scope_remedy(problem: &str) -> &'static str {
+    match problem {
+        "no_grant" => {
+            "this install holds no work grant for this project; the next sync asks ds-brain for one"
+        }
+        "grant_expired" => {
+            "the grant covering this scope ran out; sync again to have a fresh one opened"
+        }
+        "grant_engine_missing" => {
+            "no grant in hand is for this engine release; sync again to open one for the release these bytes were produced by"
+        }
+        "grant_resource_missing" => {
+            "a grant is opened per resource and the ones in hand are for others; sync again to open this resource's own"
+        }
+        "grant_project_mismatch" => {
+            "the grants in hand belong to another project; sync this project to have its own opened"
+        }
+        "grant_install_mismatch" => {
+            "the grants in hand were issued to another installation; sign in again on this machine so they are re-issued to it"
+        }
+        "grant_open_failed" => {
+            "the authority's own answer is above; a timeout or an unreachable signer clears on the next sync, a refusal needs the account's access to this project checked"
+        }
+        _ => "sync again; the grant receipt on this run names what the authority answered",
+    }
 }
 
 pub fn plan(input: &Input) -> Result<Plan, String> {
@@ -437,7 +685,9 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
 
     let identities: BTreeSet<Identity> = local.keys().chain(remote.keys()).cloned().collect();
     let mut actions: Vec<Action> = Vec::new();
-    let mut needed_releases: BTreeSet<&str> = BTreeSet::new();
+    // The scopes the pending uploads actually spend — one `(engine release,
+    // resource)` per row, not one release for the project.
+    let mut needed_scopes: BTreeSet<String> = BTreeSet::new();
     let mut needs_source_grant = false;
     for identity in identities {
         if let Some(artifact) = local.get(&identity) {
@@ -446,10 +696,10 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
                     .get(&identity)
                     .is_none_or(|head| head.sha256 != artifact.sha256);
                 if artifact.readable && differs {
-                    let needed = BTreeSet::from([artifact.engine_release.as_str()]);
+                    let scope = artifact.scope();
                     let granted = input.source_grants.iter().rev().find(|grant| {
                         grant.snapshot_base.contains_key(&identity.operation)
-                            && grant_problem_for(input, grant, &needed).is_none()
+                            && grant_problem_for(input, grant, &scope).is_none()
                     });
                     if let Some(grant) = granted {
                         let current = &grant.snapshot_base[&identity.operation];
@@ -468,7 +718,7 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
                     } else {
                         needs_source_grant = true;
                     }
-                    needed_releases.insert(artifact.engine_release.as_str());
+                    needed_scopes.insert(artifact.scope());
                     actions.push(Action::Upload {
                         identity: identity.clone(),
                         sha256: artifact.sha256.clone(),
@@ -494,7 +744,7 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
                     });
                     continue;
                 }
-                needed_releases.insert(artifact.engine_release.as_str());
+                needed_scopes.insert(artifact.scope());
                 actions.push(Action::Upload {
                     identity: identity.clone(),
                     sha256: artifact.sha256.clone(),
@@ -524,7 +774,7 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
                     });
                 } else if artifact.base_revision.as_deref() == Some(head.revision.as_str()) {
                     // Computed on the current head: a newer result, not a conflict.
-                    needed_releases.insert(artifact.engine_release.as_str());
+                    needed_scopes.insert(artifact.scope());
                     actions.push(Action::Upload {
                         identity: identity.clone(),
                         sha256: artifact.sha256.clone(),
@@ -552,7 +802,7 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
     let problem = if needs_source_grant {
         Some("source_grant_required")
     } else {
-        grant_problem(input, &needed_releases)
+        grant_problem(input, &needed_scopes)
     };
     plan.grant_valid = problem.is_none();
     if uploads_pending {
@@ -573,11 +823,23 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
             Action::OpenGrant { .. } | Action::Offline => {}
         }
     }
-    // The only timed wake: renew a valid grant before an upload can race its
-    // expiry. Everything else waits for a trigger.
-    if let Some(grant) = &input.grant {
-        if plan.grant_valid && uploads_pending {
-            let renew_at = grant.expires_at_ms.saturating_sub(GRANT_RENEW_LEAD_MS);
+    // The only timed wake: renew before an upload can race a grant's expiry.
+    // Everything else waits for a trigger. The wake is driven by the EARLIEST
+    // expiry among the grants actually covering these uploads — one scope
+    // expiring in five minutes is not hidden by another good for a day.
+    if plan.grant_valid && uploads_pending {
+        let held = held_grants(input);
+        let soonest = needed_scopes
+            .iter()
+            .filter_map(|scope| {
+                held.iter()
+                    .filter(|grant| grant_problem_for(input, grant, scope).is_none())
+                    .map(|grant| grant.expires_at_ms)
+                    .min()
+            })
+            .min();
+        if let Some(expires_at_ms) = soonest {
+            let renew_at = expires_at_ms.saturating_sub(GRANT_RENEW_LEAD_MS);
             if renew_at > input.now_ms {
                 plan.wake = Wake::At {
                     at_ms: renew_at,
@@ -616,6 +878,9 @@ mod tests {
         }
     }
     fn local(op: &str, sha: &str, base: Option<&str>) -> LocalArtifact {
+        local_for(op, sha, base, "")
+    }
+    fn local_for(op: &str, sha: &str, base: Option<&str>, resource: &str) -> LocalArtifact {
         LocalArtifact {
             identity: ident(op),
             sha256: sha.into(),
@@ -625,6 +890,7 @@ mod tests {
             input_base_fingerprint: None,
             readable: true,
             engine_release: REL.into(),
+            resource: resource.into(),
         }
     }
     fn remote(op: &str, sha: &str, revision: &str) -> RemoteHead {
@@ -637,8 +903,11 @@ mod tests {
         }
     }
     fn grant(expires_at_ms: u64) -> Grant {
+        grant_for(expires_at_ms, "")
+    }
+    fn grant_for(expires_at_ms: u64, resource: &str) -> Grant {
         Grant {
-            grant_id: "g1".into(),
+            grant_id: format!("g-{resource}"),
             install_id: "install-1".into(),
             project: "p".into(),
             engines: vec![EngineRelease {
@@ -646,6 +915,7 @@ mod tests {
                 release: REL.into(),
                 manifest_sha256: None,
             }],
+            resource: resource.into(),
             expires_at_ms,
             snapshot_base: BTreeMap::new(),
         }
@@ -660,6 +930,7 @@ mod tests {
             personal: false,
             trigger: Trigger::Navigation,
             remote_read_at_ms: Some(9_000),
+            grants: grant.iter().cloned().collect(),
             grant,
             source_grants: vec![],
             local,
@@ -754,6 +1025,210 @@ mod tests {
         g.engines.clear();
         let p = plan(&input(vec![local("a", SHA_A, None)], vec![], Some(g))).unwrap();
         assert_eq!(kinds(&p)[0], "open_grant:grant_engine_missing");
+    }
+
+    /// The desktop fault this slice removes: 167 queued rows, one held grant,
+    /// and no grant request attempted for the other 166 in that run.
+    ///
+    /// Every row here is the same engine release and a different transformer,
+    /// which is the real shape of a project's publication queue. Judging the
+    /// grant by release alone made the first row's grant answer for all of
+    /// them, so no `open_grant` was planned and each other row then refused at
+    /// upload for want of a grant nobody had asked for.
+    #[test]
+    fn one_covered_resource_does_not_answer_for_the_others() {
+        let mut request = input(
+            vec![
+                local_for("tx_1", SHA_A, None, "TX-1"),
+                local_for("tx_2", SHA_B, None, "TX-2"),
+            ],
+            vec![],
+            Some(grant_for(10_000_000, "TX-1")),
+        );
+        let p = plan(&request).unwrap();
+        assert!(
+            !p.grant_valid,
+            "a grant for TX-1 does not cover a publication of TX-2"
+        );
+        assert_eq!(
+            kinds(&p)[0],
+            "open_grant:grant_resource_missing",
+            "the plan must ask for the scope that is missing, and say which half missed"
+        );
+
+        // The same release and the same project: only the resource differs, so
+        // nothing coarser than the scope could tell these two rows apart.
+        request.grants.push(grant_for(10_000_000, "TX-2"));
+        let p = plan(&request).unwrap();
+        assert!(
+            p.grant_valid,
+            "both scopes covered leaves nothing to open: {:?}",
+            kinds(&p)
+        );
+        assert!(
+            !kinds(&p).iter().any(|kind| kind.starts_with("open_grant")),
+            "no grant is missing"
+        );
+        assert_eq!(p.summary.uploads, 2);
+    }
+
+    /// A grant for the right resource and the wrong release still misses, and
+    /// says so as an engine problem rather than a resource one.
+    #[test]
+    fn scope_names_which_half_missed() {
+        let mut g = grant_for(10_000_000, "TX-1");
+        g.engines[0].release = "ds-network-reporter@0.0.9+deadbeef".into();
+        let p = plan(&input(
+            vec![local_for("tx_1", SHA_A, None, "TX-1")],
+            vec![],
+            Some(g),
+        ))
+        .unwrap();
+        assert_eq!(kinds(&p)[0], "open_grant:grant_engine_missing");
+    }
+
+    /// The renewal wake follows the grant that dies first, not the newest one
+    /// the host happened to hand over.
+    #[test]
+    fn renewal_wakes_for_the_soonest_scope_to_expire() {
+        let mut request = input(
+            vec![
+                local_for("tx_1", SHA_A, None, "TX-1"),
+                local_for("tx_2", SHA_B, None, "TX-2"),
+            ],
+            vec![],
+            Some(grant_for(30_000_000, "TX-1")),
+        );
+        request.grants.push(grant_for(20_000_000, "TX-2"));
+        let p = plan(&request).unwrap();
+        assert!(p.grant_valid);
+        assert_eq!(
+            p.wake,
+            Wake::At {
+                at_ms: 20_000_000 - GRANT_RENEW_LEAD_MS,
+                reason: "grant_renewal",
+            }
+        );
+    }
+
+    /// The key is one fact. A row and the grant offered for it must agree on
+    /// its spelling, and neither half may smuggle the separator.
+    #[test]
+    fn scope_key_is_unambiguous_and_readable_back() {
+        assert_ne!(scope_key("a\u{0}b", ""), scope_key("a", "b"));
+        assert_eq!(scope_release(&scope_key("rel", "TX-1")), "rel");
+        assert_eq!(scope_release(&scope_key("rel", "")), "rel");
+    }
+
+    /// A held row must be able to say WHICH fact refused it, and what to do.
+    /// These are the codes `ds-sync-runtime` writes onto the row the Sync
+    /// Center renders, so they are the operator's whole vocabulary.
+    #[test]
+    fn a_held_row_can_name_its_own_cause_and_a_remedy() {
+        let scope = scope_key(REL, "TX-1");
+        let cases: Vec<(Vec<Grant>, &str)> = vec![
+            (vec![], "no_grant"),
+            (vec![grant_for(1, "TX-1")], "grant_expired"),
+            (
+                vec![grant_for(10_000_000, "TX-9")],
+                "grant_resource_missing",
+            ),
+            (
+                {
+                    let mut g = grant_for(10_000_000, "TX-1");
+                    g.engines[0].release = "ds-network-reporter@9.9.9+beef".into();
+                    vec![g]
+                },
+                "grant_engine_missing",
+            ),
+            (
+                {
+                    let mut g = grant_for(10_000_000, "TX-1");
+                    g.project = "another".into();
+                    vec![g]
+                },
+                "grant_project_mismatch",
+            ),
+            (
+                {
+                    let mut g = grant_for(10_000_000, "TX-1");
+                    g.install_id = "another-install".into();
+                    vec![g]
+                },
+                "grant_install_mismatch",
+            ),
+        ];
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        for (grants, expected) in &cases {
+            let problem = scope_problem("p", "install-1", 10_000, grants, &scope);
+            assert_eq!(problem, Some(*expected), "for {grants:?}");
+            assert!(seen.insert(expected), "each cause is distinct: {expected}");
+            let remedy = scope_remedy(expected);
+            assert!(
+                remedy.len() > 20 && !remedy.contains("no work grant covers"),
+                "a remedy names an action, not the symptom: {remedy}"
+            );
+        }
+        assert_eq!(
+            scope_problem(
+                "p",
+                "install-1",
+                10_000,
+                &[grant_for(10_000_000, "TX-1")],
+                &scope
+            ),
+            None,
+            "the grant for this exact scope covers it"
+        );
+        assert_ne!(
+            scope_remedy("grant_open_failed"),
+            scope_remedy("no_grant"),
+            "a failed request and an absent grant are not the same row"
+        );
+    }
+
+    /// The vocabulary is closed and every member of it is answerable. A code
+    /// that a row can carry but no reader recognises is how the cause reaches
+    /// the receipt and still never reaches the operator.
+    #[test]
+    fn every_code_a_held_row_can_carry_is_in_the_closed_vocabulary() {
+        let scope = scope_key(REL, "TX-1");
+        for grants in [
+            vec![],
+            vec![grant_for(1, "TX-1")],
+            vec![grant_for(10_000_000, "TX-9")],
+            {
+                let mut g = grant_for(10_000_000, "TX-1");
+                g.engines[0].release = "ds-network-reporter@9.9.9+beef".into();
+                vec![g]
+            },
+            {
+                let mut g = grant_for(10_000_000, "TX-1");
+                g.project = "another".into();
+                vec![g]
+            },
+            {
+                let mut g = grant_for(10_000_000, "TX-1");
+                g.install_id = "another-install".into();
+                vec![g]
+            },
+        ] {
+            let problem = scope_problem("p", "install-1", 10_000, &grants, &scope)
+                .expect("none of these cover the scope");
+            assert!(
+                is_scope_problem(problem),
+                "{problem} is emitted but not declared"
+            );
+        }
+        assert!(is_scope_problem("grant_open_failed"));
+        assert!(!is_scope_problem("published"));
+        let fallback = scope_remedy("something_else_entirely");
+        let mut remedies: BTreeSet<&str> = BTreeSet::new();
+        for code in SCOPE_PROBLEMS {
+            let remedy = scope_remedy(code);
+            assert_ne!(remedy, fallback, "{code} has no remedy of its own");
+            assert!(remedies.insert(remedy), "{code} restates another remedy");
+        }
     }
 
     #[test]

@@ -881,19 +881,186 @@ fn certificate_cache_is_used_but_missing_key_forces_bounded_refresh() {
         "missing key must force exactly one refresh"
     );
 
-    let stale = CertificateCache {
-        fetched_at_unix: now - CERT_CACHE_TTL_SECONDS - 1,
+    let long_ago = CertificateCache {
+        fetched_at_unix: now - 90 * 24 * 60 * 60,
         ..cache
     };
     atomic_replace(
         &root.0.join(CERT_CACHE_FILE),
-        &encode_record(&stale, MAX_AUTHORITY_RECORD_BYTES).unwrap(),
+        &encode_record(&long_ago, MAX_AUTHORITY_RECORD_BYTES).unwrap(),
     )
     .unwrap();
     authority
         .resolve_public_key(CERT_KEY_ID, &source, now)
         .unwrap();
-    assert_eq!(source.calls.get(), 2, "stale cache must be refreshed");
+    assert_eq!(
+        source.calls.get(),
+        1,
+        "age of the fetch is not an expiry: the certificate's own window still covers now"
+    );
+}
+
+/// Failing source: the endpoint is there, but unreachable — the shape of the
+/// desktop fault this lane exists to remove.
+struct UnreachableCertificates {
+    calls: Cell<usize>,
+}
+
+impl CertificateSource for UnreachableCertificates {
+    fn fetch(&self, _signer: &str) -> Result<BTreeMap<String, String>, String> {
+        self.calls.set(self.calls.get() + 1);
+        Err("Google signer certificate request failed: timeout: connect".to_string())
+    }
+}
+
+/// The fixture certificate declares 2026-04-02 .. 2027-04-02, so a cache
+/// fetched eleven days before this reading is far outside the hour the old TTL
+/// allowed while the certificate itself has months to run.
+const CERT_NOT_AFTER_UNIX: i64 = 1_806_685_004;
+
+#[test]
+fn retained_certificate_resolves_offline_for_its_issuer_window() {
+    let root = TestRoot::new();
+    let authority = verifier(&root);
+    let now = 1_787_059_200;
+    let cache = CertificateCache {
+        schema: 1,
+        contract: CERT_CACHE_CONTRACT.to_string(),
+        authority: pins().identity(),
+        signer: pins().signer,
+        fetched_at_unix: now - 11 * 24 * 60 * 60,
+        certificates: BTreeMap::from([(CERT_KEY_ID.to_string(), CERTIFICATE.to_string())]),
+    };
+    atomic_replace(
+        &root.0.join(CERT_CACHE_FILE),
+        &encode_record(&cache, MAX_AUTHORITY_RECORD_BYTES).unwrap(),
+    )
+    .unwrap();
+
+    let source = UnreachableCertificates {
+        calls: Cell::new(0),
+    };
+    let key = authority
+        .resolve_public_key(CERT_KEY_ID, &source, now)
+        .expect("a certificate inside its own validity window resolves with no endpoint at all");
+    assert_eq!(
+        key,
+        parse_rsa_certificate(CERTIFICATE).unwrap(),
+        "the retained certificate's key is the one served"
+    );
+    assert_eq!(
+        source.calls.get(),
+        0,
+        "reaching the certificate endpoint must not be a precondition"
+    );
+}
+
+#[test]
+fn expired_certificate_offline_fails_naming_its_own_window() {
+    let root = TestRoot::new();
+    let authority = verifier(&root);
+    let after_expiry = CERT_NOT_AFTER_UNIX + 60;
+    let cache = CertificateCache {
+        schema: 1,
+        contract: CERT_CACHE_CONTRACT.to_string(),
+        authority: pins().identity(),
+        signer: pins().signer,
+        fetched_at_unix: 1_787_059_200,
+        certificates: BTreeMap::from([(CERT_KEY_ID.to_string(), CERTIFICATE.to_string())]),
+    };
+    atomic_replace(
+        &root.0.join(CERT_CACHE_FILE),
+        &encode_record(&cache, MAX_AUTHORITY_RECORD_BYTES).unwrap(),
+    )
+    .unwrap();
+
+    let source = UnreachableCertificates {
+        calls: Cell::new(0),
+    };
+    let error = authority
+        .resolve_public_key(CERT_KEY_ID, &source, after_expiry)
+        .expect_err("a certificate past its own notAfter is not trusted because it is on disk");
+    assert_eq!(
+        source.calls.get(),
+        1,
+        "an expired certificate must still force exactly one bounded refresh"
+    );
+    assert!(
+        error.contains("left its own validity window")
+            && error.contains(&CERT_NOT_AFTER_UNIX.to_string())
+            && error.contains("timeout: connect"),
+        "the refusal must say which fact refused it, and why the refresh failed: {error}"
+    );
+}
+
+/// The real endpoint, not a fake: `GoogleCertificateSource` itself, driven
+/// with the network genuinely broken beneath it.
+///
+/// The tests above prove the LOGIC — that a retained certificate inside its
+/// own window is served without consulting a source. This one proves the
+/// OUTCOME on the code path the desktop actually runs: real DNS, real TLS,
+/// real timeouts. It is ignored by default because with a network it would
+/// reach Google. Run it deliberately:
+///
+/// ```text
+/// cargo test -- --ignored real_google_endpoint
+/// ```
+///
+/// with connectivity removed — a network namespace, or a `connect(2)` shim.
+#[test]
+#[ignore = "drives the real certificate endpoint; run it deliberately, with the network removed"]
+fn real_google_endpoint_is_not_a_precondition() {
+    let root = TestRoot::new();
+    let authority = verifier(&root);
+    let now = 1_787_059_200;
+    let cache = CertificateCache {
+        schema: 1,
+        contract: CERT_CACHE_CONTRACT.to_string(),
+        authority: pins().identity(),
+        signer: pins().signer,
+        // Days old: far past the hour the retired TTL allowed.
+        fetched_at_unix: now - 11 * 24 * 60 * 60,
+        certificates: BTreeMap::from([(CERT_KEY_ID.to_string(), CERTIFICATE.to_string())]),
+    };
+    atomic_replace(
+        &root.0.join(CERT_CACHE_FILE),
+        &encode_record(&cache, MAX_AUTHORITY_RECORD_BYTES).unwrap(),
+    )
+    .unwrap();
+
+    let source = GoogleCertificateSource;
+    let key = authority
+        .resolve_public_key(CERT_KEY_ID, &source, now)
+        .expect("the retained certificate resolves with the endpoint unreachable");
+    assert_eq!(key, parse_rsa_certificate(CERTIFICATE).unwrap());
+
+    // And the endpoint is genuinely unreachable: asking for a key nothing is
+    // held for has to go out, and says so.
+    let error = authority
+        .resolve_public_key("0000000000000000000000000000000000000000", &source, now)
+        .expect_err("an unheld key must still force a bounded fetch");
+    println!("unheld key, endpoint unreachable: {error}");
+    assert!(
+        error.contains("Google signer certificate"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn freshly_fetched_certificate_outside_its_window_is_refused() {
+    let root = TestRoot::new();
+    let authority = verifier(&root);
+    let source = CountingCertificates {
+        calls: Cell::new(0),
+        certificates: BTreeMap::from([(CERT_KEY_ID.to_string(), CERTIFICATE.to_string())]),
+    };
+    let error = authority
+        .resolve_public_key(CERT_KEY_ID, &source, CERT_NOT_AFTER_UNIX + 60)
+        .expect_err("the issuer's window governs a fetched certificate exactly as a retained one");
+    assert!(
+        error.contains("valid only from unix") && error.contains("clock reading"),
+        "unexpected refusal: {error}"
+    );
 }
 
 #[cfg(unix)]

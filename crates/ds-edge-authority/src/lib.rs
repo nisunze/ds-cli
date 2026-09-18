@@ -47,7 +47,6 @@ const MAX_SIGNATURE_BYTES: usize = 1024;
 const MAX_CERT_RESPONSE_BYTES: u64 = 256 * 1024;
 const MAX_CERTIFICATE_BYTES: usize = 16 * 1024;
 const MAX_AUTHORITY_RECORD_BYTES: u64 = 320 * 1024;
-const CERT_CACHE_TTL_SECONDS: i64 = 60 * 60;
 const INSTALL_LEASE_MAX_SECONDS: i64 = ds_command_kernel::installation::OFFLINE_LEASE_SECONDS;
 const WORK_GRANT_MAX_SECONDS: i64 = 24 * 60 * 60;
 const ARTIFACT_READ_MAX_SECONDS: i64 = 5 * 60;
@@ -992,6 +991,18 @@ impl AuthorityVerifier {
             .map_err(|error| format!("signed capability JSON is invalid or not closed: {error}"))
     }
 
+    /// The signing key for `key_id`, from the retained certificate set when it
+    /// still holds one, otherwise from one bounded fetch.
+    ///
+    /// A cached certificate is served for the window its ISSUER declared —
+    /// the certificate's own `notBefore`/`notAfter` — not for an hour after
+    /// this machine happened to fetch it. Reaching the endpoint is therefore
+    /// never a precondition for verifying with a certificate that is still
+    /// valid: a desktop behind a blocked or slow network keeps working, which
+    /// is the whole point of retaining the set. The endpoint is consulted only
+    /// when nothing usable is held for this key — it was never cached, it was
+    /// rotated away, or its own validity ran out — so Google-managed key
+    /// rotation still forces exactly one bounded refresh.
     fn resolve_public_key(
         &self,
         key_id: &str,
@@ -999,29 +1010,47 @@ impl AuthorityVerifier {
         local_now: i64,
     ) -> Result<RsaPublicKey, String> {
         let cache_path = self.authority_dir.join(CERT_CACHE_FILE);
+        // Why the cached certificate cannot be used, when one is held for this
+        // key at all. It names the certificate's own expiry, so an offline
+        // failure says which of the two facts refused the call.
+        let mut cached_expiry: Option<i64> = None;
         if let Ok(Some(raw)) = read_bounded_file(&cache_path, MAX_AUTHORITY_RECORD_BYTES) {
             if let Ok(cache) = serde_json::from_slice::<CertificateCache>(&raw) {
                 if validate_certificate_cache(&cache, &self.pins, local_now).is_ok() {
                     if let Some(encoded) = cache.certificates.get(key_id) {
-                        if let Ok(key) = parse_rsa_certificate(encoded) {
-                            return Ok(key);
+                        if let Ok(certificate) = parse_certificate(encoded) {
+                            if certificate.covers(local_now) {
+                                return Ok(certificate.key);
+                            }
+                            cached_expiry = Some(certificate.not_after_unix);
                         }
                     }
                 }
             }
         }
 
-        // A missing key always forces one bounded refresh, even when another
-        // key was cached recently. This is required for Google-managed key
-        // rotation and never falls back to a response-provided endpoint.
-        let certificates = source.fetch(&self.pins.signer)?;
+        // Nothing usable is retained for this key, so the endpoint is the only
+        // remaining source. It never falls back to a response-provided one.
+        let certificates = source.fetch(&self.pins.signer).map_err(|error| match cached_expiry {
+            Some(expiry) => format!(
+                "the retained Google signer certificate for key {key_id} left its own validity window at unix {expiry} and a fresh set could not be fetched: {error}"
+            ),
+            None => error,
+        })?;
         validate_certificate_set(&certificates)?;
         let encoded = certificates.get(key_id).ok_or_else(|| {
             format!(
                 "Google certificate set does not contain signing key {key_id} for the pinned signer"
             )
         })?;
-        let key = parse_rsa_certificate(encoded)?;
+        let certificate = parse_certificate(encoded)?;
+        if !certificate.covers(local_now) {
+            return Err(format!(
+                "the Google signer certificate for key {key_id} is valid only from unix {} to unix {}, which does not contain this machine's clock reading of unix {local_now}",
+                certificate.not_before_unix, certificate.not_after_unix
+            ));
+        }
+        let key = certificate.key;
         let cache = CertificateCache {
             schema: 1,
             contract: CERT_CACHE_CONTRACT.to_string(),
@@ -1163,6 +1192,12 @@ struct ServerTimeHighWater {
     server_time: String,
 }
 
+/// Whether this retained record is ours and its clock evidence is coherent.
+///
+/// It deliberately carries no age limit. How long a certificate may be trusted
+/// is stated by the certificate, and is checked per key where the key is used;
+/// `fetched_at_unix` is kept as clock evidence — a record claiming to have been
+/// fetched in this machine's future is rejected — never as an expiry.
 fn validate_certificate_cache(
     cache: &CertificateCache,
     pins: &AuthorityPins,
@@ -1174,10 +1209,10 @@ fn validate_certificate_cache(
         || cache.signer != pins.signer
         || cache.fetched_at_unix < 0
         || cache.fetched_at_unix > local_now
-        || local_now - cache.fetched_at_unix > CERT_CACHE_TTL_SECONDS
     {
         return Err(
-            "cached signer certificates are stale or belong to another authority".to_string(),
+            "retained signer certificates belong to another authority or carry impossible clock evidence"
+                .to_string(),
         );
     }
     validate_certificate_set(&cache.certificates)
@@ -1196,7 +1231,26 @@ fn validate_certificate_set(certificates: &BTreeMap<String, String>) -> Result<(
     Ok(())
 }
 
+/// A signer certificate as this crate reads it: the RSA key it carries and the
+/// validity window its issuer declared for that key.
+struct ParsedCertificate {
+    key: RsaPublicKey,
+    not_before_unix: i64,
+    not_after_unix: i64,
+}
+
+impl ParsedCertificate {
+    /// Whether the issuer's declared window contains this instant.
+    fn covers(&self, local_now: i64) -> bool {
+        self.not_before_unix <= local_now && local_now < self.not_after_unix
+    }
+}
+
 fn parse_rsa_certificate(pem: &str) -> Result<RsaPublicKey, String> {
+    parse_certificate(pem).map(|certificate| certificate.key)
+}
+
+fn parse_certificate(pem: &str) -> Result<ParsedCertificate, String> {
     const BEGIN: &str = "-----BEGIN CERTIFICATE-----";
     const END: &str = "-----END CERTIFICATE-----";
     if pem.len() > MAX_CERTIFICATE_BYTES || pem.contains('\r') {
@@ -1236,7 +1290,17 @@ fn parse_rsa_certificate(pem: &str) -> Result<RsaPublicKey, String> {
     if !(2048..=8192).contains(&key.n().bits()) {
         return Err("signer x509 RSA key has an unsafe modulus size".to_string());
     }
-    Ok(key)
+    let validity = &certificate.tbs_certificate.validity;
+    let not_before_unix = validity.not_before.to_unix_duration().as_secs() as i64;
+    let not_after_unix = validity.not_after.to_unix_duration().as_secs() as i64;
+    if not_after_unix <= not_before_unix {
+        return Err("signer x509 certificate declares an empty validity window".to_string());
+    }
+    Ok(ParsedCertificate {
+        key,
+        not_before_unix,
+        not_after_unix,
+    })
 }
 
 fn validate_high_water(record: &ServerTimeHighWater, pins: &AuthorityPins) -> Result<(), String> {

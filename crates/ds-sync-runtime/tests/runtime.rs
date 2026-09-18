@@ -393,8 +393,8 @@ fn an_unauthorized_identity_moves_no_byte_and_advances_nothing() {
 
     assert_eq!(
         outcomes(&outcome),
-        vec!["open_grant:failed", "upload:failed"],
-        "no grant, so no publication",
+        vec!["open_grant:failed", "upload:grant_open_failed"],
+        "no grant, so no publication — and the row says the grant request failed",
     );
     let world = fakes::lock(&harness.world);
     assert_eq!(world.grants_minted, 0, "no grant was minted");
@@ -406,9 +406,58 @@ fn an_unauthorized_identity_moves_no_byte_and_advances_nothing() {
         .iter()
         .find(|receipt| receipt.action == "upload")
         .expect("an upload receipt");
+    // The cause, not its consequence: the authority's own 403 reaches the row
+    // the operator reads, so a refusal of access is distinguishable from an
+    // unreachable signer or a grant nobody asked for.
+    let detail = upload.detail.clone().expect("the row states a cause");
+    assert!(
+        detail.contains("the gateway answered 403"),
+        "the row must carry what the authority answered: {detail}"
+    );
+    assert!(
+        detail.contains("asked for on this run"),
+        "and that a request WAS attempted: {detail}"
+    );
+}
+
+/// The other way a row can end a run uncovered: the request SUCCEEDED and the
+/// authority issued a grant for a scope nobody asked about. The row must say
+/// that, not "none was asked for on this run" — which would put a second
+/// guess exactly where the first one was removed.
+#[test]
+fn a_grant_issued_for_another_scope_is_not_reported_as_no_request() {
+    let harness = Harness::new();
+    let row = local_row(b"first report");
+    {
+        let mut world = fakes::lock(&harness.world);
+        world.issue_release = Some("ds-network-reporter@9.9.9+beef".into());
+    }
+
+    let outcome = harness.run(vec![row], sync::Trigger::Startup);
+
     assert_eq!(
-        upload.detail.as_deref(),
-        Some("no work grant covers this publication"),
+        outcomes(&outcome),
+        vec!["open_grant:granted", "upload:grant_open_failed"],
+        "the door answered, and what it answered does not cover this row",
+    );
+    let upload = outcome
+        .receipts
+        .iter()
+        .find(|receipt| receipt.action == "upload")
+        .expect("an upload receipt");
+    let detail = upload.detail.clone().expect("the row states a cause");
+    assert!(
+        detail.contains("ds-network-reporter@9.9.9+beef") && detail.contains("issued instead"),
+        "the row must name the scope that was issued: {detail}"
+    );
+    assert!(
+        !detail.contains("none was asked for"),
+        "a request WAS made this run: {detail}"
+    );
+    let world = fakes::lock(&harness.world);
+    assert_eq!(
+        world.commits, 0,
+        "nothing publishes under a grant for another release"
     );
 }
 
@@ -437,7 +486,7 @@ fn one_failed_resource_grant_does_not_refuse_other_uploads_in_the_batch() {
             "open_grant:granted",
             "open_grant:failed",
             "upload:published",
-            "upload:failed",
+            "upload:grant_open_failed",
         ]
     );
     let world = fakes::lock(&harness.world);
@@ -456,10 +505,15 @@ fn one_failed_resource_grant_does_not_refuse_other_uploads_in_the_batch() {
                     .is_some_and(|identity| identity.operation == "export-tx_2")
         })
         .expect("the uncovered upload receipt");
-    assert_eq!(
-        failed.detail.as_deref(),
-        Some("no work grant covers this publication")
+    // This row names the resource whose grant failed and the words the
+    // authority used, so an operator reading the Sync Center is not told that
+    // tx_2 lacks a grant when the truth is that asking for it did not work.
+    let detail = failed.detail.clone().expect("the held row states a cause");
+    assert!(
+        detail.contains("tx_2") && detail.contains("temporarily unreachable"),
+        "unexpected detail: {detail}"
     );
+    assert_eq!(failed.outcome, "grant_open_failed");
 }
 
 #[test]
@@ -782,8 +836,8 @@ fn a_server_host_executes_the_loop_and_refuses_to_upload_without_a_gateway() {
             .iter()
             .map(|receipt| format!("{}:{}", receipt.action, receipt.outcome))
             .collect::<Vec<_>>(),
-        vec!["open_grant:failed", "upload:failed"],
-        "a server with no gateway refuses cleanly, in order",
+        vec!["open_grant:failed", "upload:grant_open_failed"],
+        "a server with no gateway refuses cleanly, in order, naming the gateway",
     );
     let world = fakes::lock(&harness.world);
     assert_eq!(world.commits, 0, "the server moved no bytes");
