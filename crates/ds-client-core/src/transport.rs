@@ -1628,6 +1628,64 @@ impl SreEventsCall<'_> {
     }
 }
 
+/// The installation inventory and its two governed transitions.
+///
+/// One route, one closed action vocabulary, and no project: an installation
+/// belongs to the product. `platform.admin` or `app.admin` on the restored
+/// user is what decides whether there is an answer.
+pub struct InstallsCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl InstallsCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        "/api/v1/governance".into()
+    }
+    pub fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        1024 * 1024
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        30
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(
+            serde_json::to_vec(&self.payload).expect("closed installation inventory request"),
+        )
+    }
+}
+
 pub struct GridCatalogCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: serde_json::Value,
@@ -2375,6 +2433,9 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn installs(&mut self, _call: InstallsCall<'_>) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn global_tiles(
         &mut self,
         _call: GlobalTilesCall<'_>,
@@ -2625,6 +2686,9 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn installs(&mut self, _call: InstallsCall<'_>) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn global_tiles(
         &mut self,
         _call: GlobalTilesCall<'_>,
@@ -2855,6 +2919,9 @@ impl<T: Transport> AuthorizedTransport for T {
         call: GridCatalogCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::grid_catalog(self, call)
+    }
+    fn installs(&mut self, call: InstallsCall<'_>) -> Result<TransportResponse, TransportError> {
+        Transport::installs(self, call)
     }
     fn global_tiles(
         &mut self,

@@ -204,6 +204,17 @@ pub fn design_status_upload_wasm(input: &[u8]) -> Result<String, wasm_bindgen::J
 }
 pub mod field_domain;
 pub mod installation;
+pub mod installation_inventory;
+/// The whole installation inventory, as an operator must read it: grouped by
+/// host, ordered by freshness, with licence and lease state said in tokens a
+/// caller translates. Reached identically by `ds`, the Server and the browser.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = installationInventory)]
+pub fn installation_inventory_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    installation_inventory::evaluate_request(input)
+        .and_then(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod map_active_view;
 pub mod map_scene;
 pub mod project_context;
