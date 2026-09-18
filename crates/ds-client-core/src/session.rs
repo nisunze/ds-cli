@@ -1225,6 +1225,32 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One governed action on the GLOBAL installation inventory.
+    ///
+    /// No project: an installation belongs to the product, so nothing here
+    /// selects, fences or sends one. The restored user is the identity the
+    /// gateway sees, and `platform.admin`/`app.admin` decides the answer.
+    pub fn installs(
+        &mut self,
+        command: &crate::installs::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::installs::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            command,
+        )
+    }
+
     /// One governed action on the GLOBAL library and example catalog.
     ///
     /// No project id, because this catalog has none: a library release belongs

@@ -204,6 +204,11 @@ pub use profile::{
 pub use transport::AdminBoundsCall;
 pub use transport::GlobalTilesCall;
 pub use transport::GridCatalogCall;
+pub use transport::InstallsCall;
+
+/// The installation inventory: global, admin-gated, and reachable without a
+/// browser for the first time.
+pub mod installs;
 pub use transport::GridModelsCall;
 pub use transport::ReportArtifactCall;
 pub use transport::{SreEventsCall, SreOverviewCall};
