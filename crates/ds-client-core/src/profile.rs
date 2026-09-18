@@ -3,7 +3,7 @@ use std::fmt;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v27";
+pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v28";
 pub const DEVICE_CREDENTIAL_AUDIENCE_SCHEMA: &str = "ds.native-client-credential-audience/v1";
 pub const NATIVE_CLIENT_ID: &str = "ds-native-client";
 pub const AUTH_LINK_BEGIN_METHOD: &str = "POST";
@@ -65,6 +65,15 @@ pub const LAYERS_ACTIONS: [&str; 5] = [
     "reorder",
     "set_default_visibility",
 ];
+/// The national administrative hierarchy. The country is a path segment, not
+/// a parameter: a second boundary authority is a second reviewed route.
+pub const ADMIN_BOUNDS_METHOD: &str = "GET";
+pub const ADMIN_BOUNDS_PATH: &str = "/api/v1/admin/rwanda";
+/// The closed action vocabulary this client may send. The backend also answers
+/// `hierarchy`, `descendants`, `query`, `locate` and the POST `enrich`; none of
+/// them is declared, because each is either an unbounded pull or a second way
+/// to do something a declared operation already does exactly.
+pub const ADMIN_BOUNDS_ACTIONS: [&str; 2] = ["children", "geometry"];
 pub const TILES_METHOD: &str = "POST";
 pub const TILES_PATH: &str = "/api/v1/tiles";
 /// The closed `/api/v1/tiles` action vocabulary. The first six curate one
@@ -226,6 +235,9 @@ pub struct ClientProfileInput {
     pub design_selections_method: String,
     pub design_selections_path: String,
     pub design_selections_actions: Vec<String>,
+    pub admin_bounds_method: String,
+    pub admin_bounds_path: String,
+    pub admin_bounds_actions: Vec<String>,
     pub data_distribution_method: String,
     pub data_distribution_path: String,
     pub data_distribution_actions: Vec<String>,
@@ -399,6 +411,12 @@ impl ClientProfile {
         {
             return Err(ProfileError::DesignSelectionsRoute);
         }
+        if input.admin_bounds_method != ADMIN_BOUNDS_METHOD
+            || input.admin_bounds_path != ADMIN_BOUNDS_PATH
+            || input.admin_bounds_actions != ADMIN_BOUNDS_ACTIONS.map(str::to_owned).to_vec()
+        {
+            return Err(ProfileError::AdminBoundsRoute);
+        }
         if input.data_distribution_method != DATA_DISTRIBUTION_METHOD
             || input.data_distribution_path != DATA_DISTRIBUTION_PATH
             || input.data_distribution_actions
@@ -534,6 +552,10 @@ impl ClientProfile {
             DATA_DISTRIBUTION_PATH,
             DATA_DISTRIBUTION_ACTIONS[0],
             DATA_DISTRIBUTION_ACTIONS[1],
+            ADMIN_BOUNDS_METHOD,
+            ADMIN_BOUNDS_PATH,
+            ADMIN_BOUNDS_ACTIONS[0],
+            ADMIN_BOUNDS_ACTIONS[1],
         ] {
             hasher.update((value.len() as u64).to_be_bytes());
             hasher.update(value.as_bytes());
@@ -659,6 +681,7 @@ pub enum ProfileError {
     DesignAttachmentsRoute,
     DesignSelectionsRoute,
     DataDistributionRoute,
+    AdminBoundsRoute,
 }
 
 fn valid_project_id(value: &str) -> bool {

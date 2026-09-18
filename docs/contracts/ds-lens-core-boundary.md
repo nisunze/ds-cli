@@ -226,6 +226,7 @@ nothing else in this plan is gated on it.
 | 2026-09-18 | 0b | `integer`/`INVALID_NUMBER`/`plural` moved to `ds-cli-contract::args`, so the door dependency means only "has window-bound commands"; **`ds-cli-survey` freed** (its `BRIDGE_OPS` had been empty since its control plane moved to the kernel); `ds-cli-tile`'s ceiling 3 → 2. Thirteen core crates left (ds-cli `1e5d195`) |
 | 2026-09-18 | 0b | **`ds-cli-library` freed.** Its thirteen governed global-catalog operations gained the headless owner they always should have had: `ds-client-core::grid_catalog` (closed action enum, per-action body keys, bounded governed objects) plus `grid_models::ForkExample`. The artifact upload and the prepared-directory publication the desktop used to compose are performed in the CLI. The desktop's thirteen bridge operations and its adapter are deleted. Twelve left (kernel `6883594`, ds-cli `a4430f4`, ds-web `6ca38d96`) |
 | 2026-09-18 | 0b | **`ds-cli-feedback` freed.** It had two routes to one backlog; the native one was already the default, so the paired one and its prose-marker refusal recovery are gone, with `--target`, `--desktop-descriptor`, the three BridgeOps and the desktop adapter. Eleven left (ds-cli `c0d712c`, ds-web `7c9817c2`) |
+| 2026-09-18 | 0b | **`ds-cli-data` half freed.** Its two national boundary READS are core and now behave like it: `ds-client-core::admin_bounds` (closed country/level vocabulary, prefix-code arithmetic, bounded evidence instead of coordinates, `--geometry-out` for the polygon) on a new declared route at profile v28. `--to-map` did not follow: materialising a boundary in a running desktop is a local overlay plus a camera move, which is lens, and no `map.*` command owns it yet (owner decision 5 below). The crate KEEPS the door at 4 files: `data.elevation.plan|extract|attach` and `data.admin_bounds.attach` are local file compute whose engine (`ds-web/src-tauri/src/native_elevation.rs`, `native_point_cloud.rs`, ~2,300 lines over `ds_elevation`), DEM component manager (`rwanda_dem_resource.rs`) and project-pinned reference asset live in the desktop shell — core work needing an extracted crate, not lens (kernel `30968ce`, ds-cli `8ed72cf`, ds-web `deb7094b`) |
 
 ## 6. Owner decisions needed
 
@@ -239,6 +240,16 @@ nothing else in this plan is gated on it.
 4. Slice 6's names and install layout: what the lens binary is called, whether
    the desktop installs two binaries or one that links both, and what a lens
    install without a reachable core answers.
+5. Where the *rendering* half of a freed read goes. `ds data admin-bounds read
+   --to-map` put an exact boundary on the open desktop map through the sketch
+   store and fitted the camera. The read became core on 2026-09-18 and the
+   switch was removed, so that gesture is available inside Search place but no
+   longer from the CLI. Three answers are open: a `map.*` lens command that
+   renders a boundary the core read names; teaching the desktop to show the
+   prepared local layers `ds map local register` writes (today its catalogue is
+   IndexedDB and `ds`'s is the native layer store, and the two do not meet); or
+   accepting the file-plus-`ds map local register` composition as the answer.
+   The same question will arrive with every read that had a `--to-map` twin.
 
 ## 7. Non-goals
 

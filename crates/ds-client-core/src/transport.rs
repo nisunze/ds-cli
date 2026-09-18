@@ -12,6 +12,7 @@ pub const SIGN_IN_ENDPOINT: &str =
     "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword";
 pub const REFRESH_ENDPOINT: &str = "https://securetoken.googleapis.com/v1/token";
 pub use crate::profile::PROJECT_LIST_PATH;
+pub use crate::profile::{ADMIN_BOUNDS_METHOD, ADMIN_BOUNDS_PATH};
 pub use crate::profile::{DATA_DISTRIBUTION_METHOD, DATA_DISTRIBUTION_PATH};
 pub use crate::profile::{
     PROJECT_FORMS_ACTION, PROJECT_FORMS_METHOD, PROJECT_FORMS_PATH, PROJECT_FORM_EDITOR_ACTION,
@@ -43,6 +44,12 @@ pub const SURVEY_ENTRY_CREATE_RESPONSE_LIMIT: usize = 1024 * 1024;
 pub const SURVEY_ENTRY_CREATE_TIMEOUT_SECONDS: u64 = 120;
 pub const TILE_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
 pub const TILE_TIMEOUT_SECONDS: u64 = 120;
+/// One administrative polygon, with room to spare: Rwanda's largest province
+/// answers in ~0.5 MiB, so anything past this is a query that came back with
+/// something other than one boundary.
+pub const ADMIN_BOUNDS_RESPONSE_LIMIT: usize = 8 * 1024 * 1024;
+/// The gateway's own deadline for the route (`ds-apis-tf/api_rwanda_admin.tf`).
+pub const ADMIN_BOUNDS_TIMEOUT_SECONDS: u64 = 60;
 pub const PROJECT_REPORT_RESPONSE_LIMIT: usize = 8 * 1024 * 1024;
 /// The compounded deliverable fans out reporter work and streams a ZIP; the
 /// gateway allows ten minutes for the `/report` route and so does the core.
@@ -1429,6 +1436,67 @@ impl GlobalTilesCall<'_> {
     }
 }
 
+/// One exact read of a national administrative hierarchy.
+///
+/// The country is in the path and the read is in the query, and both are built
+/// by [`crate::admin_bounds::Command`] from closed tokens and ASCII digits — so
+/// this call carries no body, no caller URL and nothing to escape.
+pub struct AdminBoundsCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) query: String,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl AdminBoundsCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub const fn path(&self) -> &'static str {
+        ADMIN_BOUNDS_PATH
+    }
+    pub const fn method(&self) -> &'static str {
+        ADMIN_BOUNDS_METHOD
+    }
+    pub fn url(&self) -> String {
+        format!(
+            "{}{}?{}",
+            self.gateway_origin(),
+            ADMIN_BOUNDS_PATH,
+            self.query
+        )
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        ADMIN_BOUNDS_RESPONSE_LIMIT
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        ADMIN_BOUNDS_TIMEOUT_SECONDS
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+}
+
 pub struct GridCatalogCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: serde_json::Value,
@@ -2182,6 +2250,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn admin_bounds(
+        &mut self,
+        _call: AdminBoundsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -2414,6 +2488,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn admin_bounds(
+        &mut self,
+        _call: AdminBoundsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -2626,6 +2706,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: GlobalTilesCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::global_tiles(self, call)
+    }
+    fn admin_bounds(
+        &mut self,
+        call: AdminBoundsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::admin_bounds(self, call)
     }
     fn shared_asset_bytes(
         &mut self,

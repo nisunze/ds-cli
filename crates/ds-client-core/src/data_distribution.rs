@@ -917,6 +917,9 @@ mod tests {
             data_distribution_method: "POST".to_owned(),
             data_distribution_path: "/api/v1/data-distribution".to_owned(),
             data_distribution_actions: crate::DATA_DISTRIBUTION_ACTIONS.map(str::to_owned).to_vec(),
+            admin_bounds_method: crate::ADMIN_BOUNDS_METHOD.to_owned(),
+            admin_bounds_path: crate::ADMIN_BOUNDS_PATH.to_owned(),
+            admin_bounds_actions: crate::ADMIN_BOUNDS_ACTIONS.map(str::to_owned).to_vec(),
         })
         .unwrap()
     }

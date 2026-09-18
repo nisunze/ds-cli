@@ -191,10 +191,13 @@ pub use data_distribution::{
 pub use profile::{DATA_DISTRIBUTION_ACTIONS, DATA_DISTRIBUTION_METHOD, DATA_DISTRIBUTION_PATH};
 pub use transport::{BundleDownloadCall, DataDistributionCall};
 
+pub mod admin_bounds;
 pub mod global_tiles;
 pub mod grid_catalog;
 pub mod grid_models;
 pub mod report_artifact;
+pub use profile::{ADMIN_BOUNDS_ACTIONS, ADMIN_BOUNDS_METHOD, ADMIN_BOUNDS_PATH};
+pub use transport::AdminBoundsCall;
 pub use transport::GlobalTilesCall;
 pub use transport::GridCatalogCall;
 pub use transport::GridModelsCall;
