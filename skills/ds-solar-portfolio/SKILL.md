@@ -8,7 +8,7 @@ metadata:
 # Work with one exact Solar portfolio
 
 Use the `ds` skill for installation discovery and live command contracts, and
-use `ds-project-context` when the active project is not already established.
+`ds-project-context` when the active project is not established.
 Prefer the installed headless commands when available. Rust owns explicit
 project authorization, governed membership, sealed city inputs, calculation,
 native run storage, and publication state. Do not recreate any of those from
@@ -19,8 +19,8 @@ local files, browser storage, APIs, or remembered commands.
 For an approved native Server workspace, discover the closed application
 operations through `solar.application.schema`; `solar.application` executes
 them under an explicit project. This route supports portfolio calculation and
-verified artifact inventories and reads without pairing. Discover each selected
-operation rather than copying request schemas or credentials into the skill.
+verified artifact inventories and reads without pairing. Discover each
+operation rather than copying request schemas or credentials here.
 
 Discover `portfolio_start` for continuing Server work and poll
 `portfolio_progress` until its job settles. `portfolio_cancel` only requests
@@ -30,7 +30,7 @@ identities. Inspect any closed artifacts before retrying the same exact intent.
 Calculation and verified online publication remain separate operations.
 
 For typed MCP, use `solar-portfolio-batch` for calculation/publication and
-`solar-delivery` for the governed catalog. Discover `solar.portfolio.list`, `solar.portfolio.calculate`, and
+`solar-delivery` for the governed catalog. Discover `solar.portfolio.list`, `solar.portfolio.calculate` and
 `solar.portfolio.publish` through live descriptors. The headless catalog uses
 an explicit project and lane without changing the selected project. Retain
 the exact portfolio id, ordered cities, and membership revision it returns.
@@ -52,9 +52,9 @@ drafts and chart bytes. For native application runs, discover `portfolio_publish
 and retain its exact batch id and digest. Require its output count along with
 the published receipt; a historical result-only publication does not prove the
 complete bundle was delivered.
-Require a verified online publication receipt before claiming synchronization;
-A successful local calculation is separate from publication and must be
-reported separately.
+Require a verified online publication receipt before claiming synchronization:
+a successful local calculation is separate from publication and is reported
+separately.
 
 Older surfaces may be paired-only. Report absent headless commands; never
 change authority to force success on a server.
@@ -65,42 +65,41 @@ Discover the portfolio-list command and read its current descriptor before
 invoking it. Select the exact portfolio id the user intended and retain its
 name, ordered city ids, and membership revision. Refuse a list row that omits
 any of those identity fields. City order is semantic. Never substitute a
-same-name portfolio, a superset, the newest artifact, or every city currently
+same-name portfolio, a superset, the newest artifact, or every city now
 available.
 
 If the portfolio or a declared city is unavailable, stop with the returned
 refusal. Do not silently shorten the membership. An ordinary repeated-city run
-is not a portfolio run and must not be presented as one.
+is not a portfolio run; never present it as one.
 
 ## Prepare every frozen member
 
 Discover the Solar prepare command and invoke it for every ordered city id in
-the frozen portfolio membership, including members that appear to have been
-prepared before. The paired application owns freshness and may reuse valid
+the frozen portfolio membership, including members that look already
+prepared. The paired application owns freshness and may reuse valid
 prepared input; the skill must not infer readiness from an earlier receipt,
-local cache, or remembered run.
+local cache or remembered run.
 
 Require the prepare receipt to declare every frozen member ready before
 starting the portfolio run. A missing, stale, partial, failed, or extra member
 is a refusal: report it and do not calculate a shortened membership. Keep the
 same frozen membership revision throughout preparation. Do not obtain source
-data directly, inspect a cache, or add authentication options that the live
-prepare descriptor does not declare.
+data directly, inspect a cache, or add authentication options the live prepare
+descriptor does not declare.
 
 ## Run and observe
 
 Discover the portfolio-capable Solar run command and invoke it with the frozen
 portfolio id and exact membership revision returned by the selected list row.
-If the desktop reports that the revision changed, list again and ask the user
-to confirm the new ordered membership; never retry with the new revision
-silently. Choose exactly one graph strategy declared by the live contract:
+If the desktop reports a changed revision, list again and have the user
+confirm the new ordered membership; never retry with it silently. Choose exactly one graph strategy declared by the live contract:
 first member, round-robin, or one exact member of the frozen portfolio.
 Currency, horizon and discount rate are governed prepared-input facts, not
 launch flags. Language and report intent belong to a later report operation;
 do not invent or pass them to portfolio calculation.
 
-Treat the launch response as a job receipt, not a calculated result. Use the
-discovered lifecycle commands to observe that exact run id. A portfolio is
+Treat the launch response as a job receipt, not a result. Use the discovered
+lifecycle commands to observe that exact run id. A portfolio is
 ready only when the run receipt reports a committed aggregate for every
 declared member. Any missing, failed, stale, digest-mismatched, or extra city
 means there is no valid portfolio artifact; report the complete refusal rather
@@ -109,7 +108,7 @@ than reading a successful subset.
 ## Inspect and export sealed output
 
 Prompting drafts are the automated delivery endpoint. Final composition is a
-separate deliberate task under close human supervision. For a published read,
+separate task under close human supervision. For a published read,
 discover the headless published-result reader and pin its exact source run;
 never replace an unavailable or different published run with local bytes.
 
@@ -133,8 +132,7 @@ export is not Server delivery; its Desktop refusal does not prove headless
 absence. Export declared artifacts to a new destination, never reconstruct them.
 
 The paired lifecycle publishes the governed aggregate itself, from the run
-that sealed it. The headless lifecycle uses the explicit publication command
-described above.
+that sealed it; the headless lifecycle uses the publication command above.
 Read the publication state on the run's own result receipt: a successful
 calculation whose publication did not queue stays successful and says so
 explicitly. Report that state with the result and follow its remedy; never
@@ -144,3 +142,6 @@ city Sync Center row as proof the governed portfolio copy exists.
 When the installed CLI lacks a needed operation, follow the `ds` skill's live
 feedback procedure. Do not compensate with direct bridge calls, source-tree
 inspection during delivery, or a skill-local program.
+
+Stops at: interpretation — narrative judgement over a sealed result belongs to
+the author (`ds-solar-final-authoring`), not to another run.

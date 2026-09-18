@@ -38,3 +38,6 @@ application) → `ds style` → `ds tile generate --force --yes` per output.
 
 Do not run `generate` while `in_progress` is true. Do not read `blocked` as a
 transient error — it names a source problem to fix first.
+
+Stops at: the source data — a `blocked` tiling names a problem for the data's
+owner to fix; regenerating cannot clear it.

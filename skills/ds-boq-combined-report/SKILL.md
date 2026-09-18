@@ -71,3 +71,6 @@ a delta needs pole-level detail.
 The confirmed alignment table, the BOQ/workbook/delta table with causes, the
 unmatched BOQ lines, the dirty rows, and the file names with SHA-256 for both
 sides. Keep it bounded: totals and the rows that differ, not every row.
+
+Stops at: commercial judgement — a priced line the tables cannot explain is the
+engineer's call, not another query.

@@ -68,3 +68,6 @@ Keep these verdicts separate in the final receipt:
 6. engineering approval.
 
 No lower verdict implies a higher one.
+
+Stops at: native Restore — the fresh Restore and reopen are run in PLS-CADD by
+the operator, and no `ds` receipt substitutes for them.

@@ -131,3 +131,6 @@ is correct whenever some acceptance conditions are not proven in the deployed
 `ds`. Return two explicit sets: closed ids with evidence, and remaining ids
 with the exact unmet condition or deployment gap. Include each report's
 `reporters` in both sets; do not replace a missing reporter with an inference.
+
+Stops at: deployment — an acceptance only a newer deployed `ds` can meet stays
+open for whoever deploys it.

@@ -60,3 +60,6 @@ state with the requested deliverable when it must be resumed or handed off.
 Use the task's destination, not a personal path. Reads do not authorize changing
 forms, copying projects or publishing captures. Carry existing authorization
 through the workflow; `--yes` is for the user's specific authorized write.
+
+Stops at: the field — collection happens on the enumerator's device; `ds`
+prepares the form and reads what came back.

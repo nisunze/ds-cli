@@ -108,3 +108,6 @@ spacing on a line that is already directional is one flag. Do not send
 direction detail together with a non-directional `--line-type`, or
 `--pattern-*` together with `--fill-pattern solid`; both are refused as
 `invalid_cartography`.
+
+Stops at: cartographic taste — an effect the vocabulary cannot express is a
+product decision for the operator, never an invented flag.

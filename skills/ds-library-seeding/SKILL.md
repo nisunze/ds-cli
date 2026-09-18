@@ -92,3 +92,6 @@ and pins. It does not prove native solver acceptance, strength adequacy,
 visual acceptance, or engineering approval. Differential project state may
 reference the resolved native member; DS Grid asset bytes never become
 PLS-CADD structures, cables, criteria, or opaque resources.
+
+Stops at: native acceptance — solver acceptance, strength adequacy and
+engineering approval come from PLS-CADD and the engineer, never from a digest.

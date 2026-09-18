@@ -116,3 +116,6 @@ an API or cloud-storage client directly.
 
 Return the Markdown lint result, pending-fact list, import/publication receipt,
 tool versions used, and SHA-256 for every converted or uploaded deliverable.
+
+Stops at: the document renderer and the reviewer — installed tools typeset the
+DOCX/PDF, and a human approves the text `ds` linted.

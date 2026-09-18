@@ -91,3 +91,6 @@ ds map evidence capture --scope app --out /evidence/03-property-step.png --outpu
 The CLI produces deterministic still PNG evidence only. Screen recording,
 audio, editing and publishing remain third-party tools; `ds` can stage the
 frame those tools record but never starts or controls a recorder.
+
+Stops at: the recorder — video, audio, editing and publishing are third-party;
+`ds` stages the frame and captures stills only.
