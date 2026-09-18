@@ -7745,7 +7745,7 @@ fn headless_feedback_reads_the_difference_and_never_narrows_after_the_answer() {
     // rows the server's watermark had already counted as read.
     assert_eq!(
         transport.0.lock().unwrap().feedback_bodies[0],
-        serde_json::json!({"action":"list","limit":50,"filter":{
+        serde_json::json!({"action":"list","limit":50,"use_watermark":true,"filter":{
             "view":"not_addressed","component_contains":"ds-cli","query":"","limit":50}})
     );
     assert!(serde_json::from_value::<Command>(
@@ -7784,9 +7784,12 @@ fn headless_feedback_says_nothing_changed_without_the_caller_holding_anything() 
     assert_eq!(result["total"], 0);
     assert_eq!(result["cursor_source"], "reader");
     assert!(result.get("backlog").is_none());
-    assert!(transport.0.lock().unwrap().feedback_bodies[0]
-        .get("cursor")
-        .is_none());
+    // No cursor travelled, and no timestamp: the caller opted into the
+    // watermark the backlog already holds for this account, and that is the
+    // whole of what it had to send.
+    let sent = transport.0.lock().unwrap().feedback_bodies[0].clone();
+    assert!(sent.get("cursor").is_none());
+    assert_eq!(sent["use_watermark"], true);
 }
 
 #[test]

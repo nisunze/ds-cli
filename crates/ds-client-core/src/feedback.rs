@@ -18,8 +18,8 @@ pub enum Command {
         limit: usize,
         #[serde(default)]
         detail: bool,
-        /// An opaque watermark the backlog issued. Absent means "read from
-        /// where this account left off"; `all` means "forget that".
+        /// An opaque watermark the backlog issued. Absent opts into the one
+        /// the backlog remembers for this account; `all` opts out entirely.
         #[serde(default)]
         cursor: Option<String>,
         #[serde(default)]
@@ -338,9 +338,10 @@ pub(crate) fn run<T: AuthorizedTransport>(
             });
             if let Some(cursor) = cursor {
                 payload["cursor"] = json!(cursor);
-            }
-            if *all {
-                payload["reset"] = json!(true);
+            } else if !*all {
+                // Opting in is explicit, so a client that predates the
+                // watermark keeps getting the whole backlog it expects.
+                payload["use_watermark"] = json!(true);
             }
             let data = call(profile, transport, authority, payload)?;
             let raw = data["reports"]
