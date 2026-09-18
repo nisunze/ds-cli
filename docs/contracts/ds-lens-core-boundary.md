@@ -106,9 +106,41 @@ window, and nothing but attention stops it.
 
 The target is **2 dependents** (`ds-cli-map`, `ds`). Each crate that leaves the
 list is one host-transparency batch finished, and the list is the campaign's
-progress bar. Optional, once the list is short: gate the lens layer behind a
-cargo feature so the headless/Server package does not link the window code at
-all — physical separation in the shipped artefact, not only in the graph.
+progress bar.
+
+**L0b — The end state is two CLIs, installable apart, on different machines.**
+The crate layers are not a tidy graph for its own sake; they are what makes two
+distributables possible, and that is the destination (owner, 2026-09-18):
+
+| | **core CLI** | **lens CLI** |
+|---|---|---|
+| What it is | the surface that *receives* a command and decides it | the surface that *calls*, and drives one window |
+| State | **none.** No open project, no selection, no window. Every project-scoped command names its project | the window's open project, camera, selection — a rendering fact it may assume |
+| Installed | server, container, CI, laptop, anywhere | beside a desktop, which may be a different machine from the server |
+| Catalogue | core commands. `map.*` does not exist here | `map.*`. It reaches core commands by *calling*, not by containing them |
+| Links | contract + domain crates + the Server host | the door, the map crate, and the core surface as a client |
+
+One calls, the other receives. The seam already exists as `--target
+server|desktop` and as `ds-cli-server`'s routes — today both ends are linked
+into one binary, and the split is what makes the near end optional. The
+dependency direction is already right: `ds-cli-map` depends on `ds-cli-server`
+(the lens calls the core), and no core crate depends on the map. The one
+inversion is the door, which is what the fence is emptying.
+
+Two consequences worth stating, because they are what an operator and an agent
+will feel:
+
+- **`ds capabilities` answers for the install.** On a server it lists core
+  commands and never a `map.*` the machine cannot run. On a lens install it
+  lists `map.*` and whatever core surface it can reach. An agent's question
+  "what can I do here" stops needing a footnote.
+- **`ds mcp serve` exists on both**, exposing that install's catalogue. The MCP
+  surface stays a projection of the live CLI, so it splits for free.
+
+Sequencing: the cargo feature (`--no-default-features` → a core-only `ds`) is
+the cheap first form and proves the graph is really severed; the second binary
+is the delivered form. Neither can happen while thirteen core crates link the
+door, so the fence's inventory is the gate on both.
 
 **L1 — A lens command has a presentation effect only.**
 `effect ∈ {read_only, local_ui, artifact_write}`, and `artifact_write` only for
@@ -162,12 +194,23 @@ with the exact ids found, and only ever shrinks.
 | **4 — Third set to zero** | ds-cli, kernel | The host-transparency campaign (`~/ds-fable/isolation-prep`, A 12 / B 118 / C 41) becomes the consumer of slice-0 list (a) and the 0a allowlist: each moved command shrinks one, each emptied crate shrinks the other. Ends with **2 bridge dependents** (`ds-cli-map`, `ds`). Optionally then: put the lens layer behind a cargo feature so the headless package does not link it. | List (a) empty and the 0a allowlist at 2 ⇒ L0 and L0a hold by construction, not by review. |
 | **5 — Intents with carriers only** | kernel, ds-web | Reconciliation/sync intent kinds reduced to those a runtime route delivers; Sync Center counts only drainable rows as active. | Corpus test: an intent kind without a route is refused at `enqueue`. |
 
+| **6 — Two CLIs** | ds-cli | **L0b.** First the cargo feature: `ds` builds with `--no-default-features` and the lens layer is absent — proof the graph is severed, and the headless/Server package stops shipping window code. Then the second binary: a lens distributable installable beside a desktop, on a different machine from the server, calling the core surface through the seam `--target` already uses. | A core-only `ds` builds, runs `ds capabilities` with no `map.*` in it, and passes the workspace suite; `ds mcp serve` on each install projects that install's catalogue. |
+
 Slices 0, 0a and 1 are small, independent, and can start now — none of them
 moves a command, they only make the boundary visible and irreversible. 0b is
 the first real motion and is sized per crate, so it can be one short brief at a
 time. Slice 3 is direction (per worked domain). Slice 4 is the existing
 campaign, re-measured against the two lists. Slice 5 waits for the versioning
 lane to remove its one undeliverable kind, then closes the door behind it.
+Slice 6 is the destination and is gated on the fence reaching two dependents;
+nothing else in this plan is gated on it.
+
+### Landed so far
+
+| Date | Slice | What |
+|---|---|---|
+| 2026-09-18 | 0a | `ds-cli/crates/ds/tests/lens_core_boundary.rs` — the fence, seeded at 15 dependents (ds-cli `6c8078a`) |
+| 2026-09-18 | 0b | `integer`/`INVALID_NUMBER`/`plural` moved to `ds-cli-contract::args`, so the door dependency means only "has window-bound commands"; **`ds-cli-survey` freed** (its `BRIDGE_OPS` had been empty since its control plane moved to the kernel); `ds-cli-tile`'s ceiling 3 → 2. Thirteen core crates left (ds-cli `1e5d195`) |
 
 ## 6. Owner decisions needed
 
@@ -178,6 +221,9 @@ lane to remove its one undeliverable kind, then closes the door behind it.
 3. Whether `map.design.open` (opens an edit context — does it take a server
    lease?) is a lens command with an L5 composition inside, or a core command
    misfiled under `map.*`. Slice 0 will surface the fact; the ruling is yours.
+4. Slice 6's names and install layout: what the lens binary is called, whether
+   the desktop installs two binaries or one that links both, and what a lens
+   install without a reachable core answers.
 
 ## 7. Non-goals
 
