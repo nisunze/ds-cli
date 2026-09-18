@@ -336,11 +336,38 @@ pub(crate) fn run<T: AuthorizedTransport>(
                     "limit": limit,
                 },
             });
+            // A read that participates in the watermark DRAINS: the backlog
+            // hands over the matching reports this account has gone longest
+            // without seeing, and a limited answer means the next call carries
+            // the next chunk. A read that does not participate re-reads the
+            // top every time, so the same truncation means the opposite thing
+            // — narrow the question or it will return these rows forever.
+            // Only this layer knows which of the two was asked for, so it says
+            // so rather than leaving the caller to guess from `cursor_source`,
+            // which reads "none" on the first drain and on a full read alike.
+            //
+            // A SWEEP AND A LOOKUP ARE NOT THE SAME QUESTION, and only a sweep
+            // wants a difference. `--component` and `--query` ask "which
+            // reports are about this?" — a question whose truthful answer is
+            // the same reports every time somebody asks it. Draining it answers
+            // it once and answers "nothing changed" ever after, which is how
+            // the second triage session goes blind to the very reports it has
+            // to match its work against. (Per-scope watermarks are bounded and
+            // evicted oldest-first as well, so a session that searched a ninth
+            // component would get its lookup answered in full or answered empty
+            // depending on eviction order — nondeterminism no caller can reason
+            // about.) So the mountain is drained and a lookup is answered. A
+            // caller that genuinely wants to drain a narrowed question still
+            // can, by echoing the cursor that read returns.
+            let narrowed = component.is_some() || query.is_some();
+            let drains = cursor.is_some() || !(*all || narrowed);
             if let Some(cursor) = cursor {
                 payload["cursor"] = json!(cursor);
-            } else if !*all {
+            } else if drains {
                 // Opting in is explicit, so a client that predates the
-                // watermark keeps getting the whole backlog it expects.
+                // watermark keeps getting the whole backlog it expects — and a
+                // lookup neither reads nor advances a watermark, so searching
+                // never moves where the sweep left off.
                 payload["use_watermark"] = json!(true);
             }
             let data = call(profile, transport, authority, payload)?;
@@ -366,11 +393,22 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 "changed": changed,
                 "complete": complete,
                 "truncated": !complete,
+                "drains": drains,
                 "cursor": next,
                 "cursor_source": data["cursor_source"].as_str().unwrap_or("none"),
             });
             if let Some(backlog) = data["backlog"].as_object() {
                 out["backlog"] = Value::Object(backlog.clone());
+            }
+            // The one way a complete enumeration can still be partial: a stored
+            // document the backlog could not decode. It is left out of the
+            // answer AND passed over by the watermark, so it would otherwise be
+            // missing from every future difference too — the silent form of the
+            // `scan_incomplete` that was removed for admitting partiality.
+            // The backlog names it; dropping it here is what would make it
+            // silent again, because this is the surface an agent reads.
+            if let Some(count) = data["unreadable"].as_u64().filter(|count| *count > 0) {
+                out["unreadable"] = json!(count);
             }
             Ok(out)
         }

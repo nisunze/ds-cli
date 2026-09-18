@@ -7739,13 +7739,17 @@ fn headless_feedback_reads_the_difference_and_never_narrows_after_the_answer() {
     assert!(result.get("scan_incomplete").is_none());
     assert_eq!(result["changed"], true);
     assert_eq!(result["complete"], true);
+    // This read NARROWS, so it is a lookup and not a chunk of the sweep: its
+    // answer is the same reports every time it is asked, and it neither reads
+    // nor moves where the sweep left off. The unfiltered read is the drain.
+    assert_eq!(result["drains"], false);
     assert_eq!(result["cursor"], "fb1.abc.def");
     assert_eq!(result["backlog"]["settled"], 143);
     // Every filter went to the backlog. A filter applied HERE would have hidden
     // rows the server's watermark had already counted as read.
     assert_eq!(
         transport.0.lock().unwrap().feedback_bodies[0],
-        serde_json::json!({"action":"list","limit":50,"use_watermark":true,"filter":{
+        serde_json::json!({"action":"list","limit":50,"filter":{
             "view":"not_addressed","component_contains":"ds-cli","query":"","limit":50}})
     );
     assert!(serde_json::from_value::<Command>(
@@ -7790,6 +7794,195 @@ fn headless_feedback_says_nothing_changed_without_the_caller_holding_anything() 
     let sent = transport.0.lock().unwrap().feedback_bodies[0].clone();
     assert!(sent.get("cursor").is_none());
     assert_eq!(sent["use_watermark"], true);
+}
+
+#[test]
+fn headless_feedback_separates_a_drain_from_a_read_of_the_top() {
+    use ds_client_core::feedback::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    // Two truncated answers that look identical on the wire. They mean
+    // opposite things, and only the request said which: the watermark read
+    // hands over the next chunk when it is called again, while `--all` reads
+    // the top of the backlog and would return these same rows forever.
+    for _ in 0..2 {
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .feedback
+            .push_back(project_response(serde_json::json!({
+                "reports":[feedback_row("open",1)],
+                "count":1,"matched":45,"complete":false,"changed":true,"scanned":45,
+                "cursor":"fb1.abc.def","cursor_source":"none"
+            })));
+    }
+    let drained = client
+        .feedback(
+            &Command::List {
+                view: "not_addressed".into(),
+                component: None,
+                query: None,
+                limit: 1,
+                detail: false,
+                cursor: None,
+                all: false,
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(drained["truncated"], true);
+    assert_eq!(drained["drains"], true);
+
+    let top = client
+        .feedback(
+            &Command::List {
+                view: "not_addressed".into(),
+                component: None,
+                query: None,
+                limit: 1,
+                detail: false,
+                cursor: None,
+                all: true,
+            },
+            NOW + 2,
+        )
+        .unwrap();
+    assert_eq!(top["truncated"], true);
+    assert_eq!(top["drains"], false);
+    // `--all` neither reads nor advances the account's watermark, so it is a
+    // peek at the top and never moves anyone else's starting point.
+    let sent = transport.0.lock().unwrap().feedback_bodies[1].clone();
+    assert!(sent.get("cursor").is_none());
+    assert!(sent.get("use_watermark").is_none());
+}
+
+/// A LOOKUP IS NOT A SWEEP, and answering it with a difference makes the next
+/// session blind to the reports it came to find.
+///
+/// The watermark exists for the mountain: the whole `not_addressed` backlog,
+/// read once and then only where it moved. `--component` and `--query` ask a
+/// different question — "which reports are about this?" — and its truthful
+/// answer is the same reports every time it is asked. The triage procedure
+/// searches by component to match reports against the work a session just did,
+/// and those reports are old and unchanged by definition; a difference read
+/// returns none of them, and the session concludes there is nothing to triage.
+/// So a narrowed read never opts in, never advances the sweep's position, and
+/// says `drains: false` — its truncation means narrow further, not list again.
+#[test]
+fn headless_feedback_answers_a_lookup_instead_of_draining_it() {
+    use ds_client_core::feedback::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    for _ in 0..2 {
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .feedback
+            .push_back(project_response(serde_json::json!({
+                "reports":[feedback_row("open",1)],
+                "count":1,"matched":1,"complete":true,"changed":true,"scanned":1,
+                "cursor":"fb1.abc.def","cursor_source":"none"
+            })));
+    }
+    let lookup = client
+        .feedback(
+            &Command::List {
+                view: "not_addressed".into(),
+                component: Some("ds-web".into()),
+                query: None,
+                limit: 20,
+                detail: true,
+                cursor: None,
+                all: false,
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(lookup["drains"], false);
+    let sent = transport.0.lock().unwrap().feedback_bodies[0].clone();
+    assert_eq!(sent["filter"]["component_contains"], "ds-web");
+    assert!(
+        sent.get("use_watermark").is_none() && sent.get("cursor").is_none(),
+        "a lookup that drains answers `nothing changed` the second time it is asked: {sent}"
+    );
+
+    // A caller that genuinely wants to drain a narrowed question still can, by
+    // echoing the cursor that read handed back. Saying where you are is always
+    // stronger than the service's memory of where you were.
+    client
+        .feedback(
+            &Command::List {
+                view: "not_addressed".into(),
+                component: Some("ds-web".into()),
+                query: None,
+                limit: 20,
+                detail: false,
+                cursor: Some("fb1.abc.def".into()),
+                all: false,
+            },
+            NOW + 2,
+        )
+        .unwrap();
+    let sent = transport.0.lock().unwrap().feedback_bodies[1].clone();
+    assert_eq!(sent["cursor"], "fb1.abc.def");
+}
+
+/// A complete enumeration has exactly one remaining way to be partial, and it
+/// must reach the person reading the backlog.
+///
+/// A stored document the backlog cannot decode is left out of the answer and
+/// PASSED OVER by the watermark, so it is missing from every later difference
+/// as well. `scan_incomplete` was removed for admitting partiality; swallowing
+/// this count here would reintroduce the same partiality with the admission
+/// taken out, which is strictly worse. So the count travels, and zero — the
+/// normal answer — stays off the wire rather than becoming noise on every read.
+#[test]
+fn headless_feedback_carries_a_document_the_backlog_could_not_read() {
+    use ds_client_core::feedback::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let request = || Command::List {
+        view: "not_addressed".into(),
+        component: None,
+        query: None,
+        limit: 20,
+        detail: false,
+        cursor: None,
+        all: false,
+    };
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .feedback
+        .push_back(project_response(serde_json::json!({
+            "reports":[feedback_row("open",1)],
+            "count":1,"matched":1,"complete":true,"changed":true,"scanned":2,
+            "cursor":"fb1.abc.def","cursor_source":"reader","unreadable":1
+        })));
+    let answer = client.feedback(&request(), NOW + 1).unwrap();
+    assert_eq!(
+        answer["unreadable"], 1,
+        "a document the backlog could not read must not disappear at this layer: {answer}"
+    );
+
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .feedback
+        .push_back(project_response(serde_json::json!({
+            "reports":[feedback_row("open",1)],
+            "count":1,"matched":1,"complete":true,"changed":true,"scanned":1,
+            "cursor":"fb1.abc.def","cursor_source":"reader"
+        })));
+    let clean = client.feedback(&request(), NOW + 2).unwrap();
+    assert!(
+        clean.get("unreadable").is_none(),
+        "the normal answer says nothing about a failure that did not happen: {clean}"
+    );
 }
 
 #[test]
