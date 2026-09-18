@@ -85,8 +85,16 @@ view needs rebuilding. Neither establishes a missing membership or form grant.
 `survey_field_unknown` and `survey_query_too_expensive` require a corrected or
 narrower question. `survey_query_sync_failed` identifies synchronization before
 the aggregate, and `survey_query_unavailable` identifies deployment readiness.
-Unknown legacy 404 responses retain `survey_scope_not_found` and do not establish
-which project, form or view condition failed.
+A 404 that carries a DS refusal envelope retains `survey_scope_not_found` and
+does not establish which project, form or view condition failed.
+
+A 404 that carries no DS envelope at all is a different fact and now has its own
+code. `survey_route_unavailable` means this lane's API Gateway does not publish
+the route: the request never reached DS, so no account, project selection or
+form slug could have changed the answer. Update `ds`; if it persists, the route
+is unpublished on the lane and only a deployment fixes it. All three governed
+Survey reads were in exactly that state between 2026-08-20 and 2026-09-18, and
+every one of them was reported as an invisible project or form.
 
 The aggregate grammar is deliberately closed:
 

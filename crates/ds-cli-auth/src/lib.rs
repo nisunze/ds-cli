@@ -2952,6 +2952,9 @@ pub fn survey_query(
                     error.survey_form_read_service_code().unwrap(),
                 ));
             }
+            Err(error) if error.kind() == ErrorKind::RouteUnavailable => {
+                return Err(route_unavailable());
+            }
             Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
                 // The same refusal as the headless branch below, remedy
                 // included: which lane answered is not something the caller
@@ -2998,6 +3001,9 @@ pub fn survey_query(
             return Err(map_survey_form_read_service_code(
                 error.survey_form_read_service_code().unwrap(),
             ));
+        }
+        Err(error) if error.kind() == ErrorKind::RouteUnavailable => {
+            return Err(route_unavailable());
         }
         Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
             return Err(Failure::invalid(
@@ -4169,7 +4175,31 @@ fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
             "the selected transformer does not exist in the selected project",
         )
         .remedy("pass one exact transformer name from the selected project"),
+        ErrorKind::RouteUnavailable => route_unavailable(),
     }
+}
+
+/// The deployment answered 404 without ever reaching DS.
+///
+/// This is not an authority refusal and not a missing object: the lane's API
+/// Gateway was never taught the path, so no account and no project selection
+/// could have made the call succeed. Naming it as its own code is what stops an
+/// operator reading "you may not see this" off a route that is simply absent.
+/// `ds survey query`, `ds survey entries select` and `ds survey entries
+/// changes` declare this same constant, so the contract a caller reads
+/// beforehand and the receipt they get cannot drift apart.
+pub const SURVEY_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
+    code: "survey_route_unavailable",
+    when: "this lane's API Gateway does not publish this Survey read route",
+    remedy: "update ds; if it persists, the route is unpublished on this lane",
+};
+
+fn route_unavailable() -> Failure {
+    Failure::failed(
+        SURVEY_ROUTE_UNAVAILABLE_REFUSAL.code,
+        "this deployment does not serve that governed Survey read route",
+    )
+    .remedy(SURVEY_ROUTE_UNAVAILABLE_REFUSAL.remedy)
 }
 
 fn cleanup_required() -> Failure {
