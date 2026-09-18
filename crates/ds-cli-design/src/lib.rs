@@ -551,7 +551,6 @@ pub const READ_ONLY_MARKERS: &[&str] = &["archived", "expired", "read-only"];
 pub const TAG_VALUE_CASE_MISMATCH_MARKERS: &[&str] =
     &["authored spelling exactly", "differ only by case"];
 
-
 /// The identities still open to refinement by [`classify_design_failure`].
 ///
 /// `desktop_refused` is the untyped one. The rest are what the paired
