@@ -9930,6 +9930,31 @@ fn printable_inventory_is_headless_and_limits_before_reading_credentials() {
 }
 
 #[test]
+fn symbol_icon_collision_control_is_discoverable_without_print_screen_aliasing() {
+    let descriptor = ok(&["capabilities", "style.appearance.plan", "--output", "json"]);
+    let inputs = descriptor["command"]["inputs"].as_array().unwrap();
+    let overlap = inputs
+        .iter()
+        .find(|input| input["name"] == "icon-overlap")
+        .unwrap();
+    assert_eq!(overlap["choices"], json!(["on", "off"]));
+    assert_eq!(
+        refusal(&[
+            "style",
+            "appearance",
+            "plan",
+            "--ref",
+            "gt/primary_schools",
+            "--icon-overlap",
+            "maybe",
+            "--output",
+            "json"
+        ]),
+        "invalid_choice"
+    );
+}
+
+#[test]
 fn printing_plans_answer_headlessly_from_the_same_kernel() {
     let root = temp_root("printing-plan");
     std::fs::create_dir_all(&root).unwrap();
@@ -10002,6 +10027,21 @@ fn printing_plans_answer_headlessly_from_the_same_kernel() {
         ]),
         "report_plan_invalid"
     );
+    std::fs::write(&request, r#"{"snapshot":{"project":"p1","now_ms":300000,"rows":[{"name":"tx_a","phase":"generated","updated_at_ms":100000},{"name":"tx_b","phase":"generating","updated_at_ms":110000}]}}"#).unwrap();
+    let activity = ok(&[
+        "report",
+        "plan",
+        "--action",
+        "activity",
+        "--request",
+        file,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(activity["generated"], 1);
+    assert_eq!(activity["published"], 0);
+    assert_eq!(activity["stalled"], true);
+    assert_eq!(activity["waiting_on"], "tx_b");
     let mut layout_request = json!({"op":"render_plan","layout":ds_command_kernel::printing::default_layout(),"layer_count":0});
     std::fs::write(&request, serde_json::to_vec(&layout_request).unwrap()).unwrap();
     let missing = ok(&[

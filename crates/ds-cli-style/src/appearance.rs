@@ -41,6 +41,8 @@ const SIZE_ARG: Arg = Arg {
     summary: "Base circle radius, line width or symbol scale. Live Style Center bounds are returned by `ds style read`.",
 };
 
+const ICON_OVERLAP_ARG: Arg = Arg::value("icon-overlap", "<on|off>", "Symbol icon collision policy. On sets both icon-allow-overlap and icon-ignore-placement, so its own label cannot displace the icon; off restores collision placement. Changes only the addressed screen or print document.").choices(&["on", "off"]);
+
 fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     let colour = inputs
         .value("color")
@@ -67,12 +69,13 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
         )
         .remedy("read .data.appearance.size from `ds style read`, then pass a number inside its min/max"));
     }
-    if colour.is_none() && icon.is_none() && size.is_none() {
+    let icon_overlap = inputs.value("icon-overlap").map(|value| value == "on");
+    if colour.is_none() && icon.is_none() && size.is_none() && icon_overlap.is_none() {
         return Err(Failure::invalid(
             "invalid_appearance",
             "no base appearance change was requested",
         )
-        .remedy("pass at least one of --color, --icon or --size"));
+        .remedy("pass at least one of --color, --icon, --size or --icon-overlap"));
     }
 
     let mut arguments = Map::new();
@@ -85,6 +88,9 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     }
     if let Some(size) = size {
         arguments.insert("size".into(), json!(size));
+    }
+    if let Some(overlap) = icon_overlap {
+        arguments.insert("icon_overlap".into(), json!(overlap));
     }
     arguments.insert("apply".into(), json!(apply));
     Ok(Value::Object(arguments))
@@ -101,6 +107,9 @@ fn render_appearance(data: &Value) -> String {
     }
     if let Some(value) = requested["size"].as_f64() {
         changes.push(format!("size {value}"));
+    }
+    if let Some(value) = requested["icon_overlap"].as_bool() {
+        changes.push(format!("icon overlap {}", if value { "on" } else { "off" }));
     }
     format!(
         "{} · {} · {}\n",
@@ -120,12 +129,12 @@ pub mod plan {
     pub static COMMAND: Command = Command {
         id: "style.appearance.plan",
         path: &["style", "appearance", "plan"],
-        contract: 2,
+        contract: 3,
         summary: "Plan a layer's flat colour, icon and base size; publishes nothing.",
         purpose: "\
 Uses the Style Center's guided property schema and returns the exact document \
 that colour, icon and base-size instructions would produce. A base size updates \
-the fallback when size already carries the second dimension. Nothing is saved.",
+the fallback when size already carries the second dimension. Icon overlap changes both placement flags together without changing text overlap. Screen and print refs remain independent. Nothing is saved.",
         chapter: Chapter::MapPresentation,
         effect: Effect::LocalAuthState,
         authority: Authority::HeadlessProject,
@@ -135,6 +144,7 @@ the fallback when size already carries the second dimension. Nothing is saved.",
             COLOR_ARG,
             ICON_ARG,
             SIZE_ARG,
+            ICON_OVERLAP_ARG,
             HOST_ARG,
             PROJECT_ARG,
             LANE_ARG,
@@ -167,12 +177,12 @@ pub mod set {
     pub static COMMAND: Command = Command {
         id: "style.appearance.set",
         path: &["style", "appearance", "set"],
-        contract: 2,
+        contract: 3,
         summary: "Publish a layer's flat colour, icon or base size natively.",
         purpose: "\
 Applies the same guided colour, icon and size properties the Style Center owns, \
 then publishes through its governed global save. Only supplied properties move. \
-Flat colour or icon replaces a field-driven primary expression; plan first.",
+Flat colour or icon replaces a field-driven primary expression; plan first. Icon overlap changes both placement flags together without changing text overlap or another screen/print document.",
         chapter: Chapter::MapPresentation,
         effect: Effect::GlobalWrite,
         authority: Authority::HeadlessProject,
@@ -182,6 +192,7 @@ Flat colour or icon replaces a field-driven primary expression; plan first.",
             COLOR_ARG,
             ICON_ARG,
             SIZE_ARG,
+            ICON_OVERLAP_ARG,
             HOST_ARG,
             PROJECT_ARG,
             LANE_ARG,
@@ -260,5 +271,25 @@ mod tests {
             arguments(&inputs, false).expect_err("must refuse").code(),
             "invalid_number"
         );
+    }
+}
+
+#[cfg(test)]
+mod overlap_tests {
+    use super::*;
+    use ds_cli_contract::parse;
+    #[test]
+    fn overlap_only_is_a_typed_change_not_a_blank_appearance() {
+        for (flag, value) in [("on", true), ("off", false)] {
+            let tokens =
+                ["--ref", "gt/primary_schools_print", "--icon-overlap", flag].map(str::to_owned);
+            let inputs = parse(&plan::COMMAND, &tokens).unwrap();
+            assert_eq!(
+                arguments(&inputs, false).unwrap(),
+                json!({"ref":"gt/primary_schools_print","icon_overlap":value,"apply":false})
+            );
+        }
+        let tokens = ["--ref", "gt/primary_schools", "--icon-overlap", "maybe"].map(str::to_owned);
+        assert!(parse(&plan::COMMAND, &tokens).is_err());
     }
 }

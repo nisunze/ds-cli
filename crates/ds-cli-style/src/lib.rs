@@ -159,8 +159,8 @@ pub const INVALID_COLOR: Refusal = Refusal {
 };
 pub const INVALID_APPEARANCE: Refusal = Refusal {
     code: "invalid_appearance",
-    when: "no colour, icon or size was supplied",
-    remedy: "pass at least one of --color, --icon or --size",
+    when: "no colour, icon, size or icon overlap was supplied",
+    remedy: "pass at least one of --color, --icon, --size or --icon-overlap",
 };
 pub const INVALID_LABEL: Refusal = Refusal {
     code: "invalid_label",

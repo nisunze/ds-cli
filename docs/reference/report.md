@@ -420,6 +420,19 @@ accepts `{"results":[{"transformer":"tx_a","status":"ok"}]}` and returns the
 ordered results and `failed` count. Both actions accept at most 4 MiB and refuse
 a `command` key inside the document.
 
+`ds report plan --action activity --request activity.json --output json`
+projects generation and publication independently from one explicit project's
+host facts. Its request is `{"snapshot":{"project":"p1","now_ms":300000,
+"rows":[{"name":"tx_a","phase":"generated","updated_at_ms":100000},
+{"name":"tx_b","phase":"generating","updated_at_ms":110000}]}}`.
+Transformer names use canonical lowercase letters, digits and underscores
+(up to 121 bytes), not display titles. `project` is the exact project-id string.
+The native sync-store artifact/receipt projections and requested output IDs may
+also be supplied. The result reports generated/published counts, queue issues,
+per-row regeneration reasons and a waiting transformer after no generation
+progress. It does not run or authorize an export. See the [owning activity
+contract](../../../ds-command-kernel/docs/contracts/report-activity.md).
+
 Preview admission is available through `ds report layout edit --request
 preview.json --output json`, using the kernel's `render_plan` operation:
 `{"op":"render_plan","layout":{...},"available_style_refs":[],"layer_count":1,

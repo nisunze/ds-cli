@@ -270,6 +270,7 @@ pub fn execute(
             color: args["color"].as_str().map(str::to_owned),
             icon: args["icon"].as_str().map(str::to_owned),
             size: args["size"].as_f64(),
+            icon_overlap: args["icon_overlap"].as_bool(),
         },
         "style.label.set" => ds_cli_auth::StyleInstruction::Label {
             field: args["field"].as_str().unwrap_or_default().to_owned(),

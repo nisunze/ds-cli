@@ -26,6 +26,13 @@ previewed, read and promoted; they cannot be classified, attached or filed,
 because a projection is a view of something that already has an owner. Act on
 that owner instead.
 
+Device dataset rooms are reproducible input caches, and local print inventories
+are files retained on that device. A web host has no Desktop inventory door;
+these sources remain absent and appear in `sources_unavailable`, separately
+from failed project reads in `sources_omitted`. Their absence does not make a
+web project preview incomplete. Uploaded project data, published compute heads
+and saved print setups retain their normal project reads and refusals.
+
 The bytes are somewhere else again — project storage, behind a fresh
 short-lived signed read minted per access after an authority check. Nothing
 here hands out a durable link to anything above `open`.

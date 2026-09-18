@@ -110,3 +110,7 @@ that the renderer materializes. CLI does not render images, count live features 
 sample the current viewport.
 
 Discover exact flags, ranges and return shapes with `ds capabilities <command-id>`.
+
+`style appearance plan/set --icon-overlap on|off` controls independent symbol
+icon placement. Both MapLibre icon placement flags change together; label overlap
+and the other screen/print document remain authored independently. Plan first.

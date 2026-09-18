@@ -81,16 +81,16 @@ fn inventory(rows: &[Value], limit: usize) -> Result<Value, Failure> {
 pub static PLAN: Command = Command {
     id: "report.plan",
     path: &["report", "plan"],
-    contract: 1,
-    summary: "Decide an export request or fold a batch's outcomes without IO.",
-    purpose: "Calls the same pure report kernel as the GUI. Export planning receives project, transformer, optional scope/selection and the host's active_project fact; batch-outcome receives results. This command performs no export and grants no project access. Request files are limited to 4 MiB; the action is fixed by --action, not supplied inside the document.",
+    contract: 2,
+    summary: "Inspect report progress or an export decision without IO.",
+    purpose: "Pure shared kernel; no export or project access. Export receives project, transformer and host context; batch-outcome receives results. Activity receives {snapshot:{project,now_ms,rows,...}} with queued/preparing/generating/generated/failed phases and optional native sync artifacts/receipts. It separates generation from publication and names stalled work. See the reference for fields and bounds. Request <=4 MiB; --action selects the operation.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
         Arg::value("action", "<action>", "Planning operation.")
-            .choices(&["export", "batch-outcome"])
+            .choices(&["export", "batch-outcome", "activity"])
             .required(),
         Arg::value(
             "request",
@@ -99,7 +99,7 @@ pub static PLAN: Command = Command {
         )
         .required(),
     ],
-    output: "Export: project, target, kind, scope, label, selection and preparation policy. Batch: ordered results and failed count.",
+    output: "Export: project, target, kind, scope, label, selection and preparation policy. Batch: ordered results and failed count. Activity: ds.report.activity/v1, explicit project, generation/publication counts, row phases/timestamps/errors, outbox summary, stalled and waiting_on.",
     examples: &[Example {
         command: "ds report plan --action export --request export.json --output json",
         note: "Inspect a report decision without running an exporter.",
@@ -130,6 +130,7 @@ pub fn plan(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let command = match inputs.require("action")? {
         "export" => "export",
         "batch-outcome" => "batch_outcome",
+        "activity" => "activity",
         _ => return Err(invalid("Unknown report planning action")),
     };
     fields.insert("command".into(), json!(command));
