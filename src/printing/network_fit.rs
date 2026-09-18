@@ -329,12 +329,25 @@ pub fn fit_with_scale_policy(
                 origins.push([left + w * x as f64 / 4., top + h * y as f64 / 4.]);
             }
         }
+        // At the same resolved scale, prefer the footprint's centre nearest
+        // its printable parent. Keep the proven rectangular origin available.
+        if let Some(baseline) = &options.baseline {
+            origins.push(baseline.origin_mm);
+        }
+        let target = [left + w / 2., top + h / 2.];
+        origins.sort_by(|a, b| {
+            let distance = |p: &[f64; 2]| (p[0] - target[0]).hypot(p[1] - target[1]);
+            distance(a).total_cmp(&distance(b))
+        });
         for origin in origins {
             let parts_mm = paper_parts(parts, scale, origin, clearance);
-            if !parts_mm
-                .iter()
-                .any(|p| obstacles.iter().any(|o| intersects(*p, *o)))
-            {
+            if !parts_mm.iter().any(|p| {
+                p[0] < frame[0] - 1e-7
+                    || p[1] < frame[1] - 1e-7
+                    || p[0] + p[2] > frame[0] + frame[2] + 1e-7
+                    || p[1] + p[3] > frame[1] + frame[3] + 1e-7
+                    || obstacles.iter().any(|o| intersects(*p, *o))
+            }) {
                 return Some(Fit {
                     scale,
                     origin_mm: origin,
@@ -354,7 +367,7 @@ pub fn fit_with_scale_policy(
         }
         upper = scale;
     }
-    let baseline = options.baseline.and_then(|mut candidate| {
+    let baseline = options.baseline.clone().and_then(|mut candidate| {
         let resolved = resolve_scale(candidate.scale)?;
         if !candidate.scale.is_finite()
             || candidate.scale <= 0.
@@ -398,12 +411,35 @@ pub fn fit_with_scale_policy(
             upper = scale;
         }
     }
+    // A larger rectangular baseline must still obey the same centring
+    // preference; refinement must not leave it stranded at an earlier origin.
+    if let Some(centred) = trial(best.scale) {
+        best = centred;
+    }
     Ok(best)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn blocked_centre_prefers_nearest_feasible_origin_at_the_same_scale() {
+        let result = fit(
+            &[[-5., -10., 10., 20.]],
+            [0., 0., 100., 100.],
+            &[[43., 38., 14., 24.]],
+            1.,
+            1.,
+        )
+        .unwrap();
+        assert_eq!(result.scale, 1.);
+        assert_eq!(result.origin_mm, [28., 50.]);
+        assert!(!result
+            .parts_mm
+            .iter()
+            .any(|p| intersects(*p, [43., 38., 14., 24.])));
+    }
+
     #[test]
     fn segments_and_polygon_interiors_are_reserved() {
         let paths = [Path {

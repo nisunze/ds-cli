@@ -171,6 +171,9 @@ pub struct PrintLabelOverride {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PrintFocus {
+    /// Paint the focus shade and outline; disabled styling remains retained.
+    #[serde(default = "focus_visible", skip_serializing_if = "is_focus_visible")]
+    pub visible: bool,
     pub buffer_m: f64,
     pub outside_color: String,
     pub outside_opacity: f64,
@@ -179,6 +182,13 @@ pub struct PrintFocus {
     /// Independent outline alpha; omission follows the outside shade's opacity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub border_opacity: Option<f64>,
+}
+
+fn focus_visible() -> bool {
+    true
+}
+fn is_focus_visible(value: &bool) -> bool {
+    *value
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -302,6 +312,9 @@ pub struct TableBinding {
     pub headings: Vec<String>,
     #[serde(default)]
     pub widths: Vec<f64>,
+    /// Plain map schedules fit measured contents by default; proportional keeps authored weights.
+    #[serde(default, skip_serializing_if = "ColumnSizing::is_content")]
+    pub column_sizing: ColumnSizing,
     /// Ordered maximum column widths in mm; auto-fit and truncate outliers.
     #[serde(default)]
     pub max_widths_mm: Vec<f64>,
@@ -351,6 +364,7 @@ impl Default for TableBinding {
             columns: vec![],
             headings: vec![],
             widths: vec![],
+            column_sizing: ColumnSizing::Content,
             max_widths_mm: vec![],
             min_widths_mm: vec![],
             measure_headings: true,
@@ -364,6 +378,18 @@ impl Default for TableBinding {
             row_mm: None,
             align: TableAlignment::Right,
         }
+    }
+}
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ColumnSizing {
+    #[default]
+    Content,
+    Proportional,
+}
+impl ColumnSizing {
+    fn is_content(&self) -> bool {
+        *self == Self::Content
     }
 }
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -1814,6 +1840,11 @@ pub enum Command {
         network_fit: Option<network_fit::NetworkFit>,
         scale_limits: Option<network_fit::ScaleLimits>,
     },
+    /// Toggle the configured project transformer shade without changing its style.
+    SetFocusVisibility {
+        layout: Layout,
+        visible: bool,
+    },
     /// Before rendering a draft preview, prepare its selected context. Rendering itself reads held state.
     PreviewContextPreparation {
         layout: Layout,
@@ -2370,6 +2401,18 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             let layout = upgrade(layout)?;
             json!({"contexts":layout.context_layers,"acquire_missing":online})
         }
+        Command::SetFocusVisibility { layout, visible } => {
+            let mut layout = upgrade(layout)?;
+            if let Some(focus) = &mut layout.focus {
+                focus.visible = visible;
+            } else if visible {
+                return Err(
+                    "configure the template's focus styling before enabling its shade".into(),
+                );
+            }
+            validate(&layout)?;
+            json!({"layout": layout})
+        }
         Command::SetFitPolicy {
             layout,
             network_fit,
@@ -2632,6 +2675,19 @@ mod tests {
     }
 
     #[test]
+    fn focus_visibility_retains_saved_style_and_defaults_old_templates_visible() {
+        let mut layout = default_layout();
+        layout.focus = Some(serde_json::from_value(json!({"buffer_m":100.,"outside_color":"#eeeeee","outside_opacity":0.4,"border_color":"#888888","border_width_mm":0.2})).unwrap());
+        assert!(layout.focus.as_ref().unwrap().visible);
+        let off =
+            evaluated_layout(json!({"op":"set_focus_visibility","layout":layout,"visible":false}));
+        assert!(!off.focus.as_ref().unwrap().visible);
+        let restored =
+            evaluated_layout(json!({"op":"set_focus_visibility","layout":off,"visible":true}));
+        assert_eq!(restored.focus, layout.focus);
+    }
+
+    #[test]
     fn print_sources_focus_and_order_are_closed_and_bounded() {
         let mut l = default_layout();
         l.context_layers = vec![
@@ -2652,6 +2708,7 @@ mod tests {
         ];
         l.layer_order = vec!["contours".into(), "roads".into(), "lv_lines".into()];
         l.focus = Some(PrintFocus {
+            visible: true,
             buffer_m: 35.,
             outside_color: "#E4E7E9".into(),
             outside_opacity: 0.6,

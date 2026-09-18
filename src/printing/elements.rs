@@ -56,6 +56,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
             columns: NEW_TABLE_COLUMNS.iter().map(|c| c.to_string()).collect(),
             headings: NEW_TABLE_COLUMNS.iter().map(|c| c.to_string()).collect(),
             widths: NEW_TABLE_WIDTHS.to_vec(),
+            column_sizing: super::ColumnSizing::Content,
             max_widths_mm: Vec::new(),
             min_widths_mm: Vec::new(),
             measure_headings: super::table_measure_headings_default(),

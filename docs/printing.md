@@ -650,3 +650,27 @@ Existing saved selections remain authored; use the existing context toggle and
 revision-fenced project save to remove extra representations. Group headings
 are not feature layers. Do not delete source data or modify interactive-map
 styles when cleaning print context.
+
+### Centred map composition and optional transformer focus
+
+Automatic stepped fitting first maximizes its bounded feasible scale under the
+saved scale limits. At the same scale it chooses the complete footprint nearest
+the centre of its printable parent, respecting furniture and clearance. The
+candidate set includes the rectangular baseline so recentering cannot sacrifice
+coverage merely because that earlier fit was better than grid trials. This is a
+bounded deterministic search, not a global packing or centring optimum.
+
+`set_focus_visibility` authors `focus.visible` through the same CLI/MCP layout
+intent used by the UI. Omission remains visible for existing templates. False
+hides the focus shade and its outline while retaining its colours, opacity and
+buffer. It does not alter engineering layers, geographic coverage, scale or
+schedule placement. Enabling requires configured focus styling. Draft preview
+and project-template save retain their existing separate steps.
+
+Plain map schedule columns default to `column_sizing: content`: each uses its
+own formatted values and headings, with the existing physical padding and
+explicit minimum/maximum constraints. No coordinate field names are special.
+An optional `proportional` policy retains authored width weights. Workbook
+information/Excel presentation retains its existing proportional styling.
+Precision, complete rows, measured panel geometry and table parents are
+unchanged. White space is not introduced to equalize unrelated columns.
