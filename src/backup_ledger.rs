@@ -1,7 +1,7 @@
 //! Metadata-only recovery commands. Archive bytes are fetched only from an
 //! explicit download plan; neither projection nor selection performs I/O.
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
@@ -24,6 +24,10 @@ pub struct Row {
     backup_json_uri: Option<String>,
     backup_layer_uri: Option<String>,
     source_activity_json: Option<String>,
+    source_admin_bounds_json: Option<String>,
+    deletion_reason: Option<String>,
+    source_country: Option<String>,
+    district: Option<String>,
 }
 #[derive(Serialize, Clone)]
 pub struct Archive {
@@ -44,6 +48,11 @@ pub struct Projection {
     pub id: String,
     pub archive: Option<Archive>,
     pub previous_activity: Option<Activity>,
+    pub activities: Vec<Activity>,
+    pub administrative_location: BTreeMap<String, String>,
+    pub deletion_reason: Option<String>,
+    pub district_required: bool,
+    pub location_missing: bool,
 }
 fn archive(raw: Option<&str>) -> Option<Archive> {
     let raw = raw?.trim();
@@ -91,7 +100,7 @@ fn project(row: Row) -> Result<Projection, String> {
         .unwrap_or_default();
     // All timestamps are serialized by the archive writer from the same source
     // stamp. Never attach the deletion actor to a different historical event.
-    let previous_activity = events
+    let mut activities: Vec<_> = events
         .into_iter()
         .take(16)
         .filter(|e| e.at_ms > 0 && !e.at.is_empty() && e.status.as_deref() != Some("stale"))
@@ -109,12 +118,37 @@ fn project(row: Row) -> Result<Projection, String> {
                     | "restore"
             )
         })
-        .max_by_key(|e| (e.at_ms, e.action != "document_update"));
+        .collect();
+    activities.sort_by_key(|e| std::cmp::Reverse((e.at_ms, e.action != "document_update")));
+    let previous_activity = activities.first().cloned();
+    let administrative_location: BTreeMap<String, String> = row
+        .source_admin_bounds_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<BTreeMap<String, String>>(raw).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .take(128)
+        .filter(|(key, value)| key.len() <= 128 && value.len() <= 256 && !value.trim().is_empty())
+        .collect();
+    let district_required = row.source_country.as_deref().is_some_and(|country| {
+        country.trim().eq_ignore_ascii_case("Rwanda") || country.trim().eq_ignore_ascii_case("RW")
+    });
+    let location_missing = row
+        .district
+        .as_deref()
+        .is_none_or(|value| value.trim().is_empty());
     Ok(Projection {
         id,
         archive: archive(row.backup_layer_uri.as_deref())
             .or_else(|| archive(row.backup_json_uri.as_deref())),
         previous_activity,
+        activities,
+        administrative_location,
+        deletion_reason: row
+            .deletion_reason
+            .filter(|reason| !reason.trim().is_empty()),
+        district_required,
+        location_missing,
     })
 }
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
@@ -152,7 +186,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         if targets.len() != ids.len() {
             return Err("Selected backup is no longer in the ledger".into());
         }
-        serde_json::json!({"targets":targets,"max_parallel":4})
+        serde_json::json!({"delivery": if targets.len() == 1 { "file" } else { "zip" },"targets":targets,"max_parallel":4})
     } else {
         serde_json::json!({"rows":projected})
     };
@@ -181,6 +215,12 @@ mod tests {
             json!({"action":"download","rows":rows,"selected_ids":[view["rows"][0]["id"],view["rows"][1]["id"]]}),
         );
         assert_eq!(plan["targets"].as_array().unwrap().len(), 2);
+        assert_eq!(plan["delivery"], "zip");
+        let single = run(
+            json!({"action":"download","rows":rows,"selected_ids":[view["rows"][0]["id"],view["rows"][0]["id"]]}),
+        );
+        assert_eq!(single["delivery"], "file");
+        assert_eq!(single["targets"].as_array().unwrap().len(), 1);
     }
     #[test]
     fn missing_archive_and_stale_selection_are_refused() {
@@ -210,5 +250,22 @@ mod tests {
             "document_update"
         );
         assert!(result["rows"][0]["previous_activity"]["actor"].is_null());
+    }
+    #[test]
+    fn rwanda_location_is_required_and_new_evidence_does_not_change_event_identity() {
+        let bare = json!({"ds_project":"p","transformer_name":"t","backup_layer_uri":"gs://backup/transformers/t.dsgrid"});
+        let mut evidence = bare.clone();
+        evidence["source_country"] = json!("RW");
+        evidence["deletion_reason"] = json!("Duplicate");
+        evidence["source_admin_bounds_json"] = json!("{\"sector\":\"Gishubi\"}");
+        let projected = run(json!({"action":"project","rows":[bare,evidence]}));
+        assert_eq!(projected["rows"][0]["id"], projected["rows"][1]["id"]);
+        assert_eq!(projected["rows"][1]["district_required"], true);
+        assert_eq!(projected["rows"][1]["location_missing"], true);
+        assert_eq!(
+            projected["rows"][1]["administrative_location"]["sector"],
+            "Gishubi"
+        );
+        assert_eq!(projected["rows"][1]["deletion_reason"], "Duplicate");
     }
 }

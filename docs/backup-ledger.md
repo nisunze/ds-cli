@@ -9,6 +9,9 @@ references use `backup_layer_uri`; legacy `.firestore.json` references use
 `backup_json_uri`. Missing references are unavailable, never loading. Selection
 and rendering do not fetch or inspect an archive. An explicit download plan
 accepts 1–100 known downloadable event IDs and admits four concurrent transfers.
+The plan returns `delivery: file` for one distinct event and `delivery: zip`
+for multiple events. A single native package or legacy JSON downloads exactly
+as stored, without an extra ZIP wrapper.
 The authenticated gateway remains the authority for bucket/access checks.
 
 The archive writer records `source_activity_json` alongside the deletion event.
@@ -38,5 +41,19 @@ use the real WASM command to prove selectable `.dsgrid` rows, no idle downloads
 or false spinners, mixed ZIP downloads and unmount cancellation. Backend tests
 exercise schema extension and activity capture without cloud access.
 
-The command is available to native Rust callers; a new public `ds backups`
-CLI chapter is not part of this UI repair. It must reuse these commands when added.
+The offline CLI `assets.backup.plan` exposes this owner through bounded local
+metadata requests. A project selector cannot redirect the request. Deletion
+reason and administrative evidence remain distinct from the deletion actor and
+source activities. Missing Rwanda district evidence is a required-location
+finding, never a UI choice; old unknown evidence is not fabricated.
+
+Explicit `dsgrid.backup.preview` uses `ds-grid-exchange::backup_preview` (also
+bound as grid WASM `backupPreview`). It verifies the native package and exact
+project/transformer origin, then reuses the Rust transformer decoder for its
+archived layers. Legacy JSON has unverified origin, identified as such. Input
+and decoded geometry are bounded to 64 MiB, 128 layers and 100000 features.
+Its retained metadata is historical evidence, not current project state. Web
+previews occupy a read-only RAM layer group fenced to the signed-in principal;
+visibility, focus and removal are view state. They never seed, edit, restore,
+publish or change the active project. Loading, principal change and leaving a
+pending request cancel and fence the result.
