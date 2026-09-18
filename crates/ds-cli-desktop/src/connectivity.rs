@@ -59,6 +59,7 @@ application's effective connectivity, never this CLI process's).",
             },
         ],
         reference: None,
+        search: &[],
         requires: Requires::Window,
         availability: ops::paired_availability,
     }

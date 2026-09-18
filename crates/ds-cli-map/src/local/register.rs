@@ -58,6 +58,7 @@ pub static COMMAND: Command = Command {
         super::UNSUPPORTED_SOURCE_KIND,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Server,
     availability: super::availability,
 };

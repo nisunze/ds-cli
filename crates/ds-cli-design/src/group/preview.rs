@@ -64,6 +64,7 @@ The project, `group`, `operation`, the fencing `digest`, the `state`, counts of 
         crate::TOO_MANY,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

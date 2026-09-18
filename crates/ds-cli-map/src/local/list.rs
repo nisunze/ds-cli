@@ -38,6 +38,7 @@ pub static COMMAND: Command = Command {
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Server,
     availability: super::availability,
 };

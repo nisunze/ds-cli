@@ -48,6 +48,7 @@ revision_id, file_name, size_bytes, sha256, object_version and state.",
     }],
     refusals: &[super::NATIVE_REFUSED],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

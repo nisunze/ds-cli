@@ -71,6 +71,7 @@ file that cannot be used, and why. Never a token, an address or an account.",
     ],
     refusals: &[],
     reference: Some("docs/reference/desktop.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

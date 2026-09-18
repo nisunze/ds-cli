@@ -75,6 +75,7 @@ pub static COMMAND: Command = Command {
         crate::PROFILE_TOO_BROAD,
     ],
     reference: Some("docs/reference/mcp.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::always,
 };

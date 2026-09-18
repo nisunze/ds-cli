@@ -52,6 +52,7 @@ project catalogue revision.",
     }],
     refusals: workspace::REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

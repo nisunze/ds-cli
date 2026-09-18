@@ -66,6 +66,7 @@ edits exist that `ds map design save` would push.",
         },
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

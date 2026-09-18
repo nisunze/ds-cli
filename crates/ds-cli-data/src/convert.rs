@@ -84,6 +84,21 @@ detectable and the artifact can be reclaimed later by identity.",
         crate::OUTPUT_REFUSED,
     ],
     reference: Some("docs/reference/data.md"),
+    search: &[
+        "crs",
+        "crs84",
+        "projection",
+        // `--crs` reads UTM and NIX ITRF2005 columns and always writes
+        // CRS84, so this command IS the reprojection an outsider is looking
+        // for; `reproject` is simply not a word we chose for it.
+        "reproject",
+        "utm",
+        "parquet",
+        "shapefile",
+        "kml",
+        "kmz",
+        "etl",
+    ],
     requires: Requires::Server,
     availability: crate::available,
 };

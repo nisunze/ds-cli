@@ -29,4 +29,8 @@ ds-project-data = { path = "../../../ds-command-kernel/crates/ds-project-data" }
 # ds-network/docs/contracts/columnar-format-contract.md.
 ds-columnar = { path = "../../../ds-network/crates/ds-columnar" }
 ds-io = { path = "../../../ds-network/crates/ds-io" }
+# The geodesic engine. `ds data vector` links the exact crate the map's tool
+# dock reaches through WASM, so the CLI and the window cannot drift into two
+# answers for one buffer.
+ds-geo-ops = { path = "../../../ds-network/crates/ds-geo-ops" }
 serde_json = { workspace = true }

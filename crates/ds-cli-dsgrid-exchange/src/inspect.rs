@@ -72,6 +72,7 @@ available ones by default. GIS sources also list their layers, geometry, feature
     ],
     refusals: sources::SHARED_REFUSALS,
     reference: Some("docs/reference/dsgrid-exchange.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

@@ -79,6 +79,7 @@ How many features matched and were removed, the removal count per layer, and \
         },
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

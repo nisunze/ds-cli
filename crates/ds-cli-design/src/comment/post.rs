@@ -113,6 +113,7 @@ signed-in session; `ds` cannot claim to be somebody else.",
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

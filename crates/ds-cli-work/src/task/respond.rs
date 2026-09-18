@@ -63,6 +63,7 @@ afterwards, who is still being `requested`, and the `committedRevision`.",
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/work.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

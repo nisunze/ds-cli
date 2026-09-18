@@ -113,6 +113,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

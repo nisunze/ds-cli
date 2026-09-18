@@ -133,6 +133,7 @@ offline, because a queued access change is a queued exposure.",
         crate::UNKNOWN_FOLDER,
     ],
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

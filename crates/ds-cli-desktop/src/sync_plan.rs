@@ -112,6 +112,7 @@ pub static PLAN_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/desktop.status.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

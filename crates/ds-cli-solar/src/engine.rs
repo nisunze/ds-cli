@@ -42,6 +42,7 @@ starting a batch, and to record which exact engine produced a result.",
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability,
 };

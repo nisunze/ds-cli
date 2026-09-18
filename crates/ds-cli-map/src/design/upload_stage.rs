@@ -79,6 +79,7 @@ total/succeeded/failed counts. Successful rows report staged=true and persisted=
         },
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

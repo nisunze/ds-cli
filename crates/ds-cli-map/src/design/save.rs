@@ -79,6 +79,7 @@ reason. `persisted` is true only on a save that actually happened.",
         },
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

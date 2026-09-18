@@ -43,6 +43,7 @@ collection; plus the project's `permissions`, graph `revision`, and `link`.",
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/work.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

@@ -67,6 +67,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || ds_cli_report::DS_REPORT.availability(),
 };

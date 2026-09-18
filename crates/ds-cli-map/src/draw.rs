@@ -85,6 +85,7 @@ the file, and `persisted: false`. With --zoom, whether the map moved.",
         },
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

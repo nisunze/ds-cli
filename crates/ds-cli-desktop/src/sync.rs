@@ -121,6 +121,7 @@ pub static STATUS_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -140,6 +141,7 @@ pub static RETRY_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -159,6 +161,7 @@ pub static SANITIZE_PREVIEW_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -187,6 +190,7 @@ pub static SANITIZE_APPLY_COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };

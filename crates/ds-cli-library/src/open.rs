@@ -40,6 +40,7 @@ pub static COMMAND: Command = Command {
         remedy: "install that exact id/version into the store, then retry",
     }],
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

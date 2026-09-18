@@ -38,6 +38,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: crate::network_form::COMMAND.refusals,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || crate::DS_SOLAR.availability(),
 };

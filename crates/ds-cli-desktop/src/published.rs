@@ -92,6 +92,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: None,
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };

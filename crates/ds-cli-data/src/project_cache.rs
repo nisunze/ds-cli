@@ -340,6 +340,7 @@ pub static STATUS_COMMAND: Command = Command {
     ],
     refusals: STATUS_REFUSALS,
     reference: Some("docs/reference/data.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -370,6 +371,7 @@ pub static SEED_COMMAND: Command = Command {
     ],
     refusals: SEED_REFUSALS,
     reference: Some("docs/reference/data.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

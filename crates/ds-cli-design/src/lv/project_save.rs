@@ -106,6 +106,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

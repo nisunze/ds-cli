@@ -78,6 +78,7 @@ The report stays in the backlog and remains readable with \
         CONFIRMATION_REQUIRED,
     ]),
     reference: Some("docs/reference/feedback.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

@@ -28,6 +28,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: &[],
     reference: Some("docs/contracts/conversion-capability-matrix.json"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

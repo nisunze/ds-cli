@@ -123,6 +123,7 @@ report, and the report's current occurrence count.",
         },
     ]),
     reference: Some("docs/reference/feedback.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

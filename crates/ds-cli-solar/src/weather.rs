@@ -51,6 +51,7 @@ the same weather. It reads the file and writes nothing.",
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability,
 };

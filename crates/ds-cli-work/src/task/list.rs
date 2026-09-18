@@ -111,6 +111,7 @@ of `wbs`, `id`, `title`, `type`, `delivery`, `review`, `closeout`, `progress`, \
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/work.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

@@ -53,6 +53,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/workstation.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::always,
 };

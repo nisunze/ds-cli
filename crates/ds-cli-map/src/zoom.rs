@@ -81,6 +81,7 @@ cross the CLI boundary. Give exactly one target.",
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

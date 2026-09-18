@@ -50,6 +50,7 @@ pub mod plan {
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
@@ -84,6 +85,7 @@ pub mod create {
         }],
         refusals: crate::native::PUBLISH_REFUSALS,
         reference: Some("docs/reference/style.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };

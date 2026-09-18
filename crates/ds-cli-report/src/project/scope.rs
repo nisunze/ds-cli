@@ -39,6 +39,7 @@ retirement reason, the project-level `mv_data` row, and `compounded_ready` \
     }],
     refusals: super::NATIVE_READ_REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

@@ -150,7 +150,7 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
     ],
     refusals: EXPORT_REFUSALS,
     reference: Some("docs/reference/solar.md"),
-    requires: Requires::Window,
+    search: &[], requires: Requires::Window,
     availability: paired::available,
 };
 
@@ -190,7 +190,7 @@ pub static REPORT_BUNDLE_COMMAND: Command = Command {
     }],
     refusals: EXPORT_REFUSALS,
     reference: Some("docs/reference/solar.md"),
-    requires: Requires::Window,
+    search: &[], requires: Requires::Window,
     availability: paired::available,
 };
 
@@ -255,6 +255,7 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
     ],
     refusals: EXPORT_REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired::available,
 };

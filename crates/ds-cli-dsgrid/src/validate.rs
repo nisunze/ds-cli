@@ -90,6 +90,7 @@ any issues withheld by --limit.",
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

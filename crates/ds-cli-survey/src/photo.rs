@@ -78,6 +78,7 @@ pub static ROTATE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -109,6 +110,7 @@ pub static PUBLISH_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -273,6 +275,7 @@ pub static LOCAL_COMMAND: Command = Command {
     }],
     refusals: &[DOCUMENT],
     reference: Some("docs/reference/survey.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };

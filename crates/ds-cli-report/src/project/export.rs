@@ -331,6 +331,7 @@ error. --publish adds the Server-sync queue identity.",
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability,
 };

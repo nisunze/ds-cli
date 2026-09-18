@@ -176,6 +176,7 @@ pub mod download {
             crate::SIGNED_OUT,
         ],
         reference: Some("docs/reference/map.md"),
+        search: &[],
         requires: Requires::Window,
         availability: crate::paired_availability,
     };
@@ -251,6 +252,7 @@ pub mod plan {
             SAME_PROJECT,
         ],
         reference: Some("docs/reference/map.md"),
+        search: &[],
         requires: Requires::Window,
         availability: crate::paired_availability,
     };
@@ -299,6 +301,7 @@ pub mod apply {
             CONFIRMATION_REQUIRED,
         ],
         reference: Some("docs/reference/map.md"),
+        search: &[],
         requires: Requires::Window,
         availability: crate::paired_availability,
     };

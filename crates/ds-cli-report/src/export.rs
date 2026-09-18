@@ -188,6 +188,7 @@ blockers. `result_path` is present only when --result was given.",
         },
     ],
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability,
 };

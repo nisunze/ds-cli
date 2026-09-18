@@ -142,6 +142,7 @@ pub const BEGIN_COMMAND: Command = Command {
     }],
     refusals: BEGIN_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    search: &[],
     requires: Requires::Server,
     availability: super::native_availability,
 };
@@ -176,6 +177,7 @@ pub const STATUS_COMMAND: Command = Command {
     }],
     refusals: PENDING_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    search: &[],
     requires: Requires::Server,
     availability: super::native_availability,
 };
@@ -199,6 +201,7 @@ pub const COMPLETE_COMMAND: Command = Command {
     }],
     refusals: PENDING_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    search: &[],
     requires: Requires::Server,
     availability: super::native_availability,
 };
@@ -222,6 +225,7 @@ pub const LIST_COMMAND: Command = Command {
     }],
     refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    search: &[],
     requires: Requires::Server,
     availability: super::native_availability,
 };
@@ -245,6 +249,7 @@ pub const READ_COMMAND: Command = Command {
     }],
     refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    search: &[],
     requires: Requires::Server,
     availability: super::native_availability,
 };
@@ -268,6 +273,7 @@ pub const REVOKE_COMMAND: Command = Command {
     }],
     refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
+    search: &[],
     requires: Requires::Server,
     availability: super::native_availability,
 };

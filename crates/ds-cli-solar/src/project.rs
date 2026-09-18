@@ -91,6 +91,7 @@ const fn command(
             },
         ],
         reference: Some("docs/reference/solar.md"),
+        search: &[],
         requires: Requires::Server,
         availability,
     }

@@ -117,6 +117,7 @@ tab and the Project work page search, computed by the same kernel.",
         crate::ORIGIN_READ_UNAVAILABLE,
     ],
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

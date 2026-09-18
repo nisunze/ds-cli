@@ -191,6 +191,7 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: READ_REFUSALS,
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -213,6 +214,7 @@ pub static WRITE_COMMAND: Command = Command {
     }],
     refusals: WRITE_REFUSALS,
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -235,6 +237,7 @@ pub static FORK_COMMAND: Command = Command {
     }],
     refusals: FORK_REFUSALS,
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -257,6 +260,7 @@ pub static UPLOAD_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -279,6 +283,7 @@ pub static PUBLISH_LIBRARY_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -301,6 +306,7 @@ pub static PUBLISH_EXAMPLE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -329,6 +335,7 @@ pub static LIBRARY_LIFECYCLE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -357,6 +364,7 @@ pub static EXAMPLE_LIFECYCLE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

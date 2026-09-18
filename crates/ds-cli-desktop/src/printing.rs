@@ -47,6 +47,7 @@ pub static SEED_CONTEXT_COMMAND: Command = Command {
         ops::SIGNED_OUT,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -71,7 +72,7 @@ pub static SETTINGS_COMMAND: Command = Command {
  args: &[Arg::value("project", "<exact-id>", "Exact project whose saved printing output settings should be read; no GUI project switch.").required(), DESCRIPTOR_ARG],
  output: "Exact project, selection source, authored setting, planned outputs, selected template papers and receipt SHA-256. No design features or credentials.", examples: &[],
  refusals: &[ops::NOT_PAIRED,ops::AMBIGUOUS,ops::UNREACHABLE,ops::PAIRING_REJECTED,ops::REFUSED,ops::UNSUPPORTED,ops::UNREADABLE,ops::SIGNED_OUT,PRINTING_READ_INVALID],
- reference: Some("docs/reference/desktop.printing.md"), requires: Requires::Window, availability: ops::paired_availability,
+ reference: Some("docs/reference/desktop.printing.md"), search: &[], requires: Requires::Window, availability: ops::paired_availability,
 };
 pub fn settings(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let project = bounded_project(inputs.require("project")?)?;
@@ -154,6 +155,7 @@ pub static TRANSFORMERS_COMMAND: Command = Command {
         PRINTING_READ_INVALID,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -204,7 +206,7 @@ pub static EXPORT_COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/desktop.printing.md"),
-    requires: Requires::Window,
+    search: &[], requires: Requires::Window,
     availability: ops::paired_availability,
 };
 
@@ -245,7 +247,7 @@ pub static PREPARE_COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/desktop.printing.md"),
-    requires: Requires::Window,
+    search: &[], requires: Requires::Window,
     availability: ops::paired_availability,
 };
 

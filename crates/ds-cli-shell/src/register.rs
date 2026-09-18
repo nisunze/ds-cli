@@ -43,6 +43,7 @@ report `ds shell status` gives.",
         crate::LINK_FOREIGN,
     ],
     reference: Some("docs/reference/shell.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::always,
 };

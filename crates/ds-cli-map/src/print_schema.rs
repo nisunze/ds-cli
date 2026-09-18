@@ -30,6 +30,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Server,
     availability: crate::layer::local_availability,
 };

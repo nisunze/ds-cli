@@ -11014,3 +11014,564 @@ fn native_design_attachments_need_identity_instead_of_desktop_pairing() {
         "invalid governance pin must be refused before identity/transport"
     );
 }
+
+// ---------------------------------------------------------------------------
+// data vector
+// ---------------------------------------------------------------------------
+
+/// One MV feeder and one pole in Kigali, and a road that crosses the feeder.
+///
+/// The feeder runs 0.01° east along -1.9441° and then 0.01° north, so its two
+/// segments are a little over 1,110 m each and the crossing longitude is
+/// exactly 30.0669 — numbers a reviewer can check without running anything.
+fn vector_fixture(root: &std::path::Path) -> (PathBuf, PathBuf) {
+    std::fs::create_dir_all(root).expect("fixture directory");
+    let feeder = root.join("feeder.geojson");
+    let road = root.join("road.geojson");
+    std::fs::write(
+        &feeder,
+        r#"{"type":"FeatureCollection","features":[
+{"type":"Feature","properties":{"name":"MV feeder"},"geometry":{"type":"LineString",
+ "coordinates":[[30.0619,-1.9441],[30.0719,-1.9441],[30.0719,-1.9341]]}},
+{"type":"Feature","properties":{"name":"pole"},"geometry":{"type":"Point",
+ "coordinates":[30.0619,-1.9441]}}]}"#,
+    )
+    .expect("feeder fixture");
+    std::fs::write(
+        &road,
+        r#"{"type":"FeatureCollection","features":[
+{"type":"Feature","properties":{"name":"road"},"geometry":{"type":"LineString",
+ "coordinates":[[30.0669,-1.9491],[30.0669,-1.9391]]}}]}"#,
+    )
+    .expect("road fixture");
+    (feeder, road)
+}
+
+/// The failure this family was built for, proved end to end.
+///
+/// An engineer's coding agent could not find this stack's vector processing
+/// through `ds` and installed geopandas instead. The engine had been here all
+/// along — `ds-geo-ops`, the same Rust the map's tool dock reaches through
+/// WASM. What it had no surface.
+///
+/// So this asserts the answers, not their shape. A well-formed envelope full
+/// of wrong geometry is exactly what this suite exists to catch.
+#[test]
+fn vector_processing_answers_geodesically_with_no_project_and_no_window() {
+    let root = temp_root("vector-ops");
+    let (feeder, road) = vector_fixture(&root);
+    let feeder = feeder.to_str().expect("utf-8 path");
+    let road = road.to_str().expect("utf-8 path");
+
+    // `measure` is the command that answers "what is in this file", so every
+    // refusal below it can point at it. 0.01° of longitude at this latitude is
+    // 1,113 m and 0.01° of latitude is 1,110 m: a planar reading would give
+    // the two segments the same length, and a degrees-as-metres reading would
+    // give about 0.02. Bracketing the total proves it is neither.
+    let measured = ok(&[
+        "data", "vector", "measure", "--source", feeder, "--output", "json",
+    ]);
+    assert_eq!(measured["totals"]["features"], 2);
+    assert_eq!(measured["totals"]["by_kind"]["line"], 1);
+    assert_eq!(measured["totals"]["by_kind"]["point"], 1);
+    let length = measured["totals"]["length_m"].as_f64().expect("length");
+    assert!(
+        (2_220.0..2_226.0).contains(&length),
+        "the feeder is two ~1,111 m segments; `measure` said {length} m"
+    );
+
+    // A point buffered at eight segments per quarter turn is a ring of
+    // 4 × 8 + 1 coordinates — the sentence `--segments` help makes, checked.
+    // The line's buffer is a corridor, so it has more, and both carry the
+    // radius that produced them.
+    let buffered = ok(&[
+        "data",
+        "vector",
+        "buffer",
+        "--source",
+        feeder,
+        "--radius-m",
+        "25",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(buffered["produced"], 2);
+    let shapes = buffered["result"]["features"]
+        .as_array()
+        .expect("buffered features");
+    let ring = |feature: &Value| -> usize {
+        feature["geometry"]["coordinates"][0]
+            .as_array()
+            .expect("outer ring")
+            .len()
+    };
+    assert_eq!(shapes[0]["geometry"]["type"], "Polygon");
+    assert_eq!(shapes[1]["geometry"]["type"], "Polygon");
+    assert_eq!(
+        ring(&shapes[1]),
+        33,
+        "a buffered point at eight segments per quarter is a 33-vertex ring"
+    );
+    assert!(
+        ring(&shapes[0]) > ring(&shapes[1]),
+        "a buffered line is a corridor, not a circle"
+    );
+    assert_eq!(shapes[1]["properties"]["buffer_radius_m"], 25.0);
+
+    // Stationing. Eleven points at exactly 200 m on a 2,223 m line, and the
+    // pole skipped by name rather than silently dropped — a caller that gets
+    // eleven points from a two-feature file has to be told why.
+    let sampled = ok(&[
+        "data",
+        "vector",
+        "sample",
+        "--source",
+        feeder,
+        "--interval-m",
+        "200",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(sampled["produced"], 11);
+    assert_eq!(sampled["skipped"]["wrong_kind"], 1);
+    let stations: Vec<f64> = sampled["result"]["features"]
+        .as_array()
+        .expect("stations")
+        .iter()
+        .map(|point| point["properties"]["distance_m"].as_f64().expect("station"))
+        .collect();
+    assert_eq!(stations.first().copied(), Some(200.0));
+    assert_eq!(stations.last().copied(), Some(2_200.0));
+
+    // The overlay question a network engineer actually asks: where does this
+    // feeder cross that road. The road is a meridian at 30.0669, so the answer
+    // is that longitude and the feeder's latitude, to the metre.
+    let crossed = ok(&[
+        "data",
+        "vector",
+        "intersect",
+        "--source",
+        feeder,
+        "--against",
+        road,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(crossed["produced"], 1);
+    let hit = &crossed["result"]["features"][0];
+    let point = hit["geometry"]["coordinates"]
+        .as_array()
+        .expect("crossing point");
+    let (lng, lat) = (
+        point[0].as_f64().expect("lng"),
+        point[1].as_f64().expect("lat"),
+    );
+    assert!(
+        (lng - 30.0669).abs() < 1e-6 && (lat - -1.9441).abs() < 1e-6,
+        "the road is a meridian at 30.0669; the crossing came back at {lng},{lat}"
+    );
+    assert_eq!(hit["properties"]["source_index"], 0);
+    assert_eq!(hit["properties"]["against_index"], 0);
+
+    // Each refusal names a stable code, and the codes are the kernel's, so the
+    // Server and the desktop refuse with the same word.
+    let empty = root.join("empty.geojson");
+    std::fs::write(&empty, r#"{"type":"FeatureCollection","features":[]}"#).expect("empty fixture");
+    assert_eq!(
+        refusal(&[
+            "data",
+            "vector",
+            "buffer",
+            "--source",
+            empty.to_str().expect("utf-8 path"),
+            "--radius-m",
+            "25",
+            "--output",
+            "json",
+        ]),
+        "vector_document_empty"
+    );
+    assert_eq!(
+        refusal(&[
+            "data",
+            "vector",
+            "buffer",
+            "--source",
+            feeder,
+            "--radius-m",
+            "999999",
+            "--output",
+            "json",
+        ]),
+        "vector_distance_out_of_range"
+    );
+    assert_eq!(
+        refusal(&[
+            "data",
+            "vector",
+            "sample",
+            "--source",
+            feeder,
+            "--interval-m",
+            "50",
+            "--limit",
+            "0",
+            "--output",
+            "json",
+        ]),
+        "vector_limit_out_of_range"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The three ways this family could still hand back a confident wrong answer.
+///
+/// Each of these passed a smoke test before it was fixed: the envelope was
+/// well formed every time. What was wrong was the answer inside it — a
+/// multi-point silently produced nothing, a compared document was cut without
+/// a word, and "these two networks do not cross" came back as a failure whose
+/// remedy blamed the caller's coordinate system. An agent branching on
+/// `status` reads that last one as "this tool is broken" and goes to fetch
+/// geopandas, which is the incident this whole family exists to end.
+#[test]
+fn a_bounded_or_empty_vector_answer_says_which_it_is() {
+    let root = temp_root("vector-honesty");
+    let (feeder, _road) = vector_fixture(&root);
+    let feeder = feeder.to_str().expect("utf-8 path");
+
+    // Every point of a MultiPoint is buffered. The engine's point entry takes
+    // one position, so a MultiPoint carried whole was planned, counted as
+    // processed, and produced nothing.
+    let cluster = root.join("cluster.geojson");
+    std::fs::write(
+        &cluster,
+        r#"{"type":"MultiPoint","coordinates":[[30.0619,-1.9441],[30.0639,-1.9441],[30.0659,-1.9441]]}"#,
+    )
+    .expect("cluster fixture");
+    let buffered = ok(&[
+        "data",
+        "vector",
+        "buffer",
+        "--source",
+        cluster.to_str().expect("utf-8 path"),
+        "--radius-m",
+        "25",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        buffered["produced"], 3,
+        "each point of a MultiPoint is its own zone"
+    );
+
+    // Nothing crossing is an answer, in the caller's own terms, on a run that
+    // succeeded.
+    let elsewhere = root.join("elsewhere.geojson");
+    std::fs::write(
+        &elsewhere,
+        r#"{"type":"LineString","coordinates":[[29.0,-3.0],[29.01,-3.0]]}"#,
+    )
+    .expect("elsewhere fixture");
+    let none = ok(&[
+        "data",
+        "vector",
+        "intersect",
+        "--source",
+        feeder,
+        "--against",
+        elsewhere.to_str().expect("utf-8 path"),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(none["produced"], 0);
+    assert!(
+        none["note"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("No crossing"),
+        "a run that found nothing has to say so: {none}"
+    );
+
+    // The document a caller passes to --against is bounded by the same limit,
+    // and it is the one they cannot see being cut.
+    let crowd = root.join("crowd.geojson");
+    let mut lines = String::from(r#"{"type":"FeatureCollection","features":["#);
+    for step in 0..3 {
+        if step > 0 {
+            lines.push(',');
+        }
+        let lng = 30.0629 + f64::from(step) * 0.001;
+        lines.push_str(&format!(
+            r#"{{"type":"Feature","geometry":{{"type":"LineString","coordinates":[[{lng},-1.9491],[{lng},-1.9391]]}}}}"#
+        ));
+    }
+    lines.push_str("]}");
+    std::fs::write(&crowd, lines).expect("crowd fixture");
+    let bounded = ok(&[
+        "data",
+        "vector",
+        "intersect",
+        "--source",
+        feeder,
+        "--against",
+        crowd.to_str().expect("utf-8 path"),
+        "--limit",
+        "2",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(bounded["produced"], 2);
+    assert!(
+        bounded["more"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("--against"),
+        "a cut --against document has to be stated in `more`: {bounded}"
+    );
+
+    // A refusal writes nothing. An empty FeatureCollection left at --out is a
+    // wrong answer on disk, and it takes the path the caller's retry needs.
+    let taken = root.join("taken.geojson");
+    assert_eq!(
+        refusal(&[
+            "data",
+            "vector",
+            "buffer",
+            "--source",
+            feeder,
+            "--radius-m",
+            "999999",
+            "--out",
+            taken.to_str().expect("utf-8 path"),
+            "--output",
+            "json",
+        ]),
+        "vector_distance_out_of_range"
+    );
+    assert!(
+        !taken.exists(),
+        "a refused run left {} behind",
+        taken.display()
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Three ways a well-formed vector answer was still the wrong answer.
+///
+/// Each of these passed a smoke test that read the envelope and not the
+/// numbers, which is exactly the failure mode this family was built to stop
+/// repeating on an outside agent that cannot read our code.
+#[test]
+fn a_vector_answer_counts_what_it_says_it_counted() {
+    let root = temp_root("vector-arithmetic");
+    std::fs::create_dir_all(&root).expect("fixture directory");
+
+    // ── A hole is a hole ────────────────────────────────────────────────
+    // The same outer ring, once solid and once with a courtyard cut out of
+    // it, plus that courtyard on its own. The donut has to be the square
+    // less the courtyard: before this the holes were dropped at the door and
+    // a donut measured exactly as large as the square it came from.
+    let outer = "[[30.0619,-1.9441],[30.0719,-1.9441],[30.0719,-1.9341],[30.0619,-1.9341],[30.0619,-1.9441]]";
+    let hole = "[[30.0639,-1.9421],[30.0699,-1.9421],[30.0699,-1.9361],[30.0639,-1.9361],[30.0639,-1.9421]]";
+    let area_of = |name: &str, rings: String| -> f64 {
+        let path = root.join(name);
+        std::fs::write(
+            &path,
+            format!(r#"{{"type":"Polygon","coordinates":[{rings}]}}"#),
+        )
+        .expect("polygon fixture");
+        let measured = ok(&[
+            "data",
+            "vector",
+            "measure",
+            "--source",
+            path.to_str().expect("utf-8 path"),
+            "--output",
+            "json",
+        ]);
+        measured["totals"]["area_m2"].as_f64().expect("area")
+    };
+    let square = area_of("square.geojson", outer.to_string());
+    let courtyard = area_of("courtyard.geojson", hole.to_string());
+    let donut = area_of("donut.geojson", format!("{outer},{hole}"));
+    assert!(
+        (donut - (square - courtyard)).abs() < 1.0,
+        "a donut is its outer ring less its hole: {square} - {courtyard} is \
+         not {donut}"
+    );
+    assert!(courtyard > 100_000.0, "the hole is not a rounding error");
+
+    // ── A total counts the whole document ───────────────────────────────
+    // Twelve identical lines, listed five at a time. The total length is
+    // twelve lines' worth however few rows come back; before this it was the
+    // length of the first five and nothing said so.
+    let many = root.join("twelve.geojson");
+    let mut features = String::from(r#"{"type":"FeatureCollection","features":["#);
+    for step in 0..12 {
+        if step > 0 {
+            features.push(',');
+        }
+        let lat = -1.9441 + f64::from(step) * 0.001;
+        features.push_str(&format!(
+            r#"{{"type":"Feature","geometry":{{"type":"LineString","coordinates":[[30.0619,{lat}],[30.0719,{lat}]]}}}}"#
+        ));
+    }
+    features.push_str("]}");
+    std::fs::write(&many, features).expect("twelve fixture");
+    let many = many.to_str().expect("utf-8 path");
+    let whole = ok(&[
+        "data", "vector", "measure", "--source", many, "--output", "json",
+    ]);
+    let whole_length = whole["totals"]["length_m"].as_f64().expect("length");
+    let listed = ok(&[
+        "data", "vector", "measure", "--source", many, "--limit", "5", "--output", "json",
+    ]);
+    assert_eq!(listed["totals"]["features"], 12);
+    assert_eq!(
+        listed["features"].as_array().expect("rows").len(),
+        5,
+        "the limit bounds the rows"
+    );
+    assert!(
+        (listed["totals"]["length_m"].as_f64().expect("length") - whole_length).abs() < 0.001,
+        "a bounded list must not shorten the network: {listed}"
+    );
+    let cut = listed["more"].as_str().unwrap_or_default();
+    assert!(
+        cut.contains("7 more") && cut.contains("the totals count every one"),
+        "a cut list has to say the totals were not cut: {cut}"
+    );
+
+    // ── What a run MAKES is bounded too ─────────────────────────────────
+    // One 1.1 km line stationed every 10 m is 111 points from a single
+    // eligible feature. `--limit` bounded the features READ, so the whole
+    // collection came back inline with `more` silent.
+    let route = root.join("route.geojson");
+    std::fs::write(
+        &route,
+        r#"{"type":"LineString","coordinates":[[30.0619,-1.9441],[30.0719,-1.9441]]}"#,
+    )
+    .expect("route fixture");
+    let route = route.to_str().expect("utf-8 path");
+    let inline = ok(&[
+        "data",
+        "vector",
+        "sample",
+        "--source",
+        route,
+        "--interval-m",
+        "10",
+        "--limit",
+        "20",
+        "--output",
+        "json",
+    ]);
+    let produced = inline["produced"].as_u64().expect("produced");
+    assert!(produced > 100, "a 1.1 km route at 10 m is over 100 points");
+    assert_eq!(
+        inline["result"]["features"]
+            .as_array()
+            .expect("inline features")
+            .len(),
+        20,
+        "an inline answer is bounded by --limit: {inline}"
+    );
+    let withheld = inline["more"].as_str().unwrap_or_default();
+    assert!(
+        withheld.contains("--out"),
+        "a cut inline answer has to name the flag that writes them all: {withheld}"
+    );
+
+    // …and the file the flag names holds every one of them, because a file is
+    // not a context cost.
+    let written = root.join("stations.geojson");
+    let whole_file = ok(&[
+        "data",
+        "vector",
+        "sample",
+        "--source",
+        route,
+        "--interval-m",
+        "10",
+        "--limit",
+        "20",
+        "--out",
+        written.to_str().expect("utf-8 path"),
+        "--output",
+        "json",
+    ]);
+    assert!(
+        whole_file["more"].is_null(),
+        "nothing was withheld: {whole_file}"
+    );
+    let on_disk: Value = serde_json::from_slice(&std::fs::read(&written).expect("written file"))
+        .expect("written GeoJSON");
+    assert_eq!(
+        on_disk["features"].as_array().expect("file features").len() as u64,
+        produced,
+        "--out writes every station the run produced"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The search half of the same failure.
+///
+/// Before this slice `--search buffer` returned three results and none was a
+/// buffer; `--search intersect`, `dissolve` and `geoprocessing` returned
+/// nothing at all; and `--search line` returned forty results led by
+/// `assets.attach`, whose summary begins "**Lin**k an asset". An agent
+/// reading from the top of that list learned that `ds` does not do this.
+///
+/// What a search owes a stranger is that its FIRST row is the one they meant.
+#[test]
+fn an_outsiders_word_for_an_operation_finds_it_first() {
+    for (query, expected) in [
+        ("buffer", "data.vector.buffer"),
+        ("geoprocessing", "data.vector.buffer"),
+        ("intersect", "data.vector.intersect"),
+        ("overlay", "data.vector.intersect"),
+        ("chainage", "data.vector.sample"),
+        ("line", "map.line-difference"),
+        // The plural is what a stranger types. `buffers` used to return one
+        // row, and it was a project-cache command.
+        ("buffers", "data.vector.buffer"),
+        ("polygons", "data.vector.buffer"),
+    ] {
+        let found = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let first = found["results"][0]["id"].as_str().unwrap_or("<nothing>");
+        assert_eq!(
+            first, expected,
+            "`ds capabilities --search {query}` led with `{first}`; a stranger \
+             typing that word means `{expected}`"
+        );
+    }
+
+    // `Link` is not `line`. A term that only appears inside a longer, unrelated
+    // word is noise, and it used to be forty rows of it.
+    let lines = ok(&["capabilities", "--search", "line", "--output", "json"]);
+    let ids: Vec<&str> = lines["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .filter_map(|row| row["id"].as_str())
+        .collect();
+    assert!(
+        !ids.contains(&"assets.attach"),
+        "searching `line` still returns `assets.attach`: {ids:?}"
+    );
+
+    // Nothing found is an answer too. `dissolve` is genuinely absent from this
+    // stack, and the worst version of saying so is an empty list with no next
+    // step — that is where an outside agent gives up on `ds` and installs its
+    // own toolchain instead.
+    let absent = ok(&["capabilities", "--search", "dissolve", "--output", "json"]);
+    assert_eq!(absent["matched"], 0);
+    let next = absent["next"].as_str().unwrap_or_default();
+    assert!(
+        next.contains("ds capabilities") && next.contains("feedback"),
+        "an empty search must still route somewhere; it said `{next}`"
+    );
+}

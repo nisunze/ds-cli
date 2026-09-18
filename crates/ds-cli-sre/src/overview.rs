@@ -36,6 +36,7 @@ and `more` identifies each truncated collection.",
         { 2 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([crate::NOT_PERMITTED, crate::UNREADABLE]),
     reference: Some("docs/reference/sre.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

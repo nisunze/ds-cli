@@ -78,6 +78,7 @@ const fn command(
             },
         ],
         reference: Some("docs/reference/design-project.md"),
+        search: &[],
         requires: Requires::Server,
         availability: || Availability::Available,
     }

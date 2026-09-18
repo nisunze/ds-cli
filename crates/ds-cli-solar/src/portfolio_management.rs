@@ -95,6 +95,7 @@ pub static CREATE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -139,6 +140,7 @@ pub static UPDATE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -172,6 +174,7 @@ pub static DELETE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

@@ -68,6 +68,7 @@ full. Long lists are truncated and the withheld count reported.",
     ],
     refusals: &REFUSALS,
     reference: Some("docs/reference/dsgrid-exchange.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

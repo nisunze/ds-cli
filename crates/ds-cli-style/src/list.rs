@@ -47,6 +47,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: crate::native::REFUSALS,
     reference: Some("docs/reference/style.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

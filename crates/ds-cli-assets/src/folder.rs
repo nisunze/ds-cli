@@ -148,6 +148,7 @@ projected, not declared, and are refused by name.",
         crate::UNKNOWN_FOLDER,
     ],
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

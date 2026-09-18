@@ -37,6 +37,7 @@ pub static COMMAND: Command = Command {
         remedy: "obtain the exact immutable release named by the model/catalogue",
     }],
     reference: Some("docs/reference/library.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

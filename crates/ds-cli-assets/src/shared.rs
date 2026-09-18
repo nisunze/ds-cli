@@ -85,6 +85,7 @@ pub static RESOLVE: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -116,6 +117,7 @@ pub static MAPS: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -157,6 +159,7 @@ pub static PUBLISH_MAP: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -237,6 +240,7 @@ pub static REFERENCE: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

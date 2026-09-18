@@ -69,6 +69,7 @@ parameter list.",
         remedy: "run `ds dsgrid describe --kind <kind>` for the ids it does",
     }],
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

@@ -88,6 +88,7 @@ With --sample, matched features and their properties; with --ids, their ids. \
         super::TOO_MANY_IDS,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

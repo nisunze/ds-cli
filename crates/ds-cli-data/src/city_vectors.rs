@@ -56,6 +56,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/data.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

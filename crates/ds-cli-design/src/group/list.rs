@@ -50,6 +50,7 @@ transformer's current `value` and `modelState`.",
         crate::group::LISTING_TOO_MANY,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

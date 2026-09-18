@@ -67,7 +67,13 @@ one new local layer. No project design data is changed.",
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/map.md"),
-    requires: Requires::Window,
+    search: &[
+        "geoprocessing",
+        "gis",
+        "overlay",
+        "compare",
+        "delta",
+    ], requires: Requires::Window,
     availability: crate::paired_availability,
 };
 

@@ -22,6 +22,7 @@ pub static DEFINITIONS: Command = Command {
     examples: &[],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -53,6 +54,7 @@ pub static PROJECTION: Command = Command {
     examples: &[],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -125,6 +127,7 @@ pub static PREVIEW: Command = Command {
     examples: &[],
     refusals: BATCH_REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -158,6 +161,7 @@ pub static APPLY: Command = Command {
     examples: &[],
     refusals: BATCH_REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

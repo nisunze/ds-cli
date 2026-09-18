@@ -40,6 +40,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: ds_cli_server::STATUS.refusals,
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -73,6 +74,7 @@ pub static SCHEMA: Command = Command {
         remedy: "list operation names without --operation and select one exact name",
     }],
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };

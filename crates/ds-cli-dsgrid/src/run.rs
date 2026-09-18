@@ -146,6 +146,7 @@ descriptor identity, a typed bounded result, staged:false and persisted:false. \
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

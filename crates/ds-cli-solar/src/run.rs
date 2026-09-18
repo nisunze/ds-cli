@@ -140,6 +140,7 @@ jobs and delivery, discover `ds solar application schema`.",
         },
     ],
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability,
 };

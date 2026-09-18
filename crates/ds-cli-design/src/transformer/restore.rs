@@ -37,6 +37,7 @@ a closed `refusal` (`not_found`, `not_retired`, `no_retirement_record`, \
     }],
     refusals: super::NATIVE_WRITE_REFUSALS,
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

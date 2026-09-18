@@ -201,6 +201,7 @@ pub static PLAN_COMMAND: Command = Command {
         DESKTOP_UNSUPPORTED,
     ],
     reference: Some("docs/reference/data.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired_availability,
 };
@@ -257,6 +258,7 @@ pub static EXTRACT_COMMAND: Command = Command {
         DESKTOP_UNSUPPORTED,
     ],
     reference: Some("docs/reference/data.md"),
+    search: &[],
     requires: Requires::Window,
     availability: paired_availability,
 };

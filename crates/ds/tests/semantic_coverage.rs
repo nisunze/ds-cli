@@ -127,6 +127,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("data.convert", "local_file_write", "none"),
     ("data.conversion-matrix", "discovery", "none"),
     ("data.inspect", "read_only", "none"),
+    // Vector processing. `measure` only reads, so it is the one read_only
+    // member; the other three write GeoJSON where --out says and nowhere
+    // else. None of them takes authority: they open a local file, run the
+    // geodesic engine on this machine and write a local file, with no
+    // project, no window and no network — which is what made them the right
+    // answer to an outside agent who has none of those.
+    ("data.vector.measure", "read_only", "none"),
+    ("data.vector.buffer", "local_file_write", "none"),
+    ("data.vector.sample", "local_file_write", "none"),
+    ("data.vector.intersect", "local_file_write", "none"),
     ("desktop.project.list", "read_only", "desktop_user"),
     ("desktop.project.switch", "local_ui", "desktop_user"),
     ("desktop.status", "discovery", "none"),

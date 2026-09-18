@@ -94,6 +94,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: &form_refusals(),
     reference: Some("docs/reference/solar.md"),
+    search: &[],
     requires: Requires::Server,
     availability: || crate::DS_SOLAR.availability(),
 };
@@ -129,7 +130,7 @@ pub static SAVE: Command = Command {
         Arg::value("form","<file>","Complete reference form JSON, up to 16 MiB. Start with the document returned by solar.network.resolve; edit overrides or transformer_overrides.").required(),
     ],
     output:"Saved Solar-owned input document, expected digest for the next edit, manual effective values and pending sync receipt.",
-    examples:&[],refusals:&form_refusals(),reference:Some("docs/reference/solar.md"),requires: Requires::Server, availability:||crate::DS_SOLAR.availability(),
+    examples:&[],refusals:&form_refusals(),reference:Some("docs/reference/solar.md"),search: &[], requires: Requires::Server, availability:||crate::DS_SOLAR.availability(),
 };
 pub fn save(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     use std::io::Read;

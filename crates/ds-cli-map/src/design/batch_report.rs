@@ -107,6 +107,7 @@ artifact coverage, missing artifacts, report errors, and registry status.",
         },
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

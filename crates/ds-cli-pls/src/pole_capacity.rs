@@ -78,6 +78,7 @@ capacity items; and `more.next_offset` when the block continues.",
         crate::RESULT_ENCODING_REFUSAL,
     ],
     reference: Some("docs/reference/pls.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

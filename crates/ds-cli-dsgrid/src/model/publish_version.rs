@@ -237,6 +237,7 @@ pub static COMMAND: Command = Command {
     // paired route is the part still owed a headless form. Do not "fix" this
     // to `window`: that would report the native path as unavailable on the
     // machine it was built for.
+    search: &[],
     requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };

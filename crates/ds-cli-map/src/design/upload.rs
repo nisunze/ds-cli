@@ -74,6 +74,7 @@ counts, and explicit truncation counts.",
         crate::SIGNED_OUT,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

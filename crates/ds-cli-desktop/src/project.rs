@@ -110,6 +110,7 @@ The current `activeProject`, lifecycle bucket, match count, and bounded \
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/desktop.project.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };
@@ -168,6 +169,7 @@ project's bounded summary. No project data is written.",
         INVALID_TEXT,
     ],
     reference: Some("docs/reference/desktop.project.md"),
+    search: &[],
     requires: Requires::Window,
     availability: ops::paired_availability,
 };

@@ -43,6 +43,7 @@ and the first thing to compare when two machines disagree.",
         },
     ],
     reference: Some("docs/reference/report.md"),
+    search: &[],
     requires: Requires::Server,
     availability,
 };

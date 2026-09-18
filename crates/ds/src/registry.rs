@@ -1334,6 +1334,30 @@ static DATA_ENTRIES: &[Entry] = &[
         handler: ds_cli_data::project_cache::run_seed,
         render: ds_cli_data::project_cache::render_seed,
     },
+    // Vector processing, in the order a caller meets it: look at the
+    // document first, then act on it. `measure` leads because it is the
+    // command that answers "what is in this file" — the question every
+    // refusal below it would otherwise leave a caller guessing at.
+    Entry {
+        command: &ds_cli_data::vector::MEASURE_COMMAND,
+        handler: ds_cli_data::vector::run_measure,
+        render: ds_cli_data::vector::render_measure,
+    },
+    Entry {
+        command: &ds_cli_data::vector::BUFFER_COMMAND,
+        handler: ds_cli_data::vector::run_buffer,
+        render: ds_cli_data::vector::render_buffer,
+    },
+    Entry {
+        command: &ds_cli_data::vector::SAMPLE_COMMAND,
+        handler: ds_cli_data::vector::run_sample,
+        render: ds_cli_data::vector::render_sample,
+    },
+    Entry {
+        command: &ds_cli_data::vector::INTERSECT_COMMAND,
+        handler: ds_cli_data::vector::run_intersect,
+        render: ds_cli_data::vector::render_intersect,
+    },
 ];
 
 /// Tiling. Ordered as a session uses it: read the state, look at the

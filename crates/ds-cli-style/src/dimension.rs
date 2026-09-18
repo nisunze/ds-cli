@@ -170,6 +170,7 @@ the project's data, not of an edit: read them from `ds style read --transformer`
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
@@ -228,6 +229,7 @@ The plan receipt with `published: true`, ds-brain `warnings`, and the \
         }],
         refusals: crate::native::PUBLISH_REFUSALS,
         reference: Some("docs/reference/style.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
@@ -269,6 +271,7 @@ defaults apply again, and publishes. The colour dimension is untouched.",
         }],
         refusals: crate::native::PUBLISH_REFUSALS,
         reference: Some("docs/reference/style.md"),
+        search: &[],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };

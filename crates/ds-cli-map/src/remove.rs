@@ -54,6 +54,7 @@ cannot erase someone else's work. Takes the `layer` id that `ds map view` and \
         crate::UNREADABLE,
     ],
     reference: Some("docs/reference/map.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

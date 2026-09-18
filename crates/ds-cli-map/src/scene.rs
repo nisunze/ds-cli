@@ -30,7 +30,7 @@ pub static COMMAND: Command = Command {
         Refusal { code: "scene_output_unwritable", when: "the output is relative, already exists, or cannot be written atomically", remedy: "choose a new absolute output path in an existing writable directory" },
     ],
     reference: Some("docs/reference/map.md"),
-    requires: Requires::Server,
+    search: &[], requires: Requires::Server,
     availability: crate::layer::local_availability,
 };
 

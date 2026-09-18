@@ -61,6 +61,7 @@ an id from here.",
         crate::INVALID_ANCHOR,
     ],
     reference: Some("docs/reference/design.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

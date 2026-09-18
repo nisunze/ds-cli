@@ -77,6 +77,7 @@ translations. `more.next_offset` when the closure continues.",
         crate::RESULT_ENCODING_REFUSAL,
     ],
     reference: Some("docs/reference/pls.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

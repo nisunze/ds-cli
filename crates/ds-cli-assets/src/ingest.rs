@@ -86,6 +86,7 @@ named here. Refused by name when offline in this slice.",
         crate::UNKNOWN_FOLDER,
     ],
     reference: Some("docs/reference/assets.md"),
+    search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

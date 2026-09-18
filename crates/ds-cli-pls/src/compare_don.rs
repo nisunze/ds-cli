@@ -117,6 +117,7 @@ Both sources with their digests, the alignment evidence, and the three counts \
         crate::RESULT_ENCODING_REFUSAL,
     ],
     reference: Some("docs/reference/pls.md"),
+    search: &[],
     requires: Requires::Server,
     availability: available,
 };

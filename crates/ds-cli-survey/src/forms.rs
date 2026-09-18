@@ -42,6 +42,7 @@ pub static LIST_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -70,6 +71,7 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -93,6 +95,7 @@ pub static TYPES_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -124,6 +127,7 @@ pub static CREATE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -162,6 +166,7 @@ pub static UPDATE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -208,6 +213,7 @@ pub static LIFECYCLE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
+    search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
