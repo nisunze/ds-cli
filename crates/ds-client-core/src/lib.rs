@@ -191,8 +191,10 @@ pub use data_distribution::{
 pub use profile::{DATA_DISTRIBUTION_ACTIONS, DATA_DISTRIBUTION_METHOD, DATA_DISTRIBUTION_PATH};
 pub use transport::{BundleDownloadCall, DataDistributionCall};
 
+pub mod grid_catalog;
 pub mod grid_models;
 pub mod report_artifact;
+pub use transport::GridCatalogCall;
 pub use transport::GridModelsCall;
 pub use transport::ReportArtifactCall;
 

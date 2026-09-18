@@ -1376,6 +1376,59 @@ impl GridModelsCall<'_> {
     }
 }
 
+pub struct GridCatalogCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl GridCatalogCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        "/api/v1/grid/catalog".into()
+    }
+    pub fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    /// The reviewed descriptor's cap for this operation.
+    pub const fn response_limit(&self) -> usize {
+        1024 * 1024
+    }
+    /// The reviewed descriptor's timeout for this operation.
+    pub const fn timeout_seconds(&self) -> u64 {
+        30
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed grid catalog request"))
+    }
+}
+
 pub struct SolarProjectCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: serde_json::Value,
@@ -2064,6 +2117,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn grid_catalog(
+        &mut self,
+        _call: GridCatalogCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -2284,6 +2343,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn grid_catalog(
+        &mut self,
+        _call: GridCatalogCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -2484,6 +2549,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: GridModelsCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::grid_models(self, call)
+    }
+    fn grid_catalog(
+        &mut self,
+        call: GridCatalogCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::grid_catalog(self, call)
     }
     fn shared_asset_bytes(
         &mut self,

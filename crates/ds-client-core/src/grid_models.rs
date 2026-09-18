@@ -20,6 +20,15 @@ pub enum Command {
         intent: ds_command_kernel::grid_publication::Intent,
         bytes: Vec<u8>,
     },
+    /// Copy one exact global example revision into a project model.
+    ///
+    /// The fork body is the governed request the backend validates; this owner
+    /// bounds it to one JSON object so the action cannot carry a second
+    /// action or an unbounded payload, and names the project separately so the
+    /// request can never disagree with the project it was authorized for.
+    ForkExample {
+        fork: Value,
+    },
 }
 pub struct Receipt {
     pub data: Value,
@@ -70,6 +79,13 @@ impl Command {
                 Ok(())
             }
             Self::Download { model, revision } if id(model) && id(revision) => Ok(()),
+            Self::ForkExample { fork }
+                if fork.is_object()
+                    && serde_json::to_vec(fork)
+                        .is_ok_and(|bytes| !bytes.is_empty() && bytes.len() <= 1024 * 1024) =>
+            {
+                Ok(())
+            }
             Self::Publish { intent, bytes } => intent
                 .plan(project, bytes)
                 .map(|_| ())
@@ -122,6 +138,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
         Command::Download { model, revision } => {
             json!({"action":"get_version","project_id":project,"model_id":model,"revision_id":revision})
         }
+        Command::ForkExample { fork } => {
+            json!({"action":"fork_example","project_id":project,"fork":fork})
+        }
         Command::Publish { .. } => unreachable!("publication dispatched before reads"),
     };
     let response = transport.grid_models(GridModelsCall {
@@ -142,6 +161,23 @@ pub(crate) fn run<T: AuthorizedTransport>(
     let data = &body["data"];
     match command {
         Command::Publish { .. } => unreachable!("publication dispatched before reads"),
+        // The fork's answer is the created project version, verified by the
+        // backend that created it. This owner adds no second opinion; it only
+        // refuses an envelope that does not carry one.
+        Command::ForkExample { .. } => {
+            let version = data
+                .get("version")
+                .filter(|value| value.is_object())
+                .cloned()
+                .unwrap_or_else(|| data.clone());
+            if !version.is_object() || version["project_id"] != project {
+                return Err(bad());
+            }
+            Ok(Receipt {
+                data: version,
+                bytes: None,
+            })
+        }
         Command::List { limit, .. } => {
             let rows = if data["models"].is_null() {
                 vec![]

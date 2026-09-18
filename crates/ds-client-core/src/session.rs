@@ -1148,6 +1148,31 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             command,
         )
     }
+    /// One governed action on the GLOBAL library and example catalog.
+    ///
+    /// No project id, because this catalog has none: a library release belongs
+    /// to the product. The signed-in user is the authority and the gateway
+    /// refuses a write without its publish capability.
+    pub fn grid_catalog(
+        &mut self,
+        command: &crate::grid_catalog::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::grid_catalog::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            command,
+        )
+    }
     pub fn grid_models(
         &mut self,
         project: &str,
