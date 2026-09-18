@@ -2010,54 +2010,43 @@ fn style_cartography_sends_exactly_the_arguments_and_bounds_the_desktop_owns() {
 }
 
 #[test]
-fn every_paired_tile_catalogue_command_has_one_closed_operation_owner() {
+fn the_global_reference_publications_no_longer_travel_through_the_window() {
+    // A reference publication belongs to the product: one governed catalog for
+    // the whole system, gated by `global_tiles.manage` at the gateway. It
+    // reached that gateway through the paired application anyway, so
+    // `ds tile global …` refused on any machine without a window — including
+    // the server where a publication is most naturally driven.
+    //
+    // Since 2026-09-18 the four actions travel on the same `/api/v1/tiles`
+    // route through `ds-client-core::global_tiles`, and `ds-cli-tile` does not
+    // depend on `ds-cli-desktop` at all (`lens_core_boundary.rs` holds that).
     let Some(root) = ds_web() else {
         skip("the ds-web sibling repository is not on disk");
         return;
     };
-    // Do not let an unrelated retired adapter silently skip global tile parity.
     let transport = std::fs::read_to_string(root.join("src-tauri/src/cli_bridge.rs")).unwrap();
-    let frontend = std::fs::read_to_string(root.join("src/lib/desktop/cli-bridge.ts")).unwrap();
-    let adapter =
-        std::fs::read_to_string(root.join("src/lib/desktop/cli-global-tiles.ts")).unwrap();
-    let mut seen = BTreeSet::new();
     let allowlist = between(&transport, "pub const CLI_OPERATIONS: &[&str] = &[", "];");
     assert!(
         !allowlist.is_empty(),
         "the desktop CLI operation allowlist is absent"
     );
-    for operation in ds_cli_tile::BRIDGE_OPS {
-        assert!(
-            seen.insert(operation.operation),
-            "`{}` is declared twice by ds tile; one semantic operation has one owner",
-            operation.operation
-        );
+    for retired in [
+        "tile.global.catalog",
+        "tile.global.list",
+        "tile.global.generate",
+        "tile.global.status",
+    ] {
         assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "`{}` must appear exactly once in the desktop allowlist",
-            operation.operation
+            count(allowlist, &format!("\"{retired}\"")),
+            0,
+            "{retired} is still admitted as a CLI bridge operation, but `ds tile global` \
+             no longer sends it"
         );
-        assert_eq!(
-            switch_case_count(&frontend, operation.operation),
-            1,
-            "`{}` must have exactly one frontend handler",
-            operation.operation
-        );
-        let contract = operation_contract(&adapter, operation.operation);
-        assert!(
-            !contract.is_empty(),
-            "`{}` has no typed tile adapter argument contract",
-            operation.operation
-        );
-        for argument in operation.arguments {
-            assert!(
-                contract.contains(&format!("'{argument}'")),
-                "ds tile sends `{argument}` to `{}`, but its typed adapter does not accept it",
-                operation.operation
-            );
-        }
     }
+    assert!(
+        !root.join("src/lib/desktop/cli-global-tiles.ts").exists(),
+        "the global tile adapter outlived its last caller"
+    );
 }
 
 #[test]

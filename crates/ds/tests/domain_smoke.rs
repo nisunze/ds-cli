@@ -4022,10 +4022,12 @@ fn tile_managed_outputs_are_headless_and_catalogue_are_headless() {
 }
 
 #[test]
-fn global_tile_list_is_a_domain_bounded_paired_recovery_read() {
+fn global_tile_list_is_a_domain_bounded_native_recovery_read() {
     let descriptor = ok(&["capabilities", "tile.global.list", "--output", "json"]);
     let command = &descriptor["command"];
-    assert_eq!(command["authority"], "desktop_user");
+    // A reference publication belongs to the product, so the authority is the
+    // restored native user and the lane is the only host fact it carries.
+    assert_eq!(command["authority"], "headless_user");
     assert_eq!(command["effect"], "read_only");
     let inputs = command["inputs"]
         .as_array()
@@ -4033,9 +4035,9 @@ fn global_tile_list_is_a_domain_bounded_paired_recovery_read() {
         .iter()
         .map(|input| input["name"].as_str().expect("input name"))
         .collect::<BTreeSet<_>>();
-    assert_eq!(inputs, BTreeSet::from(["desktop-descriptor", "domain"]));
+    assert_eq!(inputs, BTreeSet::from(["domain", "lane"]));
 
-    let code = refusal(&[
+    let code = native_refusal(&[
         "tile",
         "global",
         "list",
@@ -4045,8 +4047,32 @@ fn global_tile_list_is_a_domain_bounded_paired_recovery_read() {
         "json",
     ]);
     assert!(
-        PAIRING_CODES.contains(&code.as_str()),
-        "a valid recovery read stopped at `{code}`, not the paired Reference Layers owner"
+        NATIVE_AUTH_CODES.contains(&code.as_str()),
+        "a valid recovery read stopped at `{code}`, not the native reference catalog"
+    );
+
+    // A source that is not an exact catalog identity is refused here, before a
+    // publication job can be started with it.
+    assert_eq!(
+        native_refusal(&[
+            "tile",
+            "global",
+            "generate",
+            "--domain",
+            "network_template",
+            "--name",
+            "Rwanda roads",
+            "--country",
+            "RW",
+            "--source",
+            "not-a-catalog-identity",
+            "--maxzoom",
+            "12",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "global_tile_selection_invalid"
     );
 }
 
@@ -5496,7 +5522,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "tiles": {
                 "method": "POST",
                 "path": "/api/v1/tiles",
-                "actions": ["status", "preflight", "generate", "list", "add", "remove"]
+                "actions": ["status", "preflight", "generate", "list", "add", "remove", "global_catalog", "global_list", "global_generate", "global_status"]
             },
             "project_report": {
                 "method": "POST",

@@ -1147,14 +1147,10 @@ mod tests {
             ],
             tiles_method: "POST".to_owned(),
             tiles_path: "/api/v1/tiles".to_owned(),
-            tiles_actions: vec![
-                "status".to_owned(),
-                "preflight".to_owned(),
-                "generate".to_owned(),
-                "list".to_owned(),
-                "add".to_owned(),
-                "remove".to_owned(),
-            ],
+            tiles_actions: ds_client_core::TILES_ACTIONS
+                .iter()
+                .map(|action| (*action).to_owned())
+                .collect(),
             project_report_method: "POST".to_owned(),
             project_report_path: "/report".to_owned(),
             project_report_actions: vec![

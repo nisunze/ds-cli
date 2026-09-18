@@ -1837,6 +1837,24 @@ pub fn style_edit(
     })
 }
 
+/// One governed action on the GLOBAL reference publications.
+///
+/// Global, like the library catalog: no project is selected and none is
+/// fenced, because a reference publication belongs to the product. Publishing
+/// needs the gateway's own `global_tiles.manage`; reading needs a restored
+/// native user and nothing else.
+pub fn global_tiles(
+    lane_value: &str,
+    command: &ds_client_core::global_tiles::Command,
+) -> Result<serde_json::Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let _user = require_restore_before_context(&mut client)?;
+    client.global_tiles(command, now()).map_err(map_client)
+}
+
 /// One governed action on the GLOBAL DS Grid library and example catalog.
 ///
 /// Global means there is no project to select and none to fence: a library

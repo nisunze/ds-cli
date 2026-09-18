@@ -78,8 +78,6 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds-cli-sre", Layer::CorePending, 1),
     // Styling saves round-trip through the open map's layer state.
     ("ds-cli-style", Layer::CorePending, 2),
-    // Tile regeneration is requested through the application.
-    ("ds-cli-tile", Layer::CorePending, 2),
     // Project Work tasks read the window's selection.
     ("ds-cli-work", Layer::CorePending, 1),
 ];

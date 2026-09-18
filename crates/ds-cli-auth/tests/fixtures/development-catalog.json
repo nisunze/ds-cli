@@ -86,7 +86,11 @@
           "generate",
           "list",
           "add",
-          "remove"
+          "remove",
+          "global_catalog",
+          "global_list",
+          "global_generate",
+          "global_status"
         ]
       },
       "design_selections": {
@@ -281,7 +285,11 @@
           "generate",
           "list",
           "add",
-          "remove"
+          "remove",
+          "global_catalog",
+          "global_list",
+          "global_generate",
+          "global_status"
         ]
       },
       "design_selections": {

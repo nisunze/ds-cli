@@ -48,12 +48,6 @@ use serde_json::{Value, json};
 // Neutral argument helpers: a numeric bound and an English count say
 // nothing about a paired window, so they come from the contract crate.
 pub use ds_cli_contract::args::plural;
-pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED,
-    SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, invoke, paired,
-    paired_availability,
-};
-
 pub static DOMAIN: Domain = Domain {
     id: "tile",
     summary: "Vector tiles: status, plan, generate, and the catalogue.",
@@ -75,28 +69,6 @@ pub static DOMAIN: Domain = Domain {
 // ---------------------------------------------------------------------------
 // The remaining paired wire contract
 // ---------------------------------------------------------------------------
-
-pub const TILE_LIST: BridgeOp = BridgeOp {
-    operation: "tile.list",
-    arguments: &["global", "refresh"],
-};
-pub const TILE_ADD: BridgeOp = BridgeOp {
-    operation: "tile.add",
-    arguments: &["type", "source_project", "apply"],
-};
-pub const TILE_REMOVE: BridgeOp = BridgeOp {
-    operation: "tile.remove",
-    arguments: &["tile_id", "scope", "apply"],
-};
-
-/// Every operation this domain can still send to Desktop, for the parity test
-/// to walk. Managed output reads and generation must never be added here.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[
-    &global::CATALOG_OP,
-    &global::LIST_OP,
-    &global::GENERATE_OP,
-    &global::STATUS_OP,
-];
 
 pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -335,10 +307,6 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     AUTH_UNREADABLE,
     CONFIRMATION_REQUIRED,
 ];
-
-pub fn classify_tile_failure(failure: Failure) -> Failure {
-    classify_signed_out(failure)
-}
 
 // ---------------------------------------------------------------------------
 // Flag shapes shared across the domain
@@ -631,24 +599,6 @@ pub fn preflight_line(preflight: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn every_declared_operation_is_listed_for_the_parity_test_to_walk() {
-        let mut names: Vec<&str> = BRIDGE_OPS.iter().map(|op| op.operation).collect();
-        names.sort_unstable();
-        let mut unique = names.clone();
-        unique.dedup();
-        assert_eq!(names, unique, "an operation is declared twice");
-        assert_eq!(
-            names,
-            [
-                "tile.global.catalog",
-                "tile.global.generate",
-                "tile.global.list",
-                "tile.global.status"
-            ]
-        );
-    }
 
     #[test]
     fn managed_output_commands_share_the_native_gate() {
