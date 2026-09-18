@@ -380,3 +380,6 @@ pub fn canonical_parameter_name(name: &str) -> String {
 }
 mod projection;
 pub use projection::{bounded_page, read_sheet};
+
+mod catalog;
+pub use catalog::{canonical, catalog_hazards};

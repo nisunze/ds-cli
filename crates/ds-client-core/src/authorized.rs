@@ -234,12 +234,38 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
             }
         }
     }
-    if let Some(ProjectConfigurationChange::CustomerCategoryAlias { alias, category }) = change {
-        let updated = crate::project_feeders::customer_category_alias(&document, alias, category)?;
-        if document["sheets"]["cust_category"] != json!(updated) {
-            send("cust_category", Some(&json!(updated)))?;
-            document = send("cust_category", None)?;
-            if document["sheets"]["cust_category"] != json!(updated) {
+    // Every vocabulary edit resolves against the document just fetched, saves
+    // only when it actually changes the sheet, and re-reads to prove what was
+    // stored. A catalogue that saved and read back differently is the one way
+    // a housekeeping edit could corrupt the vocabulary it was meant to repair.
+    let catalog_edit = match change {
+        Some(ProjectConfigurationChange::CustomerCategoryAlias { alias, category }) => Some((
+            "cust_category",
+            crate::project_feeders::customer_category_alias(&document, alias, category)?,
+        )),
+        Some(ProjectConfigurationChange::RetireCustomerCategory { name }) => Some((
+            "cust_category",
+            crate::project_feeders::retire_customer_category(&document, name.as_deref())?,
+        )),
+        Some(ProjectConfigurationChange::RenameCustomerCategory { from, to }) => Some((
+            "cust_category",
+            crate::project_feeders::rename_customer_category(&document, from, to)?,
+        )),
+        Some(ProjectConfigurationChange::UnbindCustomerAlias { alias, category }) => Some((
+            "cust_category",
+            crate::project_feeders::unbind_customer_alias(&document, alias, category)?,
+        )),
+        Some(ProjectConfigurationChange::DefaultMeterType { name }) => Some((
+            "cust_meter_type",
+            crate::project_feeders::default_meter_type(&document, name)?,
+        )),
+        _ => None,
+    };
+    if let Some((sheet, updated)) = catalog_edit {
+        if document["sheets"][sheet] != json!(updated) {
+            send(sheet, Some(&json!(updated)))?;
+            document = send(sheet, None)?;
+            if document["sheets"][sheet] != json!(updated) {
                 return Err(ClientError::new(
                     ErrorKind::UnreadableResponse,
                     "project configuration customer categories did not match the saved catalog",
