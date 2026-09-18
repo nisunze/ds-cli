@@ -368,6 +368,11 @@ pub fn inventory(account: &Path) -> Result<Vec<(String, Vec<i64>)>, Failure> {
 }
 
 /// Read one retained capture and hand it to the kernel for admission.
+///
+/// The caller decides what a refusal means. For a single named capture it is
+/// a refusal; for one capture out of thirty in a cross-project read it is a
+/// row, because losing twenty-nine honest answers to one damaged file is
+/// exactly the silence this domain exists to avoid.
 pub fn read_capture(path: &Path) -> Result<Value, Failure> {
     let bytes = std::fs::read(path).map_err(|error| {
         Failure::failed(

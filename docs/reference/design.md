@@ -370,6 +370,15 @@ the project's ninety" is the sentence worth reading. `sources` names the two
 captures used per project, and `store_empty` is the refusal when nothing has
 been swept yet.
 
+A capture the kernel will not admit — a file half written, left by an older
+kernel, or edited since — does not abort the read. It is named in
+`unreadable` with the project, the capture time and the kernel's own reason,
+and the project's other capture still answers; losing twenty-nine honest
+projects to one damaged file is exactly the silence this command exists to
+avoid. When nothing admissible is left at all the refusal is
+`snapshot_invalid` naming each one, not `store_empty`, because "sweep again"
+is the wrong remedy for a file that is already there.
+
 The answer's `anomalies` are honest ones only: an actor the roster does not
 carry (`non_member_actor`, only when a roster was supplied), an actor with no
 name at all (`unknown_actor`), and a capture that is now old

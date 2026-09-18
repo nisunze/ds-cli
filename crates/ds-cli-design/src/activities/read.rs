@@ -76,9 +76,10 @@ those limits in every reply.",
     ],
     output: "\
 `captured`, `totals`, `users`, `projects`, `changes`, `timeline`, \
-`anomalies`, `facts` and `more` — the shared kernel's cross-project model, \
-labels as i18n keys and timestamps as epoch millis. `sources` names the two \
-captures used per project; `not_claimed` states what none of it can show.",
+`anomalies`, `facts` and `more` — the kernel's cross-project model, labels \
+as i18n keys and times as epoch millis. `sources` names the two captures \
+read per project, `unreadable` any it refused, `not_claimed` what none of \
+it shows.",
     examples: &[
         Example {
             command: "ds design activities read --output json",
@@ -135,6 +136,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let held = inventory(&account)?;
     let mut projects: Vec<Value> = Vec::new();
     let mut sources: Vec<Value> = Vec::new();
+    // A capture the kernel will not admit is a named row, never an abort: one
+    // damaged file out of thirty must not cost the operator the other
+    // twenty-nine, and it must not vanish either.
+    let mut unreadable: Vec<Value> = Vec::new();
     for (project, captures) in &held {
         if !named.is_empty() && !named.iter().any(|name| name == project) {
             continue;
@@ -157,7 +162,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             None => selected["previous"].as_i64(),
         };
 
-        let snapshot = read_capture(&account.join(project).join(format!("{latest:013}.json")))?;
+        let snapshot = match read_capture(&account.join(project).join(format!("{latest:013}.json")))
+        {
+            Ok(snapshot) => snapshot,
+            Err(failure) => {
+                unreadable.push(json!({
+                    "ds_project": project,
+                    "captured_at_ms": latest,
+                    "code": failure.code(),
+                    "reason": failure.message(),
+                }));
+                continue;
+            }
+        };
         if !admits(bucket, snapshot["status"].as_str()) {
             continue;
         }
@@ -178,20 +195,60 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         if let Some(score) = snapshot["dashboard"]["health"]["score"].as_i64() {
             entry.insert("dashboard_summary".into(), json!({ "health_score": score }));
         }
+        // The pair is what makes `changes` mean anything, so a refused older
+        // capture is named too and the answer holds one photograph and no
+        // diff, rather than a diff against something the kernel refused.
+        let mut compared = previous;
         if let Some(previous) = previous {
-            let older = read_capture(&account.join(project).join(format!("{previous:013}.json")))?;
-            entry.insert("previous".into(), older["ledger"].clone());
+            match read_capture(&account.join(project).join(format!("{previous:013}.json"))) {
+                Ok(older) => {
+                    entry.insert("previous".into(), older["ledger"].clone());
+                }
+                Err(failure) => {
+                    compared = None;
+                    unreadable.push(json!({
+                        "ds_project": project,
+                        "captured_at_ms": previous,
+                        "code": failure.code(),
+                        "reason": failure.message(),
+                    }));
+                }
+            }
         }
         projects.push(Value::Object(entry));
         sources.push(json!({
             "ds_project": project,
             "latest_ms": latest,
-            "previous_ms": previous,
+            "previous_ms": compared,
             "retained": captures.len(),
         }));
     }
 
     if projects.is_empty() {
+        // Empty and damaged are different answers, and a remedy that says
+        // "sweep" when the real trouble is an unreadable file sends the
+        // operator the wrong way.
+        if !unreadable.is_empty() {
+            let named: Vec<String> = unreadable
+                .iter()
+                .map(|entry| {
+                    format!(
+                        "{}@{}",
+                        entry["ds_project"].as_str().unwrap_or("?"),
+                        entry["captured_at_ms"].as_i64().unwrap_or(0)
+                    )
+                })
+                .collect();
+            return Err(Failure::invalid(
+                super::SNAPSHOT_INVALID.code,
+                format!(
+                    "every retained capture this request names is inadmissible: {}",
+                    named.join(", ")
+                ),
+            )
+            .remedy(super::SNAPSHOT_INVALID.remedy)
+            .next("ds design activities sweep --limit 3 --yes"));
+        }
         return Err(Failure::invalid(
             super::STORE_EMPTY.code,
             "no retained capture matches this lane, account, bucket and project selection",
@@ -219,6 +276,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     out.insert("bucket".into(), json!(bucket));
     out.insert("store".into(), json!(account.to_string_lossy()));
     out.insert("sources".into(), json!(sources));
+    out.insert("unreadable".into(), json!(unreadable));
     if !user.is_empty() {
         out.insert("filtered_by_user".into(), json!(user));
     }
@@ -295,12 +353,20 @@ pub fn render(data: &Value) -> String {
     }
     for user in data["users"].as_array().into_iter().flatten().take(10) {
         out.push_str(&format!(
-            "  {:<32} {:>4} designed · {:>3} errors · {} projects · last {}\n",
+            "  {:<32} {:>4} designed · {:>3} errors · {} projects · last stamp {}\n",
             user["name"].as_str().unwrap_or("?"),
             user["designs"].as_u64().unwrap_or(0),
             user["errors"].as_u64().unwrap_or(0),
             user["project_count"].as_u64().unwrap_or(0),
             spell_ms(user["last_seen_ms"].as_i64().unwrap_or(0)),
+        ));
+    }
+    for refused in data["unreadable"].as_array().into_iter().flatten() {
+        out.push_str(&format!(
+            "  ! unreadable {} @{} — {}\n",
+            refused["ds_project"].as_str().unwrap_or("?"),
+            spell_ms(refused["captured_at_ms"].as_i64().unwrap_or(0)),
+            refused["reason"].as_str().unwrap_or(""),
         ));
     }
     for anomaly in data["anomalies"].as_array().into_iter().flatten().take(10) {
@@ -380,6 +446,21 @@ mod tests {
             1
         );
         assert_eq!(activities["totals"]["designed"], 90);
+    }
+
+    #[test]
+    fn an_inadmissible_capture_is_a_named_row_in_the_human_answer() {
+        let rendered = render(&json!({
+            "captured": { "project_count": 1, "earliest_ms": 1_758_000_000_000i64,
+                          "latest_ms": 1_758_000_000_000i64 },
+            "totals": { "actors": 1, "transformers": 4, "designed": 2, "errors": 0 },
+            "users": [], "anomalies": [], "changes": [], "more": {},
+            "unreadable": [{ "ds_project": "p_two", "captured_at_ms": 1_758_000_000_000i64,
+                             "code": "snapshot_invalid", "reason": "snapshot.digest" }],
+            "not_claimed": super::not_claimed(),
+        }));
+        assert!(rendered.contains("unreadable p_two"), "{rendered}");
+        assert!(rendered.contains("snapshot.digest"), "{rendered}");
     }
 
     #[test]
