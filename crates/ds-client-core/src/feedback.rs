@@ -18,8 +18,12 @@ pub enum Command {
         limit: usize,
         #[serde(default)]
         detail: bool,
+        /// An opaque watermark the backlog issued. Absent opts into the one
+        /// the backlog remembers for this account; `all` opts out entirely.
         #[serde(default)]
-        since: Option<String>,
+        cursor: Option<String>,
+        #[serde(default)]
+        all: bool,
     },
     Submit {
         title: String,
@@ -41,6 +45,16 @@ pub enum Command {
         id: String,
         status: String,
         resolution: String,
+        #[serde(default)]
+        expected_version: Option<u64>,
+    },
+    Note {
+        id: String,
+        text: String,
+        #[serde(default)]
+        blocked_on: Option<String>,
+        #[serde(default)]
+        unblock: bool,
         #[serde(default)]
         expected_version: Option<u64>,
     },
@@ -74,14 +88,17 @@ impl Command {
                 component,
                 query,
                 limit,
-                since,
+                cursor,
                 ..
             } => {
                 ["not_addressed", "addressed", "all"].contains(&view.as_str())
                     && optional(component, 200)
                     && optional(query, 200)
                     && (1..=50).contains(limit)
-                    && since.as_ref().is_none_or(|s| date(s).is_some())
+                    // The cursor is opaque: this validates its shape, never its
+                    // meaning. A caller that could compose one would be back to
+                    // remembering timestamps, which is the habit it replaces.
+                    && cursor.as_ref().is_none_or(|c| text(c, 512) && c.starts_with("fb1."))
             }
             Self::Submit {
                 title,
@@ -120,6 +137,21 @@ impl Command {
                     && text(resolution, 1000)
                     && expected_version.is_none_or(|v| v > 0 && v <= i64::MAX as u64)
             }
+            Self::Note {
+                id,
+                text: body,
+                blocked_on,
+                unblock,
+                expected_version,
+            } => {
+                text(id, 200)
+                    && text(body, 1000)
+                    && optional(blocked_on, 200)
+                    // One note cannot both raise a dependency and clear one:
+                    // the record would not say which happened.
+                    && !(blocked_on.is_some() && *unblock)
+                    && expected_version.is_none_or(|v| v > 0 && v <= i64::MAX as u64)
+            }
         };
         if valid {
             Ok(())
@@ -128,6 +160,23 @@ impl Command {
         }
     }
 }
+/// How much of the acceptance text a LIST ROW carries before `--detail`.
+///
+/// This number is the mountain, measured. The backlog reached 124 open reports
+/// whose acceptance text runs long, and a row that carried 1200 characters of
+/// it meant roughly 150 000 characters — about 37 000 tokens — for one visit,
+/// which is how a handful of visits came to cost 1.5 million. The watermark
+/// stops the RE-reading; this stops the first read from being a mountain in
+/// the first place.
+///
+/// A row exists to decide "do I care about this", and what decides that is the
+/// title, the status, whether it is blocked and on what, and the latest note —
+/// all of which are on the row in full. The acceptance condition decides
+/// something else entirely: whether the report can be CLOSED. That is the
+/// handful of ids at the end of a triage pass, and `--detail` is how they are
+/// read. `detail_truncated` says which of the two this row is.
+const ROW_DETAIL_CHARS: usize = 240;
+
 #[derive(Deserialize, Serialize)]
 struct Report {
     id: String,
@@ -147,6 +196,36 @@ struct Report {
     updated_by: String,
     #[serde(default)]
     resolution: String,
+    // Everything below is what makes a ROW decide. Each is optional so an older
+    // backlog that does not send it still decodes.
+    #[serde(default)]
+    blocked: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    blocked_on: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blocked_since: Option<String>,
+    #[serde(default)]
+    note_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_note: Option<Note>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    notes: Vec<Note>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    supersedes: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    superseded_by: String,
+}
+
+/// One later observation about a report: who, when, what, and what it waits on.
+#[derive(Deserialize, Serialize)]
+struct Note {
+    author: String,
+    at: String,
+    text: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    blocked_on: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    clears_block: bool,
 }
 impl Report {
     fn validate(&self) -> Result<(), ClientError> {
@@ -160,15 +239,26 @@ impl Report {
             || date(&self.updated_at).is_none()
             || !["open", "triaged", "in_progress", "resolved", "wont_fix"]
                 .contains(&self.status.as_str())
+            || self.note_count > 20
+            || self.notes.len() > 20
+            || self.blocked_on.chars().count() > 200
+            || self
+                .latest_note
+                .as_ref()
+                .is_some_and(|note| note.text.chars().count() > 1000)
+            || self
+                .notes
+                .iter()
+                .any(|note| note.text.chars().count() > 1000)
         {
             return Err(unreadable());
         }
         Ok(())
     }
     fn row(mut self, full: bool) -> Value {
-        let clipped = !full && self.detail.chars().count() > 1200;
+        let clipped = !full && self.detail.chars().count() > ROW_DETAIL_CHARS;
         if clipped {
-            self.detail = self.detail.chars().take(1200).collect();
+            self.detail = self.detail.chars().take(ROW_DETAIL_CHARS).collect();
         }
         let mut row = serde_json::to_value(self).expect("feedback row");
         row["detail_truncated"] = json!(clipped);
@@ -191,27 +281,37 @@ fn call<T: AuthorizedTransport>(
         authority: authority.call(),
         payload,
     })?;
-    match response.status {
-        200 => {}
-        403 => {
-            return Err(ClientError::new(
-                ErrorKind::AuthenticationRejected,
-                "feedback_not_permitted",
-            ))
-        }
-        404 => {
-            return Err(ClientError::new(
-                ErrorKind::ResourceNotFound,
-                "feedback_not_found",
-            ))
-        }
-        409 => {
-            return Err(ClientError::new(
-                ErrorKind::InvalidInput,
-                "feedback_conflict",
-            ))
-        }
-        other => return Err(crate::authorized::classify_tile_error(other)),
+    // The backlog names each refusal, and each name carries a different remedy:
+    // a settled report wants a NEW report, a note limit wants a close, a bad
+    // cursor wants the cursor dropped. Collapsing them onto the HTTP status
+    // would strand a caller that can act on the difference.
+    if response.status != 200 {
+        let named = (response.body.len() <= 64 * 1024)
+            .then(|| serde_json::from_slice::<Value>(&response.body).ok())
+            .flatten()
+            .and_then(|envelope| envelope["error"]["code"].as_str().map(str::to_owned));
+        return Err(match named.as_deref() {
+            Some("FEEDBACK_SETTLED") => {
+                ClientError::new(ErrorKind::InvalidInput, "feedback_settled")
+            }
+            Some("FEEDBACK_NOTE_LIMIT") => {
+                ClientError::new(ErrorKind::InvalidInput, "feedback_note_limit")
+            }
+            Some("FEEDBACK_CURSOR_INVALID" | "FEEDBACK_CURSOR_SCOPE") => {
+                ClientError::new(ErrorKind::InvalidInput, "feedback_cursor_rejected")
+            }
+            Some("FEEDBACK_BACKLOG_TOO_LARGE") => {
+                ClientError::new(ErrorKind::InvalidInput, "feedback_backlog_too_large")
+            }
+            _ => match response.status {
+                403 => {
+                    ClientError::new(ErrorKind::AuthenticationRejected, "feedback_not_permitted")
+                }
+                404 => ClientError::new(ErrorKind::ResourceNotFound, "feedback_not_found"),
+                409 => ClientError::new(ErrorKind::InvalidInput, "feedback_conflict"),
+                other => crate::authorized::classify_tile_error(other),
+            },
+        });
     }
     if response.body.len() > 4 * 1024 * 1024 {
         return Err(unreadable());
@@ -236,51 +336,98 @@ pub(crate) fn run<T: AuthorizedTransport>(
             query,
             limit,
             detail,
-            since,
+            cursor,
+            all,
         } => {
-            let data = call(
-                profile,
-                transport,
-                authority,
-                json!({"action":"list","limit":200}),
-            )?;
+            // Every filter goes to the backlog, and nothing is narrowed after
+            // the answer arrives. That is what makes the watermark it returns
+            // truthful: a row this client hid would still have been counted as
+            // read, and would never appear in a difference again.
+            let mut payload = json!({
+                "action": "list",
+                "limit": limit,
+                "filter": {
+                    "view": view,
+                    "component_contains": component.clone().unwrap_or_default(),
+                    "query": query.clone().unwrap_or_default(),
+                    "limit": limit,
+                },
+            });
+            // A read that participates in the watermark DRAINS: the backlog
+            // hands over the matching reports this account has gone longest
+            // without seeing, and a limited answer means the next call carries
+            // the next chunk. A read that does not participate re-reads the
+            // top every time, so the same truncation means the opposite thing
+            // — narrow the question or it will return these rows forever.
+            // Only this layer knows which of the two was asked for, so it says
+            // so rather than leaving the caller to guess from `cursor_source`,
+            // which reads "none" on the first drain and on a full read alike.
+            //
+            // A SWEEP AND A LOOKUP ARE NOT THE SAME QUESTION, and only a sweep
+            // wants a difference. `--component` and `--query` ask "which
+            // reports are about this?" — a question whose truthful answer is
+            // the same reports every time somebody asks it. Draining it answers
+            // it once and answers "nothing changed" ever after, which is how
+            // the second triage session goes blind to the very reports it has
+            // to match its work against. (Per-scope watermarks are bounded and
+            // evicted oldest-first as well, so a session that searched a ninth
+            // component would get its lookup answered in full or answered empty
+            // depending on eviction order — nondeterminism no caller can reason
+            // about.) So the mountain is drained and a lookup is answered. A
+            // caller that genuinely wants to drain a narrowed question still
+            // can, by echoing the cursor that read returns.
+            let narrowed = component.is_some() || query.is_some();
+            let drains = cursor.is_some() || !(*all || narrowed);
+            if let Some(cursor) = cursor {
+                payload["cursor"] = json!(cursor);
+            } else if drains {
+                // Opting in is explicit, so a client that predates the
+                // watermark keeps getting the whole backlog it expects — and a
+                // lookup neither reads nor advances a watermark, so searching
+                // never moves where the sweep left off.
+                payload["use_watermark"] = json!(true);
+            }
+            let data = call(profile, transport, authority, payload)?;
             let raw = data["reports"]
                 .as_array()
-                .filter(|r| r.len() <= 200)
+                .filter(|r| r.len() <= *limit)
                 .ok_or_else(unreadable)?;
-            let cutoff = since.as_deref().and_then(date);
-            let component = component.as_ref().map(|s| s.to_lowercase());
-            let query = query.as_ref().map(|s| s.to_lowercase());
-            let mut rows = Vec::new();
+            let mut rows = Vec::with_capacity(raw.len());
             for raw in raw {
-                let r = report(raw.clone())?;
-                let closed = ["resolved", "wont_fix"].contains(&r.status.as_str());
-                if (view == "addressed" && !closed)
-                    || (view == "not_addressed" && closed)
-                    || component
-                        .as_ref()
-                        .is_some_and(|c| !r.component.to_lowercase().contains(c))
-                    || query.as_ref().is_some_and(|q| {
-                        ![&r.title, &r.detail, &r.component]
-                            .iter()
-                            .any(|s| s.to_lowercase().contains(q))
-                    })
-                    || cutoff.is_some_and(|c| {
-                        date(&r.last_seen_at)
-                            .unwrap()
-                            .max(date(&r.updated_at).unwrap())
-                            < c
-                    })
-                {
-                    continue;
-                }
-                rows.push(r.row(*detail));
+                rows.push(report(raw.clone())?.row(*detail));
             }
-            let total = rows.len();
-            rows.truncate(*limit);
-            Ok(
-                json!({"view":view,"total":total,"truncated":total>*limit,"reports":rows,"scan_limit":200,"scanned":raw.len(),"scan_incomplete":raw.len()==200,"since":since}),
-            )
+            // `changed: false` is the answer this whole mechanism exists for.
+            // It is a field, not an empty list somebody has to interpret.
+            let changed = data["changed"].as_bool().ok_or_else(unreadable)?;
+            let complete = data["complete"].as_bool().ok_or_else(unreadable)?;
+            let total = data["matched"].as_u64().ok_or_else(unreadable)?;
+            let next = data["cursor"].as_str().ok_or_else(unreadable)?;
+            let mut out = json!({
+                "view": view,
+                "total": total,
+                "count": rows.len(),
+                "reports": rows,
+                "changed": changed,
+                "complete": complete,
+                "truncated": !complete,
+                "drains": drains,
+                "cursor": next,
+                "cursor_source": data["cursor_source"].as_str().unwrap_or("none"),
+            });
+            if let Some(backlog) = data["backlog"].as_object() {
+                out["backlog"] = Value::Object(backlog.clone());
+            }
+            // The one way a complete enumeration can still be partial: a stored
+            // document the backlog could not decode. It is left out of the
+            // answer AND passed over by the watermark, so it would otherwise be
+            // missing from every future difference too — the silent form of the
+            // `scan_incomplete` that was removed for admitting partiality.
+            // The backlog names it; dropping it here is what would make it
+            // silent again, because this is the surface an agent reads.
+            if let Some(count) = data["unreadable"].as_u64().filter(|count| *count > 0) {
+                out["unreadable"] = json!(count);
+            }
+            Ok(out)
         }
         Command::Submit {
             title,
@@ -339,6 +486,44 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 return Err(unreadable());
             }
             Ok(json!({"report":changed.row(true),"previous_status":current.status}))
+        }
+        Command::Note {
+            id,
+            text: body,
+            blocked_on,
+            unblock,
+            expected_version,
+        } => {
+            let mut note = json!({"text": body});
+            if let Some(blocked_on) = blocked_on {
+                note["blocked_on"] = json!(blocked_on);
+            }
+            if *unblock {
+                note["unblock"] = json!(true);
+            }
+            let mut payload = json!({"action":"note","id":id,"note":note});
+            if let Some(version) = expected_version {
+                payload["expected_version"] = json!(version);
+            }
+            let noted = report(call(profile, transport, authority, payload)?["report"].clone())?;
+            if noted.id != *id {
+                return Err(unreadable());
+            }
+            // A note never touches the submitter's sighting and never moves the
+            // report; if the backlog says otherwise, the answer is unreadable
+            // rather than quietly accepted.
+            if !["open", "triaged", "in_progress"].contains(&noted.status.as_str()) {
+                return Err(unreadable());
+            }
+            let blocked = noted.blocked;
+            let blocked_on = noted.blocked_on.clone();
+            let note_count = noted.note_count;
+            Ok(json!({
+                "report": noted.row(true),
+                "blocked": blocked,
+                "blocked_on": blocked_on,
+                "note_count": note_count,
+            }))
         }
     }
 }
