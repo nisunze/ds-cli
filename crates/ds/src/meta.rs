@@ -587,6 +587,12 @@ fn render_capabilities(data: &Value) -> String {
             ));
         }
     }
+    // Truncation a reader cannot see is worse than truncation, so it is said
+    // in text as well as in JSON. A caller who does not know the list was cut
+    // reads ten rows believing they have read the surface.
+    if let Some(more) = data["more"].as_str() {
+        out.push_str(&format!("\nmore: {more}\n"));
+    }
     if let Some(next) = data["next"].as_str() {
         out.push_str(&format!("\nnext: {next}\n"));
     }

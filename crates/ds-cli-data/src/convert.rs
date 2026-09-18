@@ -88,6 +88,11 @@ detectable and the artifact can be reclaimed later by identity.",
         "crs",
         "crs84",
         "projection",
+        // `--crs` reads UTM and NIX ITRF2005 columns and always writes
+        // CRS84, so this command IS the reprojection an outsider is looking
+        // for; `reproject` is simply not a word we chose for it.
+        "reproject",
+        "utm",
         "parquet",
         "shapefile",
         "kml",
