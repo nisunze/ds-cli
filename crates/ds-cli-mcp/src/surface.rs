@@ -68,6 +68,7 @@ impl Exposure {
 pub enum Profile {
     AuthContext,
     AdminBounds,
+    Installations,
     Grid,
     GridNative,
     Printing,
@@ -102,6 +103,7 @@ impl Profile {
         match token {
             "auth-context" => Some(Self::AuthContext),
             "admin-bounds" => Some(Self::AdminBounds),
+            "installations" => Some(Self::Installations),
             "grid" => Some(Self::Grid),
             "grid-native" => Some(Self::GridNative),
             "printing" => Some(Self::Printing),
@@ -137,6 +139,7 @@ impl Profile {
         match self {
             Self::AuthContext => "auth-context",
             Self::AdminBounds => "admin-bounds",
+            Self::Installations => "installations",
             Self::Grid => "grid",
             Self::GridNative => "grid-native",
             Self::Printing => "printing",
@@ -225,6 +228,7 @@ impl Profile {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS.contains(&tool.id.as_str()),
             Self::AdminBounds => ADMIN_BOUNDS_COMMANDS.contains(&tool.id.as_str()),
+            Self::Installations => INSTALLATION_COMMANDS.contains(&tool.id.as_str()),
             Self::GridNative => {
                 tool.authority == ds_cli_contract::spec::Authority::None
                     && (tool.id.starts_with("dsgrid.") || tool.id.starts_with("dsgrid-exchange."))
@@ -274,7 +278,10 @@ impl Profile {
             // but is not project-workflow tooling and must not inflate the
             // already bounded specialized project profile.
             Self::Project => tool.chapter == Chapter::Project && !tool.id.starts_with("auth."),
-            Self::Operations => tool.chapter == Chapter::Operations,
+            Self::Operations => {
+                tool.chapter == Chapter::Operations
+                    && !INSTALLATION_COMMANDS.contains(&tool.id.as_str())
+            }
             Self::DesignEdit => DESIGN_EDIT_COMMANDS.contains(&tool.id.as_str()),
             Self::DesignRun => DESIGN_RUN_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarInput => SOLAR_INPUT_COMMANDS.contains(&tool.id.as_str()),
@@ -299,6 +306,7 @@ impl Profile {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS,
             Self::AdminBounds => ADMIN_BOUNDS_COMMANDS,
+            Self::Installations => INSTALLATION_COMMANDS,
             Self::Printing => PRINTING_COMMANDS,
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
             Self::Survey => SURVEY_MAP_COMMANDS,
@@ -333,6 +341,7 @@ impl Profile {
         match self {
             Self::AuthContext => chapter == Chapter::Project,
             Self::AdminBounds => chapter == Chapter::Data,
+            Self::Installations => chapter == Chapter::Operations,
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::GridNative => chapter == Chapter::GridModel,
             Self::Printing => matches!(chapter, Chapter::Reports | Chapter::MapPresentation),
@@ -377,6 +386,18 @@ const AUTH_CONTEXT_COMMANDS: &[&str] = &[
     "auth.project.list",
     "auth.project.use",
     "auth.project.status",
+];
+
+/// The installation inventory is its own operator workflow, not part of the
+/// reliability and host tooling beside it. Somebody asking which installations
+/// exist and whose licence is blocked is doing one job; somebody reading fleet
+/// health or driving a local host is doing another. Splitting them keeps both
+/// surfaces small and keeps the Operations chapter inside its ceiling.
+const INSTALLATION_COMMANDS: &[&str] = &[
+    "install.list",
+    "install.show",
+    "install.policy",
+    "install.retire",
 ];
 
 const ADMIN_BOUNDS_COMMANDS: &[&str] = &[

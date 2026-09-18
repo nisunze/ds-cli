@@ -2037,6 +2037,29 @@ static DESIGN_ENTRIES: &[Entry] = &[
     },
 ];
 
+static INSTALL_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_installs::list::COMMAND,
+        handler: ds_cli_installs::list::run,
+        render: ds_cli_installs::list::render,
+    },
+    Entry {
+        command: &ds_cli_installs::show::COMMAND,
+        handler: ds_cli_installs::show::run,
+        render: ds_cli_installs::show::render,
+    },
+    Entry {
+        command: &ds_cli_installs::policy::COMMAND,
+        handler: ds_cli_installs::policy::run,
+        render: ds_cli_installs::policy::render,
+    },
+    Entry {
+        command: &ds_cli_installs::retire::COMMAND,
+        handler: ds_cli_installs::retire::run,
+        render: ds_cli_installs::retire::render,
+    },
+];
+
 static SRE_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_sre::overview::COMMAND,
@@ -2391,6 +2414,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_design::DOMAIN,
         entries: DESIGN_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_installs::DOMAIN,
+        entries: INSTALL_ENTRIES,
     },
     Registered {
         domain: &ds_cli_sre::DOMAIN,

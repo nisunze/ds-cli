@@ -79,6 +79,14 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("auth.link.status", "read_only", "none"),
     ("auth.link.complete", "local_auth_state", "none"),
     ("auth.link.approve", "global_write", "desktop_user"),
+    // The installation inventory: global, admin-gated, and reachable without a
+    // browser for the first time. The two transitions are `global_write`
+    // because they change governed shared state; a retirement is recorded as a
+    // transition on the install and never as a deletion of its row.
+    ("install.list", "read_only", "headless_user"),
+    ("install.show", "read_only", "headless_user"),
+    ("install.policy", "global_write", "headless_user"),
+    ("install.retire", "global_write", "headless_user"),
     ("auth.device.list", "read_only", "headless_user"),
     ("auth.device.read", "read_only", "headless_user"),
     ("auth.device.revoke", "global_write", "headless_user"),

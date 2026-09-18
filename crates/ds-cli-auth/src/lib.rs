@@ -1908,6 +1908,28 @@ pub fn sre(
     client.sre(command, now()).map_err(map_client)
 }
 
+/// One governed action on the GLOBAL installation inventory.
+///
+/// Global means there is no project to select and none to fence: an
+/// installation belongs to the product. The authority is the restored native
+/// user; ds-brain refuses every action without `platform.admin` or
+/// `app.admin`.
+///
+/// Until now this inventory had no `ds` surface at all — it was reachable only
+/// from the Governance page in a browser, which is precisely the host least
+/// likely to be running where the question is asked.
+pub fn installs(
+    lane_value: &str,
+    command: &ds_client_core::installs::Command,
+) -> Result<serde_json::Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client.installs(command, now()).map_err(map_client)
+}
+
 /// One governed action on the GLOBAL DS Grid library and example catalog.
 ///
 /// Global means there is no project to select and none to fence: a library
