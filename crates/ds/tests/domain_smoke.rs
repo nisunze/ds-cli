@@ -7780,6 +7780,7 @@ fn feedback_is_one_confirmed_shared_write() {
         [
             ("feedback.submit", "global_write"),
             ("feedback.list", "read_only"),
+            ("feedback.note", "global_write"),
             ("feedback.close", "global_write"),
         ]
     );
@@ -7823,6 +7824,122 @@ fn feedback_is_one_confirmed_shared_write() {
     assert!(
         NATIVE_AUTH_CODES.contains(&code.as_str()),
         "a valid feedback report ended in `{code}`, not a native authentication outcome"
+    );
+}
+
+/// The backlog is read as a DIFFERENCE, and the discipline lives in the API.
+///
+/// What this can prove without a signed-in machine is the shape of the promise:
+/// the caller never hands over a timestamp it had to remember, it hands back an
+/// opaque token the backlog issued — or nothing at all, and the backlog reads
+/// from where the account left off. `--since` is gone precisely because it made
+/// remembering the caller's job, which meant a local file on one box and a full
+/// rescan on every other one.
+#[test]
+fn feedback_list_takes_an_issued_cursor_and_never_a_caller_timestamp() {
+    let descriptor = ok(&["capabilities", "feedback.list", "--output", "json"])["command"].clone();
+    let flags: Vec<&str> = descriptor["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("name"))
+        .collect();
+    assert!(
+        !flags.contains(&"since"),
+        "`--since` made the CALLER responsible for remembering where it was: {flags:?}"
+    );
+    assert!(
+        flags.contains(&"cursor") && flags.contains(&"all"),
+        "the difference read needs an issued token and a way to ignore it: {flags:?}"
+    );
+
+    // A token the backlog never issued is refused before a round trip, with the
+    // code and the remedy a caller can act on.
+    let hand_built = native_ds(&[
+        "feedback",
+        "list",
+        "--cursor",
+        &"x".repeat(513),
+        "--output",
+        "json",
+    ]);
+    assert_ne!(hand_built.code, 0);
+    assert_eq!(hand_built.envelope["error"]["code"], "invalid_text");
+
+    // And the refusals a difference read can hit are declared, with remedies.
+    let codes: Vec<&str> = descriptor["refusals"]
+        .as_array()
+        .expect("refusals")
+        .iter()
+        .map(|refusal| refusal["code"].as_str().expect("code"))
+        .collect();
+    for required in ["feedback_cursor_rejected", "feedback_backlog_too_large"] {
+        assert!(
+            codes.contains(&required),
+            "`{required}` is reachable but undeclared: {codes:?}"
+        );
+    }
+}
+
+/// A session that touches a report either closes it with evidence or says what
+/// it waits on. `note` is the second half of that, and it is a write that never
+/// moves the report: its status choices do not exist, because there are none.
+#[test]
+fn feedback_note_records_a_blocker_and_can_never_close_a_report() {
+    let descriptor = ok(&["capabilities", "feedback.note", "--output", "json"])["command"].clone();
+    let flags: Vec<&str> = descriptor["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("name"))
+        .collect();
+    assert!(
+        !flags.contains(&"status") && !flags.contains(&"resolution"),
+        "a note must not be able to settle a report: {flags:?}"
+    );
+    assert!(flags.contains(&"blocked-on") && flags.contains(&"unblock"));
+
+    // A settled report is refused by name, and that name is not the version
+    // conflict — the two want opposite things from the caller.
+    let codes: Vec<&str> = descriptor["refusals"]
+        .as_array()
+        .expect("refusals")
+        .iter()
+        .map(|refusal| refusal["code"].as_str().expect("code"))
+        .collect();
+    assert!(codes.contains(&"feedback_settled") && codes.contains(&"feedback_conflict"));
+    assert!(codes.contains(&"feedback_note_limit"));
+
+    // The note bound refuses locally rather than truncating what somebody wrote.
+    let over_bound = native_ds(&[
+        "feedback",
+        "note",
+        "--id",
+        "feedback-1",
+        "--text",
+        &"x".repeat(1_001),
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(over_bound.code, 0);
+    assert_eq!(over_bound.envelope["error"]["code"], "invalid_text");
+
+    // A write on shared state is never taken from an unconfirmed invocation.
+    let unconfirmed = ds(&[
+        "feedback",
+        "note",
+        "--id",
+        "feedback-1",
+        "--text",
+        "Waits on the canary deploy.",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(unconfirmed.code, 0);
+    assert_eq!(
+        unconfirmed.envelope["error"]["code"],
+        "confirmation_required"
     );
 }
 

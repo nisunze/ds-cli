@@ -4908,6 +4908,28 @@ pub fn feedback(
             Failure::conflict("feedback_conflict", "Feedback changed since it was read")
                 .remedy("Read the current version before closing it")
         }
+        // A settled report and a version conflict are both 409 on the wire and
+        // want opposite things: one wants a NEW report, the other a re-read.
+        "feedback_settled" => Failure::conflict(
+            "feedback_settled",
+            "That report is settled; a settled report is never revived",
+        )
+        .remedy("Submit a new report that names this id, rather than reopening it"),
+        "feedback_note_limit" => Failure::invalid(
+            "feedback_note_limit",
+            "That report already carries the maximum number of notes",
+        )
+        .remedy("Close it with its resolution, or file a new report that references it"),
+        "feedback_cursor_rejected" => Failure::invalid(
+            "feedback_cursor_rejected",
+            "That is not a cursor the backlog issued for this query",
+        )
+        .remedy("Drop --cursor to read from where this account left off, or pass --all"),
+        "feedback_backlog_too_large" => Failure::invalid(
+            "feedback_backlog_too_large",
+            "The backlog is too large to enumerate completely in one answer",
+        )
+        .remedy("Close reports; the backlog refuses rather than answering partially"),
         _ => map_client(error),
     };
     command.validate().map_err(convert)?;

@@ -8,8 +8,18 @@
 //! ## The family is a loop, not a drop box
 //!
 //! ```text
-//!   submit → (a coding session closes the gap) → list → close
+//!   submit → (a coding session addresses the gap) → list → close
+//!                                                     ↘ note (what it waits on)
 //! ```
+//!
+//! `note` closes the gap between reading a report and closing it. With three
+//! verbs, the only way to say anything about a report was to close it, so a
+//! report waiting on a deploy, a terraform apply or an owner ruling carried no
+//! record of that — and every later visit re-read its full text to rediscover
+//! the same blocker. A session that touches a report now either closes it with
+//! evidence or leaves a note naming the dependency. Silence is the one thing
+//! that is not allowed, because silence is what forces the next reader to
+//! rescan the whole backlog.
 //!
 //! Closing was the missing half. A gap an agent reported and an agent then
 //! fixed stayed open until a person found it in the `fb` tab, so the backlog
@@ -26,6 +36,7 @@
 
 pub mod close;
 pub mod list;
+pub mod note;
 pub mod submit;
 
 use ds_cli_contract::outcome::Failure;
@@ -33,8 +44,13 @@ use ds_cli_contract::spec::{Domain, Refusal};
 
 pub static DOMAIN: Domain = Domain {
     id: "feedback",
-    summary: "Product feedback: report a gap, and close it once it is fixed.",
-    commands: &[&submit::COMMAND, &list::COMMAND, &close::COMMAND],
+    summary: "Product feedback: report a gap, note its blocker, close it.",
+    commands: &[
+        &submit::COMMAND,
+        &list::COMMAND,
+        &note::COMMAND,
+        &close::COMMAND,
+    ],
 };
 
 // ---------------------------------------------------------------------------
@@ -49,9 +65,14 @@ pub const CLOSED_STATUSES: &[&str] = &["resolved", "wont_fix"];
 /// service bound, so an over-long resolution is refused locally rather than
 /// after a round trip.
 pub const MAX_RESOLUTION_CHARS: usize = 1_000;
-/// The most rows one listing returns. The service scans further; this is what
-/// a caller pays for in context.
+/// The most rows one listing returns. The backlog enumerates completely and
+/// reports how many matched; this is what a caller pays for in context.
 pub const MAX_LIST_LIMIT: i64 = 50;
+/// The longest note ds-brain stores, in characters. A hand copy of the service
+/// bound, so an over-long note is refused locally rather than after a trip.
+pub const MAX_NOTE_CHARS: usize = 1_000;
+/// The longest named blocker ds-brain stores, in characters.
+pub const MAX_BLOCKED_ON_CHARS: usize = 200;
 
 // ---------------------------------------------------------------------------
 // Refusals this domain adds to the shared pairing set
@@ -76,6 +97,26 @@ pub const CONFLICT: Refusal = Refusal {
     code: "feedback_conflict",
     when: "the report changed between the listing that was read and this close",
     remedy: "list it again, confirm the newer state is still addressed, then close it",
+};
+pub const SETTLED: Refusal = Refusal {
+    code: "feedback_settled",
+    when: "the report is resolved or wont_fix, and a settled report is never revived",
+    remedy: "submit a new report that names this id in its detail, rather than reopening it",
+};
+pub const NOTE_LIMIT: Refusal = Refusal {
+    code: "feedback_note_limit",
+    when: "the report already carries the maximum of 20 notes",
+    remedy: "close the report with its resolution, or file a new one that references it",
+};
+pub const CURSOR_REJECTED: Refusal = Refusal {
+    code: "feedback_cursor_rejected",
+    when: "--cursor is not a token the backlog issued, or was issued for a different query",
+    remedy: "drop --cursor to read from where this account left off, or pass --all",
+};
+pub const BACKLOG_TOO_LARGE: Refusal = Refusal {
+    code: "feedback_backlog_too_large",
+    when: "the backlog is too large to enumerate completely in one answer",
+    remedy: "close reports; the backlog refuses rather than presenting a partial answer as whole",
 };
 pub const NOT_PERMITTED: Refusal = Refusal {
     code: "feedback_not_permitted",

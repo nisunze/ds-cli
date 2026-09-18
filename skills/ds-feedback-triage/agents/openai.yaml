@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Feedback Triage"
+  short_description: "Read the DS backlog as a difference, then close or note every report touched"
+  default_prompt: "Use $ds-feedback-triage to read the DS feedback backlog as a difference and either close each report with evidence or note what blocks it."

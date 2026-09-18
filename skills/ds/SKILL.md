@@ -91,6 +91,6 @@ acceptance. Never create a gap file, call the API, or bypass `ds`.
 - `ds-boq-combined-report` — combined workbook against a BOQ.
 - `ds-mcp-host` — compact chapters and typed MCP profiles.
 - `ds-workstation-setup` — prerequisites, component provenance, and safe setup planning.
-- `ds-feedback-close` — close backlog reports this session has fixed.
+- `ds-feedback-triage` — read the backlog as a difference; close or note each report.
 
 Those skills assume this one. Do not load them for ordinary discovery.

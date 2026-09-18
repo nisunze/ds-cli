@@ -2174,8 +2174,9 @@ static DESKTOP_ENTRIES: &[Entry] = &[
     },
 ];
 
-/// Feedback is a loop: report a gap, find it again once a session has fixed
-/// it, and close it with what changed. The order is the loop.
+/// Feedback is a loop: report a gap, find it again once a session has
+/// addressed it, say what it still waits on, and close it with what changed.
+/// The order is the loop.
 static FEEDBACK_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_feedback::submit::COMMAND,
@@ -2186,6 +2187,11 @@ static FEEDBACK_ENTRIES: &[Entry] = &[
         command: &ds_cli_feedback::list::COMMAND,
         handler: ds_cli_feedback::list::run,
         render: ds_cli_feedback::list::render,
+    },
+    Entry {
+        command: &ds_cli_feedback::note::COMMAND,
+        handler: ds_cli_feedback::note::run,
+        render: ds_cli_feedback::note::render,
     },
     Entry {
         command: &ds_cli_feedback::close::COMMAND,
