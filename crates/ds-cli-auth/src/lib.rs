@@ -12,6 +12,8 @@ mod state;
 #[cfg(windows)]
 mod state_windows;
 pub mod sync;
+#[cfg(test)]
+mod test_support;
 mod transport;
 mod upload;
 
@@ -34,12 +36,13 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
-    Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
-    ProjectReportServiceCode, ProjectStatus, SolarSnapshot, SurveyEntriesChanges,
-    SurveyEntriesChangesRequest, SurveyEntriesChangesServiceCode, SurveyEntriesSelectRequest,
-    SurveyEntriesSelectServiceCode, SurveyEntriesSelection, SurveyEntryCreateReceipt,
-    SurveyEntryCreateRequest, SurveyEntryCreateServiceCode, SurveyFormReadServiceCode,
-    SurveyQueryRequest, SurveyQueryResult, SurveyQueryServiceCode, TransformerContext,
+    Client, ClientError, ErrorKind, Project, ProjectDirectory, ProjectFormSettingsEditor,
+    ProjectFormsSnapshot, ProjectReportServiceCode, ProjectStatus, SolarSnapshot,
+    SurveyEntriesChanges, SurveyEntriesChangesRequest, SurveyEntriesChangesServiceCode,
+    SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode, SurveyEntriesSelection,
+    SurveyEntryCreateReceipt, SurveyEntryCreateRequest, SurveyEntryCreateServiceCode,
+    SurveyFormReadServiceCode, SurveyQueryRequest, SurveyQueryResult, SurveyQueryServiceCode,
+    TransformerContext,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -681,7 +684,7 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[LANE, LIST_LIMIT],
-    output: "Fresh visible project identities, names, roles, and lifecycle states.",
+    output: "Fresh visible project identities, names, roles, and lifecycle states; `elevated` says the list came by governance elevation, and a roleless row then reads `elevated`.",
     examples: &[Example {
         command: "ds auth project list",
         note: "Reads all three lifecycle buckets.",
@@ -1853,13 +1856,17 @@ pub fn style_edit(
 ///
 /// Global, like the library catalog: no project is selected and none is
 /// fenced, because a reference publication belongs to the product. Publishing
-/// needs the gateway's own `global_tiles.manage`; reading needs a restored
-/// native user and nothing else.
+/// needs the gateway's own `global_tiles.manage`; reading needs the lane's
+/// credential — its device credential when it holds one, otherwise the
+/// restored native user — and nothing else.
 pub fn global_tiles(
     lane_value: &str,
     command: &ds_client_core::global_tiles::Command,
 ) -> Result<serde_json::Value, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.global_tiles(command).map_err(map_client);
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1870,13 +1877,17 @@ pub fn global_tiles(
 /// One exact read of a national administrative hierarchy.
 ///
 /// National reference data: no project is selected and none is fenced, because
-/// a country's boundaries belong to the country. A restored native user is the
-/// identity the gateway sees, exactly as it saw the paired desktop's.
+/// a country's boundaries belong to the country. The lane's credential — its
+/// device credential when it holds one, otherwise the restored native user — is
+/// the identity the gateway sees, exactly as it saw the paired desktop's.
 pub fn admin_bounds(
     lane_value: &str,
     command: &ds_client_core::admin_bounds::Command,
 ) -> Result<ds_client_core::admin_bounds::Answer, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.admin_bounds(command).map_err(map_client);
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1889,8 +1900,9 @@ pub fn admin_bounds(
 /// Global means there is no project: fleet health, SLO burn and the request
 /// event window belong to the platform, so this helper acquires no project
 /// context lease, loads no saved selection, and cannot leak one into the
-/// request. The authority is the restored native user; ds-brain refuses both
-/// routes without the `platform.admin` capability.
+/// request. The authority is the lane's credential — its device credential
+/// when it holds one, otherwise the restored native user; ds-brain refuses
+/// both routes without the `platform.admin` capability.
 ///
 /// Until 2026-09-18 these two reads travelled through a paired desktop, which
 /// held the same user session and made the same requests. The window was never
@@ -1901,7 +1913,9 @@ pub fn sre(
     command: &ds_client_core::sre::Command,
 ) -> Result<serde_json::Value, Failure> {
     let lane = Lane::parse(lane_value)?;
-    // No device branch yet, for the same kernel gap [`installs`] names.
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.sre(command).map_err(map_client);
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1912,9 +1926,10 @@ pub fn sre(
 /// One governed action on the GLOBAL installation inventory.
 ///
 /// Global means there is no project to select and none to fence: an
-/// installation belongs to the product. The authority is the restored native
-/// user; ds-brain refuses every action without `platform.admin` or
-/// `app.admin`.
+/// installation belongs to the product. The authority is the lane's
+/// credential — its device credential when it holds one, otherwise the
+/// restored native user; ds-brain refuses every action without
+/// `platform.admin` or `app.admin`.
 ///
 /// Until now this inventory had no `ds` surface at all — it was reachable only
 /// from the Governance page in a browser, which is precisely the host least
@@ -1924,10 +1939,9 @@ pub fn installs(
     command: &ds_client_core::installs::Command,
 ) -> Result<serde_json::Value, Failure> {
     let lane = Lane::parse(lane_value)?;
-    // No device branch yet, unlike `project_directory` or `feedback`: the
-    // kernel's `DeviceApiAuthorization` exposes no `installs` call, and the
-    // typed call it would need is crate-private there. Until it does, a
-    // device-linked lane is refused with the sentence that says so.
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.installs(command).map_err(map_install_client);
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1966,6 +1980,7 @@ fn install_kind(kind: ErrorKind) -> Option<Failure> {
 /// release belongs to the product, not to a project, so this helper
 /// deliberately does not acquire a project context lease, does not load a
 /// saved selection, and cannot leak one into the request. The authority is the
+/// lane's credential — its device credential when it holds one, otherwise the
 /// restored native user; the gateway refuses a write without its own publish
 /// capability.
 ///
@@ -1977,6 +1992,9 @@ pub fn grid_catalog(
     command: &ds_client_core::grid_catalog::Command,
 ) -> Result<serde_json::Value, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.grid_catalog(command).map_err(map_client);
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -2966,6 +2984,7 @@ pub fn transformer_status_for_project(
 pub struct HeadlessDirectory {
     identity: ProviderIdentity,
     lane: &'static str,
+    elevated: bool,
     projects: Vec<Value>,
 }
 
@@ -2975,6 +2994,11 @@ impl HeadlessDirectory {
     }
     pub const fn lane(&self) -> &'static str {
         self.lane
+    }
+    /// Whether ds-brain listed these projects by elevation rather than by
+    /// membership; see [`directory_rows`].
+    pub const fn elevated(&self) -> bool {
+        self.elevated
     }
     /// One entry per visible project: `ds_project`, `project_name`,
     /// `display_name`, `role`, `status` — exactly the members
@@ -2994,11 +3018,11 @@ pub fn project_directory(lane_value: &str) -> Result<HeadlessDirectory, Failure>
             device.context().uid(),
         )?;
         let directory = device.list_projects().map_err(map_client)?;
-        let projects = directory.projects().iter().map(project_json).collect();
         return Ok(HeadlessDirectory {
             identity,
             lane: lane.token(),
-            projects,
+            elevated: directory.elevated(),
+            projects: directory_rows(&directory, usize::MAX),
         });
     }
     let profile = profile::load(lane)?;
@@ -3011,11 +3035,11 @@ pub fn project_directory(lane_value: &str) -> Result<HeadlessDirectory, Failure>
         user.uid(),
     )?;
     let directory = client.list_projects(now()).map_err(map_client)?;
-    let projects = directory.projects().iter().map(project_json).collect();
     Ok(HeadlessDirectory {
         identity,
         lane: lane.token(),
-        projects,
+        elevated: directory.elevated(),
+        projects: directory_rows(&directory, usize::MAX),
     })
 }
 
@@ -3988,38 +4012,30 @@ pub fn run_project_list(inputs: &Inputs, _context: &Context) -> Result<Value, Fa
     let _ = probe_headless_identity(lane.token())?;
     if let Some(mut device) = device::restore_session(lane)? {
         let directory = device.list_projects().map_err(map_client)?;
-        let total = directory.projects().len();
-        let projects = directory
-            .projects()
-            .iter()
-            .take(limit)
-            .map(project_json)
-            .collect::<Vec<_>>();
-        let returned = projects.len();
-        return Ok(
-            json!({ "lane": lane.token(), "credential_provider": "ds_device", "projects": projects,
-            "returned": returned, "total": total, "more": total > returned }),
-        );
+        let mut answer = directory_answer(lane, &directory, limit);
+        answer["credential_provider"] = json!("ds_device");
+        return Ok(answer);
     }
     let (lane, mut client) = client(inputs)?;
     let context = ProjectContextLease::acquire(client.profile())?;
     require_restore(&mut client, &context)?;
     let directory = with_disposition(client.list_projects(now()), &context)?;
+    Ok(directory_answer(lane, &directory, limit))
+}
+
+/// The `ds auth project list` answer for one directory read.
+fn directory_answer(lane: Lane, directory: &ProjectDirectory, limit: usize) -> Value {
     let total = directory.projects().len();
-    let projects = directory
-        .projects()
-        .iter()
-        .take(limit)
-        .map(project_json)
-        .collect::<Vec<_>>();
+    let projects = directory_rows(directory, limit);
     let returned = projects.len();
-    Ok(json!({
+    json!({
         "lane": lane.token(),
+        "elevated": directory.elevated(),
         "projects": projects,
         "returned": returned,
         "total": total,
         "more": total > returned,
-    }))
+    })
 }
 
 pub fn run_project_use(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -4203,14 +4219,41 @@ fn with_disposition<T>(
     }
 }
 
-fn project_json(project: &Project) -> Value {
+/// The first `limit` rows of one directory, each carrying the directory's
+/// elevation verdict.
+///
+/// A `platform_admin` sees every project through ds-brain's elevated path
+/// with no membership document behind any row, so the server's `role` is
+/// empty on all of them — which reads as "no role" when the truth is "seen by
+/// elevation". The directory carries the verdict once; a row whose role the
+/// server left empty presents it as `elevated`. A role the server DID name is
+/// never rewritten, and without the verdict an empty role stays what the
+/// server said.
+fn directory_rows(directory: &ProjectDirectory, limit: usize) -> Vec<Value> {
+    directory
+        .projects()
+        .iter()
+        .take(limit)
+        .map(|project| project_json(project, directory.elevated()))
+        .collect()
+}
+
+fn project_json(project: &Project, elevated: bool) -> Value {
     json!({
         "ds_project": project.ds_project(),
         "project_name": project.project_name(),
         "display_name": project.display_name(),
-        "role": project.role(),
+        "role": presented_role(project.role(), elevated),
         "status": project_status(project.status()),
     })
+}
+
+/// The role a directory row presents; see [`directory_rows`].
+fn presented_role(role: Option<&str>, elevated: bool) -> Value {
+    match role {
+        Some("") | None if elevated => json!("elevated"),
+        other => json!(other),
+    }
 }
 
 fn context_json(context: &state::ProjectContext) -> Value {
@@ -5896,7 +5939,9 @@ mod tests {
             }
             if command.id == "auth.link.approve" {
                 assert_eq!(command.effect, Effect::GlobalWrite);
-                assert_eq!(command.authority, Authority::DesktopUser);
+                // The native user approves; the descriptor names the paired
+                // fallback for a lane with no native session.
+                assert_eq!(command.authority, Authority::HeadlessUser);
                 assert!(command.arg("desktop-descriptor").is_some());
             } else if matches!(
                 command.id,
@@ -5985,6 +6030,68 @@ mod tests {
         }));
         assert!(truncated.contains("project-1  active  owner  Project One"));
         assert!(truncated.contains("showing 1 of 2"));
+    }
+
+    /// A platform_admin's 63 projects arrive through ds-brain's elevated path
+    /// with no membership document, so every row's `role` is `""` — which read
+    /// as "no role" when the truth was "seen by elevation". The answer now
+    /// carries the verdict, and a row the server left roleless says so; a role
+    /// the server named is untouched, and without the verdict nothing changes.
+    #[test]
+    fn an_elevated_directory_names_its_roleless_rows_as_elevated() {
+        use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
+
+        fn bucket(id: &str, state: &str, role: &str, elevated: bool) -> Vec<u8> {
+            serde_json::to_vec(&json!({
+                "success": true,
+                "data": {
+                    "count": 1,
+                    "projects": [{
+                        "id": id, "eds_project_id": id, "project_name": id,
+                        "role": role, "lifecycle_state": state
+                    }],
+                    "elevated": elevated,
+                    "status": state
+                }
+            }))
+            .unwrap()
+        }
+
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        // One elevated read: two roleless rows and one the server named.
+        transport.push_projects(&bucket("a", "active", "", true));
+        transport.push_projects(&bucket("b", "archived", "owner", true));
+        transport.push_projects(&bucket("c", "testing", "", true));
+        // One membership read with the same empty role.
+        transport.push_projects(&bucket("a", "active", "", false));
+        transport.push_projects(&bucket("b", "archived", "", false));
+        transport.push_projects(&bucket("c", "testing", "", false));
+        let mut client = signed_in(transport);
+
+        let elevated = client.list_projects(NOW + 1).unwrap();
+        let answer = directory_answer(Lane::Canary, &elevated, 2);
+        assert_eq!(answer["elevated"], true);
+        assert_eq!(answer["projects"][0]["role"], "elevated");
+        assert_eq!(answer["projects"][1]["role"], "owner");
+        assert_eq!(answer["returned"], 2);
+        assert_eq!(answer["total"], 3);
+        assert_eq!(answer["more"], true);
+        assert!(
+            render_project_list(&answer).contains("a  active  elevated  a"),
+            "{}",
+            render_project_list(&answer)
+        );
+
+        let membership = client.list_projects(NOW + 2).unwrap();
+        let answer = directory_answer(Lane::Stable, &membership, 10);
+        assert_eq!(answer["elevated"], false);
+        for row in answer["projects"].as_array().unwrap() {
+            assert_eq!(row["role"], "", "{row}");
+        }
+
+        // A row with no role at all is presented the same way as an empty one.
+        assert_eq!(presented_role(None, true), json!("elevated"));
+        assert_eq!(presented_role(None, false), Value::Null);
     }
 
     #[test]

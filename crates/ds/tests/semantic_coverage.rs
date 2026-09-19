@@ -78,7 +78,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("auth.link.begin", "local_auth_state", "none"),
     ("auth.link.status", "read_only", "none"),
     ("auth.link.complete", "local_auth_state", "none"),
-    ("auth.link.approve", "global_write", "desktop_user"),
+    // Approval is the native user's own write since 2026-09-19; the paired
+    // Desktop is only the fallback for a lane with no native session.
+    ("auth.link.approve", "global_write", "headless_user"),
     // The installation inventory: global, admin-gated, and reachable without a
     // browser for the first time. The two transitions are `global_write`
     // because they change governed shared state; a retirement is recorded as a

@@ -552,14 +552,32 @@ macro_rules! fixed_device_call {
 
 /// One refreshed memory-only device session for the existing closed project,
 /// Survey, and Solar calls.
-pub struct DeviceSession {
+///
+/// The transport is the native one everywhere but in this crate's unit tests,
+/// which script it to see which credential a call carries; nothing else names
+/// the parameter.
+pub struct DeviceSession<T = NativeTransport> {
     profile: ClientProfile,
     credential: DeviceCredential,
     access: DeviceAccessSession,
-    transport: NativeTransport,
+    transport: T,
 }
 
-impl DeviceSession {
+impl<T: ds_client_core::Transport> DeviceSession<T> {
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        profile: ClientProfile,
+        credential: DeviceCredential,
+        access: DeviceAccessSession,
+        transport: T,
+    ) -> Self {
+        Self {
+            profile,
+            credential,
+            access,
+            transport,
+        }
+    }
     pub fn profile(&self) -> &ClientProfile {
         &self.profile
     }
@@ -717,6 +735,37 @@ impl DeviceSession {
         command: &ds_client_core::feedback::Command,
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, feedback, command)
+    }
+    /// The projectless governance doors. Governance is server-side, and
+    /// ds-brain admits a device credential on them exactly as it admits a
+    /// restored user; the kernel's `DeviceApiAuthorization` twins are what
+    /// these reach.
+    pub fn installs(
+        &mut self,
+        command: &ds_client_core::installs::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, installs, command)
+    }
+    pub fn sre(&mut self, command: &ds_client_core::sre::Command) -> Result<Value, ClientError> {
+        fixed_device_call!(self, sre, command)
+    }
+    pub fn admin_bounds(
+        &mut self,
+        command: &ds_client_core::admin_bounds::Command,
+    ) -> Result<ds_client_core::admin_bounds::Answer, ClientError> {
+        fixed_device_call!(self, admin_bounds, command)
+    }
+    pub fn grid_catalog(
+        &mut self,
+        command: &ds_client_core::grid_catalog::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, grid_catalog, command)
+    }
+    pub fn global_tiles(
+        &mut self,
+        command: &ds_client_core::global_tiles::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, global_tiles, command)
     }
     pub fn shared_assets(
         &mut self,
@@ -1355,5 +1404,48 @@ mod tests {
                 "device_auth_response_invalid"
             );
         }
+    }
+
+    /// A lane linked by device could read its projects but not the estate:
+    /// `ds install list --lane canary` refused `headless_signed_out` on a box
+    /// whose `ds auth status --lane canary` said signed in. Each projectless
+    /// governance door now reaches the gateway under the DEVICE credential —
+    /// the device bearer and the device id, never the password session.
+    #[test]
+    fn the_projectless_governance_doors_carry_the_device_credential() {
+        use crate::test_support::{DEVICE_ACCESS_TOKEN, FixtureTransport, linked_device};
+        use ds_client_core::{admin_bounds, global_tiles, grid_catalog, installs, sre};
+
+        let transport = FixtureTransport::default();
+        let mut device = linked_device(transport.clone(), unix_seconds());
+
+        // Every door answers Unreachable from the script; what is asserted is
+        // which credential arrived, not what came back.
+        let _ = device.installs(&installs::Command::List {
+            cursor: None,
+            limit: 10,
+        });
+        let _ = device.sre(&sre::Command::Overview);
+        let _ = device.admin_bounds(&admin_bounds::Command::Children {
+            country: admin_bounds::Country::Rwanda,
+            level: admin_bounds::Level::Province,
+            parent_code: None,
+        });
+        let _ = device.grid_catalog(&grid_catalog::Command::ListLibraries);
+        let _ = device.global_tiles(&global_tiles::Command::List {
+            domain: global_tiles::Domain::NetworkTemplate,
+        });
+
+        let expected: Vec<String> = [
+            "installs",
+            "sre_overview",
+            "admin_bounds",
+            "grid_catalog",
+            "global_tiles",
+        ]
+        .iter()
+        .map(|door| format!("{door} {DEVICE_ACCESS_TOKEN} device-1"))
+        .collect();
+        assert_eq!(transport.calls(), expected);
     }
 }
