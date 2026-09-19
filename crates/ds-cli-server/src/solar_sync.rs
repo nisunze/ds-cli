@@ -844,6 +844,7 @@ mod report_wake_tests {
     fn inventory(value: &str) -> crate::server_reports::Inventory {
         crate::server_reports::Inventory {
             fingerprint: value.into(),
+            census: ds_sync_runtime::reports::SealedCensus::default(),
         }
     }
 

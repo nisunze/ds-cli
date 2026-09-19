@@ -457,6 +457,21 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::project::scope::render,
     },
     Entry {
+        command: &ds_cli_report::project::combined::COMMAND,
+        handler: ds_cli_report::project::combined::run,
+        render: ds_cli_report::project::combined::render,
+    },
+    Entry {
+        command: &ds_cli_report::outbox::STATUS,
+        handler: ds_cli_report::outbox::status,
+        render: ds_cli_report::outbox::render,
+    },
+    Entry {
+        command: &ds_cli_report::outbox::DRAIN,
+        handler: ds_cli_report::outbox::drain,
+        render: ds_cli_report::outbox::render,
+    },
+    Entry {
         command: &ds_cli_report::project::compounded::COMMAND,
         handler: ds_cli_report::project::compounded::run,
         render: ds_cli_report::project::compounded::render,
@@ -480,6 +495,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         command: &ds_cli_report::project::export::COMMAND,
         handler: ds_cli_report::project::export::run,
         render: ds_cli_report::project::export::render,
+    },
+    Entry {
+        command: &ds_cli_report::project::publish::COMMAND,
+        handler: ds_cli_report::project::publish::run,
+        render: ds_cli_report::project::publish::render,
     },
     Entry {
         command: &ds_cli_report::project::map_inputs::COMMAND,
@@ -743,6 +763,16 @@ static SOLAR_ENTRIES: &[Entry] = &[
         command: &ds_cli_solar::seed::APPLY_COMMAND,
         handler: ds_cli_solar::seed::apply,
         render: ds_cli_solar::seed::render,
+    },
+    Entry {
+        command: &ds_cli_solar::migrate::PLAN_COMMAND,
+        handler: ds_cli_solar::migrate::plan,
+        render: ds_cli_solar::migrate::render,
+    },
+    Entry {
+        command: &ds_cli_solar::migrate::APPLY_COMMAND,
+        handler: ds_cli_solar::migrate::apply,
+        render: ds_cli_solar::migrate::render,
     },
     Entry {
         command: &ds_cli_solar::network_seed::COMMAND,
@@ -1959,6 +1989,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::collisions::COMMAND,
         handler: ds_cli_design::collisions::run,
         render: ds_cli_design::collisions::render,
+    },
+    Entry {
+        command: &ds_cli_design::migrate::plan::COMMAND,
+        handler: ds_cli_design::migrate::plan::run,
+        render: ds_cli_design::migrate::plan::render,
+    },
+    Entry {
+        command: &ds_cli_design::migrate::apply::COMMAND,
+        handler: ds_cli_design::migrate::apply::run,
+        render: ds_cli_design::migrate::apply::render,
     },
     Entry {
         command: &ds_cli_design::pinned::COMMAND,

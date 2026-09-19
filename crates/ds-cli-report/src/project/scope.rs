@@ -1,4 +1,4 @@
-//! `ds report project scope` — the plan: who participates in a compounded run.
+//! `ds report project scope` — the plan: who participates in a Combined Report run.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
@@ -11,11 +11,11 @@ pub static COMMAND: Command = Command {
     id: "report.project.scope",
     path: &["report", "project", "scope"],
     contract: 1,
-    summary: "Show which transformers a compounded report would include.",
+    summary: "Show which transformers a Combined Report would include.",
     purpose: "\
 Start here. Restores the native user and reads only its audience-fenced \
 selected project's transformer lifecycle inventory. Without --transformer the \
-scope is every active saved transformer, which is exactly what `compounded` \
+scope is every active saved transformer, which is exactly what `combined` \
 resolves; with names it checks each one, so a retired, deleted or missing \
 name is reported before any artifact is produced. A reserved computed \
 identity — `collisions`, `combined_transformer` and its aliases — is what a \
@@ -30,11 +30,11 @@ accepted.",
     output: "\
 Lane and selected-project identity/status, the scope `mode`, the participating \
 transformers and count, the excluded names with their lifecycle state and \
-retirement reason, the project-level `mv_data` row, and `compounded_ready` \
+retirement reason, the project-level `mv_data` row, and `combined_ready` \
 (at least two participants).",
     examples: &[Example {
         command: "ds report project scope --output json",
-        note: "`.data.excluded` lists what a compounded run would leave out, and why.",
+        note: "`.data.excluded` lists what a Combined Report run would leave out, and why.",
         runnable: false,
     }],
     refusals: super::NATIVE_READ_REFUSALS,
@@ -55,14 +55,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 pub fn render(data: &Value) -> String {
     let scope = &data["scope"];
     let mut out = format!(
-        "project {} ({}) · {} · scope {} · {} participating · {} excluded · compounded {}\n",
+        "project {} ({}) · {} · scope {} · {} participating · {} excluded · combined {}\n",
         data["project"]["project_name"].as_str().unwrap_or("?"),
         data["project"]["ds_project"].as_str().unwrap_or("?"),
         data["lane"].as_str().unwrap_or("?"),
         scope["mode"].as_str().unwrap_or("?"),
         scope["participating_count"].as_u64().unwrap_or(0),
         scope["excluded_count"].as_u64().unwrap_or(0),
-        if scope["compounded_ready"].as_bool().unwrap_or(false) {
+        if scope["combined_ready"].as_bool().unwrap_or(false) {
             "ready"
         } else {
             "not ready"

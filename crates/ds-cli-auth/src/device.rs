@@ -746,6 +746,13 @@ impl DeviceSession {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, design_tags, project, command)
     }
+    pub fn design_migration(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::design_migration::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, design_migration, project, command)
+    }
     pub fn report_artifact(
         &mut self,
         project: &str,
@@ -846,6 +853,13 @@ impl DeviceSession {
         request: &ds_client_core::DesignSelectionRequest,
     ) -> Result<ds_client_core::DesignSelectionAnswer, ClientError> {
         fixed_device_call!(self, design_selections, project, request)
+    }
+    pub fn project_management(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::project_management::Command,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, project_management, project, command)
     }
     pub fn data_distribution(
         &mut self,

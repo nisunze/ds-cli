@@ -13,6 +13,13 @@ use std::path::Path;
 /// this adapter; `ds-report-artifacts` remains their visibility authority.
 pub struct Inventory {
     pub fingerprint: String,
+    /// What this machine holds, counted: committed batches, how many of them
+    /// are queue rows, and the batches a later computation displaced.
+    ///
+    /// Carried beside the fingerprint because "is anything waiting here?" had
+    /// no answer at all — a sealed batch with no queue row was reachable by no
+    /// pump and no command, and 593 of them read as work that never ran.
+    pub census: ds_sync_runtime::reports::SealedCensus,
 }
 
 /// What the shared kernel says this report pass requires next. Scheduler state
@@ -88,6 +95,7 @@ pub fn inventory(database: &Path, session: &ServerSyncSession) -> Result<Invento
     let rows = rows(database, session)?;
     Ok(Inventory {
         fingerprint: fingerprint(&rows)?,
+        census: ds_sync_runtime::reports::census(&root(database)?, session.project())?,
     })
 }
 
@@ -101,6 +109,7 @@ pub fn drain(
     let rows = ds_sync_runtime::reports::inventory(&root, session.project())?;
     let inventory = Inventory {
         fingerprint: fingerprint(&rows)?,
+        census: ds_sync_runtime::reports::census(&root, session.project())?,
     };
     let upload =
         |handle: ds_report_artifacts::SealedArtifactHandle, output_id: &str, session_uri: &str| {
@@ -164,6 +173,7 @@ mod tests {
     fn inventory() -> Inventory {
         Inventory {
             fingerprint: "a".repeat(64),
+            census: ds_sync_runtime::reports::SealedCensus::default(),
         }
     }
 

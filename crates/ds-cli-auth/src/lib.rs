@@ -3015,6 +3015,26 @@ pub fn design_selections(
     )
 }
 
+/// One governed project-management read, for only the saved, audience-fenced
+/// selected project.
+///
+/// Until 2026-09-19 every `ds pm` command declared `Requires::Window` and
+/// relayed through the paired desktop to the page's own adapters, so a server
+/// — the host most likely to be asked what a plan says — could not read one at
+/// all. `POST /api/v1/pm` was already published on both gateway lanes and
+/// ds-brain already authenticated from the bearer: the window was habit, never
+/// contract.
+pub fn project_management(
+    lane_value: &str,
+    command: &ds_client_core::project_management::Command,
+) -> Result<HeadlessProjectReport<serde_json::Value>, Failure> {
+    headless_project_report(
+        lane_value,
+        |device, project| device.project_management(project, command),
+        |client, project| client.project_management(project, command, now()),
+    )
+}
+
 /// Retire or restore exact transformers in only the saved, audience-fenced
 /// selected project. ds-brain decides governance, ownership, and lifecycle
 /// per name and answers every name in order.
@@ -5074,6 +5094,20 @@ pub fn design_tags(
     )
 }
 pub use ds_client_core::design_tags::Command as DesignTagsCommand;
+
+/// Cross-project design migration — ONE endpoint, `kind` transformer|dsgrid.
+/// The TARGET is the caller's selected project; the source is the operand.
+pub fn design_migration(
+    lane: &str,
+    command: &ds_client_core::design_migration::Command,
+) -> Result<HeadlessProjectReport<Value>, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.design_migration(project, command),
+        |client, project| client.design_migration(project, command, now()),
+    )
+}
+pub use ds_client_core::design_migration::Command as DesignMigrationCommand;
 
 pub use ds_client_core::shared_assets::Command as SharedAssetsCommand;
 

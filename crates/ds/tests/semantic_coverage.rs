@@ -392,6 +392,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // inventory because restoring the native session may rotate it.
     ("design.status", "local_auth_state", "headless_project"),
     ("design.collisions", "local_auth_state", "headless_project"),
+    // ONE design-domain migration, `kind` transformer|dsgrid. The plan writes
+    // nothing; the apply writes into the SELECTED project, so it is a project
+    // authority and a global write.
+    ("design.migrate.apply", "global_write", "headless_project"),
+    ("design.migrate.plan", "read_only", "headless_project"),
     // Read-only pinned context: it plans the fetch, reads the rooms the plan
     // named and folds them. Same native credential class, no map, no write.
     (
@@ -624,6 +629,21 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.layout.copy", "global_write", "headless_user"),
     ("report.export", "local_file_write", "none"),
     ("report.tasks", "discovery", "none"),
+    // The publication queue's own surface. `status` is a credential-free
+    // local read — that is the point: the machines where a stopped queue goes
+    // unnoticed have no session. `drain` publishes artifacts of record and is
+    // gated like every other publication.
+    ("report.outbox.status", "read_only", "none"),
+    ("report.outbox.drain", "artifact_write", "headless_project"),
+    // Publishing a set the machine already holds seals artifacts of record
+    // from bytes on disk. It never runs the engine, but what it produces is
+    // indistinguishable from an export's output once it is up, so it carries
+    // the export's authority and a publication's effect.
+    (
+        "report.project.publish",
+        "artifact_write",
+        "headless_project",
+    ),
     (
         "report.project.scope",
         "local_auth_state",
@@ -639,6 +659,14 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "global_write",
         "headless_project",
     ),
+    (
+        "report.project.combined",
+        "artifact_write",
+        "headless_project",
+    ),
+    // The retired spelling, kept as a deprecated alias for one release. It
+    // shares the Combined Report's exact effect/authority because it IS that
+    // command; a divergence here would mean the alias had become a fork.
     (
         "report.project.compounded",
         "artifact_write",
@@ -737,6 +765,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // project — the CLI never names one — and preview keeps `read_only`
     // exactly as ds-brain classifies `seed_preview`, so it stays usable on a
     // read-only project.
+    // Project-to-project migration classifies exactly as seeding does and for
+    // the same reason: what an apply changes is shared project state, not a
+    // durable file, and a plan must stay usable on a read-only destination.
+    ("solar.migrate.apply", "global_write", "headless_project"),
+    ("solar.migrate.plan", "read_only", "headless_project"),
     ("solar.seed.apply", "global_write", "headless_project"),
     ("solar.seed.network-plan", "local_file_write", "none"),
     ("solar.seed.preview", "read_only", "headless_project"),
@@ -868,7 +901,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("assets.promote", "local_ui", "project"),
     ("assets.read", "local_file_write", "project"),
     ("assets.tree", "read_only", "project"),
-    ("pm.plan", "read_only", "project"),
+    ("pm.plan", "read_only", "headless_project"),
     ("pm.record.list", "read_only", "project"),
     ("pm.record.read", "read_only", "project"),
     ("pm.task.assign", "global_write", "project"),

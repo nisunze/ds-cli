@@ -16,9 +16,7 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
-
-use crate::DESCRIPTOR_ARG;
+use serde_json::Value;
 
 const LIMIT_ARG: Arg = Arg {
     name: "limit",
@@ -43,9 +41,14 @@ discipline, the items that have earned attention, and the field-model \
 vocabulary the write commands take their state values from.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    // Headless, because this route is: it asks the native owner through
+    // `ds_cli_auth::project_management` and needs no paired application. The
+    // desktop `Project` authority was the other half of the retired paired
+    // route, and leaving it here would tell an operator their plan read needs
+    // a window it does not need.
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LIMIT_ARG, DESCRIPTOR_ARG],
+    args: &[LIMIT_ARG, crate::LANE_ARG],
     output: "\
 `project`, `revision`, `today`, `dashboard` with the rollups, `phases` by \
 discipline, `attention` rows with their magnitude, `recent` task changes, \
@@ -58,39 +61,37 @@ and closeout states this project's engine accepts.",
         runnable: false,
     }],
     refusals: &[
-        crate::NOT_PAIRED,
         crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
         crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
         crate::WORK_REFUSED,
         crate::UNSUPPORTED,
         crate::UNREADABLE,
         crate::SIGNED_OUT,
         crate::INVALID_NUMBER,
+        crate::PLAN_UNREADABLE,
     ],
     reference: Some("docs/reference/pm.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let mut arguments = Map::new();
-    if let Some(limit) = inputs.value("limit") {
-        arguments.insert(
-            "limit".into(),
-            json!(crate::integer(limit, "limit", 1, 100)?),
-        );
-    }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::PLAN_READ,
-        Value::Object(arguments),
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_work_failure)
+    let limit = match inputs.value("limit") {
+        Some(value) => crate::integer(value, "limit", 1, 100)?,
+        None => 10,
+    };
+    let report = ds_cli_auth::project_management(
+        inputs.value("lane").unwrap_or("stable"),
+        &ds_client_core::project_management::Command::Graph,
+    )?;
+    let project = report.project_id().to_owned();
+    let graph = report.into_result();
+    // The graph is the SERVER's answer; what it MEANS is the kernel's. The
+    // browser folded it for itself, which is why the dashboard and the
+    // attention list could disagree about the same task — one answer now, for
+    // the CLI, the Server and the page alike.
+    crate::fold_plan(&project, graph, limit)
 }
 
 pub fn render(data: &Value) -> String {

@@ -51,7 +51,8 @@ ds mcp serve --exposure commands --profile pls
 
 Profiles are `auth-context`, `grid`, `grid-native`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
-`tiling`, `project`, `solar-input`, `solar-run`, `solar-dashboard`, `solar-delivery`, `solar-portfolio-batch`,
+`tiling`, `project`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
+`solar-portfolio-batch`, `solar-migration`, `design-migration`,
 `operations`, and `project-operations`. `survey`
 retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns governed
@@ -66,6 +67,15 @@ project because the application owns the cache, but never opens a map or edit
 context; the remaining commands use the CLI-selected project. Each includes `ds_catalog`,
 `ds_diagnostics`, and a bounded leaf set. `survey-migration` deliberately
 contains only the governed import leaf in addition to those bootstrap tools.
+Migration is per domain, never one cross-domain surface: `survey-migration`,
+`design-migration` (`design.migrate.plan|apply`, transformers and DS Grid
+models) and `solar-migration` (`solar.migrate.plan|apply`, cities and
+portfolios) each publish their own domain's plan and apply and nothing else.
+Plan and apply travel together in each: an apply whose plan an agent cannot
+reach is an apply nobody reviewed.
+
+`ds mcp install` derives its host-entry key from the build lane and the
+runtime platform, and never writes workspace configuration.
 A profile is only an allowlist: omitted
 commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous

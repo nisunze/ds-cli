@@ -10,9 +10,13 @@ publish.workspace = true
 
 [dependencies]
 ds-cli-contract = { workspace = true }
-# Project Work lives inside the running application: its signed-in session is
-# the authority, its Project Work surface is the owner, and its canonical
-# graph is the model. Every command here is one named bridge operation, and
-# there is no engine to link.
+# PM answers on a Server. `POST /api/v1/pm` was already published on both
+# gateway lanes and ds-brain already authenticated from the bearer, so the
+# native client reaches it directly; the kernel folds what it returns. The
+# desktop bridge stays linked while the remaining commands still relay
+# through it.
+ds-cli-auth = { workspace = true }
 ds-cli-desktop = { workspace = true }
+ds-client-core = { workspace = true }
+ds-command-kernel = { workspace = true }
 serde_json = { workspace = true }

@@ -32,6 +32,8 @@ pub const PROFILE_IDS: &[&str] = &[
     "tiling",
     "project",
     "solar-input",
+    "solar-migration",
+    "design-migration",
     "solar-application",
     "solar-dashboard",
     "solar-run",
@@ -89,6 +91,8 @@ pub enum Profile {
     Tiling,
     Project,
     SolarInput,
+    SolarMigration,
+    DesignMigration,
     SolarApplication,
     SolarDashboard,
     SolarRun,
@@ -124,6 +128,8 @@ impl Profile {
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
             "solar-input" => Some(Self::SolarInput),
+            "solar-migration" => Some(Self::SolarMigration),
+            "design-migration" => Some(Self::DesignMigration),
             "solar-application" => Some(Self::SolarApplication),
             "solar-dashboard" => Some(Self::SolarDashboard),
             "solar-run" => Some(Self::SolarRun),
@@ -160,6 +166,8 @@ impl Profile {
             Self::Tiling => "tiling",
             Self::Project => "project",
             Self::SolarInput => "solar-input",
+            Self::SolarMigration => "solar-migration",
+            Self::DesignMigration => "design-migration",
             Self::SolarApplication => "solar-application",
             Self::SolarDashboard => "solar-dashboard",
             Self::SolarRun => "solar-run",
@@ -227,6 +235,12 @@ impl Profile {
             // for ambiguity and not publish the answer to it would not be a
             // smaller surface, only a stuck one.
             Self::Operations => 18,
+            // Fifteen leaves plus both bootstrap tools. Raised from the
+            // default on 2026-09-19 by the publication queue: an agent doing
+            // background delivery work produces report artifacts, and a
+            // profile that can produce them but cannot publish them or read
+            // where they are strands its own output on the machine.
+            Self::ProjectOperations => 17,
             _ => 16,
         }
     }
@@ -292,6 +306,8 @@ impl Profile {
             Self::DesignEdit => DESIGN_EDIT_COMMANDS.contains(&tool.id.as_str()),
             Self::DesignRun => DESIGN_RUN_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarInput => SOLAR_INPUT_COMMANDS.contains(&tool.id.as_str()),
+            Self::SolarMigration => SOLAR_MIGRATION_COMMANDS.contains(&tool.id.as_str()),
+            Self::DesignMigration => DESIGN_MIGRATION_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarDashboard => SOLAR_DASHBOARD_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarRun => SOLAR_RUN_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarApplication => SOLAR_APPLICATION_COMMANDS.contains(&tool.id.as_str()),
@@ -326,6 +342,8 @@ impl Profile {
             Self::DesignEdit => DESIGN_EDIT_COMMANDS,
             Self::DesignRun => DESIGN_RUN_COMMANDS,
             Self::SolarInput => SOLAR_INPUT_COMMANDS,
+            Self::SolarMigration => SOLAR_MIGRATION_COMMANDS,
+            Self::DesignMigration => DESIGN_MIGRATION_COMMANDS,
             Self::SolarDashboard => SOLAR_DASHBOARD_COMMANDS,
             Self::SolarRun => SOLAR_RUN_COMMANDS,
             Self::SolarApplication => SOLAR_APPLICATION_COMMANDS,
@@ -359,11 +377,14 @@ impl Profile {
             | Self::SurveyProjects
             | Self::SurveyMigration
             | Self::Layers => chapter == Chapter::Survey,
-            Self::DesignEdit | Self::DesignRun => chapter == Chapter::Design,
+            Self::DesignEdit | Self::DesignRun | Self::DesignMigration => {
+                chapter == Chapter::Design
+            }
             Self::Map | Self::Styles | Self::PrintStyles => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project => chapter == Chapter::Project,
             Self::SolarInput
+            | Self::SolarMigration
             | Self::SolarApplication
             | Self::SolarDashboard
             | Self::SolarRun
@@ -584,9 +605,21 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "report.project.scope",
     "report.project.settings",
     "report.project.outputs.set",
+    "report.project.combined",
+    // The retired id, reachable for one release so an agent holding the old
+    // name still finds the Combined Report.
     "report.project.compounded",
     "report.project.archives",
     "report.project.export",
+    // Publishing a set this machine already holds, and the queue every one of
+    // those exports enters. Without them this profile can PRODUCE report
+    // artifacts and cannot publish them or say where they are — which is the
+    // defect the publication queue exists to end, reproduced inside one
+    // profile. They are listed here so the broad `grid` chapter router, which
+    // excludes this list, does not grow by three.
+    "report.project.publish",
+    "report.outbox.status",
+    "report.outbox.drain",
 ];
 
 const DESIGN_RUN_COMMANDS: &[&str] = &[
@@ -649,6 +682,21 @@ const SOLAR_INPUT_COMMANDS: &[&str] = &[
     "solar.input.prepare",
     "solar.seed.network-plan",
 ];
+
+/// Moving a project's Solar inputs into another project is its own operator
+/// workflow — plan it, read what will and will not move, confirm the digest —
+/// and it is not the workflow of authoring a city's inputs. `solar-input` and
+/// `solar-run` are both already at their bounded leaf-tool surface, and a
+/// profile that grew to carry a second workflow would silently change every
+/// host already using it. This mirrors `survey-migration`, which is a separate
+/// profile for exactly the same reason.
+const SOLAR_MIGRATION_COMMANDS: &[&str] = &["solar.migrate.plan", "solar.migrate.apply"];
+
+// Each domain's migration is its own narrow operator workflow, exactly as
+// `survey-migration` and `solar-migration` are. Plan and apply travel
+// together: an apply whose plan an agent cannot reach is an apply nobody
+// reviewed. Kept out of `project-operations`, which is already at its bound.
+const DESIGN_MIGRATION_COMMANDS: &[&str] = &["design.migrate.plan", "design.migrate.apply"];
 
 const SOLAR_PORTFOLIO_BATCH_COMMANDS: &[&str] = &[
     "solar.portfolio.calculate",

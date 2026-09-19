@@ -77,6 +77,7 @@ pub mod intake_upload;
 pub mod known_columns;
 pub mod lv;
 pub mod materials;
+pub mod migrate;
 pub mod native_tags;
 pub mod pinned;
 pub mod preview;
@@ -187,6 +188,8 @@ pub static DOMAIN: Domain = Domain {
         &lv::process::COMMAND,
         &process_settings::COMMAND,
         &collisions::COMMAND,
+        &migrate::plan::COMMAND,
+        &migrate::apply::COMMAND,
         &pinned::COMMAND,
         &autoprocess::COMMAND,
         &force_gate::COMMAND,

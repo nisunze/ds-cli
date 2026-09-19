@@ -179,6 +179,13 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          input",
     ),
     (
+        "ds-cli-solar/src/migrate.rs",
+        "the fallback arm re-emits the ds-side code `SERVER_CODES` maps the \
+         server's own name onto, and every one of those is a literal in \
+         `APPLY_REFUSALS` in this same file — which the `expect` beside the \
+         match requires. The two named arms above it this scan does resolve",
+    ),
+    (
         "ds-cli-solar/src/seed.rs",
         "the fallback arm re-emits the ds-side code `SERVER_CODES` maps the \
          server's own name onto, and every one of those is a literal in \

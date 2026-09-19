@@ -206,6 +206,24 @@ pub const WORK_REFUSED: Refusal = Refusal {
     when: "no such task or record, or Project Work declined the command",
     remedy: "check the id with `ds pm task list`; read detail.detail for its message",
 };
+/// Which native credential lane a server-side PM read authenticates on.
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native credential lane.")
+        .choices(&["stable", "canary"])
+        .default("stable");
+
+/// The graph reached this build but the kernel could not fold it.
+///
+/// Distinct from `desktop_refused`: the server answered, so the project and
+/// the permission were fine. Something in the payload is a shape this build
+/// does not understand, which is a contract break rather than an operator
+/// mistake.
+pub const PLAN_UNREADABLE: Refusal = Refusal {
+    code: "plan_unreadable",
+    when: "the project's plan is a shape this build cannot fold",
+    remedy: "report this with the project id; the CLI and the server disagree about the graph",
+};
+
 pub const NOT_PERMITTED: Refusal = Refusal {
     code: "work_not_permitted",
     when: "the signed-in user may read this project's plan but not change it",
@@ -492,4 +510,59 @@ mod tests {
              declared operation belongs to a command"
         );
     }
+}
+
+/// Fold the server's canonical graph into the plan the operator reads.
+///
+/// The host supplies the day because the kernel holds no clock: every date in
+/// the answer is compared against this one value, so a plan is reproducible
+/// from the pair (graph, today).
+pub fn fold_plan(
+    project: &str,
+    graph: serde_json::Value,
+    limit: i64,
+) -> Result<serde_json::Value, Failure> {
+    let request = serde_json::json!({
+        "schema": ds_command_kernel::project_management::SCHEMA,
+        "action": "plan",
+        "today": today_utc(),
+        "ds_project": project,
+        "graph": graph,
+        "limit": limit,
+    });
+    let bytes = serde_json::to_vec(&request).map_err(|error| {
+        Failure::internal(PLAN_UNREADABLE.code, error.to_string()).remedy(PLAN_UNREADABLE.remedy)
+    })?;
+    let answer = ds_command_kernel::project_management::evaluate(&bytes).map_err(|error| {
+        Failure::internal(PLAN_UNREADABLE.code, error).remedy(PLAN_UNREADABLE.remedy)
+    })?;
+    serde_json::from_str(&answer).map_err(|error| {
+        Failure::internal(PLAN_UNREADABLE.code, error.to_string()).remedy(PLAN_UNREADABLE.remedy)
+    })
+}
+
+/// The host's day as `YYYY-MM-DD`, UTC.
+fn today_utc() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or_default();
+    let days = seconds.div_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// Howard Hinnant's days-from-civil, inverted. Pure arithmetic: no chrono, no
+/// locale, and no dependency added for four lines.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }

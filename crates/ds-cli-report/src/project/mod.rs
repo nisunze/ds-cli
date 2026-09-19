@@ -19,9 +19,11 @@
 //! before any artifact is produced.
 
 pub mod archives;
+pub mod combined;
 pub mod compounded;
 pub mod export;
 pub mod map_inputs;
+pub mod publish;
 pub mod scope;
 pub mod settings;
 
@@ -221,6 +223,11 @@ pub const NATIVE_READ_REFUSALS: &[Refusal] = &[
     REPORT_NO_INDIVIDUAL_ARTIFACTS,
     REPORT_GROUPING_STALE,
     REPORT_GROUPING_INCOMPLETE,
+    COMBINED_INPUTS_PUBLICATION_PENDING,
+    COMBINED_INPUTS_NOT_CURRENT,
+    COMBINED_INPUTS_EMPTY,
+    COMBINED_NO_INPUTS,
+    COMBINED_READINESS_UNAVAILABLE,
 ];
 
 /// The governed report route names these itself. They were previously
@@ -241,6 +248,39 @@ const REPORT_GROUPING_INCOMPLETE: Refusal = Refusal {
     code: "report_grouping_incomplete",
     when: "the applied grouping does not cover every requested transformer",
     remedy: "apply a grouping that covers them, or narrow the requested scope",
+};
+
+/// The four ways a Combined Report refuses over its input rooms, and the one
+/// way the predicate itself cannot answer.
+///
+/// They are declared here rather than built from the kernel's reply so that
+/// `ds capabilities report.project.combined` lists every code the command can
+/// emit, and so `refusal_coverage` can see them. The kernel owns WHICH one
+/// applies; this owns the fact that it exists.
+pub const COMBINED_INPUTS_PUBLICATION_PENDING: Refusal = Refusal {
+    code: "combined_inputs_publication_pending",
+    when: "a room's report is computed on a device and has not left its publication queue",
+    remedy: "run `ds report outbox drain` on that device; re-exporting would seal a second artifact beside the one already waiting",
+};
+pub const COMBINED_INPUTS_NOT_CURRENT: Refusal = Refusal {
+    code: "combined_inputs_not_current",
+    when: "a room's report is missing, stale, failed, or was given up on by the queue",
+    remedy: "regenerate those rooms with `ds report project export --transformer <name>`",
+};
+pub const COMBINED_INPUTS_EMPTY: Refusal = Refusal {
+    code: "combined_inputs_empty",
+    when: "every room in scope is current and genuinely holds nothing to combine",
+    remedy: "read `ds report project scope`; the design, not the report, is what is empty",
+};
+pub const COMBINED_NO_INPUTS: Refusal = Refusal {
+    code: "combined_no_inputs",
+    when: "no room is in scope at all",
+    remedy: "widen the scope, then confirm it with `ds report project scope`",
+};
+pub const COMBINED_READINESS_UNAVAILABLE: Refusal = Refusal {
+    code: "combined_readiness_unavailable",
+    when: "the readiness predicate could not answer, so no room can be called current",
+    remedy: "report this build; the run is refused rather than published over rooms nothing checked",
 };
 
 pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
@@ -358,6 +398,10 @@ pub fn scope_json(requested: &TransformerSet, inventory: &TransformerInventory) 
         "excluded": excluded,
         "excluded_count": excluded.len(),
         "project_level": project_level,
+        // The deliverable is the Combined Report. `compounded_ready` is the
+        // retired spelling of the same boolean, kept beside it for one release
+        // so a consumer reading the old key is not broken by the rename.
+        "combined_ready": participating.len() >= 2,
         "compounded_ready": participating.len() >= 2,
     })
 }

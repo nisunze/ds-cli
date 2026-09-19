@@ -279,7 +279,9 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     ("ds-cli-design", 26),
     ("ds-cli-dsgrid", 1),
     ("ds-cli-solar", 16),
-    ("ds-cli-pm", 9),
+    // 9 → 8 on 2026-09-19: `pm plan` left the paired route for the native
+    // headless one, so the ratchet moves with it.
+    ("ds-cli-pm", 8),
 ];
 
 /// Non-test source lines in this crate that declare a window command.
@@ -494,12 +496,13 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     ("dsgrid", 1),
     ("map", 39),
     ("solar", 16),
-    ("pm", 9),
+    // 9 → 8: `pm.plan` is a headless project read now, not a window command.
+    ("pm", 8),
 ];
 
 /// What the filter answers for the whole surface. Pinned beside the rows so a
 /// domain cannot be quietly dropped from the ledger to hide its commands.
-const WINDOW_BACKLOG_TOTAL: u64 = 133;
+const WINDOW_BACKLOG_TOTAL: u64 = 132;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {

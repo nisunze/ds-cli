@@ -8,7 +8,10 @@ mod auth;
 pub mod host;
 #[doc(hidden)]
 pub mod layers;
-mod server_reports;
+// The shared report publication pass. `ds report outbox drain` calls exactly
+// this, so a hand-driven drain and the background pump are one runner.
+#[doc(hidden)]
+pub mod server_reports;
 pub mod server_sync;
 pub mod solar_application;
 mod solar_documents;

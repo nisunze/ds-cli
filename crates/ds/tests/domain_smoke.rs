@@ -4560,6 +4560,19 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             BTreeSet::from(["lane", "transformer"]),
         ),
         (
+            "report.project.combined",
+            "artifact_write",
+            BTreeSet::from([
+                "combine-per-group",
+                "file-level",
+                "force",
+                "lane",
+                "transformer",
+            ]),
+        ),
+        // The retired id takes the SAME flags. An alias whose flags drifted
+        // would be a second command wearing the old name.
+        (
             "report.project.compounded",
             "artifact_write",
             BTreeSet::from([
@@ -5004,6 +5017,109 @@ fn design_collisions_reads_the_project_document_and_starts_nothing() {
         ])
         .envelope["error"]["class"],
         "invalid_input"
+    );
+}
+
+/// ONE design-domain migration, `kind` transformer|dsgrid. Both kinds ride
+/// one verb; the plan writes nothing; neither needs a window. The selection
+/// bounds and the same-project refusal are answered locally, before any
+/// credential is restored, so a malformed batch never reaches the service.
+#[test]
+fn design_migrate_carries_both_design_kinds_on_one_verb_and_refuses_locally() {
+    for (id, path, effect) in [
+        (
+            "design.migrate.plan",
+            ["design", "migrate", "plan"],
+            "read_only",
+        ),
+        (
+            "design.migrate.apply",
+            ["design", "migrate", "apply"],
+            "global_write",
+        ),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        assert_eq!(command["path"], serde_json::json!(path));
+        assert_eq!(command["effect"], effect, "{id}");
+        // Migrating between projects needs no window.
+        assert_eq!(command["authority"], "headless_project", "{id}");
+        let inputs = command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            inputs,
+            BTreeSet::from(["source-project", "kind", "items", "overwrite", "lane"]),
+            "{id}"
+        );
+        // Both design kinds are one flag on one verb, not two command families.
+        let kind = command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .find(|input| input["name"] == "kind")
+            .expect("kind input");
+        assert_eq!(
+            kind["choices"],
+            serde_json::json!(["transformer", "dsgrid"]),
+            "{id}"
+        );
+    }
+
+    // A selection larger than one transaction's batch is refused here, with a
+    // remedy, rather than half-applied by the service.
+    let too_many = (0..201)
+        .map(|index| format!("tx{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let refusal = native_ds(&[
+        "design",
+        "migrate",
+        "plan",
+        "--source-project",
+        "source_one",
+        "--items",
+        &too_many,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refusal.envelope["error"]["code"], "invalid_selection");
+    assert!(
+        refusal.envelope["error"]["remedy"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("200"),
+        "the bound must be named in the remedy: {:?}",
+        refusal.envelope["error"]
+    );
+
+    // A kind from another domain is refused, not quietly answered as a
+    // transformer migration: Solar and Survey own their own endpoints. The
+    // declared choices refuse it in the parser, before any credential is
+    // restored; `unknown_kind` is the same refusal from the handler.
+    let foreign_kind = native_ds(&[
+        "design",
+        "migrate",
+        "plan",
+        "--source-project",
+        "source_one",
+        "--kind",
+        "city",
+        "--items",
+        "TX-1",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        matches!(
+            foreign_kind.envelope["error"]["code"].as_str(),
+            Some("invalid_choice") | Some("unknown_kind")
+        ),
+        "a Solar kind must be refused by the design migration, not answered: {:?}",
+        foreign_kind.envelope["error"]
     );
 }
 
@@ -7210,7 +7326,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        99, // + `design pinned preview`, `design activities sweep|read` (2026-09-18).
+        101, // + `design migrate plan|apply` (2026-09-19).
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -7245,6 +7361,11 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.lv.project-save"
                     | "design.status"
                     | "design.collisions"
+                    // Project-to-project migration is a bulk service call on
+                    // the same native spine: honestly unavailable in a build
+                    // with no digest-pinned release catalog.
+                    | "design.migrate.plan"
+                    | "design.migrate.apply"
                     // Pinned context reads the same native status spine.
                     | "design.pinned.preview"
                     | "design.dashboard"
@@ -7464,6 +7585,12 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 // Standard intake is a headless Rust upload/process workflow,
                 // not a paired collaboration record operation.
                 && !id.starts_with("design.intake.")
+                // Project-to-project design migration is a bulk service call
+                // against two projects, not a governed record operation on
+                // one. It holds no collaboration record and never reaches the
+                // bridge; `design_migrate_carries_both_design_kinds_on_one_
+                // verb_and_refuses_locally` pins its contract.
+                && !id.starts_with("design.migrate.")
                 // Design Activities is a headless account-wide capture and an
                 // offline fold over what it retained. It holds no governed
                 // record and never reaches the bridge.
@@ -7571,6 +7698,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.intake.")
             || id.starts_with("design.attachment.")
             || id.starts_with("design.activities.")
+            // Project-to-project migration is a bulk service call against two
+            // projects, pinned by its own test.
+            || id.starts_with("design.migrate.")
         {
             continue;
         }
@@ -8322,7 +8452,12 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
         .display()
         .to_string();
     for args in [
-        vec!["pm", "plan"],
+        // `pm plan` is deliberately absent: it left the paired route for the
+        // native headless one (`ds_cli_auth::project_management`), so it
+        // declares no `--desktop-descriptor` and a call carrying one is an
+        // unknown flag, not a pairing outcome. When it is given a headless
+        // smoke assertion, that assertion belongs beside the other native
+        // project reads — not in this paired-bridge sweep.
         vec!["pm", "task", "list"],
         vec![
             "pm",
@@ -11257,6 +11392,112 @@ fn solar_city_creation_is_an_editable_offline_entry_point() {
             .as_str()
             .unwrap()
             .contains("Missing inputs are an editable draft")
+    );
+}
+
+#[test]
+fn solar_migration_is_one_solar_verb_with_a_kind_inside_it() {
+    // ONE endpoint, two kinds, both inside the Solar domain. A design kind
+    // reaching this command would mean the cross-domain migration registry the
+    // owner ruled against had been built after all.
+    for id in ["solar.migrate.plan", "solar.migrate.apply"] {
+        let value = ok(&["capabilities", id, "--output", "json"]);
+        let command = &value["command"];
+        assert_eq!(command["authority"], "headless_project");
+        let inputs = command["inputs"].as_array().unwrap();
+        for name in ["project", "from", "kind"] {
+            assert!(
+                inputs
+                    .iter()
+                    .any(|input| input["name"] == name && input["required"] == true),
+                "`{id}` must require --{name}"
+            );
+        }
+        assert!(
+            command["purpose"]
+                .as_str()
+                .unwrap()
+                .contains("COMPUTATION RESULTS NEVER MIGRATE")
+                || command["purpose"]
+                    .as_str()
+                    .unwrap()
+                    .contains("never_computed_in_this_project"),
+            "`{id}` must say what does not migrate"
+        );
+    }
+    assert_eq!(
+        ok(&["capabilities", "solar.migrate.plan", "--output", "json"])["command"]["effect"],
+        "read_only"
+    );
+    assert_eq!(
+        ok(&["capabilities", "solar.migrate.apply", "--output", "json"])["command"]["effect"],
+        "global_write"
+    );
+}
+
+#[test]
+fn a_design_kind_never_reaches_the_solar_migration_door() {
+    // Refused locally, before any credential is touched: the kind vocabulary
+    // is the kernel's, and it has exactly two values.
+    assert_eq!(
+        refusal(&[
+            "solar",
+            "migrate",
+            "plan",
+            "--project",
+            "chad_test",
+            "--from",
+            "aderm",
+            "--kind",
+            "transformer",
+            "--output",
+            "json",
+        ]),
+        "solar_migrate_kind_invalid"
+    );
+}
+
+#[test]
+fn a_solar_migration_refuses_the_other_kinds_selection_instead_of_dropping_it() {
+    // Answering successfully having quietly migrated something other than what
+    // was asked for is the confident empty answer in miniature.
+    assert_eq!(
+        refusal(&[
+            "solar",
+            "migrate",
+            "plan",
+            "--project",
+            "chad_test",
+            "--from",
+            "aderm",
+            "--kind",
+            "city",
+            "--portfolio",
+            "North",
+            "--output",
+            "json",
+        ]),
+        "solar_migrate_selection_invalid"
+    );
+}
+
+#[test]
+fn a_solar_migration_refuses_a_project_migrating_into_itself() {
+    assert_eq!(
+        refusal(&[
+            "solar",
+            "migrate",
+            "plan",
+            "--project",
+            "chad_test",
+            "--from",
+            "chad_test",
+            "--kind",
+            "city",
+            "--output",
+            "json",
+        ]),
+        "solar_migrate_source_invalid"
     );
 }
 

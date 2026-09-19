@@ -1074,8 +1074,11 @@ dependencies = [
 name = "ds-cli-pm"
 version = "0.1.0"
 dependencies = [
+ "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
+ "ds-client-core",
+ "ds-command-kernel",
  "serde_json",
 ]
 
@@ -1087,12 +1090,14 @@ dependencies = [
  "ds-cli-contract",
  "ds-cli-data",
  "ds-cli-exec",
+ "ds-cli-server",
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-layer-store",
  "ds-project-data",
  "ds-report-artifacts",
  "ds-report-host",
+ "ds-sync-runtime",
  "serde_json",
  "tempfile",
 ]

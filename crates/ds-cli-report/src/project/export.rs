@@ -77,9 +77,17 @@ const SEED_ARG: Arg = Arg::switch(
     "seed",
     "Acquire the printed transformer's missing map context first (provider cost); without it unheld context is omitted and named.",
 );
-const PUBLISH_ARG: Arg = Arg::switch(
-    "publish",
-    "Seal verified outputs for the matching native Server sync pump; without it, writes local reports only.",
+/// Publication is not optional, so there is no `--publish`.
+///
+/// It was a switch, and every run that forgot it wrote artifacts no queue
+/// could see: one operator ended a day with 593 verified reports, 379 MB, on
+/// a single PC, indistinguishable from reports that never ran. An export now
+/// publishes. The ONLY way to produce nothing publishable is to say so, and
+/// the receipt of that run says, in words, that it published nothing — so a
+/// receipt can never be mistaken for a publication.
+const DRY_RUN_ARG: Arg = Arg::switch(
+    "dry-run",
+    "Produce local files and publish NOTHING; the receipt says so.",
 );
 const SERVER_STATE_DIR_ARG: Arg = Arg::value(
     "server-state-dir",
@@ -168,8 +176,8 @@ const NOT_ACTIVE: Refusal = Refusal {
 };
 const PUBLISH_LOCAL_ONLY: Refusal = Refusal {
     code: "report_publish_local_only",
-    when: "--publish was requested from a development reporter build",
-    remedy: "run a release reporter build, or omit --publish for local-only files",
+    when: "a development reporter build produced artifacts, and a development build may not publish",
+    remedy: "run a release reporter build, or pass --dry-run to accept local-only files",
 };
 const PUBLISH_SCOPE_CHANGED: Refusal = Refusal {
     code: "report_publish_scope_changed",
@@ -273,7 +281,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and named print outputs with project-wide numbering. Local layout proofs and draft SVG previews cannot publish. --publish queues Server sync; completion requires its publication receipt. Setups use held context; --seed acquires missing context. Photos require a media grant.",
+    purpose: "Export active transformers and named print outputs with project-wide numbering, and PUBLISH them: every artifact enters the one publication queue. --dry-run is the only unpublished mode; its receipt says so. Setups use held context; --seed acquires missing context. Photos require a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -299,7 +307,7 @@ pub static COMMAND: Command = Command {
             "Verified data.city-vectors output to use as this batch’s OSM/Microsoft map context.",
         ),
         SEED_ARG,
-        PUBLISH_ARG,
+        DRY_RUN_ARG,
         SERVER_STATE_DIR_ARG,
         LANE_ARG,
     ],
@@ -307,12 +315,12 @@ pub static COMMAND: Command = Command {
 Lane, project, scope, engine identity, publication state, batch counts and receipt \
 (partial_formats), context diagnostics and ordered transformer results: artifact \
 inventory, failed_formats (output_id, code, remedy, layout knob: \
-overflow/panels/row_mm), or typed error. --publish seals what completed into the \
-Server-sync queue.",
+overflow/panels/row_mm), or typed error. `publication.stage` is `queued`, or \
+`nothing_published` for a dry run.",
     examples: &[
         Example {
             command: "ds report project export --out-dir ./reports --output json",
-            note: "Every active transformer; `.data.results[]` says what each produced.",
+            note: "Every active transformer, published; `.data.results[]` says what each did.",
             runnable: false,
         },
         Example {
@@ -321,8 +329,8 @@ Server-sync queue.",
             runnable: false,
         },
         Example {
-            command: "ds report project export --transformer tx_a --out-dir ./reports --publish --output json",
-            note: "Queue one verified report for Server sync; publication is separate.",
+            command: "ds report project export --transformer tx_a --out-dir ./reports --dry-run --output json",
+            note: "Local files only; `.data.publication.published_nothing` is true.",
             runnable: false,
         },
         Example {
@@ -684,6 +692,25 @@ fn seal_run_for_server(
         .map_err(|error| Failure::failed(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy))
 }
 
+/// Why a run published nothing, in one token. There are only three ways to
+/// reach that state and each one is something the caller asked for, so the
+/// receipt can always name it rather than leaving "no publication" to be
+/// read as "publication failed".
+fn dry_run_reason(dry_run: bool, proofs: bool, preview: bool) -> &'static str {
+    if dry_run {
+        "dry_run_requested"
+    } else if preview {
+        "preview_layout_is_draft_state"
+    } else if proofs {
+        "print_layout_proof_is_not_a_governed_recipe"
+    } else {
+        // Unreachable by construction: `publish` is false only for the three
+        // cases above. Named rather than panicking, because a receipt that
+        // cannot explain itself is the defect, not a crash.
+        "unpublished"
+    }
+}
+
 fn verify_publish_scope(
     lane: &str,
     fence: &ds_cli_auth::LayerScopeFence,
@@ -705,21 +732,10 @@ struct PreviewRequest {
     layout: ds_command_kernel::printing::Layout,
 }
 
-fn preview_request(
-    inputs: &Inputs,
-    publish: bool,
-    proofs: bool,
-) -> Result<Option<PreviewRequest>, Failure> {
+fn preview_request(inputs: &Inputs, proofs: bool) -> Result<Option<PreviewRequest>, Failure> {
     let Some(path) = inputs.value("preview-layout") else {
         return Ok(None);
     };
-    if publish {
-        return Err(Failure::invalid(
-            INPUTS_INVALID.code,
-            "A print preview is a review file; it cannot publish",
-        )
-        .remedy("drop --publish, or export the governed recipe without --preview-layout"));
-    }
     if proofs {
         return Err(Failure::invalid(
             INPUTS_INVALID.code,
@@ -758,16 +774,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let explicit_asset = inputs.value("admin-bounds").map(PathBuf::from);
     let seed = inputs.switch("seed");
     let proof_paths = inputs.repeated("print-layout");
-    let publish = inputs.switch("publish");
-    if publish && !proof_paths.is_empty() {
-        return Err(Failure::invalid(
-            "report_inputs_invalid",
-            "Local print-layout proofs cannot publish; save a governed project recipe before publication",
-        ));
-    }
+    // Publication is the default. A local print-layout proof and an SVG
+    // preview are draft state that the publication contract does not admit,
+    // so they are dry runs by nature — not a silent local-only export, and
+    // their receipt still says it published nothing.
+    let dry_run = inputs.switch("dry-run");
     // A preview's own refusals are decided before a city-vectors directory
     // is read, so they are local whatever that directory holds.
-    let preview_request = preview_request(inputs, publish, !proof_paths.is_empty())?;
+    let preview_request = preview_request(inputs, !proof_paths.is_empty())?;
+    let proofs_requested = !proof_paths.is_empty();
+    let preview_requested = preview_request.is_some();
+    let publish = !dry_run && !proofs_requested && !preview_requested;
     let local_context = inputs
         .value("context-vectors")
         .map(|dir| {
@@ -796,9 +813,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         if inputs.value("server-state-dir").is_some() {
             return Err(Failure::invalid(
                 "report_inputs_invalid",
-                "--server-state-dir requires --publish",
+                "--server-state-dir names the queue a publication enters, and this run publishes nothing",
             )
-            .remedy("pass --publish, or remove --server-state-dir"));
+            .remedy("drop --dry-run (or --print-layout/--preview-layout), or remove --server-state-dir"));
         }
         None
     };
@@ -1252,14 +1269,26 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     output["out_dir"] = json!(out_dir.display().to_string());
     output["scope"] = scope;
     output["publication_enqueued"] = json!(publish);
-    if let (Some(root), Some(publications)) = (publish_root, sealed_publications) {
-        output["publication"] = json!({
+    output["publication"] = match (publish_root, sealed_publications) {
+        (Some(root), Some(publications)) => json!({
+            "stage": ds_command_kernel::report::PublicationStage::Queued.as_str(),
+            "published_nothing": false,
             "state": "queued_for_server_sync",
             "root": root.display().to_string(),
             "batches": publications,
-            "note": "sealed locally; the matching native Server sync pump publishes when it next runs",
-        });
-    }
+            "note": "Sealed and queued; the one publication queue drains it. `ds report outbox status` says where it is.",
+        }),
+        // Acceptance B, literally. A dry run's receipt has to say it published
+        // nothing IN THOSE WORDS, because the failure being closed here is a
+        // receipt that looked exactly like a publication.
+        _ => json!({
+            "stage": "nothing_published",
+            "published_nothing": true,
+            "state": "dry_run",
+            "reason": dry_run_reason(dry_run, proofs_requested, preview_requested),
+            "note": "THIS RUN PUBLISHED NOTHING. The files are local only and no queue can see them. Re-run without --dry-run to publish, or `ds report project publish --from <out-dir>` to publish what is already on disk.",
+        }),
+    };
     output["engine"] = json!({
         "engine_version": outcome.engine.engine_version,
         "build_manifest_sha256": outcome.engine.build_manifest_sha256,
@@ -1424,6 +1453,15 @@ fn preview_pages(
     data["out_dir"] = json!(out_dir.display().to_string());
     data["scope"] = facts.scope;
     data["publication_enqueued"] = json!(false);
+    // A preview is draft state. It says so in the same words a dry run does,
+    // so no receipt anywhere can be mistaken for a publication.
+    data["publication"] = json!({
+        "stage": "nothing_published",
+        "published_nothing": true,
+        "state": "dry_run",
+        "reason": dry_run_reason(false, false, true),
+        "note": "THIS RUN PUBLISHED NOTHING. A preview is a review file; export the governed recipe to publish.",
+    });
     for member in ["preview", "results", "batch"] {
         data[member] = answer[member].clone();
     }
@@ -1578,6 +1616,17 @@ pub fn render(data: &Value) -> String {
     let partial = data["batch"]["partial_formats"].as_u64().unwrap_or(0);
     if partial > 0 {
         out.push_str(&format!(" · {partial} partial"));
+    }
+    // Whether this run's work left the machine is not a detail to be found in
+    // JSON. An operator who reads only this line must not be able to believe
+    // a dry run published something.
+    if data["publication"]["published_nothing"] == Value::Bool(true) {
+        out.push_str(" · PUBLISHED NOTHING");
+    } else if data["publication"]["stage"].is_string() {
+        out.push_str(&format!(
+            " · publication {}",
+            data["publication"]["stage"].as_str().unwrap_or("?")
+        ));
     }
     if preview {
         out.push_str(&format!(
@@ -1982,7 +2031,12 @@ mod tests {
         assert_eq!(COMMAND.effect, Effect::LocalFileWrite);
         assert!(COMMAND.summary.len() <= 70);
         assert!(COMMAND.args.iter().all(|arg| arg.name != "project"));
-        assert!(COMMAND.args.iter().any(|arg| arg.name == "publish"));
+        // Acceptance B: there is no `--publish`. An export publishes, and the
+        // only way to publish nothing is to ask for a dry run. If this switch
+        // ever comes back, every run that forgets it strands its artifacts
+        // again.
+        assert!(COMMAND.args.iter().all(|arg| arg.name != "publish"));
+        assert!(COMMAND.args.iter().any(|arg| arg.name == "dry-run"));
         assert!(COMMAND.args.iter().any(|arg| arg.name == "seed"));
         assert!(
             !COMMAND

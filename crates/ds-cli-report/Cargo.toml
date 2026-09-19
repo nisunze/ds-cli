@@ -32,4 +32,10 @@ ds-report-host = { path = "../../../ds-command-kernel/crates/ds-report-host" }
 ds-project-data = { path = "../../../ds-command-kernel/crates/ds-project-data" }
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-cli-data = { workspace = true }
+# `ds report outbox drain` runs the Server's OWN publication pass — the same
+# shared runner its background pump drives — rather than standing up a second
+# pump beside it. Nothing in `ds-cli-server` knows `ds report`, so this is a
+# one-way edge.
+ds-cli-server = { workspace = true }
+ds-sync-runtime = { workspace = true }
 tempfile = "3"
