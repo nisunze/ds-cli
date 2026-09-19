@@ -710,7 +710,7 @@ fn every_constructible_refusal_code_is_documented() {
         // layer owner's, re-raised across that transport, by `ds map layer …`.
         ("ds-cli-server", &["server", "map"]),
         ("ds-cli-solar", &["solar"]),
-        ("ds-cli-work", &["work"]),
+        ("ds-cli-pm", &["pm"]),
         ("ds-cli-assets", &["assets"]),
         ("ds-cli-sre", &["sre"]),
         ("ds-cli-installs", &["install"]),

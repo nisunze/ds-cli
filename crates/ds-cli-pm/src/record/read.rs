@@ -1,4 +1,4 @@
-//! `ds work record read` — one record, with its body.
+//! `ds pm record read` — one record, with its body.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -16,12 +16,12 @@ const RECORD_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "The record, by the id `ds work record list` reports.",
+    summary: "The record, by the id `ds pm record list` reports.",
 };
 
 pub static COMMAND: Command = Command {
-    id: "work.record.read",
-    path: &["work", "record", "read"],
+    id: "pm.record.read",
+    path: &["pm", "record", "read"],
     contract: 1,
     summary: "Read one record with its body and what it touches.",
     purpose: "\
@@ -39,7 +39,7 @@ quietly.",
 `record` with its canonical fields and bounded `body`/related-id collections; \
 each sets a truncation flag and reports its full count when cut.",
     examples: &[Example {
-        command: "ds work record read --record R-0031 --output json",
+        command: "ds pm record read --record R-0031 --output json",
         note: "`.data.record.responseDueDate` is the date a reply is owed by.",
         runnable: false,
     }],
@@ -54,7 +54,7 @@ each sets a truncation flag and reports its full count when cut.",
         crate::UNREADABLE,
         crate::SIGNED_OUT,
     ],
-    reference: Some("docs/reference/work.md"),
+    reference: Some("docs/reference/pm.md"),
     search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,

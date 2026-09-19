@@ -1430,49 +1430,49 @@ static TILE_ENTRIES: &[Entry] = &[
 /// help prints this order verbatim, so the index doubles as the procedure.
 static WORK_ENTRIES: &[Entry] = &[
     Entry {
-        command: &ds_cli_work::plan::COMMAND,
-        handler: ds_cli_work::plan::run,
-        render: ds_cli_work::plan::render,
+        command: &ds_cli_pm::plan::COMMAND,
+        handler: ds_cli_pm::plan::run,
+        render: ds_cli_pm::plan::render,
     },
     Entry {
-        command: &ds_cli_work::task::list::COMMAND,
-        handler: ds_cli_work::task::list::run,
-        render: ds_cli_work::task::list::render,
+        command: &ds_cli_pm::task::list::COMMAND,
+        handler: ds_cli_pm::task::list::run,
+        render: ds_cli_pm::task::list::render,
     },
     Entry {
-        command: &ds_cli_work::task::read::COMMAND,
-        handler: ds_cli_work::task::read::run,
-        render: ds_cli_work::task::read::render,
+        command: &ds_cli_pm::task::read::COMMAND,
+        handler: ds_cli_pm::task::read::run,
+        render: ds_cli_pm::task::read::render,
     },
     Entry {
-        command: &ds_cli_work::task::create::COMMAND,
-        handler: ds_cli_work::task::create::run,
-        render: ds_cli_work::task::create::render,
+        command: &ds_cli_pm::task::create::COMMAND,
+        handler: ds_cli_pm::task::create::run,
+        render: ds_cli_pm::task::create::render,
     },
     Entry {
-        command: &ds_cli_work::task::update::COMMAND,
-        handler: ds_cli_work::task::update::run,
-        render: ds_cli_work::task::update::render,
+        command: &ds_cli_pm::task::update::COMMAND,
+        handler: ds_cli_pm::task::update::run,
+        render: ds_cli_pm::task::update::render,
     },
     Entry {
-        command: &ds_cli_work::task::assign::COMMAND,
-        handler: ds_cli_work::task::assign::run,
-        render: ds_cli_work::task::assign::render,
+        command: &ds_cli_pm::task::assign::COMMAND,
+        handler: ds_cli_pm::task::assign::run,
+        render: ds_cli_pm::task::assign::render,
     },
     Entry {
-        command: &ds_cli_work::task::respond::COMMAND,
-        handler: ds_cli_work::task::respond::run,
-        render: ds_cli_work::task::respond::render,
+        command: &ds_cli_pm::task::respond::COMMAND,
+        handler: ds_cli_pm::task::respond::run,
+        render: ds_cli_pm::task::respond::render,
     },
     Entry {
-        command: &ds_cli_work::record::list::COMMAND,
-        handler: ds_cli_work::record::list::run,
-        render: ds_cli_work::record::list::render,
+        command: &ds_cli_pm::record::list::COMMAND,
+        handler: ds_cli_pm::record::list::run,
+        render: ds_cli_pm::record::list::render,
     },
     Entry {
-        command: &ds_cli_work::record::read::COMMAND,
-        handler: ds_cli_work::record::read::run,
-        render: ds_cli_work::record::read::render,
+        command: &ds_cli_pm::record::read::COMMAND,
+        handler: ds_cli_pm::record::read::run,
+        render: ds_cli_pm::record::read::render,
     },
 ];
 
@@ -2425,7 +2425,7 @@ static DOMAINS: &[Registered] = &[
         entries: MAP_ENTRIES,
     },
     Registered {
-        domain: &ds_cli_work::DOMAIN,
+        domain: &ds_cli_pm::DOMAIN,
         entries: WORK_ENTRIES,
     },
     Registered {

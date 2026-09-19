@@ -689,14 +689,14 @@ mod tests {
     #[test]
     fn the_sentinel_shields_every_global_not_just_confirmation() {
         let (globals, rest) = split_globals(&argv(&[
-            "work", "task", "create", "--", "--help", "--output", "json",
+            "pm", "task", "create", "--", "--help", "--output", "json",
         ]))
         .expect("split");
         assert!(!globals.help);
         assert!(!globals.output.is_json());
         assert_eq!(
             rest,
-            argv(&["work", "task", "create", "--", "--help", "--output", "json"])
+            argv(&["pm", "task", "create", "--", "--help", "--output", "json"])
         );
     }
 

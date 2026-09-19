@@ -104,7 +104,7 @@ ds-cli-library = { path = "crates/ds-cli-library" }
 ds-cli-pls = { path = "crates/ds-cli-pls" }
 ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }
-ds-cli-work = { path = "crates/ds-cli-work" }
+ds-cli-pm = { path = "crates/ds-cli-pm" }
 ds-cli-assets = { path = "crates/ds-cli-assets" }
 ds-cli-installs = { path = "crates/ds-cli-installs" }
 ds-cli-sre = { path = "crates/ds-cli-sre" }

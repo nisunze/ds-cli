@@ -60,8 +60,8 @@ pub use ds_cli_desktop::ops::{
 };
 
 pub static DOMAIN: Domain = Domain {
-    id: "work",
-    summary: "Project Work: the plan, its tasks, assignments and records.",
+    id: "pm",
+    summary: "Tasks, milestones, notes, records and the plan they sit in.",
     commands: &[
         &plan::COMMAND,
         &task::list::COMMAND,
@@ -80,7 +80,7 @@ pub static DOMAIN: Domain = Domain {
 // ---------------------------------------------------------------------------
 
 pub const TASKS_LIST: BridgeOp = BridgeOp {
-    operation: "work.tasks.list",
+    operation: "pm.tasks.list",
     arguments: &[
         "query",
         "state",
@@ -92,11 +92,11 @@ pub const TASKS_LIST: BridgeOp = BridgeOp {
     ],
 };
 pub const TASK_READ: BridgeOp = BridgeOp {
-    operation: "work.task.read",
+    operation: "pm.task.read",
     arguments: &["task"],
 };
 pub const TASK_CREATE: BridgeOp = BridgeOp {
-    operation: "work.task.create",
+    operation: "pm.task.create",
     arguments: &[
         "id",
         "title",
@@ -109,7 +109,7 @@ pub const TASK_CREATE: BridgeOp = BridgeOp {
     ],
 };
 pub const TASK_UPDATE: BridgeOp = BridgeOp {
-    operation: "work.task.update",
+    operation: "pm.task.update",
     arguments: &[
         "task",
         // The task's own authored fields, sent as one patch because the
@@ -130,23 +130,23 @@ pub const TASK_UPDATE: BridgeOp = BridgeOp {
     ],
 };
 pub const TASK_ASSIGN: BridgeOp = BridgeOp {
-    operation: "work.task.assign",
+    operation: "pm.task.assign",
     arguments: &["task", "owner", "request"],
 };
 pub const TASK_RESPOND: BridgeOp = BridgeOp {
-    operation: "work.task.respond",
+    operation: "pm.task.respond",
     arguments: &["task", "response"],
 };
 pub const PLAN_READ: BridgeOp = BridgeOp {
-    operation: "work.plan.read",
+    operation: "pm.plan.read",
     arguments: &["limit"],
 };
 pub const RECORDS_LIST: BridgeOp = BridgeOp {
-    operation: "work.records.list",
+    operation: "pm.records.list",
     arguments: &["query", "category", "limit", "page"],
 };
 pub const RECORDS_READ: BridgeOp = BridgeOp {
-    operation: "work.records.read",
+    operation: "pm.records.read",
     arguments: &["record"],
 };
 
@@ -204,7 +204,7 @@ pub const WRITE_TIMEOUT: Duration = Duration::from_secs(3 * 60);
 pub const WORK_REFUSED: Refusal = Refusal {
     code: "desktop_refused",
     when: "no such task or record, or Project Work declined the command",
-    remedy: "check the id with `ds work task list`; read detail.detail for its message",
+    remedy: "check the id with `ds pm task list`; read detail.detail for its message",
 };
 pub const NOT_PERMITTED: Refusal = Refusal {
     code: "work_not_permitted",
@@ -214,7 +214,7 @@ pub const NOT_PERMITTED: Refusal = Refusal {
 pub const CONFLICT: Refusal = Refusal {
     code: "work_revision_conflict",
     when: "the plan moved while the command was in flight",
-    remedy: "re-read with `ds work task read` and issue the command again",
+    remedy: "re-read with `ds pm task read` and issue the command again",
 };
 pub const INVALID_DATE: Refusal = Refusal {
     code: "invalid_date",
@@ -268,7 +268,7 @@ pub fn classify_work_failure(failure: Failure) -> Failure {
             "the signed-in user may read this project's plan but not change it",
         )
         .remedy(NOT_PERMITTED.remedy)
-        .next("ds work plan");
+        .next("ds pm plan");
     }
     if CONFLICT_MARKERS
         .iter()
@@ -279,7 +279,7 @@ pub fn classify_work_failure(failure: Failure) -> Failure {
             "the plan moved while the command was in flight",
         )
         .remedy(CONFLICT.remedy)
-        .next("ds work task read --task <task-id>");
+        .next("ds pm task read --task <task-id>");
     }
     failure
 }
@@ -295,7 +295,7 @@ pub const TASK_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "The task, by the id `ds work task list` reports.",
+    summary: "The task, by the id `ds pm task list` reports.",
 };
 
 pub const LIMIT_ARG: Arg = Arg {
@@ -488,7 +488,7 @@ mod tests {
         assert_eq!(
             names.len(),
             DOMAIN.commands.len(),
-            "every ds work command sends exactly one operation, and every \
+            "every ds pm command sends exactly one operation, and every \
              declared operation belongs to a command"
         );
     }

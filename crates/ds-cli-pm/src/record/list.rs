@@ -1,4 +1,4 @@
-//! `ds work record list` — what has been said, sent, asked and decided.
+//! `ds pm record list` — what has been said, sent, asked and decided.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -30,15 +30,15 @@ const CATEGORY_ARG: Arg = Arg {
 };
 
 pub static COMMAND: Command = Command {
-    id: "work.record.list",
-    path: &["work", "record", "list"],
+    id: "pm.record.list",
+    path: &["pm", "record", "list"],
     contract: 1,
     summary: "List the project's records, newest first.",
     purpose: "\
 The correspondence layer of Project Work: instructions, requests for \
 information, submissions, reviews, decisions and field records, newest first, \
 with what each one is waiting on. Bodies are not returned here — one row is a \
-subject line, and `ds work record read` opens the one you chose.",
+subject line, and `ds pm record read` opens the one you chose.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
@@ -49,8 +49,8 @@ The project, the matched total, the page bounds, and rows of `id`, `category`, \
 `state`, `direction`, `subject`, `happenedAt`, `responseRequired`, \
 `responseDueDate` and the count of tasks each record touches.",
     examples: &[Example {
-        command: "ds work record list --category request_for_information --output json",
-        note: "Read .data.records[].id to open one with `ds work record read`.",
+        command: "ds pm record list --category request_for_information --output json",
+        note: "Read .data.records[].id to open one with `ds pm record read`.",
         runnable: false,
     }],
     refusals: &[
@@ -65,7 +65,7 @@ The project, the matched total, the page bounds, and rows of `id`, `category`, \
         crate::SIGNED_OUT,
         crate::INVALID_NUMBER,
     ],
-    reference: Some("docs/reference/work.md"),
+    reference: Some("docs/reference/pm.md"),
     search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,

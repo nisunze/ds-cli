@@ -1,4 +1,4 @@
-//! `ds work task read` — one work item, with everything hanging off it.
+//! `ds pm task read` — one work item, with everything hanging off it.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use crate::{DESCRIPTOR_ARG, TASK_ARG};
 
 pub static COMMAND: Command = Command {
-    id: "work.task.read",
-    path: &["work", "task", "read"],
+    id: "pm.task.read",
+    path: &["pm", "task", "read"],
     contract: 1,
     summary: "Read one work item with its dependencies and open residuals.",
     purpose: "\
@@ -27,7 +27,7 @@ any write — the update, assign and respond commands all act on what is here.",
 `episodes`, `records` referencing it, and a `*Total` for each bounded related \
 collection; plus the project's `permissions`, graph `revision`, and `link`.",
     examples: &[Example {
-        command: "ds work task read --task T-0007 --output json",
+        command: "ds pm task read --task T-0007 --output json",
         note: "`.data.task.assignmentOpen` tells you whether respond is available.",
         runnable: false,
     }],
@@ -42,7 +42,7 @@ collection; plus the project's `permissions`, graph `revision`, and `link`.",
         crate::UNREADABLE,
         crate::SIGNED_OUT,
     ],
-    reference: Some("docs/reference/work.md"),
+    reference: Some("docs/reference/pm.md"),
     search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,

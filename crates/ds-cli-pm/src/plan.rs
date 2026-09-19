@@ -1,4 +1,4 @@
-//! `ds work plan` — the project's plan in one screen.
+//! `ds pm plan` — the project's plan in one screen.
 //!
 //! The cheapest useful question a caller can ask about Project Work, and the
 //! one that answers "what should I look at": the Dashboard's own rollups, the
@@ -31,8 +31,8 @@ const LIMIT_ARG: Arg = Arg {
 };
 
 pub static COMMAND: Command = Command {
-    id: "work.plan",
-    path: &["work", "plan"],
+    id: "pm.plan",
+    path: &["pm", "plan"],
     contract: 1,
     summary: "The plan's rollups, phases, attention list and vocabulary.",
     purpose: "\
@@ -53,8 +53,8 @@ full `phaseTotal`/`attentionTotal`/`recentTotal` counts for those bounded lists,
 `permissions` for the signed-in user, and `vocabulary` — the delivery, review \
 and closeout states this project's engine accepts.",
     examples: &[Example {
-        command: "ds work plan --output json",
-        note: "Read .data.vocabulary before calling `ds work task update --delivery`.",
+        command: "ds pm plan --output json",
+        note: "Read .data.vocabulary before calling `ds pm task update --delivery`.",
         runnable: false,
     }],
     refusals: &[
@@ -69,7 +69,7 @@ and closeout states this project's engine accepts.",
         crate::SIGNED_OUT,
         crate::INVALID_NUMBER,
     ],
-    reference: Some("docs/reference/work.md"),
+    reference: Some("docs/reference/pm.md"),
     search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,

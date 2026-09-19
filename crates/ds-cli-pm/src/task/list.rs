@@ -1,4 +1,4 @@
-//! `ds work task list` — the project's plan as bounded rows.
+//! `ds pm task list` — the project's plan as bounded rows.
 //!
 //! The entry point when nothing else is known: `read`, `update`, `assign` and
 //! `respond` all need a task id, and until now only the application's own
@@ -30,7 +30,7 @@ const STATE_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Only this delivery state; `ds work plan` names the vocabulary.",
+    summary: "Only this delivery state; `ds pm plan` names the vocabulary.",
 };
 
 const ASSIGNEE_ARG: Arg = Arg {
@@ -64,14 +64,14 @@ const PLACEMENT_ARG: Arg = Arg {
 };
 
 pub static COMMAND: Command = Command {
-    id: "work.task.list",
-    path: &["work", "task", "list"],
+    id: "pm.task.list",
+    path: &["pm", "task", "list"],
     contract: 1,
     summary: "List the project's work items with state and who holds them.",
     purpose: "\
 Names every task and milestone in the active project's plan, in WBS order, \
 with its delivery state, progress and responsible person. This is where a \
-Project Work session starts: every other `ds work task` command needs an id \
+Project Work session starts: every other `ds pm task` command needs an id \
 from here. Reads the same canonical graph the Plan and Table surfaces render \
 and changes nothing.",
     chapter: Chapter::Project,
@@ -94,7 +94,7 @@ of `wbs`, `id`, `title`, `type`, `delivery`, `review`, `closeout`, `progress`, \
 `start`, `finish`, `responsible`, `discipline`, `priority`, `blockers` and \
 `assignmentOpen` — true while a request is waiting for an answer.",
     examples: &[Example {
-        command: "ds work task list --state blocked --output json",
+        command: "ds pm task list --state blocked --output json",
         note: "Read .data.tasks[].id to feed read, update, assign or respond.",
         runnable: false,
     }],
@@ -110,7 +110,7 @@ of `wbs`, `id`, `title`, `type`, `delivery`, `review`, `closeout`, `progress`, \
         crate::SIGNED_OUT,
         crate::INVALID_NUMBER,
     ],
-    reference: Some("docs/reference/work.md"),
+    reference: Some("docs/reference/pm.md"),
     search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,

@@ -1,4 +1,4 @@
-//! `ds work task assign` — ask people to take the work, or transfer it.
+//! `ds pm task assign` — ask people to take the work, or transfer it.
 //!
 //! Assignment in this product is a REQUEST, not a decree, and the CLI must not
 //! quietly flatten that. Asking several people is the normal case — whoever is
@@ -61,8 +61,8 @@ const TOO_MANY_ASSIGNEES: Refusal = Refusal {
 };
 
 pub static COMMAND: Command = Command {
-    id: "work.task.assign",
-    path: &["work", "task", "assign"],
+    id: "pm.task.assign",
+    path: &["pm", "task", "assign"],
     contract: 1,
     summary: "Ask people to take a work item, or transfer it outright.",
     purpose: "\
@@ -87,8 +87,8 @@ The project, the `taskId`, the `mode` that was applied — `request`, `owner` or
 `withdraw` — who is `responsible` afterwards, who is still being `requested`, \
 the `committedRevision`, and any `warnings`.",
     examples: &[Example {
-        command: "ds work task assign --task T-0007 --request pilot@example.com --request field@example.com --yes",
-        note: "Both are asked; the first to run `ds work task respond --response accept` holds it.",
+        command: "ds pm task assign --task T-0007 --request pilot@example.com --request field@example.com --yes",
+        note: "Both are asked; the first to run `ds pm task respond --response accept` holds it.",
         runnable: false,
     }],
     refusals: &[
@@ -108,7 +108,7 @@ the `committedRevision`, and any `warnings`.",
         INVALID_ASSIGNMENT,
         TOO_MANY_ASSIGNEES,
     ],
-    reference: Some("docs/reference/work.md"),
+    reference: Some("docs/reference/pm.md"),
     search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
@@ -130,7 +130,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             },
         )
         .remedy(INVALID_ASSIGNMENT.remedy)
-        .next("ds work task assign --help"));
+        .next("ds pm task assign --help"));
     }
 
     let mut arguments = Map::new();

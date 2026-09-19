@@ -1,4 +1,4 @@
-//! `ds work task` — one work item, and the list it lives in.
+//! `ds pm task` — one work item, and the list it lives in.
 //!
 //! The family is a read, then a decision, then one governed write:
 //!

@@ -94,7 +94,7 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     // Solar runs read the workspace the application holds open.
     ("ds-cli-solar", Layer::CorePending, 2),
     // Project Work tasks read the window's selection.
-    ("ds-cli-work", Layer::CorePending, 1),
+    ("ds-cli-pm", Layer::CorePending, 1),
 ];
 
 fn workspace_root() -> PathBuf {
@@ -279,7 +279,7 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     ("ds-cli-design", 26),
     ("ds-cli-dsgrid", 1),
     ("ds-cli-solar", 16),
-    ("ds-cli-work", 9),
+    ("ds-cli-pm", 9),
 ];
 
 /// Non-test source lines in this crate that declare a window command.
@@ -494,7 +494,7 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     ("dsgrid", 1),
     ("map", 39),
     ("solar", 16),
-    ("work", 9),
+    ("pm", 9),
 ];
 
 /// What the filter answers for the whole surface. Pinned beside the rows so a

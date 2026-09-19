@@ -1,4 +1,4 @@
-//! `ds work task respond` — answer an assignment request.
+//! `ds pm task respond` — answer an assignment request.
 //!
 //! The actor is the application's signed-in user and cannot be named as a
 //! flag: accepting on someone else's behalf is exactly what this command must
@@ -26,8 +26,8 @@ const RESPONSE_ARG: Arg = Arg {
 };
 
 pub static COMMAND: Command = Command {
-    id: "work.task.respond",
-    path: &["work", "task", "respond"],
+    id: "pm.task.respond",
+    path: &["pm", "task", "respond"],
     contract: 1,
     summary: "Accept or decline an assignment request naming you.",
     purpose: "\
@@ -45,7 +45,7 @@ because a justification is how declining stops being real.",
 The project, the `taskId`, the `response` applied, who is `responsible` \
 afterwards, who is still being `requested`, and the `committedRevision`.",
     examples: &[Example {
-        command: "ds work task respond --task T-0007 --response accept --yes",
+        command: "ds pm task respond --task T-0007 --response accept --yes",
         note: "Refused with desktop_refused when the request was withdrawn or somebody accepted first.",
         runnable: false,
     }],
@@ -62,7 +62,7 @@ afterwards, who is still being `requested`, and the `committedRevision`.",
         crate::CONFLICT,
         crate::CONFIRMATION_REQUIRED,
     ],
-    reference: Some("docs/reference/work.md"),
+    reference: Some("docs/reference/pm.md"),
     search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,

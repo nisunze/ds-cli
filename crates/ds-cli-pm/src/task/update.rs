@@ -1,4 +1,4 @@
-//! `ds work task update` — change one work item's fields, states or dates.
+//! `ds pm task update` — change one work item's fields, states or dates.
 //!
 //! Everything given in one invocation is one saved draft: the application
 //! folds the flags into the project commands they imply and commits them
@@ -33,7 +33,7 @@ const SCHEDULING_ARG: Arg = Arg::value(
 const DELIVERY_ARG: Arg = Arg::value(
     "delivery",
     "<state>",
-    "Delivery state; `ds work plan` names the vocabulary this project uses.",
+    "Delivery state; `ds pm plan` names the vocabulary this project uses.",
 );
 const REVIEW_ARG: Arg = Arg::value(
     "review",
@@ -50,8 +50,8 @@ const START_ARG: Arg = Arg::value("start", "<yyyy-mm-dd>", "Move the planned sta
 const FINISH_ARG: Arg = Arg::value("finish", "<yyyy-mm-dd>", "Move the planned finish.");
 
 pub static COMMAND: Command = Command {
-    id: "work.task.update",
-    path: &["work", "task", "update"],
+    id: "pm.task.update",
+    path: &["pm", "task", "update"],
     contract: 1,
     summary: "Change one work item's fields, states, progress or dates.",
     purpose: "\
@@ -85,7 +85,7 @@ are reported rather than swallowed.",
 The project, the `taskId`, `applied`, the `committedRevision`, the list of \
 `commands` the flags became, and any `warnings` the engine returned.",
     examples: &[Example {
-        command: "ds work task update --task T-0007 --delivery in_progress --progress 40 --yes",
+        command: "ds pm task update --task T-0007 --delivery in_progress --progress 40 --yes",
         note: "Delivery and progress land together or not at all.",
         runnable: false,
     }],
@@ -110,7 +110,7 @@ The project, the `taskId`, `applied`, the `committedRevision`, the list of \
             remedy: "name at least one change, e.g. --delivery in_progress",
         },
     ],
-    reference: Some("docs/reference/work.md"),
+    reference: Some("docs/reference/pm.md"),
     search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
@@ -171,7 +171,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "no field, state, progress or date flag was given",
         )
         .remedy("name at least one change, e.g. --delivery in_progress")
-        .next("ds work task update --help"));
+        .next("ds pm task update --help"));
     }
 
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;

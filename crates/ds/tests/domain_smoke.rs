@@ -7892,14 +7892,14 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
     // was found.
     assert_eq!(
         refusal(&[
-            "work", "task", "update", "--task", "T-1", "--output", "json", "--yes"
+            "pm", "task", "update", "--task", "T-1", "--output", "json", "--yes"
         ]),
         "nothing_to_update",
         "an update with no change must be refused before a project round trip"
     );
     assert_eq!(
         refusal(&[
-            "work",
+            "pm",
             "task",
             "create",
             "--title",
@@ -7915,7 +7915,7 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
     );
     assert_eq!(
         refusal(&[
-            "work", "task", "create", "--title", "Orphan", "--kind", "child", "--output", "json",
+            "pm", "task", "create", "--title", "Orphan", "--kind", "child", "--output", "json",
             "--yes",
         ]),
         "invalid_task_shape",
@@ -7923,7 +7923,7 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
     );
     assert_eq!(
         refusal(&[
-            "work",
+            "pm",
             "task",
             "update",
             "--task",
@@ -7939,14 +7939,14 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
     );
     assert_eq!(
         refusal(&[
-            "work", "task", "assign", "--task", "T-1", "--output", "json", "--yes"
+            "pm", "task", "assign", "--task", "T-1", "--output", "json", "--yes"
         ]),
         "invalid_assignment",
         "an assign that names nobody has no intent to send"
     );
     assert_eq!(
         refusal(&[
-            "work",
+            "pm",
             "task",
             "assign",
             "--task",
@@ -7964,7 +7964,7 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
     );
     assert_eq!(
         refusal(&[
-            "work",
+            "pm",
             "task",
             "assign",
             "--task",
@@ -7979,13 +7979,13 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
         "a person flag that is not an address must be refused locally"
     );
     assert_eq!(
-        refusal(&["work", "task", "list", "--limit", "500", "--output", "json"]),
+        refusal(&["pm", "task", "list", "--limit", "500", "--output", "json"]),
         "invalid_number",
         "a page larger than the application returns must be refused by the bound it names"
     );
     assert_eq!(
         refusal(&[
-            "work",
+            "pm",
             "task",
             "respond",
             "--task",
@@ -8007,9 +8007,9 @@ fn every_work_write_refuses_without_confirmation() {
     // `global_write`, so dispatch must stop it before the bridge opens —
     // including `respond`, which is the one a person is most likely to script.
     for args in [
-        vec!["work", "task", "create", "--title", "Stake the route"],
+        vec!["pm", "task", "create", "--title", "Stake the route"],
         vec![
-            "work",
+            "pm",
             "task",
             "update",
             "--task",
@@ -8018,7 +8018,7 @@ fn every_work_write_refuses_without_confirmation() {
             "in_progress",
         ],
         vec![
-            "work",
+            "pm",
             "task",
             "assign",
             "--task",
@@ -8027,7 +8027,7 @@ fn every_work_write_refuses_without_confirmation() {
             "pilot@example.com",
         ],
         vec![
-            "work",
+            "pm",
             "task",
             "respond",
             "--task",
@@ -8052,22 +8052,22 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
     // Same reasoning as the map domain: dispatch checks availability before
     // parsing, so a discovery gate would put `--desktop-descriptor` and every
     // input refusal above out of reach on a machine with no application.
-    let index = ok(&["capabilities", "work", "--output", "json"]);
+    let index = ok(&["capabilities", "pm", "--output", "json"]);
     let commands = index["commands"].as_array().expect("commands");
     let actual: BTreeSet<&str> = commands
         .iter()
         .map(|command| command["id"].as_str().expect("command id"))
         .collect();
     let expected: BTreeSet<&str> = [
-        "work.plan",
-        "work.task.list",
-        "work.task.read",
-        "work.task.create",
-        "work.task.update",
-        "work.task.assign",
-        "work.task.respond",
-        "work.record.list",
-        "work.record.read",
+        "pm.plan",
+        "pm.task.list",
+        "pm.task.read",
+        "pm.task.create",
+        "pm.task.update",
+        "pm.task.assign",
+        "pm.task.respond",
+        "pm.record.list",
+        "pm.record.read",
     ]
     .into_iter()
     .collect();
@@ -8093,7 +8093,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         let id = command["id"].as_str().expect("id");
         let write = matches!(
             id,
-            "work.task.create" | "work.task.update" | "work.task.assign" | "work.task.respond"
+            "pm.task.create" | "pm.task.update" | "pm.task.assign" | "pm.task.respond"
         );
         assert_eq!(
             effect,
@@ -8322,10 +8322,10 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
         .display()
         .to_string();
     for args in [
-        vec!["work", "plan"],
-        vec!["work", "task", "list"],
+        vec!["pm", "plan"],
+        vec!["pm", "task", "list"],
         vec![
-            "work",
+            "pm",
             "task",
             "list",
             "--state",
@@ -8339,9 +8339,9 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
             "--page",
             "1",
         ],
-        vec!["work", "task", "read", "--task", "T-1"],
+        vec!["pm", "task", "read", "--task", "T-1"],
         vec![
-            "work",
+            "pm",
             "task",
             "create",
             "--title",
@@ -8353,7 +8353,7 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
             "--yes",
         ],
         vec![
-            "work",
+            "pm",
             "task",
             "update",
             "--task",
@@ -8371,7 +8371,7 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
             "--yes",
         ],
         vec![
-            "work",
+            "pm",
             "task",
             "assign",
             "--task",
@@ -8381,7 +8381,7 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
             "--yes",
         ],
         vec![
-            "work",
+            "pm",
             "task",
             "assign",
             "--task",
@@ -8390,7 +8390,7 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
             "--yes",
         ],
         vec![
-            "work",
+            "pm",
             "task",
             "respond",
             "--task",
@@ -8399,8 +8399,8 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
             "accept",
             "--yes",
         ],
-        vec!["work", "record", "list", "--category", "review"],
-        vec!["work", "record", "read", "--record", "R-1"],
+        vec!["pm", "record", "list", "--category", "review"],
+        vec!["pm", "record", "read", "--record", "R-1"],
     ] {
         let mut argv = args.clone();
         argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);

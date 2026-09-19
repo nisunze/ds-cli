@@ -1,5 +1,5 @@
 [package]
-name = "ds-cli-work"
+name = "ds-cli-pm"
 description = "The `ds work` domain: Project Work — the plan, its tasks, the assignment loop and the record of what happened."
 version.workspace = true
 edition.workspace = true

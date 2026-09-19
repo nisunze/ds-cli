@@ -1022,7 +1022,7 @@ fn every_work_command_has_one_closed_operation_owner() {
         !allowlist.is_empty(),
         "the desktop CLI operation allowlist is absent"
     );
-    for operation in ds_cli_work::BRIDGE_OPS {
+    for operation in ds_cli_pm::BRIDGE_OPS {
         assert!(
             seen.insert(operation.operation),
             "`{}` is declared twice by ds work; one semantic operation has one owner",
@@ -1052,13 +1052,13 @@ fn every_work_command_has_one_closed_operation_owner() {
             let top = parts.next().expect("declared argument is non-empty");
             assert!(
                 contract.contains(&format!("'{top}'")),
-                "ds work sends `{argument}` to `{}`, but its typed adapter does not accept `{top}`",
+                "ds pm sends `{argument}` to `{}`, but its typed adapter does not accept `{top}`",
                 operation.operation
             );
             for nested in parts {
                 assert!(
                     app.work.contains(&format!("'{nested}'")),
-                    "ds work sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
+                    "ds pm sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
                     operation.operation
                 );
             }
@@ -1982,23 +1982,23 @@ fn work_bounds_and_refusals_match_the_desktop_owner() {
     assert!(
         app.work.contains(&format!(
             "const MAX_PAGE_SIZE = {}",
-            ds_cli_work::MAX_PAGE_SIZE
+            ds_cli_pm::MAX_PAGE_SIZE
         )),
-        "the desktop must bound a Project Work page exactly as ds work does"
+        "the desktop must bound a Project Work page exactly as ds pm does"
     );
     assert!(
         app.work.contains(&format!(
             "const MAX_RELATED_ROWS = {}",
-            ds_cli_work::MAX_RELATED_ROWS
+            ds_cli_pm::MAX_RELATED_ROWS
         )),
-        "the desktop must bound Project Work detail collections exactly as ds work documents"
+        "the desktop must bound Project Work detail collections exactly as ds pm documents"
     );
     // The assignee bound is the engine's, published in the graph's field
-    // model; ds work carries a hand copy so an over-long list is refused
+    // model; ds pm carries a hand copy so an over-long list is refused
     // locally, and the adapter must fall back to the same number.
     assert!(
         app.work
-            .contains(&format!("maxAssignees ?? {}", ds_cli_work::MAX_ASSIGNEES)),
+            .contains(&format!("maxAssignees ?? {}", ds_cli_pm::MAX_ASSIGNEES)),
         "the desktop must fall back to the same assignee bound as ds work"
     );
 
@@ -2008,9 +2008,9 @@ fn work_bounds_and_refusals_match_the_desktop_owner() {
     // message, or the command reports `desktop_refused` for something that has
     // a name, a remedy and a different next step.
     for (condition, markers) in [
-        ("signed out", ds_cli_work::SIGNED_OUT_MARKERS),
-        ("not permitted", ds_cli_work::NOT_PERMITTED_MARKERS),
-        ("revision conflict", ds_cli_work::CONFLICT_MARKERS),
+        ("signed out", ds_cli_pm::SIGNED_OUT_MARKERS),
+        ("not permitted", ds_cli_pm::NOT_PERMITTED_MARKERS),
+        ("revision conflict", ds_cli_pm::CONFLICT_MARKERS),
     ] {
         assert!(
             markers.iter().any(|marker| lowered.contains(marker)),
@@ -2034,7 +2034,7 @@ fn project_work_gets_no_messaging_door() {
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
     );
-    for forbidden in ["messaging.send", "messages.send", "work.message"] {
+    for forbidden in ["messaging.send", "messages.send", "pm.message"] {
         assert!(
             !allowlist.contains(forbidden),
             "the desktop allowlist admits `{forbidden}`; the CLI has no messaging door"
@@ -2044,7 +2044,7 @@ fn project_work_gets_no_messaging_door() {
             "the frontend dispatcher routes `{forbidden}`; the CLI has no messaging door"
         );
     }
-    for operation in ds_cli_work::BRIDGE_OPS {
+    for operation in ds_cli_pm::BRIDGE_OPS {
         assert!(
             !operation.operation.contains("message"),
             "`{}` reads as a messaging operation",

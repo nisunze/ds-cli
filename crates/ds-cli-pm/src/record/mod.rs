@@ -1,4 +1,4 @@
-//! `ds work record` — the project's record of what happened.
+//! `ds pm record` — the project's record of what happened.
 //!
 //! A record is the correspondence layer of Project Work: instructions,
 //! requests for information, submissions, reviews, decisions, field records.

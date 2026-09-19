@@ -1,4 +1,4 @@
-//! `ds work task create` — add one work item to the plan.
+//! `ds pm task create` — add one work item to the plan.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -96,8 +96,8 @@ const INVALID_TASK_SHAPE: Refusal = Refusal {
 };
 
 pub static COMMAND: Command = Command {
-    id: "work.task.create",
-    path: &["work", "task", "create"],
+    id: "pm.task.create",
+    path: &["pm", "task", "create"],
     contract: 1,
     summary: "Add one task or milestone to the project's plan.",
     purpose: "\
@@ -125,7 +125,7 @@ The project, the minted `taskId`, the `committedRevision` the plan moved to, \
 any `warnings` the engine returned, and `link` — the deep link that opens the \
 new item in the app.",
     examples: &[Example {
-        command: "ds work task create --title \"Stake MV route\" --kind parent --start 2026-09-01 --finish 2026-09-12 --yes",
+        command: "ds pm task create --title \"Stake MV route\" --kind parent --start 2026-09-01 --finish 2026-09-12 --yes",
         note: "Without --yes dispatch refuses before the bridge is opened.",
         runnable: false,
     }],
@@ -145,7 +145,7 @@ new item in the app.",
         INVALID_TASK_SHAPE,
         crate::CONFIRMATION_REQUIRED,
     ],
-    reference: Some("docs/reference/work.md"),
+    reference: Some("docs/reference/pm.md"),
     search: &[],
     requires: Requires::Window,
     availability: crate::paired_availability,
@@ -165,7 +165,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "the task kind, parent and schedule flags describe conflicting shapes",
         )
         .remedy(INVALID_TASK_SHAPE.remedy)
-        .next("ds work task create --help"));
+        .next("ds pm task create --help"));
     }
 
     let mut arguments = Map::new();

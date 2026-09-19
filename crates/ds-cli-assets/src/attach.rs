@@ -21,7 +21,7 @@ use crate::{ASSET_ARG, DESCRIPTOR_ARG};
 const TASK_ARG: Arg = Arg::value(
     "task",
     "<task-id>",
-    "The Project Work task, by the id `ds work task list` reports.",
+    "The Project Work task, by the id `ds pm task list` reports.",
 );
 
 const OBJECT_TYPE_ARG: Arg = Arg::value(
@@ -64,7 +64,7 @@ slice, and so is an offline device: the link is a ds-brain write.",
     output: "`asset` — the row with its `links` after the change.",
     examples: &[Example {
         command: "ds assets attach --asset a_7kq3nr2v0b1c --task t_4812 --yes",
-        note: "The task's own `ds work task read` then lists the asset among its attachments.",
+        note: "The task's own `ds pm task read` then lists the asset among its attachments.",
         runnable: false,
     }],
     refusals: &[

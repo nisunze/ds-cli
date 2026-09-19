@@ -3,7 +3,7 @@
 //!
 //! One invocation is one audited change. Every flag given travels as a single
 //! patch, and a flag left out is a field left alone rather than a field
-//! cleared — the same shape `ds work task update` has, for the same reason: a
+//! cleared — the same shape `ds pm task update` has, for the same reason: a
 //! caller changing a status must not have to restate a classification it does
 //! not know.
 //!

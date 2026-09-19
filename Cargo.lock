@@ -826,6 +826,7 @@ dependencies = [
  "ds-cli-map",
  "ds-cli-mcp",
  "ds-cli-pls",
+ "ds-cli-pm",
  "ds-cli-report",
  "ds-cli-server",
  "ds-cli-shell",
@@ -835,7 +836,6 @@ dependencies = [
  "ds-cli-style",
  "ds-cli-survey",
  "ds-cli-tile",
- "ds-cli-work",
  "ds-cli-workstation",
  "ds-client-core",
  "ds-command-kernel",
@@ -1071,6 +1071,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-cli-pm"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-cli-desktop",
+ "serde_json",
+]
+
+[[package]]
 name = "ds-cli-report"
 version = "0.1.0"
 dependencies = [
@@ -1199,15 +1208,6 @@ dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-client-core",
- "serde_json",
-]
-
-[[package]]
-name = "ds-cli-work"
-version = "0.1.0"
-dependencies = [
- "ds-cli-contract",
- "ds-cli-desktop",
  "serde_json",
 ]
 
