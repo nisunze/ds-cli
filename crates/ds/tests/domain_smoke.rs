@@ -11907,7 +11907,11 @@ fn an_outsiders_word_for_an_operation_finds_it_first() {
     let next = absent["next"].as_str().unwrap_or_default();
     assert!(
         next.contains("ds capabilities") && next.contains("feedback"),
-        "an empty search must still route somewhere; it said `{next}`"/// `ds design pinned preview` answers what a read-only pinned working set
+        "an empty search must still route somewhere; it said `{next}`"
+    );
+}
+
+/// `ds design pinned preview` answers what a read-only pinned working set
 /// costs, on a Server, with no browser in the process.
 ///
 /// The three complaints it exists for are three NUMBERS, so they are asserted

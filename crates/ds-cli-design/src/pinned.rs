@@ -198,6 +198,7 @@ one bounded row per merged class. Read failures are listed, never fatal.",
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
     requires: Requires::Server,
+    search: &["context", "neighbouring", "reference", "cost", "rooms"],
     availability: ds_cli_auth::native_availability,
 };
 

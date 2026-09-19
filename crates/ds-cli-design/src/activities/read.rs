@@ -95,6 +95,7 @@ it shows.",
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
     requires: Requires::Server,
+    search: &["audit", "licence", "license", "unlicensed", "usage", "who"],
     availability: ds_cli_auth::native_availability,
 };
 

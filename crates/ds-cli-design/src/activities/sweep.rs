@@ -115,6 +115,14 @@ the read gave. `not_claimed` states what a capture can never show.",
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
     requires: Requires::Server,
+    search: &[
+        "audit",
+        "licence",
+        "license",
+        "unlicensed",
+        "inventory",
+        "scan",
+    ],
     availability: ds_cli_auth::native_availability,
 };
 
