@@ -141,7 +141,6 @@ pub const NOT_CLAIMED: &[&str] = &[
     "No device or installation attribution: status rows carry none. Credentials used by someone else read as their owner. Device evidence lives in Desktop installations and `ds auth device list`.",
     "Nothing that never stamps a status row: reads, downloads and exports are invisible here.",
     "Only projects this account is a member of; a project that refused the read is recorded as a refusal, not as an absence.",
-    "Rosters are optional input; without them an actor outside a project cannot be flagged.",
 ];
 
 fn kernel_refused(action: &str, detail: String) -> Failure {

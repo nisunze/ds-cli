@@ -297,9 +297,6 @@ Read this before you read anything the commands print:
 - **Only projects this account is a member of.** ds-brain fences `/report` by
   membership. A project that refuses the read is recorded as a refusal, never
   as an absence.
-- **Rosters are optional input.** Without one, an actor outside a project
-  cannot be flagged as outside it.
-
 Every reply carries that list as `not_claimed`, because the reader who most
 needs it is the one who did not go looking for it.
 
@@ -379,10 +376,8 @@ avoid. When nothing admissible is left at all the refusal is
 `snapshot_invalid` naming each one, not `store_empty`, because "sweep again"
 is the wrong remedy for a file that is already there.
 
-The answer's `anomalies` are honest ones only: an actor the roster does not
-carry (`non_member_actor`, only when a roster was supplied), an actor with no
-name at all (`unknown_actor`), and a capture that is now old
-(`stale_capture`). Nothing here accuses anyone of anything; it reports what two
+The answer's `anomalies` are honest ones only: an actor with no name at all
+(`unknown_actor`), and a capture that is now old (`stale_capture`). Nothing here accuses anyone of anything; it reports what two
 photographs said.
 
 ## Local transformer rooms for background work
