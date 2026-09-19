@@ -241,6 +241,19 @@ pub enum DeviceAuthorizationStatus {
     Consumed,
 }
 
+impl DeviceAuthorizationStatus {
+    /// The wire token, as `deviceauth` records it.
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Approved => "approved",
+            Self::Denied => "denied",
+            Self::Expired => "expired",
+            Self::Consumed => "consumed",
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeviceBeginResult {
@@ -1428,6 +1441,66 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::feedback::run(self.profile, transport, self.authority(), command)
     }
+    /// The projectless governance doors, on a device session.
+    ///
+    /// Governance is server-side: ds-brain's `Authentication` middleware admits
+    /// a device credential on `/api/v1/governance` and `/sre/*` exactly as it
+    /// admits a restored user, and `platform.admin`/`app.admin` on the
+    /// principal decides the answer either way. Until these existed, a host
+    /// linked by device could read its projects but not the estate — `ds
+    /// install list` refused `headless_signed_out` on a box whose `ds auth
+    /// status` said signed in. Each delegates to the same `run` the native
+    /// [`crate::Client`] twin uses; only the credential differs.
+    pub fn installs<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        command: &crate::installs::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_active(now)?;
+        crate::installs::run(self.profile, transport, self.authority(), command)
+    }
+    pub fn sre<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        command: &crate::sre::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_active(now)?;
+        crate::sre::run(self.profile, transport, self.authority(), command)
+    }
+    pub fn admin_bounds<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        command: &crate::admin_bounds::Command,
+        now: u64,
+    ) -> Result<crate::admin_bounds::Answer, ClientError> {
+        command.validate()?;
+        self.ensure_active(now)?;
+        crate::admin_bounds::run(self.profile, transport, self.authority(), command)
+    }
+    pub fn grid_catalog<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        command: &crate::grid_catalog::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_active(now)?;
+        crate::grid_catalog::run(self.profile, transport, self.authority(), command)
+    }
+    pub fn global_tiles<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        command: &crate::global_tiles::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_active(now)?;
+        crate::global_tiles::run(self.profile, transport, self.authority(), command)
+    }
     pub fn shared_assets<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
@@ -1833,7 +1906,7 @@ pub fn secret_json<T: Serialize>(value: &T) -> Result<SecretRequestBody, DeviceE
 fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
-fn bounded(value: &str, max: usize) -> Result<(), DeviceError> {
+pub(crate) fn bounded(value: &str, max: usize) -> Result<(), DeviceError> {
     if value.is_empty()
         || value.len() > max
         || value.trim() != value
@@ -1901,7 +1974,7 @@ fn exact_prefixed_digest(value: &str) -> Result<(), ()> {
         Err(())
     }
 }
-fn digest_value(value: &str) -> Result<(), DeviceError> {
+pub(crate) fn digest_value(value: &str) -> Result<(), DeviceError> {
     exact_prefixed_digest(value).map_err(|_| DeviceError::Response)
 }
 fn validate_begin_result(
@@ -1946,7 +2019,7 @@ fn decode_private_key(value: &mut SecretString) -> Result<DevicePrivateKey, Devi
     array.zeroize();
     Ok(key)
 }
-fn validate_binding(value: &DeviceBinding) -> Result<(), DeviceError> {
+pub(crate) fn validate_binding(value: &DeviceBinding) -> Result<(), DeviceError> {
     if !matches!(value.lane.as_str(), "stable" | "canary")
         || value.audience.len() != 64
         || !value

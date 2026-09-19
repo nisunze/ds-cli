@@ -103,6 +103,37 @@ pub enum SurveyEntryCreateServiceCode {
     Failed,
 }
 
+/// Closed refusal code of `POST /api/v1/auth/device/approve`.
+///
+/// The route sits behind ds-brain's `FirebaseAuthentication` boundary and
+/// answers with `deviceauth` codes (`internal/deviceauth/errors.go`), each of
+/// which names a different next move: a device credential can never approve
+/// a sibling, an unknown or expired request must be begun again, a decided one
+/// must be re-read, a fingerprint mismatch must not be approved at all. The
+/// status alone cannot tell the two `409`s apart, and folding the `403` into a
+/// generic authentication refusal would hide the one fact a headless operator
+/// needs — that the CREDENTIAL kind, not the account, is what was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceApprovalServiceCode {
+    /// `403 DESKTOP_PRINCIPAL_REQUIRED`: the bearer was not a Firebase user
+    /// token. A device credential presented itself, or no principal did.
+    DesktopPrincipalRequired,
+    /// `404 DEVICE_AUTHORIZATION_NOT_FOUND`: no request by that id on this lane.
+    AuthorizationNotFound,
+    /// `409 DEVICE_FINGERPRINT_MISMATCH`: the fingerprint sent is not the one
+    /// the request was begun with. Never approve; compare on both devices.
+    FingerprintMismatch,
+    /// `409 DEVICE_APPROVAL_CONFLICT`: already decided; re-read, never retry.
+    ApprovalConflict,
+    /// `410 DEVICE_AUTHORIZATION_EXPIRED`: deliberately expired; begin again.
+    AuthorizationExpired,
+    /// `400 DEVICE_REQUEST_INVALID`: the strict decoder or the decision token.
+    RequestInvalid,
+    /// `503 DEVICE_AUTH_DISABLED`: this deployment carries no device
+    /// authorization environment. No retry against this revision can succeed.
+    AuthorityUnavailable,
+}
+
 /// One governed route's own refusal, bounded and sanitized at this boundary.
 ///
 /// The crate's standing rule is that backend error text stays behind the
@@ -218,6 +249,7 @@ pub struct ClientError {
     project_report_service_code: Option<ProjectReportServiceCode>,
     survey_form_read_service_code: Option<SurveyFormReadServiceCode>,
     survey_query_service_code: Option<SurveyQueryServiceCode>,
+    device_approval_service_code: Option<DeviceApprovalServiceCode>,
 }
 
 impl ClientError {
@@ -232,6 +264,7 @@ impl ClientError {
             project_report_service_code: None,
             survey_form_read_service_code: None,
             survey_query_service_code: None,
+            device_approval_service_code: None,
         }
     }
 
@@ -250,6 +283,7 @@ impl ClientError {
             project_report_service_code: Some(code),
             survey_form_read_service_code: None,
             survey_query_service_code: None,
+            device_approval_service_code: None,
         }
     }
 
@@ -268,6 +302,7 @@ impl ClientError {
             project_report_service_code: None,
             survey_form_read_service_code: None,
             survey_query_service_code: None,
+            device_approval_service_code: None,
         }
     }
 
@@ -286,6 +321,7 @@ impl ClientError {
             project_report_service_code: None,
             survey_form_read_service_code: None,
             survey_query_service_code: None,
+            device_approval_service_code: None,
         }
     }
 
@@ -304,6 +340,7 @@ impl ClientError {
             project_report_service_code: None,
             survey_form_read_service_code: None,
             survey_query_service_code: None,
+            device_approval_service_code: None,
         }
     }
 
@@ -322,6 +359,7 @@ impl ClientError {
             project_report_service_code: None,
             survey_form_read_service_code: Some(code),
             survey_query_service_code: None,
+            device_approval_service_code: None,
         }
     }
 
@@ -342,6 +380,7 @@ impl ClientError {
             project_report_service_code: None,
             survey_form_read_service_code: None,
             survey_query_service_code: None,
+            device_approval_service_code: None,
         }
     }
 
@@ -357,6 +396,21 @@ impl ClientError {
 
     pub const fn survey_query_service_code(&self) -> Option<SurveyQueryServiceCode> {
         self.survey_query_service_code
+    }
+
+    pub(crate) const fn with_device_approval_service_code(
+        kind: ErrorKind,
+        message: &'static str,
+        code: DeviceApprovalServiceCode,
+    ) -> Self {
+        let mut error = Self::new(kind, message);
+        error.device_approval_service_code = Some(code);
+        error
+    }
+
+    /// The device-approval route's own refusal, when it named one.
+    pub const fn device_approval_service_code(&self) -> Option<DeviceApprovalServiceCode> {
+        self.device_approval_service_code
     }
 
     pub const fn kind(&self) -> ErrorKind {

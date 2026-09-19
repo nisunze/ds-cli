@@ -93,7 +93,7 @@ pub(crate) fn list_projects<T: AuthorizedTransport>(
             return Err(classify_project_error(response.status));
         }
         let payload: ProjectPayload = decode(response, PROJECT_RESPONSE_LIMIT)?;
-        buckets.push((status, payload.rows()?));
+        buckets.push((status, payload.bucket()?));
     }
     ProjectDirectory::from_buckets(buckets)
 }

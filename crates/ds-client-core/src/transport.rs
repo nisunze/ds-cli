@@ -1199,6 +1199,74 @@ impl ProjectManagementCall<'_> {
     }
 }
 
+/// `POST /api/v1/auth/device/approve` — decide one headless device
+/// authorization under a Firebase USER principal.
+///
+/// Hard-coded like `/api/v1/pm` and `/api/v1/governance` beside it, and for
+/// the same reason: the profile supplies the origin and the credentials, not
+/// the route, and a path in the profile would bump `CLIENT_PROFILE_SCHEMA`.
+/// ds-brain's `FirebaseAuthentication` middleware admits only a Firebase user
+/// id token here and refuses a device credential with
+/// `DESKTOP_PRINCIPAL_REQUIRED`; the bearer this call carries is the restored
+/// session's id token, the same principal a Desktop window holds. The deadline
+/// and cap are the registry row's for `domains.auth.device.approve`.
+pub struct DeviceApproveCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl DeviceApproveCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        "/api/v1/auth/device/approve".into()
+    }
+    pub fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        DEVICE_APPROVE_RESPONSE_LIMIT
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        30
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(
+            serde_json::to_vec(&self.payload).expect("closed device approval request"),
+        )
+    }
+}
+
+/// The registry's cap for `domains.auth.device.approve`; a receipt is a few
+/// hundred bytes.
+pub const DEVICE_APPROVE_RESPONSE_LIMIT: usize = 1024 * 1024;
+
 pub struct DesignVersionsCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: serde_json::Value,
@@ -2514,6 +2582,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn device_approve(
+        &mut self,
+        _call: DeviceApproveCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn design_attachments(
         &mut self,
         _call: DesignAttachmentsCall<'_>,
@@ -2779,6 +2853,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn device_approve(
+        &mut self,
+        _call: DeviceApproveCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn design_attachments(
         &mut self,
         _call: DesignAttachmentsCall<'_>,
@@ -3024,6 +3104,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: ProjectManagementCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::project_management(self, call)
+    }
+    fn device_approve(
+        &mut self,
+        call: DeviceApproveCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::device_approve(self, call)
     }
     fn design_attachments(
         &mut self,

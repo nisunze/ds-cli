@@ -247,6 +247,8 @@ struct TransportState {
     design_versions: VecDeque<TransportResponse>,
     design_attachments: VecDeque<TransportResponse>,
     sync_gateway: VecDeque<TransportResponse>,
+    governance: VecDeque<TransportResponse>,
+    device_approve: VecDeque<TransportResponse>,
     calls: Vec<String>,
     correlated_project_requests: usize,
     correlated_transformer_requests: usize,
@@ -418,6 +420,24 @@ impl FixtureTransport {
             .push_back(TransportResponse::new(status, body));
     }
 
+    fn push_device_approve(&self, status: u16, body: &[u8]) {
+        self.0
+            .lock()
+            .unwrap()
+            .device_approve
+            .push_back(TransportResponse::new(status, body));
+    }
+
+    /// One queue for the five projectless governance doors: a test pushes
+    /// answers in the order it will knock.
+    fn push_governance(&self, status: u16, body: &[u8]) {
+        self.0
+            .lock()
+            .unwrap()
+            .governance
+            .push_back(TransportResponse::new(status, body));
+    }
+
     fn calls(&self) -> Vec<String> {
         self.0.lock().unwrap().calls.clone()
     }
@@ -516,6 +536,91 @@ impl Transport for FixtureTransport {
         assert!(call.url().starts_with("https://storage.googleapis.com/"));
         assert_eq!(call.response_limit(), 5);
         Ok(self.0.lock().unwrap().grid_bytes.pop_front().unwrap())
+    }
+
+    fn device_approve(
+        &mut self,
+        call: ds_client_core::DeviceApproveCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/auth/device/approve");
+        assert_eq!(call.method(), "POST");
+        assert_eq!(call.content_type(), "application/json");
+        assert_eq!(call.timeout_seconds(), 30);
+        assert_eq!(call.response_limit(), 1024 * 1024);
+        assert_eq!(
+            call.correlation_headers(),
+            ["X-Request-Id", "X-DS-Action-Id"]
+        );
+        let mut state = self.0.lock().unwrap();
+        state.calls.push(format!(
+            "device_approve origin={} api_key={} user_id_token={} device={} email={} body={}",
+            call.gateway_origin(),
+            !call.gateway_api_key().is_empty(),
+            call.bearer_token().starts_with("e30."),
+            call.device_id().is_some(),
+            call.canonical_email(),
+            String::from_utf8_lossy(call.body().as_bytes()),
+        ));
+        Ok(state
+            .device_approve
+            .pop_front()
+            .expect("device approve answer"))
+    }
+    fn installs(
+        &mut self,
+        call: ds_client_core::InstallsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/governance");
+        assert_eq!(call.method(), "POST");
+        let mut state = self.0.lock().unwrap();
+        state.calls.push(format!(
+            "installs body={}",
+            String::from_utf8_lossy(call.body().as_bytes())
+        ));
+        Ok(state.governance.pop_front().expect("governance answer"))
+    }
+    fn sre_overview(
+        &mut self,
+        call: ds_client_core::SreOverviewCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/sre/overview");
+        assert_eq!(call.method(), "GET");
+        let mut state = self.0.lock().unwrap();
+        state.calls.push("sre_overview".to_owned());
+        Ok(state.governance.pop_front().expect("governance answer"))
+    }
+    fn admin_bounds(
+        &mut self,
+        call: ds_client_core::AdminBoundsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/admin/rwanda");
+        let mut state = self.0.lock().unwrap();
+        state.calls.push(format!("admin_bounds url={}", call.url()));
+        Ok(state.governance.pop_front().expect("governance answer"))
+    }
+    fn grid_catalog(
+        &mut self,
+        call: ds_client_core::GridCatalogCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/grid/catalog");
+        let mut state = self.0.lock().unwrap();
+        state.calls.push(format!(
+            "grid_catalog body={}",
+            String::from_utf8_lossy(call.body().as_bytes())
+        ));
+        Ok(state.governance.pop_front().expect("governance answer"))
+    }
+    fn global_tiles(
+        &mut self,
+        call: ds_client_core::GlobalTilesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/tiles");
+        let mut state = self.0.lock().unwrap();
+        state.calls.push(format!(
+            "global_tiles body={}",
+            String::from_utf8_lossy(call.body().as_bytes())
+        ));
+        Ok(state.governance.pop_front().expect("governance answer"))
     }
 
     fn sync_gateway(
@@ -1841,6 +1946,199 @@ fn project_directory_uses_three_exact_queries_in_live_contract_order() {
     assert_eq!(transport.correlated_project_requests(), 3);
     assert!(!calls.join("\n").contains("public-gateway-key"));
     assert!(!calls.join("\n").contains("e30."));
+}
+
+/// `POST /auth/device/approve` needs a Firebase USER principal and nothing
+/// else — the restored headless session is one. The receipt goes out only
+/// after it was verified against this request and this principal, in the
+/// shape the Desktop hands its callers; and a device credential's refusal
+/// crosses as its own typed code, because a device may not admit a sibling.
+#[test]
+fn device_approval_runs_under_the_restored_user_and_types_the_desktop_only_refusal() {
+    use ds_client_core::{
+        DeviceApprovalDecision, DeviceApprovalRequest, DeviceApprovalServiceCode,
+    };
+    const FINGERPRINT: &str =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    fn receipt(status: &str, preview: bool, decision: Option<&str>) -> Vec<u8> {
+        let mut data = json!({
+            "request": {
+                "request_id": "req_01",
+                "status": status,
+                "device": {"name": "Workstation", "platform": "linux", "fingerprint": FINGERPRINT},
+                "user_code": "ABCD-EFGH",
+                "scopes": ["ds.api"],
+                "binding": {
+                    "lane": "stable",
+                    "audience": "d".repeat(64),
+                    "profile_digest": format!("sha256:{}", "a".repeat(64)),
+                    "catalog_digest": format!("sha256:{}", "b".repeat(64)),
+                },
+                "created_at": "2026-09-19T08:00:00Z",
+                "expires_at": "2026-09-19T08:10:00Z",
+                "renewable": true
+            },
+            "preview": preview,
+            "principal": {"uid": "uid-1", "email": "user@example.com"}
+        });
+        if let Some(value) = decision {
+            data["decision"] = json!({"value": value, "decided_at": "2026-09-19T08:01:00Z"});
+        }
+        serde_json::to_vec(&json!({
+            "success": true,
+            "message": "Device approval preview",
+            "data": data,
+            "timestamp": "2026-09-19T08:01:00Z",
+            "service": "data-solutions-backend",
+            "version": "1.0.0"
+        }))
+        .unwrap()
+    }
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_device_approve(200, &receipt("pending", true, None));
+    transport.push_device_approve(200, &receipt("approved", false, Some("approve")));
+    transport.push_device_approve(
+        403,
+        &serde_json::to_vec(&json!({
+            "success": false,
+            "error": {
+                "code": "DESKTOP_PRINCIPAL_REQUIRED",
+                "message": "An authenticated Desktop principal is required",
+                "details": {"remedy": "approve from a signed-in Desktop session; a device credential cannot approve its own authorization"},
+                "timestamp": 1
+            }
+        }))
+        .unwrap(),
+    );
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+
+    let preview = client
+        .device_approve(
+            &DeviceApprovalRequest::new(
+                "req_01",
+                FINGERPRINT,
+                DeviceApprovalDecision::Approve,
+                false,
+            )
+            .unwrap(),
+            NOW + 1,
+        )
+        .unwrap();
+    assert!(preview.preview());
+    let committed = client
+        .device_approve(
+            &DeviceApprovalRequest::new(
+                "req_01",
+                FINGERPRINT,
+                DeviceApprovalDecision::Approve,
+                true,
+            )
+            .unwrap(),
+            NOW + 2,
+        )
+        .unwrap();
+    // The Desktop's camelCase receipt, which the CLI's validator already reads.
+    let public = committed.public_value();
+    assert_eq!(public["requestId"], "req_01");
+    assert_eq!(public["preview"], false);
+    assert_eq!(public["status"], "approved");
+    assert_eq!(public["renewable"], true);
+    assert_eq!(public["scopes"], json!(["ds.api"]));
+    assert_eq!(public["device"]["fingerprint"], FINGERPRINT);
+    assert_eq!(public["binding"]["lane"], "stable");
+    assert_eq!(public["decision"]["value"], "approve");
+    assert!(public.get("principal").is_none());
+
+    let refused = client
+        .device_approve(
+            &DeviceApprovalRequest::new(
+                "req_01",
+                FINGERPRINT,
+                DeviceApprovalDecision::Approve,
+                true,
+            )
+            .unwrap(),
+            NOW + 3,
+        )
+        .unwrap_err();
+    assert_eq!(
+        refused.device_approval_service_code(),
+        Some(DeviceApprovalServiceCode::DesktopPrincipalRequired)
+    );
+    assert_eq!(refused.kind(), ErrorKind::AuthenticationRejected);
+
+    let calls = transport.calls();
+    let approvals: Vec<&String> = calls
+        .iter()
+        .filter(|call| call.starts_with("device_approve"))
+        .collect();
+    assert_eq!(approvals.len(), 3);
+    // The bearer is the restored user's Firebase id token, never a device
+    // credential; the body is exactly `deviceauth.ApprovalRequest`.
+    assert!(
+        approvals[0].contains("user_id_token=true device=false email=user@example.com"),
+        "{}",
+        approvals[0]
+    );
+    assert!(approvals[0].ends_with(
+        r#"body={"request_id":"req_01","device_fingerprint":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","decision":"approve","confirm":false}"#
+    ), "{}", approvals[0]);
+    assert!(
+        approvals[1].ends_with(r#""decision":"approve","confirm":true}"#),
+        "{}",
+        approvals[1]
+    );
+    assert!(!calls.join("\n").contains("e30.eyJ"));
+}
+
+/// A platform_admin sees every project through ds-brain's elevated path with
+/// no membership document behind any row, so every `role` is empty. The
+/// server says so — `"elevated": true` beside `projects` — and the directory
+/// must carry that verdict, or an operator reads "no role" where the truth is
+/// "seen by elevation". The three buckets are one read by one principal, so
+/// they agree or the directory is refused.
+#[test]
+fn project_directory_carries_the_servers_elevation_verdict_and_refuses_a_split_one() {
+    fn bucket(id: &str, state: &str, elevated: bool) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "success": true,
+            "data": {
+                "count": 1,
+                "projects": [{"id": id, "eds_project_id": id, "project_name": id, "role": "", "lifecycle_state": state}],
+                "elevated": elevated,
+                "status": state
+            }
+        }))
+        .unwrap()
+    }
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project(&bucket("a", "active", true));
+    transport.push_project(&bucket("b", "archived", true));
+    transport.push_project(&bucket("c", "testing", true));
+    // A second directory read whose buckets disagree.
+    transport.push_project(&bucket("a", "active", true));
+    transport.push_project(&bucket("b", "archived", false));
+    transport.push_project(&bucket("c", "testing", true));
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+
+    let directory = client.list_projects(NOW + 1).unwrap();
+    assert!(directory.elevated());
+    assert_eq!(directory.projects().len(), 3);
+    assert_eq!(directory.exact("a").unwrap().role(), Some(""));
+
+    let error = client.list_projects(NOW + 2).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
+    assert_eq!(
+        error.to_string(),
+        "the lifecycle buckets disagreed about the caller's elevation"
+    );
+
+    // The checked-in fixtures predate the verdict: an older server's answer
+    // stays readable and reads as not elevated.
+    transport.push_project(ACTIVE);
+    transport.push_project(ARCHIVED);
+    transport.push_project(TESTING);
+    assert!(!client.list_projects(NOW + 3).unwrap().elevated());
 }
 
 #[test]
@@ -5373,6 +5671,36 @@ impl AuthorizedTransport for DeviceAuthorizedProbe {
     ) -> Result<TransportResponse, TransportError> {
         device_authorized_call!(self, call, "report", project_report)
     }
+    fn installs(
+        &mut self,
+        call: ds_client_core::InstallsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        device_authorized_call!(self, call, "installs", installs)
+    }
+    fn sre_overview(
+        &mut self,
+        call: ds_client_core::SreOverviewCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        device_authorized_call!(self, call, "sre", sre_overview)
+    }
+    fn admin_bounds(
+        &mut self,
+        call: ds_client_core::AdminBoundsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        device_authorized_call!(self, call, "admin_bounds", admin_bounds)
+    }
+    fn grid_catalog(
+        &mut self,
+        call: ds_client_core::GridCatalogCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        device_authorized_call!(self, call, "grid_catalog", grid_catalog)
+    }
+    fn global_tiles(
+        &mut self,
+        call: ds_client_core::GlobalTilesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        device_authorized_call!(self, call, "global_tiles", global_tiles)
+    }
 }
 
 fn device_credential(profile: &ClientProfile) -> DeviceCredential {
@@ -5645,6 +5973,141 @@ fn device_authorization_refuses_profile_uid_and_expired_session_before_transport
         .unwrap_err();
     assert_eq!(error.kind(), ErrorKind::SignedOut);
     assert!(transport.seen.is_empty());
+}
+
+/// Governance is server-side: the five projectless doors answer a device
+/// credential exactly as they answer a restored user, so a box linked by
+/// device may read the estate. Before this, `ds install list --lane canary`
+/// refused `headless_signed_out` on a host whose `ds auth status` said signed
+/// in — the surface simply had no method to call.
+#[test]
+fn device_authorization_reaches_the_projectless_governance_doors() {
+    use ds_client_core::admin_bounds::{Answer, Country, Level};
+    let stable = profile(DeploymentLane::Stable);
+    let credential = device_credential(&stable);
+    let live = DeviceAccessSession::new("ds-memory-access-jwt".to_owned(), NOW + 300, NOW).unwrap();
+    let authorization = credential
+        .authorize_api(&live, &stable, "uid-1", NOW)
+        .unwrap();
+
+    let fixture = FixtureTransport::default();
+    fixture.push_governance(
+        200,
+        &serde_json::to_vec(&json!({
+            "success": true,
+            "data": {"installs": [{"install_id": "0cd65a76-a5be-440c-b82e-c3442b8c1e40"}], "next_cursor": null}
+        }))
+        .unwrap(),
+    );
+    fixture.push_governance(
+        200,
+        &serde_json::to_vec(
+            &json!({"generated_at": "2026-09-19T00:00:00Z", "fleet": {}, "combined_reports": {}}),
+        )
+        .unwrap(),
+    );
+    fixture.push_governance(
+        200,
+        &serde_json::to_vec(&json!({"children": [{"code": "1", "name": "Kigali City"}]})).unwrap(),
+    );
+    fixture.push_governance(
+        200,
+        &serde_json::to_vec(&json!({"success": true, "data": {"libraries": []}})).unwrap(),
+    );
+    fixture.push_governance(
+        200,
+        &serde_json::to_vec(&json!({"success": true, "data": {"tiles": []}})).unwrap(),
+    );
+    let mut transport = DeviceAuthorizedProbe::new(fixture);
+
+    let installs = authorization
+        .installs(
+            &mut transport,
+            &ds_client_core::installs::Command::List {
+                cursor: None,
+                limit: 50,
+            },
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(installs["installs"].as_array().unwrap().len(), 1);
+    let overview = authorization
+        .sre(&mut transport, &ds_client_core::sre::Command::Overview, NOW)
+        .unwrap();
+    assert_eq!(overview["generated_at"], "2026-09-19T00:00:00Z");
+    let provinces = authorization
+        .admin_bounds(
+            &mut transport,
+            &ds_client_core::admin_bounds::Command::Children {
+                country: Country::Rwanda,
+                level: Level::Province,
+                parent_code: None,
+            },
+            NOW,
+        )
+        .unwrap();
+    assert!(matches!(provinces, Answer::Children { ref boundaries, .. } if boundaries.len() == 1));
+    let libraries = authorization
+        .grid_catalog(
+            &mut transport,
+            &ds_client_core::grid_catalog::Command::ListLibraries,
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(libraries["libraries"], json!([]));
+    let tiles = authorization
+        .global_tiles(
+            &mut transport,
+            &ds_client_core::global_tiles::Command::List {
+                domain: ds_client_core::global_tiles::Domain::NetworkTemplate,
+            },
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(tiles["tiles"], json!([]));
+
+    // Every door carried the device authority (uid, email, device id, memory
+    // bearer) — the probe asserts each — and knocked once, in order.
+    assert_eq!(
+        transport.seen,
+        [
+            "installs",
+            "sre",
+            "admin_bounds",
+            "grid_catalog",
+            "global_tiles"
+        ]
+    );
+    let calls = transport.inner.calls();
+    assert!(
+        calls[0].contains("\"action\":\"list_installs\""),
+        "{}",
+        calls[0]
+    );
+    assert_eq!(calls[1], "sre_overview");
+    assert!(
+        calls[2].ends_with("action=children&level=province"),
+        "{}",
+        calls[2]
+    );
+    assert!(calls[3].contains("list_libraries"), "{}", calls[3]);
+    assert!(calls[4].contains("\"action\""), "{}", calls[4]);
+
+    // An expired memory session is refused before any I/O, like every other
+    // door on this surface.
+    let mut idle = DeviceAuthorizedProbe::new(FixtureTransport::default());
+    let error = authorization
+        .installs(
+            &mut idle,
+            &ds_client_core::installs::Command::List {
+                cursor: None,
+                limit: 1,
+            },
+            NOW + 300,
+        )
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::SignedOut);
+    assert!(idle.seen.is_empty());
 }
 
 #[test]

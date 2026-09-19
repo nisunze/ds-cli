@@ -433,6 +433,36 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// Decide one headless device authorization under the restored USER.
+    ///
+    /// `POST /auth/device/approve` sits behind ds-brain's
+    /// `FirebaseAuthentication` boundary: it takes a Firebase user id token and
+    /// refuses a device credential with `DESKTOP_PRINCIPAL_REQUIRED`. The
+    /// restored session IS that principal — the same one a Desktop window
+    /// holds — so nothing about approving needs a window. There is deliberately
+    /// no twin on [`crate::DeviceApiAuthorization`]: a device may not admit a
+    /// sibling. The receipt is verified against this request and this
+    /// principal before it is returned.
+    pub fn device_approve(
+        &mut self,
+        request: &crate::DeviceApprovalRequest,
+        now_epoch_seconds: u64,
+    ) -> Result<crate::DeviceApprovalReceipt, ClientError> {
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::device_approval::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            request,
+        )
+    }
+
     /// Execute one closed Sync Center control-plane call with a freshly
     /// restored Firebase session. The bearer remains inside the transport.
     pub fn sync_gateway(

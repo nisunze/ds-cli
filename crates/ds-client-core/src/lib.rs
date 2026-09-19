@@ -10,6 +10,13 @@ mod project_feeders;
 pub use project_feeders::{FeederConfiguration, ProjectConfigurationChange};
 pub use transport::ProjectConfigurationCall;
 mod device;
+mod device_approval;
+pub use device_approval::{
+    DeviceApprovalDecision, DeviceApprovalDevice, DeviceApprovalReceipt,
+    DeviceApprovalRecordedDecision, DeviceApprovalRequest,
+    MAX_REQUEST_ID_BYTES as DEVICE_APPROVAL_MAX_REQUEST_ID_BYTES,
+};
+pub use transport::{DeviceApproveCall, DEVICE_APPROVE_RESPONSE_LIMIT};
 mod error;
 pub mod gateway;
 pub use gateway::{
@@ -55,9 +62,10 @@ pub use device::{
     DEVICE_ACCESS_RESPONSE_LIMIT, DEVICE_ACCESS_TTL_MAX_SECONDS, DEVICE_AUTH_SCHEMA, DEVICE_SCOPE,
 };
 pub use error::{
-    ClientError, ErrorKind, ProjectReportServiceCode, ServiceRefusal, StoreError,
-    SurveyEntriesChangesServiceCode, SurveyEntriesSelectServiceCode, SurveyEntryCreateServiceCode,
-    SurveyFormReadServiceCode, SurveyQueryServiceCode, TransportError,
+    ClientError, DeviceApprovalServiceCode, ErrorKind, ProjectReportServiceCode, ServiceRefusal,
+    StoreError, SurveyEntriesChangesServiceCode, SurveyEntriesSelectServiceCode,
+    SurveyEntryCreateServiceCode, SurveyFormReadServiceCode, SurveyQueryServiceCode,
+    TransportError,
 };
 pub use layers::{
     LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
