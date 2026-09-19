@@ -43,9 +43,9 @@ the status row's or `design_health`'s, called in-process.
   the differences between sweeps are the only history there is. A host that
   keeps only the latest ledger loses every overwritten stamp.
 - Pass every retained pair to `fold` with `now_ms`, the host's UTC offset,
-  the project's display name and status, its roster (`members`) when the
-  host holds one, and the counts it retained from the Dashboard model
-  (`dashboard_summary`, of which `health_score` reaches the reply).
+  the project's display name and status, and the counts it retained from the
+  Dashboard model (`dashboard_summary`, of which `health_score` reaches the
+  reply).
 - The embedded ledgers are read leniently — members added later are allowed,
   missing ones default — so a ledger written by a newer kernel still folds.
 
@@ -153,6 +153,6 @@ a host that prints `phase` prints English on a French page.
 `tests/design_activities_corpus.rs` replays
 `tests/fixtures/design-activities-corpus.json` with exact equality: ledgers
 over the Dashboard corpus's real-shaped fleet and folds over those ledgers,
-with a roster, a previous capture, a stale capture, tiny limits and a ledger
-carrying members from the future. Re-record deliberately with
+with a previous capture, a stale capture, tiny limits and a ledger carrying
+members from the future. Re-record deliberately with
 `DS_RECORD_CORPUS=1`.

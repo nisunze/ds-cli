@@ -6249,8 +6249,8 @@
    }
   },
   {
-   "id": "fold-roster-outsider",
-   "note": "The pinned project with a roster that does not name gina@ds.rw.",
+   "id": "fold-pinned-unknown-actor",
+   "note": "The pinned project, where one stamp carries no actor name at all.",
    "request": {
     "schema": "ds.design-activities/v1",
     "action": "fold",
