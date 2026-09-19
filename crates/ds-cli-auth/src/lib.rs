@@ -1901,6 +1901,7 @@ pub fn sre(
     command: &ds_client_core::sre::Command,
 ) -> Result<serde_json::Value, Failure> {
     let lane = Lane::parse(lane_value)?;
+    // No device branch yet, for the same kernel gap [`installs`] names.
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1923,11 +1924,40 @@ pub fn installs(
     command: &ds_client_core::installs::Command,
 ) -> Result<serde_json::Value, Failure> {
     let lane = Lane::parse(lane_value)?;
+    // No device branch yet, unlike `project_directory` or `feedback`: the
+    // kernel's `DeviceApiAuthorization` exposes no `installs` call, and the
+    // typed call it would need is crate-private there. Until it does, a
+    // device-linked lane is refused with the sentence that says so.
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
     require_restore_before_context(&mut client)?;
-    client.installs(command, now()).map_err(map_client)
+    client.installs(command, now()).map_err(map_install_client)
+}
+
+/// One install-path error as the refusal `ds install …` declares for it.
+///
+/// Before 2026-09-19 this path fell through to the shared kind mapping, so an
+/// unknown install id came back as `transformer_not_found` with a remedy
+/// naming an input the command does not have. Only that kind is this path's
+/// own; every other kind keeps the shared mapping's code, which is what the
+/// install commands declare.
+fn map_install_client(error: ClientError) -> Failure {
+    install_kind(error.kind()).unwrap_or_else(|| map_client(error))
+}
+
+/// The install path's own refusal for one transport kind, or `None` when the
+/// shared mapping already says the right thing. Split from
+/// [`map_install_client`] so it can be exercised without a `ClientError`.
+fn install_kind(kind: ErrorKind) -> Option<Failure> {
+    match kind {
+        ErrorKind::ResourceNotFound => Some(
+            Failure::invalid("install_not_found", "no registered install has this id")
+                .remedy("run ds install list")
+                .next("ds install list --output json"),
+        ),
+        _ => None,
+    }
 }
 
 /// One governed action on the GLOBAL DS Grid library and example catalog.
@@ -2069,13 +2099,9 @@ pub fn capture_layer_scope_fence_for_project(
     project: &str,
 ) -> Result<LayerScopeFence, Failure> {
     let project = bounded_named_project(project)?;
-    let identity = probe_headless_identity_for_named_project(lane_value)?.ok_or_else(|| {
-        Failure::unauthorized(
-            "headless_signed_out",
-            "no native user is signed in for this lane and profile",
-        )
-        .remedy("run ds auth login --email <address>")
-    })?;
+    let lane = Lane::parse(lane_value)?;
+    let identity = probe_headless_identity_for_named_project(lane_value)?
+        .ok_or_else(|| signed_out_failure(lane))?;
     Ok(LayerScopeFence {
         uid: identity.uid().to_owned(),
         audience: identity.credential_audience_sha256().to_owned(),
@@ -2085,13 +2111,9 @@ pub fn capture_layer_scope_fence_for_project(
 }
 
 pub fn capture_layer_scope_fence(lane_value: &str) -> Result<LayerScopeFence, Failure> {
-    let (identity, project) = probe_headless_identity(lane_value)?.ok_or_else(|| {
-        Failure::unauthorized(
-            "headless_signed_out",
-            "no native user is signed in for this lane and profile",
-        )
-        .remedy("run ds auth login --email <address>")
-    })?;
+    let lane = Lane::parse(lane_value)?;
+    let (identity, project) =
+        probe_headless_identity(lane_value)?.ok_or_else(|| signed_out_failure(lane))?;
     let project = project.ok_or_else(|| {
         Failure::conflict(
             "project_context_changed",
@@ -4072,12 +4094,7 @@ fn require_restore_before_context(
 ) -> Result<ds_client_core::AuthenticatedUser, Failure> {
     match client.restore(now()) {
         Ok(Some(user)) => Ok(user),
-        Ok(None) => Err(Failure::unauthorized(
-            "headless_signed_out",
-            "no native user is signed in for this lane and profile",
-        )
-        .remedy("run ds auth login --email <address>")
-        .next("ds auth status")),
+        Ok(None) => Err(signed_out_failure(lane_of(client.profile()))),
         Err(error)
             if matches!(
                 error.kind(),
@@ -4122,14 +4139,49 @@ fn require_restore(
     client: &mut NativeClient,
     context: &ProjectContextLease,
 ) -> Result<ds_client_core::AuthenticatedUser, Failure> {
-    with_disposition(client.restore(now()), context)?.ok_or_else(|| {
-        Failure::unauthorized(
-            "headless_signed_out",
-            "no native user is signed in for this lane and profile",
+    with_disposition(client.restore(now()), context)?
+        .ok_or_else(|| signed_out_failure(lane_of(client.profile())))
+}
+
+/// The lane a loaded profile was built for, as this crate names it.
+fn lane_of(profile: &ds_client_core::ClientProfile) -> Lane {
+    match profile.lane() {
+        ds_client_core::DeploymentLane::Stable => Lane::Stable,
+        ds_client_core::DeploymentLane::Canary => Lane::Canary,
+    }
+}
+
+/// The signed-out refusal for one lane, with the truth about that lane.
+///
+/// Two things went wrong with the old sentence on 2026-09-19. Its remedy and
+/// next step named no lane, so an agent following `install list --lane
+/// canary`'s refusal exactly ran `ds auth login` on the default lane and
+/// reproduced the refusal. And on a lane that holds a device credential —
+/// where `ds auth status` answers `signed_in: true` — it said nobody was
+/// signed in. The code is unchanged: it is the one every caller declares.
+/// What changes is that the sentence says which credential is missing, and
+/// that every command it names carries the lane it was asked about.
+fn signed_out_failure(lane: Lane) -> Failure {
+    // A device-store fault must not replace the refusal it was consulted for.
+    let device_linked = device::probe_context(lane).ok().flatten().is_some();
+    signed_out_refusal(lane, device_linked)
+}
+
+fn signed_out_refusal(lane: Lane, device_linked: bool) -> Failure {
+    let token = lane.token();
+    let message = if device_linked {
+        format!(
+            "lane {token} holds a device credential but no native password session; this \
+             command needs the password session"
         )
-        .remedy("run ds auth login --email <address>")
-        .next("ds auth status")
-    })
+    } else {
+        format!("no native user is signed in for lane {token} and its profile")
+    };
+    Failure::unauthorized("headless_signed_out", message)
+        .remedy(format!(
+            "run ds auth login --email <address> --lane {token}"
+        ))
+        .next(format!("ds auth status --lane {token}"))
 }
 
 fn with_disposition<T>(
@@ -4357,8 +4409,11 @@ fn route_diagnostic(message: &str) -> Option<(&'static str, &'static str)> {
 fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
     match kind {
         ErrorKind::InvalidInput => Failure::invalid("auth_input_invalid", message),
+        // No lane reaches this mapping (a `ClientError` carries none), so the
+        // next step says that one has to be named rather than naming the
+        // default by omission.
         ErrorKind::SignedOut => Failure::unauthorized("headless_signed_out", message)
-            .next("ds auth login --email <address>"),
+            .next("ds auth login --email <address> --lane <stable|canary>"),
         ErrorKind::InvalidCredentials => Failure::unauthorized(
             "auth_invalid_credentials",
             "Firebase did not accept this email/password sign-in",
@@ -4845,14 +4900,7 @@ pub fn download_reference_bundle(
         .map_err(map_client)?;
     let lane = Lane::parse(lane_value)?;
     let _ = profile::load(lane)?;
-    probe_headless_identity(lane.token())?.ok_or_else(|| {
-        Failure::unauthorized(
-            "headless_signed_out",
-            "no native user is signed in for this lane and profile",
-        )
-        .remedy("run ds auth login --email <address>")
-        .next("ds auth status")
-    })?;
+    probe_headless_identity(lane.token())?.ok_or_else(|| signed_out_failure(lane))?;
     let failed = |message: String| {
         Failure::unavailable(REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL.code, message)
             .remedy(REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL.remedy)
@@ -5450,6 +5498,108 @@ mod tests {
             failure.class(),
             ds_cli_contract::outcome::ExitClass::InvalidInput
         );
+    }
+
+    // ------------------------------------------------------------------
+    // 2026-09-19 governance-headless findings: the signed-out refusal and
+    // the install path.
+    // ------------------------------------------------------------------
+
+    /// `install list --lane canary` refused with a remedy and a next step
+    /// that named no lane, so following them exactly reproduced the refusal
+    /// on the default lane.
+    #[test]
+    fn signed_out_refusal_carries_the_lane_it_was_asked_about() {
+        for lane in [Lane::Stable, Lane::Canary] {
+            let failure = signed_out_refusal(lane, false);
+            assert_eq!(failure.code(), "headless_signed_out");
+            let flag = format!("--lane {}", lane.token());
+            let remedy = failure.remedy_text().expect("a way out");
+            assert!(remedy.contains(&flag), "{remedy}");
+            assert!(
+                remedy.contains("ds auth login --email <address>"),
+                "{remedy}"
+            );
+            assert!(
+                failure
+                    .next_commands()
+                    .iter()
+                    .any(|next| next.contains(&flag) && next.starts_with("ds auth status")),
+                "{:?}",
+                failure.next_commands()
+            );
+        }
+    }
+
+    /// The same lane answers `auth status` with `signed_in: true` on a device
+    /// credential; a refusal that then says "no user is signed in" contradicts
+    /// it. The code stays — it is the one every caller declares — and the
+    /// sentence says which credential is missing.
+    #[test]
+    fn a_device_linked_lane_is_not_called_signed_out() {
+        let failure = signed_out_refusal(Lane::Canary, true);
+        assert_eq!(failure.code(), "headless_signed_out");
+        assert!(
+            failure.message().contains("device credential"),
+            "{}",
+            failure.message()
+        );
+        assert!(
+            failure.message().contains("canary"),
+            "{}",
+            failure.message()
+        );
+        let remedy = failure.remedy_text().expect("a way out");
+        assert!(remedy.contains("--lane canary"), "{remedy}");
+        // Without a device credential the sentence must not mention one.
+        assert!(
+            !signed_out_refusal(Lane::Canary, false)
+                .message()
+                .contains("device credential")
+        );
+    }
+
+    /// The shared kind mapping has no lane in hand; its next step at least
+    /// says that one has to be named.
+    #[test]
+    fn signed_out_kind_tells_the_caller_to_name_a_lane() {
+        let failure = map_client_kind(ErrorKind::SignedOut, "session gone".to_owned());
+        assert_eq!(failure.code(), "headless_signed_out");
+        assert!(
+            failure
+                .next_commands()
+                .iter()
+                .any(|next| next.contains("--lane")),
+            "{:?}",
+            failure.next_commands()
+        );
+    }
+
+    /// An unknown install id surfaced as `transformer_not_found` with a remedy
+    /// naming an input `ds install show` does not have.
+    #[test]
+    fn install_absence_is_an_install_refusal_not_a_transformer() {
+        let failure = install_kind(ErrorKind::ResourceNotFound)
+            .expect("the install path speaks for an absent installation");
+        assert_eq!(failure.code(), "install_not_found");
+        assert_eq!(
+            failure.class(),
+            ds_cli_contract::outcome::ExitClass::InvalidInput
+        );
+        let remedy = failure.remedy_text().expect("a way out");
+        assert!(remedy.contains("ds install list"), "{remedy}");
+        assert!(!remedy.contains("transformer"), "{remedy}");
+        // Every other kind keeps the shared mapping, which is what the
+        // install commands declare.
+        for kind in [
+            ErrorKind::SignedOut,
+            ErrorKind::InvalidInput,
+            ErrorKind::AuthenticationRejected,
+            ErrorKind::UnreadableResponse,
+            ErrorKind::Transient,
+        ] {
+            assert!(install_kind(kind).is_none(), "{kind:?}");
+        }
     }
 
     #[test]
