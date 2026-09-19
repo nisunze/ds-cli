@@ -209,6 +209,7 @@ pub use transport::InstallsCall;
 /// The installation inventory: global, admin-gated, and reachable without a
 /// browser for the first time.
 pub mod installs;
+pub mod project_management;
 pub use transport::GridModelsCall;
 pub use transport::ReportArtifactCall;
 pub use transport::{SreEventsCall, SreOverviewCall};
@@ -222,6 +223,7 @@ pub use transport::DesignTagsCall;
 
 pub mod shared_assets;
 mod shared_map_publish;
+pub use transport::ProjectManagementCall;
 pub use transport::SharedAssetsCall;
 
 mod transformer_save;

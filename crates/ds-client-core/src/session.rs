@@ -1251,6 +1251,34 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One governed project-management read, for one project.
+    ///
+    /// Project-scoped, unlike [`Self::installs`]: a plan belongs to a project,
+    /// so the caller names it and ds-brain rechecks membership. No window and
+    /// no pairing — the bearer is the authority, which is what makes `ds pm`
+    /// answer on a Server at all.
+    pub fn project_management(
+        &mut self,
+        project: &str,
+        command: &crate::project_management::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::project_management::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            command,
+        )
+    }
+
     /// One governed action on the GLOBAL library and example catalog.
     ///
     /// No project id, because this catalog has none: a library release belongs

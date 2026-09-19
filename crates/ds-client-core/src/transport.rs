@@ -1136,6 +1136,69 @@ impl SharedAssetsCall<'_> {
     }
 }
 
+/// `POST /api/v1/pm` — the project-management action endpoint.
+///
+/// The path is hard-coded here, like `/api/v1/assets` and `/api/v1/governance`
+/// beside it: the profile supplies the gateway ORIGIN and the credentials, not
+/// the route. Declaring a path in the profile would bump
+/// `CLIENT_PROFILE_SCHEMA` and strand every installed `ds` until a package is
+/// cut, and PM needs nothing of the sort — ds-brain's PM handler already
+/// authenticates from the bearer, with no pairing and no device.
+pub struct ProjectManagementCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl ProjectManagementCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        "/api/v1/pm".into()
+    }
+    pub fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    /// A whole plan with its tasks, records and residuals. Bounded like the
+    /// shared-assets read rather than like a tile.
+    pub const fn response_limit(&self) -> usize {
+        8 * 1024 * 1024
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        30
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(
+            serde_json::to_vec(&self.payload).expect("closed project management request"),
+        )
+    }
+}
+
 pub struct DesignVersionsCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: serde_json::Value,
@@ -2390,6 +2453,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn project_management(
+        &mut self,
+        _call: ProjectManagementCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn design_attachments(
         &mut self,
         _call: DesignAttachmentsCall<'_>,
@@ -2643,6 +2712,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn project_management(
+        &mut self,
+        _call: ProjectManagementCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn design_attachments(
         &mut self,
         _call: DesignAttachmentsCall<'_>,
@@ -2876,6 +2951,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: SharedAssetsCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::shared_assets(self, call)
+    }
+    fn project_management(
+        &mut self,
+        call: ProjectManagementCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::project_management(self, call)
     }
     fn design_attachments(
         &mut self,

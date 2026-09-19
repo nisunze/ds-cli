@@ -1244,6 +1244,28 @@ impl DeviceApiAuthorization<'_> {
             request,
         )
     }
+    /// One governed project-management read, on a device session.
+    ///
+    /// The same door the restored-user path takes; only the credential differs.
+    /// A headless box linked by device must read a plan too, and `ds pm` must
+    /// answer identically whichever credential carried it.
+    pub fn project_management<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        command: &crate::project_management::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
+        self.ensure_active(now)?;
+        crate::project_management::run(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            command,
+        )
+    }
     pub fn data_distribution<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
