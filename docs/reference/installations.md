@@ -13,7 +13,7 @@ is blocked. `ds capabilities --search installation` answered with
 The domain is platform-global. Authority is `headless_user`: the machine must
 hold a restored native user for the selected lane, but no project is selected
 and none is sent. ds-brain gates every action behind `platform.admin` or
-`app.admin`; that refusal is reported as `install_not_permitted`.
+`app.admin`; that refusal is reported as `auth_rejected`.
 
 ## What a row means
 
@@ -87,7 +87,7 @@ Neither expires and neither is ever set automatically.
 
 Every transition is fenced on the revision you read, requires a non-empty
 reason of at most 1000 characters, and is appended to the installation's
-`policy_events`. A revision that moved is `install_revision_conflict`: re-read
+`policy_events`. A revision that moved is `auth_input_invalid`: re-read
 and reapply, never retry.
 
 ## Uninstallation

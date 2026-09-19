@@ -47,8 +47,10 @@ pub const LANE_ARG: ds_cli_contract::spec::Arg =
         .choices(&["stable", "canary"])
         .default("stable");
 
+/// The route answers 401/403 through the shared `map_client`, so the code is
+/// the one it emits; the reason and remedy are this domain's.
 pub const NOT_PERMITTED: Refusal = Refusal {
-    code: "sre_not_permitted",
+    code: "auth_rejected",
     when: "the signed-in account may not read platform reliability",
     remedy: "ask a platform administrator to grant reliability access",
 };
@@ -57,13 +59,6 @@ pub const INVALID_TEXT: Refusal = Refusal {
     code: "invalid_text",
     when: "an event filter is empty, untrimmed, or longer than 200 characters",
     remedy: "pass one exact trimmed filter value no longer than 200 characters",
-};
-
-pub const UNREADABLE: Refusal = Refusal {
-    code: "unreadable_response",
-    when: "the reliability authority answered with something other than the read it was asked for, \
-or an event window that lost rows on the way",
-    remedy: "run the read again; a window that lost rows is refused rather than returned short",
 };
 
 /// This domain's own refusals, then the native user's. There is no host to

@@ -81,13 +81,12 @@ matches and `more.scan` reports a saturated owner scan. Each event's \
         runnable: false,
     }],
     refusals: &crate::native_refusals::<
-        4,
-        { 4 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
+        3,
+        { 3 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([
         crate::INVALID_NUMBER,
         crate::INVALID_TEXT,
         crate::NOT_PERMITTED,
-        crate::UNREADABLE,
     ]),
     reference: Some("docs/reference/sre.md"),
     search: &[],

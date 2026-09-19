@@ -9466,10 +9466,12 @@ fn well_formed_sre_reads_reach_only_the_native_authentication_boundary() {
         let mut argv = args.clone();
         argv.extend(["--output", "json"]);
         let code = native_refusal(&argv);
+        // A signed-in account without reliability access is refused by the
+        // route as `auth_rejected` — the code it emits, not a domain twin.
         assert!(
             code.is_empty()
                 || NATIVE_AUTH_CODES.contains(&code.as_str())
-                || code == "sre_not_permitted",
+                || code == "auth_rejected",
             "`ds {}` failed with `{code}`, which is neither an answer nor an \
              authentication outcome",
             args.join(" ")

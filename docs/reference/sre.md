@@ -10,7 +10,7 @@ This domain is platform-global. Its authority is `headless_user`, not
 but no project needs to be selected and none is sent. The optional `events
 --project` flag filters event metadata and does not switch or establish project
 authority. ds-brain restricts both routes to the `platform.admin` capability;
-that refusal is reported as `sre_not_permitted`.
+that refusal is reported as `auth_rejected`.
 
 `--lane` selects the credential lane, `stable` or `canary`, exactly as it does
 everywhere else in `ds`.
@@ -67,7 +67,7 @@ dedicated signal.
 
 The event window arrives as a stream closed by its own row-count summary. A
 window that ends without that summary, reports its own scan as failed, or
-delivers fewer rows than it counted is refused as `unreadable_response` rather
+delivers fewer rows than it counted is refused as `auth_response_unreadable` rather
 than returned short — a partial window silently presented as a whole one is how
 an operator concludes there were no errors.
 
@@ -83,7 +83,7 @@ What belongs to this domain:
 
 | Code | Meaning |
 |---|---|
-| `sre_not_permitted` | the signed-in account may not read platform reliability; a platform administrator grants it |
+| `auth_rejected` | the signed-in account may not read platform reliability; a platform administrator grants it |
 | `unreadable_response` | the authority answered with something other than the read it was asked for, or an event window that lost rows |
 | `invalid_number` | a numeric flag falls outside the bound in its summary; the refusal carries the accepted range |
 | `invalid_text` | a text filter is empty, untrimmed, or longer than 200 characters |
