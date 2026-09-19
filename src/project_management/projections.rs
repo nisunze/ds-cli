@@ -238,15 +238,15 @@ pub fn dashboard(graph: &CanonicalProjectGraph, today: &str) -> Dashboard {
             .iter()
             .filter(|task| task.delivery_state == DeliveryState::Complete)
             .count(),
-        // The finish date is compared AS A STRING, and an unscheduled task
-        // carries the empty string, which is less than every date. So an
-        // unscheduled, unfinished task counts as past its planned finish here.
-        // `projectWorkAttention` guards that case and this does not; the
-        // difference is the browser's and is preserved deliberately.
+        // The finish date is compared AS A STRING, so the empty string an
+        // unscheduled task carries is less than every date. Late therefore
+        // requires a finish date to exist, exactly as `attention` requires it:
+        // a task cannot have slipped past a date it has not got.
         past_planned_finish: tasks
             .iter()
             .filter(|task| {
-                task.finish_date.as_str() < today
+                !task.finish_date.is_empty()
+                    && task.finish_date.as_str() < today
                     && task.delivery_state != DeliveryState::Complete
                     && task.delivery_state != DeliveryState::Cancelled
             })
@@ -536,14 +536,13 @@ mod tests {
     }
 
     #[test]
-    fn an_unscheduled_task_counts_as_past_its_planned_finish() {
-        // PRESERVED DEFECT (views.ts:228-229). The dashboard compares the
-        // finish date AS A STRING, and an unscheduled task carries the empty
-        // string, which is less than every real date — so it reads as late.
-        // `projectWorkAttention` guards the same case with `Boolean(finishDate)`
-        // and does not. The kernel reproduces both, because a plan that
-        // silently disagreed with the browser's dashboard would be worse than
-        // a plan that is wrong in the documented way.
+    fn an_unscheduled_task_is_not_past_a_planned_finish_it_has_not_got() {
+        // The dashboard compares the finish date AS A STRING, and an
+        // unscheduled task carries the empty string, which is less than every
+        // real date — so it used to read as late. `projectWorkAttention`
+        // guarded that case and the dashboard did not, so one payload could
+        // say `pastPlannedFinish: 1` and `attention: []`. The guarded reading
+        // is the true one: both projections now mean the same thing by late.
         let graph = graph_of(json!([
             patched(
                 "grandchild",
@@ -553,7 +552,11 @@ mod tests {
             task("root", None),
             task("child", Some("root")),
         ]));
-        assert_eq!(dashboard(&graph, "2026-08-10").past_planned_finish, 3);
+        assert_eq!(
+            dashboard(&graph, "2026-08-10").past_planned_finish,
+            2,
+            "the two scheduled tasks are late; the unscheduled one is not"
+        );
         assert!(
             !attention(&graph, "2026-08-10")
                 .iter()

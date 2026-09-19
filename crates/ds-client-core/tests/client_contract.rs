@@ -6438,16 +6438,42 @@ fn survey_control_forms_are_native_bounded_and_identity_checked() {
         .iter()
         .any(|s| s.contains("path=/api/v1/form-factory")));
     let before = calls.len();
-    assert!(client
+    // A project that is not the selected one is refused BY NAME, and never as
+    // a malformed request: a caller who named a real project they can see has
+    // to be told that selection, not their spelling, is what stands in the
+    // way, or the remedy they are given cannot work.
+    let mismatch = client
         .survey_control(
             Some("selected"),
             &SurveyControlCommand::ProjectFormEditor(ProjectEditor {
                 project: "different".into(),
-                form: "a".into()
+                form: "a".into(),
             }),
-            NOW + 1
+            NOW + 1,
         )
-        .is_err());
+        .unwrap_err();
+    assert_eq!(mismatch.kind(), ErrorKind::InvalidInput);
+    let sentence = mismatch.to_string();
+    assert!(
+        sentence.contains("selected project") && sentence.contains("ds auth project use"),
+        "the mismatch names the selection and its remedy, got {sentence:?}"
+    );
+    let malformed = client
+        .survey_control(
+            Some("selected"),
+            &SurveyControlCommand::ProjectFormEditor(ProjectEditor {
+                project: String::new(),
+                form: "a".into(),
+            }),
+            NOW + 1,
+        )
+        .unwrap_err();
+    assert_eq!(malformed.kind(), ErrorKind::InvalidInput);
+    assert_ne!(
+        malformed.to_string(),
+        sentence,
+        "a malformed request and an unselected project are not the same refusal"
+    );
     assert_eq!(transport.calls().len(), before);
     assert!(serde_json::from_value::<SurveyControlCommand>(json!({"operation":"survey.form.read","arguments":{"slug":"a","fieldOffset":0,"fieldLimit":1,"url":"https://example.invalid"}})).is_err());
 }

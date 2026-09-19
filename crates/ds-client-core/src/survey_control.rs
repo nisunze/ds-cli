@@ -180,6 +180,22 @@ pub(crate) fn unreadable() -> ClientError {
         "Survey control response violates its identity or shape contract",
     )
 }
+/// The command names a project other than the session's selected one.
+///
+/// This is NOT a malformed request, and saying so was the defect: the project
+/// named may be perfectly valid, visible and active, and it read back exactly
+/// like a typo. What stands in the way is the session's own selection, which
+/// `--project` cannot change — so a caller told their request "violates its
+/// bounded contract" was sent to re-check a spelling that was never wrong.
+/// The refusal has to name the selection, because only moving the selection
+/// can make the call succeed.
+pub(crate) fn project_not_selected() -> ClientError {
+    ClientError::new(
+        ErrorKind::InvalidInput,
+        "Survey control runs against the selected project, and this command names a different one: \
+         select that project first with `ds auth project use --project <id>`",
+    )
+}
 impl SurveyControlCommand {
     pub fn project_hint(&self) -> Option<&str> {
         match self {

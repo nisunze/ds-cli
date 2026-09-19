@@ -42,11 +42,13 @@ pub(crate) fn run<T: AuthorizedTransport>(
     command: &SurveyControlCommand,
 ) -> Result<Value, ClientError> {
     command.validate()?;
+    // A hint that is not the selection is a selection refusal, never an
+    // invalid one: `invalid()` stays for ids that are genuinely malformed.
     if command
         .project_hint()
         .is_some_and(|hint| Some(hint) != project)
     {
-        return Err(invalid());
+        return Err(project_not_selected());
     }
     let mut send = |route, payload| call(profile, transport, authority, route, payload);
     use SurveyControlCommand::*;
