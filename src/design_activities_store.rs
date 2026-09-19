@@ -398,6 +398,11 @@ pub enum SkipReason {
     /// It was owed a capture but fell outside `limit`. Named rather than
     /// hidden: a project the sweep did not reach must be visible as one.
     Limit,
+    /// It is archived. Nobody can upload into an archived project, so its
+    /// ledger cannot move and re-reading it can only return what the last
+    /// capture already holds. A caller who asks for `--bucket archived` by
+    /// name is asking for exactly these and is not skipped.
+    Archived,
 }
 
 /// One project the sweep should capture.
@@ -767,6 +772,18 @@ fn build_plan(request: PlanRequest) -> Result<PlanReply, String> {
             skip.push(SkipEntry {
                 ds_project: project.ds_project.clone(),
                 reason: SkipReason::Bucket,
+            });
+            continue;
+        }
+        // An archived project accepts no uploads, so its ledger cannot change
+        // and a second capture cannot differ from the first. Only a caller who
+        // named `archived` as the bucket is asking for them.
+        if request.bucket != Bucket::Archived
+            && project.status.as_deref().map(str::trim) == Some("archived")
+        {
+            skip.push(SkipEntry {
+                ds_project: project.ds_project.clone(),
+                reason: SkipReason::Archived,
             });
             continue;
         }
@@ -1211,6 +1228,54 @@ mod tests {
     }
 
     #[test]
+    /// Nobody can upload into an archived project, so a second capture can
+    /// only repeat the first. `all` therefore means "everything whose ledger
+    /// can still move", and the one way to reach an archived project is to
+    /// name it as the bucket.
+    #[test]
+    fn an_archived_project_is_swept_only_when_the_caller_names_that_bucket() {
+        let visible = json!([
+            {"ds_project": "live", "status": "active"},
+            {"ds_project": "shelved", "status": "archived"},
+        ]);
+        let planned = |bucket: &str| {
+            plan(json!({
+                "schema": SCHEMA, "action": "plan", "now_ms": 10_000, "max_age_ms": 1,
+                "bucket": bucket, "visible": visible, "cached": [],
+            }))
+            .expect("plan")
+        };
+
+        let all = planned("all");
+        assert_eq!(
+            all["refresh"]
+                .as_array()
+                .expect("refresh")
+                .iter()
+                .map(|row| row["ds_project"].as_str().expect("name"))
+                .collect::<Vec<_>>(),
+            ["live"],
+            "`all` swept an archived project whose ledger cannot move",
+        );
+        assert_eq!(
+            all["skip"],
+            json!([{"ds_project": "shelved", "reason": "archived"}]),
+            "an archived project must be skipped AS archived, not as a bucket miss",
+        );
+
+        // Named by the caller, it is exactly what was asked for.
+        assert_eq!(
+            planned("archived")["refresh"]
+                .as_array()
+                .expect("refresh")
+                .iter()
+                .map(|row| row["ds_project"].as_str().expect("name"))
+                .collect::<Vec<_>>(),
+            ["shelved"],
+        );
+    }
+
+    #[test]
     fn a_bucket_is_what_the_caller_asked_for_and_no_status_is_active() {
         let now = 1_789_000_000_000i64;
         let visible = json!([
@@ -1234,7 +1299,9 @@ mod tests {
         assert_eq!(names("active"), ["live", "plain"]);
         assert_eq!(names("archived"), ["shelved"]);
         assert_eq!(names("testing"), ["trial"]);
-        assert_eq!(names("all"), ["live", "plain", "shelved", "trial"]);
+        // `all` is every project whose ledger can still move. An archived
+        // project accepts no uploads, so it is reached only by name.
+        assert_eq!(names("all"), ["live", "plain", "trial"]);
     }
 
     #[test]
