@@ -42,10 +42,9 @@
 //! row is invisible.
 //!
 //! The `gda_` label keys this module can emit, exactly:
-//! `gda_anomaly_unknown_actor`, `gda_anomaly_non_member_actor`,
-//! `gda_anomaly_stale_capture`, `gda_fact_busiest_actor`,
+//! `gda_anomaly_unknown_actor`, `gda_anomaly_stale_capture`, `gda_fact_busiest_actor`,
 //! `gda_fact_most_active_project`, `gda_fact_newest_actor`,
-//! `gda_fact_untouched_projects`, `gda_fact_outside_roster`,
+//! `gda_fact_untouched_projects`,
 //! `gda_fact_biggest_change`, and the plural pairs `gda_project_one`,
 //! `gda_project_other`, `gda_stamp_one`, `gda_stamp_other`, `gda_actor_one`,
 //! `gda_actor_other`, `gda_change_one`, `gda_change_other`. Timeline, change
@@ -257,10 +256,6 @@ pub struct UserProject {
     pub transformers_touched: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_seen_ms: Option<i64>,
-    /// Whether the project's roster names this user; absent when the project
-    /// has no roster.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub member: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -294,9 +289,6 @@ pub struct UserEntry {
     pub last_project: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_label_key: Option<String>,
-    /// `non_member_actor` when a project with a roster does not name them.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub flags: Vec<String>,
     pub projects: Vec<UserProject>,
 }
 
@@ -392,7 +384,6 @@ pub struct TimelineEntry {
 #[serde(rename_all = "snake_case")]
 pub enum AnomalyKind {
     UnknownActor,
-    NonMemberActor,
     StaleCapture,
 }
 
@@ -563,7 +554,7 @@ pub struct DashboardSummary {
 }
 
 /// One project as the host holds it: its current ledger, optionally the one
-/// retained before it, its roster and its Dashboard counts.
+/// retained before it, and its Dashboard counts.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct FoldProject {
@@ -581,9 +572,6 @@ pub struct FoldProject {
     pub ledger: Ledger,
     #[serde(default)]
     pub previous: Option<Ledger>,
-    /// The project's roster; when present, actors outside it are flagged.
-    #[serde(default)]
-    pub members: Option<Vec<String>>,
     #[serde(default)]
     pub dashboard_summary: Option<DashboardSummary>,
 }
@@ -861,10 +849,6 @@ fn actors_of(ledger: &Ledger) -> BTreeSet<String> {
     out
 }
 
-fn roster_key(account: &str) -> String {
-    account.trim().to_ascii_lowercase()
-}
-
 /// The Dashboard's per-project counts, over the ledger: designed is the
 /// recorded design stamp; report-ready and combined are a `success` status
 /// on the phase; errors are red rows; contributors are distinct named owners.
@@ -1031,7 +1015,6 @@ struct UserProjectAcc {
     errors: usize,
     touched: BTreeSet<String>,
     last_seen_ms: Option<i64>,
-    member: Option<bool>,
 }
 
 #[derive(Default)]
@@ -1152,10 +1135,6 @@ fn build_fold(request: FoldRequest) -> Result<FoldReply, String> {
         if let Some(display) = project.display_name.clone().and_then(non_empty) {
             display_names.insert(ds_project.clone(), display);
         }
-        let roster: Option<BTreeSet<String>> = project
-            .members
-            .as_ref()
-            .map(|members| members.iter().map(|m| roster_key(m)).collect());
         let stale = ledger.captured_at_ms < now_ms - STALE_AFTER_MS;
         if stale {
             stale_count += 1;
@@ -1242,15 +1221,6 @@ fn build_fold(request: FoldRequest) -> Result<FoldReply, String> {
                     .or_default();
                 per.errors += 1;
                 per.touched.insert(transformer.name.clone());
-            }
-        }
-        if let Some(roster) = &roster {
-            for (user, acc) in users.iter_mut() {
-                if let Some(per) = acc.projects.get_mut(&ds_project) {
-                    if !user.is_empty() {
-                        per.member = Some(roster.contains(&roster_key(user)));
-                    }
-                }
             }
         }
         recent_by_project.push((ds_project.clone(), recent));
@@ -1350,18 +1320,12 @@ fn build_fold(request: FoldRequest) -> Result<FoldReply, String> {
                     errors: per.errors,
                     transformers_touched: per.touched.len(),
                     last_seen_ms: per.last_seen_ms,
-                    member: per.member,
                 })
                 .collect();
             per_project.sort_by(|left, right| {
                 compare_desc_none_last(left.last_seen_ms, right.last_seen_ms)
                     .then_with(|| left.ds_project.cmp(&right.ds_project))
             });
-            let flags: Vec<String> = if per_project.iter().any(|p| p.member == Some(false)) {
-                vec!["non_member_actor".into()]
-            } else {
-                Vec::new()
-            };
             UserEntry {
                 short: short_user(&name),
                 unknown: name.is_empty(),
@@ -1377,7 +1341,6 @@ fn build_fold(request: FoldRequest) -> Result<FoldReply, String> {
                     .as_ref()
                     .map(|(_, project, _)| project.clone()),
                 last_label_key: acc.last_seen.as_ref().map(|(_, _, key)| key.clone()),
-                flags,
                 projects: per_project,
                 name,
             }
@@ -1390,30 +1353,10 @@ fn build_fold(request: FoldRequest) -> Result<FoldReply, String> {
     });
     let actors = user_entries.iter().filter(|user| !user.unknown).count();
 
-    for user in &user_entries {
-        for per in &user.projects {
-            if per.member == Some(false) {
-                anomalies.push(Anomaly {
-                    kind: AnomalyKind::NonMemberActor,
-                    label_key: "gda_anomaly_non_member_actor".into(),
-                    user: Some(user.name.clone()),
-                    short: Some(user.short.clone()),
-                    ds_project: per.ds_project.clone(),
-                    when_ms: per.last_seen_ms,
-                    count: Some(per.transformers_touched),
-                });
-            }
-        }
-    }
-    let outside_roster = user_entries
-        .iter()
-        .filter(|user| !user.flags.is_empty())
-        .count();
     anomalies.sort_by(|left, right| {
         let rank = |kind: AnomalyKind| match kind {
-            AnomalyKind::NonMemberActor => 0,
-            AnomalyKind::UnknownActor => 1,
-            AnomalyKind::StaleCapture => 2,
+            AnomalyKind::UnknownActor => 0,
+            AnomalyKind::StaleCapture => 1,
         };
         rank(left.kind)
             .cmp(&rank(right.kind))
@@ -1560,19 +1503,6 @@ fn build_fold(request: FoldRequest) -> Result<FoldReply, String> {
         note.plural_params.insert(
             "count".into(),
             Value::String("gda_project_one|gda_project_other".into()),
-        );
-        facts.push(note);
-    }
-    if outside_roster > 0 {
-        let mut note = fact(
-            "🚨",
-            FactTone::Red,
-            "gda_fact_outside_roster",
-            vec![("count", Value::from(outside_roster))],
-        );
-        note.plural_params.insert(
-            "count".into(),
-            Value::String("gda_actor_one|gda_actor_other".into()),
         );
         facts.push(note);
     }
@@ -1924,7 +1854,6 @@ mod tests {
         );
         let reply = fold(json!([{
             "ds_project": "p", "display_name": "P", "ledger": current, "previous": previous,
-            "members": ["a@x.com", "B@X.COM"],
         }]))
         .unwrap();
         let activities = &reply["activities"];
@@ -1962,30 +1891,6 @@ mod tests {
             .iter()
             .any(|entry| entry["name"] == "kept" && entry["user"] == "a@x.com"));
         assert_eq!(activities["totals"]["changes"], 4);
-        // c is outside the roster; b is inside it case-insensitively.
-        let c = activities["users"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|user| user["name"] == "c@x.com")
-            .unwrap();
-        assert_eq!(c["flags"], json!(["non_member_actor"]));
-        assert_eq!(c["projects"][0]["member"], false);
-        let b = activities["users"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|user| user["name"] == "b@x.com")
-            .unwrap();
-        assert!(b.get("flags").is_none());
-        assert_eq!(b["projects"][0]["member"], true);
-        assert_eq!(activities["anomalies"][0]["kind"], "non_member_actor");
-        assert_eq!(activities["anomalies"][0]["user"], "c@x.com");
-        assert!(activities["facts"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|fact| fact["key"] == "gda_fact_outside_roster"));
     }
 
     #[test]
