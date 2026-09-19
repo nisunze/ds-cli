@@ -146,17 +146,24 @@ using a paired application.
 ## Transformer status rows, without a browser
 
 `ds design status` is the read every other headless Design answer is built
-from. Like `features select` it restores the native user for
-`--lane stable|canary` and reads only that user's audience-fenced selected
-project, through the fixed governed status call. There is no `--project`, no
+from. It restores the native user for `--lane stable|canary` and reads the
+project `--project` names, through the fixed governed status call. There is no
 Desktop descriptor, no URL, body or action override, and no fallback: if the
 native path cannot answer, the command refuses in words rather than reaching
 for the application.
 
+**`--project` is required** (2026-09-18, breaking). This read used to follow
+the machine's saved selection, so the same command answered differently on two
+terminals and an agent repeating it could not know which project it had asked
+about. Omitting it now refuses with `missing_input`; a blank or padded value
+refuses `project_required`; anything that is not one path segment refuses
+`context_corrupt`. The saved selection is neither read nor changed — use
+`ds auth project list` to find the exact id.
+
 ```bash
-ds design status --output json
-ds design status --transformer TX-1 --transformer TX-2 --output json
-ds design status --findings --output json
+ds design status --project <id> --output json
+ds design status --project <id> --transformer TX-1 --transformer TX-2 --output json
+ds design status --project <id> --findings --output json
 ```
 
 Omit `--transformer` for every transformer document in the project; repeat it
@@ -200,8 +207,8 @@ issue list: what `jq '.data.findings[] | select(.severity=="error")'` prints is
 what the Status page's error table shows.
 
 ```bash
-ds design status --findings --output json | jq '.data.summary'
-ds design status --findings --output json | jq -r '.data.findings[] | "\(.transformer) \(.severity) \(.code)"'
+ds design status --project <id> --findings --output json | jq '.data.summary'
+ds design status --project <id> --findings --output json | jq -r '.data.findings[] | "\(.transformer) \(.severity) \(.code)"'
 ```
 
 Two different bounds apply, and they are different on purpose. A request names
@@ -216,13 +223,15 @@ as `auth_response_unreadable` rather than truncated.
 
 `ds design dashboard` folds those same rows once into the model the
 application's Design wall renders — the project's progress story, read from a
-terminal. Same credential, same fixed status call, same refusals: no
-`--project`, no Desktop descriptor, no fallback to a browser.
+terminal. Same credential, same fixed status call, same refusals, and the same
+REQUIRED `--project`: no Desktop descriptor, no saved selection, no fallback
+to a browser. `--tz-offset-minutes` names the reading day the momentum
+timeline buckets by, and is echoed in the receipt.
 
 ```bash
-ds design dashboard --output json
-ds design dashboard --fast --output json
-ds design dashboard --output json | jq '.data.dashboard.health'
+ds design dashboard --project <id> --output json
+ds design dashboard --project <id> --fast --output json
+ds design dashboard --project <id> --output json | jq '.data.dashboard.health'
 ```
 
 There is no `--transformer`: every percentage here is measured against the
@@ -259,6 +268,122 @@ The application folds in the verdicts of runs that have just finished and are
 not in the documents yet; `ds` has none, so `diagnostics` is empty and the
 model is exactly what the project's documents say. Nothing this machine holds
 unsaved can appear here, because a headless client holds nothing unsaved.
+
+## Design Activities across projects
+
+`ds design activities` answers the one Design question that spans projects:
+*who has been designing, where, and what changed.* It is two commands — one
+that takes photographs, one that reads them.
+
+### What the answer is actually made of
+
+There is **no design event log**. ds-brain audits membership, roles, lifecycle
+and assets; it audits no design work, and `/api/v1/user-activity` is a stub.
+What a status row carries is the LATEST stamp per phase per transformer. So
+this family retains successive captures and diffs them, and those captures are
+the entire history.
+
+Read this before you read anything the commands print:
+
+- **Nothing between two captures is visible.** If a transformer was drafted and
+  redrafted between Monday's sweep and Tuesday's, Tuesday shows one stamp.
+  Nothing is interpolated, inferred or synthesised to fill the gap; a gap is
+  rendered as a gap.
+- **No device, no installation.** Status rows carry none. If someone used
+  another account's credentials, every row they touched reads as that account.
+  Device evidence lives in Desktop installations (`app_installs`) and
+  `ds auth device list` — not here.
+- **Actions that never stamp a row are invisible**: reads, downloads, exports.
+- **Only projects this account is a member of.** ds-brain fences `/report` by
+  membership. A project that refuses the read is recorded as a refusal, never
+  as an absence.
+- **Rosters are optional input.** Without one, an actor outside a project
+  cannot be flagged as outside it.
+
+Every reply carries that list as `not_claimed`, because the reader who most
+needs it is the one who did not go looking for it.
+
+### Taking a capture
+
+```bash
+ds design activities sweep --limit 3 --yes --output json
+ds design activities sweep --project <id> --yes --output json
+ds design activities sweep --bucket all --limit 10 --max-age 60 --yes --output json
+```
+
+A sweep lists the projects this account can reach, asks the kernel which are
+worth re-capturing and in which order, then walks that order **one project at a
+time**, pausing `--pause-ms` (2 000 by default) between them. That etiquette is
+not politeness: ds-brain runs ONE full status scan per instance at a time, so a
+parallel sweep would simply queue behind itself and make everyone else's Design
+page wait. `--limit` defaults to 25 for the same reason; raise it deliberately.
+
+Per project the sweep reads the rows once, folds them into a ledger and into
+the project's own Dashboard model through the shared kernel, and retains one
+envelope. A project that refuses is a row with `outcome: "refused"`, its code
+and its reason — the sweep never aborts. A project the `--limit` did not reach
+appears in `plan.skip` with `reason: "limit"` rather than vanishing.
+
+`--yes` is required: a capture is a durable artifact of record, and every one
+of them spends a shared scan slot.
+
+**Nothing is scheduled.** There is no timer, unit file, cron entry or
+background refresh in this family, and there is not meant to be one. A capture
+exists because a person or an agent asked for it.
+
+### Where a capture lives
+
+`--state-dir` (absolute) or, by default, `$XDG_STATE_HOME/ds` — falling back to
+`$HOME/.local/state/ds`. Never `DS_CONFIG_HOME`: that is the credentials
+namespace and a cache of governed reads does not belong in it. Under the root
+the shared kernel owns the path:
+
+```
+<state-dir>/design-activities/<lane>/<account-digest>/<ds_project>/<13-digit-ms>.json
+```
+
+The account segment is the first 32 hex characters of
+`sha256(uid + "\n" + credential-audience-digest)`, so two accounts on one
+machine never read each other's captures and no path ever names a person. Two
+lanes are two stores: a canary capture never answers for stable. Files are
+written owner-only, staged and renamed, so a killed sweep leaves no half
+capture. Retention keeps the newest 30 captures whole plus the newest capture
+of each UTC day within 90 days, and the newest is never dropped.
+
+### Reading them
+
+```bash
+ds design activities read --output json
+ds design activities read --user someone@example.com --output json
+ds design activities read --bucket all --limit 200 --output json
+ds design activities read --since 1758000000000 --output json
+```
+
+`read` opens no socket. It restores the account from protected state, selects
+the newest capture of each project and the one before it, and makes ONE kernel
+fold call. `--since` moves the comparison point: the capture diffed against is
+the newest one taken at or before that instant, so the answer covers everything
+from then to now instead of only the last step. `--user` narrows `users`,
+`changes`, `timeline` and `anomalies` to one actor and echoes
+`filtered_by_user`; the totals deliberately stay project-wide, because "four of
+the project's ninety" is the sentence worth reading. `sources` names the two
+captures used per project, and `store_empty` is the refusal when nothing has
+been swept yet.
+
+A capture the kernel will not admit — a file half written, left by an older
+kernel, or edited since — does not abort the read. It is named in
+`unreadable` with the project, the capture time and the kernel's own reason,
+and the project's other capture still answers; losing twenty-nine honest
+projects to one damaged file is exactly the silence this command exists to
+avoid. When nothing admissible is left at all the refusal is
+`snapshot_invalid` naming each one, not `store_empty`, because "sweep again"
+is the wrong remedy for a file that is already there.
+
+The answer's `anomalies` are honest ones only: an actor the roster does not
+carry (`non_member_actor`, only when a roster was supplied), an actor with no
+name at all (`unknown_actor`), and a capture that is now old
+(`stale_capture`). Nothing here accuses anyone of anything; it reports what two
+photographs said.
 
 ## Local transformer rooms for background work
 
@@ -357,7 +482,8 @@ drawn by lasso on a rendered map is a different thing and stays with the paired
 application as `ds map design select`.
 
 Version and attachment commands require explicit `--project` and native
-authorization independently of Desktop and the Web active project. Tag and
+authorization independently of Desktop and the Web active project; since
+2026-09-18 `ds design status` and `ds design dashboard` do too. Tag and
 comment commands still use the paired application project; saved selections,
 the headless feature reads and LV export use the audience-fenced selected context.
 
@@ -764,7 +890,7 @@ so every row is remote and nothing is dirty here by construction.
 
 ## Status query — the register's selector, headless
 
-`ds design status --search <text> --sort <key> [--desc] --filter <dimension=value>…`
+`ds design status --project <id> --search <text> --sort <key> [--desc] --filter <dimension=value>…`
 answers the Transformers register's own question with no browser: which rows
 the operator would see and in what order, decided by
 `ds-command-kernel::design_status_query` — the same selector the register and

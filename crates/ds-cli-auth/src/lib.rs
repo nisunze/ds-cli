@@ -2843,6 +2843,160 @@ pub fn transformer_status(
     )
 }
 
+/// One `/report` result taken under the restored user against the project the
+/// CALLER named.
+///
+/// The saved selection is neither read nor written, so the answer does not
+/// depend on which project this machine happens to be pointed at. The account
+/// travels beside the result because a capture has to be able to say whose
+/// credential took it — ds-brain still decides membership, and naming the
+/// project here is the end of guessing, not a second authority.
+pub struct HeadlessNamedProject<T> {
+    identity: ProviderIdentity,
+    lane: &'static str,
+    project_id: String,
+    result: T,
+}
+
+impl<T> HeadlessNamedProject<T> {
+    pub const fn identity(&self) -> &ProviderIdentity {
+        &self.identity
+    }
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub const fn result(&self) -> &T {
+        &self.result
+    }
+    pub fn into_result(self) -> T {
+        self.result
+    }
+}
+
+fn headless_named_project<T>(
+    lane_value: &str,
+    project: &str,
+    device_call: impl FnOnce(&mut device::DeviceSession, &str) -> Result<T, ClientError>,
+    session_call: impl FnOnce(
+        &mut Client<NativeTransport, NativeRefreshStore>,
+        &str,
+    ) -> Result<T, ClientError>,
+) -> Result<HeadlessNamedProject<T>, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        let result = device_call(&mut device, &project).map_err(map_client)?;
+        return Ok(HeadlessNamedProject {
+            identity: ProviderIdentity::new(
+                lane.token(),
+                device.profile().credential_audience_sha256(),
+                device.context().uid(),
+            )?,
+            lane: lane.token(),
+            project_id: project,
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let result = session_call(&mut client, &project).map_err(map_client)?;
+    Ok(HeadlessNamedProject {
+        identity: ProviderIdentity::new(
+            lane.token(),
+            client.profile().credential_audience_sha256(),
+            user.uid(),
+        )?,
+        lane: lane.token(),
+        project_id: project,
+        result,
+    })
+}
+
+/// Read the transformer status rows of the project the CALLER named.
+///
+/// The same fixed status call [`transformer_status`] makes, asked about a
+/// named project instead of the saved one. Nothing about this machine's
+/// selection is read, so the same question asked twice from two terminals
+/// about the same project gets the same answer.
+pub fn transformer_status_for_project(
+    lane_value: &str,
+    project: &str,
+    requested: &TransformerSet,
+) -> Result<HeadlessNamedProject<TransformerStatusList>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.transformer_status(project, requested),
+        |client, project| client.transformer_status(project, requested, now()),
+    )
+}
+
+/// Every project this account can currently reach, as the gateway lists it.
+///
+/// The directory a sweep plans over. It is the same read `ds auth project
+/// list` performs, exposed as a library answer so a caller that is about to
+/// visit many projects does not have to shell out to itself.
+pub struct HeadlessDirectory {
+    identity: ProviderIdentity,
+    lane: &'static str,
+    projects: Vec<Value>,
+}
+
+impl HeadlessDirectory {
+    pub const fn identity(&self) -> &ProviderIdentity {
+        &self.identity
+    }
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    /// One entry per visible project: `ds_project`, `project_name`,
+    /// `display_name`, `role`, `status` — exactly the members
+    /// `ds auth project list` prints.
+    pub fn projects(&self) -> &[Value] {
+        &self.projects
+    }
+}
+
+/// List every project the restored native user can reach on this lane.
+pub fn project_directory(lane_value: &str) -> Result<HeadlessDirectory, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        let identity = ProviderIdentity::new(
+            lane.token(),
+            device.profile().credential_audience_sha256(),
+            device.context().uid(),
+        )?;
+        let directory = device.list_projects().map_err(map_client)?;
+        let projects = directory.projects().iter().map(project_json).collect();
+        return Ok(HeadlessDirectory {
+            identity,
+            lane: lane.token(),
+            projects,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let identity = ProviderIdentity::new(
+        lane.token(),
+        client.profile().credential_audience_sha256(),
+        user.uid(),
+    )?;
+    let directory = client.list_projects(now()).map_err(map_client)?;
+    let projects = directory.projects().iter().map(project_json).collect();
+    Ok(HeadlessDirectory {
+        identity,
+        lane: lane.token(),
+        projects,
+    })
+}
+
 /// One saved-selection operation in only the saved, audience-fenced selected
 /// project.
 ///

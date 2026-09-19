@@ -60,6 +60,7 @@
 //! audited redaction, which stays in the application where the moderator can
 //! read what they are removing before they remove it.
 
+pub mod activities;
 pub mod attachment;
 pub mod autoprocess;
 pub mod category_catalog;
@@ -191,6 +192,8 @@ pub static DOMAIN: Domain = Domain {
         &force_gate::COMMAND,
         &data_lane::COMMAND,
         &transformer::status::COMMAND,
+        &activities::sweep::COMMAND,
+        &activities::read::COMMAND,
         &preview::BULK_PLAN,
         &preview::DOWNLOAD_PLAN,
         &versions::STATUS,
