@@ -41,16 +41,37 @@ pub const SORT_ARG: Arg = Arg::value("sort", "<key>", "Order the rows by this.")
     "version",
 ]);
 pub const DESC_ARG: Arg = Arg::switch("desc", "Sort descending.");
+/// Every dimension `--filter` accepts, in the spelling the flag takes.
+///
+/// It is written here rather than in the reference because the reference is
+/// not installed: a caller with the binary and nothing else must be able to
+/// read the vocabulary out of `--help` and out of the refusal.
+pub const FILTER_DIMENSIONS: &[&str] = &[
+    "sync",
+    "lane",
+    "warning-type",
+    "legacy",
+    "process",
+    "report",
+    "combined",
+    "governance",
+    "user",
+    "admin-district",
+    "admin-sector",
+    "admin-cell",
+    "admin-village",
+];
+
 pub const FILTER_ARG: Arg = Arg::repeated(
     "filter",
     "<dimension=value>",
-    "Keep matching rows; repeat to combine. Dimensions are in the reference.",
+    "Keep matching rows; repeat to combine. Refused with the list if wrong; user is the row's latest actor.",
 );
 
 const QUERY_INVALID: Refusal = Refusal {
     code: "design_status_query_invalid",
-    when: "A --filter is not <dimension=value> over a known dimension, or names two admin levels",
-    remedy: "See the reference for the dimensions; name one admin level",
+    when: "A --filter names an unknown dimension, two admin levels, or a value this project lacks",
+    remedy: "use a dimension this refusal lists; `query.options` holds every value",
 };
 
 /// The read refusals every native project read shares: the packaged profile,
@@ -142,7 +163,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut output = super::named_project_receipt(headless.lane(), headless.project_id());
     let mut rows = status_json(headless.result(), inputs.switch("findings"));
     if let Some(selector) = selector {
-        apply_selector(headless.result(), &mut rows, selector)?;
+        let raw: Vec<Value> = headless
+            .result()
+            .rows()
+            .iter()
+            .map(|row| row.row().clone())
+            .collect();
+        apply_selector(raw, &mut rows, selector)?;
     }
     output
         .as_object_mut()
@@ -188,13 +215,28 @@ fn selector_from_inputs(inputs: &Inputs) -> Result<Option<Value>, Failure> {
             }
             _ => {
                 let Some(level) = dimension.strip_prefix("admin-") else {
+                    // A sort key and a filter dimension are not the same
+                    // vocabulary — `--sort district` is accepted where
+                    // `--filter district=` is not — so the one spelling that
+                    // works is named rather than left to be guessed.
+                    if ["district", "sector", "cell", "village"].contains(&dimension) {
+                        return Err(invalid(format!(
+                            "--filter names an unknown dimension: {dimension}. An \
+                             administrative level is filtered as `admin-{dimension}=<value>`; \
+                             the dimensions are {}",
+                            FILTER_DIMENSIONS.join(", ")
+                        )));
+                    }
                     return Err(invalid(format!(
-                        "--filter names an unknown dimension: {dimension}"
+                        "--filter names an unknown dimension: {dimension}. The dimensions \
+                         are {}",
+                        FILTER_DIMENSIONS.join(", ")
                     )));
                 };
                 if !["district", "sector", "cell", "village"].contains(&level) {
                     return Err(invalid(format!(
-                        "--filter names an unknown admin level: {level}"
+                        "--filter names an unknown admin level: {level}. The levels are \
+                         district, sector, cell, village"
                     )));
                 }
                 if selector.get("admin_level").is_some() {
@@ -217,12 +259,7 @@ fn selector_from_inputs(inputs: &Inputs) -> Result<Option<Value>, Failure> {
 /// One kernel question over the rows as the service sent them: the register's
 /// order and the options each filter may offer. A headless client holds no
 /// browser session, pins, tags or saved selection, so those members are empty.
-fn apply_selector(
-    list: &TransformerStatusList,
-    rows: &mut Value,
-    request: Value,
-) -> Result<(), Failure> {
-    let raw: Vec<Value> = list.rows().iter().map(|row| row.row().clone()).collect();
+fn apply_selector(raw: Vec<Value>, rows: &mut Value, request: Value) -> Result<(), Failure> {
     let mut query = json!({
         "op": "query",
         "schema": ds_command_kernel::design_status_query::SCHEMA,
@@ -238,6 +275,15 @@ fn apply_selector(
         Failure::invalid(QUERY_INVALID.code, error).remedy(QUERY_INVALID.remedy)
     })?;
     let reply: Value = serde_json::from_str(&reply).unwrap_or(Value::Null);
+    // The kernel answers a browser that re-renders with a pruned selector
+    // showing. A one-shot caller has no second render: if the filter it asked
+    // for was dropped, the rows it gets back answer a different question, and
+    // the count it reads is a confident zero about the wrong thing.
+    pruned_filter(
+        &request["selector"],
+        &reply["normalized"],
+        &reply["options"],
+    )?;
     let object = rows.as_object_mut().expect("rows are an object");
     let mut queues: std::collections::HashMap<String, std::collections::VecDeque<Value>> =
         std::collections::HashMap::new();
@@ -263,10 +309,95 @@ fn apply_selector(
         json!({
             "selector": request["selector"],
             "sort": request.get("sort").cloned().unwrap_or(Value::Null),
+            // What the kernel made of the selector, beside what was asked for:
+            // a caller that reads only `selector` cannot tell the two apart.
+            "normalized": reply["normalized"],
             "options": reply["options"],
         }),
     );
     Ok(())
+}
+
+/// The dimensions the kernel normalises: how `--filter` spells each one, and
+/// the key it carries in `normalized` and `options`.
+const NORMALIZED_DIMENSIONS: &[(&str, &str)] = &[
+    ("sync", "sync"),
+    ("lane", "lane"),
+    ("warning-type", "warning_types"),
+    ("legacy", "legacy"),
+    ("process", "process"),
+    ("report", "report"),
+    ("combined", "combined"),
+    ("governance", "governance"),
+    ("user", "user"),
+];
+
+/// Refuse a filter the kernel cleared, naming what the project does offer.
+///
+/// Clearing is the browser's behaviour — it drops the chip and re-renders —
+/// and it is the wrong behaviour for one-shot call: the answer would be the
+/// unfiltered list, or, combined with another filter, a plausible subset of
+/// it, with nothing in the reply saying the question had changed.
+fn pruned_filter(selector: &Value, normalized: &Value, options: &Value) -> Result<(), Failure> {
+    for (flag, key) in NORMALIZED_DIMENSIONS {
+        let asked = &selector[*key];
+        let (asked_values, kept_any) = match asked {
+            Value::String(value) if !value.is_empty() => (
+                vec![value.clone()],
+                normalized[*key]
+                    .as_str()
+                    .is_some_and(|kept| !kept.is_empty()),
+            ),
+            Value::Array(values) if !values.is_empty() => (
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect(),
+                normalized[*key]
+                    .as_array()
+                    .is_some_and(|kept| !kept.is_empty()),
+            ),
+            _ => continue,
+        };
+        if kept_any {
+            continue;
+        }
+        let offered = offered_values(&options[*key]);
+        let offers = if offered.is_empty() {
+            "no value at all".to_owned()
+        } else {
+            offered.join(", ")
+        };
+        return Err(Failure::invalid(
+            QUERY_INVALID.code,
+            format!(
+                "--filter {flag}={} names nothing this project holds; its {flag} values are {offers}",
+                asked_values.join(", ")
+            ),
+        )
+        .remedy(QUERY_INVALID.remedy)
+        .detail(json!({
+            "dimension": flag,
+            "requested": asked_values,
+            "available": offered,
+        })));
+    }
+    Ok(())
+}
+
+/// One dimension's options as plain strings. Warning types are counted
+/// objects; every other dimension is already a list of names.
+fn offered_values(options: &Value) -> Vec<String> {
+    options
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|option| match option {
+            Value::String(value) => Some(value.clone()),
+            other => other["key"].as_str().map(str::to_owned),
+        })
+        .collect()
 }
 
 fn now_ms() -> i64 {
@@ -434,4 +565,124 @@ pub fn render(data: &Value) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn selector(filters: &[&str]) -> Result<Option<Value>, Failure> {
+        let mut argv: Vec<String> = vec!["--project".into(), "p_one".into()];
+        for filter in filters {
+            argv.push("--filter".into());
+            argv.push((*filter).to_string());
+        }
+        let inputs = ds_cli_contract::args::parse(&COMMAND, &argv).expect("the flags parse");
+        selector_from_inputs(&inputs)
+    }
+
+    /// The vocabulary is part of the product, not of a document that is not
+    /// installed beside it.
+    #[test]
+    fn the_filter_dimensions_are_published_where_a_caller_reads_them() {
+        // The reference is not installed beside the binary, so the vocabulary
+        // has to be reachable from the binary itself. The full list rides on
+        // the refusal (proven by the next test); the summary tells the caller
+        // that, and carries the one semantic a refusal cannot teach: `user`
+        // is the row's LATEST attributed actor, not everyone who touched it.
+        let summary = COMMAND
+            .args
+            .iter()
+            .find(|arg| arg.name == "filter")
+            .expect("--filter")
+            .summary;
+        assert!(summary.contains("Refused with the list"), "{summary}");
+        assert!(summary.contains("latest actor"), "{summary}");
+        assert!(!summary.contains("reference"), "{summary}");
+    }
+
+    #[test]
+    fn an_unknown_dimension_is_answered_with_the_dimensions_that_exist() {
+        let failure = selector(&["colour=red"]).expect_err("an unknown dimension is refused");
+        assert_eq!(failure.code(), QUERY_INVALID.code);
+        for dimension in FILTER_DIMENSIONS {
+            assert!(
+                failure.message().contains(dimension),
+                "{}",
+                failure.message()
+            );
+        }
+    }
+
+    /// `--sort district` is accepted and `--filter district=` is not, so the
+    /// refusal names the spelling that works instead of leaving the caller to
+    /// guess that the two vocabularies differ.
+    #[test]
+    fn a_sort_key_used_as_a_filter_dimension_is_told_the_filter_spelling() {
+        let failure = selector(&["district=Karongi"]).expect_err("district is not a dimension");
+        assert!(
+            failure.message().contains("admin-district=<value>"),
+            "{}",
+            failure.message()
+        );
+    }
+
+    #[test]
+    fn an_unknown_admin_level_names_the_levels_that_exist() {
+        let failure = selector(&["admin-planet=x"]).expect_err("planet is not a level");
+        assert!(
+            failure
+                .message()
+                .contains("district, sector, cell, village"),
+            "{}",
+            failure.message()
+        );
+    }
+
+    /// The kernel clears a value no row exhibits because a browser re-renders
+    /// without it. One call has no second render, so the same clearing must be
+    /// a refusal that names what the project does hold.
+    #[test]
+    fn a_filter_the_kernel_cleared_is_refused_rather_than_answered_with_a_zero() {
+        let asked = json!({ "search": "", "user": "someone@example.com" });
+        let normalized = json!({ "user": "", "sync": [], "warning_types": [] });
+        let options = json!({ "user": ["hassan@example.com", "nisunze@example.com"] });
+        let failure = pruned_filter(&asked, &normalized, &options)
+            .expect_err("a pruned scalar filter is a refusal");
+        assert_eq!(failure.code(), QUERY_INVALID.code);
+        assert!(
+            failure.message().contains("hassan@example.com"),
+            "{}",
+            failure.message()
+        );
+        assert_eq!(failure.detail_value().expect("detail")["dimension"], "user");
+    }
+
+    #[test]
+    fn a_pruned_list_filter_names_its_dimension_by_the_flag_spelling() {
+        let asked = json!({ "search": "", "warning_types": ["dsr_warning_missing_meter"] });
+        let normalized = json!({ "warning_types": [], "user": "" });
+        let options = json!({ "warning_types": [{ "key": "dsr_warning_stale", "count": 2 }] });
+        let failure = pruned_filter(&asked, &normalized, &options).expect_err("pruned");
+        assert!(
+            failure.message().starts_with("--filter warning-type="),
+            "{}",
+            failure.message()
+        );
+        assert!(
+            failure.message().contains("dsr_warning_stale"),
+            "{}",
+            failure.message()
+        );
+    }
+
+    #[test]
+    fn a_filter_the_kernel_kept_is_not_refused() {
+        let asked = json!({ "search": "", "user": "nisunze@example.com", "sync": ["unsaved"] });
+        let normalized = json!({ "user": "nisunze@example.com", "sync": ["unsaved"] });
+        let options = json!({ "user": ["nisunze@example.com"], "sync": ["saved", "unsaved"] });
+        assert!(pruned_filter(&asked, &normalized, &options).is_ok());
+        // An absent dimension is not a pruned one.
+        assert!(pruned_filter(&json!({ "search": "x" }), &normalized, &options).is_ok());
+    }
 }

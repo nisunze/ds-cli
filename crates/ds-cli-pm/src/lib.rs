@@ -61,7 +61,7 @@ pub use ds_cli_desktop::ops::{
 
 pub static DOMAIN: Domain = Domain {
     id: "pm",
-    summary: "Tasks, milestones, notes, records and the plan they sit in.",
+    summary: "Tasks, milestones, records and the plan they sit in.",
     commands: &[
         &plan::COMMAND,
         &task::list::COMMAND,

@@ -193,13 +193,22 @@ fn run_mode(inputs: &Inputs, mode: Mode) -> Result<Value, Failure> {
 
 /// The service refuses a same-project migration too; this names it with the
 /// CLI's own code so a caller reads one refusal rather than two spellings.
+///
+/// Two refusals arrive here, and both must land on the declared code. The
+/// service's travels in `detail.detail`; the client's own pre-check never
+/// reaches the service at all and arrives as the message of a generic
+/// `auth_input_invalid`, which carries no remedy. Reading only the detail let
+/// the local path — the one a caller hits first — lose both.
 fn classify_same_project(failure: Failure) -> Failure {
     let detail = failure
         .detail_value()
         .and_then(|value| value["detail"].as_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if !detail.contains("same project") && !detail.contains("must be different") {
+    let message = failure.message().to_ascii_lowercase();
+    let says_same_project =
+        |text: &str| text.contains("same project") || text.contains("must be different");
+    if !says_same_project(&detail) && !says_same_project(&message) {
         return failure;
     }
     Failure::invalid(
@@ -403,6 +412,35 @@ what was rewritten or dropped is stated per object.",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The local pre-check refuses before a request is ever sent, and it must
+    /// reach the caller under the code this command declares — not as the
+    /// generic `auth_input_invalid`, which carries no remedy at all.
+    #[test]
+    fn the_local_same_project_check_surfaces_under_the_declared_code() {
+        let local = Failure::invalid(
+            "auth_input_invalid",
+            "design migration source and target are the same project",
+        );
+        let named = classify_same_project(local);
+        assert_eq!(named.code(), SAME_PROJECT.code);
+        assert_eq!(named.remedy_text(), Some(SAME_PROJECT.remedy));
+    }
+
+    /// The service's own refusal still names the same code, from its detail.
+    #[test]
+    fn the_service_same_project_refusal_keeps_the_same_code() {
+        let remote = Failure::invalid("migration_refused", "the service refused the migration")
+            .detail(json!({ "detail": "source and target must be different" }));
+        assert_eq!(classify_same_project(remote).code(), SAME_PROJECT.code);
+    }
+
+    /// Nothing else is rewritten: an unrelated refusal passes through whole.
+    #[test]
+    fn an_unrelated_refusal_is_left_exactly_as_it_arrived() {
+        let other = Failure::invalid("auth_input_invalid", "--items is empty");
+        assert_eq!(classify_same_project(other).code(), "auth_input_invalid");
+    }
 
     #[test]
     fn one_verb_carries_both_design_kinds() {

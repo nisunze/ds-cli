@@ -54,7 +54,8 @@ is never a choice. Nothing running is an answer, not a failure.",
     args: &[],
     output: "\
 `live` and `instances`: each id, how it was identified, profile, lane, open \
-project, build, start time, window count and whether it can serve work. \
+project, build, start time, window count, and `can_serve` with a reason \
+when it cannot. \
 `compatible` names the ids this account may use. `unusable` names a descriptor \
 file that cannot be used, and why. Never a token, an address or an account.",
     examples: &[
@@ -99,9 +100,35 @@ pub fn data(enumeration: &Enumeration, requirement: Option<&discover::Requiremen
     let compatible = kernel::list(&candidates, requirement)
         .ok()
         .and_then(|(_, compatible)| compatible);
+    // The verdict belongs on the row as well as in its own list. A JSON
+    // caller reading `instances[]` alone sees `state: "ready"` and nothing
+    // that says the instance cannot serve it, and joining the two lists by
+    // hand is work the answer should have done.
+    let mut rows = instances(enumeration);
+    if let Some(compatible) = &compatible {
+        let usable: Vec<&str> = compatible.iter().map(String::as_str).collect();
+        for row in &mut rows {
+            let serves = row["instance_id"]
+                .as_str()
+                .is_some_and(|id| usable.contains(&id));
+            let object = row.as_object_mut().expect("an instance row is an object");
+            object.insert("can_serve".to_owned(), json!(serves));
+            if !serves {
+                object.insert(
+                    "cannot_serve_reason".to_owned(),
+                    json!(match object.get("state").and_then(Value::as_str) {
+                        Some("signed_out") => "the instance is signed out",
+                        Some("contract_mismatch") =>
+                            "the instance published a session of another contract",
+                        _ => "another account, lane or project than this caller's",
+                    }),
+                );
+            }
+        }
+    }
     json!({
         "live": enumeration.live.len(),
-        "instances": instances(enumeration),
+        "instances": rows,
         "compatible": compatible,
         "unusable": unusable(enumeration),
         "more": { "omitted": enumeration.omitted },
@@ -292,6 +319,15 @@ mod tests {
         assert_eq!(data["instances"][0]["instance_id"], json!(ONE));
         assert_eq!(data["instances"][1]["instance_id"], json!(TWO));
         assert_eq!(data["compatible"], json!([ONE]));
+        // The verdict is on the row too: a caller reading one row learns
+        // whether it can serve without joining `compatible` by hand.
+        assert_eq!(data["instances"][0]["can_serve"], json!(true));
+        assert_eq!(data["instances"][1]["can_serve"], json!(false));
+        assert_eq!(
+            data["instances"][1]["cannot_serve_reason"],
+            json!("another account, lane or project than this caller's")
+        );
+        assert!(data["instances"][0].get("cannot_serve_reason").is_none());
         assert_eq!(data["live"], json!(2));
         assert!(render(&data).contains("← yours"));
     }
@@ -314,6 +350,9 @@ mod tests {
         assert_eq!(data["instances"][1]["state"], json!("contract_mismatch"));
         assert!(data["instances"][0].get("project").is_none());
         assert_eq!(data["compatible"], Value::Null);
+        // With no identity to compare there is no verdict, and the row says
+        // nothing rather than guessing one.
+        assert!(data["instances"][0].get("can_serve").is_none());
         assert_eq!(
             data["unusable"][0]["reason"],
             json!("descriptor is not valid JSON")

@@ -118,6 +118,18 @@ refusal!(
     "re-sweep the project; the refusal names the member at fault"
 );
 refusal!(
+    SINCE_NO_BASELINE,
+    "since_no_baseline",
+    "--since is earlier than every retained capture for these projects; nothing to diff",
+    "sweep now and re-read, or pass a --since at or after the earliest capture named here"
+);
+refusal!(
+    UNKNOWN_ACTOR,
+    "unknown_actor",
+    "--user names an actor no retained capture holds",
+    "name an actor this refusal lists, by account or short name, or read without --user"
+);
+refusal!(
     ACTIVITIES_REFUSED,
     "activities_refused",
     "the shared kernel refuses the ledger, plan, key, retention or fold request",

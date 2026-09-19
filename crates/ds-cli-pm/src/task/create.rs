@@ -146,7 +146,9 @@ new item in the app.",
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/pm.md"),
-    search: &[],
+    search: &[
+        "subtask", "sub-task", "deadline", "due", "date", "backlog", "wbs", "schedule",
+    ],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

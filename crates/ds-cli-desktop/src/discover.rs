@@ -570,7 +570,7 @@ pub fn choose(
                 })
             })
         {
-            return unprovisioned_lane();
+            return crate::ops::unprovisioned_lane();
         }
         failure
     })?;
@@ -650,7 +650,7 @@ fn adopted_requirement(candidates: &[kernel::Candidate]) -> Result<Requirement, 
         })));
     }
     if !matches!(lane, "stable" | "canary") {
-        return Err(unprovisioned_lane());
+        return Err(crate::ops::unprovisioned_lane());
     }
     Ok(Requirement {
         lane: lane.to_owned(),
@@ -674,14 +674,6 @@ fn placeholder_requirement() -> Requirement {
         project: None,
         project_independent: true,
     }
-}
-
-fn unprovisioned_lane() -> Failure {
-    Failure::unavailable(
-        "desktop_operation_unsupported",
-        "the paired local Desktop build has no provisioned native lane",
-    )
-    .remedy("use a provisioned Canary or Stable DS GridDesign build for paired CLI operations")
 }
 
 /// The descriptor a caller named, if it named one. `--desktop-descriptor` wins

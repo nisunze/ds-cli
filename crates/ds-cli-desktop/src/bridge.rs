@@ -335,13 +335,7 @@ impl IdentityFence {
             .remedy("update DS GridDesign, sign in, select the intended project, and retry")
         })?;
         if fence.lane == "local" {
-            return Err(Failure::unavailable(
-                "desktop_operation_unsupported",
-                "the paired local Desktop build has no provisioned native lane",
-            )
-            .remedy(
-                "use a provisioned Canary or Stable DS GridDesign build for paired CLI operations",
-            ));
+            return Err(crate::ops::unprovisioned_lane());
         }
         if fence.uid.is_empty()
             || !matches!(fence.lane.as_str(), "stable" | "canary")
@@ -478,11 +472,9 @@ mod tests {
         }))
         .expect_err("local Desktop must not impersonate a provisioned release lane");
         assert_eq!(error.code(), "desktop_operation_unsupported");
-        assert!(
-            error
-                .remedy_text()
-                .is_some_and(|remedy| remedy.contains("provisioned Canary or Stable"))
-        );
+        // The remedy is the one the command contracts publish under that
+        // code, not a second text minted here: one code, one recovery.
+        assert_eq!(error.remedy_text(), Some(crate::ops::UNSUPPORTED.remedy));
     }
 
     #[test]

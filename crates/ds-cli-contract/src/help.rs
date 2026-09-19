@@ -292,7 +292,7 @@ fn command_json_with_availability(
         "execution": command.execution.token(),
         "confirmation_required": command.effect.needs_confirmation(),
         "requires": command.requires.token(),
-        "availability": availability.as_ref().map_or("unchecked", |value| value.token()),
+        "availability": reported_availability(command, availability.as_ref()),
         "inputs": command.args.iter().map(arg_json).collect::<Vec<_>>(),
         "output": command.output,
         "examples": examples,
@@ -328,6 +328,33 @@ fn command_json_with_availability(
         descriptor["reference"] = json!(reference);
     }
     descriptor
+}
+
+/// What a discovery reader is told about running this command here.
+///
+/// `Availability` is the dispatch gate, and for a command that needs the
+/// paired window it is deliberately unconditional: gating it would refuse the
+/// very invocation that names where to look (`--desktop-descriptor`). That
+/// makes it the wrong answer to publish verbatim — a reader asking what works
+/// on this machine would be told `available` for a command that refuses
+/// immediately with class `unavailable` when no window is paired.
+///
+/// So the gate stays as it is and the *report* says what is actually known:
+/// the command needs a window, and whether one is there is answered by
+/// `ds desktop status`, not by a field resolved before any flag is parsed.
+pub fn reported_availability(
+    command: &Command,
+    availability: Option<&crate::spec::Availability>,
+) -> &'static str {
+    match availability {
+        None => "unchecked",
+        Some(crate::spec::Availability::Available)
+            if command.requires == crate::spec::Requires::Window =>
+        {
+            "requires_window"
+        }
+        Some(value) => value.token(),
+    }
 }
 
 fn arg_json(arg: &Arg) -> Value {

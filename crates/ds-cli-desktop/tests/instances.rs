@@ -289,9 +289,12 @@ fn ambiguity_refuses_before_any_instance_receives_an_invoke() {
         "two instances could serve it",
     );
     assert_eq!(refusal.code(), "desktop_ambiguous");
+    // The remedy a caller receives is the kernel's, and `ops::AMBIGUOUS` is
+    // the declaration that mirrors it. Asserting they are the same string is
+    // what keeps the published contract and the emitted refusal one text.
     assert_eq!(
         refusal.remedy_text(),
-        Some("name one with --target desktop:<instance_id>"),
+        Some(ds_cli_desktop::ops::AMBIGUOUS.remedy),
     );
     untouched(&[&alpha, &beta]);
     // Each was asked who it is — and nothing else. Liveness is a handshake,

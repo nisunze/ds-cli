@@ -354,6 +354,16 @@ pub const NOT_PAIRED: Refusal = Refusal {
     when: "no DS GridDesign session is running on this machine",
     remedy: "start DS GridDesign, then run `ds desktop status`",
 };
+/// Two instances can serve the work and nothing says which.
+///
+/// The remedy is a MIRROR of the one `ds-command-kernel` emits for
+/// `desktop_ambiguous` (`desktop_instance::route_one`), which is what a
+/// caller actually receives on the routing path. The two must stay identical:
+/// changing this copy alone would make the published remedy differ from the
+/// emitted one, which is the defect it looks like a fix for. `--target` is
+/// declared by a handful of commands only, so on most paired commands this
+/// remedy names a flag the parser refuses — that is real, and it is the
+/// kernel's text to change.
 pub const AMBIGUOUS: Refusal = Refusal {
     code: "desktop_ambiguous",
     when: "two or more live DS GridDesign instances can serve this",
@@ -425,9 +435,25 @@ pub const REFUSED: Refusal = Refusal {
 };
 pub const UNSUPPORTED: Refusal = Refusal {
     code: "desktop_operation_unsupported",
-    when: "this DS GridDesign build does not offer the operation",
-    remedy: "update DS GridDesign; `ds desktop status` reports the profile",
+    when: "this build lacks the operation or runs the `local` dev lane",
+    remedy: "use a Canary or Stable DS GridDesign, or update it; `ds desktop list` names lanes",
 };
+
+/// The paired application is a development build on lane `local`.
+///
+/// Two places meet this — the requirement the kernel routes on, and the
+/// identity fence read off a live session — and both must say the same thing,
+/// because they carry the same code. Writing the text twice is how they came
+/// to disagree, and how the remedy came to name an action the product does
+/// not offer: nothing provisions a lane, and `ds desktop status` only echoes
+/// `profile: dev`.
+pub fn unprovisioned_lane() -> Failure {
+    Failure::unavailable(
+        UNSUPPORTED.code,
+        "the paired DS GridDesign runs the `local` lane of a development build, which performs no paired CLI work",
+    )
+    .remedy(UNSUPPORTED.remedy)
+}
 pub const UNREADABLE: Refusal = Refusal {
     code: "desktop_unreadable",
     when: "the application's reply could not be read within its bound",
@@ -657,6 +683,38 @@ mod tests {
         operation: "design.upload.stage_batch",
         arguments: &["items.transformer", "items.path", "parallel"],
     };
+
+    /// One code, one text. The lane case used to carry a second remedy that
+    /// named an action nothing performs, so a caller who read the contract and
+    /// a caller who hit the refusal were told two different things, and
+    /// neither could act on what they were told.
+    #[test]
+    fn the_unprovisioned_lane_refusal_is_the_text_the_contract_publishes() {
+        let refused = unprovisioned_lane();
+        assert_eq!(refused.code(), UNSUPPORTED.code);
+        assert_eq!(refused.remedy_text(), Some(UNSUPPORTED.remedy));
+        // Both halves of the remedy name something the product actually does.
+        assert!(
+            UNSUPPORTED.remedy.contains("ds desktop list"),
+            "{}",
+            UNSUPPORTED.remedy
+        );
+        assert!(UNSUPPORTED.when.contains("local"), "{}", UNSUPPORTED.when);
+
+        // The identity fence read off a live session is the other site, and
+        // it must be the same refusal rather than a second spelling of it.
+        let fence = crate::bridge::IdentityFence::from_session(&json!({
+            "uid": "u1",
+            "lane": "local",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "p_one",
+            "session_revision": 3,
+        }))
+        .expect_err("a local lane serves no paired work");
+        assert_eq!(fence.code(), refused.code());
+        assert_eq!(fence.message(), refused.message());
+        assert_eq!(fence.remedy_text(), refused.remedy_text());
+    }
 
     #[test]
     fn an_argument_key_the_operation_does_not_declare_never_leaves_this_process() {

@@ -22,13 +22,13 @@ use super::{
 const USER_ARG: Arg = Arg::value(
     "user",
     "<actor>",
-    "Show only this actor's rows; totals stay project-wide.",
+    "Show only this actor's rows, by account or short name; totals stay project-wide.",
 );
 
 const SINCE_ARG: Arg = Arg::value(
     "since",
     "<epoch-ms>",
-    "Diff against the newest capture taken at or before this instant.",
+    "Diff against the newest capture taken at or before this instant; none is refused, not zero.",
 );
 
 const LIMIT_ARG: Arg = Arg::value(
@@ -44,6 +44,8 @@ const REFUSALS: &[Refusal] = &[
     super::STORE_UNSAFE,
     super::STORE_EMPTY,
     super::SNAPSHOT_INVALID,
+    super::SINCE_NO_BASELINE,
+    super::UNKNOWN_ACTOR,
     super::ACTIVITIES_REFUSED,
     ds_cli_contract::args::INVALID_NUMBER,
 ];
@@ -137,6 +139,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let held = inventory(&account)?;
     let mut projects: Vec<Value> = Vec::new();
     let mut sources: Vec<Value> = Vec::new();
+    // A `--since` window with nothing retained at or before it has no
+    // baseline, and a fold over one photograph reports `changes: 0`. That
+    // number is indistinguishable from "nobody did anything", which is the
+    // one sentence this command must never say by accident.
+    let mut without_baseline: Vec<Value> = Vec::new();
     // A capture the kernel will not admit is a named row, never an abort: one
     // damaged file out of thirty must not cost the operator the other
     // twenty-nine, and it must not vanish either.
@@ -156,12 +163,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         // answer covers everything from then to now rather than only the last
         // step. Without it the kernel's own pair is used.
         let previous = match since {
-            Some(since) => captures
-                .iter()
-                .copied()
-                .rfind(|capture| *capture <= since && *capture < latest),
+            Some(since) => baseline_before(captures, since, latest),
             None => selected["previous"].as_i64(),
         };
+        let no_baseline = since.is_some() && previous.is_none();
 
         let snapshot = match read_capture(&account.join(project).join(format!("{latest:013}.json")))
         {
@@ -217,6 +222,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
         }
         projects.push(Value::Object(entry));
+        if no_baseline {
+            without_baseline.push(json!({
+                "ds_project": project,
+                "earliest_ms": captures.first().copied(),
+                "latest_ms": latest,
+            }));
+        }
         sources.push(json!({
             "ds_project": project,
             "latest_ms": latest,
@@ -258,6 +270,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .next("ds design activities sweep --limit 3 --yes"));
     }
 
+    // Some projects without a baseline is a named gap beside a real answer.
+    // Every project without one is not an answer at all: there is nothing to
+    // diff, and `changes: 0` would be a statement about the store rather than
+    // about the people this command reports on.
+    if let Some(since) = since
+        && !without_baseline.is_empty()
+        && without_baseline.len() == projects.len()
+    {
+        return Err(no_baseline_anywhere(since, &without_baseline));
+    }
+
     let mut fold = Map::new();
     fold.insert("now_ms".into(), json!(now_ms()));
     fold.insert("tz_offset_minutes".into(), json!(tz_offset));
@@ -270,7 +293,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let mut activities = reply["activities"].clone();
     if !user.is_empty() {
-        project_onto_user(&mut activities, &user);
+        project_onto_user(&mut activities, &user)?;
     }
     let mut out = activities.as_object().cloned().unwrap_or_default();
     out.insert("lane".into(), json!(lane));
@@ -283,9 +306,48 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     if let Some(since) = since {
         out.insert("since_ms".into(), json!(since));
+        out.insert("since_no_baseline".into(), json!(without_baseline));
     }
     out.insert("not_claimed".into(), not_claimed());
     Ok(Value::Object(out))
+}
+
+/// The capture a `--since` window diffs against: the newest one taken at or
+/// before that instant, and never the latest itself.
+///
+/// `None` is the honest answer when every retained capture was taken after
+/// the instant asked for — the window has no floor, and the caller must be
+/// told so rather than handed a fold over one photograph.
+fn baseline_before(captures: &[i64], since: i64, latest: i64) -> Option<i64> {
+    captures
+        .iter()
+        .copied()
+        .rfind(|capture| *capture <= since && *capture < latest)
+}
+
+/// Not one selected project has a capture at or before `--since`.
+fn no_baseline_anywhere(since: i64, without_baseline: &[Value]) -> Failure {
+    let named: Vec<String> = without_baseline
+        .iter()
+        .map(|entry| {
+            format!(
+                "{}@{}",
+                entry["ds_project"].as_str().unwrap_or("?"),
+                spell_ms(entry["earliest_ms"].as_i64().unwrap_or(0))
+            )
+        })
+        .collect();
+    Failure::invalid(
+        super::SINCE_NO_BASELINE.code,
+        format!(
+            "--since {since} falls before every capture retained for {}, so there is no \
+             baseline to diff against and no window this store can answer for",
+            named.join(", ")
+        ),
+    )
+    .remedy(super::SINCE_NO_BASELINE.remedy)
+    .detail(json!({ "since_ms": since, "projects": without_baseline }))
+    .next("ds design activities read --output json")
 }
 
 /// Whether a capture's retained lifecycle status belongs to the bucket asked
@@ -304,21 +366,43 @@ fn admits(bucket: &str, status: Option<&str>) -> bool {
 /// Narrow the lists to one actor. The totals are deliberately left whole:
 /// "this person did four of the project's ninety designs" is the sentence
 /// worth reading, and it needs both numbers.
-fn project_onto_user(activities: &mut Value, user: &str) {
-    let matches = |value: &Value| value.as_str().is_some_and(|actor| actor == user);
-    if let Some(users) = activities["users"].as_array() {
-        let kept: Vec<Value> = users
-            .iter()
-            .filter(|entry| matches(&entry["name"]))
-            .cloned()
-            .collect();
-        activities["users"] = json!(kept);
+///
+/// The name is matched the way the reply prints it: an actor is its account
+/// and its short name, compared without case, because a filter that rejects
+/// the very spelling this command just printed is a filter nobody can use.
+/// An actor the fold has never seen is a refusal and not an empty list — a
+/// zero for a person who does not exist reads exactly like a zero for a
+/// person who did nothing.
+fn project_onto_user(activities: &mut Value, user: &str) -> Result<(), Failure> {
+    let wanted = user.trim().to_lowercase();
+    let is_wanted = |value: &Value| {
+        value
+            .as_str()
+            .is_some_and(|actor| actor.trim().to_lowercase() == wanted)
+    };
+    let names_wanted = |entry: &Value| is_wanted(&entry["name"]) || is_wanted(&entry["short"]);
+    let stamped_by_wanted = |entry: &Value| {
+        is_wanted(&entry["user"])
+            || is_wanted(&entry["short"])
+            || is_wanted(&entry["previous_user"])
+    };
+
+    let known: Vec<Value> = activities["users"].as_array().cloned().unwrap_or_default();
+    if !known.iter().any(names_wanted) {
+        return Err(unknown_actor(user, &known));
     }
+
+    let kept: Vec<Value> = known
+        .iter()
+        .filter(|entry| names_wanted(entry))
+        .cloned()
+        .collect();
+    activities["users"] = json!(kept);
     for list in ["changes", "timeline"] {
         if let Some(entries) = activities[list].as_array() {
             let kept: Vec<Value> = entries
                 .iter()
-                .filter(|entry| matches(&entry["user"]) || matches(&entry["previous_user"]))
+                .filter(|entry| stamped_by_wanted(entry))
                 .cloned()
                 .collect();
             activities[list] = json!(kept);
@@ -327,11 +411,36 @@ fn project_onto_user(activities: &mut Value, user: &str) {
     if let Some(anomalies) = activities["anomalies"].as_array() {
         let kept: Vec<Value> = anomalies
             .iter()
-            .filter(|entry| matches(&entry["user"]))
+            .filter(|entry| is_wanted(&entry["user"]) || is_wanted(&entry["short"]))
             .cloned()
             .collect();
         activities["anomalies"] = json!(kept);
     }
+    Ok(())
+}
+
+/// `--user` named somebody the retained captures do not hold.
+fn unknown_actor(user: &str, known: &[Value]) -> Failure {
+    let mut spelled: Vec<String> = known
+        .iter()
+        .filter_map(|entry| entry["name"].as_str())
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect();
+    spelled.sort();
+    spelled.dedup();
+    let names = if spelled.is_empty() {
+        "no actor at all".to_owned()
+    } else {
+        spelled.join(", ")
+    };
+    Failure::invalid(
+        super::UNKNOWN_ACTOR.code,
+        format!("no retained capture holds `{user}`; these captures hold {names}"),
+    )
+    .remedy(super::UNKNOWN_ACTOR.remedy)
+    .detail(json!({ "requested": user, "actors": spelled }))
+    .next("ds design activities read --output json")
 }
 
 pub fn render(data: &Value) -> String {
@@ -368,6 +477,13 @@ pub fn render(data: &Value) -> String {
             refused["ds_project"].as_str().unwrap_or("?"),
             spell_ms(refused["captured_at_ms"].as_i64().unwrap_or(0)),
             refused["reason"].as_str().unwrap_or(""),
+        ));
+    }
+    for gap in data["since_no_baseline"].as_array().into_iter().flatten() {
+        out.push_str(&format!(
+            "  ! no baseline {} — every retained capture is later than --since (earliest {})\n",
+            gap["ds_project"].as_str().unwrap_or("?"),
+            spell_ms(gap["earliest_ms"].as_i64().unwrap_or(0)),
         ));
     }
     for anomaly in data["anomalies"].as_array().into_iter().flatten().take(10) {
@@ -420,6 +536,83 @@ mod tests {
         assert!(admits("all", Some("testing")));
     }
 
+    /// Both ways this read can be silently wrong are published, so a caller
+    /// can plan for them from `--help` rather than from a zero.
+    #[test]
+    fn the_two_confident_zeroes_are_declared_refusals() {
+        let codes: Vec<&str> = COMMAND
+            .refusals
+            .iter()
+            .map(|refusal| refusal.code)
+            .collect();
+        assert!(
+            codes.contains(&super::super::SINCE_NO_BASELINE.code),
+            "{codes:?}"
+        );
+        assert!(
+            codes.contains(&super::super::UNKNOWN_ACTOR.code),
+            "{codes:?}"
+        );
+    }
+
+    #[test]
+    fn a_since_before_every_capture_has_no_baseline_to_diff_against() {
+        // Two captures, both later than the instant asked for: there is no
+        // floor for the window, and the fold would run on one photograph.
+        assert_eq!(baseline_before(&[200, 300], 100, 300), None);
+        assert_eq!(baseline_before(&[200, 300], 250, 300), Some(200));
+        assert_eq!(baseline_before(&[200, 300], 300, 300), Some(200));
+        // The latest capture is never its own baseline.
+        assert_eq!(baseline_before(&[300], 400, 300), None);
+    }
+
+    #[test]
+    fn no_baseline_anywhere_names_the_projects_rather_than_reporting_zero() {
+        let failure = no_baseline_anywhere(
+            1_700_000_000_000,
+            &[json!({ "ds_project": "p_one", "earliest_ms": 1_758_000_000_000i64 })],
+        );
+        assert_eq!(failure.code(), super::super::SINCE_NO_BASELINE.code);
+        assert!(failure.message().contains("p_one"), "{}", failure.message());
+        assert_eq!(
+            failure.remedy_text(),
+            Some(super::super::SINCE_NO_BASELINE.remedy)
+        );
+    }
+
+    #[test]
+    fn a_user_filter_accepts_the_short_name_this_command_prints() {
+        let mut activities = json!({
+            "totals": { "designed": 90 },
+            "users": [{ "name": "Nisunze@Example.com", "short": "nisunze" }, { "name": "b@x", "short": "b" }],
+            "changes": [{ "user": "Nisunze@Example.com", "short": "nisunze" }, { "user": "b@x" }],
+            "timeline": [],
+            "anomalies": [],
+        });
+        project_onto_user(&mut activities, "nisunze").expect("the short name is an actor");
+        assert_eq!(activities["users"].as_array().expect("users").len(), 1);
+        assert_eq!(activities["changes"].as_array().expect("changes").len(), 1);
+
+        let mut upper = json!({
+            "users": [{ "name": "nisunze@example.com", "short": "nisunze" }],
+            "changes": [], "timeline": [], "anomalies": [],
+        });
+        project_onto_user(&mut upper, "NISUNZE@EXAMPLE.COM").expect("case is not identity");
+        assert_eq!(upper["users"].as_array().expect("users").len(), 1);
+    }
+
+    #[test]
+    fn an_actor_no_capture_holds_is_refused_rather_than_answered_with_zero() {
+        let mut activities = json!({
+            "users": [{ "name": "a@x", "short": "a" }],
+            "changes": [], "timeline": [], "anomalies": [],
+        });
+        let failure = project_onto_user(&mut activities, "nobody@example.com")
+            .expect_err("an unknown actor is a refusal");
+        assert_eq!(failure.code(), super::super::UNKNOWN_ACTOR.code);
+        assert!(failure.message().contains("a@x"), "{}", failure.message());
+    }
+
     #[test]
     fn a_user_projection_narrows_the_lists_and_leaves_the_totals_whole() {
         let mut activities = json!({
@@ -433,7 +626,7 @@ mod tests {
             "timeline": [{ "user": "b@x" }],
             "anomalies": [{ "user": "a@x" }, { "user": "b@x" }],
         });
-        project_onto_user(&mut activities, "a@x");
+        project_onto_user(&mut activities, "a@x").expect("a@x is an actor");
         assert_eq!(activities["users"].as_array().expect("users").len(), 1);
         assert_eq!(activities["changes"].as_array().expect("changes").len(), 2);
         assert!(

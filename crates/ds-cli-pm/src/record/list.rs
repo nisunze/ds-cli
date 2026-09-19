@@ -66,7 +66,13 @@ The project, the matched total, the page bounds, and rows of `id`, `category`, \
         crate::INVALID_NUMBER,
     ],
     reference: Some("docs/reference/pm.md"),
-    search: &[],
+    search: &[
+        "correspondence",
+        "rfi",
+        "instruction",
+        "submission",
+        "decision",
+    ],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

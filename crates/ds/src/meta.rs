@@ -188,10 +188,16 @@ fn capabilities(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     "summary": entry.command.summary,
                     "effect": entry.command.effect.token(),
                     "authority": entry.command.authority.token(),
+                    // The same reading tier 3 publishes: a window-bound
+                    // command says so rather than certifying itself
+                    // available on a machine with no window paired.
                     "availability": if schema_only {
                         "unchecked"
                     } else {
-                        (entry.command.availability)().token()
+                        ds_cli_contract::help::reported_availability(
+                            entry.command,
+                            Some(&(entry.command.availability)()),
+                        )
                     },
                 }))
                 .collect::<Vec<_>>(),
@@ -534,9 +540,15 @@ fn search(query: &str, limit: &str) -> Result<Value, Failure> {
     // an empty list with no next step: that is where an outside agent gives
     // up on `ds` and installs its own toolchain instead.
     if total == 0 {
+        // "Nothing matched these words" is the fact. "The capability is
+        // missing" is a claim this search cannot make — it reads ids, declared
+        // terms, summaries and purposes, so an unindexed word is a silence
+        // about the vocabulary, not about the product. Saying otherwise is how
+        // a caller files a gap report for a capability that ships.
         result["next"] = json!(
-            "nothing matched; `ds capabilities` lists every domain, and \
-             `ds feedback submit` records a capability that is missing"
+            "nothing matched these words; `ds capabilities` lists every domain \
+             and `ds capabilities <domain>` its commands — try other words \
+             first, and `ds feedback submit` if the capability really is absent"
         );
     } else if total > scored.len() {
         // Terse on purpose. Every search pays for this line, and what the

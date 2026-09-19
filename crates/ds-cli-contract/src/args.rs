@@ -259,10 +259,15 @@ fn unknown_flag(command: &Command, name: &str) -> Failure {
 
 /// The closest candidate within a small edit distance, or nothing. Silence is
 /// better than a confidently wrong suggestion.
+///
+/// The budget stays below a third of the input's length. Two substitutions on
+/// a four-character flag turn `lane` into `page`, which is not a typo of
+/// anything — it is a different word, offered with the same confidence a real
+/// correction is. One slip is what callers actually make.
 pub fn nearest<'a>(input: &str, candidates: impl Iterator<Item = &'a str>) -> Option<&'a str> {
     let budget = match input.chars().count() {
-        0..=3 => 1,
-        4..=7 => 2,
+        0..=5 => 1,
+        6..=9 => 2,
         _ => 3,
     };
     candidates
@@ -425,5 +430,33 @@ mod numeric_tests {
         assert_eq!(plural(1, "report"), "1 report");
         assert_eq!(plural(0, "report"), "0 reports");
         assert_eq!(plural(4, "report"), "4 reports");
+    }
+}
+
+#[cfg(test)]
+mod suggestion_tests {
+    use super::nearest;
+
+    /// Silence beats a confidently wrong suggestion, and an edit that rewrites
+    /// half a short flag is a different word rather than a typo of this one.
+    #[test]
+    fn a_short_flag_is_never_guessed_at_half_its_own_length() {
+        assert_eq!(nearest("lane", ["page", "limit"].into_iter()), None);
+        assert_eq!(nearest("mode", ["name", "kind"].into_iter()), None);
+    }
+
+    /// The one-character slip every caller actually makes is still answered,
+    /// at every length the flags come in.
+    #[test]
+    fn a_one_character_slip_is_still_answered() {
+        assert_eq!(
+            nearest("limt", ["limit", "page"].into_iter()),
+            Some("limit")
+        );
+        assert_eq!(nearest("projec", ["project"].into_iter()), Some("project"));
+        assert_eq!(
+            nearest("transfomer", ["transformer"].into_iter()),
+            Some("transformer")
+        );
     }
 }

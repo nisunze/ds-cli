@@ -109,7 +109,7 @@ the `committedRevision`, and any `warnings`.",
         TOO_MANY_ASSIGNEES,
     ],
     reference: Some("docs/reference/pm.md"),
-    search: &[],
+    search: &["assignee", "responsible", "owner", "delegate", "reassign"],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

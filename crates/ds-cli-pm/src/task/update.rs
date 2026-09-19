@@ -111,7 +111,16 @@ The project, the `taskId`, `applied`, the `committedRevision`, the list of \
         },
     ],
     reference: Some("docs/reference/pm.md"),
-    search: &[],
+    search: &[
+        "deadline",
+        "due",
+        "date",
+        "reschedule",
+        "schedule",
+        "milestone",
+        "subtask",
+        "sub-task",
+    ],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

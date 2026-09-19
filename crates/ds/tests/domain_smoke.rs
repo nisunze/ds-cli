@@ -31,6 +31,56 @@ use ds_grid_engine::{CommandEnvelope, GridCommand, GridSession};
 use ds_grid_exchange::{parse_standards_library_manifest, unpack, unpack_library};
 use serde_json::{Value, json};
 
+/// Whether a command can be DISCOVERED without a window paired. A server
+/// command reports `available`. A window command reports `requires_window` —
+/// since 2026-09-19 it says so instead of certifying itself available on a
+/// machine with no window, which is what let the collaboration ratchet below
+/// pass as a false green for months. Either way the descriptor is readable;
+/// that is what these smoke tests guard, so both tokens pass here.
+fn discoverable(command: &Value) -> bool {
+    matches!(
+        command["availability"].as_str(),
+        Some("available" | "requires_window")
+    )
+}
+
+/// Design commands the collaboration test reaches that are still bound to a
+/// window — tags, groups, comments, consumer grouping, known columns,
+/// materials and sync, 27 in all on 2026-09-19. This list only
+/// SHRINKS: a command that gains its headless owner is deleted here in the
+/// same commit, and a new window-bound collaboration command cannot be added
+/// without widening it deliberately. The flip itself is host-transparency
+/// campaign work, not a smoke-test edit.
+const COLLABORATION_WINDOW_BACKLOG: &[&str] = &[
+    "design.comment.list",
+    "design.comment.post",
+    "design.comment.promote",
+    "design.comment.read",
+    "design.comment.resolve",
+    "design.consumer-grouping.apply",
+    "design.consumer-grouping.archive",
+    "design.consumer-grouping.preview",
+    "design.consumer-grouping.read",
+    "design.group.apply",
+    "design.group.export",
+    "design.group.list",
+    "design.group.preview",
+    "design.group.unassign",
+    "design.known-columns.list",
+    "design.known-columns.set",
+    "design.materials.apply",
+    "design.materials.preview",
+    "design.sync.cancel",
+    "design.sync.resume",
+    "design.sync.status",
+    "design.tag.define",
+    "design.tag.enrich-apply",
+    "design.tag.enrich-preview",
+    "design.tag.list",
+    "design.tag.query",
+    "design.tag.set",
+];
+
 mod common;
 
 const NATIVE_AUTH_CODES: &[&str] = &[
@@ -5898,28 +5948,28 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
             .is_some_and(|s| s.len() == 5)
     );
     for command in commands {
-        assert_eq!(
-            command["availability"],
-            if matches!(
-                command["id"].as_str(),
-                Some(
-                    "map.layer.list"
-                        | "map.layer.default"
-                        | "map.layer.reorder"
-                        | "map.layer.show"
-                        | "map.layer.hide"
-                        | "map.data.list"
-                        | "map.data.upload"
-                        | "map.data.remove"
-                )
-            ) {
-                "unavailable"
-            } else {
-                "available"
-            },
-            "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
-            command["id"]
-        );
+        if matches!(
+            command["id"].as_str(),
+            Some(
+                "map.layer.list"
+                    | "map.layer.default"
+                    | "map.layer.reorder"
+                    | "map.layer.show"
+                    | "map.layer.hide"
+                    | "map.data.list"
+                    | "map.data.upload"
+                    | "map.data.remove"
+            )
+        ) {
+            assert_eq!(command["availability"], "unavailable", "{}", command["id"]);
+        } else {
+            assert!(
+                discoverable(&command),
+                "`{}` reports {} and gates on discovery, which puts --desktop-descriptor out of reach",
+                command["id"],
+                command["availability"]
+            );
+        }
     }
 }
 
@@ -7406,6 +7456,11 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.selection.assign"
             ) {
                 "unavailable"
+            } else if COLLABORATION_WINDOW_BACKLOG.contains(&id)
+                || id == "design.transformer.download"
+            {
+                // Window-bound, and since 2026-09-19 honest about it.
+                "requires_window"
             } else {
                 "available"
             },
@@ -7724,10 +7779,18 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             assert_eq!(command["authority"], "headless_project");
             continue;
         }
-        assert_eq!(
-            command["availability"], "available",
-            "`{id}` must not require an open map"
-        );
+        if COLLABORATION_WINDOW_BACKLOG.contains(&id) {
+            assert_eq!(
+                command["availability"], "requires_window",
+                "`{id}` left the window backlog; delete it from COLLABORATION_WINDOW_BACKLOG"
+            );
+        } else {
+            assert_eq!(
+                command["availability"], "available",
+                "`{id}` must not require an open map; a new window-bound collaboration \
+                 command widens COLLABORATION_WINDOW_BACKLOG deliberately or not at all"
+            );
+        }
         assert_eq!(
             command["effect"],
             if writes.contains(id) {
@@ -8209,10 +8272,11 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         if command["authority"] == "headless_project" {
             continue;
         }
-        assert_eq!(
-            command["availability"], "available",
-            "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
-            command["id"]
+        assert!(
+            discoverable(&command),
+            "`{}` reports {} and gates on discovery, which puts --desktop-descriptor out of reach",
+            command["id"],
+            command["availability"]
         );
     }
     // Reads must never be behind the confirmation gate, and writes must never
@@ -8263,10 +8327,11 @@ fn feedback_is_one_confirmed_shared_write() {
         if command["authority"] == "headless_user" {
             continue;
         }
-        assert_eq!(
-            command["availability"], "available",
-            "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
-            command["id"]
+        assert!(
+            discoverable(&command),
+            "`{}` reports {} and gates on discovery, which puts --desktop-descriptor out of reach",
+            command["id"],
+            command["availability"]
         );
     }
 
@@ -9033,10 +9098,11 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         if command["authority"] == "headless_project" {
             continue;
         }
-        assert_eq!(
-            command["availability"], "available",
-            "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
-            command["id"]
+        assert!(
+            discoverable(&command),
+            "`{}` reports {} and gates on discovery, which puts --desktop-descriptor out of reach",
+            command["id"],
+            command["availability"]
         );
     }
     // The effect class is what decides whether an unattended session may run
