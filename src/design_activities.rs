@@ -81,6 +81,10 @@ const FOLD_INPUT_BYTES: usize = 64 * 1024 * 1024;
 /// The client-core bound on one project's status list.
 const MAX_ROWS: usize = 2000;
 const MAX_LIMIT: usize = 5000;
+/// Two years. A window is read from stamps the captures already hold, so a
+/// longer one costs nothing extra, but a number past this is a mistake, not
+/// a question.
+const MAX_WINDOW_DAYS: u32 = 730;
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 /// A capture older than this, against `now_ms`, is stale.
 const STALE_AFTER_MS: i64 = DAY_MS;
@@ -439,6 +443,66 @@ pub struct More {
     pub changes: bool,
 }
 
+/// One actor's activity inside the asked-for window.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct WindowActor {
+    pub user: String,
+    pub short: String,
+    pub stamps: usize,
+    pub projects: usize,
+    pub transformers: usize,
+}
+
+/// One project's activity inside the window.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct WindowProject {
+    pub ds_project: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub stamps: usize,
+    pub transformers: usize,
+    pub actors: Vec<String>,
+}
+
+/// One phase's share of the window.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct WindowPhase {
+    pub phase: String,
+    pub label_key: String,
+    pub stamps: usize,
+}
+
+/// One local day inside the window that carried at least one stamp.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct WindowDay {
+    pub day: String,
+    pub stamps: usize,
+    pub actors: usize,
+}
+
+/// What happened in the last `days` days.
+///
+/// EVENTS, not state. Every count here is stamps -- the dated marks the
+/// server kept -- so it answers "who worked, where, when". It deliberately
+/// does NOT re-count `totals`, which are the fleet's CURRENT state and have
+/// no window: a transformer designed last year is designed today.
+///
+/// The server keeps only the LATEST stamp per phase per transformer, so a
+/// transformer worked on twice in the window contributes one stamp per
+/// phase, not two, and work before the window that was later restamped is
+/// counted at its restamp. A window therefore states a floor on activity,
+/// never a ceiling.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Window {
+    pub days: u32,
+    pub from_ms: i64,
+    pub stamps: usize,
+    pub actors: Vec<WindowActor>,
+    pub projects: Vec<WindowProject>,
+    pub phases: Vec<WindowPhase>,
+    pub days_active: Vec<WindowDay>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Activities {
     pub captured: Captured,
@@ -449,6 +513,9 @@ pub struct Activities {
     pub timeline: Vec<TimelineEntry>,
     pub anomalies: Vec<Anomaly>,
     pub facts: Vec<Fact>,
+    /// Present only when the caller asked for a window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<Window>,
     pub more: More,
 }
 
@@ -590,6 +657,10 @@ struct FoldRequest {
     tz_offset_minutes: i64,
     #[serde(default)]
     limits: Limits,
+    /// How many local days back to summarise as EVENTS. Absent means no
+    /// window: the reply carries no `window` at all rather than a full one.
+    #[serde(default)]
+    window_days: Option<u32>,
     projects: Vec<FoldProject>,
 }
 
@@ -1066,6 +1137,13 @@ fn check_fold(request: &FoldRequest) -> Result<(), String> {
             ));
         }
     }
+    if let Some(days) = request.window_days {
+        if days == 0 || days > MAX_WINDOW_DAYS {
+            return Err(format!(
+                "Design activities window must be between 1 and {MAX_WINDOW_DAYS} days: it is {days}."
+            ));
+        }
+    }
     if request.projects.is_empty() {
         return Err("Design activities fold needs at least one project.".into());
     }
@@ -1537,6 +1615,129 @@ fn build_fold(request: FoldRequest) -> Result<FoldReply, String> {
     }
     facts.truncate(MAX_FACTS);
 
+    // ── the window ──────────────────────────────────────────────────
+    //
+    // Folded from the COMPLETE timeline, before `limits` cuts it: a window
+    // that only saw the first `limits.timeline` rows would silently shrink
+    // as the fleet grew, and would report a quiet week for a busy one.
+    let window = request.window_days.map(|days| {
+        let from_ms = now_ms - (days as i64) * 86_400_000;
+        let inside: Vec<&TimelineEntry> = timeline
+            .iter()
+            .filter(|entry| entry.when_ms >= from_ms)
+            .collect();
+
+        let mut per_actor: BTreeMap<&str, (usize, BTreeSet<&str>, BTreeSet<(&str, &str)>, &str)> =
+            BTreeMap::new();
+        let mut per_project: BTreeMap<&str, (usize, BTreeSet<&str>, BTreeSet<&str>)> =
+            BTreeMap::new();
+        let mut per_phase: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+        let mut per_day: BTreeMap<String, (usize, BTreeSet<&str>)> = BTreeMap::new();
+
+        for entry in &inside {
+            let actor = per_actor
+                .entry(entry.user.as_str())
+                .or_insert_with(|| (0, BTreeSet::new(), BTreeSet::new(), entry.short.as_str()));
+            actor.0 += 1;
+            actor.1.insert(entry.ds_project.as_str());
+            actor
+                .2
+                .insert((entry.ds_project.as_str(), entry.name.as_str()));
+
+            let project = per_project
+                .entry(entry.ds_project.as_str())
+                .or_insert_with(|| (0, BTreeSet::new(), BTreeSet::new()));
+            project.0 += 1;
+            project.1.insert(entry.name.as_str());
+            if !entry.user.is_empty() {
+                project.2.insert(entry.user.as_str());
+            }
+
+            *per_phase
+                .entry((entry.phase.as_str(), entry.label_key.as_str()))
+                .or_insert(0) += 1;
+
+            let day = per_day
+                .entry(dashboard::day_key(entry.when_ms, request.tz_offset_minutes))
+                .or_insert_with(|| (0, BTreeSet::new()));
+            day.0 += 1;
+            day.1.insert(entry.user.as_str());
+        }
+
+        let mut actors: Vec<WindowActor> = per_actor
+            .into_iter()
+            .map(
+                |(user, (stamps, projects, transformers, short))| WindowActor {
+                    user: user.to_string(),
+                    short: short.to_string(),
+                    stamps,
+                    projects: projects.len(),
+                    transformers: transformers.len(),
+                },
+            )
+            .collect();
+        actors.sort_by(|left, right| {
+            right
+                .stamps
+                .cmp(&left.stamps)
+                .then_with(|| locale_compare(&left.user, &right.user))
+        });
+
+        let mut projects: Vec<WindowProject> = per_project
+            .into_iter()
+            .map(
+                |(ds_project, (stamps, transformers, actors))| WindowProject {
+                    display_name: display_names.get(ds_project).cloned(),
+                    ds_project: ds_project.to_string(),
+                    stamps,
+                    transformers: transformers.len(),
+                    actors: actors.into_iter().map(str::to_string).collect(),
+                },
+            )
+            .collect();
+        projects.sort_by(|left, right| {
+            right
+                .stamps
+                .cmp(&left.stamps)
+                .then_with(|| left.ds_project.cmp(&right.ds_project))
+        });
+
+        let mut phases: Vec<WindowPhase> = per_phase
+            .into_iter()
+            .map(|((phase, label_key), stamps)| WindowPhase {
+                phase: phase.to_string(),
+                label_key: label_key.to_string(),
+                stamps,
+            })
+            .collect();
+        phases.sort_by(|left, right| {
+            right
+                .stamps
+                .cmp(&left.stamps)
+                .then_with(|| left.phase.cmp(&right.phase))
+        });
+
+        // Oldest day first: a week reads left to right.
+        let days_active: Vec<WindowDay> = per_day
+            .into_iter()
+            .map(|(day, (stamps, actors))| WindowDay {
+                day,
+                stamps,
+                actors: actors.len(),
+            })
+            .collect();
+
+        Window {
+            days,
+            from_ms,
+            stamps: inside.len(),
+            actors,
+            projects,
+            phases,
+            days_active,
+        }
+    });
+
     // ── the bounds ──────────────────────────────────────────────────
     let more = More {
         users: user_entries.len() > limits.users,
@@ -1578,6 +1779,7 @@ fn build_fold(request: FoldRequest) -> Result<FoldReply, String> {
             timeline,
             anomalies,
             facts,
+            window,
             more,
         },
     })

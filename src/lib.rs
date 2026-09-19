@@ -122,6 +122,14 @@ pub fn desktop_instance_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
 }
 pub mod connectivity;
 pub mod design;
+pub mod design_attachments;
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designAttachments)]
+pub fn design_attachments_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_attachments::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 pub mod design_activities;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designActivities)]
