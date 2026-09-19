@@ -6,6 +6,8 @@
 //! person is what those two photographs said; a gap between them renders as a
 //! gap, not as a guess.
 
+use std::path::Path;
+
 use ds_cli_contract::args::integer;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -15,8 +17,9 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
 use super::{
-    BUCKET_ARG, LANE_ARG, PROJECT_ARG, STATE_DIR_ARG, TZ_OFFSET_ARG, account_root, activities_call,
-    inventory, not_claimed, now_ms, read_capture, spell_ms, state_root, store_call,
+    BUCKET_ARG, LANE_ARG, MEMBERSHIP_BOUND, NOT_CLAIMED, PROJECT_ARG, RetainedDirectory,
+    STATE_DIR_ARG, TZ_OFFSET_ARG, account_root, activities_call, inventory, now_ms, read_capture,
+    read_directory, spell_ms, state_root, store_call,
 };
 
 const USER_ARG: Arg = Arg::value(
@@ -43,6 +46,7 @@ const REFUSALS: &[Refusal] = &[
     super::STORE_UNAVAILABLE,
     super::STORE_UNSAFE,
     super::STORE_EMPTY,
+    super::PROJECT_NOT_VISIBLE,
     super::SNAPSHOT_INVALID,
     super::SINCE_NO_BASELINE,
     super::UNKNOWN_ACTOR,
@@ -79,9 +83,9 @@ those limits in every reply.",
     output: "\
 `captured`, `totals`, `users`, `projects`, `changes`, `timeline`, \
 `anomalies`, `facts` and `more` — the kernel's cross-project model, labels \
-as i18n keys and times as epoch millis. `sources` names the two captures \
-read per project, `unreadable` any it refused, `not_claimed` what none of \
-it shows.",
+as i18n keys and times as epoch millis. `coverage` counts captured against \
+visible projects, `sources` names the two captures read per project, \
+`unreadable` any it refused, `not_claimed` what none of it shows.",
     examples: &[
         Example {
             command: "ds design activities read --output json",
@@ -135,8 +139,55 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         identity.credential_audience_sha256(),
         lane,
     )?;
+    answer(
+        &account,
+        &Query {
+            lane,
+            bucket,
+            limit,
+            tz_offset,
+            since,
+            named: &named,
+            user: &user,
+        },
+    )
+}
 
-    let held = inventory(&account)?;
+/// What one read asks of the store, once the identity is settled.
+pub struct Query<'a> {
+    pub lane: &'a str,
+    pub bucket: &'a str,
+    pub limit: i64,
+    pub tz_offset: i64,
+    pub since: Option<i64>,
+    pub named: &'a [String],
+    pub user: &'a str,
+}
+
+/// The answer, from the account's own folder in the store and nothing else.
+///
+/// Split from [`run`] at the identity boundary so the offline half — the
+/// only half there is — can be exercised against a store on disk.
+pub fn answer(account: &Path, query: &Query<'_>) -> Result<Value, Failure> {
+    let Query {
+        lane,
+        bucket,
+        limit,
+        tz_offset,
+        since,
+        named,
+        user,
+    } = *query;
+
+    let held = inventory(account)?;
+    // The directory the sweep retained is the only thing that knows how much
+    // of the estate this store covers. It is read first: a named project it
+    // does not carry is refused as invisible before "no capture" can be said
+    // of it, and the coverage it yields travels in every answer.
+    let directory = read_directory(account);
+    refuse_unseen(named, &directory, &held)?;
+    let coverage = coverage_of(&directory, &held, limit);
+
     let mut projects: Vec<Value> = Vec::new();
     let mut sources: Vec<Value> = Vec::new();
     // A `--since` window with nothing retained at or before it has no
@@ -264,9 +315,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         return Err(Failure::invalid(
             super::STORE_EMPTY.code,
-            "no retained capture matches this lane, account, bucket and project selection",
+            format!(
+                "no retained capture matches this lane, account, bucket and project \
+                 selection; {}",
+                coverage_sentence(&coverage)
+            ),
         )
         .remedy(super::STORE_EMPTY.remedy)
+        .detail(json!({ "coverage": coverage }))
         .next("ds design activities sweep --limit 3 --yes"));
     }
 
@@ -293,12 +349,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let mut activities = reply["activities"].clone();
     if !user.is_empty() {
-        project_onto_user(&mut activities, &user)?;
+        project_onto_user(&mut activities, user)?;
     }
     let mut out = activities.as_object().cloned().unwrap_or_default();
     out.insert("lane".into(), json!(lane));
     out.insert("bucket".into(), json!(bucket));
     out.insert("store".into(), json!(account.to_string_lossy()));
+    out.insert("coverage".into(), coverage.clone());
     out.insert("sources".into(), json!(sources));
     out.insert("unreadable".into(), json!(unreadable));
     if !user.is_empty() {
@@ -308,8 +365,128 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         out.insert("since_ms".into(), json!(since));
         out.insert("since_no_baseline".into(), json!(without_baseline));
     }
-    out.insert("not_claimed".into(), not_claimed());
+    out.insert("not_claimed".into(), not_claimed_within(&coverage));
     Ok(Value::Object(out))
+}
+
+/// A named project neither the retained directory nor the store knows.
+///
+/// "No capture" is the wrong answer for it: the remedy that answer carries —
+/// sweep this project — can never succeed, and an id that was never visible
+/// to this account would read as a real project nobody worked in. The store
+/// is consulted too, so a project captured earlier and since lost from the
+/// directory still answers from what was retained.
+fn refuse_unseen(
+    named: &[String],
+    directory: &Result<RetainedDirectory, String>,
+    held: &[(String, Vec<i64>)],
+) -> Result<(), Failure> {
+    let Ok(directory) = directory else {
+        return Ok(());
+    };
+    let unseen: Vec<&str> = named
+        .iter()
+        .map(String::as_str)
+        .filter(|name| !directory.carries(name) && !held.iter().any(|(project, _)| project == name))
+        .collect();
+    if unseen.is_empty() {
+        return Ok(());
+    }
+    Err(Failure::invalid(
+        super::PROJECT_NOT_VISIBLE.code,
+        format!(
+            "the project directory retained {} lists {} visible projects and none of: {}",
+            spell_ms(directory.captured_at_ms),
+            directory.projects.len(),
+            unseen.join(", ")
+        ),
+    )
+    .remedy(super::PROJECT_NOT_VISIBLE.remedy)
+    .detail(json!({
+        "requested": unseen,
+        "visible": directory.projects.len(),
+        "directory_captured_at_ms": directory.captured_at_ms,
+    }))
+    .next("ds auth project list --output json"))
+}
+
+/// How much of the visible estate this store holds a capture for.
+///
+/// `visible` is the retained directory's count, `captured` how many of those
+/// the store holds, and `never_captured` names the rest, bounded by `limit`.
+/// Without a directory every one of those is `null`, with the reason: a
+/// number here that nothing measured would be the confident-empty answer
+/// wearing a coverage block.
+fn coverage_of(
+    directory: &Result<RetainedDirectory, String>,
+    held: &[(String, Vec<i64>)],
+    limit: i64,
+) -> Value {
+    match directory {
+        Ok(directory) => {
+            let mut captured = 0usize;
+            let mut never_captured: Vec<&str> = Vec::new();
+            for project in &directory.projects {
+                let Some(id) = project["ds_project"].as_str() else {
+                    continue;
+                };
+                if held.iter().any(|(project, _)| project == id) {
+                    captured += 1;
+                } else {
+                    never_captured.push(id);
+                }
+            }
+            let bound = usize::try_from(limit).unwrap_or(usize::MAX);
+            let more = never_captured.len() > bound;
+            never_captured.truncate(bound);
+            json!({
+                "visible": directory.projects.len(),
+                "captured": captured,
+                "never_captured": never_captured,
+                "more_never_captured": more,
+                "directory_captured_at_ms": directory.captured_at_ms,
+            })
+        }
+        Err(reason) => json!({
+            "visible": Value::Null,
+            "captured": held.len(),
+            "never_captured": Value::Null,
+            "unknown": reason,
+        }),
+    }
+}
+
+/// The coverage as one sentence: the true bound of this read, with numbers.
+fn coverage_sentence(coverage: &Value) -> String {
+    match coverage["visible"].as_u64() {
+        Some(visible) => format!(
+            "{} of {visible} visible projects have been captured on this machine; \
+             `ds design activities sweep --yes` widens it",
+            coverage["captured"].as_u64().unwrap_or(0)
+        ),
+        None => format!(
+            "how many visible projects this store covers is unknown: {}",
+            coverage["unknown"].as_str().unwrap_or("no directory")
+        ),
+    }
+}
+
+/// The not-claimed list for a READ: the shared lines, with the membership
+/// sentence prefixed by the bound that actually applies here. Membership and
+/// refusals are true and are kept; neither is why a read holds 14 projects
+/// when the account can see 63.
+fn not_claimed_within(coverage: &Value) -> Value {
+    let lines: Vec<String> = NOT_CLAIMED
+        .iter()
+        .map(|line| {
+            if *line == MEMBERSHIP_BOUND {
+                format!("{}. {line}", coverage_sentence(coverage))
+            } else {
+                (*line).to_owned()
+            }
+        })
+        .collect();
+    json!(lines)
 }
 
 /// The capture a `--since` window diffs against: the newest one taken at or
@@ -651,7 +828,7 @@ mod tests {
             "users": [], "anomalies": [], "changes": [], "more": {},
             "unreadable": [{ "ds_project": "p_two", "captured_at_ms": 1_758_000_000_000i64,
                              "code": "snapshot_invalid", "reason": "snapshot.digest" }],
-            "not_claimed": super::not_claimed(),
+            "not_claimed": super::super::not_claimed(),
         }));
         assert!(rendered.contains("unreadable p_two"), "{rendered}");
         assert!(rendered.contains("snapshot.digest"), "{rendered}");
@@ -664,7 +841,7 @@ mod tests {
                           "latest_ms": 1_758_000_000_000i64 },
             "totals": { "actors": 1, "transformers": 4, "designed": 2, "errors": 0 },
             "users": [], "anomalies": [], "changes": [], "more": {},
-            "not_claimed": super::not_claimed(),
+            "not_claimed": super::super::not_claimed(),
         }));
         assert!(rendered.contains("No device or installation attribution"));
         assert!(rendered.contains("Nothing between two captures"));

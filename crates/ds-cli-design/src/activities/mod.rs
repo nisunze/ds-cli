@@ -130,6 +130,12 @@ refusal!(
     "name an actor this refusal lists, by account or short name, or read without --user"
 );
 refusal!(
+    PROJECT_NOT_VISIBLE,
+    "project_not_visible",
+    "--project names an id the retained directory does not carry",
+    "choose an exact id from ds auth project list"
+);
+refusal!(
     ACTIVITIES_REFUSED,
     "activities_refused",
     "the shared kernel refuses the ledger, plan, key, retention or fold request",
@@ -152,8 +158,14 @@ pub const NOT_CLAIMED: &[&str] = &[
     "Nothing between two captures: only the latest stamp per phase per transformer exists on the server.",
     "No device or installation attribution: status rows carry none. Credentials used by someone else read as their owner. Device evidence lives in Desktop installations and `ds auth device list`.",
     "Nothing that never stamps a status row: reads, downloads and exports are invisible here.",
-    "Only projects this account is a member of; a project that refused the read is recorded as a refusal, not as an absence.",
+    MEMBERSHIP_BOUND,
 ];
+
+/// The membership sentence alone. It is true, and it is not the bound of a
+/// READ: a read is bounded by what a sweep captured on this machine, and
+/// `read` prefixes this line with that number so "captured" can never pass
+/// for "the estate".
+pub const MEMBERSHIP_BOUND: &str = "Only projects this account is a member of; a project that refused the read is recorded as a refusal, not as an absence.";
 
 fn kernel_refused(action: &str, detail: String) -> Failure {
     Failure::invalid(
@@ -376,6 +388,63 @@ pub fn inventory(account: &Path) -> Result<Vec<(String, Vec<i64>)>, Failure> {
     }
     out.sort_by(|left, right| left.0.cmp(&right.0));
     Ok(out)
+}
+
+/// The project directory the last sweep retained beside its captures: every
+/// project this account could see at that instant, whether or not the sweep
+/// reached it.
+pub struct RetainedDirectory {
+    pub captured_at_ms: i64,
+    /// `ds_project`, `status` and `display_name` per project, as the
+    /// directory listed them.
+    pub projects: Vec<Value>,
+}
+
+impl RetainedDirectory {
+    pub fn carries(&self, ds_project: &str) -> bool {
+        self.projects
+            .iter()
+            .any(|project| project["ds_project"].as_str() == Some(ds_project))
+    }
+}
+
+/// Read the directory a sweep retained, or say why there is none to read.
+///
+/// The directory is what lets an offline read state its own coverage — how
+/// many visible projects it holds a capture for — instead of letting the
+/// count of captures pass for the size of the estate. A store written before
+/// directories were retained has none, and that is reported as "unknown",
+/// never as a number: `Err` carries the reason and the caller says it.
+pub fn read_directory(account: &Path) -> Result<RetainedDirectory, String> {
+    let path = account.join("directory.json");
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(
+                "no project directory is retained on this machine; a sweep retains one".into(),
+            );
+        }
+        Err(error) => {
+            return Err(format!(
+                "the retained project directory cannot be read: {error}"
+            ));
+        }
+    };
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("the retained project directory is not JSON: {error}"))?;
+    if value["schema"].as_str() != Some(DIRECTORY_SCHEMA) {
+        return Err(format!(
+            "the retained project directory is not {DIRECTORY_SCHEMA}"
+        ));
+    }
+    let projects = value["projects"]
+        .as_array()
+        .cloned()
+        .ok_or_else(|| "the retained project directory lists no projects".to_owned())?;
+    Ok(RetainedDirectory {
+        captured_at_ms: value["captured_at_ms"].as_i64().unwrap_or(0),
+        projects,
+    })
 }
 
 /// Read one retained capture and hand it to the kernel for admission.

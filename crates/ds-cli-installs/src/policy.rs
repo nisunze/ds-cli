@@ -61,15 +61,33 @@ installation's immutable history.",
         note: "Blocking the licence also blocks the retained offline lease.",
         runnable: false,
     }],
-    refusals: &crate::native_refusals::<5, { crate::WRITE_REFUSALS_LEN }>([
+    refusals: &crate::native_refusals::<5, { crate::DETAIL_REFUSALS_LEN }>([
         crate::NOT_PERMITTED,
-        crate::INVALID_SELECTION,
-        crate::REVISION_CONFLICT,
-        crate::UNREADABLE,
+        crate::WRITE_REFUSED,
+        crate::NOT_FOUND,
         crate::PROJECTION_UNAVAILABLE,
+        ds_cli_contract::args::INVALID_NUMBER,
     ]),
     reference: Some("docs/reference/installations.md"),
-    search: &["license", "unblock", "revoke", "suspend", "entitlement"],
+    // The words an operator types at this command are not the words its
+    // summary uses: "ban this machine", "lock them out", "disable it". The
+    // summary's own words (block, allow, device, licence) already match and
+    // may not be repeated here.
+    search: &[
+        "license",
+        "unblock",
+        "revoke",
+        "suspend",
+        "entitlement",
+        "ban",
+        "lock out",
+        "disable",
+        "deactivate",
+        "blacklist",
+        "machine",
+        "enforcement",
+        "cut off",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

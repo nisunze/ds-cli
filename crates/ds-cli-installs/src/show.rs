@@ -56,14 +56,15 @@ kind, actor, reason, device/licence/retired transitions); \
         note: "Read the revision before changing policy or recording a removal.",
         runnable: false,
     }],
-    refusals: &crate::native_refusals::<4, { crate::READ_REFUSALS_LEN }>([
+    refusals: &crate::native_refusals::<5, { crate::DETAIL_REFUSALS_LEN }>([
         crate::NOT_PERMITTED,
         crate::INVALID_SELECTION,
-        crate::UNREADABLE,
+        crate::NOT_FOUND,
         crate::PROJECTION_UNAVAILABLE,
+        ds_cli_contract::args::INVALID_NUMBER,
     ]),
     reference: Some("docs/reference/installations.md"),
-    search: &["license", "inventory", "audit", "sign-in"],
+    search: &["license", "licence", "inventory", "audit", "sign-in"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

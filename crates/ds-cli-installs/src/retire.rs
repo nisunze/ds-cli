@@ -69,12 +69,12 @@ retired is shown as exactly that contradiction rather than silently corrected.",
             runnable: false,
         },
     ],
-    refusals: &crate::native_refusals::<5, { crate::WRITE_REFUSALS_LEN }>([
+    refusals: &crate::native_refusals::<5, { crate::DETAIL_REFUSALS_LEN }>([
         crate::NOT_PERMITTED,
-        crate::INVALID_SELECTION,
-        crate::REVISION_CONFLICT,
-        crate::UNREADABLE,
+        crate::WRITE_REFUSED,
+        crate::NOT_FOUND,
         crate::PROJECTION_UNAVAILABLE,
+        ds_cli_contract::args::INVALID_NUMBER,
     ]),
     reference: Some("docs/reference/installations.md"),
     search: &[

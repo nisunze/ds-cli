@@ -72,28 +72,41 @@ pub const REASON_ARG: ds_cli_contract::spec::Arg = ds_cli_contract::spec::Arg::v
 )
 .required();
 
+// The codes below are the ones the route actually emits. The inventory is
+// reached through the shared native client, which reports a refused user, a
+// rejected request and an absent install under its own codes; a declaration
+// that spelt them install-shaped (`install_not_permitted`, …) was a promise
+// no caller could plan against, because nothing ever emitted it. What is
+// this domain's own here is the WHEN and the REMEDY.
+
+/// ds-brain gates every inventory action on `platform.admin` or `app.admin`.
 pub const NOT_PERMITTED: Refusal = Refusal {
-    code: "install_not_permitted",
-    when: "the signed-in account may not govern installations",
+    code: "auth_rejected",
+    when: "the inventory refused the signed-in account; app-level governance access is required",
     remedy: "ask a platform administrator for app-level governance access",
 };
 
+/// A read's inputs, refused before or by the inventory.
 pub const INVALID_SELECTION: Refusal = Refusal {
-    code: "install_invalid_selection",
-    when: "an installation id, cursor, revision or status token is outside its bounded contract",
-    remedy: "use an exact id from `ds install list`, and one of the declared status values",
+    code: "auth_input_invalid",
+    when: "an installation id, cursor or limit is outside its bounded contract",
+    remedy: "use an exact id from `ds install list`, and a cursor it printed",
 };
 
-pub const REVISION_CONFLICT: Refusal = Refusal {
-    code: "install_revision_conflict",
-    when: "the installation's governed state changed since it was read, or is already what was asked for",
+/// A write's inputs, or its optimistic-concurrency fence: the route answers
+/// a moved revision (HTTP 409) with the same class as a malformed request,
+/// and both are a re-read, never a retry.
+pub const WRITE_REFUSED: Refusal = Refusal {
+    code: "auth_input_invalid",
+    when: "the id, revision, status token or reason is outside its contract, or the revision moved since it was read",
     remedy: "run `ds install show --install <id>` again and reapply against the revision it prints",
 };
 
-pub const UNREADABLE: Refusal = Refusal {
-    code: "unreadable_response",
-    when: "the inventory answered with something other than the action it was asked for",
-    remedy: "run the action again; a malformed answer is refused rather than half-read",
+/// The inventory holds no installation with this id (HTTP 404).
+pub const NOT_FOUND: Refusal = Refusal {
+    code: "install_not_found",
+    when: "no registered install has this id",
+    remedy: "run ds install list",
 };
 
 pub const PROJECTION_UNAVAILABLE: Refusal = Refusal {
@@ -120,8 +133,10 @@ pub const fn native_refusals<const N: usize, const M: usize>(old: [Refusal; N]) 
     out
 }
 
-pub const READ_REFUSALS_LEN: usize = 4 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len();
-pub const WRITE_REFUSALS_LEN: usize = 5 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len();
+/// `ds install list`: no id, so nothing to be not found.
+pub const LIST_REFUSALS_LEN: usize = 4 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len();
+/// One named installation, read or written.
+pub const DETAIL_REFUSALS_LEN: usize = 5 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len();
 
 /// The one route: the installation inventory through the restored native user.
 pub fn invoke(
