@@ -218,7 +218,9 @@ pub mod design_attachments;
 pub mod design_versions;
 pub use transport::{DesignAttachmentsCall, DesignVersionsCall};
 
+pub mod design_migration;
 pub mod design_tags;
+pub use transport::DesignMigrationCall;
 pub use transport::DesignTagsCall;
 
 pub mod shared_assets;

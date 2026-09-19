@@ -187,11 +187,15 @@ fn start(row: &mut Value) -> Result<()> {
             || !uuid.is_match(publish)
             || !crate::report::valid_network_reporter_engine_identity(text(row, "engine_version"))
         {
-            return Err(failed("Network Reporter publication has no exact native batch receipt. Run the export again; its local bytes were preserved."));
+            return Err(failed(
+                "Network Reporter publication has no exact native batch receipt. Run the export again; its local bytes were preserved.",
+            ));
         }
     }
     if !hex(text(row, "engine_build_manifest_sha256")) {
-        return Err(failed("This publication predates exact engine-build provenance. Recompute it with the current release."));
+        return Err(failed(
+            "This publication predates exact engine-build provenance. Recompute it with the current release.",
+        ));
     }
     row["status"] = json!("syncing");
     row["attempts"] = json!(row["attempts"].as_u64().unwrap_or(0).saturating_add(1));

@@ -1737,6 +1737,29 @@ impl Drop for AuthorityLock {
     }
 }
 
+/// Name the holder in the contention refusal.
+///
+/// This lock gates every publication promotion, so when it refuses, the pump
+/// stops. The sentence used to name nobody and nothing to run, which is how a
+/// stopped queue turned into an afternoon of guessing. The marker's own owner
+/// evidence is the pid it already writes; liveness is deliberately NOT decided
+/// here — breaking a lock needs the paired pid/heartbeat/boot evidence that
+/// `ds_report_artifacts::confined_fs::LockOwner` owns, and duplicating half of
+/// that rule in a message would invite someone to act on it.
+fn busy_authority_lock(path: &Path) -> String {
+    let holder = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|body| {
+            let first = body.lines().next()?.trim().to_string();
+            (!first.is_empty() && first.len() <= 128).then_some(first)
+        })
+        .map(|owner| format!(" It is held by {owner}."))
+        .unwrap_or_default();
+    format!(
+        "edge authority state is busy; retry the operation.{holder} Run `ds report outbox status` to see whether the publication queue is moving."
+    )
+}
+
 #[cfg(unix)]
 fn acquire_authority_lock_with_attempts(
     directory: &Path,
@@ -1809,7 +1832,7 @@ fn acquire_authority_lock_with_attempts(
             std::thread::sleep(AUTHORITY_LOCK_RETRY);
         }
     }
-    Err("edge authority state is busy; retry the operation".to_string())
+    Err(busy_authority_lock(&path))
 }
 
 #[cfg(unix)]
@@ -1870,7 +1893,7 @@ fn acquire_authority_lock_with_attempts(
             Err(error) => return Err(format!("could not acquire edge authority lock: {error}")),
         }
     }
-    Err("edge authority state is busy; retry the operation".to_string())
+    Err(busy_authority_lock(&path))
 }
 
 #[cfg(windows)]

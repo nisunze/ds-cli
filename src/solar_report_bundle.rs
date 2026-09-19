@@ -241,7 +241,10 @@ pub fn build(
         "{}\n",
         serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?
     );
-    let readme = format!("{} is the canonical authoring source. Edit only its named LLM_EDIT regions.\n{} is a presentation copy whose image links point at this bundle's media directory; never import it as the final.\nImages are never factual inputs. Every narration block carries its complete facts, table rows, and trend series in its own CONTEXT_DATA.\n", plan.canonical, plan.preview);
+    let readme = format!(
+        "{} is the canonical authoring source. Edit only its named LLM_EDIT regions.\n{} is a presentation copy whose image links point at this bundle's media directory; never import it as the final.\nImages are never factual inputs. Every narration block carries its complete facts, table rows, and trend series in its own CONTEXT_DATA.\n",
+        plan.canonical, plan.preview
+    );
     let options = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Stored)
         .last_modified_time(

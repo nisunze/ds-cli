@@ -147,7 +147,13 @@ pub fn microsoft_tiles(
             || parsed.port().is_some()
             || !parsed.path().ends_with(".csv.gz")
         {
-            return Err(format!("Microsoft tile is outside the published source: scheme={}, host={}, path={}, query={}", parsed.scheme(), parsed.host_str().unwrap_or(""), parsed.path(), parsed.query().is_some()));
+            return Err(format!(
+                "Microsoft tile is outside the published source: scheme={}, host={}, path={}, query={}",
+                parsed.scheme(),
+                parsed.host_str().unwrap_or(""),
+                parsed.path(),
+                parsed.query().is_some()
+            ));
         }
         if !seen.insert(key.clone()) {
             return Err("duplicate Microsoft tile in selected region".into());
@@ -167,7 +173,10 @@ pub fn microsoft_tiles(
 }
 pub fn osm_query(b: Bounds) -> Result<String, String> {
     b.validate()?;
-    Ok(format!("[out:json][timeout:90][maxsize:67108864][bbox:{},{},{},{}];(way[highway];way[building];way[waterway];way[natural=water];way[landuse];node[place];);out geom;",b.south,b.west,b.north,b.east))
+    Ok(format!(
+        "[out:json][timeout:90][maxsize:67108864][bbox:{},{},{},{}];(way[highway];way[building];way[waterway];way[natural=water];way[landuse];node[place];);out geom;",
+        b.south, b.west, b.north, b.east
+    ))
 }
 pub fn osm_layers(raw: &Value, b: Bounds) -> Result<BTreeMap<String, Value>, String> {
     b.validate()?;
@@ -255,7 +264,9 @@ mod tests {
     #[test]
     fn microsoft_selection_is_spatial_country_bound_and_refuses_external_hosts() {
         let key = b().quadkeys().unwrap().into_iter().next().unwrap();
-        let csv=format!("QuadKey,Location,Url,Size\n{key},Chad,https://bfppub.blob.core.windows.net/a.csv.gz,1 MB\n{key},Libya,https://bfppub.blob.core.windows.net/b.csv.gz,2 MB\n");
+        let csv = format!(
+            "QuadKey,Location,Url,Size\n{key},Chad,https://bfppub.blob.core.windows.net/a.csv.gz,1 MB\n{key},Libya,https://bfppub.blob.core.windows.net/b.csv.gz,2 MB\n"
+        );
         assert_eq!(
             microsoft_tiles(csv.as_bytes(), b(), "Tchad").unwrap().len(),
             1

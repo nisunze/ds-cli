@@ -218,7 +218,12 @@ pub fn assess_boundary(
                 rect_mm: a.rect_mm,
                 message: format!(
                     "{} [{x:.2}, {y:.2}, {w:.2}, {h:.2}] mm crosses the printable area of the {:.2} × {:.2} mm sheet ({margin_mm:.1} mm margin) by {:.2} × {:.2} mm; move it {} mm",
-                    a.element_id, page_mm[0], page_mm[1], outside[0], outside[1], describe([round(dx), round(dy)])
+                    a.element_id,
+                    page_mm[0],
+                    page_mm[1],
+                    outside[0],
+                    outside[1],
+                    describe([round(dx), round(dy)])
                 ),
                 roles: vec![a.role],
                 overlap_mm: [round(outside[0]), round(outside[1])],

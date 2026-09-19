@@ -385,7 +385,13 @@ pub(super) fn compose(section: Section, report: Value) -> Result<Dashboard, Stri
                 &Value::Null,
                 "",
             )?;
-            add("Site and solar resource", &first(s, &["site_table", "table"]), "city country latitude longitude ghi_annual_kwh_m2 dni_annual_kwh_m2 poa_max_kwh_m2 peak_sun_hours", &s["aggregations"], "ghi_annual_kwh_m2:ghi_mean dni_annual_kwh_m2:dni_mean poa_max_kwh_m2:poa_mean peak_sun_hours:peak_sun_hours_mean")?;
+            add(
+                "Site and solar resource",
+                &first(s, &["site_table", "table"]),
+                "city country latitude longitude ghi_annual_kwh_m2 dni_annual_kwh_m2 poa_max_kwh_m2 peak_sun_hours",
+                &s["aggregations"],
+                "ghi_annual_kwh_m2:ghi_mean dni_annual_kwh_m2:dni_mean poa_max_kwh_m2:poa_mean peak_sun_hours:peak_sun_hours_mean",
+            )?;
             add(
                 "Climate",
                 &s["climate_table"],
@@ -393,18 +399,72 @@ pub(super) fn compose(section: Section, report: Value) -> Result<Dashboard, Stri
                 &s["aggregations"],
                 "temp_mean_c:temp_mean_avg temp_min_c:temp_min_global temp_max_c:temp_max_global",
             )?;
-            add("PV configuration", &s["pv_config_table"], "city optimal_tilt_deg modules_per_string strings_per_inverter modules_per_inverter dc_capacity_kw system_max_dc_voltage annual_energy_mwh_inv capacity_factor_pct", &s["aggregations"], "dc_capacity_kw:total_dc_capacity_kw annual_energy_mwh_inv:total_annual_energy_mwh capacity_factor_pct:mean_capacity_factor_pct")?;
-            add("Demand", &report["demand"]["table"], "city customers peak_kw daily_kwh annual_mwh load_factor peak_hours", &report["demand"]["aggregations"], "customers:total_customers peak_kw:total_peak_kw daily_kwh:total_daily_kwh annual_mwh:total_annual_mwh load_factor:mean_load_factor")?;
-            add("Network and costs", &report["network"]["table"], "city customers transformers lv_km mv_km network_capex capex_per_customer", &report["network"]["aggregations"], "customers:total_customers transformers:total_transformers lv_km:total_lv_km mv_km:total_mv_km network_capex:total_network_capex capex_per_customer:mean_capex_per_customer")?;
+            add(
+                "PV configuration",
+                &s["pv_config_table"],
+                "city optimal_tilt_deg modules_per_string strings_per_inverter modules_per_inverter dc_capacity_kw system_max_dc_voltage annual_energy_mwh_inv capacity_factor_pct",
+                &s["aggregations"],
+                "dc_capacity_kw:total_dc_capacity_kw annual_energy_mwh_inv:total_annual_energy_mwh capacity_factor_pct:mean_capacity_factor_pct",
+            )?;
+            add(
+                "Demand",
+                &report["demand"]["table"],
+                "city customers peak_kw daily_kwh annual_mwh load_factor peak_hours",
+                &report["demand"]["aggregations"],
+                "customers:total_customers peak_kw:total_peak_kw daily_kwh:total_daily_kwh annual_mwh:total_annual_mwh load_factor:mean_load_factor",
+            )?;
+            add(
+                "Network and costs",
+                &report["network"]["table"],
+                "city customers transformers lv_km mv_km network_capex capex_per_customer",
+                &report["network"]["aggregations"],
+                "customers:total_customers transformers:total_transformers lv_km:total_lv_km mv_km:total_mv_km network_capex:total_network_capex capex_per_customer:mean_capex_per_customer",
+            )?;
             &["site", "demand", "network"]
         }
         Section::PortfolioPlant => {
-            add("Scenario selection", &report["scenarios"]["table"], "city selected_system lcoe_hybrid lcoe_solar_battery lcoe_thermal_only lcoe_selected renewable_pct", &Value::Null, "")?;
-            add("System selection rationale", &report["system_rationale"]["table"], "city chosen_system daily_kwh peak_kw load_factor_pct lcoe_hybrid lcoe_solar_battery lcoe_gap_sb_minus_hyb", &Value::Null, "")?;
-            add("Plant sizing", &first(p, &["equipment_table", "table"]), "city system_type pv_mw panels storage_mwh inverters generator_config availability_pct", &p["aggregations"], "pv_mw:total_pv_mw panels:total_panels storage_mwh:total_storage_mwh inverters:total_inverters availability_pct:mean_availability_pct")?;
-            add("Energy production", &p["energy_table"], "city daily_load_mwh energy_year1_mwh energy_lifetime_gwh daily_solar_direct_mwh daily_battery_mwh daily_generator_mwh renewable_pct", &p["aggregations"], "daily_load_mwh:total_daily_load_mwh energy_year1_mwh:total_energy_year1_mwh energy_lifetime_gwh:total_energy_lifetime_gwh daily_solar_direct_mwh:total_daily_solar_mwh daily_battery_mwh:total_daily_battery_mwh daily_generator_mwh:total_daily_generator_mwh renewable_pct:mean_renewable_pct")?;
-            add("Plant costs", &p["cost_table"], "city plant_capex replacement_cost total_opex tco lcoe_simple", &p["aggregations"], "plant_capex:total_plant_capex replacement_cost:total_replacement_cost total_opex:total_opex tco:total_tco lcoe_simple:weighted_lcoe")?;
-            add("Environmental impact", &p["environmental_table"], "city fuel_y1_kl co2_y1_t fuel_lifetime_ml co2_lifetime_t", &p["aggregations"], "fuel_y1_kl:total_fuel_y1_kl co2_y1_t:total_co2_y1_t fuel_lifetime_ml:total_fuel_lifetime_ml co2_lifetime_t:total_co2_lifetime_t")?;
+            add(
+                "Scenario selection",
+                &report["scenarios"]["table"],
+                "city selected_system lcoe_hybrid lcoe_solar_battery lcoe_thermal_only lcoe_selected renewable_pct",
+                &Value::Null,
+                "",
+            )?;
+            add(
+                "System selection rationale",
+                &report["system_rationale"]["table"],
+                "city chosen_system daily_kwh peak_kw load_factor_pct lcoe_hybrid lcoe_solar_battery lcoe_gap_sb_minus_hyb",
+                &Value::Null,
+                "",
+            )?;
+            add(
+                "Plant sizing",
+                &first(p, &["equipment_table", "table"]),
+                "city system_type pv_mw panels storage_mwh inverters generator_config availability_pct",
+                &p["aggregations"],
+                "pv_mw:total_pv_mw panels:total_panels storage_mwh:total_storage_mwh inverters:total_inverters availability_pct:mean_availability_pct",
+            )?;
+            add(
+                "Energy production",
+                &p["energy_table"],
+                "city daily_load_mwh energy_year1_mwh energy_lifetime_gwh daily_solar_direct_mwh daily_battery_mwh daily_generator_mwh renewable_pct",
+                &p["aggregations"],
+                "daily_load_mwh:total_daily_load_mwh energy_year1_mwh:total_energy_year1_mwh energy_lifetime_gwh:total_energy_lifetime_gwh daily_solar_direct_mwh:total_daily_solar_mwh daily_battery_mwh:total_daily_battery_mwh daily_generator_mwh:total_daily_generator_mwh renewable_pct:mean_renewable_pct",
+            )?;
+            add(
+                "Plant costs",
+                &p["cost_table"],
+                "city plant_capex replacement_cost total_opex tco lcoe_simple",
+                &p["aggregations"],
+                "plant_capex:total_plant_capex replacement_cost:total_replacement_cost total_opex:total_opex tco:total_tco lcoe_simple:weighted_lcoe",
+            )?;
+            add(
+                "Environmental impact",
+                &p["environmental_table"],
+                "city fuel_y1_kl co2_y1_t fuel_lifetime_ml co2_lifetime_t",
+                &p["aggregations"],
+                "fuel_y1_kl:total_fuel_y1_kl co2_y1_t:total_co2_y1_t fuel_lifetime_ml:total_fuel_lifetime_ml co2_lifetime_t:total_co2_lifetime_t",
+            )?;
             &["performance"]
         }
         Section::PortfolioBoq => {
@@ -430,9 +490,27 @@ pub(super) fn compose(section: Section, report: Value) -> Result<Dashboard, Stri
                 &Value::Null,
                 "",
             )?;
-            add("Equipment by site", &i["city_boq_table"], "city inverters panels battery_mwh generator_config generator_kva equipment_total markup_total plant_capex", &i["aggregations"], "inverters:total_inverters panels:total_panels battery_mwh:total_battery_mwh generator_kva:total_generator_kva equipment_total:total_equipment markup_total:total_markup plant_capex:total_plant_capex")?;
-            add("BOQ by site", &i["city_breakdown_table"], "city plant_equipment plant_markup plant_total network_total grand_total", &i["aggregations"], "plant_equipment:total_equipment plant_markup:total_markup plant_total:total_plant_capex network_total:total_network_capex grand_total:total_portfolio_capex")?;
-            add("Lifetime cost projection", &p["cost_table"], "city plant_capex replacement_cost total_opex tco lcoe_simple", &p["aggregations"], "plant_capex:total_plant_capex replacement_cost:total_replacement_cost total_opex:total_opex tco:total_tco lcoe_simple:weighted_lcoe")?;
+            add(
+                "Equipment by site",
+                &i["city_boq_table"],
+                "city inverters panels battery_mwh generator_config generator_kva equipment_total markup_total plant_capex",
+                &i["aggregations"],
+                "inverters:total_inverters panels:total_panels battery_mwh:total_battery_mwh generator_kva:total_generator_kva equipment_total:total_equipment markup_total:total_markup plant_capex:total_plant_capex",
+            )?;
+            add(
+                "BOQ by site",
+                &i["city_breakdown_table"],
+                "city plant_equipment plant_markup plant_total network_total grand_total",
+                &i["aggregations"],
+                "plant_equipment:total_equipment plant_markup:total_markup plant_total:total_plant_capex network_total:total_network_capex grand_total:total_portfolio_capex",
+            )?;
+            add(
+                "Lifetime cost projection",
+                &p["cost_table"],
+                "city plant_capex replacement_cost total_opex tco lcoe_simple",
+                &p["aggregations"],
+                "plant_capex:total_plant_capex replacement_cost:total_replacement_cost total_opex:total_opex tco:total_tco lcoe_simple:weighted_lcoe",
+            )?;
             &[]
         }
         _ => return Err("Unknown portfolio table dashboard".into()),

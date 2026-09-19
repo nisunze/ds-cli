@@ -45,6 +45,99 @@ pub enum PublicationState {
     Queued,
 }
 
+/// The one publication lifecycle a reader sees, for any producer.
+///
+/// The defect this exists to close: a verified artifact sitting on a PC was
+/// indistinguishable from a report that never ran. Three surfaces answered the
+/// same question differently — the engine said `ok`, the outbox said
+/// `pending`, the cloud said `stale` — because none of them named the *stage*
+/// a publication had reached. These four names are that stage, and every
+/// producer (Desktop, headless CLI, Server) reports in them.
+///
+/// Why this is a derivation rather than a rename of
+/// [`crate::sync_store::ArtifactState`]: that enum is a persisted SQLite
+/// column (`artifacts.state`) and the report activity projection validates its
+/// five tokens. Renaming it is a data migration that would strand every queue
+/// already on disk. The stage is a *reader's* vocabulary; it is computed from
+/// facts the store already holds, one-to-one and losslessly, so nothing has to
+/// be migrated and nothing can drift.
+///
+/// `Sealed` is the state the defect made invisible: bytes are committed and
+/// verified in the producer store, and no queue row exists for them yet.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicationStage {
+    /// Committed and digest-verified on this machine; not yet a queue row.
+    Sealed,
+    /// A queue row exists and is waiting for its turn at the gateway.
+    Queued,
+    /// Bytes are moving, or have moved, and the head is not confirmed yet.
+    Drained,
+    /// The shared record answered with a head revision. This is done.
+    Acknowledged,
+    /// The record moved past what these bytes were computed on. Terminal until
+    /// a human or a newer computation resolves it.
+    Conflicted,
+    /// The gateway refused these bytes by name. Terminal.
+    Refused,
+}
+
+impl PublicationStage {
+    /// The token this stage is spelled with on every surface.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PublicationStage::Sealed => "sealed",
+            PublicationStage::Queued => "queued",
+            PublicationStage::Drained => "drained",
+            PublicationStage::Acknowledged => "acknowledged",
+            PublicationStage::Conflicted => "conflicted",
+            PublicationStage::Refused => "refused",
+        }
+    }
+
+    /// Whether an operator still has work owed to them for this publication.
+    /// `Sealed`, `Queued` and `Drained` are all "not yet up there".
+    pub fn outstanding(self) -> bool {
+        matches!(
+            self,
+            PublicationStage::Sealed | PublicationStage::Queued | PublicationStage::Drained
+        )
+    }
+
+    /// One sentence an operator reads, naming the stage and what it implies.
+    pub fn sentence(self) -> &'static str {
+        match self {
+            PublicationStage::Sealed => {
+                "computed and verified on this device; not queued for publication yet"
+            }
+            PublicationStage::Queued => "queued for publication; waiting for the sync pump",
+            PublicationStage::Drained => "uploading; the shared record has not confirmed it yet",
+            PublicationStage::Acknowledged => "published; the shared record carries it",
+            PublicationStage::Conflicted => {
+                "the shared record moved past what this result was computed on"
+            }
+            PublicationStage::Refused => "the gateway refused these bytes",
+        }
+    }
+}
+
+/// The stage a queue row is at, from the persisted artifact-state token.
+///
+/// The tokens are [`crate::sync_store::ArtifactState::as_str`]'s, read as data
+/// rather than matched on the enum so that a store written by an older build
+/// still reads. An unknown token is not guessed: the caller is told, because
+/// inventing a stage is exactly how three surfaces came to disagree.
+pub fn publication_stage(state: &str) -> Result<PublicationStage, String> {
+    match state {
+        "held" => Ok(PublicationStage::Queued),
+        "uploading" => Ok(PublicationStage::Drained),
+        "published" => Ok(PublicationStage::Acknowledged),
+        "conflict" => Ok(PublicationStage::Conflicted),
+        "refused" => Ok(PublicationStage::Refused),
+        other => Err(format!("unknown publication state `{other}`")),
+    }
+}
+
 pub fn publication_state(
     engine: &str,
     enqueue: bool,
@@ -654,6 +747,48 @@ pub fn report_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The whole persisted queue vocabulary maps onto a stage, and nothing is
+    /// invented. This matters because the blocker was three surfaces answering
+    /// "is this room's report current?" differently: if one token here had no
+    /// stage, or an unknown token guessed one, that disagreement would be back.
+    #[test]
+    fn every_persisted_queue_token_names_exactly_one_stage() {
+        let table = [
+            ("held", PublicationStage::Queued),
+            ("uploading", PublicationStage::Drained),
+            ("published", PublicationStage::Acknowledged),
+            ("conflict", PublicationStage::Conflicted),
+            ("refused", PublicationStage::Refused),
+        ];
+        for (token, expected) in table {
+            assert_eq!(publication_stage(token).unwrap(), expected, "{token}");
+        }
+        assert!(publication_stage("drained").is_err());
+        assert!(publication_stage("").is_err());
+    }
+
+    /// `sealed` is the stage the defect erased: 593 verified artifacts on one
+    /// PC read as "never ran". It is outstanding work and must never be
+    /// reachable from a queue token, because a sealed batch is precisely one
+    /// that has no queue row.
+    #[test]
+    fn sealed_is_outstanding_and_is_not_a_queue_token() {
+        assert!(PublicationStage::Sealed.outstanding());
+        assert!(PublicationStage::Queued.outstanding());
+        assert!(PublicationStage::Drained.outstanding());
+        assert!(!PublicationStage::Acknowledged.outstanding());
+        assert!(!PublicationStage::Conflicted.outstanding());
+        assert!(!PublicationStage::Refused.outstanding());
+        for token in ["held", "uploading", "published", "conflict", "refused"] {
+            assert_ne!(publication_stage(token).unwrap(), PublicationStage::Sealed);
+        }
+        assert_eq!(
+            serde_json::to_value(PublicationStage::Sealed).unwrap(),
+            serde_json::json!("sealed")
+        );
+        assert_eq!(PublicationStage::Sealed.as_str(), "sealed");
+    }
 
     /// Five level tokens, four labels, one legacy twin and one default — the
     /// whole vocabulary, asserted as a table so a new spelling has to be added

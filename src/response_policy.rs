@@ -27,14 +27,11 @@ const MAX_INPUT_BYTES: usize = 16 * 1024;
 const RETRY_AFTER_CAP_MS: u64 = 60_000;
 const MIN_RETRY_DELAY_MS: u64 = 250;
 
-const NETWORK_UNREACHABLE: &str =
-    "Data Solutions API is not reachable right now. Retry after the service connection is restored.";
+const NETWORK_UNREACHABLE: &str = "Data Solutions API is not reachable right now. Retry after the service connection is restored.";
 const BROWSER_OFFLINE: &str =
     "Data Solutions API is not reachable because this browser is offline. Reconnect and retry.";
-const LOCAL_AUTH_EXPIRED: &str =
-    "Local service authorization expired. Restart local services after refreshing credentials, then retry.";
-const REPORT_UNAVAILABLE: &str =
-    "Report actions are not available in this environment. Save without report actions, or retry after the report service is restored.";
+const LOCAL_AUTH_EXPIRED: &str = "Local service authorization expired. Restart local services after refreshing credentials, then retry.";
+const REPORT_UNAVAILABLE: &str = "Report actions are not available in this environment. Save without report actions, or retry after the report service is restored.";
 const SETTINGS_UNREADABLE: &str =
     "Report actions could not read the project settings. Restart local services and try again.";
 

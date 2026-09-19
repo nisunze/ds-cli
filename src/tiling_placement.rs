@@ -64,7 +64,7 @@ pub fn resolve(request: Request) -> Result<Placement, String> {
     let compute_route = match (request.surface, request.platform) {
         (Surface::Web, None) => ComputeRoute::OnlineContainer,
         (Surface::Web, Some(_)) => {
-            return Err("A web tiling request must not claim an operating system.".into())
+            return Err("A web tiling request must not claim an operating system.".into());
         }
         (Surface::Desktop, Some(Platform::Linux)) | (Surface::Server, Some(Platform::Linux)) => {
             ComputeRoute::LocalNative
@@ -73,10 +73,10 @@ pub fn resolve(request: Request) -> Result<Placement, String> {
             ComputeRoute::OnlineContainer
         }
         (Surface::Desktop | Surface::Server, None) => {
-            return Err("Installed tiling requires an explicit platform.".into())
+            return Err("Installed tiling requires an explicit platform.".into());
         }
         (Surface::Server, Some(Platform::Windows | Platform::Macos)) => {
-            return Err("The native tiling Server is supported on Linux only.".into())
+            return Err("The native tiling Server is supported on Linux only.".into());
         }
     };
 

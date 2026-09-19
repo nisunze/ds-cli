@@ -140,7 +140,7 @@ pub fn canonical_transformer_reference_name(name: &str) -> String {
     let canonical = canonical.trim_matches('_');
     match canonical {
         "all_transformers" | "combined_transformers" | "combined_transformer" => {
-            return "combined_transformer".to_string()
+            return "combined_transformer".to_string();
         }
         "" => return "transformer".to_string(),
         _ => {}

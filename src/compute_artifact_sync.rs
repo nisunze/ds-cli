@@ -81,8 +81,8 @@ pub fn assess(input: &[u8]) -> Result<Assessment, String> {
         retry_eligible,
         retry_remedy: if is_storage_comparison_failure {
             Some(
-            "After the server storage-comparison fix is installed, retry this retained row. Immutable bytes and current publication authority will be verified again.",
-        )
+                "After the server storage-comparison fix is installed, retry this retained row. Immutable bytes and current publication authority will be verified again.",
+            )
         } else {
             is_admission_failure.then_some(
             "Verify that the server admits this exact engine_version and engine_build_manifest_sha256, then retry this same row.",

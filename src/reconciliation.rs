@@ -433,7 +433,7 @@ fn validate_queue(queue: &Queue) -> Result<(), String> {
                 }
             }
             (None, Phase::Leased | Phase::Uploaded) | (Some(_), _) => {
-                return Err("phase and durable worker claim disagree".into())
+                return Err("phase and durable worker claim disagree".into());
             }
             _ => {}
         }

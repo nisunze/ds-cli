@@ -1005,7 +1005,7 @@ pub fn inspect_project_settings(
             return Ok(
                 serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
             "setting":setting,"ready":false,"issues":[issue],"outputs":[],"papers":[],"refusal":refusal}),
-            )
+            );
         }
     };
     let papers = outputs.iter().filter_map(|output| {

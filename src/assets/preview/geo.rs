@@ -463,7 +463,9 @@ mod tests {
         // A feature count is never guessed from a shape that is not GeoJSON,
         // and a nest of arrays neither panics nor overflows the stack.
         let deep = format!("{}[1,2]{}", "[".repeat(60), "]".repeat(60));
-        let text = format!("{{\"type\":\"Feature\",\"geometry\":{{\"type\":\"MultiPolygon\",\"coordinates\":{deep}}}}}");
+        let text = format!(
+            "{{\"type\":\"Feature\",\"geometry\":{{\"type\":\"MultiPolygon\",\"coordinates\":{deep}}}}}"
+        );
         let doc = geo(text.as_bytes(), &ask(Format::Geojson, None)).expect("deep nesting");
         let (_, _, _, features, bbox, _) = geo_block(&doc);
         assert_eq!(features, Some(1));

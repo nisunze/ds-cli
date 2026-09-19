@@ -1123,7 +1123,9 @@ mod tests {
     }
 
     fn drawing(attribute: &str) -> String {
-        format!("<w:p><w:r><w:drawing><a:graphic><a:graphicData><a:blip {attribute}/></a:graphicData></a:graphic></w:drawing></w:r></w:p>")
+        format!(
+            "<w:p><w:r><w:drawing><a:graphic><a:graphicData><a:blip {attribute}/></a:graphicData></a:graphic></w:drawing></w:r></w:p>"
+        )
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]

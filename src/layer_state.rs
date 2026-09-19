@@ -1193,7 +1193,11 @@ impl<'a> Context<'a> {
             .filter(|id| !canonical.contains(id))
             .collect();
         if !unknown.is_empty() {
-            return refuse("unknown_layer", "these ids are not canonical layers of the selected project; copy ids from the catalogue", unknown);
+            return refuse(
+                "unknown_layer",
+                "these ids are not canonical layers of the selected project; copy ids from the catalogue",
+                unknown,
+            );
         }
         let unlisted: Vec<&str> = canonical
             .iter()

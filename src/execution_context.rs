@@ -174,8 +174,7 @@ pub const NOT_FOUND: &str = "job not found";
 /// Two spellings of one refusal are two answers to one question, and the
 /// spelling that drops the remedy is the dead end §3 forbids.
 pub const PAYLOAD_CHANGED_FOR_KEY_MESSAGE: &str = "that idempotency key was admitted with different input bytes; resubmit the bytes it was admitted with, or use a new key for these";
-pub const SCOPE_MISMATCH_FOR_KEY_MESSAGE: &str =
-    "that idempotency key already names another project or operation; submit this under a key of its own";
+pub const SCOPE_MISMATCH_FOR_KEY_MESSAGE: &str = "that idempotency key already names another project or operation; submit this under a key of its own";
 
 // ── The record ──────────────────────────────────────────────────────────
 

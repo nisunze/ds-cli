@@ -132,7 +132,11 @@ mod tests {
         assert!(inspect(&source, path).is_ok());
         source["generation"] = json!("8");
         assert!(inspect(&source, path).is_err());
-        for raw in ["https://evil.test/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=a", "https://storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=a&upload_id=b", "https://user@storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=a"] {
+        for raw in [
+            "https://evil.test/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=a",
+            "https://storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=a&upload_id=b",
+            "https://user@storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=a",
+        ] {
             assert!(session(&json!(raw), "bucket").is_err());
         }
     }

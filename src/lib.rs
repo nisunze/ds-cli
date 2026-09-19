@@ -143,6 +143,12 @@ pub fn design_activities_store_wasm(input: &[u8]) -> Result<String, wasm_bindgen
     design_activities_store::evaluate(input)
         .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod project_management;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = projectManagement)]
+pub fn project_management_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    project_management::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod design_dashboard;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designDashboard)]
@@ -155,8 +161,14 @@ pub mod design_health;
 pub fn design_health_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_health::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod combined_readiness;
 pub mod design_status_query;
 pub mod design_status_row;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = combinedReadiness)]
+pub fn combined_readiness_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    combined_readiness::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod status_upload;
 pub mod sync;
 pub mod sync_store;
@@ -1769,12 +1781,24 @@ pub fn application_settings_wasm(input: &[u8]) -> Result<String, wasm_bindgen::J
     application_settings::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
+/// Cross-project design migration — ONE endpoint, `kind` transformer|dsgrid.
+/// Not a cross-domain migration registry: Survey and Solar own their own.
+pub mod design_migration;
 pub mod grid_publication;
 pub mod solar_seed;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSeed)]
 pub fn solar_seed_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     solar_seed::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
+/// Solar project-to-project migration — ONE endpoint, `kind` city|portfolio,
+/// inputs and parameters only. Design and Survey own their own migrations.
+pub mod solar_migration;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarMigration)]
+pub fn solar_migration_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    solar_migration::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
 pub mod report_consistency;

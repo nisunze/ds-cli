@@ -312,7 +312,12 @@ pub(super) fn render(key: &str, chart: &Value) -> String {
         }
     }
     table.push_str("</tbody>");
-    format!("<figure><figcaption>{}</figcaption><svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 670 340' role=img aria-label='{}'><title>{}</title>{svg}</svg><ul class=legend>{legend}</ul><details><summary>Exact chart data</summary><table>{table}</table></details></figure>", escape(&title), escape(&title), escape(&title))
+    format!(
+        "<figure><figcaption>{}</figcaption><svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 670 340' role=img aria-label='{}'><title>{}</title>{svg}</svg><ul class=legend>{legend}</ul><details><summary>Exact chart data</summary><table>{table}</table></details></figure>",
+        escape(&title),
+        escape(&title),
+        escape(&title)
+    )
 }
 
 #[cfg(test)]

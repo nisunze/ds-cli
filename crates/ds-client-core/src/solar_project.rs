@@ -34,6 +34,16 @@ pub enum Command {
         overwrite: bool,
         digest: Option<String>,
     },
+    /// Project-to-project Solar migration: inputs and parameters only, never a
+    /// computation result. `kind` is `city` or `portfolio` and selects which
+    /// Solar object moves; it never reaches outside the Solar domain.
+    Migrate {
+        kind: String,
+        source_project: String,
+        selection: Vec<String>,
+        overwrite: bool,
+        digest: Option<String>,
+    },
     CommitCity {
         city: String,
         expected_base: String,
@@ -133,6 +143,30 @@ impl Command {
                             || s.chars().any(char::is_control)
                     })
                     || digest.as_ref().is_some_and(|s| !sha(s))
+                {
+                    return Err(invalid());
+                }
+            }
+            Self::Migrate {
+                kind,
+                source_project,
+                selection,
+                digest,
+                ..
+            } => {
+                let context = ds_command_kernel::solar_migration::Context {
+                    kind: kind.clone(),
+                    root: String::new(),
+                    // The destination is bound by the session that carries this
+                    // command; what has to be admissible HERE is the source and
+                    // the selection, which is what the caller chose.
+                    ds_project: String::new(),
+                    source_project: source_project.clone(),
+                    selection: selection.clone(),
+                };
+                if ds_command_kernel::solar_migration::validate_context(&context, false).is_err()
+                    || source_project == project
+                    || digest.as_ref().is_some_and(|value| !sha(value))
                 {
                     return Err(invalid());
                 }
@@ -488,6 +522,78 @@ pub(crate) fn run<T: AuthorizedTransport>(
                     .map(String::as_str)
                     .collect::<std::collections::BTreeSet<_>>();
                 if got != want {
+                    return Err(unreadable());
+                }
+            }
+            Ok(result)
+        }
+        Command::Migrate {
+            kind,
+            source_project,
+            selection,
+            overwrite,
+            digest,
+        } => {
+            let mut payload = json!({
+                "action": if digest.is_some() { "migrate_apply" } else { "migrate_plan" },
+                "root": root,
+                "migrate_kind": kind,
+                "migrate_source_project": source_project,
+            });
+            if !selection.is_empty() {
+                // The selection key depends on the kind, because the grant
+                // refuses the other kind's key outright rather than ignoring
+                // it — a selection quietly dropped is a plan that describes
+                // less than the caller asked for.
+                let key = if kind == ds_command_kernel::solar_migration::KIND_PORTFOLIO {
+                    "portfolios"
+                } else {
+                    "cities"
+                };
+                payload[key] = json!(selection);
+            }
+            if *overwrite {
+                payload["migrate_overwrite"] = json!(true);
+            }
+            if let Some(digest) = digest {
+                payload["migrate_digest"] = json!(digest);
+            }
+            let result = call(profile, transport, authority, false, payload)?;
+            let plan = &result["plan"];
+            let context = ds_command_kernel::solar_migration::Context {
+                kind: kind.clone(),
+                root: root.to_string(),
+                ds_project: project.to_string(),
+                source_project: source_project.clone(),
+                selection: selection.clone(),
+            };
+            let parsed: ds_command_kernel::solar_migration::Plan =
+                serde_json::from_value(plan.clone()).map_err(|_| unreadable())?;
+            // The kernel owns "does this plan describe the call I made". A
+            // portfolio plan returned to a city call would otherwise render as
+            // "0 cities" instead of as an error.
+            if ds_command_kernel::solar_migration::drift(&parsed, &context)
+                != ds_command_kernel::solar_migration::Drift::None
+            {
+                return Err(unreadable());
+            }
+            if !plan["migrate_digest"]
+                .as_str()
+                .is_some_and(ds_command_kernel::solar_migration::is_migrate_digest)
+            {
+                return Err(unreadable());
+            }
+            if let Some(digest) = digest {
+                if result["migrate_digest"].as_str() != Some(digest.as_str()) {
+                    return Err(unreadable());
+                }
+                // The one boolean this endpoint's whole contract rests on. A
+                // receipt claiming results migrated did not come from it.
+                if !ds_command_kernel::solar_migration::results_are_honest(
+                    result["computation_results_migrated"]
+                        .as_bool()
+                        .unwrap_or(true),
+                ) {
                     return Err(unreadable());
                 }
             }

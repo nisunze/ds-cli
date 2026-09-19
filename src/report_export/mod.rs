@@ -1194,7 +1194,7 @@ pub fn verify_result(
                 status: result.status,
                 blockers: result.blockers,
                 artifacts: result.artifacts.len(),
-            })
+            });
         }
     };
     if result.artifacts.is_empty() {
@@ -1219,7 +1219,7 @@ pub fn verify_result(
             None => {
                 return Err(ResultRefusal::invalid(
                     "Network Reporter did not answer every requested format in the plan's order",
-                ))
+                ));
             }
         }
     }
@@ -1321,9 +1321,11 @@ pub fn verify_result(
         });
         match named {
             Some(format) if blocked.insert(format, blocker).is_none() => {}
-            _ => return Err(ResultRefusal::invalid(
-                "Network Reporter blocker does not name one distinct unbuilt format of this run",
-            )),
+            _ => {
+                return Err(ResultRefusal::invalid(
+                    "Network Reporter blocker does not name one distinct unbuilt format of this run",
+                ));
+            }
         }
     }
     let failed = plan

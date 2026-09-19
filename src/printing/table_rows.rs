@@ -83,7 +83,9 @@ pub fn plan(
         } else {
             permitted.to_string()
         };
-        return Err(format!("table {id} has {rows} rows; needs {panels} panels at the authored type size (maximum {ceiling})"));
+        return Err(format!(
+            "table {id} has {rows} rows; needs {panels} panels at the authored type size (maximum {ceiling})"
+        ));
     }
     Ok(RowPlan {
         step_mm: step,

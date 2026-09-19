@@ -861,7 +861,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         other => {
             return Err(format!(
                 "Unsupported design activities store action `{other}`."
-            ))
+            ));
         }
     };
     reply.map_err(|error| error.to_string())

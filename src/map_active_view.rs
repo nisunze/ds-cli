@@ -104,15 +104,15 @@ pub fn evaluate(input: &[u8]) -> Result<Value, String> {
                 }
                 ("3d", Some("google")) => json!({ "mode": "3d", "provider": "google" }),
                 ("2d", Some(_)) => {
-                    return Err("2d renderer configuration does not accept a provider".into())
+                    return Err("2d renderer configuration does not accept a provider".into());
                 }
                 ("3d", None) => {
-                    return Err("3d renderer configuration requires aws-terrain or google".into())
+                    return Err("3d renderer configuration requires aws-terrain or google".into());
                 }
                 _ => {
                     return Err(
                         "renderer must be 2d, or 3d with provider aws-terrain or google".into(),
-                    )
+                    );
                 }
             };
             Ok(json!({

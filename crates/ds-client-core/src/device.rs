@@ -1477,6 +1477,17 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::design_tags::run(self.profile, transport, self.authority(), project, command)
     }
+    pub fn design_migration<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        command: &crate::design_migration::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project)?;
+        self.ensure_active(now)?;
+        crate::design_migration::run(self.profile, transport, self.authority(), project, command)
+    }
     pub fn report_artifact<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

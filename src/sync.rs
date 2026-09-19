@@ -372,6 +372,62 @@ fn valid_sha256(value: &str) -> bool {
             .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+/// A held result was not uploaded because the shared record already carries a
+/// later computation of the same thing. Not an error and not a conflict: the
+/// operator is owed nothing, and the local bytes may be discarded.
+pub const SUPERSEDED_BY_HEAD: &str = "superseded_by_head";
+
+/// Which of two disagreeing results of a *derived* artifact is current.
+enum DerivedWinner {
+    Local,
+    Head,
+    /// Neither side can be ordered against the other from what is on hand.
+    Undecidable,
+}
+
+/// **Last writer wins, by production time — but only between two renderings
+/// of the SAME source revision.** This is the ordering rule for a derived
+/// artifact, written here so there is one answer to "a held artifact drains
+/// over room state that has moved on; now what?".
+///
+/// Why last-writer-wins and not the ds-network revision/CAS model: CAS needs
+/// both sides to agree on a revision line, and a report has none. A report is
+/// a pure function of pinned source inputs, not an editable document with a
+/// revision an author advances. Two machines never *merge* a report; one of
+/// them computed it more recently, and that one is the report of record.
+///
+/// Why it is scoped to an equal `input_base_fingerprint`: a clock is the
+/// weakest evidence on hand and two clocks are weaker still — the local time
+/// is a directory's mtime and the head's is the server's. When the two sides
+/// declare DIFFERENT source revisions there is better evidence than either
+/// clock, and it is already used: the source grant pins the current source
+/// revision, and the branch this feeds refuses admission for a result
+/// computed against a revision that has moved. Deciding those by timestamp
+/// would let a device with a fast clock publish a report of an old room over
+/// a report of the current one. So: same source, later writer wins; different
+/// source, the source authority decides, never a clock.
+///
+/// Ties go to the head. Preferring the local side on an equal timestamp would
+/// make the outcome depend on which machine happened to drain first, and the
+/// head is the copy other people can already see.
+///
+/// A result with no usable production time is *not* guessed at. It raises a
+/// conflict, because silently discarding a verified artifact is the failure
+/// this whole change exists to end.
+fn derived_winner(artifact: &LocalArtifact, head: &RemoteHead, computed: &str) -> DerivedWinner {
+    if head.input_base_fingerprint.as_deref() != Some(computed) {
+        return DerivedWinner::Local;
+    }
+    if artifact.produced_at_ms == 0 {
+        return DerivedWinner::Undecidable;
+    }
+    if artifact.produced_at_ms > head.published_at_ms {
+        DerivedWinner::Local
+    } else {
+        DerivedWinner::Head
+    }
+}
+
 /// How near a grant came to covering a scope. Reported as the HIGHEST any
 /// held grant reached, so an operator is told the nearest miss — "renew this
 /// grant" rather than "some other project's grant does not apply".
@@ -695,6 +751,33 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
                 let differs = remote
                     .get(&identity)
                     .is_none_or(|head| head.sha256 != artifact.sha256);
+                // Ordering, decided here and nowhere else. A drain that has
+                // been held for days meets a record that moved on, and until
+                // now this branch uploaded regardless: a 09-04 batch silently
+                // overwrote 09-18 room state.
+                if differs {
+                    if let Some(head) = remote.get(&identity) {
+                        match derived_winner(artifact, head, computed) {
+                            DerivedWinner::Head => {
+                                actions.push(Action::Nothing {
+                                    identity: identity.clone(),
+                                    reason: SUPERSEDED_BY_HEAD,
+                                });
+                                continue;
+                            }
+                            DerivedWinner::Undecidable => {
+                                actions.push(Action::Conflict {
+                                    identity: identity.clone(),
+                                    base_revision: Some(computed.clone()),
+                                    current_revision: head.revision.clone(),
+                                    reason: "production_time_unknown",
+                                });
+                                continue;
+                            }
+                            DerivedWinner::Local => {}
+                        }
+                    }
+                }
                 if artifact.readable && differs {
                     let scope = artifact.scope();
                     let granted = input.source_grants.iter().rev().find(|grant| {
@@ -937,6 +1020,25 @@ mod tests {
             remote,
         }
     }
+    /// A derived artifact — a report — with its source fingerprint pinned.
+    fn derived(op: &str, sha: &str, produced_at_ms: u64) -> LocalArtifact {
+        LocalArtifact {
+            input_base_fingerprint: Some("f".repeat(64)),
+            produced_at_ms,
+            ..local(op, sha, None)
+        }
+    }
+
+    /// A head of the SAME source revision as [`derived`] — the only pairing
+    /// the production-time rule is allowed to decide.
+    fn head_at(op: &str, sha: &str, published_at_ms: u64) -> RemoteHead {
+        RemoteHead {
+            published_at_ms,
+            input_base_fingerprint: Some("f".repeat(64)),
+            ..remote(op, sha, "rev-9")
+        }
+    }
+
     fn kinds(plan: &Plan) -> Vec<String> {
         plan.actions
             .iter()
@@ -964,6 +1066,76 @@ mod tests {
                 Action::Offline => "offline".into(),
             })
             .collect()
+    }
+
+    /// The blocker's ordering question, answered: an artifact computed on
+    /// 09-04 meets room state published on 09-18. Before this, it uploaded and
+    /// silently replaced the newer shared copy with the older one.
+    #[test]
+    fn an_older_held_report_never_overwrites_a_newer_head() {
+        let p = plan(&input(
+            vec![derived("a", SHA_A, 1_000)],
+            vec![head_at("a", SHA_B, 5_000)],
+            Some(grant(10_000_000)),
+        ))
+        .unwrap();
+        assert_eq!(kinds(&p), vec!["nothing:a:superseded_by_head"]);
+        assert_eq!(p.summary.uploads, 0);
+    }
+
+    /// The other direction, and the reason this is an ordering rule rather
+    /// than a refusal to publish anything old: a result computed after the
+    /// head is the report of record and must go up.
+    #[test]
+    fn a_report_computed_after_the_head_still_publishes() {
+        let p = plan(&input(
+            vec![derived("a", SHA_A, 9_000)],
+            vec![head_at("a", SHA_B, 5_000)],
+            Some(grant(10_000_000)),
+        ))
+        .unwrap();
+        assert_eq!(p.summary.uploads, 1);
+        assert!(
+            kinds(&p).iter().any(|kind| kind.starts_with("upload:a:")),
+            "{:?}",
+            kinds(&p)
+        );
+    }
+
+    /// Ordering is by production time, so a result whose production time is
+    /// unknown cannot be ordered. It raises a conflict instead of being
+    /// discarded, because quietly dropping a verified artifact is the failure
+    /// this whole rule exists to end.
+    #[test]
+    fn a_report_with_no_production_time_conflicts_rather_than_vanishing() {
+        let p = plan(&input(
+            vec![derived("a", SHA_A, 0)],
+            vec![head_at("a", SHA_B, 5_000)],
+            Some(grant(10_000_000)),
+        ))
+        .unwrap();
+        assert_eq!(kinds(&p), vec!["conflict:a:production_time_unknown"]);
+    }
+
+    /// Equal digests are the same report whatever the clocks say, and a tie on
+    /// time goes to the head so two machines cannot reach different answers
+    /// depending on which drained first.
+    #[test]
+    fn identical_bytes_are_in_sync_and_a_tie_goes_to_the_head() {
+        let p = plan(&input(
+            vec![derived("a", SHA_A, 5_000)],
+            vec![head_at("a", SHA_A, 5_000)],
+            Some(grant(10_000_000)),
+        ))
+        .unwrap();
+        assert_eq!(kinds(&p), vec!["nothing:a:in_sync"]);
+        let tie = plan(&input(
+            vec![derived("a", SHA_A, 5_000)],
+            vec![head_at("a", SHA_B, 5_000)],
+            Some(grant(10_000_000)),
+        ))
+        .unwrap();
+        assert_eq!(kinds(&tie), vec!["nothing:a:superseded_by_head"]);
     }
 
     #[test]

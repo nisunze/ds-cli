@@ -358,7 +358,7 @@ fn parse_headers(head: &str) -> Result<Vec<(String, String)>, String> {
                 return Err(format!(
                     "mail has no RFC 5322 header block; it begins \"{}\", which is not a header",
                     line.chars().take(40).collect::<String>()
-                ))
+                ));
             }
             None => continue,
         }

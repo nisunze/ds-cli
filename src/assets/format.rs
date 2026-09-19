@@ -160,7 +160,9 @@ fn preview_note(format: Format) -> Option<&'static str> {
             "a container is not a document; walk it with container_walk and preview one member"
         }
         Format::Dsgrid => "dsgrid is a DS Grid model; open it in DS Grid rather than as a preview",
-        Format::Unknown => "unknown format has no preview; the metadata card is the honest alternative",
+        Format::Unknown => {
+            "unknown format has no preview; the metadata card is the honest alternative"
+        }
         _ => return None,
     })
 }
