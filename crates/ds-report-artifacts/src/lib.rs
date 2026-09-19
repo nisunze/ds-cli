@@ -11,7 +11,7 @@ use publication::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs::File,
     io::{Read, Seek, Write},
     path::{Path, PathBuf},
@@ -221,6 +221,409 @@ pub fn ensure_promotion_authority(deadline: Instant) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+// -- The pending-upload lock: who holds it, and how a dead holder is released --
+//
+// Every publication path below funnels through one acquirer. Before this, four
+// call sites each took the marker on their own and each refused with the same
+// ownerless sentence ("… is busy; retry the operation"), so a queue that had
+// stopped moving named neither a holder nor a remedy, and the only cure a
+// human had was to find a hidden file and delete it. Now: the holder is named
+// in the marker, a holder that is PROVED gone is released automatically, and
+// every such release is recorded so a reclaim is visible after the fact
+// instead of silently stealing another writer's lock.
+
+pub const PENDING_UPLOAD_LOCK_LABEL: &str = "Network Reporter pending-upload lock";
+
+/// Where automatic lock releases are recorded, beside the marker they broke.
+pub const PENDING_UPLOAD_RECLAIM_FILE: &str = ".publication.reclaims";
+
+/// How many releases the journal retains. A reclaim is rare and interesting;
+/// an unbounded file in the queue root is neither.
+pub const MAX_RECORDED_RECLAIMS: usize = 20;
+
+/// One automatic release of an abandoned lock, kept so the operator can see
+/// that it happened and what was holding the queue.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LockReclaim {
+    pub at_ms: u64,
+    /// The evidence that proved the holder was gone.
+    pub reason: String,
+    pub previous_pid: u32,
+    pub previous_worker: String,
+    pub previous_heartbeat_at_ms: u64,
+    pub reclaimed_by_pid: u32,
+}
+
+/// What `ds report outbox status` reports about the lock, with no hidden file
+/// for anyone to go looking for.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingUploadLockStatus {
+    /// Whether a marker exists at all. A queue that never published has none.
+    pub present: bool,
+    /// Whether another owner holds the lock at this instant.
+    pub held: bool,
+    pub owner: Option<confined_fs::LockOwner>,
+    /// `live`, `gone` or `unknown` — never a guess dressed as a fact.
+    pub holder: &'static str,
+    pub holder_reason: Option<&'static str>,
+    pub heartbeat_age_ms: Option<u64>,
+    /// True when the next publication attempt will release this lock itself.
+    pub reclaimable: bool,
+    /// Whether an operator has to do anything. This is the one field the
+    /// question "is anything stuck?" is answered from.
+    pub wedged: bool,
+    pub recent_reclaims: Vec<LockReclaim>,
+}
+
+/// Read the lock's state without taking it, for diagnosis.
+pub fn inspect_pending_upload_lock(root: &Path) -> Result<PendingUploadLockStatus, String> {
+    let now = confined_fs::now_ms();
+    let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
+        return Ok(PendingUploadLockStatus {
+            present: false,
+            held: false,
+            owner: None,
+            holder: "none",
+            holder_reason: None,
+            heartbeat_age_ms: None,
+            reclaimable: false,
+            wedged: false,
+            recent_reclaims: Vec::new(),
+        });
+    };
+    // Read the owner BEFORE probing: taking the lock rewrites the marker.
+    let owner = pending_root.read_lock_owner(
+        std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+        PENDING_UPLOAD_LOCK_LABEL,
+    )?;
+    // Probe only a marker that already exists. Taking the lock creates the
+    // file, and a read-only status command must not leave state behind — an
+    // empty marker it wrote itself would be the next thing someone finds and
+    // wonders about.
+    let marker_exists = std::fs::symlink_metadata(root.join(PENDING_UPLOAD_LOCK_FILE)).is_ok();
+    let held = marker_exists
+        && pending_root.lock_is_held(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )?;
+    let liveness = owner
+        .as_ref()
+        .map(|owner| owner.liveness())
+        .unwrap_or(confined_fs::HolderLiveness::Unknown);
+    let reclaimable = owner
+        .as_ref()
+        .is_some_and(|owner| abandoned_reason(owner, now).is_some());
+    // A lock that is being worked under is not a wedge. "Working" is either
+    // proof the holder is running, or a heartbeat it renewed recently — the
+    // second is what a platform that cannot be asked about a pid still has.
+    let working = matches!(liveness, confined_fs::HolderLiveness::Live)
+        || owner.as_ref().is_some_and(|owner| {
+            owner
+                .heartbeat_age_ms(now)
+                .is_some_and(|age| age < confined_fs::LOCK_STALE_AFTER_MS)
+        });
+    Ok(PendingUploadLockStatus {
+        present: owner.is_some() || held,
+        held,
+        heartbeat_age_ms: owner.as_ref().and_then(|owner| owner.heartbeat_age_ms(now)),
+        holder: match owner {
+            Some(_) => liveness.as_str(),
+            None => "none",
+        },
+        holder_reason: liveness.reason(),
+        // Held, not provably being worked under, and not provably dead
+        // either: the one state that still needs a human to look. Everything
+        // else now resolves itself, so this field says so plainly instead of
+        // leaving an operator to guess from a hidden file.
+        wedged: held && !reclaimable && !working,
+        reclaimable,
+        owner,
+        recent_reclaims: recorded_lock_reclaims(root)?,
+    })
+}
+
+/// One project's sealed-but-unpublished work, as the queue itself holds it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedProject {
+    pub project_id: String,
+    pub batches: usize,
+    pub bytes: u64,
+    pub oldest_produced_at_ms: u64,
+    /// How long the oldest sealed batch has been waiting. This is the number
+    /// that turned into "593 artifacts on one PC": it grows silently, and
+    /// nothing used to show it.
+    pub oldest_age_ms: u64,
+    /// The rooms this project is holding work for, newest first, bounded.
+    pub transformers: Vec<String>,
+}
+
+/// What `ds report outbox status` answers, decided here rather than in the
+/// CLI: the command renders this, it does not re-derive it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueStatus {
+    pub queued_batches: usize,
+    pub queued_bytes: u64,
+    pub oldest_age_ms: u64,
+    pub projects: Vec<QueuedProject>,
+    pub lock: PendingUploadLockStatus,
+    /// Whether an operator has to do something. The queue being non-empty is
+    /// not stuck — a queue exists to hold work. A lock nobody can take, whose
+    /// holder is neither working nor provably dead, is.
+    pub stuck: bool,
+    /// The one command to run next, always stated.
+    pub next: &'static str,
+}
+
+/// How many room names one project's row carries before it is summarised.
+pub const MAX_REPORTED_TRANSFORMERS: usize = 20;
+
+/// Read the local publication queue: what is sealed and waiting, how old it
+/// is, and who holds the lock.
+///
+/// Credential-free and read-only on purpose. The question "is anything
+/// stuck?" must be answerable on a headless box with no session, no gateway
+/// and no running Server — those are exactly the machines where a wedged pump
+/// goes unnoticed.
+pub fn queue_status(root: &Path, project: Option<&str>) -> Result<QueueStatus, String> {
+    if project.is_some_and(|project| !valid_semantic_text(project, 128)) {
+        return Err("Network Reporter publication scope is invalid".to_string());
+    }
+    let lock = inspect_pending_upload_lock(root)?;
+    let now = confined_fs::now_ms();
+    let mut projects: Vec<QueuedProject> = Vec::new();
+    for project_id in queued_projects(root)? {
+        if project.is_some_and(|wanted| wanted != project_id) {
+            continue;
+        }
+        let batches = list_project_publication_batches_from_root(root, &project_id)?;
+        if batches.is_empty() {
+            continue;
+        }
+        let mut bytes = 0_u64;
+        let mut transformers = Vec::new();
+        let mut oldest = u64::MAX;
+        for batch in &batches {
+            for output in &batch.outputs {
+                bytes = bytes.saturating_add(output.size_bytes);
+            }
+            if batch.produced_at_ms > 0 {
+                oldest = oldest.min(batch.produced_at_ms);
+            }
+            if transformers.len() < MAX_REPORTED_TRANSFORMERS
+                && !transformers.contains(&batch.transformer)
+            {
+                transformers.push(batch.transformer.clone());
+            }
+        }
+        let oldest_produced_at_ms = if oldest == u64::MAX { 0 } else { oldest };
+        projects.push(QueuedProject {
+            project_id,
+            batches: batches.len(),
+            bytes,
+            oldest_produced_at_ms,
+            oldest_age_ms: now.saturating_sub(oldest_produced_at_ms),
+            transformers,
+        });
+    }
+    projects.sort_by(|left, right| {
+        right
+            .oldest_age_ms
+            .cmp(&left.oldest_age_ms)
+            .then_with(|| left.project_id.cmp(&right.project_id))
+    });
+    Ok(QueueStatus {
+        queued_batches: projects.iter().map(|project| project.batches).sum(),
+        queued_bytes: projects
+            .iter()
+            .fold(0_u64, |total, project| total.saturating_add(project.bytes)),
+        oldest_age_ms: projects
+            .iter()
+            .map(|project| project.oldest_age_ms)
+            .max()
+            .unwrap_or(0),
+        next: if lock.wedged {
+            // Deliberately not an override flag. A lock whose holder cannot
+            // be proved gone is the one case where breaking it could put two
+            // writers in the crash-durable section; the remedy is to end the
+            // named holder, after which the next run reclaims it by itself.
+            "stop the process named in `lock.owner`, then run `ds report outbox drain`"
+        } else if projects.is_empty() {
+            "nothing is queued on this machine"
+        } else {
+            "ds report outbox drain"
+        },
+        stuck: lock.wedged,
+        projects,
+        lock,
+    })
+}
+
+/// Which projects hold sealed publications on this machine.
+///
+/// The receipts themselves are the index: a machine that serves several
+/// projects must be able to find its pending work without being told which
+/// project it is "on".
+pub fn queued_projects(root: &Path) -> Result<BTreeSet<String>, String> {
+    let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
+        return Ok(BTreeSet::new());
+    };
+    Ok(publication::list_committed(&pending_root)?
+        .into_iter()
+        .map(|receipt| receipt.project_id)
+        .collect())
+}
+
+/// Why this marker may be released, or `None` to leave it alone.
+///
+/// Both halves are required. Liveness alone would break a lock the instant a
+/// holder's pid could not be found on a platform that cannot be asked; the
+/// heartbeat alone would break a lock held by a process that is alive but
+/// slow. Together they say: this holder cannot be running, and it also
+/// stopped reporting long ago.
+fn abandoned_reason(owner: &confined_fs::LockOwner, now_ms: u64) -> Option<String> {
+    let reason = owner.liveness().reason()?;
+    match owner.heartbeat_age_ms(now_ms) {
+        Some(age) if age < confined_fs::LOCK_STALE_AFTER_MS => None,
+        Some(age) => Some(format!("{reason}; last heartbeat {}s ago", age / 1_000)),
+        // A marker from a release that wrote no heartbeat at all. The holder
+        // is still provably gone, which is the whole of the evidence that
+        // exists for it; refusing here would wedge every upgraded machine.
+        None => Some(format!("{reason}; the marker records no heartbeat")),
+    }
+}
+
+/// Release an abandoned lock before a publication pass runs.
+///
+/// The uploader itself never takes this lock, so without this a queue whose
+/// marker outlived its holder would wait for the next export to clear it.
+/// `ds report outbox drain` calls this first, which is what makes "restart and
+/// the queue moves" true with no human step.
+///
+/// A lock a live holder is working under is not an error here: that is a
+/// publication in progress, and the caller's own status reading names it.
+pub fn reclaim_pending_upload_lock(root: &Path) -> Result<Option<LockReclaim>, String> {
+    let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
+        return Ok(None);
+    };
+    // Compare the newest entry, not the journal's length: the journal is
+    // capped at `MAX_RECORDED_RECLAIMS`, so once a machine has wedged that
+    // many times a length comparison never grows again and the drain would
+    // silently stop telling the operator it had cleared a dead holder —
+    // exactly on the machine that keeps wedging.
+    let before = read_recorded_reclaims(&pending_root)?.pop();
+    match lock_pending_upload_root(&pending_root, None) {
+        Ok(lock) => drop(lock),
+        Err(_) => return Ok(None),
+    }
+    let after = read_recorded_reclaims(&pending_root)?.pop();
+    Ok(match (after, before) {
+        (Some(after), Some(before)) if after == before => None,
+        (after, _) => after,
+    })
+}
+
+/// The releases this queue has already performed, newest last.
+pub fn recorded_lock_reclaims(root: &Path) -> Result<Vec<LockReclaim>, String> {
+    let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
+        return Ok(Vec::new());
+    };
+    read_recorded_reclaims(&pending_root)
+}
+
+fn read_recorded_reclaims(pending_root: &HeldDirectory) -> Result<Vec<LockReclaim>, String> {
+    let name = std::ffi::OsStr::new(PENDING_UPLOAD_RECLAIM_FILE);
+    let Ok(body) = pending_root.read_bounded(name, 64 * 1024, "lock reclaim journal") else {
+        return Ok(Vec::new());
+    };
+    Ok(String::from_utf8_lossy(&body)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<LockReclaim>(line).ok())
+        .collect())
+}
+
+/// Append one release to the journal. Called while the reclaiming owner holds
+/// the lock, so two writers cannot interleave.
+fn record_reclaim(pending_root: &HeldDirectory, reclaim: &LockReclaim) -> Result<(), String> {
+    let name = std::ffi::OsStr::new(PENDING_UPLOAD_RECLAIM_FILE);
+    let mut entries = read_recorded_reclaims(pending_root)?;
+    entries.push(reclaim.clone());
+    let start = entries.len().saturating_sub(MAX_RECORDED_RECLAIMS);
+    let mut body = String::new();
+    for entry in &entries[start..] {
+        body.push_str(
+            &serde_json::to_string(entry)
+                .map_err(|error| format!("could not encode a lock reclaim: {error}"))?,
+        );
+        body.push('\n');
+    }
+    pending_root.remove_file_idempotent(name, "lock reclaim journal")?;
+    pending_root.write_new_bounded(name, body.as_bytes(), 64 * 1024, "lock reclaim journal")
+}
+
+/// Take the pending-upload lock, releasing it first if its recorded holder is
+/// provably gone.
+///
+/// `deadline` is the caller's own authority deadline: promotion yields
+/// briefly to concurrent maintenance, while the read-only paths take one
+/// non-blocking attempt. Either way a refusal NAMES the holder and the
+/// command that shows it, instead of the ownerless sentence that sent
+/// operators looking for hidden files.
+fn lock_pending_upload_root(
+    pending_root: &HeldDirectory,
+    deadline: Option<Instant>,
+) -> Result<HeldFileLock, String> {
+    let name = std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE);
+    let attempt = |pending_root: &HeldDirectory| match deadline {
+        Some(deadline) => {
+            pending_root.promotion_lock_until(name, PENDING_UPLOAD_LOCK_LABEL, deadline)
+        }
+        None => pending_root.try_lock_file(name, PENDING_UPLOAD_LOCK_LABEL),
+    };
+    let contended = match attempt(pending_root) {
+        Ok(lock) => return Ok(lock),
+        Err(error) if error == confined_fs::busy(PENDING_UPLOAD_LOCK_LABEL) => error,
+        Err(error) => return Err(error),
+    };
+    let now = confined_fs::now_ms();
+    let owner = pending_root.read_lock_owner(name, PENDING_UPLOAD_LOCK_LABEL)?;
+    let Some(owner) = owner else {
+        // Contended with no record at all: a live holder from a release that
+        // stamped nothing, or a marker created by a probe. Wait it out.
+        return Err(format!(
+            "{contended}. No owner is recorded; run `ds report outbox status` to see the queue"
+        ));
+    };
+    let Some(reason) = abandoned_reason(&owner, now) else {
+        return Err(format!(
+            "{contended}. Held by {}; run `ds report outbox status` for the queue, and `ds report outbox drain` once the holder finishes",
+            owner.describe(now)
+        ));
+    };
+    // The holder is gone and the marker outlived it — the wedge this exists
+    // to end. Unlink it and take a fresh one. Racing reclaimers both unlink
+    // and both create, so the acquirer re-verifies the marker's identity
+    // after locking it (see `try_lock_file`); the loser refuses rather than
+    // entering the section on a stale handle.
+    pending_root.break_abandoned_lock(name, PENDING_UPLOAD_LOCK_LABEL)?;
+    let lock = attempt(pending_root)?;
+    record_reclaim(
+        pending_root,
+        &LockReclaim {
+            at_ms: now,
+            reason,
+            previous_pid: owner.pid,
+            previous_worker: owner.worker.clone(),
+            previous_heartbeat_at_ms: owner.heartbeat_at_ms,
+            reclaimed_by_pid: std::process::id(),
+        },
+    )?;
+    Ok(lock)
 }
 
 #[derive(Debug)]
@@ -500,11 +903,7 @@ pub fn promote_local_artifacts(
 ) -> Result<PendingAuthorizedPromotionBatch, String> {
     ensure_promotion_authority(operation_deadline)?;
     let pending_root = HeldDirectory::ensure_absolute(pending_root)?;
-    let lock = pending_root.promotion_lock_until(
-        std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
-        "Network Reporter pending-upload lock",
-        operation_deadline,
-    )?;
+    let mut lock = lock_pending_upload_root(&pending_root, Some(operation_deadline))?;
     ensure_promotion_authority(operation_deadline)?;
     sweep_abandoned_pending_upload_locked(&pending_root, &lock)?;
     let batch_id = random_hex_256();
@@ -516,6 +915,12 @@ pub fn promote_local_artifacts(
             &batch_id,
             operation_deadline,
         )?);
+        // A batch of eighty sheets can outlast the stale window while it is
+        // working perfectly well. Restamp as it goes, so a slow-but-live
+        // promotion is never read as an abandoned one. A failed restamp is
+        // not a reason to abandon a sound publication: the holder is still
+        // alive, and liveness is the half of the evidence that protects it.
+        let _ = lock.renew(confined_fs::now_ms());
     }
     let mut promotions = PendingPromotionBatch {
         promotions,
@@ -772,10 +1177,7 @@ pub fn list_recovery_candidates_from_root(
     let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
         return Ok(Vec::new());
     };
-    let lock = pending_root.try_lock_file(
-        std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
-        "Network Reporter pending-upload lock",
-    )?;
+    let lock = lock_pending_upload_root(&pending_root, None)?;
     let (_, receipts) = sweep_abandoned_pending_upload_locked(&pending_root, &lock)?;
     let matching = receipts
         .into_iter()
@@ -1000,10 +1402,7 @@ pub fn recover_committed_publication_from_root(
     let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
         return Ok(None);
     };
-    let _lock = pending_root.try_lock_file(
-        std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
-        "Network Reporter pending-upload lock",
-    )?;
+    let _lock = lock_pending_upload_root(&pending_root, None)?;
     sweep_abandoned_pending_upload_locked(&pending_root, &_lock)?;
     let Some(receipt) = publication::committed_receipt(&pending_root, batch_id)? else {
         return Ok(None);
@@ -1130,7 +1529,10 @@ pub fn sweep_abandoned_pending_upload_locked(
         let name = name.into_string().map_err(|_| {
             "Network Reporter pending-upload root contains a non-Unicode member".to_string()
         })?;
-        if name == PENDING_UPLOAD_LOCK_FILE || name == BATCH_DIRECTORY {
+        if name == PENDING_UPLOAD_LOCK_FILE
+            || name == PENDING_UPLOAD_RECLAIM_FILE
+            || name == BATCH_DIRECTORY
+        {
             continue;
         }
         if let Some(id) = name.strip_prefix(".promoting-") {
@@ -1241,10 +1643,7 @@ where
     let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
         return Ok(());
     };
-    let _lock = pending_root.try_lock_file(
-        std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
-        "Network Reporter pending-upload lock",
-    )?;
+    let _lock = lock_pending_upload_root(&pending_root, None)?;
     sweep_abandoned_pending_upload_locked(&pending_root, &_lock)?;
     let Some(held) = checked_entry_in_root(&pending_root, locator)? else {
         if let Some(receipt) = committed_publication_for_locator(&pending_root, locator)? {

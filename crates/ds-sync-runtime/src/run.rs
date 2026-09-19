@@ -361,7 +361,21 @@ fn run_leased(
                 keep(host, project, &mut receipts, receipt);
             }
             sync::Action::Nothing { identity, reason } => {
-                receipts.push(Receipt::new("nothing", *reason).about(identity));
+                if *reason == sync::SUPERSEDED_BY_HEAD {
+                    // Not a no-op: this machine's verified result lost to a
+                    // later computation, and the row must leave the pending
+                    // count or the outbox would show work that will never
+                    // move. The receipt is persisted so the operator can see
+                    // WHICH batch was superseded and why, instead of watching
+                    // a number quietly go down.
+                    let receipt = Receipt::new("conflict", *reason).about(identity).detail(
+                        "the shared record already carries a later computation of this room"
+                            .to_string(),
+                    );
+                    keep(host, project, &mut receipts, receipt);
+                } else {
+                    receipts.push(Receipt::new("nothing", *reason).about(identity));
+                }
             }
             sync::Action::Refused { identity, reason } => {
                 let mut receipt = Receipt::new("refused", *reason);

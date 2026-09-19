@@ -107,3 +107,58 @@ computes nothing.
    day onto ds-brain's governed resumable route through a separate outbox with
    its own ten-attempt budget (`survey_photo_outbox.rs`). Both fold under this
    plan next; until then they are the named exceptions, not the design.
+
+## 4. Ordering: which of two disagreeing results is current
+
+A report is a *derived* artifact: a pure function of the source inputs pinned
+in `input_base_fingerprint`, not an authored document with a revision line. It
+therefore has no base revision to compare, and two machines never merge one.
+`sync::derived_winner` is the whole rule:
+
+| local vs head | decision | action |
+|---|---|---|
+| same `sha256` | the same report | `Nothing { in_sync }` |
+| different source revisions | the source authority decides, not a clock | the existing admission branch (source grant / `source_base_moved`) |
+| same source revision, local produced later | the later computation is the report of record | `Upload` |
+| same source revision, head published later or at the same instant | the shared copy already carries a later computation | `Nothing { superseded_by_head }` |
+| same source revision, local production time unknown | not guessed | `Conflict { production_time_unknown }` |
+
+**Last-writer-wins, and only between renderings of the same source revision.**
+The clock is the weakest evidence available, and there are two of them — a
+directory mtime here and the server's `published_at_ms` there. Where the two
+sides declare different source revisions there is better evidence, and it is
+already used: the grant pins the current source revision and a result computed
+against a revision that has moved is refused admission. Deciding *those* by
+timestamp would let a device with a fast clock publish a report of an old room
+over a report of the current one.
+
+A tie goes to the head, so the outcome cannot depend on which machine drained
+first. `superseded_by_head` is recorded as a persisted receipt rather than a
+silent no-op: the operator's computation lost, and they are told which batch
+and why. It is not an error — the local bytes may be discarded.
+
+**Replay is idempotent** and always was: `Event::LocalProduced` refuses a row
+whose `sha256` or `replay_key` is already recorded (`already_recorded`), the
+handoff is re-runnable, and `work/publish` restates one declaration for at most
+three rounds. A cancelled row is never resurrected.
+
+## 5. The stage a reader sees
+
+`ds_command_kernel::report::PublicationStage` is the one vocabulary every
+producer answers in — **sealed → queued → drained → acknowledged**, plus the
+two terminal states `conflicted` and `refused`.
+
+It is *derived*, never persisted. `sync_store::ArtifactState` is a SQLite
+column and the report activity projection validates its five tokens, so
+renaming it would be a data migration that strands every queue already on
+disk. `publication_stage()` maps the tokens one-to-one
+(`held → queued`, `uploading → drained`, `published → acknowledged`) and
+refuses an unknown one rather than guessing.
+
+`sealed` is the stage that had no reader at all, and its absence is what let
+593 committed, digest-verified artifacts look exactly like reports that never
+ran. It is a committed batch in the producer store with no queue row, and
+`ds_sync_runtime::reports::census` counts it: `batches - queued`, with every
+displaced batch named. Nothing about a publication is invisible any more —
+`reports::inventory` still yields one row per room, because that is what a head
+means, but the batches it displaces are reported instead of dropped.

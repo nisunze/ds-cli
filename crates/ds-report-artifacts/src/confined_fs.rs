@@ -10,11 +10,12 @@
 //! `FILE_SHARE_DELETE`, making pathname replacement fail while the capability
 //! is live.  Every opened/renamed child is compared with its held file identity.
 
+use serde::{Deserialize, Serialize};
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
 #[cfg(windows)]
 use std::fs::OpenOptions;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
@@ -134,9 +135,292 @@ pub struct HeldDirectory {
 #[derive(Debug)]
 pub struct HeldFileLock {
     // On Windows the held handle itself is the lock (no-write/delete share
-    // mode); it is only read on Unix, where Drop releases the flock.
-    #[cfg_attr(windows, allow(dead_code))]
+    // mode); on Unix Drop releases the flock. Both branches also read it to
+    // restamp the owner record on `renew`.
     file: File,
+    /// The record this owner stamped into the marker, absent only for a probe
+    /// that deliberately left the previous holder's evidence intact.
+    owner: Option<LockOwner>,
+}
+
+impl HeldFileLock {
+    /// Restamp the heartbeat while this owner is still working.
+    ///
+    /// A kernel lock says nothing about progress: a holder that is alive but
+    /// wedged, and a holder whose lock outlived it on a filesystem that does
+    /// not release advisory locks, look identical from outside. The heartbeat
+    /// is what separates them, so any operation that can hold this lock for
+    /// longer than [`LOCK_HEARTBEAT_INTERVAL_MS`] renews it as it works.
+    /// A failed renew is not fatal — the work below the lock is still sound —
+    /// so this reports the failure instead of ending the critical section.
+    pub fn renew(&mut self, now_ms: u64) -> Result<(), String> {
+        let Some(owner) = self.owner.as_mut() else {
+            return Ok(());
+        };
+        owner.heartbeat_at_ms = now_ms.max(owner.heartbeat_at_ms);
+        let body = owner.encoded()?;
+        self.file
+            .seek(SeekFrom::Start(0))
+            .and_then(|_| self.file.set_len(0))
+            .and_then(|_| self.file.write_all(&body))
+            .and_then(|_| self.file.sync_data())
+            .map_err(|error| format!("could not renew the lock heartbeat: {error}"))
+    }
+
+    /// What this owner stamped, for a caller that reports who holds the lock.
+    pub fn owner(&self) -> Option<&LockOwner> {
+        self.owner.as_ref()
+    }
+}
+
+/// How often a long critical section restamps its heartbeat.
+pub const LOCK_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
+
+/// How long a heartbeat may go unrenewed before the record stops counting as
+/// a live holder's claim. Generous on purpose: a suspended laptop, a paused
+/// container and a slow disk all stall a heartbeat without losing the lock,
+/// and breaking a lock that is merely slow is worse than waiting.
+pub const LOCK_STALE_AFTER_MS: u64 = 120_000;
+
+/// The schema of the owner record written into a lock marker.
+pub const LOCK_OWNER_SCHEMA: u32 = 1;
+
+/// Who holds a lock marker, in enough detail to prove the holder is gone.
+///
+/// A pid alone is not evidence. Pids are reused, so a marker naming pid 3872
+/// says nothing about whether *that* holder still runs — the operating system
+/// may have handed 3872 to something unrelated an hour later. Three facts
+/// together are evidence: the boot the record was written in (a record from an
+/// earlier boot can have no live holder at all), the holder's process start
+/// time (a live pid with a different start time is a reused pid, not the
+/// holder), and the heartbeat (a holder that stopped renewing long ago is not
+/// working below the lock). Only all three agreeing that the holder is gone
+/// may break a lock; anything less waits, because silently stealing a lock
+/// from a live writer is a worse defect than the wedge it would cure.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LockOwner {
+    pub schema: u32,
+    pub pid: u32,
+    /// The machine boot this record was written in, where the platform can
+    /// name one. `None` means "this platform cannot say", never "same boot".
+    #[serde(default)]
+    pub boot: Option<String>,
+    /// The holder's process start time, where the platform can read one.
+    #[serde(default)]
+    pub process_started_at: Option<u64>,
+    /// The executable that took the lock, so an operator reads a name and not
+    /// only a number.
+    #[serde(default)]
+    pub worker: String,
+    pub taken_at_ms: u64,
+    pub heartbeat_at_ms: u64,
+}
+
+impl LockOwner {
+    /// The record this process writes when it takes a lock.
+    pub fn here(now_ms: u64) -> Self {
+        let pid = std::process::id();
+        Self {
+            schema: LOCK_OWNER_SCHEMA,
+            pid,
+            boot: boot_marker(),
+            process_started_at: process_started_at(pid),
+            worker: current_worker_name(),
+            taken_at_ms: now_ms,
+            heartbeat_at_ms: now_ms,
+        }
+    }
+
+    fn encoded(&self) -> Result<Vec<u8>, String> {
+        let mut body = serde_json::to_vec(self)
+            .map_err(|error| format!("could not encode the lock owner record: {error}"))?;
+        body.push(b'\n');
+        Ok(body)
+    }
+
+    /// Parse a marker's contents, accepting the bare pid written by releases
+    /// before this record existed. An installed machine carries markers from
+    /// the previous build across an upgrade, and refusing to read them would
+    /// turn every upgrade into the wedge this record exists to end.
+    pub fn decode(body: &[u8]) -> Option<Self> {
+        let text = std::str::from_utf8(body).ok()?.trim();
+        if text.is_empty() {
+            return None;
+        }
+        if let Ok(owner) = serde_json::from_str::<Self>(text) {
+            return Some(owner);
+        }
+        let pid = text.lines().next()?.trim().parse::<u32>().ok()?;
+        Some(Self {
+            schema: 0,
+            pid,
+            boot: None,
+            process_started_at: None,
+            worker: String::new(),
+            taken_at_ms: 0,
+            heartbeat_at_ms: 0,
+        })
+    }
+
+    /// How long ago this record was last renewed, when both clocks are usable.
+    pub fn heartbeat_age_ms(&self, now_ms: u64) -> Option<u64> {
+        if self.heartbeat_at_ms == 0 {
+            return None;
+        }
+        Some(now_ms.saturating_sub(self.heartbeat_at_ms))
+    }
+
+    /// Whether the holder named here is provably gone, and why.
+    pub fn liveness(&self) -> HolderLiveness {
+        if let (Some(recorded), Some(current)) = (self.boot.as_deref(), boot_marker()) {
+            if recorded != current {
+                return HolderLiveness::Gone("the record was written before this machine booted");
+            }
+        }
+        match process_is_live(self.pid) {
+            Some(false) => HolderLiveness::Gone("the recorded process has exited"),
+            Some(true) => match (self.process_started_at, process_started_at(self.pid)) {
+                (Some(recorded), Some(current)) if recorded != current => {
+                    HolderLiveness::Gone("the recorded process exited and its pid was reused")
+                }
+                _ => HolderLiveness::Live,
+            },
+            None => HolderLiveness::Unknown,
+        }
+    }
+
+    /// The single sentence an operator reads about the holder.
+    pub fn describe(&self, now_ms: u64) -> String {
+        let worker = if self.worker.is_empty() {
+            "unknown process".to_string()
+        } else {
+            self.worker.clone()
+        };
+        match self.heartbeat_age_ms(now_ms) {
+            Some(age) => format!(
+                "{worker} (pid {}), last heartbeat {}s ago",
+                self.pid,
+                age / 1_000
+            ),
+            None => format!("{worker} (pid {}), no heartbeat recorded", self.pid),
+        }
+    }
+}
+
+/// What the liveness evidence says about a marker's recorded holder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HolderLiveness {
+    /// The holder is running: never break this lock.
+    Live,
+    /// The holder cannot be running, for the named reason.
+    Gone(&'static str),
+    /// This platform cannot say. Treated exactly like `Live` for breaking.
+    Unknown,
+}
+
+impl HolderLiveness {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Gone(_) => "gone",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn reason(self) -> Option<&'static str> {
+        match self {
+            Self::Gone(reason) => Some(reason),
+            _ => None,
+        }
+    }
+}
+
+/// The executable that is taking a lock, bounded and path-free.
+fn current_worker_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name.chars().take(64).collect::<String>())
+        })
+        .unwrap_or_default()
+}
+
+/// A per-boot identifier, where the platform publishes one.
+///
+/// Only inequality is ever used: two different values prove two different
+/// boots, which proves the recorded holder is gone. A platform that cannot
+/// answer returns `None` and the decision falls back to pid liveness.
+fn boot_marker() -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        let body = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+        let trimmed = body.trim();
+        if trimmed.is_empty() || trimmed.len() > 128 {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+/// The holder's start time in boot-relative ticks, where it is readable.
+///
+/// This is the half of the pair that survives pid reuse: a pid that is live
+/// but started at a different instant is not the process that took the lock.
+fn process_started_at(pid: u32) -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        let body = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        // Field 22 is the start time, and fields 1..2 hold a comm value that
+        // may itself contain spaces and parentheses. Split after the last
+        // ')' so a process named "(a b)" cannot shift the field index.
+        let tail = body.rsplit_once(')')?.1;
+        tail.split_whitespace().nth(19)?.parse::<u64>().ok()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+/// Whether a pid names a running process, where the platform can be asked.
+///
+/// `None` is "cannot say" and is never treated as death. On Windows the
+/// authoritative answer is the marker itself: the operating system closes a
+/// dead holder's handle, so a marker that can be opened exclusively had no
+/// live holder.
+fn process_is_live(pid: u32) -> Option<bool> {
+    #[cfg(unix)]
+    {
+        if pid == 0 {
+            return Some(false);
+        }
+        let pid = i32::try_from(pid).ok()?;
+        // SAFETY: signal 0 performs the permission and existence check only;
+        // it delivers nothing and cannot affect the target.
+        if unsafe { libc::kill(pid, 0) } == 0 {
+            return Some(true);
+        }
+        match std::io::Error::last_os_error().raw_os_error() {
+            Some(libc::ESRCH) => Some(false),
+            // Alive, owned by another account.
+            Some(libc::EPERM) => Some(true),
+            _ => None,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        None
+    }
 }
 
 #[cfg(unix)]
@@ -270,7 +554,43 @@ impl HeldDirectory {
 
     pub fn try_lock_file(&self, name: &OsStr, label: &str) -> Result<HeldFileLock, String> {
         exact_relative_name(name)?;
-        lock_file_platform(self, name, label)
+        lock_file_platform(self, name, label, Some(LockOwner::here(now_ms())))
+    }
+
+    /// Read a lock marker's owner record WITHOUT taking the lock.
+    ///
+    /// Reading first is load-bearing: acquiring the lock rewrites the marker,
+    /// so a caller that probed before reading would erase the very evidence
+    /// that says who wedged the queue.
+    pub fn read_lock_owner(&self, name: &OsStr, label: &str) -> Result<Option<LockOwner>, String> {
+        exact_relative_name(name)?;
+        match self.read_bounded(name, 4 * 1024, label) {
+            Ok(body) => Ok(LockOwner::decode(&body)),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Whether some other owner holds this lock right now.
+    ///
+    /// The probe deliberately stamps no owner record: it must not overwrite
+    /// the holder's evidence, and a diagnostic read must leave no trace that
+    /// a later reclaim could mistake for a live claim.
+    pub fn lock_is_held(&self, name: &OsStr, label: &str) -> Result<bool, String> {
+        exact_relative_name(name)?;
+        match lock_file_platform(self, name, label, None) {
+            Ok(_) => Ok(false),
+            Err(error) if error == busy(label) => Ok(true),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Break an abandoned lock marker by unlinking it, after the caller has
+    /// PROVED the recorded holder is gone. Never call this on a `Live` or
+    /// `Unknown` holder: unlinking a marker a live process holds would let a
+    /// second writer into the critical section.
+    pub fn break_abandoned_lock(&self, name: &OsStr, label: &str) -> Result<(), String> {
+        exact_relative_name(name)?;
+        self.remove_file_idempotent(name, label)
     }
 
     /// Briefly yield to concurrent local maintenance before starting promotion.
@@ -745,8 +1065,29 @@ fn open_regular_file_platform(
 /// The one sentence contention is named with. `promotion_lock_until` retries on
 /// exactly this, so every platform branch must produce it for "another owner
 /// holds the marker" and for nothing else.
-fn busy(label: &str) -> String {
+pub(crate) fn busy(label: &str) -> String {
     format!("{label} is busy; retry the operation")
+}
+
+/// This machine's wall clock in milliseconds, or 0 when it predates the epoch.
+/// Lock records are compared against the same reading, and a clock that cannot
+/// be read only costs the heartbeat half of the evidence.
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            elapsed.as_millis().min(u64::MAX as u128) as u64
+        })
+}
+
+/// Stamp the acquiring owner into the marker it just locked.
+fn stamp_owner(file: &mut File, owner: &LockOwner, label: &str) -> Result<(), String> {
+    let body = owner.encoded()?;
+    file.seek(SeekFrom::Start(0))
+        .and_then(|_| file.set_len(0))
+        .and_then(|_| file.write_all(&body))
+        .and_then(|_| file.sync_all())
+        .map_err(|error| format!("could not persist {label} owner evidence: {error}"))
 }
 
 #[cfg(unix)]
@@ -754,6 +1095,7 @@ fn lock_file_platform(
     parent: &HeldDirectory,
     name: &OsStr,
     label: &str,
+    stamp: Option<LockOwner>,
 ) -> Result<HeldFileLock, String> {
     use std::os::fd::{AsRawFd, FromRawFd};
 
@@ -791,13 +1133,10 @@ fn lock_file_platform(
     // Recheck the visible identity after acquiring the advisory lock. This
     // rejects a replaced marker before entering the critical section.
     verify_open_file_at(parent, name, &file, label)?;
-    file.set_len(0)
-        .map_err(|error| format!("could not reset {label} owner evidence: {error}"))?;
-    writeln!(file, "{}", std::process::id())
-        .map_err(|error| format!("could not persist {label} owner evidence: {error}"))?;
-    file.sync_all()
-        .map_err(|error| format!("could not sync {label} owner evidence: {error}"))?;
-    Ok(HeldFileLock { file })
+    if let Some(owner) = stamp.as_ref() {
+        stamp_owner(&mut file, owner, label)?;
+    }
+    Ok(HeldFileLock { file, owner: stamp })
 }
 
 #[cfg(windows)]
@@ -805,6 +1144,7 @@ fn lock_file_platform(
     parent: &HeldDirectory,
     name: &OsStr,
     label: &str,
+    stamp: Option<LockOwner>,
 ) -> Result<HeldFileLock, String> {
     use std::os::windows::fs::OpenOptionsExt;
 
@@ -820,8 +1160,12 @@ fn lock_file_platform(
         .write(true)
         .create(true)
         // A live owner permits diagnostics to read the marker but denies a
-        // second writer and denies deletion/rename. Process death releases the
-        // handle, so no timestamp-based stale-lock break is necessary.
+        // second writer and denies deletion/rename. The operating system
+        // closes a dead holder's handle, so on this platform "the marker
+        // opens" is itself the liveness proof; the owner record below exists
+        // to NAME the holder and to carry the heartbeat, which is what a
+        // filesystem that does not release handles (a network share, a
+        // suspended container) leaves as the only evidence.
         .share_mode(FILE_SHARE_READ)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
         .open(&path);
@@ -840,13 +1184,10 @@ fn lock_file_platform(
         Err(error) => return Err(format!("could not acquire {label}: {error}")),
     };
     verify_open_file_at(parent, name, &file, label)?;
-    file.set_len(0)
-        .map_err(|error| format!("could not reset {label} owner evidence: {error}"))?;
-    writeln!(file, "{}", std::process::id())
-        .map_err(|error| format!("could not persist {label} owner evidence: {error}"))?;
-    file.sync_all()
-        .map_err(|error| format!("could not sync {label} owner evidence: {error}"))?;
-    Ok(HeldFileLock { file })
+    if let Some(owner) = stamp.as_ref() {
+        stamp_owner(&mut file, owner, label)?;
+    }
+    Ok(HeldFileLock { file, owner: stamp })
 }
 
 fn verify_open_file_at(

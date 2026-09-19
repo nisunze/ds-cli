@@ -61,19 +61,147 @@ impl Producer for ReportProducer<'_> {
     }
 }
 
+/// One committed batch this machine holds that is NOT the queue row for its
+/// room, with the batch that displaced it.
+///
+/// It exists because "not the current row" used to be spelled `continue`: the
+/// batch vanished from every surface and could be reached by no pump and no
+/// command. A superseded batch is still bytes on a disk and still the
+/// operator's, so it is named, counted and reclaimable.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct SupersededBatch {
+    pub batch_id: String,
+    pub client_publish_id: String,
+    pub transformer: String,
+    pub produced_at_ms: u64,
+    pub size_bytes: u64,
+    /// The `client_publish_id` of the batch that is the queue row instead.
+    pub superseded_by: String,
+}
+
+/// Everything this machine holds for one project's reports, counted.
+///
+/// `ds_command_kernel::report::PublicationStage::Sealed` is exactly
+/// `batches - queued`: committed, digest-verified bytes with no queue row. The
+/// blocker was that this number had no reader at all, so 593 of them looked
+/// like nothing had ever run.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct SealedCensus {
+    /// Committed publication batches, superseded ones included.
+    pub batches: usize,
+    /// Rooms with a queue row — one per `(engine, operation, variant)`.
+    pub queued: usize,
+    pub bytes: u64,
+    pub oldest_produced_at_ms: Option<u64>,
+    pub superseded: Vec<SupersededBatch>,
+}
+
+/// Count what is committed on this machine without opening a single artifact.
+///
+/// Deliberately cheap: `inventory` rehashes every output to decide
+/// `readable`, which is right before an upload and wrong for a status line an
+/// operator asks for repeatedly.
+pub fn census(root: &Path, project: &str) -> Result<SealedCensus, String> {
+    let batches = ds_report_artifacts::list_project_publication_batches_from_root(root, project)?;
+    let mut census = SealedCensus {
+        batches: batches.len(),
+        ..SealedCensus::default()
+    };
+    let mut current: std::collections::BTreeMap<sync::Identity, &_> =
+        std::collections::BTreeMap::new();
+    for batch in &batches {
+        let identity = sync::Identity {
+            engine: batch.engine.clone(),
+            operation: batch.operation.clone(),
+            variant: batch.variant.clone(),
+        };
+        let size: u64 = batch.outputs.iter().map(|output| output.size_bytes).sum();
+        census.bytes = census.bytes.saturating_add(size);
+        if batch.produced_at_ms > 0 {
+            census.oldest_produced_at_ms = Some(
+                census
+                    .oldest_produced_at_ms
+                    .map_or(batch.produced_at_ms, |old| old.min(batch.produced_at_ms)),
+            );
+        }
+        match current.get(&identity) {
+            Some(held) if !newer(batch, held) => {
+                census
+                    .superseded
+                    .push(superseded(batch, size, &held.client_publish_id))
+            }
+            Some(held) => {
+                let displaced: u64 = held.outputs.iter().map(|output| output.size_bytes).sum();
+                census
+                    .superseded
+                    .push(superseded(held, displaced, &batch.client_publish_id));
+                current.insert(identity, batch);
+            }
+            None => {
+                current.insert(identity, batch);
+            }
+        }
+    }
+    census.queued = current.len();
+    census
+        .superseded
+        .sort_by(|left, right| left.batch_id.cmp(&right.batch_id));
+    Ok(census)
+}
+
+fn superseded(
+    batch: &ds_report_artifacts::LocalPublicationBatch,
+    size_bytes: u64,
+    superseded_by: &str,
+) -> SupersededBatch {
+    SupersededBatch {
+        batch_id: batch.batch_id.clone(),
+        client_publish_id: batch.client_publish_id.clone(),
+        transformer: batch.transformer.clone(),
+        produced_at_ms: batch.produced_at_ms,
+        size_bytes,
+        superseded_by: superseded_by.to_string(),
+    }
+}
+
+/// Which of two committed batches for the same room is the current one.
+///
+/// Ordered here rather than trusted from the listing's order: the listing
+/// sorts, but a caller that ever stops sorting must not silently change which
+/// of 593 batches is the one that publishes. Production time decides, and the
+/// batch id breaks a tie so the answer is the same on every machine.
+fn newer(
+    candidate: &ds_report_artifacts::LocalPublicationBatch,
+    held: &ds_report_artifacts::LocalPublicationBatch,
+) -> bool {
+    (candidate.produced_at_ms, &candidate.batch_id) > (held.produced_at_ms, &held.batch_id)
+}
+
 pub fn inventory(root: &Path, project: &str) -> Result<Vec<LocalRow>, String> {
     let batches = ds_report_artifacts::list_project_publication_batches_from_root(root, project)?;
-    let mut rows: std::collections::BTreeMap<sync::Identity, LocalRow> =
-        std::collections::BTreeMap::new();
+    let mut current: std::collections::BTreeMap<
+        sync::Identity,
+        ds_report_artifacts::LocalPublicationBatch,
+    > = std::collections::BTreeMap::new();
     for batch in batches {
         let identity = sync::Identity {
             engine: batch.engine.clone(),
             operation: batch.operation.clone(),
             variant: batch.variant.clone(),
         };
-        if rows.contains_key(&identity) {
-            continue;
+        // One room, one head: the queue row is the LATEST computation of it.
+        // This used to keep whichever batch the listing happened to yield
+        // first and drop the rest without a word.
+        match current.get(&identity) {
+            Some(held) if !newer(&batch, held) => continue,
+            _ => {
+                current.insert(identity, batch);
+            }
         }
+    }
+    let mut rows: std::collections::BTreeMap<sync::Identity, LocalRow> =
+        std::collections::BTreeMap::new();
+    for (identity, batch) in current {
         let outputs: Vec<LocalOutput> = batch
             .outputs
             .iter()
@@ -101,6 +229,13 @@ pub fn inventory(root: &Path, project: &str) -> Result<Vec<LocalRow>, String> {
                 sha256: crate::inventory_digest(&mut pairs),
                 size_bytes: outputs.iter().map(|output| output.size_bytes).sum(),
                 produced_at_ms: batch.produced_at_ms,
+                // Deliberately none, and it must stay none. A report is not
+                // computed against an output head, so there is no OCC
+                // revision to carry; the batch's `input_base_fingerprint` is
+                // a SOURCE digest and `sync::RemoteHead` says in as many
+                // words that it is never an OCC revision. Ordering for these
+                // rows is `sync::derived_winner` — last writer by production
+                // time — not a base-revision comparison.
                 base_revision: None,
                 input_base_fingerprint: Some(batch.input_base_fingerprint.clone())
                     .filter(|value| !value.is_empty()),
@@ -161,6 +296,84 @@ mod tests {
                 paper_size: None,
                 presentation: None,
             }],
+        }
+    }
+
+    /// The 593-artifact defect, in miniature. Three committed batches for one
+    /// room used to collapse to a single queue row and the other two vanished
+    /// from every surface — no pump could reach them and no command could
+    /// name them. The queue still carries one row per room, which is what a
+    /// head means, but the batches it displaced are now counted and named.
+    #[test]
+    fn displaced_batches_are_counted_and_named_instead_of_vanishing() {
+        let directory = tempfile::tempdir().expect("temp root");
+        let held =
+            ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
+                .expect("hold root");
+        for batch in ['1', '2', '3'] {
+            let mut row = receipt(
+                batch,
+                "owner-1",
+                "project-a",
+                &format!("publish-{batch}23e4567-e89b-42d3-a456-426614174000"),
+            );
+            row.outputs[0].sha256 = batch.to_string().repeat(64);
+            PendingPublicationCommit::stage(&held, &row)
+                .expect("stage")
+                .commit()
+                .expect("commit");
+        }
+
+        let census = census(directory.path(), "project-a").expect("census");
+        assert_eq!(census.batches, 3, "every committed batch is still counted");
+        assert_eq!(census.queued, 1, "one room, one head");
+        assert_eq!(census.superseded.len(), 2);
+        assert_eq!(census.bytes, 126);
+        for displaced in &census.superseded {
+            assert_eq!(displaced.transformer, "tx_1");
+            assert!(
+                !displaced.superseded_by.is_empty(),
+                "a displaced batch names the batch that replaced it"
+            );
+        }
+        // The queue row is one of the three, not an invention.
+        let rows = inventory(directory.path(), "project-a").expect("inventory");
+        assert_eq!(rows.len(), 1);
+        assert!(census
+            .superseded
+            .iter()
+            .all(|displaced| displaced.client_publish_id != rows[0].client_publish_id));
+    }
+
+    /// Which batch publishes cannot depend on the order a directory listing
+    /// happened to produce: the same three batches must choose the same
+    /// winner on every machine and every run.
+    #[test]
+    fn the_queue_row_for_a_room_is_chosen_deterministically() {
+        let directory = tempfile::tempdir().expect("temp root");
+        let held =
+            ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
+                .expect("hold root");
+        for batch in ['a', 'b', 'c'] {
+            let mut row = receipt(
+                batch,
+                "owner-1",
+                "project-a",
+                &format!(
+                    "publish-a23e4567-e89b-42d3-a456-4266141740{}0",
+                    batch as u8 % 10
+                ),
+            );
+            row.outputs[0].sha256 = batch.to_string().repeat(64);
+            PendingPublicationCommit::stage(&held, &row)
+                .expect("stage")
+                .commit()
+                .expect("commit");
+        }
+        let first = inventory(directory.path(), "project-a").expect("inventory");
+        for _ in 0..4 {
+            let again = inventory(directory.path(), "project-a").expect("inventory");
+            assert_eq!(first, again);
         }
     }
 

@@ -37,3 +37,31 @@ Snapshots are bounded to 500 rows, 5,000 artifacts, 5,000 receipts and 32 reques
 outputs. Project IDs, transformer identities, publication IDs and error lengths
 are validated. The CLI's existing bounded report-plan action adapts this owner;
 the UI only displays the projection and executes transport reads.
+
+## The publication queue's own reading and its lock
+
+`report::activity` projects a snapshot a host supplies. The queue itself is
+read separately, by `ds_report_artifacts::queue_status`, because the question
+it answers — "is anything stuck on this machine?" — must be answerable with no
+session, no project selection and no running Server. It reports queued batches
+and bytes per project, the age of the oldest sealed batch, and the state of
+the pending-upload lock. `ds report outbox status` renders exactly that
+reading and derives nothing of its own.
+
+The lock carries an owner record: pid, the boot it was taken in, the holder's
+process start time, the executable name, and a heartbeat renewed while the
+holder works (`LOCK_HEARTBEAT_INTERVAL_MS`). A pid alone is not evidence of
+liveness, because pids are reused; a lock may be released automatically only
+when the recorded holder is proved gone — an earlier boot, an exited process,
+or a live pid whose start time differs from the record — AND its heartbeat is
+older than `LOCK_STALE_AFTER_MS`. A holder that is live, or that this platform
+cannot be asked about while its heartbeat is fresh, is never broken.
+
+Every automatic release is appended to a bounded journal beside the marker and
+surfaced by both commands. A silent reclaim is a defect: two writers inside
+the crash-durable promotion section is the failure the lock exists to prevent,
+so the evidence that a lock was broken must outlive the process that broke it.
+
+`stuck` is true only for a lock nobody can take whose holder is neither
+working nor provably gone. A queue holding work is not stuck; that is what a
+queue is for.

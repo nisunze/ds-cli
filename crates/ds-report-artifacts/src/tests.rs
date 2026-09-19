@@ -600,3 +600,497 @@ fn streamed_recovery_is_independent_of_the_preview_memory_limit() {
     let mut file = File::open(&path).unwrap();
     assert!(verify_open_artifact(&mut file, size, &"0".repeat(64), false).is_err());
 }
+
+// -- The lock an operator can see, and that releases itself when its holder
+//    is gone. These pin the behaviour a day of lost work paid for: a queue
+//    stopped by a dead pid, with no watchdog and no counter, curable only by
+//    a human deleting a hidden file.
+
+/// A pid that is certainly not running: a child this test started and reaped.
+#[cfg(unix)]
+fn reaped_pid() -> u32 {
+    let mut child = std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg("exit 0")
+        .spawn()
+        .expect("spawn a short-lived process");
+    let pid = child.id();
+    child.wait().expect("reap the short-lived process");
+    pid
+}
+
+/// Overwrite the marker's contents with the record a crashed holder would
+/// have left. The kernel lock is untouched, which is exactly the case that
+/// wedges: the evidence outlives the process it describes.
+#[cfg(unix)]
+fn stamp_crashed_owner(root: &Path, body: &str) {
+    std::fs::write(root.join(PENDING_UPLOAD_LOCK_FILE), body).expect("stamp a crashed owner");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_taken_lock_names_its_holder_and_stamps_a_renewable_heartbeat() {
+    // WHY: the marker used to hold one number. A number cannot be asked
+    // whether it is alive, when it last did anything, or what to run next —
+    // which is why a stopped queue could only be diagnosed by guessing.
+    let test = TestDirectory::new("lock-owner-record");
+    let root = test.0.join("pending-upload");
+    let held = HeldDirectory::ensure_absolute(&root).unwrap();
+    let mut lock = held
+        .try_lock_file(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .expect("take the pending-upload lock");
+
+    let owner = held
+        .read_lock_owner(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .unwrap()
+        .expect("a taken lock records its owner");
+    assert_eq!(owner.pid, std::process::id());
+    assert_eq!(owner.liveness(), confined_fs::HolderLiveness::Live);
+    assert!(owner.heartbeat_at_ms > 0, "a holder stamps a heartbeat");
+    assert!(owner.describe(owner.heartbeat_at_ms).contains("pid"));
+
+    let later = owner.heartbeat_at_ms + 30_000;
+    lock.renew(later).expect("renew the heartbeat");
+    let renewed = held
+        .read_lock_owner(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .unwrap()
+        .expect("the renewed record is readable");
+    assert_eq!(renewed.heartbeat_at_ms, later);
+    assert_eq!(renewed.taken_at_ms, owner.taken_at_ms);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_live_holders_lock_is_never_broken_and_the_refusal_names_it() {
+    // WHY: a silently stolen lock is its own bug — two writers in a critical
+    // section that exists to keep a publication crash-durable. The cure for
+    // a wedge must never become a second way to corrupt the queue.
+    let test = TestDirectory::new("lock-live-holder");
+    let root = test.0.join("pending-upload");
+    write_fixture(&root, &locator(0x31), b"queued report");
+    let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
+    let _live = held
+        .try_lock_file(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .expect("a live owner holds the lock");
+
+    let refusal = list_recovery_candidates_from_root(&root, "owner-1")
+        .expect_err("a live holder keeps the lock");
+    assert!(
+        refusal.contains(&format!("pid {}", std::process::id())),
+        "the refusal names the holder: {refusal}"
+    );
+    assert!(
+        refusal.contains("ds report outbox status"),
+        "the refusal names the command that shows the queue: {refusal}"
+    );
+    assert!(
+        recorded_lock_reclaims(&root).unwrap().is_empty(),
+        "a live holder's lock is never reclaimed"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_abandoned_lock_is_reclaimed_automatically_and_the_reclaim_is_recorded() {
+    // WHY: acceptance C. A lock whose holder is gone stopped the pump
+    // forever; the only cure was a human finding a hidden file. It now
+    // releases itself, and — because a reclaim that nobody can see is the
+    // next bug — it leaves a record naming what it broke.
+    let test = TestDirectory::new("lock-reclaim-dead");
+    let root = test.0.join("pending-upload");
+    write_fixture(&root, &locator(0x32), b"queued report");
+    let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
+    let _orphaned = held
+        .try_lock_file(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .expect("the marker is locked");
+    let dead = reaped_pid();
+    let stale_heartbeat = confined_fs::now_ms() - confined_fs::LOCK_STALE_AFTER_MS - 1;
+    stamp_crashed_owner(
+        &root,
+        &format!(
+            "{{\"schema\":1,\"pid\":{dead},\"boot\":null,\"processStartedAt\":null,\
+             \"worker\":\"ds-report\",\"takenAtMs\":{stale_heartbeat},\
+             \"heartbeatAtMs\":{stale_heartbeat}}}\n"
+        ),
+    );
+
+    let candidates = list_recovery_candidates_from_root(&root, "owner-1")
+        .expect("an abandoned lock is released without a human step");
+    assert_eq!(candidates.len(), 1, "the queue is readable again");
+
+    let reclaims = recorded_lock_reclaims(&root).unwrap();
+    assert_eq!(reclaims.len(), 1, "the reclaim is counted, not silent");
+    assert_eq!(reclaims[0].previous_pid, dead);
+    assert_eq!(reclaims[0].reclaimed_by_pid, std::process::id());
+    assert!(
+        reclaims[0].reason.contains("exited"),
+        "the record says what proved the holder gone: {}",
+        reclaims[0].reason
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_marker_from_an_older_release_is_read_and_reclaimed() {
+    // WHY: an installed machine carries the previous build's markers across
+    // an upgrade. A bare pid is all those markers hold, so refusing to read
+    // one would make the fix arrive exactly one wedge too late.
+    let test = TestDirectory::new("lock-legacy-marker");
+    let root = test.0.join("pending-upload");
+    write_fixture(&root, &locator(0x33), b"queued report");
+    let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
+    let _orphaned = held
+        .try_lock_file(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .expect("the marker is locked");
+    let dead = reaped_pid();
+    stamp_crashed_owner(&root, &format!("{dead}\n"));
+
+    assert_eq!(
+        list_recovery_candidates_from_root(&root, "owner-1")
+            .expect("a bare-pid marker from a dead holder is released")
+            .len(),
+        1
+    );
+    let reclaims = recorded_lock_reclaims(&root).unwrap();
+    assert_eq!(reclaims.len(), 1);
+    assert_eq!(reclaims[0].previous_pid, dead);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_crash_mid_publication_recovers_on_the_next_run_with_no_human_step() {
+    // WHY: the owner's own acceptance test, as closely as this harness can
+    // state it — kill the process mid-upload, run again, and the queue moves.
+    // A sealed batch and a lock whose holder died are exactly what the
+    // killed process leaves behind; nothing below is a human step.
+    let test = TestDirectory::new("lock-crash-recovery");
+    let root = test.0.join("pending-upload");
+    let locator = locator(0x34);
+    write_fixture(&root, &locator, b"sealed mid-upload");
+    let batch_id = locator_id(&locator).unwrap();
+    let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
+    let orphaned = held
+        .try_lock_file(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .expect("the killed process held the lock");
+    let dead = reaped_pid();
+    let stale_heartbeat = confined_fs::now_ms() - confined_fs::LOCK_STALE_AFTER_MS - 1;
+    stamp_crashed_owner(
+        &root,
+        &format!(
+            "{{\"schema\":1,\"pid\":{dead},\"boot\":null,\"processStartedAt\":null,\
+             \"worker\":\"ds-report\",\"takenAtMs\":{stale_heartbeat},\
+             \"heartbeatAtMs\":{stale_heartbeat}}}\n"
+        ),
+    );
+
+    // Before the next run: the queue still holds the work, and the state is
+    // diagnosable without opening a hidden file.
+    let before = inspect_pending_upload_lock(&root).expect("inspect the lock");
+    assert!(before.held, "the crashed holder's marker is still locked");
+    assert!(before.reclaimable, "the next run releases it itself");
+    assert!(!before.wedged, "nothing here needs a human");
+    assert_eq!(before.owner.as_ref().map(|owner| owner.pid), Some(dead));
+
+    // The next run, with no intervention at all: the crashed holder's marker
+    // is still locked by the orphaned descriptor throughout.
+    assert_eq!(
+        list_recovery_candidates_from_root(&root, "owner-1")
+            .expect("the next run reads the queue")
+            .len(),
+        1,
+        "the sealed batch survived the crash and is reachable again"
+    );
+    let recovered = recover_committed_publication_from_root(&root, "owner-1", batch_id)
+        .expect("the next run recovers the sealed publication")
+        .expect("the sealed publication is still there");
+    assert_eq!(recovered.batch_id, batch_id);
+
+    let after = inspect_pending_upload_lock(&root).expect("inspect the lock after the run");
+    assert!(!after.held, "the lock is free once the run finishes");
+    assert!(!after.wedged);
+    assert_eq!(
+        recorded_lock_reclaims(&root).unwrap().len(),
+        1,
+        "the recovery is visible afterwards, not silent"
+    );
+    drop(orphaned);
+}
+
+/// A sealed batch in the shape the shared sync runtime actually drains
+/// (schema 3), so queue readings are pinned against the real queue and not
+/// against the upgrade-recovery fixture above.
+fn write_queued_batch(root: &Path, locator: &str, transformer: &str, bytes: &[u8]) {
+    let batch_id = locator_id(locator).expect("valid locator").to_string();
+    let sha256 = format!("{:x}", Sha256::digest(bytes));
+    let entry = root.join(&batch_id);
+    std::fs::create_dir_all(&entry).expect("create artifact entry");
+    std::fs::write(entry.join(ARTIFACT_FILE), bytes).expect("write artifact");
+    let receipt = NetworkReporterArtifactReceipt {
+        schema: RECEIPT_SCHEMA,
+        batch_id: batch_id.clone(),
+        output_id: "shp".to_string(),
+        locator: locator.to_string(),
+        artifact_file: ARTIFACT_FILE.to_string(),
+        size_bytes: bytes.len() as u64,
+        sha256: sha256.clone(),
+    };
+    let mut receipt_bytes = serde_json::to_vec_pretty(&receipt).expect("encode receipt");
+    receipt_bytes.push(b'\n');
+    std::fs::write(entry.join(RECEIPT_FILE), receipt_bytes).expect("write receipt");
+    let pending = HeldDirectory::ensure_absolute(root).expect("hold pending root");
+    PendingPublicationCommit::stage(
+        &pending,
+        &PublicationBatchReceipt {
+            schema: publication::BATCH_SCHEMA,
+            batch_id,
+            owner_uid: "owner-1".to_string(),
+            organization_id: Some("org-1".to_string()),
+            project_id: "project-1".to_string(),
+            root: "eds_project/project-1/eds_design".to_string(),
+            client_run_id: "report-0123456789abcdef0123456789abcdef".to_string(),
+            engine: "network_reporter".to_string(),
+            operation: format!("export-{transformer}"),
+            variant: "default".to_string(),
+            engine_version: format!("ds-network-reporter@0.1.0+{}", "a".repeat(40)),
+            engine_build_manifest_sha256: "e".repeat(64),
+            transformer: transformer.to_string(),
+            transformer_revision: 7,
+            input_base_fingerprint: "b".repeat(64),
+            room_content_sha256: "c".repeat(64),
+            grant_id: None,
+            snapshot_base: BTreeMap::new(),
+            client_publish_id: format!(
+                "publish-123e4567-e89b-42d3-a456-4266141740{:02}",
+                bytes.len() % 100
+            ),
+            outputs: vec![PublicationOutput {
+                output_id: "shp".to_string(),
+                locator: locator.to_string(),
+                filename: format!("{transformer}.shp.zip"),
+                format: "shp".to_string(),
+                content_type: "application/zip".to_string(),
+                sha256,
+                size_bytes: bytes.len() as u64,
+                paper_size: None,
+                presentation: None,
+            }],
+        },
+    )
+    .expect("stage publication receipt")
+    .commit()
+    .expect("commit publication receipt");
+}
+
+#[test]
+fn the_queue_says_how_much_is_waiting_and_for_how_long() {
+    // WHY: 593 sealed artifacts sat on one PC because nothing counted them.
+    // A queue that cannot say what it holds is indistinguishable from an
+    // empty one, and that is how a day of work went missing.
+    let test = TestDirectory::new("queue-status");
+    let root = test.0.join("pending-upload");
+    write_queued_batch(&root, &locator(0x41), "tx_1", b"first queued report");
+    write_queued_batch(&root, &locator(0x42), "tx_2", b"second queued report!");
+
+    let status = queue_status(&root, None).expect("read the publication queue");
+    assert_eq!(status.queued_batches, 2);
+    assert_eq!(status.queued_bytes, 19 + 21);
+    assert_eq!(status.projects.len(), 1);
+    assert_eq!(status.projects[0].project_id, "project-1");
+    assert_eq!(status.projects[0].batches, 2);
+    assert_eq!(status.projects[0].transformers.len(), 2);
+    assert!(!status.stuck, "a queue holding work is not a stuck queue");
+    assert_eq!(status.next, "ds report outbox drain");
+
+    let scoped = queue_status(&root, Some("project-2")).expect("read another project's queue");
+    assert_eq!(scoped.queued_batches, 0);
+    assert_eq!(scoped.next, "nothing is queued on this machine");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_lock_from_an_earlier_boot_resolves_itself_instead_of_waiting_for_a_human() {
+    // WHY: a machine that was power-cycled mid-publication is the plainest
+    // form of the wedge: the marker survives the reboot, its holder cannot.
+    // The recorded boot proves it, so nothing here needs an operator.
+    let test = TestDirectory::new("queue-status-stuck");
+    let root = test.0.join("pending-upload");
+    write_queued_batch(&root, &locator(0x43), "tx_1", b"queued report");
+    let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
+    let _orphaned = held
+        .try_lock_file(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .expect("the marker is locked");
+    // A holder that cannot be asked about and stopped reporting long ago.
+    let stale = confined_fs::now_ms() - confined_fs::LOCK_STALE_AFTER_MS - 1;
+    stamp_crashed_owner(
+        &root,
+        &format!(
+            "{{\"schema\":1,\"pid\":{},\"boot\":\"a-previous-boot\",\"processStartedAt\":null,\
+             \"worker\":\"ds-report\",\"takenAtMs\":{stale},\"heartbeatAtMs\":{stale}}}\n",
+            std::process::id()
+        ),
+    );
+
+    let status = queue_status(&root, None).expect("read the publication queue");
+    // A recorded boot that is not this one proves the holder is gone, so this
+    // resolves itself on the next run rather than waiting for a human.
+    assert!(status.lock.held);
+    assert!(status.lock.reclaimable);
+    assert!(!status.stuck);
+    assert_eq!(status.lock.holder, "gone");
+    assert_eq!(status.queued_batches, 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_held_lock_with_no_owner_evidence_is_reported_stuck_and_never_broken() {
+    // WHY: acceptance D's other half. A holder that left no record cannot be
+    // proved dead, and breaking that lock would put two writers inside the
+    // crash-durable section. So the queue says plainly that it is stuck, and
+    // says which process to end — instead of a hidden file and a guess.
+    let test = TestDirectory::new("queue-status-unproven");
+    let root = test.0.join("pending-upload");
+    write_queued_batch(&root, &locator(0x44), "tx_1", b"queued report");
+    let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
+    let _orphaned = held
+        .try_lock_file(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .expect("the marker is locked");
+    stamp_crashed_owner(&root, "");
+
+    let status = queue_status(&root, None).expect("read the publication queue");
+    assert!(status.lock.held);
+    assert!(!status.lock.reclaimable);
+    assert!(
+        status.stuck,
+        "an unprovable holder is the one state a human owns"
+    );
+    assert!(status.next.contains("lock.owner"));
+    assert_eq!(
+        status.queued_batches, 1,
+        "the work is still counted while it waits"
+    );
+    assert!(
+        recorded_lock_reclaims(&root).unwrap().is_empty(),
+        "an unprovable holder is never broken"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_drain_releases_an_abandoned_lock_before_it_runs_and_leaves_a_live_one_alone() {
+    // WHY: acceptance E depends on this. The uploader never takes the queue's
+    // lock, so a marker that outlived its holder would otherwise sit there
+    // until someone happened to export again — which is the same wedge with a
+    // longer fuse. `ds report outbox drain` calls this first.
+    let test = TestDirectory::new("drain-reclaim");
+    let root = test.0.join("pending-upload");
+    write_queued_batch(&root, &locator(0x45), "tx_1", b"queued report");
+    let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
+
+    let live = held
+        .try_lock_file(
+            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+            PENDING_UPLOAD_LOCK_LABEL,
+        )
+        .expect("a live owner holds the lock");
+    assert_eq!(
+        reclaim_pending_upload_lock(&root).expect("a live holder is not an error"),
+        None,
+        "a publication in progress is left to finish"
+    );
+    assert!(recorded_lock_reclaims(&root).unwrap().is_empty());
+
+    let dead = reaped_pid();
+    let stale = confined_fs::now_ms() - confined_fs::LOCK_STALE_AFTER_MS - 1;
+    stamp_crashed_owner(
+        &root,
+        &format!(
+            "{{\"schema\":1,\"pid\":{dead},\"boot\":null,\"processStartedAt\":null,\
+             \"worker\":\"ds-report\",\"takenAtMs\":{stale},\"heartbeatAtMs\":{stale}}}\n"
+        ),
+    );
+    let reclaim = reclaim_pending_upload_lock(&root)
+        .expect("an abandoned lock is released")
+        .expect("the release is reported to the caller");
+    assert_eq!(reclaim.previous_pid, dead);
+    assert!(!inspect_pending_upload_lock(&root).unwrap().held);
+    drop(live);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_drain_still_reports_its_reclaim_after_the_journal_has_filled_up() {
+    // WHY: the journal is capped, so a caller that detected its own reclaim
+    // by the journal GROWING would stop detecting it once the cap was
+    // reached — on precisely the machine that keeps wedging, which is the one
+    // whose operator most needs to be told the queue was unstuck. The drain
+    // therefore compares the newest entry, not the count.
+    let test = TestDirectory::new("drain-reclaim-saturated");
+    let root = test.0.join("pending-upload");
+    write_queued_batch(&root, &locator(0x46), "tx_1", b"queued report");
+
+    let mut last = None;
+    for round in 0..(MAX_RECORDED_RECLAIMS + 2) {
+        let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
+        let orphaned = held
+            .try_lock_file(
+                std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
+                PENDING_UPLOAD_LOCK_LABEL,
+            )
+            .expect("the marker is locked");
+        let dead = reaped_pid();
+        let stale = confined_fs::now_ms() - confined_fs::LOCK_STALE_AFTER_MS - 1;
+        stamp_crashed_owner(
+            &root,
+            &format!(
+                "{{\"schema\":1,\"pid\":{dead},\"boot\":null,\"processStartedAt\":null,\
+                 \"worker\":\"ds-report\",\"takenAtMs\":{stale},\"heartbeatAtMs\":{stale}}}\n"
+            ),
+        );
+        last = Some(
+            reclaim_pending_upload_lock(&root)
+                .expect("an abandoned lock is released")
+                .unwrap_or_else(|| {
+                    panic!("round {round} released a dead holder without reporting it")
+                }),
+        );
+        drop(orphaned);
+    }
+
+    assert_eq!(
+        recorded_lock_reclaims(&root).unwrap().len(),
+        MAX_RECORDED_RECLAIMS,
+        "the journal stays bounded"
+    );
+    assert_eq!(
+        recorded_lock_reclaims(&root).unwrap().pop().as_ref(),
+        last.as_ref(),
+        "the reclaim the caller was told about is the one that was recorded"
+    );
+}
