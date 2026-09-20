@@ -149,6 +149,12 @@ pub mod project_management;
 pub fn project_management_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     project_management::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod task_geometry;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = taskGeometry)]
+pub fn task_geometry_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    task_geometry::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod design_dashboard;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designDashboard)]
