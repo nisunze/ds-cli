@@ -93,7 +93,7 @@ pub static EDIT: Command = Command {
     path: &["report", "layout", "edit"],
     contract: 1,
     summary: "Validate and apply one print document intent.",
-    purpose: "Applies a local Rust-owned request with top-level op and layout. Discover its exact grammar with map.print.schema --section edit. For shade use op=set_focus_visibility and visible=false; for table headings use op=edit with the complete element carrying table.heading_mode. Returns the edited document without saving a project template; global/project save is a separate command.",
+    purpose: "Applies a local Rust-owned request with top-level op and layout. Discover its exact grammar with map.print.schema --section edit. For shade use op=set_focus_visibility and visible=false; for table headings or indexed values use op=edit with the complete element carrying table.heading_mode or table.value_key. Returns the edited document without saving a project template; global/project save is a separate command.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,

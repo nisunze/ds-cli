@@ -60,6 +60,8 @@ fn map_print_discovery_is_compact_and_exposes_the_real_kernel_schemas() {
                 "label_pt",
                 "halo_mm",
                 "heading_mode",
+                "value_key",
+                "max_categories",
                 "overflow",
                 "indent_mm",
             ] {

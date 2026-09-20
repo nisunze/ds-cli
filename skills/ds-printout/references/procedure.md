@@ -92,6 +92,13 @@ measured furniture in a rendered preview before queuing the whole project.
   revision · the saved revision · a refused save names the field
   (`print_layout_invalid`); if the field is valid the deployed validator is
   older than this client and must be redeployed — never strip a valid field.
+- Choose the table treatments while customising · `report.layout.edit` op
+  `edit` with the complete table element · `table.heading_mode` for the titles
+  (key above each panel) and `table.value_key` for few-category values printed
+  as indexes with a legend under the table · the customers schedule compacts by
+  default (`auto`, 3 categories), poles does not; name exact columns with
+  `{"mode":"columns","columns":[...]}`, silence with `{"mode":"off"}`; see
+  [sheet furniture](sheet-furniture.md#values-and-legend).
 - Governed base styling is shared · the layer's governed style through
   `style.read`, `style.dimension.plan/set` (second field → halo, opacity,
   size; e.g. river `type` → width), `style.cartography.plan/set` (line type,

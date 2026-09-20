@@ -80,6 +80,10 @@ Follow these printing contracts:
   unless explicitly requested for schedules.
 - Headings never widen columns. Default indexed headings use order letters with
   a full untruncated key above each panel. Never abbreviate headings by hand.
+- Few-category values never widen columns either: the customers schedule prints
+  Category/Meter type as `1`/`2` with a legend under the table by default
+  (`table.value_key`); poles and other tables print literally unless told to.
+  See [sheet furniture](references/sheet-furniture.md#values-and-legend).
 - Optimize the full network’s vertical fit. Adjacent split panels may have
   different heights and row counts; their actual footprints obstruct the map,
   not a padded rectangle. Flow followers remain with their movable root.

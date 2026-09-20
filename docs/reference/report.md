@@ -510,6 +510,21 @@ table content. These decisions are shared with the UI through WASM. Rendering
 returns the measured `frame_hierarchy`, `printable_boundary_mm`, and
 `furniture_frames` in each page assessment, after flow and packing.
 
+Two table treatments keep columns narrow without abbreviating by hand, both
+decided in `ds-command-kernel::printing` and painted identically by every
+renderer. `table.heading_mode` (`literal|auto_index|indexed|abbreviated`)
+aliases titles with a full key above each panel. `table.value_key`
+(`{mode: off|auto|columns, max_categories: 2..=26 (3), columns: [...]}`) prints
+few-category values as 1-based indexes with one legend line per column under
+each panel (`Category: 1 Commercial · 2 Residential`); absent, the customers
+(house connection) schedule defaults to `auto` and every other table to `off`.
+`auto` compacts a bound column whose values recur in at most `max_categories`
+categories and are wider than their index, and yields to a frame with no room
+for the legend; `columns` compacts exactly the named bound columns and refuses
+one with more categories than allowed, naming the column and its count. The
+row plan receives the height minus the legend. A per-transformer
+`TableOverride` carries the same field.
+
 `table_drafts` returns compact editor schematics in millimetres, using authored
 font and row sizes. Approximate heading widths never expand to a maximum
 container or replace Reporter's measured print geometry. Real label omissions
