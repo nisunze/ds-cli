@@ -10,77 +10,36 @@
 //!
 //! One file, one lock, atomic replacement, an absent file reads as empty and
 //! creates nothing, a malformed file is refused rather than repaired.
-use fs2::FileExt;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use std::{
-    collections::BTreeMap,
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
-    path::Path,
-};
+use serde_json::Value;
+use std::{collections::BTreeMap, path::Path};
 
-pub const MAX_STORE_BYTES: usize = 4 * 1024 * 1024;
+use crate::scoped::{self, Kind};
+pub use crate::scoped::{UpdateError, MAX_STORE_BYTES};
+
 pub const MAX_PROJECT_ENTRIES: usize = 50_000;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct VisibilityStore {
-    pub schema: u32,
-    pub revision: u64,
-    /// `<lane>/<uid>/<project>` → runtime layer id → desired visibility.
-    pub projects: BTreeMap<String, BTreeMap<String, bool>>,
-}
-impl Default for VisibilityStore {
-    fn default() -> Self {
-        Self {
-            schema: 1,
-            revision: 0,
-            projects: BTreeMap::new(),
+/// `<lane>/<uid>/<project>` → runtime layer id → desired visibility.
+pub type VisibilityStore = scoped::Store<BTreeMap<String, bool>>;
+
+const KIND: Kind<BTreeMap<String, bool>> = Kind {
+    file: "layer-visibility.json",
+    lock: "layer-visibility.lock",
+    noun: "layer visibility",
+    validate: |preferences| {
+        if preferences.len() > MAX_PROJECT_ENTRIES
+            || preferences
+                .keys()
+                .any(|id| id.is_empty() || id.chars().count() > 2000)
+        {
+            return Err("layer visibility preferences exceed their bound".into());
         }
-    }
-}
+        Ok(())
+    },
+};
 
-fn scope(lane: &str, uid: &str, project: &str) -> Result<String, String> {
-    let ok = |value: &str| {
-        !value.is_empty()
-            && value.trim() == value
-            && value.chars().count() <= 500
-            && !value.chars().any(|c| c.is_control() || c == '/')
-    };
-    if !matches!(lane, "stable" | "canary") || !ok(uid) || !ok(project) {
-        return Err(
-            "layer visibility needs a lane, a bounded account uid and a bounded project id".into(),
-        );
-    }
-    Ok(format!("{lane}/{uid}/{project}"))
-}
-
-fn io_error(_: impl std::fmt::Display) -> String {
-    "local layer visibility store could not be read or persisted".into()
-}
-
+#[cfg(test)]
 fn load(path: &Path) -> Result<VisibilityStore, String> {
-    match File::open(path) {
-        Ok(file) => {
-            let mut bytes = Vec::new();
-            file.take(MAX_STORE_BYTES as u64 + 1)
-                .read_to_end(&mut bytes)
-                .map_err(io_error)?;
-            if bytes.len() > MAX_STORE_BYTES {
-                return Err("local layer visibility store exceeds 4 MiB".into());
-            }
-            let store: VisibilityStore = serde_json::from_slice(&bytes).map_err(|_| {
-                "local layer visibility store is malformed; repair it before editing"
-            })?;
-            if store.schema != 1 {
-                return Err("local layer visibility store has an unsupported schema".into());
-            }
-            Ok(store)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(VisibilityStore::default()),
-        Err(e) => Err(io_error(e)),
-    }
+    scoped::load(&KIND, path)
 }
 
 /// The remembered toggles for one lane, account and project; empty when none were recorded.
@@ -94,19 +53,7 @@ pub fn read_at(
     uid: &str,
     project: &str,
 ) -> Result<BTreeMap<String, bool>, String> {
-    let key = scope(lane, uid, project)?;
-    let path = root.join("layer-visibility.json");
-    if !path.try_exists().map_err(io_error)? {
-        return Ok(BTreeMap::new());
-    }
-    let lock = OpenOptions::new()
-        .read(true)
-        .open(root.join("layer-visibility.lock"))
-        .ok();
-    if let Some(lock) = &lock {
-        lock.lock_shared().map_err(io_error)?;
-    }
-    Ok(load(&path)?.projects.remove(&key).unwrap_or_default())
+    Ok(scoped::read_at(&KIND, root, lane, uid, project)?.unwrap_or_default())
 }
 
 /// Replace the remembered toggles for one lane, account and project with what
@@ -136,12 +83,6 @@ pub fn replace_at(
     })
 }
 
-#[derive(Debug)]
-pub enum UpdateError<E> {
-    Store(String),
-    Transition(E),
-}
-
 /// Read, decide and persist under one lock. The caller supplies the shared
 /// kernel transition; concurrent requests cannot replace one another's edits
 /// with preferences computed from an old snapshot.
@@ -152,71 +93,21 @@ pub fn update_at<T, E>(
     project: &str,
     update: impl FnOnce(&BTreeMap<String, bool>) -> Result<(BTreeMap<String, bool>, T), E>,
 ) -> Result<(Value, T), UpdateError<E>> {
-    let store_error = |error| UpdateError::Store(io_error(error));
-    let key = scope(lane, uid, project).map_err(UpdateError::Store)?;
-    fs::create_dir_all(root).map_err(&store_error)?;
-    let lock = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(root.join("layer-visibility.lock"))
-        .map_err(&store_error)?;
-    lock.lock_exclusive().map_err(&store_error)?;
-    let path = root.join("layer-visibility.json");
-    let mut store = load(&path).map_err(UpdateError::Store)?;
-    let previous = store.projects.get(&key).cloned().unwrap_or_default();
-    let (preferences, output) = update(&previous).map_err(UpdateError::Transition)?;
-    if preferences.len() > MAX_PROJECT_ENTRIES
-        || preferences
-            .keys()
-            .any(|id| id.is_empty() || id.chars().count() > 2000)
-    {
-        return Err(UpdateError::Store(
-            "layer visibility preferences exceed their bound".into(),
-        ));
-    }
-    let changed = store.projects.get(&key) != Some(&preferences);
-    if changed {
-        store.projects.insert(key.clone(), preferences.clone());
-        store.revision = store
-            .revision
-            .checked_add(1)
-            .ok_or_else(|| UpdateError::Store("layer visibility revision exhausted".into()))?;
-        let bytes =
-            serde_json::to_vec(&store).map_err(|error| UpdateError::Store(io_error(error)))?;
-        if bytes.len() > MAX_STORE_BYTES {
-            return Err(UpdateError::Store(
-                "local layer visibility store exceeds 4 MiB".into(),
-            ));
-        }
-        let mut staged = tempfile::NamedTempFile::new_in(root).map_err(&store_error)?;
-        staged.write_all(&bytes).map_err(&store_error)?;
-        staged.flush().map_err(&store_error)?;
-        staged.as_file().sync_all().map_err(&store_error)?;
-        staged
-            .persist(&path)
-            .map_err(|error| UpdateError::Store(io_error(error)))?;
-        #[cfg(unix)]
-        File::open(root)
-            .and_then(|f| f.sync_all())
-            .map_err(&store_error)?;
-    }
-    Ok((
-        json!({
-            "scope": key,
-            "changed": changed,
-            "revision": store.revision,
-            "persisted": "native_local",
-            "layer_count": preferences.len(),
-        }),
-        output,
-    ))
+    let (mut receipt, (output, count)) =
+        scoped::update_at(&KIND, root, lane, uid, project, |previous| {
+            let empty = BTreeMap::new();
+            let (next, output) = update(previous.unwrap_or(&empty))?;
+            let count = next.len();
+            Ok((Some(next), (output, count)))
+        })?;
+    receipt["layer_count"] = Value::from(count);
+    Ok((receipt, output))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn prefs(pairs: &[(&str, bool)]) -> BTreeMap<String, bool> {
         pairs.iter().map(|(k, v)| ((*k).to_owned(), *v)).collect()

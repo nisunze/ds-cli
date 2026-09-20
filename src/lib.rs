@@ -343,6 +343,14 @@ pub mod survey_entries_select;
 pub mod survey_entry_create;
 pub mod survey_entry_outbox;
 pub mod survey_query;
+/// Which survey forms the working area loads for one project on one host.
+pub mod survey_working_area_forms;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyWorkingAreaForms)]
+pub fn survey_working_area_forms_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    survey_working_area_forms::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyEntryCreate)]
@@ -1738,6 +1746,29 @@ pub mod survey_media_address;
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyMediaAddress)]
 pub fn survey_media_address_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     survey_media_address::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+/// Survey moments: the survey photos one machine holds for a project — the
+/// row shape both stores map to, the filters, the order, the page, the
+/// "navigate to" verdict and the ONE rotation policy (the properties
+/// panel's, transcribed). Hosts hand rows in; nothing downstream of a row is
+/// decided by a host.
+pub mod survey_moments;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyMoments)]
+pub fn survey_moments_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    survey_moments::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+/// Local data: the per-host roster of stores a machine holds for a project,
+/// each retained or cleanable, the status answer over the host's readings
+/// and the confirmed clean plan. The Server and the browser answer the same
+/// command through this module.
+pub mod local_data;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = localData)]
+pub fn local_data_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    local_data::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
 pub mod project_config;

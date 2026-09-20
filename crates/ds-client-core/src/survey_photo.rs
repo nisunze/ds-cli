@@ -11,7 +11,12 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 pub const SCHEMA: &str = "ds.survey-photo-rotation/v1";
-pub const PATH: &str = "/media";
+/// The gateway route of the `survey_media` operation
+/// (`routing/operations.json`): the API Gateway defines `/api/v1/media`
+/// and answers `/media` with its own 404 ("not defined by this API"),
+/// which the client read as a refusal — so headless rotation never reached
+/// ds-brain until 2026-09-20.
+pub const PATH: &str = "/api/v1/media";
 pub const RESPONSE_LIMIT: usize = 32 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
