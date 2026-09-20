@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 
 use crate::folder;
 use crate::model::workspace;
+use crate::model::workspace::{STORE_UNAVAILABLE, UNKNOWN_MODEL};
 
 pub const WORKSPACE_NOT_FOUND: Refusal = Refusal {
     code: "workspace_not_found",
@@ -69,15 +70,15 @@ pub fn open(inputs: &Inputs, id: &str) -> Result<OpenedModel, Failure> {
         .cloned()
         .ok_or_else(|| {
             Failure::invalid(
-                workspace::UNKNOWN_MODEL.code,
+                "local_model_not_found",
                 format!("no working copy on this machine carries the id `{id}`"),
             )
-            .remedy(workspace::UNKNOWN_MODEL.remedy)
+            .remedy(UNKNOWN_MODEL.remedy)
             .next("ds dsgrid model list")
         })?;
     let root = ds_layer_store::local_models::default_root().map_err(|error| {
-        Failure::unavailable(workspace::STORE_UNAVAILABLE.code, error)
-            .remedy(workspace::STORE_UNAVAILABLE.remedy)
+        Failure::unavailable("local_model_store_unavailable", error)
+            .remedy(STORE_UNAVAILABLE.remedy)
     })?;
     let dir = ds_layer_store::local_models::scope_dir(&root, &workspace::scope(inputs)?)
         .map_err(workspace::refuse)?;
@@ -85,13 +86,13 @@ pub fn open(inputs: &Inputs, id: &str) -> Result<OpenedModel, Failure> {
         ds_layer_store::local_models::package_path(&dir, &row.id).map_err(workspace::refuse)?;
     let package_bytes = std::fs::read(&package_path).map_err(|error| {
         Failure::unavailable(
-            workspace::STORE_UNAVAILABLE.code,
+            "local_model_store_unavailable",
             format!(
                 "the package of `{id}` cannot be read at {}: {error}",
                 package_path.display()
             ),
         )
-        .remedy(workspace::STORE_UNAVAILABLE.remedy)
+        .remedy(STORE_UNAVAILABLE.remedy)
     })?;
     let package = unpack(&package_bytes).map_err(|error| {
         Failure::invalid("not_a_dsgrid_package", error.to_string())
@@ -119,7 +120,7 @@ pub fn pls_source(id: &str, package: &GridPackage) -> Result<PlsPackageSource, F
         })?
         .ok_or_else(|| {
             Failure::invalid(
-                MODEL_NOT_FROM_PLS.code,
+                "model_not_from_pls",
                 format!("`{id}` was not imported from a PLS-CADD workspace"),
             )
             .remedy(MODEL_NOT_FROM_PLS.remedy)
@@ -137,11 +138,10 @@ pub struct ReadWorkspace {
 pub fn read_workspace(raw: &str) -> Result<ReadWorkspace, Failure> {
     let path = Path::new(raw);
     if !path.is_dir() {
-        return Err(Failure::invalid(
-            WORKSPACE_NOT_FOUND.code,
-            format!("`{raw}` is not a directory"),
-        )
-        .remedy(WORKSPACE_NOT_FOUND.remedy));
+        return Err(
+            Failure::invalid("workspace_not_found", format!("`{raw}` is not a directory"))
+                .remedy(WORKSPACE_NOT_FOUND.remedy),
+        );
     }
     let absolute = if path.is_absolute() {
         path.to_path_buf()

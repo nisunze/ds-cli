@@ -23,6 +23,9 @@ use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::local_models::Op;
 use serde_json::{Value, json};
 
+use crate::model::pls_source::{
+    MODEL_NOT_FROM_PLS, WORKSPACE_NOT_FOUND, WORKSPACE_NOT_THIS_PACKAGE,
+};
 use crate::model::{pls_source, workspace};
 
 const MODEL_ARG: Arg = Arg {
@@ -46,15 +49,15 @@ const WORKSPACE_ARG: Arg = Arg {
 };
 
 const LINK_OWN: [Refusal; 5] = [
-    pls_source::WORKSPACE_NOT_FOUND,
-    pls_source::WORKSPACE_NOT_THIS_PACKAGE,
-    pls_source::MODEL_NOT_FROM_PLS,
+    WORKSPACE_NOT_FOUND,
+    WORKSPACE_NOT_THIS_PACKAGE,
+    MODEL_NOT_FROM_PLS,
     crate::folder::TOO_LARGE,
     crate::folder::UNREADABLE,
 ];
 const REFUSALS: &[Refusal; LINK_OWN.len() + workspace::REFUSALS.len()] = &refusals();
 const fn refusals() -> [Refusal; LINK_OWN.len() + workspace::REFUSALS.len()] {
-    let mut all = [pls_source::WORKSPACE_NOT_FOUND; LINK_OWN.len() + workspace::REFUSALS.len()];
+    let mut all = [WORKSPACE_NOT_FOUND; LINK_OWN.len() + workspace::REFUSALS.len()];
     let mut index = 0;
     while index < LINK_OWN.len() {
         all[index] = LINK_OWN[index];
@@ -117,7 +120,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let workspace_read = pls_source::read_workspace(inputs.require("workspace")?)?;
     if workspace_read.digest != source.origin_digest {
         return Err(Failure::conflict(
-            pls_source::WORKSPACE_NOT_THIS_PACKAGE.code,
+            "workspace_not_this_package",
             format!(
                 "`{}` digests to {} but `{id}` was imported from a workspace digesting to {}",
                 workspace_read.path.display(),
@@ -125,7 +128,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 source.origin_digest
             ),
         )
-        .remedy(pls_source::WORKSPACE_NOT_THIS_PACKAGE.remedy)
+        .remedy(WORKSPACE_NOT_THIS_PACKAGE.remedy)
         .detail(json!({
             "workspace_digest": workspace_read.digest,
             "package_origin_digest": source.origin_digest,

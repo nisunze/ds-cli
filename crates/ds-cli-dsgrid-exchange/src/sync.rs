@@ -37,6 +37,10 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_cli_dsgrid::model::pls_source::{
+    MODEL_NOT_FROM_PLS, WORKSPACE_DIGEST_MOVED, WORKSPACE_NOT_FOUND, WORKSPACE_NOT_LINKED,
+    WORKSPACE_NOT_THIS_PACKAGE,
+};
 use ds_cli_dsgrid::model::{pls_source, workspace};
 use ds_grid_exchange::pls_cadd_workspace_sync::{
     SyncAction, WorkspaceSyncError, WorkspaceSyncInput, WorkspaceSyncPlan, plan_workspace_sync,
@@ -140,11 +144,11 @@ const SYNC_OWN: &[Refusal] = &[
         when: "--dry-run and --yes were both supplied",
         remedy: "choose exactly one mode",
     },
-    pls_source::WORKSPACE_NOT_LINKED,
-    pls_source::WORKSPACE_DIGEST_MOVED,
-    pls_source::WORKSPACE_NOT_THIS_PACKAGE,
-    pls_source::WORKSPACE_NOT_FOUND,
-    pls_source::MODEL_NOT_FROM_PLS,
+    WORKSPACE_NOT_LINKED,
+    WORKSPACE_DIGEST_MOVED,
+    WORKSPACE_NOT_THIS_PACKAGE,
+    WORKSPACE_NOT_FOUND,
+    MODEL_NOT_FROM_PLS,
     Refusal {
         code: "member_version_unsupported",
         when: "the workspace's DON is not DON 57 (member and version named)",
@@ -243,10 +247,10 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let opened = pls_source::open(inputs, &id)?;
     let link = opened.row.pls_source.clone().ok_or_else(|| {
         Failure::invalid(
-            pls_source::WORKSPACE_NOT_LINKED.code,
+            "workspace_not_linked",
             format!("`{id}` is not linked to a PLS-CADD workspace"),
         )
-        .remedy(pls_source::WORKSPACE_NOT_LINKED.remedy)
+        .remedy(WORKSPACE_NOT_LINKED.remedy)
         .next(format!(
             "ds dsgrid model link --model {id} --workspace <folder>"
         ))
@@ -329,16 +333,16 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
 fn sync_failure(error: WorkspaceSyncError, id: &str, target: &str) -> Failure {
     match error {
         WorkspaceSyncError::DigestMoved { pinned, actual } => Failure::conflict(
-            pls_source::WORKSPACE_DIGEST_MOVED.code,
+            "workspace_digest_moved",
             format!("`{target}` changed since `{id}` was linked to it"),
         )
-        .remedy(pls_source::WORKSPACE_DIGEST_MOVED.remedy)
+        .remedy(WORKSPACE_DIGEST_MOVED.remedy)
         .detail(json!({ "pinned": pinned, "actual": actual })),
         WorkspaceSyncError::OriginMismatch { package, pinned } => Failure::conflict(
-            pls_source::WORKSPACE_NOT_THIS_PACKAGE.code,
+            "workspace_not_this_package",
             format!("the link on `{id}` does not name the workspace its package came from"),
         )
-        .remedy(pls_source::WORKSPACE_NOT_THIS_PACKAGE.remedy)
+        .remedy(WORKSPACE_NOT_THIS_PACKAGE.remedy)
         .detail(json!({ "package_origin_digest": package, "pinned": pinned })),
         WorkspaceSyncError::MemberVersionUnsupported {
             member,
