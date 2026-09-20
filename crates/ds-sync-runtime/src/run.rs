@@ -27,7 +27,7 @@ use serde_json::{json, Value};
 
 use crate::rows::{
     kernel_grant, kernel_local, kernel_remote, HeldGrant, LocalRow, PublishOutcome, Receipt,
-    RemoteRow, SyncRun, TransferReceipt, WorkOpen, MAX_ROWS, SCHEMA,
+    Reclaimed, RemoteRow, SyncRun, TransferReceipt, WorkOpen, MAX_ROWS, SCHEMA,
 };
 
 /// How many times one publication may restate the same declaration.
@@ -104,6 +104,20 @@ pub trait SyncHost {
     ) -> Result<TransferReceipt, String>;
     /// The gateway read of one head's outputs into the local store.
     fn fetch(&self, project: &str, head: &RemoteRow) -> Result<u64, String>;
+    /// Free the bytes of a publication that lost. Owner, 2026-09-20: "when
+    /// there's a conflict, online overwrites local artefacts"; an artefact
+    /// never accumulates on the edge. Answers the bytes freed; a batch that
+    /// is no longer on disk is `Ok(0)`, never an error. The store row and
+    /// its receipts stay — the verdict is kept, the bytes are not.
+    fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String>;
+    /// Receipts the host produced on its own while observing its inventory —
+    /// bytes it reclaimed for rows the store had already settled as lost —
+    /// handed to the run once, then forgotten by the host. A host that does
+    /// no housekeeping of its own answers none.
+    fn take_receipts(&self, project: &str) -> Vec<Receipt> {
+        let _ = project;
+        Vec::new()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +248,8 @@ fn run_scoped(
         // Another worker drains this project. The plan is still the honest
         // answer to "what would happen"; nothing is executed twice.
         let local = host.local(project)?;
+        let mut receipts = host.take_receipts(project);
+        receipts.push(Receipt::new("lease", "held").detail(holder));
         let (remote, read_at) = host.held_heads(project)?;
         let grants = host.grants(project)?;
         let plan = scoped_plan(
@@ -242,13 +258,15 @@ fn run_scoped(
         let replanned = scoped_plan(
             host, project, trigger, read_at, &local, &remote, &grants, engine,
         )?;
+        let reclaimed = Reclaimed::from_receipts(&receipts);
         return Ok(SyncRun {
             schema: SCHEMA,
             project: project.to_string(),
             trigger,
             plan,
-            receipts: vec![Receipt::new("lease", "held").detail(holder)],
+            receipts,
             replanned,
+            reclaimed,
         });
     }
     struct Release<'a>(&'a dyn SyncHost, &'a str);
@@ -280,6 +298,10 @@ fn run_leased(
     engine: Option<&str>,
 ) -> Result<SyncRun, String> {
     let mut local = host.local(project)?;
+    // What the host freed while observing — rows the store had already
+    // settled as lost — is this pass's evidence too, never a silent side
+    // effect of reading the inventory.
+    let mut receipts: Vec<Receipt> = host.take_receipts(project);
     let (mut remote, mut read_at) = host.held_heads(project)?;
     let mut grants = host.grants(project)?;
     let mut plan = scoped_plan(
@@ -296,13 +318,13 @@ fn run_leased(
         // Cached replicas are observations of this exact head generation.
         // Re-observe after refresh so an older cache cannot become an upload.
         local = host.local(project)?;
+        receipts.extend(host.take_receipts(project));
         read_at = Some(at);
         plan = scoped_plan(
             host, project, trigger, read_at, &local, &remote, &grants, engine,
         )?;
     }
 
-    let mut receipts: Vec<Receipt> = Vec::new();
     let mut grant_failures: BTreeMap<String, String> = BTreeMap::new();
     if plan
         .actions
@@ -359,6 +381,11 @@ fn run_leased(
                         base_revision.as_deref().unwrap_or("no base"),
                     ));
                 keep(host, project, &mut receipts, receipt);
+                // The verdict is kept; the bytes are not. Online overwrites
+                // local, and a lost batch that stayed on disk was counted as
+                // queued for seven days on a machine where nothing was.
+                let receipt = reclaim(host, project, &local, identity, reason);
+                keep(host, project, &mut receipts, receipt);
             }
             sync::Action::Nothing { identity, reason } => {
                 if *reason == sync::SUPERSEDED_BY_HEAD {
@@ -372,6 +399,8 @@ fn run_leased(
                         "the shared record already carries a later computation of this room"
                             .to_string(),
                     );
+                    keep(host, project, &mut receipts, receipt);
+                    let receipt = reclaim(host, project, &local, identity, reason);
                     keep(host, project, &mut receipts, receipt);
                 } else {
                     receipts.push(Receipt::new("nothing", *reason).about(identity));
@@ -388,11 +417,13 @@ fn run_leased(
     // Re-plan from what the run left behind. The held heads already carry
     // every head a publish advanced, so this costs no gateway call.
     local = host.local(project)?;
+    receipts.extend(host.take_receipts(project));
     let (remote, read_at) = host.held_heads(project)?;
     let grants = host.grants(project)?;
     let replanned = scoped_plan(
         host, project, trigger, read_at, &local, &remote, &grants, engine,
     )?;
+    let reclaimed = Reclaimed::from_receipts(&receipts);
     Ok(SyncRun {
         schema: SCHEMA,
         project: project.to_string(),
@@ -400,7 +431,55 @@ fn run_leased(
         plan,
         receipts,
         replanned,
+        reclaimed,
     })
+}
+
+/// Free the bytes of the local row a verdict was passed on, and say so.
+///
+/// Never silent: a reclaim that freed nothing because the batch was already
+/// gone still answers `reclaimed` with 0 bytes, and one the producer could
+/// not perform answers `reclaim_failed` with its reason, so the next pass
+/// retries it in the open. The outcome names the verdict the row lost to.
+fn reclaim(
+    host: &dyn SyncHost,
+    project: &str,
+    local: &[LocalRow],
+    identity: &sync::Identity,
+    verdict: &'static str,
+) -> Receipt {
+    let Some(row) = local.iter().find(|row| &row.identity == identity) else {
+        return Receipt::new("reclaim_failed", verdict)
+            .about(identity)
+            .detail("the row this verdict was passed on is no longer in the local inventory");
+    };
+    match host.reclaim(project, row) {
+        Ok(bytes) => {
+            let mut receipt =
+                Receipt::new("reclaimed", verdict)
+                    .about(identity)
+                    .detail(if bytes == 0 {
+                        format!("{} held no bytes on this machine any more", batch_name(row))
+                    } else {
+                        format!("{} freed: online overwrites local", batch_name(row))
+                    });
+            receipt.bytes = Some(bytes);
+            receipt
+        }
+        Err(error) => Receipt::new("reclaim_failed", verdict)
+            .about(identity)
+            .detail(format!("{} was not freed: {error}", batch_name(row))),
+    }
+}
+
+/// How a receipt names the batch it is about: by its publish id, which is
+/// what the batch directory's receipt carries and the store's replay key is.
+fn batch_name(row: &LocalRow) -> String {
+    if row.client_publish_id.is_empty() {
+        "a replica of the head".to_string()
+    } else {
+        format!("batch {}", row.client_publish_id)
+    }
 }
 
 /// Ask §1.2 for a grant covering every upload this plan holds.

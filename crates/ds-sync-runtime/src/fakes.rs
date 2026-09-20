@@ -80,6 +80,12 @@ pub struct FakeWorld {
     pub transfers: Vec<(String, String)>,
     pub downloads: Vec<String>,
     pub next_head_revision: i64,
+    /// Refuse every reclaim with this message (a producer store that cannot
+    /// take its lock, a verification that failed).
+    pub refuse_reclaim: Option<String>,
+    /// `(client_publish_id, bytes freed)` for every reclaim asked of the
+    /// producer, freed or not.
+    pub reclaims: Vec<(String, u64)>,
 }
 
 impl Default for FakeWorld {
@@ -105,6 +111,8 @@ impl Default for FakeWorld {
             transfers: Vec::new(),
             downloads: Vec::new(),
             next_head_revision: 8,
+            refuse_reclaim: None,
+            reclaims: Vec::new(),
         }
     }
 }
@@ -415,13 +423,33 @@ impl Producer for FakeProducer {
             TransferMode::CancelledAfter(committed) => {
                 self.cancel.store(true, Ordering::SeqCst);
                 Ok(TransferReceipt {
-                    output_id: output_id.to_string(),
                     outcome: "failed".into(),
+                    output_id: output_id.to_string(),
                     committed_bytes: committed.min(total),
                     total_bytes: total,
                 })
             }
         }
+    }
+
+    /// The bytes leave this machine: the row is dropped from the inventory
+    /// and its size is what was freed. A row already gone frees 0.
+    fn reclaim(&self, _project: &str, row: &LocalRow) -> Result<u64, String> {
+        if let Some(refusal) = &lock(&self.world).refuse_reclaim {
+            return Err(refusal.clone());
+        }
+        let mut rows = self.rows.lock().expect("rows");
+        let before = rows.len();
+        rows.retain(|held| held.client_publish_id != row.client_publish_id);
+        let freed = if rows.len() < before {
+            row.size_bytes
+        } else {
+            0
+        };
+        lock(&self.world)
+            .reclaims
+            .push((row.client_publish_id.clone(), freed));
+        Ok(freed)
     }
 }
 

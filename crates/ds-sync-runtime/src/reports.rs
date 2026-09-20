@@ -59,6 +59,56 @@ impl Producer for ReportProducer<'_> {
         let handle = ds_report_artifacts::open_batch_output(self.root, &batch, output_id)?;
         (self.upload)(handle, output_id, session_uri)
     }
+
+    fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
+        ReportProducer::reclaim(self, project, row)
+    }
+}
+
+impl ReportProducer<'_> {
+    /// Free the sealed batch of one row that lost, through the artifact
+    /// store's own discard: each output goes through
+    /// [`ds_report_artifacts::discard_artifact_from_root_with_gate`], which
+    /// verifies the bytes against the receipt before unlinking them and
+    /// retires the batch directory itself once its last output is gone.
+    /// Nothing outside the batch the row's publish id names is touched.
+    ///
+    /// Idempotent: a batch that is not on disk any more answers `Ok(0)`.
+    pub fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
+        if project != self.project {
+            return Err("report producer project changed".into());
+        }
+        if row.client_publish_id.is_empty() {
+            // A replica of the head, not a publication of this producer.
+            return Ok(0);
+        }
+        let batches =
+            ds_report_artifacts::list_project_publication_batches_from_root(self.root, project)?;
+        let Some(batch) = batches
+            .into_iter()
+            .find(|batch| batch.client_publish_id == row.client_publish_id)
+        else {
+            return Ok(0);
+        };
+        let mut freed = 0_u64;
+        for output in &batch.outputs {
+            let id = ds_report_artifacts::locator_id(&output.locator)?;
+            // Count only what is actually there: the discard is idempotent
+            // over an absent output and would otherwise report bytes freed
+            // twice for a batch retried after a partial failure.
+            let present = std::fs::symlink_metadata(self.root.join(id)).is_ok();
+            ds_report_artifacts::discard_artifact_from_root_with_gate(
+                self.root,
+                &output.locator,
+                &output.sha256,
+                |_| Ok(std::time::Instant::now()),
+            )?;
+            if present {
+                freed = freed.saturating_add(output.size_bytes);
+            }
+        }
+        Ok(freed)
+    }
 }
 
 /// One committed batch this machine holds that is NOT the queue row for its
@@ -375,6 +425,99 @@ mod tests {
             let again = inventory(directory.path(), "project-a").expect("inventory");
             assert_eq!(first, again);
         }
+    }
+
+    /// The producer for a root with no upload path: reclaim needs none.
+    fn producer<'a>(
+        root: &'a Path,
+        project: &'a str,
+        upload: &'a ArtifactTransfer<'a>,
+    ) -> ReportProducer<'a> {
+        ReportProducer {
+            root,
+            project,
+            upload,
+        }
+    }
+
+    /// The 86-batch defect, in miniature: a row the store settled as lost
+    /// is freed through the store's own discard, the batch directory goes
+    /// with its last output, and asking again costs nothing and frees 0.
+    #[test]
+    fn a_lost_row_is_reclaimed_once_and_an_absent_batch_answers_zero() {
+        let directory = tempfile::tempdir().expect("temp root");
+        let held =
+            ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
+                .expect("hold root");
+        let row = receipt(
+            '1',
+            "owner-1",
+            "project-a",
+            "publish-123e4567-e89b-42d3-a456-426614174000",
+        );
+        // Put real bytes under the output's locator so the discard has a
+        // receipt-bound artifact to verify and unlink, as a sealed batch does.
+        let bytes = b"lost report";
+        let mut row = row;
+        row.outputs[0].sha256 = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(bytes));
+        row.outputs[0].size_bytes = bytes.len() as u64;
+        let entry = directory.path().join('1'.to_string().repeat(64));
+        std::fs::create_dir_all(&entry).expect("artifact entry");
+        std::fs::write(entry.join(ds_report_artifacts::ARTIFACT_FILE), bytes).expect("bytes");
+        let receipt_json = serde_json::json!({
+            "schema": ds_report_artifacts::RECEIPT_SCHEMA,
+            "batch_id": row.batch_id,
+            "output_id": "xlsx",
+            "locator": row.outputs[0].locator,
+            "artifact_file": ds_report_artifacts::ARTIFACT_FILE,
+            "size_bytes": bytes.len(),
+            "sha256": row.outputs[0].sha256,
+        });
+        std::fs::write(
+            entry.join(ds_report_artifacts::RECEIPT_FILE),
+            serde_json::to_vec_pretty(&receipt_json).expect("encode"),
+        )
+        .expect("receipt");
+        PendingPublicationCommit::stage(&held, &row)
+            .expect("stage")
+            .commit()
+            .expect("commit");
+        let upload =
+            |_: SealedArtifactHandle, _: &str, _: &str| -> Result<TransferReceipt, String> {
+                Err("no upload in this test".into())
+            };
+        let producer = producer(directory.path(), "project-a", &upload);
+        let rows = inventory(directory.path(), "project-a").expect("inventory");
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].readable, "the fixture is a readable sealed batch");
+
+        let freed = producer.reclaim("project-a", &rows[0]).expect("reclaim");
+        assert_eq!(freed, bytes.len() as u64);
+        assert!(!entry.exists(), "the output's bytes are gone");
+        assert!(
+            !directory
+                .path()
+                .join(ds_report_artifacts::publication::BATCH_DIRECTORY)
+                .join(&row.batch_id)
+                .exists(),
+            "the batch directory retired with its last output"
+        );
+        assert!(inventory(directory.path(), "project-a")
+            .expect("inventory")
+            .is_empty());
+
+        assert_eq!(
+            producer
+                .reclaim("project-a", &rows[0])
+                .expect("reclaim again"),
+            0,
+            "a batch that is not on disk any more is not an error"
+        );
+        assert_eq!(
+            producer.reclaim("project-b", &rows[0]),
+            Err("report producer project changed".to_string()),
+            "a row is never reclaimed under another project"
+        );
     }
 
     #[test]

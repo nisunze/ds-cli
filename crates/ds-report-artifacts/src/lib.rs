@@ -279,6 +279,20 @@ pub struct PendingUploadLockStatus {
     pub recent_reclaims: Vec<LockReclaim>,
 }
 
+impl PendingUploadLockStatus {
+    /// Whether someone is working the queue right now: the marker is held
+    /// and its holder is either proved running or heartbeated within
+    /// [`confined_fs::LOCK_STALE_AFTER_MS`]. The same reading `wedged` is
+    /// built from, exposed so the queue can ask it.
+    pub fn held_by_live_holder(&self) -> bool {
+        self.held
+            && (self.holder == "live"
+                || self
+                    .heartbeat_age_ms
+                    .is_some_and(|age| age < confined_fs::LOCK_STALE_AFTER_MS))
+    }
+}
+
 /// Read the lock's state without taking it, for diagnosis.
 pub fn inspect_pending_upload_lock(root: &Path) -> Result<PendingUploadLockStatus, String> {
     let now = confined_fs::now_ms();
@@ -346,20 +360,31 @@ pub fn inspect_pending_upload_lock(root: &Path) -> Result<PendingUploadLockStatu
     })
 }
 
-/// One project's sealed-but-unpublished work, as the queue itself holds it.
+/// One project's sealed work, as the queue itself holds it, split by what
+/// each batch has settled to.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueuedProject {
     pub project_id: String,
+    /// Batches still waiting to publish — the only ones a pump will move.
     pub batches: usize,
     pub bytes: u64,
     pub oldest_produced_at_ms: u64,
-    /// How long the oldest sealed batch has been waiting. This is the number
+    /// How long the oldest QUEUED batch has been waiting. This is the number
     /// that turned into "593 artifacts on one PC": it grows silently, and
     /// nothing used to show it.
     pub oldest_age_ms: u64,
-    /// The rooms this project is holding work for, newest first, bounded.
+    /// The rooms this project is holding queued work for, newest first,
+    /// bounded.
     pub transformers: Vec<String>,
+    /// Batches whose bytes ARE the room's head: this machine's readable copy
+    /// of what it published. Not queued, not reclaimable — they stay.
+    pub held_batches: usize,
+    pub held_bytes: u64,
+    /// Batches that lost — a conflict or a refusal the store holds as
+    /// terminal. They will never publish; the next pass frees them.
+    pub reclaimable_batches: usize,
+    pub reclaimable_bytes: u64,
 }
 
 /// What `ds report outbox status` answers, decided here rather than in the
@@ -367,30 +392,116 @@ pub struct QueuedProject {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueStatus {
+    /// Only what is QUEUED: sealed, not the head, not settled as lost. Every
+    /// committed batch directory used to count here, so 350 batches and
+    /// 2.08 GB were reported as waiting on a machine where nothing was.
     pub queued_batches: usize,
     pub queued_bytes: u64,
+    /// Over queued batches only.
     pub oldest_age_ms: u64,
+    /// Published copies of the rooms' heads, kept readable on this machine.
+    pub held_batches: usize,
+    pub held_bytes: u64,
+    /// Batches that lost and will never publish: freed by the next pass.
+    pub reclaimable_batches: usize,
+    pub reclaimable_bytes: u64,
     pub projects: Vec<QueuedProject>,
     pub lock: PendingUploadLockStatus,
     /// Whether an operator has to do something. The queue being non-empty is
     /// not stuck — a queue exists to hold work. A lock nobody can take, whose
-    /// holder is neither working nor provably dead, is.
+    /// holder is neither working nor provably dead, is; and so is queued work
+    /// that has waited longer than [`ABANDONED_AFTER_MS`] with nobody pumping
+    /// it.
     pub stuck: bool,
     /// The one command to run next, always stated.
     pub next: &'static str,
 }
 
+/// What one committed batch on this machine has settled to.
+///
+/// The queue cannot tell on its own: whether a batch's bytes are the room's
+/// head is known to whoever holds the heads, and whether it lost is known to
+/// the sync store. The caller answers per batch through a closure, and the
+/// queue counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Settlement {
+    /// Sealed and waiting: the room's row a pump will move.
+    Queued,
+    /// The batch's inventory digest equals the room's held head: this is
+    /// the machine's published copy. It stays, and it is not queued.
+    Held,
+    /// The store holds this publication as `conflict` or `refused`. It will
+    /// never publish and the next pass frees its bytes.
+    Terminal,
+}
+
+/// The settlement closure a caller composes from what it already holds:
+/// the heads it has read (`sync-downloads/<project>/<engine>/<operation>/
+/// <variant>/head.json` carries the head's `sha256`, the inventory digest)
+/// and the `client_publish_id`s the store holds as terminal.
+///
+/// A terminal id wins over a head match: a batch the store has settled as
+/// lost is lost whatever its bytes happen to equal.
+pub fn settlement_from<'a>(
+    heads: &'a BTreeMap<ds_command_kernel::sync::Identity, String>,
+    terminal: &'a BTreeSet<String>,
+) -> impl Fn(&LocalPublicationBatch) -> Settlement + 'a {
+    move |batch| {
+        if terminal.contains(&batch.client_publish_id) {
+            return Settlement::Terminal;
+        }
+        if heads
+            .get(&batch.identity())
+            .is_some_and(|sha256| *sha256 == batch.inventory_sha256())
+        {
+            return Settlement::Held;
+        }
+        Settlement::Queued
+    }
+}
+
+/// The one digest that stands for a publication's output inventory.
+///
+/// Used for the local row and the remote head alike, so "the digests differ"
+/// means "the output sets differ" and nothing else. Sorted by output id, one
+/// `"<id>\0<sha256>\n"` line each: stable across hosts and insertion orders.
+pub fn inventory_digest(outputs: &mut [(String, String)]) -> String {
+    outputs.sort();
+    let mut hasher = Sha256::new();
+    for (output_id, sha256) in outputs.iter() {
+        hasher.update(output_id.as_bytes());
+        hasher.update([0]);
+        hasher.update(sha256.as_bytes());
+        hasher.update(*b"\n");
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// How long queued work may wait with nobody holding the queue before the
+/// status calls it stuck. A healthy pump publishes within minutes of a seal;
+/// an hour with no live holder means nothing is pumping — the desktop and
+/// the Server are both closed, or their pump is not running — and that is
+/// something an operator has to do, which is what `stuck` means.
+pub const ABANDONED_AFTER_MS: u64 = 60 * 60 * 1000;
+
 /// How many room names one project's row carries before it is summarised.
 pub const MAX_REPORTED_TRANSFORMERS: usize = 20;
 
 /// Read the local publication queue: what is sealed and waiting, how old it
-/// is, and who holds the lock.
+/// is, what has settled and stays or goes, and who holds the lock.
 ///
 /// Credential-free and read-only on purpose. The question "is anything
 /// stuck?" must be answerable on a headless box with no session, no gateway
 /// and no running Server — those are exactly the machines where a wedged pump
-/// goes unnoticed.
-pub fn queue_status(root: &Path, project: Option<&str>) -> Result<QueueStatus, String> {
+/// goes unnoticed. `settlement` is the caller's knowledge of each batch (see
+/// [`settlement_from`]); a caller that knows nothing passes
+/// `&|_| Settlement::Queued` and gets the old, all-queued reading.
+pub fn queue_status(
+    root: &Path,
+    project: Option<&str>,
+    settlement: &dyn Fn(&LocalPublicationBatch) -> Settlement,
+) -> Result<QueueStatus, String> {
     if project.is_some_and(|project| !valid_semantic_text(project, 128)) {
         return Err("Network Reporter publication scope is invalid".to_string());
     }
@@ -405,31 +516,49 @@ pub fn queue_status(root: &Path, project: Option<&str>) -> Result<QueueStatus, S
         if batches.is_empty() {
             continue;
         }
-        let mut bytes = 0_u64;
-        let mut transformers = Vec::new();
+        let mut row = QueuedProject {
+            project_id,
+            batches: 0,
+            bytes: 0,
+            oldest_produced_at_ms: 0,
+            oldest_age_ms: 0,
+            transformers: Vec::new(),
+            held_batches: 0,
+            held_bytes: 0,
+            reclaimable_batches: 0,
+            reclaimable_bytes: 0,
+        };
         let mut oldest = u64::MAX;
         for batch in &batches {
-            for output in &batch.outputs {
-                bytes = bytes.saturating_add(output.size_bytes);
-            }
-            if batch.produced_at_ms > 0 {
-                oldest = oldest.min(batch.produced_at_ms);
-            }
-            if transformers.len() < MAX_REPORTED_TRANSFORMERS
-                && !transformers.contains(&batch.transformer)
-            {
-                transformers.push(batch.transformer.clone());
+            let size = batch.size_bytes();
+            match settlement(batch) {
+                Settlement::Held => {
+                    row.held_batches += 1;
+                    row.held_bytes = row.held_bytes.saturating_add(size);
+                }
+                Settlement::Terminal => {
+                    row.reclaimable_batches += 1;
+                    row.reclaimable_bytes = row.reclaimable_bytes.saturating_add(size);
+                }
+                Settlement::Queued => {
+                    row.batches += 1;
+                    row.bytes = row.bytes.saturating_add(size);
+                    if batch.produced_at_ms > 0 {
+                        oldest = oldest.min(batch.produced_at_ms);
+                    }
+                    if row.transformers.len() < MAX_REPORTED_TRANSFORMERS
+                        && !row.transformers.contains(&batch.transformer)
+                    {
+                        row.transformers.push(batch.transformer.clone());
+                    }
+                }
             }
         }
-        let oldest_produced_at_ms = if oldest == u64::MAX { 0 } else { oldest };
-        projects.push(QueuedProject {
-            project_id,
-            batches: batches.len(),
-            bytes,
-            oldest_produced_at_ms,
-            oldest_age_ms: now.saturating_sub(oldest_produced_at_ms),
-            transformers,
-        });
+        if oldest != u64::MAX {
+            row.oldest_produced_at_ms = oldest;
+            row.oldest_age_ms = now.saturating_sub(oldest);
+        }
+        projects.push(row);
     }
     projects.sort_by(|left, right| {
         right
@@ -437,28 +566,49 @@ pub fn queue_status(root: &Path, project: Option<&str>) -> Result<QueueStatus, S
             .cmp(&left.oldest_age_ms)
             .then_with(|| left.project_id.cmp(&right.project_id))
     });
+    let queued_batches: usize = projects.iter().map(|project| project.batches).sum();
+    let reclaimable_batches: usize = projects
+        .iter()
+        .map(|project| project.reclaimable_batches)
+        .sum();
+    let oldest_age_ms = projects
+        .iter()
+        .map(|project| project.oldest_age_ms)
+        .max()
+        .unwrap_or(0);
+    // Queued work nobody is pumping. A holder that is running, or one that
+    // heartbeated recently, is working the queue; anything else — no marker,
+    // a marker whose holder is gone, a stale heartbeat — is not.
+    let abandoned =
+        queued_batches > 0 && !lock.held_by_live_holder() && oldest_age_ms > ABANDONED_AFTER_MS;
     Ok(QueueStatus {
-        queued_batches: projects.iter().map(|project| project.batches).sum(),
+        queued_batches,
         queued_bytes: projects
             .iter()
             .fold(0_u64, |total, project| total.saturating_add(project.bytes)),
-        oldest_age_ms: projects
-            .iter()
-            .map(|project| project.oldest_age_ms)
-            .max()
-            .unwrap_or(0),
+        oldest_age_ms,
+        held_batches: projects.iter().map(|project| project.held_batches).sum(),
+        held_bytes: projects.iter().fold(0_u64, |total, project| {
+            total.saturating_add(project.held_bytes)
+        }),
+        reclaimable_batches,
+        reclaimable_bytes: projects.iter().fold(0_u64, |total, project| {
+            total.saturating_add(project.reclaimable_bytes)
+        }),
         next: if lock.wedged {
             // Deliberately not an override flag. A lock whose holder cannot
             // be proved gone is the one case where breaking it could put two
             // writers in the crash-durable section; the remedy is to end the
             // named holder, after which the next run reclaims it by itself.
             "stop the process named in `lock.owner`, then run `ds report outbox drain`"
-        } else if projects.is_empty() {
+        } else if abandoned {
+            "no publisher holds this queue — start DS GridDesign or the DS Server, which pumps it, or run `ds report outbox drain`"
+        } else if queued_batches == 0 && reclaimable_batches == 0 {
             "nothing is queued on this machine"
         } else {
             "ds report outbox drain"
         },
-        stuck: lock.wedged,
+        stuck: lock.wedged || abandoned,
         projects,
         lock,
     })
@@ -1322,6 +1472,35 @@ pub struct LocalPublicationBatch {
     pub input_base_fingerprint: String,
     pub produced_at_ms: u64,
     pub outputs: Vec<PublishedArtifact>,
+}
+
+impl LocalPublicationBatch {
+    /// The head key this batch publishes under.
+    pub fn identity(&self) -> ds_command_kernel::sync::Identity {
+        ds_command_kernel::sync::Identity {
+            engine: self.engine.clone(),
+            operation: self.operation.clone(),
+            variant: self.variant.clone(),
+        }
+    }
+
+    /// The digest that stands for this batch on both sides of a sync: the
+    /// same [`inventory_digest`] the head carries, so equality means "these
+    /// bytes are the head".
+    pub fn inventory_sha256(&self) -> String {
+        let mut pairs: Vec<(String, String)> = self
+            .outputs
+            .iter()
+            .map(|output| (output.output_id.clone(), output.sha256.clone()))
+            .collect();
+        inventory_digest(&mut pairs)
+    }
+
+    pub fn size_bytes(&self) -> u64 {
+        self.outputs.iter().fold(0_u64, |total, output| {
+            total.saturating_add(output.size_bytes)
+        })
+    }
 }
 
 pub fn list_project_publication_batches_from_root(

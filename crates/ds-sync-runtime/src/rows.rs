@@ -11,7 +11,6 @@ use ds_command_kernel::sync;
 use ds_command_kernel::sync_store as store;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 
 /// The plan-and-receipts envelope this runtime answers with.
 pub const SCHEMA: &str = "ds.sync-run/v1";
@@ -186,7 +185,9 @@ pub struct TransferReceipt {
 #[serde(rename_all = "camelCase")]
 pub struct Receipt {
     /// The planned action this answers: `open_grant`, `upload`, `download`,
-    /// `conflict`, `nothing`, `refused`, `offline`, `lease`, `store`.
+    /// `conflict`, `nothing`, `refused`, `offline`, `lease`, `store` — and
+    /// `reclaimed` / `reclaim_failed`, what became of the bytes of a
+    /// publication that lost (its outcome names the verdict it lost to).
     pub action: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub identity: Option<sync::Identity>,
@@ -238,6 +239,31 @@ impl Receipt {
     }
 }
 
+/// What one pass freed on this machine: sealed batches that lost — to a
+/// later computation of their room, or to the source having moved — and
+/// will never publish. Counted from the pass's own `reclaimed` receipts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Reclaimed {
+    pub batches: usize,
+    pub bytes: u64,
+}
+
+impl Reclaimed {
+    /// Tally every `reclaimed` receipt that actually freed bytes. One that
+    /// found the batch already gone is evidence, not a freed batch.
+    pub fn from_receipts(receipts: &[Receipt]) -> Self {
+        receipts
+            .iter()
+            .filter(|receipt| receipt.action == "reclaimed")
+            .filter_map(|receipt| receipt.bytes.filter(|bytes| *bytes > 0))
+            .fold(Reclaimed::default(), |tally, bytes| Reclaimed {
+                batches: tally.batches + 1,
+                bytes: tally.bytes.saturating_add(bytes),
+            })
+    }
+}
+
 /// The plan, what performing it did, and the plan as it stands afterwards.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -251,6 +277,37 @@ pub struct SyncRun {
     /// Re-planned after the actions, so a caller sees the state it is now in
     /// without asking twice.
     pub replanned: sync::Plan,
+    /// What this pass freed. A pass over a non-empty queue that moved
+    /// nothing and freed nothing must still say why: see [`SyncRun::idle`].
+    pub reclaimed: Reclaimed,
+}
+
+impl SyncRun {
+    /// Why this pass moved no bytes, when it moved none — bounded, from the
+    /// plan's own summary, so "drained 0" is never the whole answer. `None`
+    /// when the plan held an upload or a download, or an action was refused.
+    pub fn idle(&self) -> Option<String> {
+        let summary = &self.plan.summary;
+        if summary.uploads > 0 || summary.downloads > 0 || summary.refused > 0 {
+            return None;
+        }
+        let offline = self
+            .plan
+            .actions
+            .iter()
+            .any(|action| matches!(action, sync::Action::Offline));
+        Some(format!(
+            "nothing to move{}: {} in sync, {} in conflict, {} refused, {} receipt{}, {} batch{} reclaimed",
+            if offline { " while offline" } else { "" },
+            summary.in_sync,
+            summary.conflicts,
+            summary.refused,
+            self.receipts.len(),
+            if self.receipts.len() == 1 { "" } else { "s" },
+            self.reclaimed.batches,
+            if self.reclaimed.batches == 1 { "" } else { "es" },
+        ))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -260,19 +317,10 @@ pub struct SyncRun {
 /// The one digest that stands for a publication's output inventory.
 ///
 /// Used for the local row and the remote head alike, so "the digests differ"
-/// means "the output sets differ" and nothing else. Sorted by output id, one
-/// `"<id>\0<sha256>\n"` line each: stable across hosts and insertion orders.
-pub fn inventory_digest(outputs: &mut [(String, String)]) -> String {
-    outputs.sort();
-    let mut hasher = Sha256::new();
-    for (output_id, sha256) in outputs.iter() {
-        hasher.update(output_id.as_bytes());
-        hasher.update([0]);
-        hasher.update(sha256.as_bytes());
-        hasher.update(*b"\n");
-    }
-    format!("{:x}", hasher.finalize())
-}
+/// means "the output sets differ" and nothing else. Defined once, in the
+/// artifact crate, so the queue's "is this batch the head" and this loop's
+/// "is this row in sync" can never compute two different answers.
+pub use ds_report_artifacts::inventory_digest;
 
 /// Wall-clock milliseconds since the epoch; the host's high-water mark of
 /// server-observed time until a server stamp says otherwise.

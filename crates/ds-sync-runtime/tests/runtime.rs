@@ -16,8 +16,9 @@ use ds_sync_runtime::fakes::{
 };
 use ds_sync_runtime::store::Fence;
 use ds_sync_runtime::{
-    kernel_sync as sync, open_store, projects_of_fence, run, LocalOutput, LocalRow, SharedStore,
-    SolarPublishOutcome, SolarPublisher, StoreHost, SyncRun, TransferReceipt,
+    kernel_sync as sync, open_store, projects_of_fence, run, LocalOutput, LocalRow, Producer,
+    SharedStore, SolarPublishOutcome, SolarPublisher, StoreHost, SyncHost, SyncRun,
+    TransferReceipt,
 };
 use sha2::Digest;
 
@@ -1077,7 +1078,6 @@ fn two_runs_in_one_process_do_not_share_a_lease_identity() {
 
 #[test]
 fn authority_loss_during_transfer_prevents_publication() {
-    use ds_sync_runtime::{LocalRow, Producer, TransferReceipt};
     use std::sync::atomic::AtomicBool;
     struct RevokingProducer(FakeProducer, Arc<AtomicBool>);
     impl Producer for RevokingProducer {
@@ -1096,6 +1096,9 @@ fn authority_loss_during_transfer_prevents_publication() {
             let receipt = self.0.transfer(row, output, uri)?;
             self.1.store(false, Ordering::SeqCst);
             Ok(receipt)
+        }
+        fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
+            self.0.reclaim(project, row)
         }
     }
     let h = Harness::new();
@@ -1366,9 +1369,23 @@ fn stale_report_inputs_are_refused_after_fresh_admission_before_any_upload() {
     }
     let stale = local_row(b"stale output");
     let result = h.run(vec![stale.clone()], sync::Trigger::Startup);
+    // The verdict is kept, then the bytes go: online overwrites local, and a
+    // lost batch left on disk is the 350-batch, 2.08 GB, seven-day queue.
     assert_eq!(
         outcomes(&result),
-        vec!["open_grant:granted", "conflict:source_base_moved"]
+        vec![
+            "open_grant:granted",
+            "conflict:source_base_moved",
+            "reclaimed:source_base_moved"
+        ]
+    );
+    assert_eq!(result.receipts[2].bytes, Some(stale.size_bytes));
+    assert_eq!(
+        result.reclaimed,
+        ds_sync_runtime::Reclaimed {
+            batches: 1,
+            bytes: stale.size_bytes
+        }
     );
     let world = fakes::lock(&h.world);
     assert_eq!(world.grants_minted, 1);
@@ -1378,18 +1395,255 @@ fn stale_report_inputs_are_refused_after_fresh_admission_before_any_upload() {
         world.declarations.is_empty(),
         "stale inputs must never be relabelled with the new grant"
     );
+    assert_eq!(
+        world.reclaims,
+        vec![(stale.client_publish_id.clone(), stale.size_bytes)]
+    );
     drop(world);
 
-    let recovery = h.run(vec![stale], sync::Trigger::LocalChange);
-    assert!(
-        recovery.receipts.is_empty(),
-        "the exact terminal conflict stays visible without being executed again"
+    // A fresh producer presents the same sealed bytes again (a machine whose
+    // store already holds the verdict while the batch is still on disk): the
+    // observation itself frees them, once, and no grant is reopened.
+    let recovery = h.run(vec![stale.clone()], sync::Trigger::LocalChange);
+    assert_eq!(
+        outcomes(&recovery),
+        vec!["reclaimed:conflict"],
+        "the exact terminal conflict is not executed again; its bytes are freed"
     );
+    assert_eq!(recovery.reclaimed.batches, 1);
     assert_eq!(
         fakes::lock(&h.world).grants_minted,
         1,
         "background recovery must not reopen authority for stale bytes"
     );
+}
+
+/// A host over a producer the caller keeps, so what a pass freed stays
+/// freed for the next one — the way a real batch directory does.
+fn host_over<'a>(
+    h: &'a Harness,
+    gateway: &'a FakeGateway,
+    producer: &'a FakeProducer,
+    reads: &'a FakeReads,
+    online: &'a dyn Fn() -> bool,
+) -> StoreHost<'a> {
+    StoreHost::new(
+        h.store.clone(),
+        fence(),
+        "install-1#200".into(),
+        PROJECT,
+        gateway,
+        producer,
+        reads,
+        online,
+    )
+    .expect("host")
+}
+
+#[test]
+fn a_row_the_store_already_holds_as_lost_is_reclaimed_on_observation_once_and_not_again() {
+    // WHY: the owner's box held 86 rows the store had settled as `conflict`
+    // and their 86 batches on disk, and every daily pass looked at them and
+    // left them. Observing the inventory now frees them — through the
+    // producer, once — and the second look finds nothing to do.
+    let h = Harness::new();
+    {
+        let mut world = fakes::lock(&h.world);
+        world
+            .snapshot_base
+            .insert("export-tx_1".into(), "source-changed".into());
+    }
+    let stale = local_row(b"stale output");
+    // The store learns the verdict; the fake producer drops the batch on the
+    // conflict, as the real one unlinks it.
+    h.run(vec![stale.clone()], sync::Trigger::Startup);
+
+    // The same batch is on disk again under the verdict (a store restored
+    // beside its artifacts, or a re-export of identical bytes).
+    let gateway = FakeGateway {
+        world: h.world.clone(),
+    };
+    let producer = FakeProducer::new(h.world.clone(), vec![stale.clone()]);
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = host_over(&h, &gateway, &producer, &reads, &online);
+    fakes::lock(&h.world).reclaims.clear();
+
+    let first = host.local(PROJECT).expect("observe");
+    assert!(
+        first
+            .iter()
+            .all(|row| row.client_publish_id != stale.client_publish_id),
+        "a lost row never re-enters the plan"
+    );
+    let receipts = host.take_receipts(PROJECT);
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].action, "reclaimed");
+    assert_eq!(receipts[0].outcome, "conflict");
+    assert_eq!(receipts[0].bytes, Some(stale.size_bytes));
+    assert!(
+        producer.inventory(PROJECT).unwrap().is_empty(),
+        "the bytes left the machine"
+    );
+    assert!(
+        host.receipts(10)
+            .unwrap()
+            .iter()
+            .any(|row| row.action == "reclaimed" && row.committed_bytes == Some(stale.size_bytes)),
+        "the reclaim is kept in the store as evidence"
+    );
+
+    host.local(PROJECT).expect("observe again");
+    assert!(
+        host.take_receipts(PROJECT).is_empty(),
+        "a batch already gone is neither a receipt nor an error"
+    );
+    assert_eq!(
+        fakes::lock(&h.world).reclaims,
+        vec![(stale.client_publish_id.clone(), stale.size_bytes)],
+        "the producer was asked once with effect; the second ask found nothing"
+    );
+
+    // Through the loop: the pass reports what its observation freed.
+    let producer = FakeProducer::new(h.world.clone(), vec![stale.clone()]);
+    let host = host_over(&h, &gateway, &producer, &reads, &online);
+    let pass = run(&host, PROJECT, sync::Trigger::Manual).expect("the loop runs");
+    assert_eq!(outcomes(&pass), vec!["reclaimed:conflict"]);
+    assert_eq!(pass.reclaimed.batches, 1);
+    assert_eq!(pass.reclaimed.bytes, stale.size_bytes);
+    assert!(
+        pass.idle()
+            .expect("nothing moved")
+            .contains("1 batch reclaimed"),
+        "a pass that moved nothing still says what it did: {:?}",
+        pass.idle()
+    );
+    let again = run(&host, PROJECT, sync::Trigger::Manual).expect("the loop runs");
+    assert!(again.receipts.is_empty());
+    assert_eq!(again.reclaimed, ds_sync_runtime::Reclaimed::default());
+    assert!(
+        again.idle().expect("nothing moved").contains("0 receipts"),
+        "an idle pass is never a silent one"
+    );
+}
+
+#[test]
+fn a_published_batch_is_this_machines_copy_of_the_head_and_is_never_reclaimed() {
+    // WHY: after `published` the sealed batch's digest IS the head's; it is
+    // the readable local copy, not queued work. Reclaiming it would make
+    // every publish delete what it just published.
+    let h = Harness::new();
+    let gateway = FakeGateway {
+        world: h.world.clone(),
+    };
+    let row = local_row(b"published output");
+    let producer = FakeProducer::new(h.world.clone(), vec![row.clone()]);
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = host_over(&h, &gateway, &producer, &reads, &online);
+    let first = run(&host, PROJECT, sync::Trigger::Startup).expect("the loop runs");
+    assert_eq!(
+        outcomes(&first),
+        vec!["open_grant:granted", "upload:published"]
+    );
+    let second = run(&host, PROJECT, sync::Trigger::Manual).expect("the loop runs");
+    assert_eq!(outcomes(&second), vec!["nothing:in_sync"]);
+    assert_eq!(second.reclaimed, ds_sync_runtime::Reclaimed::default());
+    assert_eq!(
+        producer.inventory(PROJECT).unwrap(),
+        vec![row],
+        "the published batch stays on this machine"
+    );
+    assert!(
+        fakes::lock(&h.world).reclaims.is_empty(),
+        "no reclaim was even asked for"
+    );
+    assert_eq!(second.plan.summary.in_sync, 1);
+    assert!(second.idle().expect("in sync").contains("1 in sync"));
+}
+
+#[test]
+fn a_result_superseded_by_the_head_is_reclaimed_with_its_verdict() {
+    // WHY: the second way a batch loses. The record already carries a later
+    // computation of the same source; the local one is not a conflict and
+    // not an upload, and until now it was also not removed.
+    let h = Harness::new();
+    fakes::lock(&h.world).record = vec![record_head(b"later output", 3, fakes::FINGERPRINT)];
+    let older = local_row(b"older output");
+    let result = h.run(vec![older.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&result),
+        vec![
+            "conflict:superseded_by_head",
+            "reclaimed:superseded_by_head"
+        ]
+    );
+    assert_eq!(result.receipts[1].bytes, Some(older.size_bytes));
+    assert_eq!(result.reclaimed.batches, 1);
+    assert_eq!(fakes::lock(&h.world).commits, 0);
+}
+
+#[test]
+fn a_reclaim_the_producer_cannot_perform_is_reported_and_never_silent() {
+    // WHY: the producer store's lock can be held, a verification can fail.
+    // The verdict still stands and the bytes still wait; the pass says so
+    // and the next one tries again in the open.
+    let h = Harness::new();
+    {
+        let mut world = fakes::lock(&h.world);
+        world
+            .snapshot_base
+            .insert("export-tx_1".into(), "source-changed".into());
+        world.refuse_reclaim = Some("the pending-upload lock is held by pid 7".into());
+    }
+    let stale = local_row(b"stale output");
+    let result = h.run(vec![stale.clone()], sync::Trigger::Startup);
+    // The action's reclaim fails; the closing observation of the inventory
+    // meets the same row under the store's verdict and tries again, in the
+    // open. Two attempts, two receipts, nothing hidden.
+    assert_eq!(
+        outcomes(&result),
+        vec![
+            "open_grant:granted",
+            "conflict:source_base_moved",
+            "reclaim_failed:source_base_moved",
+            "reclaim_failed:conflict"
+        ]
+    );
+    assert!(result.receipts[2]
+        .detail
+        .as_deref()
+        .unwrap()
+        .contains("lock is held by pid 7"));
+    assert_eq!(result.reclaimed, ds_sync_runtime::Reclaimed::default());
+    assert!(
+        host_receipt_actions(&h).contains(&"reclaim_failed".to_string()),
+        "the failure is kept in the store, not only in this pass's answer"
+    );
+}
+
+fn host_receipt_actions(h: &Harness) -> Vec<String> {
+    let gateway = FakeGateway {
+        world: h.world.clone(),
+    };
+    let producer = FakeProducer::new(h.world.clone(), Vec::new());
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = host_over(h, &gateway, &producer, &reads, &online);
+    host.receipts(50)
+        .expect("receipts")
+        .iter()
+        .map(|row| row.action.clone())
+        .collect()
 }
 
 #[test]

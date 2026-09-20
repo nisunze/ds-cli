@@ -63,7 +63,8 @@ pub use reads::VerifiedReads;
 pub use routes::{Route, SyncRoute, COMPUTE_ARTIFACTS, WORK_OPEN, WORK_PUBLISH};
 pub use rows::{
     inventory_digest, now_ms, server_time_ms, HeldGrant, LocalOutput, LocalRow, PublishOutcome,
-    Receipt, RemoteOutput, RemoteRow, SyncRun, TransferReceipt, WorkOpen, MAX_ROWS, SCHEMA,
+    Receipt, Reclaimed, RemoteOutput, RemoteRow, SyncRun, TransferReceipt, WorkOpen, MAX_ROWS,
+    SCHEMA,
 };
 pub use run::{plan, plan_once, run, SyncHost, DEFAULT_TRIGGER};
 

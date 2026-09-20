@@ -70,6 +70,12 @@ pub trait Producer {
     fn activity(&self, _project: &str) -> Result<Vec<ActivityRow>, String> {
         Ok(Vec::new())
     }
+    /// Free the bytes of one of this producer's rows that lost, through the
+    /// producer store's own retirement path. Answers the bytes freed; a row
+    /// whose bytes are already gone is `Ok(0)`. Every producer answers: a
+    /// producer that held no bytes of its own says so with 0, and one that
+    /// could not free them says why, so no reclaim is ever silent.
+    fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String>;
 }
 
 /// Where downloaded heads land on this host.
@@ -139,6 +145,9 @@ pub struct StoreHost<'a> {
     reads: &'a dyn Reads,
     online: &'a dyn Fn() -> bool,
     lease_keeper: Mutex<Option<LeaseKeeper>>,
+    /// Receipts `local` produced on its own — bytes freed for rows the store
+    /// already held as lost — waiting for the run to take them.
+    housekeeping: Mutex<Vec<Receipt>>,
 }
 
 impl<'a> StoreHost<'a> {
@@ -168,6 +177,7 @@ impl<'a> StoreHost<'a> {
             fence,
             worker_id: format!("{worker_id}#{}", uuid::Uuid::new_v4()),
             lease_keeper: Mutex::new(None),
+            housekeeping: Mutex::new(Vec::new()),
             project: project.to_string(),
             gateway,
             producer,
@@ -430,6 +440,38 @@ impl<'a> StoreHost<'a> {
         Ok(receipts)
     }
 
+    /// Free one row the store already holds as lost, and keep the evidence.
+    /// Silent only when there was nothing to do: a batch already gone is
+    /// neither a receipt nor an error, so a second observation costs nothing.
+    fn reclaim_settled(&self, project: &str, row: &LocalRow, verdict: &str) -> Result<(), String> {
+        let name = if row.client_publish_id.is_empty() {
+            "a replica of the head".to_string()
+        } else {
+            format!("batch {}", row.client_publish_id)
+        };
+        let receipt = match self.producer.reclaim(project, row) {
+            Ok(0) => return Ok(()),
+            Ok(bytes) => {
+                let mut receipt = Receipt::new("reclaimed", verdict.to_string())
+                    .about(&row.identity)
+                    .detail(format!(
+                        "{name} freed: the store holds this publication as {verdict}, and online overwrites local"
+                    ));
+                receipt.bytes = Some(bytes);
+                receipt
+            }
+            Err(error) => Receipt::new("reclaim_failed", verdict.to_string())
+                .about(&row.identity)
+                .detail(format!("{name} was not freed: {error}")),
+        };
+        self.record_receipt(project, &receipt)?;
+        self.housekeeping
+            .lock()
+            .map_err(|_| "sync housekeeping receipts unavailable".to_string())?
+            .push(receipt);
+        Ok(())
+    }
+
     fn publication_cancelled(&self, row: &LocalRow) -> Result<bool, String> {
         Ok(self.snapshot()?.artifacts.iter().any(|stored| {
             stored.identity == row.identity
@@ -563,17 +605,37 @@ impl SyncHost for StoreHost<'_> {
             }
         }
         // A conflict/refusal is terminal for the exact sealed publication.
-        // Its producer receipt remains locally readable and its store row
-        // remains visible to the Sync Center, but it must not re-enter a later
-        // plan and open another grant on every recovery wake. A newly produced
-        // digest or replay key does not match and therefore proceeds normally.
+        // Its store row remains visible to the Sync Center, but it must not
+        // re-enter a later plan and open another grant on every recovery
+        // wake. A newly produced digest or replay key does not match and
+        // therefore proceeds normally.
+        //
+        // Its bytes do not stay either. Until 2026-09-20 they were kept
+        // "locally readable", which on one machine was 86 lost batches and
+        // half a gigabyte counted as queued for seven days with nothing able
+        // to move them. Online overwrites local: a row the store has settled
+        // as lost is freed here, once — a batch already gone answers 0 and
+        // writes nothing — and the receipt is kept in the store and handed to
+        // the run, so a store that already holds lost rows is cleaned on the
+        // next pass without re-planning them.
+        let mut lost: Vec<(LocalRow, String)> = Vec::new();
         rows.retain(|row| {
-            !snapshot.artifacts.iter().any(|held| {
+            let verdict = snapshot.artifacts.iter().find(|held| {
                 held.identity == row.identity
                     && (held.replay_key == row.client_publish_id || held.sha256 == row.sha256)
                     && matches!(held.state.as_str(), "conflict" | "refused")
-            })
+            });
+            match verdict {
+                Some(held) => {
+                    lost.push((row.clone(), held.state.as_str().to_string()));
+                    false
+                }
+                None => true,
+            }
         });
+        for (row, verdict) in lost {
+            self.reclaim_settled(project, &row, &verdict)?;
+        }
         for held in snapshot.artifacts.iter() {
             if matches!(held.state.as_str(), "conflict" | "refused") {
                 continue;
@@ -653,7 +715,14 @@ impl SyncHost for StoreHost<'_> {
     fn record_receipt(&self, project: &str, receipt: &Receipt) -> Result<(), String> {
         if !matches!(
             receipt.action,
-            "open_grant" | "upload" | "download" | "conflict" | "refused" | "cancel"
+            "open_grant"
+                | "upload"
+                | "download"
+                | "conflict"
+                | "refused"
+                | "cancel"
+                | "reclaimed"
+                | "reclaim_failed"
         ) {
             return Ok(());
         }
@@ -829,6 +898,17 @@ impl SyncHost for StoreHost<'_> {
         )?;
         Ok(bytes)
     }
+
+    fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
+        self.producer.reclaim(project, row)
+    }
+
+    fn take_receipts(&self, _project: &str) -> Vec<Receipt> {
+        self.housekeeping
+            .lock()
+            .map(|mut receipts| std::mem::take(&mut *receipts))
+            .unwrap_or_default()
+    }
 }
 
 /// A producer for a host that holds no local byte source of its own yet.
@@ -859,6 +939,11 @@ impl Producer for StoreOnlyProducer {
         _session_uri: &str,
     ) -> Result<TransferReceipt, String> {
         Err("this host has no local artifact producer wired; it cannot upload bytes".to_string())
+    }
+
+    /// No bytes of its own on this host: nothing to free, and honestly 0.
+    fn reclaim(&self, _project: &str, _row: &LocalRow) -> Result<u64, String> {
+        Ok(0)
     }
 }
 
