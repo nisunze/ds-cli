@@ -582,7 +582,7 @@ fn iso_from_ms(ms: i64) -> Option<String> {
 
 /// `optionalInstant(value, key)` — a finite number becomes its ISO string, a
 /// string is taken as it stands, anything else is absent.
-fn optional_instant(value: Option<&Value>) -> Option<String> {
+pub(crate) fn optional_instant(value: Option<&Value>) -> Option<String> {
     if let Some(Value::Number(_)) = value {
         return optional_integer(value).and_then(iso_from_ms);
     }
