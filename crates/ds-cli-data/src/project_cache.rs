@@ -42,7 +42,7 @@ use std::path::{Path, PathBuf};
 const DATASET_ARG: Arg = Arg::value(
     "dataset",
     "<dataset-id>",
-    "One canonical dataset id. Omitted: every dataset this project declares plus any it holds, even holding none yet.",
+    "One canonical dataset id, catalogue layer name, or retired alias (answered as its authority). Omitted: every dataset this project declares plus any it holds, even holding none yet.",
 );
 
 const LANE_ARG: Arg = Arg::value(
@@ -92,6 +92,12 @@ refusal!(
     "reference_bundle_unavailable",
     "the catalogue row publishes no verified bundle, or it could not be installed",
     "publish the dataset's bundle, then seed again"
+);
+refusal!(
+    RETIRED,
+    "dataset_retired",
+    "the named layer was retired and has no single authority (powerlines, elementary_school)",
+    "seed the detailed alternatives the message names"
 );
 refusal!(
     CATALOG_UNAVAILABLE,
@@ -256,6 +262,7 @@ const HEADLESS_REFUSALS: [Refusal; 19] = [
 
 const STATUS_REFUSALS: &[Refusal] = &[
     INVALID_SCOPE,
+    RETIRED,
     CATALOG_UNAVAILABLE,
     STORE_FAILED,
     DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL,
@@ -283,6 +290,7 @@ const STATUS_REFUSALS: &[Refusal] = &[
 
 const SEED_REFUSALS: &[Refusal] = &[
     INVALID_SCOPE,
+    RETIRED,
     NO_DESIGN_EXTENT,
     CONFIRM,
     PROVIDER_UNAVAILABLE,
@@ -350,7 +358,7 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Derives coverage from every active transformer's design extent, buffers and fuses it, and acquires ONLY the parts not already held; a re-run over unchanged design acquires nothing. With no --dataset it seeds what this project declares plus what it holds, even where it holds none yet: national catalogue layers are installed once from their published bundles and subset locally; buildings and contours are acquired per project through ds-brain. The one command that queries a geographic source, so it is confirmed. Held data survives a failure, one dataset's failure never abandons the rest, and a partial acquisition is never reported as ready.",
+    purpose: "Derives coverage from every active transformer's design extent, buffers and fuses it, and acquires ONLY what is not already held; a re-run over unchanged design acquires nothing. With no --dataset it seeds what this project declares plus what it holds: catalogue layers install once from their bundles and subset locally; buildings, contours and the cloud datasets (customers, parcels) are acquired per project, cell by cell. Confirmed, because it queries a source. Held data survives a failure, one dataset's failure never abandons the rest, and a partial acquisition is never ready.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -399,6 +407,7 @@ fn refused(error: ds_project_data::Failure) -> Failure {
         Cause::Store(_) => {
             Failure::unavailable(STORE_FAILED.code, message).remedy(STORE_FAILED.remedy)
         }
+        Cause::Retired(_) => Failure::invalid(RETIRED.code, message).remedy(RETIRED.remedy),
     }
 }
 
@@ -449,7 +458,7 @@ fn held_rooms(root: &Path, scope: &Scope) -> Result<BTreeMap<String, Value>, Fai
     Ok(rooms)
 }
 
-fn catalog_entry(dataset: &Dataset, label: &str) -> CatalogEntry {
+fn catalog_entry(dataset: &Dataset, label: &str, unpublished: bool) -> CatalogEntry {
     CatalogEntry {
         id: dataset.id.clone(),
         label: label.to_owned(),
@@ -459,6 +468,27 @@ fn catalog_entry(dataset: &Dataset, label: &str) -> CatalogEntry {
             .and_then(|value| value.as_str().map(str::to_owned))
             .unwrap_or_default(),
         parameters: dataset.parameters.clone(),
+        residency: "bundle".into(),
+        unpublished,
+    }
+}
+
+/// A catalogue row that is never held here: cloud-resident, queried on demand
+/// (`docs/contracts/foundation-datasets.md` R2). Listed so an operator reads
+/// where the dataset lives instead of a silence.
+fn cloud_entry(resource: &ds_project_data::ReferenceResource) -> CatalogEntry {
+    CatalogEntry {
+        id: resource.id.clone(),
+        label: resource.label.clone(),
+        provider: "bigquery".into(),
+        quality: "source".into(),
+        parameters: BTreeMap::from([
+            ("layer".to_owned(), json!(resource.layer)),
+            ("country".to_owned(), json!(resource.country)),
+            ("resource_id".to_owned(), json!(resource.id)),
+        ]),
+        residency: "cloud".into(),
+        unpublished: false,
     }
 }
 
@@ -473,6 +503,46 @@ fn room_entry(id: &str, room: &Value) -> CatalogEntry {
             .as_object()
             .map(|map| map.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default(),
+        residency: "bundle".into(),
+        unpublished: false,
+    }
+}
+
+/// Resolve `--dataset` against the catalogue: an exact id, a layer name, or a
+/// retired alias answers as its authority row's id, with `answered_as` when
+/// the name differed; a retired broad layer refuses with its alternatives.
+fn resolve_explicit(
+    explicit: &str,
+    resources: &[ds_project_data::ReferenceResource],
+) -> Result<(String, Option<Value>), Failure> {
+    if explicit.is_empty() {
+        return Ok((String::new(), None));
+    }
+    match ds_project_data::named(resources, explicit) {
+        Some(found) => Ok((
+            found.resource.id.clone(),
+            found.answered_as.map(|requested| {
+                json!({
+                    "requested": requested,
+                    "authority": {"id": found.resource.id, "layer": found.resource.layer},
+                })
+            }),
+        )),
+        None => {
+            if let Some(alternatives) =
+                ds_command_kernel::printing::context::retired_alternatives(explicit)
+            {
+                return Err(Failure::invalid(
+                    RETIRED.code,
+                    format!(
+                        "{explicit} is retired; its detailed alternatives are {}",
+                        alternatives.join(", ")
+                    ),
+                )
+                .remedy(RETIRED.remedy));
+            }
+            Ok((explicit.to_owned(), None))
+        }
     }
 }
 
@@ -500,19 +570,19 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
     };
     let root = holdings_root()?;
     let rooms = held_rooms(&root, &scope)?;
-    let (declared, catalog) = match catalogue(lane) {
+    let (declared, resources, catalog) = match catalogue(lane) {
         Ok(resources) => {
             let declared = ds_project_data::declared(&resources).map_err(refused)?;
-            (
-                declared,
-                json!({"read": true, "resources": resources.len()}),
-            )
+            let count = resources.len();
+            (declared, resources, json!({"read": true, "resources": count}))
         }
         Err(error) => (
+            Vec::new(),
             Vec::new(),
             json!({"read": false, "code": error.code(), "reason": error.message()}),
         ),
     };
+    let (explicit, answered_as) = resolve_explicit(&explicit, &resources)?;
     let policy = buffer_policy(&[]).map_err(|error| {
         Failure::unavailable(STORE_FAILED.code, error).remedy(STORE_FAILED.remedy)
     })?;
@@ -523,8 +593,12 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
             continue;
         }
         seen.insert(entry.dataset.id.clone());
+        let unpublished = match &entry.source {
+            ds_project_data::DeclaredSource::Catalog(resource) => resource.is_unpublished(),
+            _ => false,
+        };
         rows.push(OverviewRow {
-            dataset: catalog_entry(&entry.dataset, &entry.candidate.label),
+            dataset: catalog_entry(&entry.dataset, &entry.candidate.label, unpublished),
             held: rooms.get(&entry.dataset.id).cloned().unwrap_or(Value::Null),
         });
     }
@@ -532,9 +606,34 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
         if seen.contains(id) || (!explicit.is_empty() && id != &explicit) {
             continue;
         }
+        seen.insert(id.clone());
         rows.push(OverviewRow {
             dataset: room_entry(id, room),
             held: room.clone(),
+        });
+    }
+    // Cloud-resident rows are never held here; they are listed so the answer
+    // says where they live. A named bundle row nobody declared or seeded is
+    // listed once, unpublished or not seeded, rather than refused.
+    for resource in &resources {
+        let listed = resource.is_cloud_resident()
+            || (!explicit.is_empty() && resource.id == explicit);
+        if !listed || seen.contains(&resource.id) || (!explicit.is_empty() && resource.id != explicit) {
+            continue;
+        }
+        seen.insert(resource.id.clone());
+        let dataset = if resource.is_cloud_resident() {
+            cloud_entry(resource)
+        } else {
+            catalog_entry(
+                &ds_project_data::catalog_dataset(resource),
+                &resource.label,
+                resource.is_unpublished(),
+            )
+        };
+        rows.push(OverviewRow {
+            dataset,
+            held: rooms.get(&resource.id).cloned().unwrap_or(Value::Null),
         });
     }
     if !explicit.is_empty() && rows.is_empty() {
@@ -547,6 +646,9 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
     let mut overview = policy::overview(&project, &policy, &rows);
     overview["lane"] = json!(lane);
     overview["catalog"] = catalog;
+    if let Some(answered_as) = answered_as {
+        overview["answered_as"] = answered_as;
+    }
     Ok(overview)
 }
 
@@ -595,6 +697,33 @@ impl Provider for CliProvider<'_> {
         area: &Value,
     ) -> Result<Acquisition, ds_project_data::Failure> {
         use ds_project_data::Failure as Cause;
+        // A cloud-resident dataset seeds through its bounded read: the cell is
+        // the boundary, and only a complete cell extends coverage.
+        if dataset.provider == ds_project_data::declared::CLOUD_READ_PROVIDER {
+            let layer = dataset.parameters.get("layer").and_then(Value::as_str).unwrap_or("").to_owned();
+            let request = match layer.as_str() {
+                "rwanda_upi_parcels" => DataDistributionRequest::ParcelsQuery {
+                    village_code: None, cell_code: None, bbox: None, boundary: Some(area.clone()), limit: None,
+                },
+                "edcl_customers" => DataDistributionRequest::CustomersQuery {
+                    village_code: None, cell_code: None, bbox: None, boundary: Some(area.clone()), limit: None,
+                },
+                other => {
+                    return Err(Cause::AcquisitionFailed(format!(
+                        "{other} is cloud-resident but has no bounded read to seed from"
+                    )));
+                }
+            };
+            let response = ds_cli_auth::data_distribution(self.lane, &request).map_err(|error| {
+                let message = format!("{}: {}", error.code(), error.message());
+                match error.code() {
+                    "data_distribution_unavailable" | "auth_transient" => Cause::ProviderUnavailable(message),
+                    _ => Cause::AcquisitionFailed(message),
+                }
+            })?;
+            let decoded = policy::decode_cloud_read(&response, area, &layer).map_err(Cause::AcquisitionFailed)?;
+            return Ok(decoded_page(decoded));
+        }
         let (kind, contour_parameters) = match dataset.id.as_str() {
             BUILDINGS_DATASET_ID => (PrintContextKind::GoogleOpenBuildings, None),
             CONTOURS_DATASET_ID => (
@@ -667,6 +796,7 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let root = holdings_root()?;
     let resources = catalogue(lane)?;
+    let (explicit, answered_as) = resolve_explicit(&explicit, &resources)?;
     let declared = ds_project_data::declared(&resources).map_err(refused)?;
     let rooms = held_rooms(&root, &scope)?;
     let held: Vec<SeedCandidate> = rooms
@@ -769,14 +899,18 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
         }
     }
-    Ok(json!({
+    let mut receipt = json!({
         "lane": lane,
         "project": project,
         "datasets": rows,
         "seeded": rows.len(),
         "failed": failed,
         "complete": failed == 0,
-    }))
+    });
+    if let Some(answered_as) = answered_as {
+        receipt["answered_as"] = answered_as;
+    }
+    Ok(receipt)
 }
 
 fn coverage_cells(value: &Value) -> usize {
@@ -786,8 +920,15 @@ fn coverage_cells(value: &Value) -> usize {
 fn dataset_lines(dataset: &Value) -> String {
     let held = coverage_cells(&dataset["completed"]);
     let asked = coverage_cells(&dataset["requested"]);
+    if dataset["residency"] == "cloud" && held == 0 {
+        return format!(
+            "  {} · in the cloud ({}) — read on demand, or seeded for this project's extents; not installed nationally",
+            dataset["dataset_id"].as_str().unwrap_or("?"),
+            dataset["label"].as_str().unwrap_or("?"),
+        );
+    }
     let mut line = format!(
-        "  {} · {} feature(s) · index {} · {} covered area(s) of {} requested{}",
+        "  {} · {} feature(s) · index {} · {} covered area(s) of {} requested{}{}",
         dataset["dataset_id"].as_str().unwrap_or("?"),
         dataset["feature_count"].as_u64().unwrap_or(0),
         dataset["index_state"].as_str().unwrap_or("?"),
@@ -797,6 +938,10 @@ fn dataset_lines(dataset: &Value) -> String {
             " · not seeded on this computer"
         } else {
             ""
+        },
+        match dataset["ready_reason"].as_str() {
+            Some(reason) if dataset["seeded"] == Value::Bool(true) => format!(" · not ready: {reason}"),
+            _ => String::new(),
         },
     );
     if let Some(version) = dataset["source_version"].as_str().filter(|v| !v.is_empty()) {
@@ -974,7 +1119,7 @@ mod tests {
             "the first-use case is the one an operator hits first: {}",
             dataset.summary,
         );
-        assert!(SEED_COMMAND.purpose.contains("holds none yet"));
+        assert!(SEED_COMMAND.purpose.contains("plus what it holds"));
         assert!(!SEED_COMMAND.purpose.contains("everything published"));
     }
 

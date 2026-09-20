@@ -1670,9 +1670,12 @@ fn context_failure(error: ds_project_data::Failure) -> HostFailure {
         ),
         Cause::AcquisitionFailed(_) => HostFailure::new(CONTEXT_ACQUISITION.code, message),
         Cause::CatalogInvalid(_) => HostFailure::new(CONTEXT_CATALOG.code, message),
-        Cause::NotHeld(_) | Cause::TooLarge(_) | Cause::Store(_) => {
-            HostFailure::new(CONTEXT_INVALID.code, message)
-        }
+        // A print read never names a retired row (printing's catalogue
+        // selection excludes it), so reaching here is the document's own defect.
+        Cause::NotHeld(_)
+        | Cause::TooLarge(_)
+        | Cause::Store(_)
+        | Cause::Retired(_) => HostFailure::new(CONTEXT_INVALID.code, message),
     }
 }
 

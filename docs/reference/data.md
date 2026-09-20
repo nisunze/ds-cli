@@ -231,6 +231,113 @@ one machine's holding: nothing here publishes anything, and two installations of
 the same project legitimately hold different coverage. A dataset acquired on one
 computer is acquired again on the next.
 
+### `ready`, with its reason
+
+`ready` is one decision, made once in the kernel: the index answers, nothing is
+mid-flight, something completed, and completed covers requested. When it is
+false the row names the first failing condition in `ready_reason` —
+`index_absent`, `index_incomplete`, `acquisition_pending (n)`,
+`nothing_completed`, `acquisition_failed: …`, `coverage_gap (n cells)` — and a
+row without a room says why there is none: `not_seeded`, `bundle_unpublished`
+(the catalogue lists it but publishes no bundle yet), or `cloud_resident`.
+Stale coverage is reported beside the row and never gates `ready`.
+
+### `--dataset` names, aliases and retired layers
+
+`--dataset` takes an exact id, a catalogue layer name (`village_boundaries`),
+or a retired alias (`rwanda_villages`, or its old id). An alias answers as its
+authority row and the receipt says so in `answered_as`. A retired broad layer
+with no single authority (`powerlines`, `elementary_school`, both retired on
+2026-09-18) refuses `dataset_retired` naming the detailed alternatives
+(`hv_line, mv_line, lv_line` / `primary_schools, secondary_schools`).
+
+### Cloud-resident datasets: read bounded, seed per project
+
+Every catalogue row carries `residency`: `bundle` (published once, held per
+project) or `cloud` (BigQuery is the national holding: `rwanda_upi_parcels`,
+`edcl_customers`, and any row whose source exceeds the catalogue's published
+`residency_threshold_bytes`). A cloud row is never installed nationally —
+`desktop data rwanda install --resource <cloud>` refuses `dataset_cloud_only`
+— because moving a national table to the desktop defeats the point of holding
+it in the cloud. It is read two ways:
+
+* **Bounded, at the moment of need** — `upi lookup`, `customers query`,
+  `parcels query` below answer one question inside one bound and keep nothing.
+* **Seeded for this project** — `seed --dataset edcl_customers` (or
+  `rwanda_upi_parcels`) fills the project's coverage cells through the same
+  bounded read, cell by cell, exactly as building footprints are seeded from
+  their bundle: the rows then live in the project room, render offline, and
+  are reused by every later question without another query. A cell too dense
+  to hold whole under the 5,000-row cap refuses `acquisition_failed` naming
+  the cell; narrow the design buffer. `status` reports cloud rows without a
+  room as `cloud_resident`.
+
+Contract: `ds-command-kernel/docs/contracts/foundation-datasets.md`.
+
+## `upi lookup`
+
+One land parcel by its UPI, from the cloud-resident Rwanda parcels authority
+(11.5 million polygons in BigQuery, never bundled). `--upi` takes the compact
+form (`20506012183`) or the printed form (`2/05/06/01/2183`). The answer is a
+receipt — dataset (id, layer, source table, `residency: cloud`, version), the
+bound (the UPI), `rows_cap 1 / rows_returned / rows_total / truncated` — plus
+the parcel's properties (province, district, sector, cell, village, parcel key,
+area, dates) and the polygon's evidence (type, bounds, vertex count). The
+polygon is not printed; `--geometry-out` keeps it as a one-feature GeoJSON
+file that `ds map local register` takes as it stands.
+
+Refusals: `upi_invalid` (not 8–20 digits), `upi_not_found` (the authority holds
+no such parcel), `dataset_ambiguous` (two parcels carry the UPI — a data
+defect, nothing is chosen for you). One lookup scans about 360 MB of the
+clustered table (a fraction of a cent); governance and rate limiting are the
+contract's open question, not built.
+
+## `customers query`
+
+The anonymized EDCL customer connections (one million points in BigQuery,
+never bundled) inside exactly one bound:
+
+* `--village <8-digit code>` / `--cell <6-digit code>` — customers **within the
+  authority polygon** of `village_boundaries` / `cell_boundaries`, joined in
+  the same query. Spatial on purpose: the customers table carries names, and
+  names are not unique across Rwanda.
+* `--bbox west,south,east,north` — a WGS84 rectangle of at most 25 km² (the
+  kernel's envelope bound); larger is `bound_exceeded`.
+* `--boundary <path.geojson>` — one WGS84 Polygon or MultiPolygon (bare, a
+  Feature, or a one-feature FeatureCollection) whose envelope is at most
+  25 km²: a corridor from `ds data vector buffer`, an admin unit from
+  `ds data admin-bounds`, a drawn extent. Rows must intersect the polygon,
+  not merely its envelope.
+* `--transformer <name>` — the transformer's saved design extent, buffered by
+  the project's design buffer through the same coverage plan a seed uses, sent
+  as a rectangle; the receipt's `query.scope` names the transformer, buffer and
+  rectangle.
+
+`--limit` caps rows at up to 5,000 (the cap); `rows_total` is the count within
+the bound and `truncated` says whether the cap cut it. The terminal prints
+counts per cell/village and per customer segmentation; `--geometry-out` keeps
+the points as a GeoJSON FeatureCollection. Customers carry segmentation, meter
+type and category, payment method, connection year and their administrative
+names — no identity.
+
+## `parcels query`
+
+The Rwanda UPI parcels (11.5 million polygons in BigQuery, never bundled)
+that **intersect** exactly one bound — the same five bounds as `customers
+query`, the same cap and receipt. The classic question, *which parcels does
+this line's corridor cross*, is two commands:
+
+```
+ds data vector buffer --layer mv_lines --distance-m 15 --out ./corridor.geojson
+ds data parcels query --boundary ./corridor.geojson --geometry-out ./crossed.geojson
+```
+
+The terminal prints counts per sector/cell and the summed `source_area_m2`;
+`--geometry-out` keeps the polygons (UPI, parcel key, administrative names,
+area, dates) as a FeatureCollection that `ds map local register` takes as it
+stands. Where a project will ask the question more than once, seed the
+transformer's extents instead and read the room.
+
 ## What this is not
 
 Not a query engine. `ds data` writes formats; reading and reducing them is a

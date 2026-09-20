@@ -4857,6 +4857,39 @@ fn map_service_refusal(
                  validator is unavailable, not that the layout is wrong",
             )
         }
+        // The foundation reads (docs/contracts/foundation-datasets.md) refuse
+        // by name at ds-brain; each name is a distinct next step for the
+        // operator, so it crosses as its own code with the route's sentence.
+        Some("upi_not_found") => Failure::invalid("upi_not_found", message).detail(json!({
+            "http_status": refusal.status(),
+            "service_code": "upi_not_found",
+            "service_message": refusal.message(),
+        })),
+        Some("upi_invalid") => Failure::invalid("upi_invalid", message).detail(json!({
+            "http_status": refusal.status(),
+            "service_code": "upi_invalid",
+            "service_message": refusal.message(),
+        })),
+        Some("invalid_admin_scope") => Failure::invalid("invalid_admin_scope", message).detail(json!({
+            "http_status": refusal.status(),
+            "service_code": "invalid_admin_scope",
+            "service_message": refusal.message(),
+        })),
+        Some("bound_exceeded") => Failure::invalid("bound_exceeded", message).detail(json!({
+            "http_status": refusal.status(),
+            "service_code": "bound_exceeded",
+            "service_message": refusal.message(),
+        })),
+        Some("dataset_ambiguous") => Failure::conflict("dataset_ambiguous", message).detail(json!({
+            "http_status": refusal.status(),
+            "service_code": "dataset_ambiguous",
+            "service_message": refusal.message(),
+        })),
+        Some("dataset_cloud_only") => Failure::conflict("dataset_cloud_only", message).detail(json!({
+            "http_status": refusal.status(),
+            "service_code": "dataset_cloud_only",
+            "service_message": refusal.message(),
+        })),
         // Every other refusal keeps the shared kind mapping's class, code,
         // remedy and next step — several of those arms answer with their own
         // static sentence, so the status and the service's words are carried

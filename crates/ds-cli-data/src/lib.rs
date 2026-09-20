@@ -18,6 +18,7 @@ pub mod city_vectors;
 pub mod conversion_matrix;
 pub mod convert;
 pub mod elevation;
+pub mod foundation;
 pub mod inspect;
 pub mod point_cloud;
 pub mod project_cache;
@@ -39,6 +40,9 @@ pub static DOMAIN: Domain = Domain {
         &city_vectors::COMMAND,
         &project_cache::STATUS_COMMAND,
         &project_cache::SEED_COMMAND,
+        &foundation::LOOKUP_COMMAND,
+        &foundation::QUERY_COMMAND,
+        &foundation::PARCELS_COMMAND,
         &vector::MEASURE_COMMAND,
         &vector::BUFFER_COMMAND,
         &vector::SAMPLE_COMMAND,

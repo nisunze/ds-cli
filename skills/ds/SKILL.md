@@ -90,7 +90,8 @@ acceptance. Never create a gap file, call the API, or bypass `ds`.
 
 - Project and data — `ds-project-context` (active project), `ds-assets`
   (documents), `ds-survey-lifecycle` (coverage, capture, forms),
-  `ds-dirty-categories` (category seeds).
+  `ds-dirty-categories` (category seeds), `ds-cloud-datasets` (parcels a
+  corridor crosses, customers in a boundary; seed per project).
 - Maps — `ds-map-composition` (print hierarchy, relief), `ds-map-local-data`
   (temporary layers, viewport), `ds-style-composite` (two-field cartography).
 - Design and delivery — `ds-lv-design-revision`, `ds-pls-cadd-terrain-roundtrip`,

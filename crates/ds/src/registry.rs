@@ -1441,6 +1441,24 @@ static DATA_ENTRIES: &[Entry] = &[
         handler: ds_cli_data::project_cache::run_seed,
         render: ds_cli_data::project_cache::render_seed,
     },
+    // The cloud-resident reads: BigQuery is the national holding of the
+    // parcels and customers datasets. A bounded read answers a question;
+    // `project-cache seed` keeps a project's extents with the project.
+    Entry {
+        command: &ds_cli_data::foundation::LOOKUP_COMMAND,
+        handler: ds_cli_data::foundation::run_lookup,
+        render: ds_cli_data::foundation::render_lookup,
+    },
+    Entry {
+        command: &ds_cli_data::foundation::QUERY_COMMAND,
+        handler: ds_cli_data::foundation::run_query,
+        render: ds_cli_data::foundation::render_query,
+    },
+    Entry {
+        command: &ds_cli_data::foundation::PARCELS_COMMAND,
+        handler: ds_cli_data::foundation::run_parcels,
+        render: ds_cli_data::foundation::render_parcels,
+    },
     // Vector processing, in the order a caller meets it: look at the
     // document first, then act on it. `measure` leads because it is the
     // command that answers "what is in this file" — the question every

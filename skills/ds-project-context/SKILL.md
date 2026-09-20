@@ -61,6 +61,12 @@ cleanable replicas (synced survey photos, verified sync downloads) with
 state root with no credential and no running Server; the browser answers the
 same command over its own stores. Never clean by deleting files or IndexedDB.
 
+Cloud-resident reference data — land parcels by UPI and existing customer
+connections — is never seeded, installed or downloaded (`dataset_cloud_only`);
+read it where it lives with `data.upi.lookup --upi <id>` and
+`data.customers.query --village|--cell|--bbox|--transformer …`, both bounded
+and receipted, against the selected project.
+
 Touched version and attachment boundaries instead require explicit `--project`:
 `design.version.*` and `design.attachment.*` capture that project for native
 authorization and never consult the Web active project or require Desktop.
