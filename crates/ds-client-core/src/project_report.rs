@@ -43,6 +43,12 @@ pub(crate) const ACTION_RESTORE: &str = "restore_transformer";
 /// re-keys every installed catalogue and device credential), so the core
 /// sends it on the same fixed route without widening the profile identity.
 pub(crate) const ACTION_EXPORT_REPORTS: &str = "export_reports_only";
+/// The preview-pinned pole-material catalogue repair (`ds design materials
+/// preview|apply`): the kernel builds the fenced request
+/// (`design_config::material_propagation_request`) and judges the receipt;
+/// this route carries it under `material_propagation`, as the browser's
+/// `propagateConfigMaterials` did. Gated on `network.template.propagate`.
+pub(crate) const ACTION_PROPAGATE_MATERIALS: &str = "propagate_config_materials";
 
 /// Folder level for individual transformer artifacts inside a compounded ZIP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,6 +262,8 @@ pub(crate) enum ProjectReportOperation<'a> {
     ListStatus(&'a TransformerSet),
     Retire(&'a RetirementRequest),
     Restore(&'a RetirementRequest),
+    /// The kernel-built material propagation request, sent whole.
+    MaterialPropagation(&'a Value),
 }
 
 impl ProjectReportOperation<'_> {
@@ -268,6 +276,7 @@ impl ProjectReportOperation<'_> {
             Self::ListStatus(_) => ACTION_LIST_STATUS,
             Self::Retire(_) => ACTION_RETIRE,
             Self::Restore(_) => ACTION_RESTORE,
+            Self::MaterialPropagation(_) => ACTION_PROPAGATE_MATERIALS,
         }
     }
 
@@ -348,6 +357,9 @@ impl ProjectReportOperation<'_> {
             }
             Self::Restore(request) => {
                 body.insert("transformers".into(), names_value(&request.transformers));
+            }
+            Self::MaterialPropagation(request) => {
+                body.insert("material_propagation".into(), (*request).clone());
             }
         }
         // Keep fixed request bytes independent of Cargo feature unification: the

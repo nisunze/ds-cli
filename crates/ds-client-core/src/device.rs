@@ -1549,6 +1549,48 @@ impl DeviceApiAuthorization<'_> {
             reader,
         )
     }
+    /// One governed design annotation action, on a device session.
+    pub fn design_annotations<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        command: &crate::design_annotations::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project)?;
+        self.ensure_active(now)?;
+        crate::design_annotations::run(self.profile, transport, self.authority(), project, command)
+    }
+    /// The project's known-column visibility, on a device session.
+    pub fn known_columns<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        command: &crate::known_columns::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project)?;
+        self.ensure_active(now)?;
+        crate::known_columns::run(self.profile, transport, self.authority(), project, command)
+    }
+    /// One material propagation through the report gate, on a device session.
+    pub fn material_propagation<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        request: &serde_json::Value,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        crate::authorized::validate_project_report(project)?;
+        self.ensure_active(now)?;
+        crate::authorized::material_propagation(
+            self.profile,
+            transport,
+            self.authority(),
+            project,
+            request,
+        )
+    }
     /// One asset's row and its verified bytes, on a device session.
     pub fn read_asset_bytes<T: AuthorizedTransport>(
         &self,
@@ -1558,7 +1600,13 @@ impl DeviceApiAuthorization<'_> {
         now: u64,
     ) -> Result<(serde_json::Value, Vec<u8>), ClientError> {
         self.ensure_active(now)?;
-        crate::project_assets::read_bytes(self.profile, transport, self.authority(), project, asset_id)
+        crate::project_assets::read_bytes(
+            self.profile,
+            transport,
+            self.authority(),
+            project,
+            asset_id,
+        )
     }
     pub fn design_versions<T: AuthorizedTransport>(
         &self,

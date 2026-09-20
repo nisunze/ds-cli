@@ -2609,6 +2609,76 @@ impl ProjectConfigurationCall<'_> {
     }
 }
 
+/// `GET|PATCH /config/{project}/known-columns` — the project's known-column
+/// visibility (`ds design known-columns list|set`).
+///
+/// Hard-coded like `/config/{project}` beside it: the profile supplies the
+/// origin and the credentials, not the route. A `PATCH` carries one
+/// `{layer, field, visible, expected_revision}` patch, byte for byte as the
+/// browser's `setProjectKnownColumn` sends it; a `GET` carries nothing.
+pub struct KnownColumnsCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) project: &'a str,
+    pub(crate) patch: Option<&'a serde_json::Value>,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl KnownColumnsCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        format!(
+            "/config/{}/known-columns",
+            url::form_urlencoded::byte_serialize(self.project.as_bytes()).collect::<String>()
+        )
+    }
+    pub fn method(&self) -> &'static str {
+        if self.patch.is_some() {
+            "PATCH"
+        } else {
+            "GET"
+        }
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        4 * 1024 * 1024
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        60
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(
+            self.patch
+                .map(|patch| serde_json::to_vec(patch).expect("closed known-columns patch"))
+                .unwrap_or_default(),
+        )
+    }
+}
+
 /// The `/report` `save_config` request, byte for byte as the browser sends it
 /// (`ds-web/src/lib/api/design.ts:2119-2125` through `wireProject`, which is
 /// `eds_project_id`). One builder, so a native settings save and a browser
@@ -2772,6 +2842,12 @@ pub trait Transport {
     fn project_configuration(
         &mut self,
         _call: ProjectConfigurationCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+    fn known_columns(
+        &mut self,
+        _call: KnownColumnsCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
@@ -3052,6 +3128,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn known_columns(
+        &mut self,
+        _call: KnownColumnsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn list_projects(
         &mut self,
         call: ProjectListCall<'_>,
@@ -3304,6 +3386,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: ProjectConfigurationCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::project_configuration(self, call)
+    }
+    fn known_columns(
+        &mut self,
+        call: KnownColumnsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::known_columns(self, call)
     }
     fn solar_project(
         &mut self,

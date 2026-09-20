@@ -107,9 +107,7 @@ fn wire_command_valid(command: &Value) -> bool {
     let Some(kind) = object.get("kind").and_then(Value::as_str) else {
         return false;
     };
-    !kind.is_empty()
-        && object.len() == 2
-        && object.get(kind).is_some_and(Value::is_object)
+    !kind.is_empty() && object.len() == 2 && object.get(kind).is_some_and(Value::is_object)
 }
 
 impl Command {
@@ -143,10 +141,14 @@ impl Command {
                     return Err(invalid("a project command needs one bounded command id"));
                 }
                 if *base_revision < 0 {
-                    return Err(invalid("a project command needs a non-negative base revision"));
+                    return Err(invalid(
+                        "a project command needs a non-negative base revision",
+                    ));
                 }
                 if !wire_command_valid(command) {
-                    return Err(invalid("a project command is one `{kind, <kind>: {…}}` object"));
+                    return Err(invalid(
+                        "a project command is one `{kind, <kind>: {…}}` object",
+                    ));
                 }
                 Ok(())
             }
@@ -165,7 +167,9 @@ impl Command {
                     return Err(invalid("a saved draft carries 1 through 200 commands"));
                 }
                 if !commands.iter().all(wire_command_valid) {
-                    return Err(invalid("every command of a draft is one `{kind, <kind>: {…}}` object"));
+                    return Err(invalid(
+                        "every command of a draft is one `{kind, <kind>: {…}}` object",
+                    ));
                 }
                 Ok(())
             }
@@ -353,13 +357,21 @@ mod tests {
         let batch = Command::CommitBatch {
             command_id: "c2".into(),
             base_revision: 0,
-            commands: vec![json!({"kind": "set_progress", "set_progress": {"task_id": "t", "progress": 0.5}})],
+            commands: vec![
+                json!({"kind": "set_progress", "set_progress": {"task_id": "t", "progress": 0.5}}),
+            ],
         };
         assert_eq!(batch.action(), "commit_batch");
-        assert_eq!(batch.payload("p")["commands"].as_array().map(Vec::len), Some(1));
+        assert_eq!(
+            batch.payload("p")["commands"].as_array().map(Vec::len),
+            Some(1)
+        );
         let context = Command::Context { limit: Some(100) }.payload("p");
         assert_eq!(context["limit"], 100);
-        assert!(Command::Context { limit: None }.payload("p").get("limit").is_none());
+        assert!(Command::Context { limit: None }
+            .payload("p")
+            .get("limit")
+            .is_none());
     }
 
     /// The bounds the server enforces are refused here first, by the same
@@ -367,19 +379,37 @@ mod tests {
     #[test]
     fn a_command_outside_its_bounds_is_refused_before_it_is_sent() {
         let kind = |command: Command| command.validate().expect_err("refused").kind();
-        assert_eq!(kind(Command::Context { limit: Some(0) }), ErrorKind::InvalidInput);
-        assert_eq!(kind(Command::Context { limit: Some(101) }), ErrorKind::InvalidInput);
-        assert!(Command::Context { limit: Some(100) }.validate().is_ok());
-        let good = json!({"kind": "accept_assignment", "accept_assignment": {"task_id": "t"}});
-        assert!(Command::Commit { command_id: "pm-1_a.b".into(), base_revision: 0, command: good.clone() }
-            .validate()
-            .is_ok());
         assert_eq!(
-            kind(Command::Commit { command_id: "".into(), base_revision: 0, command: good.clone() }),
+            kind(Command::Context { limit: Some(0) }),
             ErrorKind::InvalidInput
         );
         assert_eq!(
-            kind(Command::Commit { command_id: "c".into(), base_revision: -1, command: good.clone() }),
+            kind(Command::Context { limit: Some(101) }),
+            ErrorKind::InvalidInput
+        );
+        assert!(Command::Context { limit: Some(100) }.validate().is_ok());
+        let good = json!({"kind": "accept_assignment", "accept_assignment": {"task_id": "t"}});
+        assert!(Command::Commit {
+            command_id: "pm-1_a.b".into(),
+            base_revision: 0,
+            command: good.clone()
+        }
+        .validate()
+        .is_ok());
+        assert_eq!(
+            kind(Command::Commit {
+                command_id: "".into(),
+                base_revision: 0,
+                command: good.clone()
+            }),
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            kind(Command::Commit {
+                command_id: "c".into(),
+                base_revision: -1,
+                command: good.clone()
+            }),
             ErrorKind::InvalidInput
         );
         for bad in [
@@ -389,12 +419,20 @@ mod tests {
             json!([]),
         ] {
             assert_eq!(
-                kind(Command::Commit { command_id: "c".into(), base_revision: 0, command: bad }),
+                kind(Command::Commit {
+                    command_id: "c".into(),
+                    base_revision: 0,
+                    command: bad
+                }),
                 ErrorKind::InvalidInput
             );
         }
         assert_eq!(
-            kind(Command::CommitBatch { command_id: "c".into(), base_revision: 0, commands: vec![] }),
+            kind(Command::CommitBatch {
+                command_id: "c".into(),
+                base_revision: 0,
+                commands: vec![]
+            }),
             ErrorKind::InvalidInput
         );
         assert_eq!(
@@ -426,7 +464,10 @@ mod tests {
             Some("insufficient_permissions")
         );
 
-        let missing = refusal(404, br#"{"success":false,"error":{"code":"NOT_FOUND","message":"Project not found"}}"#);
+        let missing = refusal(
+            404,
+            br#"{"success":false,"error":{"code":"NOT_FOUND","message":"Project not found"}}"#,
+        );
         assert_eq!(missing.kind(), ErrorKind::ResourceNotFound);
 
         // A gateway 503 with no DS envelope: the class and the status,

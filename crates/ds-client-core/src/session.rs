@@ -1111,6 +1111,77 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             reader,
         )
     }
+    /// One governed design annotation action — a tag, a group, a grouping,
+    /// an enrichment or a comment thread — for one project.
+    pub fn design_annotations(
+        &mut self,
+        project: &str,
+        command: &crate::design_annotations::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project)?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::design_annotations::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            command,
+        )
+    }
+    /// The project's known-column visibility: read it, or set one field.
+    pub fn known_columns(
+        &mut self,
+        project: &str,
+        command: &crate::known_columns::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project)?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::known_columns::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            command,
+        )
+    }
+    /// One preview-pinned material propagation through the report gate; the
+    /// receipt comes back whole for the kernel to judge.
+    pub fn material_propagation(
+        &mut self,
+        project: &str,
+        request: &serde_json::Value,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        crate::authorized::validate_project_report(project)?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::authorized::material_propagation(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            request,
+        )
+    }
     /// One asset's row and its verified bytes, through the signed read.
     pub fn read_asset_bytes(
         &mut self,

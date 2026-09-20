@@ -108,9 +108,7 @@ fn link_valid(link: &Value) -> bool {
     };
     let text = |key: &str| object.get(key).and_then(Value::as_str);
     match text("kind") {
-        Some("pm_task") | Some("pm_record") => {
-            object.len() == 2 && text("id").is_some_and(token)
-        }
+        Some("pm_task") | Some("pm_record") => object.len() == 2 && text("id").is_some_and(token),
         Some("ds_object") => {
             object.len() == 3
                 && text("object_type").is_some_and(token)
@@ -536,7 +534,10 @@ pub(crate) fn run<T: AuthorizedTransport>(
             Ok(data)
         }
         Command::Get { asset_id } => {
-            let row = data.get("asset").filter(|row| row.is_object()).unwrap_or(&data);
+            let row = data
+                .get("asset")
+                .filter(|row| row.is_object())
+                .unwrap_or(&data);
             own_row(row, project)?;
             if row["asset_id"] != *asset_id {
                 return Err(bad());
@@ -571,7 +572,10 @@ pub(crate) fn run<T: AuthorizedTransport>(
             Ok(data)
         }
         Command::Attach { asset_id, .. } => {
-            let row = data.get("asset").filter(|row| row.is_object()).unwrap_or(&data);
+            let row = data
+                .get("asset")
+                .filter(|row| row.is_object())
+                .unwrap_or(&data);
             own_row(row, project)?;
             if row["asset_id"] != *asset_id {
                 return Err(bad());
@@ -667,7 +671,10 @@ pub(crate) fn read_bytes<T: AuthorizedTransport>(
         return Err(bad());
     }
     let digest = format!("sha256:{:x}", Sha256::digest(&bytes.body));
-    if asset["digest"].as_str().is_some_and(|expected| expected != digest) {
+    if asset["digest"]
+        .as_str()
+        .is_some_and(|expected| expected != digest)
+    {
         return Err(ClientError::new(
             ErrorKind::UnreadableResponse,
             "the fetched bytes do not match the asset's verified digest",
@@ -825,10 +832,16 @@ mod tests {
             served.message(),
             Some("an ingest may not loosen its folder [implicit_loosening]")
         );
-        let hidden = refusal(404, br#"{"success":false,"error":{"code":"NOT_FOUND","message":"Asset not found"}}"#);
+        let hidden = refusal(
+            404,
+            br#"{"success":false,"error":{"code":"NOT_FOUND","message":"Asset not found"}}"#,
+        );
         assert_eq!(hidden.kind(), ErrorKind::ResourceNotFound);
         let stale = refusal(409, br#"{"success":false,"error":{"code":"CONFLICT","message":"expected_version 2, found 3"}}"#);
-        assert_eq!(stale.service_refusal().and_then(|r| r.code()), Some("conflict"));
+        assert_eq!(
+            stale.service_refusal().and_then(|r| r.code()),
+            Some("conflict")
+        );
         let forbidden = refusal(403, br#"{"success":false,"error":{"code":"ASSET_CLASS_FORBIDDEN","message":"restricted needs assets.read.commercial","details":{"sensitivity":"restricted","capability":"assets.read.commercial"}}}"#);
         assert_eq!(forbidden.kind(), ErrorKind::AuthenticationRejected);
         assert_eq!(refusal(501, b"{}").kind(), ErrorKind::RouteUnavailable);

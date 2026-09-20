@@ -572,6 +572,62 @@ pub(crate) fn compounded_report<T: AuthorizedTransport>(
     crate::project_report::decode_compounded(response, PROJECT_REPORT_RESPONSE_LIMIT, ds_project)
 }
 
+/// One preview-pinned pole-material catalogue repair through the `/report`
+/// action gate. `request` is the kernel's fenced request
+/// (`design_config::material_propagation_request`); the receipt is returned
+/// whole for the kernel to judge (`material_propagation_receipt`), so a
+/// headless caller gets the same verdict the browser got.
+pub(crate) fn material_propagation<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    ds_project: &str,
+    request: &serde_json::Value,
+) -> Result<serde_json::Value, ClientError> {
+    if !request.is_object() || request.to_string().len() > 512 * 1024 {
+        return Err(ClientError::new(
+            ErrorKind::InvalidInput,
+            "a material propagation request is one kernel-built object of at most 512 KiB",
+        ));
+    }
+    let response = transport.project_report(ProjectReportCall {
+        profile,
+        ds_project,
+        operation: ProjectReportOperation::MaterialPropagation(request),
+        authority: authority.call(),
+    })?;
+    if response.status != 200 {
+        // The gate answers `{"detail": …}` for a missing capability and the
+        // service its own sentence; both cross as the route's bounded refusal.
+        let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap_or_default();
+        let sentence = body["detail"]
+            .as_str()
+            .or_else(|| body["error"]["message"].as_str())
+            .or_else(|| body["error"].as_str());
+        let code = body["error_code"]
+            .as_str()
+            .or_else(|| body["error"]["code"].as_str())
+            .map(str::to_ascii_lowercase);
+        return Err(ClientError::with_service_refusal(
+            classify_project_report_error(response.status).kind(),
+            "the material propagation route refused the request",
+            crate::ServiceRefusal::new(response.status, code.as_deref(), sentence),
+        ));
+    }
+    if response.body.len() > PROJECT_REPORT_RESPONSE_LIMIT {
+        return Err(ClientError::new(
+            ErrorKind::UnreadableResponse,
+            "the material propagation receipt exceeds its bound",
+        ));
+    }
+    serde_json::from_slice(&response.body).map_err(|_| {
+        ClientError::new(
+            ErrorKind::UnreadableResponse,
+            "the material propagation receipt is not a JSON document",
+        )
+    })
+}
+
 /// Ask ds-brain to compute the individual reports of exact transformers in
 /// the cloud and publish them to the project. The route requires at least
 /// one name — an empty list is not "every active" there but a fall-through
