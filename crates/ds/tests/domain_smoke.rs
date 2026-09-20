@@ -45,41 +45,13 @@ fn discoverable(command: &Value) -> bool {
 }
 
 /// Design commands the collaboration test reaches that are still bound to a
-/// window — tags, groups, comments, consumer grouping, known columns,
-/// materials and sync, 27 in all on 2026-09-19. This list only
-/// SHRINKS: a command that gains its headless owner is deleted here in the
-/// same commit, and a new window-bound collaboration command cannot be added
-/// without widening it deliberately. The flip itself is host-transparency
-/// campaign work, not a smoke-test edit.
-const COLLABORATION_WINDOW_BACKLOG: &[&str] = &[
-    "design.comment.list",
-    "design.comment.post",
-    "design.comment.promote",
-    "design.comment.read",
-    "design.comment.resolve",
-    "design.consumer-grouping.apply",
-    "design.consumer-grouping.archive",
-    "design.consumer-grouping.preview",
-    "design.consumer-grouping.read",
-    "design.group.apply",
-    "design.group.export",
-    "design.group.list",
-    "design.group.preview",
-    "design.group.unassign",
-    "design.known-columns.list",
-    "design.known-columns.set",
-    "design.materials.apply",
-    "design.materials.preview",
-    "design.sync.cancel",
-    "design.sync.resume",
-    "design.sync.status",
-    "design.tag.define",
-    "design.tag.enrich-apply",
-    "design.tag.enrich-preview",
-    "design.tag.list",
-    "design.tag.query",
-    "design.tag.set",
-];
+/// window. 27 on 2026-09-19; 0 on 2026-09-20, when tags, groups, comments,
+/// consumer grouping, known columns and materials took the kernel's design
+/// doors under the native credential and `design.sync.*` was retired with
+/// the window-private queue it controlled. This list only SHRINKS: a new
+/// window-bound collaboration command cannot be added without widening it
+/// deliberately, and the fence in `lens_core_boundary.rs` refuses that.
+const COLLABORATION_WINDOW_BACKLOG: &[&str] = &[];
 
 mod common;
 
@@ -4877,29 +4849,6 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         refusal(&["report", "project", "compounded", "--output", "json"]),
         "confirmation_required"
     );
-
-    // Local-room materialization is background work but the destination is
-    // the paired application's IndexedDB cache, so it deliberately uses the
-    // visible Desktop project rather than the headless project context.
-    let descriptor = ok(&[
-        "capabilities",
-        "design.transformer.download",
-        "--output",
-        "json",
-    ]);
-    let command = &descriptor["command"];
-    assert_eq!(command["authority"], "project");
-    assert_eq!(command["effect"], "local_ui");
-    let inputs = command["inputs"]
-        .as_array()
-        .expect("inputs")
-        .iter()
-        .map(|input| input["name"].as_str().expect("input name"))
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
-        inputs,
-        BTreeSet::from(["desktop-descriptor", "force", "transformer"])
-    );
 }
 
 /// A batch of 86 Gisagara transformers lost 59 sheets because one A0 failed
@@ -6557,51 +6506,18 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
 }
 
 //
-// Design collaboration lives behind ds-brain and is reached through the paired
-// application, so no fixture can stand in for a saved selection or a comment
+// Design collaboration lives behind ds-brain and is reached under the native
+// credential, so no fixture can stand in for a saved selection or a comment
 // thread. What IS assertable on every machine, and where this domain's real
 // bugs would live, is the ordering claim: every handler validates its own
-// inputs and stops at the confirmation gate BEFORE it opens the bridge. If a
-// handler were rewritten to resolve the paired session first, none of these
-// codes would ever be seen by anyone without the desktop installed.
+// inputs and stops at the confirmation gate BEFORE it restores the native
+// user. If a handler were rewritten to restore the credential first, none of
+// these codes would ever be seen by anyone who is signed out.
 
 #[test]
 fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
     assert_eq!(
-        refusal(&[
-            "design", "sync", "status", "--limit", "0", "--output", "json"
-        ]),
-        "invalid_number"
-    );
-    for action in ["cancel", "resume"] {
-        assert_eq!(
-            refusal(&[
-                "design",
-                "sync",
-                action,
-                "--operation",
-                "version:one",
-                "--output",
-                "json"
-            ]),
-            "confirmation_required"
-        );
-        let code = refusal(&[
-            "design",
-            "sync",
-            action,
-            "--operation",
-            "version:one",
-            "--yes",
-            "--output",
-            "json",
-        ]);
-        assert!(PAIRING_CODES.contains(&code.as_str()), "{action}: {code}");
-    }
-    let code = refusal(&["design", "sync", "status", "--output", "json"]);
-    assert!(PAIRING_CODES.contains(&code.as_str()), "status: {code}");
-    assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "tag",
             "define",
@@ -6643,7 +6559,7 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
         "a selection over the member bound must be refused locally, not by a rejected write"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "comment",
             "post",
@@ -6657,7 +6573,7 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
         "posting with neither a thread nor a complete anchor must name the choice, not a key"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "attachment",
             "list",
@@ -6673,22 +6589,21 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
     );
     // Group identifiers are governed project metadata, not a hardcoded City /
     // Phase vocabulary. A syntactically valid unknown id therefore reaches
-    // the paired application, which resolves the live definitions.
-    assert!(
-        PAIRING_CODES.contains(
-            &refusal(&[
-                "design",
-                "group",
-                "preview",
-                "--group",
-                "region",
-                "--transformers",
-                "kigali_a",
-                "--output",
-                "json",
-            ])
-            .as_str()
-        ),
+    // the native credential, on its way to ds-brain which resolves the live
+    // definitions.
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "group",
+            "preview",
+            "--group",
+            "region",
+            "--transformers",
+            "kigali_a",
+            "--output",
+            "json",
+        ]),
+        "headless_signed_out",
         "a dynamic group id must reach the paired project"
     );
     // The batch bound is one transaction's write budget; the projection's is a
@@ -6699,7 +6614,7 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
         .collect::<Vec<_>>()
         .join(",");
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "group",
             "preview",
@@ -6718,7 +6633,7 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
         .collect::<Vec<_>>()
         .join(",");
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "group",
             "export",
@@ -6738,7 +6653,7 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
     // grouping rule is what this contract removes, so an invented purpose is
     // refused here rather than reaching a server that would refuse it anyway.
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "consumer-grouping",
             "read",
@@ -6752,10 +6667,10 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
         "invalid_choice",
         "a purpose outside the closed set must be refused by the parser"
     );
-    // Both real purposes get past local validation and reach the isolated
-    // descriptor boundary. The operator's actual pairing is irrelevant.
+    // Both real purposes get past local validation and reach the native
+    // credential.
     for purpose in ["solar_report", "report_archive"] {
-        let code = refusal(&[
+        let code = native_refusal(&[
             "design",
             "consumer-grouping",
             "read",
@@ -6764,9 +6679,9 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
             "--output",
             "json",
         ]);
-        assert!(
-            code.starts_with("desktop_"),
-            "`{purpose}` is a real purpose and must reach the paired project, got {code}"
+        assert_eq!(
+            code, "headless_signed_out",
+            "`{purpose}` is a real purpose and must reach the native credential, got {code}"
         );
     }
 
@@ -6776,7 +6691,7 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
     // invocation reached the bridge and came back with a server string. It is
     // now the parser's answer, before any round trip.
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "consumer-grouping",
             "preview",
@@ -6789,7 +6704,7 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
         "a grouping with no definitions must be refused locally, not by the server"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "consumer-grouping",
             "preview",
@@ -6808,7 +6723,7 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
         .collect::<Vec<_>>()
         .join(",");
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "consumer-grouping",
             "preview",
@@ -6848,7 +6763,7 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
         .collect::<Vec<_>>()
         .join(",");
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "tag",
             "enrich-preview",
@@ -6860,9 +6775,10 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
         "too_many_values",
         "an over-large enrichment must be refused locally, not by a rejected write"
     );
-    // A set within the bound reaches the paired project, which owns the governed
-    // location evidence. `ds` resolves no administrative anything.
-    let code = refusal(&[
+    // A set within the bound reaches the native credential on its way to
+    // ds-brain, which owns the governed location evidence. `ds` resolves no
+    // administrative anything.
+    let code = native_refusal(&[
         "design",
         "tag",
         "enrich-preview",
@@ -6871,9 +6787,9 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
         "--output",
         "json",
     ]);
-    assert!(
-        code.starts_with("desktop_"),
-        "the enrichment plan is the paired project's answer, never the CLI's, got {code}"
+    assert_eq!(
+        code, "headless_signed_out",
+        "the enrichment plan is ds-brain's answer, never the CLI's, got {code}"
     );
 }
 
@@ -6893,14 +6809,14 @@ fn a_projection_covers_a_whole_project_where_a_batch_covers_one_transaction() {
         projection >= 2_000,
         "the projection bound is {projection}; it must cover at least 2000 explicit transformers"
     );
-    // 202 and the bound itself both reach the bridge rather than a local
-    // refusal, so the whole-project export is genuinely available.
+    // 202 and the bound itself both reach the native credential rather than
+    // a local refusal, so the whole-project export is genuinely available.
     for count in [202, ds_cli_design::group::MAX_PROJECTION_TRANSFORMERS] {
         let names = (0..count)
             .map(|index| format!("t{index}"))
             .collect::<Vec<_>>()
             .join(",");
-        let code = refusal(&[
+        let code = native_refusal(&[
             "design",
             "group",
             "export",
@@ -6909,9 +6825,9 @@ fn a_projection_covers_a_whole_project_where_a_batch_covers_one_transaction() {
             "--output",
             "json",
         ]);
-        assert!(
-            PAIRING_CODES.contains(&code.as_str()),
-            "a {count}-transformer export ended in `{code}`, not a pairing state"
+        assert_eq!(
+            code, "headless_signed_out",
+            "a {count}-transformer export ended in `{code}`, not at the native credential"
         );
     }
 
@@ -6934,7 +6850,7 @@ fn a_projection_covers_a_whole_project_where_a_batch_covers_one_transaction() {
         .map(|index| format!("t{index}"))
         .collect::<Vec<_>>()
         .join(",");
-    let run = ds(&[
+    let run = native_ds(&[
         "design",
         "group",
         "list",
@@ -6954,12 +6870,12 @@ fn a_projection_covers_a_whole_project_where_a_batch_covers_one_transaction() {
     );
 
     // And the bound is the server's, not one short of it: a full listing gets
-    // past local validation to the bridge.
+    // past local validation to the native credential.
     let full_listing = (0..listing)
         .map(|index| format!("t{index}"))
         .collect::<Vec<_>>()
         .join(",");
-    let code = refusal(&[
+    let code = native_refusal(&[
         "design",
         "group",
         "list",
@@ -6968,9 +6884,9 @@ fn a_projection_covers_a_whole_project_where_a_batch_covers_one_transaction() {
         "--output",
         "json",
     ]);
-    assert!(
-        PAIRING_CODES.contains(&code.as_str()),
-        "a {listing}-transformer listing ended in `{code}`, not a pairing state"
+    assert_eq!(
+        code, "headless_signed_out",
+        "a {listing}-transformer listing ended in `{code}`, not at the native credential"
     );
 }
 
@@ -7403,14 +7319,14 @@ fn saved_selections_are_native_and_ds_brain_still_decides_membership() {
 
 #[test]
 fn every_design_command_is_discoverable_without_the_desktop_installed() {
-    // Bridge collaboration remains available before pairing. The native
-    // feature read is separately discoverable and honestly unavailable when
-    // this test build has no digest-pinned release catalog.
+    // Every native command is discoverable and honestly unavailable when this
+    // test build has no digest-pinned release catalog; the kernel-local ones
+    // are available. Nothing in this domain requires a window.
     let index = ok(&["capabilities", "design", "--output", "json"]);
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        101, // + `design migrate plan|apply` (2026-09-19).
+        97, // 101 − `design sync status|cancel|resume`, `design transformer download` (2026-09-20).
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -7488,11 +7404,36 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.selection.save"
                     | "design.selection.archive"
                     | "design.selection.assign"
+                    // Tags, groups, consumer grouping, comments, known
+                    // columns and materials are native from 2026-09-20 (the
+                    // kernel's design doors under the native credential).
+                    | "design.tag.list"
+                    | "design.tag.query"
+                    | "design.tag.define"
+                    | "design.tag.set"
+                    | "design.tag.enrich-preview"
+                    | "design.tag.enrich-apply"
+                    | "design.group.list"
+                    | "design.group.preview"
+                    | "design.group.apply"
+                    | "design.group.unassign"
+                    | "design.group.export"
+                    | "design.consumer-grouping.preview"
+                    | "design.consumer-grouping.apply"
+                    | "design.consumer-grouping.read"
+                    | "design.consumer-grouping.archive"
+                    | "design.comment.list"
+                    | "design.comment.read"
+                    | "design.comment.post"
+                    | "design.comment.resolve"
+                    | "design.comment.promote"
+                    | "design.known-columns.list"
+                    | "design.known-columns.set"
+                    | "design.materials.preview"
+                    | "design.materials.apply"
             ) {
                 "unavailable"
-            } else if COLLABORATION_WINDOW_BACKLOG.contains(&id)
-                || id == "design.transformer.download"
-            {
+            } else if COLLABORATION_WINDOW_BACKLOG.contains(&id) {
                 // Window-bound, and since 2026-09-19 honest about it.
                 "requires_window"
             } else {
@@ -7501,48 +7442,55 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
             "`{id}` has the wrong packaging or Desktop availability"
         );
     }
-    // A well-formed BRIDGE read gets as far as pairing and no further. Saved
-    // selections are no longer that read — they are native — so the probe uses
-    // a collaboration read that still speaks to the paired application.
-    let descriptor = temp_root("design-discovery-unreachable")
-        .join("session.json")
-        .display()
-        .to_string();
-    let code = refusal(&[
-        "design",
-        "tag",
-        "list",
-        "--kind",
-        "lv_transformer",
-        "--object",
-        "T-smoke",
-        "--desktop-descriptor",
-        &descriptor,
-        "--output",
-        "json",
-    ]);
-    assert!(
-        PAIRING_CODES.contains(&code.as_str()),
-        "a well-formed design read ended in `{code}`, not a pairing state"
+    // A well-formed collaboration read gets as far as the native credential
+    // and no further — never a window.
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "tag",
+            "list",
+            "--kind",
+            "lv_transformer",
+            "--object",
+            "T-smoke",
+            "--output",
+            "json",
+        ]),
+        "headless_signed_out",
+        "a well-formed design read must end at the native credential"
     );
 }
 
+/// `design.transformer.download` and `design.sync.*` controlled a window's
+/// private browser stores (its room cache, its reconciliation queue). Retired
+/// on 2026-09-20 rather than given a second store: the native reporter reads
+/// rooms from the service, and the kernel sync store is the only queue.
 #[test]
-fn capability_search_finds_local_room_materialization_by_operator_vocabulary() {
-    for query in [
-        "local transformer room",
-        "bulk download",
-        "background report",
+fn window_cache_controls_are_retired_not_relocated() {
+    for id in [
+        "design.transformer.download",
+        "design.sync.status",
+        "design.sync.cancel",
+        "design.sync.resume",
     ] {
-        let data = ok(&["capabilities", "--search", query, "--output", "json"]);
-        let results = data["results"].as_array().expect("search results");
+        let data = ok(&["capabilities", "design", "--output", "json"]);
         assert!(
-            results
+            !data["commands"]
+                .as_array()
+                .expect("commands")
                 .iter()
-                .any(|row| row["id"] == "design.transformer.download"),
-            "`{query}` did not find design.transformer.download: {results:?}"
+                .any(|row| row["id"] == id),
+            "`{id}` is retired and must not be registered"
         );
     }
+    assert_eq!(
+        refusal(&["design", "sync", "status", "--output", "json"]),
+        "unknown_command"
+    );
+    assert_eq!(
+        refusal(&["design", "transformer", "download", "--output", "json"]),
+        "unknown_command"
+    );
 }
 
 #[test]
@@ -7585,13 +7533,8 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
             "`{id}` declares the wrong blast radius"
         );
         assert_eq!(
-            descriptor["command"]["authority"],
-            if id.starts_with("design.attachment.") {
-                "headless_project"
-            } else {
-                "project"
-            },
-            "`{id}` must require a verified principal bound to a project"
+            descriptor["command"]["authority"], "headless_project",
+            "`{id}` must require the restored native user's selected project"
         );
     }
     let descriptor = ok(&["capabilities", "design.features.select", "--output", "json"]);
@@ -7620,7 +7563,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     // Saved Transformer Status selections, versioned attachments, tags and
     // comment threads are project records, not map-owned state. All commands
     // must therefore be discoverable without an open map; reads reach only
-    // the paired application and writes stop at the global confirmation gate.
+    // the native credential and writes stop at the global confirmation gate.
     let index = ok(&["capabilities", "design", "--output", "json"]);
     let commands = index["commands"].as_array().expect("commands");
     let actual: BTreeSet<&str> = commands
@@ -7687,9 +7630,6 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         })
         .collect();
     let expected: BTreeSet<&str> = [
-        "design.sync.status",
-        "design.sync.cancel",
-        "design.sync.resume",
         "design.features.select",
         "design.tag.project-list",
         "design.group.project-preview",
@@ -7735,8 +7675,6 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
 
     let writes: BTreeSet<&str> = [
         "design.materials.apply",
-        "design.sync.cancel",
-        "design.sync.resume",
         "design.attachment.publish",
         "design.attachment.retire",
         "design.tag.define",
@@ -7778,6 +7716,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id == "design.dashboard"
             || id == "design.collisions"
             || id == "design.pinned.preview"
+            || id == "design.process.settings"
+            || id == "design.autoprocess.plan"
+            || id == "design.force-gate.check"
             || id.starts_with("design.bulk.")
             || id.starts_with("design.download.")
             || id.starts_with("design.version.")
@@ -7819,10 +7760,16 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 "`{id}` left the window backlog; delete it from COLLABORATION_WINDOW_BACKLOG"
             );
         } else {
+            // Native availability: honestly unavailable in a test build with
+            // no digest-pinned release catalog, never `requires_window`.
             assert_eq!(
-                command["availability"], "available",
+                command["availability"], "unavailable",
                 "`{id}` must not require an open map; a new window-bound collaboration \
                  command widens COLLABORATION_WINDOW_BACKLOG deliberately or not at all"
+            );
+            assert_eq!(
+                command["authority"], "headless_project",
+                "`{id}` must run under the restored native user's selected project"
             );
         }
         assert_eq!(
@@ -7835,12 +7782,6 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         );
         if writes.contains(id) {
             let mut args = match id {
-                "design.sync.cancel" => {
-                    vec!["design", "sync", "cancel", "--operation", "version:smoke"]
-                }
-                "design.sync.resume" => {
-                    vec!["design", "sync", "resume", "--operation", "version:smoke"]
-                }
                 "design.attachment.publish" => vec![
                     "design",
                     "attachment",
@@ -7983,20 +7924,16 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             };
             args.extend(["--output", "json"]);
             assert_eq!(
-                refusal(&args),
+                native_refusal(&args),
                 "confirmation_required",
                 "`{id}` reached past confirmation"
             );
         }
     }
 
-    let descriptor = temp_root("design-collaboration-unreachable")
-        .join("session.json")
-        .display()
-        .to_string();
-
-    // Well-formed reads reach the paired bridge rather than silently asking
-    // the map for local state or rejecting a valid shared-record request.
+    // Well-formed reads reach the native credential rather than a window,
+    // and a caller who learned the window path from an older release is told
+    // it is retired, by name — before any credential is consulted.
     for args in [
         vec![
             "design",
@@ -8018,19 +7955,35 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             "T-smoke",
         ],
         vec!["design", "comment", "read", "--thread", "thread-smoke"],
+        vec!["design", "known-columns", "list"],
+        vec!["design", "group", "list", "--transformers", "T-smoke"],
+        vec!["design", "consumer-grouping", "read"],
     ] {
-        let mut argv = args;
-        argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
-        let code = refusal(&argv);
-        assert!(
-            PAIRING_CODES.contains(&code.as_str()),
-            "`ds {}` stopped at `{code}`, not the paired application",
-            argv.join(" ")
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        assert_eq!(
+            native_refusal(&argv),
+            "headless_signed_out",
+            "`ds {}` must end at the native credential, not before and not at a window",
+            args.join(" ")
+        );
+        let mut argv = args.clone();
+        argv.extend([
+            "--desktop-descriptor",
+            "/nowhere/session.json",
+            "--output",
+            "json",
+        ]);
+        assert_eq!(
+            native_refusal(&argv),
+            "requires_window_retired",
+            "`ds {}` must refuse the retired window path by name",
+            args.join(" ")
         );
     }
 
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "tag",
             "define",
@@ -8050,7 +8003,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "a numeric definition must not disguise strings as a vocabulary",
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "tag",
             "set",
@@ -8072,7 +8025,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "an assignment must carry exactly one value representation",
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "tag",
             "query",
@@ -8090,12 +8043,12 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     }
     too_many_filters.extend(["--output", "json"]);
     assert_eq!(
-        refusal(&too_many_filters),
+        native_refusal(&too_many_filters),
         "too_many_tag_filters",
         "a query must enforce the backend's predicate-read bound before pairing",
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "tag",
             "query",

@@ -205,8 +205,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             .and_then(|kind| serde_json::from_value(json!(kind)).ok()),
     };
     let omitted = ds_command_kernel::assets::tree::not_loaded_sources(&request);
-    let mut tree = ds_command_kernel::assets::tree::build_value(&request)
-        .map_err(crate::kernel_refused)?;
+    let mut tree =
+        ds_command_kernel::assets::tree::build_value(&request).map_err(crate::kernel_refused)?;
     tree["sources_omitted"] = json!(omitted);
     tree["sources_unavailable"] = json!([]);
     tree["offline"] = json!(false);

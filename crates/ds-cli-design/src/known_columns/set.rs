@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DESCRIPTOR_ARG, KNOWN_COLUMNS_SET};
+use crate::LANE_ARG;
 
 const LAYER_ARG: Arg = Arg {
     name: "layer",
@@ -47,9 +47,9 @@ pub static COMMAND: Command = Command {
     purpose: "Atomically edits one field in the project's authoritative know_columns sheet. This is the same property-level operation used by Properties and Attribute Table configuration: tag fields are not a separate hardcoded domain. Hiding a field never deletes it from the internal model. The paired application reads the current revision first, so a concurrent edit is refused instead of overwritten.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LAYER_ARG, FIELD_ARG, VISIBILITY_ARG, DESCRIPTOR_ARG],
+    args: &[LAYER_ARG, FIELD_ARG, VISIBILITY_ARG, LANE_ARG],
     output: "The project, authority=know_columns, layer, field, stored visibility, changed flag and committed revision.",
     examples: &[
         Example {
@@ -63,41 +63,30 @@ pub static COMMAND: Command = Command {
             runnable: false,
         },
     ],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
+        ds_cli_auth::DESIGN_ROUTE_UNAVAILABLE_REFUSAL,
         crate::NOT_PERMITTED,
         crate::READ_ONLY,
         crate::CONFLICT,
         crate::CONFIRMATION_REQUIRED,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let visibility = inputs.require("visibility")?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &KNOWN_COLUMNS_SET,
+    crate::headless::perform(
+        "design.known-columns.set",
         json!({
             "layer": inputs.require("layer")?,
             "field": inputs.require("field")?,
             "visible": visibility == "published",
         }),
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

@@ -1,4 +1,4 @@
-use crate::{CONSUMER_GROUPING_PREVIEW, DESCRIPTOR_ARG};
+use crate::LANE_ARG;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
@@ -11,27 +11,21 @@ pub static COMMAND: Command = Command {
     purpose: "Builds the digest-bound solar_report grouping plan from explicit definition ids and optional source bindings.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         crate::grouping::PURPOSE_ARG,
         crate::group::PROJECTION_TRANSFORMERS_ARG,
         crate::grouping::DEFINITION_IDS_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "The server plan including tuple groups, source suggestions and plan_digest.",
     examples: &[],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::REFUSED,
-        crate::INVALID_VALUE_LIST,
-        crate::TOO_MANY,
-    ],
+    refusals: &crate::headless_refusals!(crate::INVALID_VALUE_LIST, crate::TOO_MANY,),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // Every caller-controlled list is bounded before pairing: an empty or
@@ -43,14 +37,11 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         "definition-ids": crate::grouping::definition_ids(inputs)?,
         "bindings": inputs.value("bindings").unwrap_or("[]"),
     });
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &CONSUMER_GROUPING_PREVIEW,
+    crate::headless::perform(
+        "design.consumer-grouping.preview",
         arguments,
-        crate::READ_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 pub fn render(data: &Value) -> String {
     format!(

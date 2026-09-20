@@ -1531,8 +1531,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "print style creation must stay separate from map navigation and ordinary style edits"
     );
     assert!(
-        published["project-operations"].contains("design_transformer_download"),
-        "the project-operations profile must expose background local-room materialization"
+        published["project-operations"].contains("design_transformer_inventory")
+            && !published["project-operations"].contains("design_transformer_download"),
+        "the project-operations profile exposes the headless transformer lifecycle; \
+         window-cache warming was retired on 2026-09-20"
     );
 
     let (compatibility, _) = mcp(

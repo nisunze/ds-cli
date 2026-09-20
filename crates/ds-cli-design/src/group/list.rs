@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 use crate::group::LISTING_TRANSFORMERS_ARG;
 
 pub static COMMAND: Command = Command {
@@ -23,9 +23,9 @@ display normalization. A group the project has not defined yet is a real \
 state, not an error — it is defined in the application's Tags surface.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LISTING_TRANSFORMERS_ARG, DESCRIPTOR_ARG],
+    args: &[LISTING_TRANSFORMERS_ARG, LANE_ARG],
     output: "\
 The project and one row per group: `group`, `defined`, `cardinality`, the \
 `allowed` vocabulary, optional model-evidence state, and each named \
@@ -35,24 +35,15 @@ transformer's current `value` and `modelState`.",
         note: "Read .data.groups[].allowed before `ds design group preview`.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::INVALID_VALUE_LIST,
         crate::group::LISTING_TOO_MANY,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -61,14 +52,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "transformers".into(),
         json!(crate::group::listing_transformers(inputs)?),
     );
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::GROUP_LIST,
+    crate::headless::perform(
+        "design.group.list",
         Value::Object(arguments),
-        crate::READ_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

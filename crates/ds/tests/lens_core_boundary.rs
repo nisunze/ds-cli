@@ -89,8 +89,11 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     // boundary READS left on 2026-09-18 — they are gateway reads with no
     // project and nothing to render.
     ("ds-cli-data", Layer::CorePending, 4),
-    // Immutable attachments on design objects are paired-only (audit item 5).
-    ("ds-cli-design", Layer::CorePending, 1),
+    // `ds-cli-design` left on 2026-09-20: its 24 collaboration commands run
+    // on the kernel's design doors under the native credential, and the four
+    // that only ever controlled a window's private browser stores
+    // (`design.sync.*`, `design.transformer.download`) were retired rather
+    // than given a second store to control (contract 01, decision 14).
     // Model preparation reads the application's active project cache.
     ("ds-cli-dsgrid", Layer::CorePending, 1),
     // Solar runs read the workspace the application holds open.
@@ -258,10 +261,7 @@ fn the_target_layers_are_exactly_the_window_and_the_binary() {
 /// measured the same way, by reading the source rather than the registry,
 /// because a crate is a directory and the registry does not know which one a
 /// command came from. What is counted is a *declaration site*: a `Command`
-/// value carrying `requires: Requires::Window`. `ds-cli-design` builds three
-/// of its paired commands from one shared constructor, so its twenty-eight
-/// registered window commands are twenty-six declarations here. Lowering a
-/// number is the entire point of the host-transparency backlog; raising one
+/// value carrying `requires: Requires::Window`. Lowering a number is the entire point of the host-transparency backlog; raising one
 /// is a new desktop-bound command, which is the thing this suite exists to
 /// refuse.
 ///
@@ -283,7 +283,9 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // user; it was the last governance write bound to a window.
     ("ds-cli-auth", 0),
     ("ds-cli-data", 4),
-    ("ds-cli-design", 26),
+    // `ds-cli-design` left this ledger on 2026-09-20: 26 → 0, twenty-four
+    // collaboration commands headless and four window-cache controls retired
+    // (contract 01 of the dsgrid-authority program).
     ("ds-cli-dsgrid", 1),
     ("ds-cli-solar", 16),
     // `ds-cli-pm` left this ledger on 2026-09-20: 9 → 8 on 2026-09-19 when
@@ -482,17 +484,17 @@ fn the_window_ledger_and_the_bridge_inventory_name_the_same_crates() {
 /// them.
 ///
 /// [`WINDOW_COMMANDS`] above counts declaration sites, which is all a file
-/// scan can see, and a shared constructor is the gap in that: `ds-cli-design`
-/// builds three of its paired commands from one `command(...)` function, so
-/// twenty-eight registered commands are twenty-six lines there. Registering a
-/// fourth would add a window command an operator cannot run on a server while
-/// every line count stayed still. So the backlog is pinned a second time, at
-/// the other end — by the number `ds capabilities --requires window` gives the
-/// caller who asks.
+/// scan can see, and a shared constructor is the gap in that: a crate that
+/// builds several paired commands from one `command(...)` function (as
+/// `ds-cli-design` did until 2026-09-20) registers more window commands than
+/// it declares lines. Registering one more would add a window command an
+/// operator cannot run on a server while every line count stayed still. So
+/// the backlog is pinned a second time, at the other end — by the number
+/// `ds capabilities --requires window` gives the caller who asks.
 ///
 /// Two ledgers because a crate is not a domain and a line is not a command;
 /// the same rule governs both, and the same rule governs the totals:
-/// 113 declaration sites, 114 registered commands, and both may only fall.
+/// 86 declaration sites, 86 registered commands, and both may only fall.
 ///
 /// Measured 2026-09-18 against the run tip.
 const WINDOW_BACKLOG: &[(&str, u64)] = &[
@@ -502,7 +504,10 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // 1 → 0: `auth.link.approve` is the native user's write now.
     ("auth", 0),
     ("data", 4),
-    ("design", 28),
+    // 28 → 0 on 2026-09-20: tag/group/consumer-grouping/comment/
+    // known-columns/materials run headless on the kernel's design doors;
+    // `design.sync.*` and `design.transformer.download` were retired.
+    ("design", 0),
     ("desktop", 26),
     ("dsgrid", 1),
     ("map", 39),
@@ -515,8 +520,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 
 /// What the filter answers for the whole surface. Pinned beside the rows so a
 /// domain cannot be quietly dropped from the ledger to hide its commands.
-/// 131 → 123 on 2026-09-20 (`pm`), 123 → 114 the same day (`assets`).
-const WINDOW_BACKLOG_TOTAL: u64 = 114;
+/// 131 → 123 on 2026-09-20 (`pm`), 123 → 114 the same day (`assets`),
+/// 114 → 86 the same day (`design`).
+const WINDOW_BACKLOG_TOTAL: u64 = 86;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {

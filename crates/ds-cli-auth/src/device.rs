@@ -790,6 +790,27 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, project_assets, project, command, reader)
     }
+    pub fn design_annotations(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::design_annotations::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, design_annotations, project, command)
+    }
+    pub fn known_columns(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::known_columns::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, known_columns, project, command)
+    }
+    pub fn material_propagation(
+        &mut self,
+        project: &str,
+        request: &Value,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, material_propagation, project, request)
+    }
     pub fn read_asset_bytes(
         &mut self,
         project: &str,

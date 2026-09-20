@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DESCRIPTOR_ARG, KIND_ARG, OBJECT_ARG, VERSION_ARG};
+use crate::{KIND_ARG, LANE_ARG, OBJECT_ARG, VERSION_ARG};
 
 const RESOLVED_ARG: Arg = Arg {
     name: "resolved",
@@ -32,38 +32,20 @@ version. `ds design comment read` opens one; every write in this family needs \
 an id from here.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
-        KIND_ARG,
-        OBJECT_ARG,
-        VERSION_ARG,
-        RESOLVED_ARG,
-        DESCRIPTOR_ARG,
-    ],
+    args: &[KIND_ARG, OBJECT_ARG, VERSION_ARG, RESOLVED_ARG, LANE_ARG],
     output: "The project, the anchored object, the total, and rows of `thread`, `title`, `state`, `comments`, `version`, `anchor` and `task`.",
     examples: &[Example {
         command: "ds design comment list --kind mv_model --object mv_line_a --resolved --output json",
         note: "Read .data.threads[].thread to open one with `ds design comment read`.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::INVALID_ANCHOR,
-    ],
+    refusals: &crate::headless_refusals!(crate::NOT_PERMITTED, crate::INVALID_ANCHOR,),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -71,14 +53,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if inputs.switch("resolved") {
         arguments.insert("resolved".into(), json!(true));
     }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::COMMENT_LIST,
+    crate::headless::perform(
+        "design.comment.list",
         Value::Object(arguments),
-        crate::READ_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

@@ -31,6 +31,12 @@ mod common;
 /// Codes a caller cannot reach, with why.
 const NOT_A_REFUSAL: &[(&str, &str)] = &[
     (
+        "design_operation_unowned",
+        "raised only if `ds design`'s headless dispatcher is handed a command id \
+         its match does not own — every registered design command is an arm, \
+         held there by ds-cli-design's own unit test",
+    ),
+    (
         "task_geometry_unmapped",
         "raised only if the kernel's closed task-geometry refusal vocabulary \
          gained a code this build does not map — a defect in ds, held to the \
@@ -1400,6 +1406,10 @@ const RETIRED_BRIDGE_CODES: &[(&str, &str)] = &[
     (
         "origin_unreachable",
         "the application's connectivity check before a source read; headless, a failed fetch is the transport's own refusal",
+    ),
+    (
+        "backend_unreachable",
+        "the browser's design-collab adapter naming a fetch that never answered; headless (2026-09-20) the same condition is `ds auth`'s `auth_transient` / `device_auth_transient`, declared by every design command",
     ),
 ];
 

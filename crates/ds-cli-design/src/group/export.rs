@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 use crate::group::{PROJECTION_DEFINITION_IDS_ARG, PROJECTION_TRANSFORMERS_ARG};
 
 pub static COMMAND: Command = Command {
@@ -25,12 +25,12 @@ is over those exact bytes, and a re-encoding that reorders a key or escapes a \
 character differently no longer matches the pin.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         PROJECTION_TRANSFORMERS_ARG,
         PROJECTION_DEFINITION_IDS_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "\
 The project, the `schema`, ordered `definitionIds`, the \
@@ -42,24 +42,15 @@ The project, the `schema`, ordered `definitionIds`, the \
         note: "Save `.data.document` verbatim and keep `.data.sha256` with it.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::INVALID_VALUE_LIST,
         crate::TOO_MANY,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -72,19 +63,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         json!(crate::group::projection_transformers(inputs)?),
     );
     let definition_ids = crate::group::projection_definition_ids(inputs)?;
-    // The paired application deliberately publishes the hyphenated key. Keep
-    // the handler aligned with the declared BridgeOp so a whole-project
-    // projection reaches the application instead of being refused locally as
-    // an undeclared argument.
+    // The route publishes the hyphenated key; the kernel door validates it.
     arguments.insert("definition-ids".into(), json!(definition_ids));
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::GROUP_EXPORT,
+    crate::headless::perform(
+        "design.group.export",
         Value::Object(arguments),
-        crate::READ_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

@@ -1,5 +1,5 @@
 //! Explicit, preview-pinned catalog replication through the governed owner.
-use crate::{BridgeOp, DESCRIPTOR_ARG};
+use crate::LANE_ARG;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Requires,
@@ -43,15 +43,6 @@ const DIGEST: Arg = Arg {
     choices: &[],
     summary: "The digest returned by preview for this same source and scope.",
 };
-pub const PREVIEW_OP: BridgeOp = BridgeOp {
-    operation: "design.materials.preview",
-    arguments: &["template", "rule-set", "rows"],
-};
-pub const APPLY_OP: BridgeOp = BridgeOp {
-    operation: "design.materials.apply",
-    arguments: &["template", "rule-set", "rows", "digest"],
-};
-
 pub static PREVIEW: Command = Command {
     id: "design.materials.preview",
     path: &["design", "materials", "preview"],
@@ -60,28 +51,16 @@ pub static PREVIEW: Command = Command {
     purpose: "Uses the active project's stored catalog as source. Reads the named global template and project inventory without seed-on-read. Includes only projects selecting the exact rule family. Shows exact before/after rows and revision fences; never replaces entire configurations or edits transformer results. Requires network.template.propagate. Bounds: 64 source rows, 200 selected documents, 2000 inventory projects and a 512 KiB plan.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TEMPLATE, RULE, ROW, DESCRIPTOR_ARG],
+    args: &[TEMPLATE, RULE, ROW, LANE_ARG],
     output: "Source rows, selected targets with revisions and changes, skipped project IDs, digest and applied=false.",
     examples: &[],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::CONFLICT,
-    ],
+    refusals: &crate::headless_refusals!(crate::NOT_PERMITTED, crate::CONFLICT,),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 pub static APPLY: Command = Command {
     id: "design.materials.apply",
@@ -91,43 +70,35 @@ pub static APPLY: Command = Command {
     purpose: "Atomically patches the previewed catalog rows and records the authenticated actor receipt. A changed source, selection or target revision refuses the whole write. Other rules, settings and transformer data are preserved. A successful retry returns the retained receipt. The source is the paired application's active project; no project or credential override is accepted. Requires network.template.propagate.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TEMPLATE, RULE, ROW, DIGEST, DESCRIPTOR_ARG],
+    args: &[TEMPLATE, RULE, ROW, DIGEST, LANE_ARG],
     output: "The committed plan with applied=true; no partial fanout and no transformer result save.",
     examples: &[],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::CONFLICT,
         crate::CONFIRMATION_REQUIRED,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 fn run(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     let mut args = json!({"template":inputs.require("template")?,"rule-set":inputs.require("rule-set")?,"rows":inputs.repeated("row")});
     if apply {
         args["digest"] = json!(inputs.require("digest")?);
     }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        if apply { &APPLY_OP } else { &PREVIEW_OP },
+    crate::headless::perform(
+        if apply {
+            "design.materials.apply"
+        } else {
+            "design.materials.preview"
+        },
         args,
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 pub fn preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     run(inputs, false)

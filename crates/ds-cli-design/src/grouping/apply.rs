@@ -1,19 +1,10 @@
 //! `ds design consumer-grouping apply` — commit the plan that was previewed.
 
-use std::time::Duration;
-
-use crate::{CONSUMER_GROUPING_APPLY, DESCRIPTOR_ARG};
+use crate::LANE_ARG;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
-
-/// A governed write, not a read. Abandoned at the shorter read budget, the
-/// command returns `desktop_unreachable` while the application may still
-/// commit — the CLI itself minting the "cannot tell whether it landed" state
-/// the digest fence exists to remove. Named so a regression back to the read
-/// budget fails a test rather than only showing in a diff.
-const APPLY_TIMEOUT: Duration = crate::WRITE_TIMEOUT;
 
 pub static COMMAND: Command = Command {
     id: "design.consumer-grouping.apply",
@@ -28,14 +19,14 @@ the plan binds — `solar_report` to governed Solar cities, `report_archive` to 
 the folder and section authority a compounded archive files by.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         crate::grouping::PURPOSE_ARG,
         crate::group::PROJECTION_TRANSFORMERS_ARG,
         crate::grouping::DEFINITION_IDS_ARG,
         crate::grouping::PLAN_DIGEST_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "The stored record as applied — purpose, ordered definition ids, lifecycle, revision, plan_digest, projection_sha256 and member/unassigned/group counts. A refusal returns no plan at all.",
     examples: &[
@@ -50,27 +41,18 @@ the folder and section authority a compounded archive files by.",
             runnable: false,
         },
     ],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::READ_ONLY,
         crate::CONFLICT,
         crate::INVALID_VALUE_LIST,
         crate::TOO_MANY,
         crate::CONFIRMATION_REQUIRED,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -83,14 +65,11 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         "bindings": inputs.value("bindings").unwrap_or("[]"),
         "digest": inputs.require("digest")?,
     });
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &CONSUMER_GROUPING_APPLY,
+    crate::headless::perform(
+        "design.consumer-grouping.apply",
         arguments,
-        APPLY_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 /// The applied record, rendered exactly as `read` renders it.
@@ -106,38 +85,6 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_governed_write_uses_the_write_budget() {
-        assert_eq!(
-            APPLY_TIMEOUT,
-            crate::WRITE_TIMEOUT,
-            "a governed write abandoned at the read budget cannot be told from one that landed"
-        );
-    }
-
-    /// The budget the REQUEST is actually sent with, not just the constant.
-    ///
-    /// `the_governed_write_uses_the_write_budget` pins `APPLY_TIMEOUT` to
-    /// `WRITE_TIMEOUT`, which a regression that leaves the constant alone and
-    /// hands `invoke` the read budget would survive — the exact regression the
-    /// constant was named to catch. So the call itself is read.
-    #[test]
-    fn the_request_is_sent_with_the_write_budget() {
-        let source = include_str!("apply.rs");
-        let sent = source
-            .split_once("&CONSUMER_GROUPING_APPLY,")
-            .expect("apply invokes its own bridge operation")
-            .1
-            .split_once(')')
-            .expect("the invoke call closes")
-            .0;
-        assert!(
-            sent.contains("APPLY_TIMEOUT"),
-            "the request is sent with `{}`, not the named write budget",
-            sent.trim()
-        );
-    }
 
     #[test]
     fn the_digest_flag_names_the_producer_that_can_mint_it() {

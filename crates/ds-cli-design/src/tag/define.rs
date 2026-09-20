@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, MAX_TAG_VALUES};
+use crate::{LANE_ARG, MAX_TAG_VALUES};
 
 pub const DEFINITION_ARG: Arg = Arg {
     name: "definition",
@@ -171,7 +171,7 @@ template, and that detachment is recorded rather than hidden — the project's \
 copy no longer says what that exact template version says.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         DEFINITION_ARG,
@@ -188,7 +188,7 @@ copy no longer says what that exact template version says.",
         SEMANTIC_NAMESPACE_ARG,
         SEMANTIC_KEY_ARG,
         JURISDICTION_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "The project, definition id, name, value type, input control, constraints, cardinality, version and stored exact-case choice vocabulary.",
     examples: &[
@@ -203,16 +203,7 @@ copy no longer says what that exact template version says.",
             runnable: false,
         },
     ],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::READ_ONLY,
         crate::CONFLICT,
@@ -222,11 +213,11 @@ copy no longer says what that exact template version says.",
         crate::INVALID_NUMBER,
         crate::TOO_MANY,
         crate::CONFIRMATION_REQUIRED,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 /// The shape of a tag definition is `ds_command_kernel::design_tags`'s — the
@@ -318,14 +309,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             arguments.insert(flag.into(), json!(value));
         }
     }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TAG_DEFINE,
+    crate::headless::perform(
+        "design.tag.define",
         Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 fn finite_number(raw: &str, flag: &str) -> Result<f64, Failure> {

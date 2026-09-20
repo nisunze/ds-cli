@@ -8,7 +8,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use crate::tag::define::DEFINITION_ARG;
-use crate::{DESCRIPTOR_ARG, KIND_ARG, MAX_TAG_VALUES, OBJECT_ARG, VERSION_ARG};
+use crate::{KIND_ARG, LANE_ARG, MAX_TAG_VALUES, OBJECT_ARG, VERSION_ARG};
 
 const VALUES_ARG: Arg = Arg {
     name: "values",
@@ -68,7 +68,7 @@ as a whole — a separate record, so a version-anchored value survives a later \
 edit of the object-level one.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         KIND_ARG,
@@ -79,7 +79,7 @@ edit of the object-level one.",
         INTEGER_ARG,
         NUMBER_ARG,
         VERSION_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "The project, object, definition, exact stored values, closed typed_values and committed version; the receipt echoes what was persisted.",
     examples: &[
@@ -94,16 +94,7 @@ edit of the object-level one.",
             runnable: false,
         },
     ],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::READ_ONLY,
         crate::CONFLICT,
@@ -114,15 +105,11 @@ edit of the object-level one.",
         crate::TOO_MANY,
         crate::INVALID_ANCHOR,
         crate::CONFIRMATION_REQUIRED,
-        crate::INVALID_DESIGN_REQUEST,
-        crate::DESIGN_RECORD_NOT_FOUND,
-        crate::DESIGN_SERVICE_FAILED,
-        crate::BACKEND_UNREACHABLE,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -187,14 +174,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         _ => unreachable!("supplied flags are drawn from the closed set"),
     }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TAG_SET,
+    crate::headless::perform(
+        "design.tag.set",
         Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {
