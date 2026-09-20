@@ -216,6 +216,11 @@ pub struct CreateTask {
     pub discipline: Option<String>,
     pub start_date: Option<String>,
     pub finish_date: Option<String>,
+    /// `--from-record`: the correspondence record this task answers. The
+    /// engine carries it untouched and ds-brain appends the task to the
+    /// record's `resulting_task_ids` in the same commit (correspondence.md
+    /// §Tasks); a missing record is refused by name before the engine runs.
+    pub from_record: Option<String>,
 }
 
 /// `createCliWorkTask` (cli-pm.ts:564-609) + `createTaskCommand`
@@ -311,6 +316,11 @@ pub fn create_task(
     });
     if let Some(discipline) = discipline {
         payload["discipline"] = json!(discipline);
+    }
+    if let Some(record) = optional_text(input.from_record.as_deref(), "from-record", MAX_ID_LENGTH)?
+        .filter(|id| !id.is_empty())
+    {
+        payload["from_record_id"] = json!(record);
     }
     Ok(PreparedCommand {
         project: graph.project_id.clone(),
@@ -819,7 +829,22 @@ mod tests {
             discipline: Some("Design".into()),
             start_date: start.map(str::to_owned),
             finish_date: finish.map(str::to_owned),
+            from_record: None,
         }
+    }
+
+    #[test]
+    fn a_task_from_a_record_carries_the_record_for_the_same_commit() {
+        // `from_record_id` rides the create untouched; ds-brain appends the
+        // task to the record's `resulting_task_ids` in the same transaction.
+        let mut input = create(CreateKind::Milestone, None, None, Some("2026-09-25"));
+        input.from_record = Some(" R2 ".into());
+        let prepared = create_task(&graph(true), &input).expect("prepared");
+        assert_eq!(prepared.command["create_task"]["from_record_id"], "R2");
+        assert_eq!(prepared.command["create_task"]["type"], "milestone");
+        let plain = create_task(&graph(true), &create(CreateKind::Parent, None, None, None))
+            .expect("prepared");
+        assert!(plain.command["create_task"].get("from_record_id").is_none());
     }
 
     #[test]

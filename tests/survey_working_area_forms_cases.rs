@@ -131,10 +131,7 @@ fn the_corpus_covers_every_op_and_refusal_the_contract_names() {
                 );
             }
             let forms = expected["forms"].as_array().expect("forms");
-            let selected = forms
-                .iter()
-                .filter(|row| row["selected"] == true)
-                .count();
+            let selected = forms.iter().filter(|row| row["selected"] == true).count();
             assert_eq!(
                 selected,
                 loads.len(),
@@ -146,6 +143,9 @@ fn the_corpus_covers_every_op_and_refusal_the_contract_names() {
         assert!(ops.contains(op), "no case exercises the {op} op");
     }
     for code in ["unknown_form", "no_forms_named", "project_context_changed"] {
-        assert!(refusals.contains(code), "no case records the {code} refusal");
+        assert!(
+            refusals.contains(code),
+            "no case records the {code} refusal"
+        );
     }
 }

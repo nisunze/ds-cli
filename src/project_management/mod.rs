@@ -34,6 +34,7 @@
 //! respond`) and the fold of the engine's answer. Same doctrine — the browser's
 //! rules, translated as they were, reachable without a window.
 
+pub mod correspondence;
 mod hierarchy;
 pub mod projections;
 pub mod reads;
