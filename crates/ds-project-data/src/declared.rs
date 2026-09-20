@@ -25,6 +25,11 @@ pub enum DeclaredSource {
     Buildings,
     /// Elevation contours through ds-brain, at the template's intervals.
     Contours(ContourSettings),
+    /// A cloud-resident dataset (foundation-datasets contract): never a
+    /// national bundle, seeded per project cell by cell through the bounded
+    /// read — the parcels a project's extents cover, its existing customers —
+    /// and held like building footprints, so the project reuses them.
+    Cloud(Box<ReferenceResource>),
 }
 
 #[derive(Debug, Clone)]
@@ -140,11 +145,22 @@ pub fn resolve(resources: &[ReferenceResource], id: &str) -> Result<Option<Decla
         return Ok(None);
     };
     let resource = found.resource;
-    if resource.is_cloud_resident() {
-        return Err(Failure::CloudOnly(cloud_only_message(resource)));
-    }
     if resource.is_unavailable() {
         return Ok(None);
+    }
+    if resource.is_cloud_resident() {
+        // Seedable per project (the owner's generalization, 2026-09-20): the
+        // project's extents are read from the cloud cell by cell and held.
+        // The national install is what a cloud row refuses.
+        return Ok(Some(Declared {
+            candidate: SeedCandidate {
+                id: resource.id.clone(),
+                label: resource.label.clone(),
+                seeded: false,
+            },
+            dataset: cloud_dataset(resource),
+            source: DeclaredSource::Cloud(Box::new(resource.clone())),
+        }));
     }
     Ok(Some(Declared {
         candidate: SeedCandidate {
@@ -157,16 +173,31 @@ pub fn resolve(resources: &[ReferenceResource], id: &str) -> Result<Option<Decla
     }))
 }
 
+/// The room of a cloud-resident dataset: the bounded-read door, addressed
+/// by the catalogue row's layer so the host knows which read answers it.
+pub fn cloud_dataset(resource: &ReferenceResource) -> Dataset {
+    let mut dataset = catalog_dataset(resource);
+    dataset.provider = CLOUD_READ_PROVIDER.to_owned();
+    dataset
+        .parameters
+        .insert("layer".to_owned(), serde_json::Value::String(resource.layer.clone()));
+    dataset
+}
+
+/// The governed door a cloud-resident dataset is seeded through.
+pub const CLOUD_READ_PROVIDER: &str = "brain_data_distribution";
+
 /// The one sentence every host prints when a cloud-resident dataset is asked
-/// to be seeded, installed or downloaded.
+/// to be installed nationally or downloaded as a bundle. Seeding per project
+/// is not refused: that is how the project holds what it needs.
 pub fn cloud_only_message(resource: &ReferenceResource) -> String {
     let command = match resource.layer.as_str() {
-        "rwanda_upi_parcels" => "ds data upi lookup",
-        "edcl_customers" => "ds data customers query",
+        "rwanda_upi_parcels" => "ds data parcels query --boundary …, or seed the project's extents",
+        "edcl_customers" => "ds data customers query --boundary …, or seed the project's extents",
         _ => "ds data",
     };
     format!(
-        "{} is cloud-resident; it is never seeded, installed or downloaded — query it with `{command}`",
-        resource.layer
+        "{} is cloud-resident; it is never installed nationally or downloaded as a bundle — read it bounded ({command}) or `ds data project-cache seed --dataset {}`",
+        resource.layer, resource.layer
     )
 }

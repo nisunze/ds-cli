@@ -67,9 +67,6 @@ pub enum Failure {
     CatalogInvalid(String),
     /// The local store or the kernel refused; a defect, not a state.
     Store(String),
-    /// A seed or install named a cloud-resident dataset: BigQuery is its only
-    /// holding and `ds data …` queries it (foundation-datasets contract R2).
-    CloudOnly(String),
     /// A request named a retired layer with no single authority; the message
     /// names the detailed alternatives.
     Retired(String),
@@ -87,7 +84,6 @@ impl Failure {
             Failure::TooLarge(_) => "print_context_too_large",
             Failure::CatalogInvalid(_) => "catalog_invalid",
             Failure::Store(_) => "project_dataset_store_failed",
-            Failure::CloudOnly(_) => "dataset_cloud_only",
             Failure::Retired(_) => "dataset_retired",
         }
     }
@@ -102,7 +98,6 @@ impl Failure {
             | Failure::TooLarge(m)
             | Failure::CatalogInvalid(m)
             | Failure::Store(m)
-            | Failure::CloudOnly(m)
             | Failure::Retired(m) => m,
         }
     }

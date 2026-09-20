@@ -600,7 +600,7 @@ fn a_desktop_held_source_is_refused_not_omitted() {
 /// without a bundle, never declared, never a seed target, named by id, layer
 /// or alias, and refused by name when a seed asks for one.
 #[test]
-fn a_cloud_resident_row_is_named_but_never_seeded() {
+fn a_cloud_resident_row_seeds_through_its_bounded_read() {
     let roads = ReferenceResource {
         id: "a".repeat(64),
         version: "b".repeat(64),
@@ -675,24 +675,30 @@ fn a_cloud_resident_row_is_named_but_never_seeded() {
         .answered_as
         .is_none());
     assert!(ds_project_data::named(&rows, "nothing").is_none());
-    // A seed naming a cloud row is refused by name, whether by id or layer.
+    // A seed naming a cloud row — by id or layer — resolves to the bounded
+    // read as its provider: the project's cells are read, never a bundle.
     for needle in [parcels.id.as_str(), "rwanda_upi_parcels"] {
-        match ds_project_data::declared::resolve(&rows, needle) {
-            Err(Failure::CloudOnly(message)) => {
-                assert!(message.contains("ds data upi lookup"), "{message}");
-            }
-            other => panic!("cloud row resolved as a seed target: {other:?}"),
-        }
+        let resolved = ds_project_data::declared::resolve(&rows, needle)
+            .expect("a cloud row is a seed target")
+            .expect("named");
+        assert_eq!(resolved.dataset.id, parcels.id);
+        assert_eq!(
+            resolved.dataset.provider,
+            ds_project_data::declared::CLOUD_READ_PROVIDER
+        );
+        assert_eq!(resolved.dataset.parameters["layer"], "rwanda_upi_parcels");
+        assert!(matches!(resolved.source, DeclaredSource::Cloud(_)));
     }
+    // Installing it nationally is still refused by name.
+    assert!(
+        ds_project_data::declared::cloud_only_message(&parcels).contains("project-cache seed"),
+        "the refusal points at the per-project seed"
+    );
     // A retired broad layer names its detailed alternatives.
     match ds_project_data::declared::resolve(&rows, "powerlines") {
         Err(Failure::Retired(message)) => assert!(message.contains("hv_line, mv_line, lv_line")),
         other => panic!("retired layer resolved: {other:?}"),
     }
-    assert_eq!(
-        Failure::CloudOnly(String::new()).code(),
-        "dataset_cloud_only"
-    );
     assert_eq!(Failure::Retired(String::new()).code(), "dataset_retired");
     // An alias resolves to its authority as a seed target.
     let resolved = ds_project_data::declared::resolve(&rows, "rwanda_villages")

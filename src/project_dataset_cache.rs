@@ -1470,6 +1470,46 @@ pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String>
         "sourceReceipt":{"provider":receipt,"coverage":response["coverage"]}}))
 }
 
+/// Decode one bounded cloud read (foundation-datasets contract R3) as a
+/// seeding page: the receipt must be complete for the cell — a truncated
+/// answer (more rows than the cap inside one cell) can never extend coverage,
+/// because a room that holds part of a cell would read as covered.
+pub fn decode_cloud_read(response: &Value, area: &Value, layer: &str) -> Result<Value, String> {
+    crate::reference_cache::validate_area(area)?;
+    if response["dataset"]["layer"].as_str() != Some(layer) {
+        return Err(format!("the cloud read did not answer for {layer}"));
+    }
+    if response["dataset"]["residency"].as_str() != Some("cloud") {
+        return Err("the cloud read's dataset is not cloud-resident".into());
+    }
+    let features = response["features"]
+        .as_array()
+        .ok_or("the cloud read has no feature collection")?;
+    let returned = response["rows_returned"].as_u64();
+    let total = response["rows_total"].as_u64();
+    if returned != Some(features.len() as u64) {
+        return Err("the cloud read's row count does not match its features".into());
+    }
+    if response["truncated"] != Value::Bool(false) || total != returned {
+        return Err(format!(
+            "the cloud read is truncated for this cell ({} of {} rows): the cell is too dense to hold whole — narrow the design buffer",
+            returned.unwrap_or(0),
+            total.unwrap_or(0)
+        ));
+    }
+    for (index, feature) in features.iter().enumerate() {
+        if feature["type"] != "Feature" || feature["geometry"].get("type").and_then(Value::as_str).is_none() {
+            return Err(format!("cloud read feature {index} is not a GeoJSON Feature with a geometry"));
+        }
+    }
+    let version = response["dataset"]["version"].as_str().unwrap_or("");
+    if version.len() > 512 {
+        return Err("the cloud read's dataset version exceeds its bound".into());
+    }
+    Ok(json!({"features": features, "sourceVersion": version,
+        "sourceReceipt": {"dataset": response["dataset"], "query": response["query"], "rows_total": total}}))
+}
+
 /// The two layers a contour acquisition arrives in, one per `contour_kind`.
 ///
 /// A room holds both kinds as one dataset — every line carries its own
@@ -2274,6 +2314,40 @@ mod tests {
         assert_eq!(buffer_policy(&[1500.]).unwrap().isolated_buffer_m, 1500.);
         assert!(buffer_policy(&[f64::NAN]).is_err());
         assert!(!buffer_policy(&[]).unwrap().provisional);
+    }
+
+    #[test]
+    fn cloud_read_decoder_seeds_only_a_complete_cell() {
+        let area = json!({"type":"Polygon","coordinates":[[[29.,-3.],[31.,-3.],[31.,-1.],[29.,-1.],[29.,-3.]]]});
+        let feature = json!({"type":"Feature","geometry":{"type":"Point","coordinates":[30.,-2.]},
+            "properties":{"customer_segmentation":"Residential"}});
+        let valid = json!({"status":"success",
+            "dataset":{"id":"abc","layer":"edcl_customers","residency":"cloud","version":"sha-1","source":"p.d.t"},
+            "query":{"bound":{"kind":"boundary"}},
+            "features":[feature.clone()],"rows_cap":5000,"rows_returned":1,"rows_total":1,"truncated":false});
+        let page = decode_cloud_read(&valid, &area, "edcl_customers").unwrap();
+        assert_eq!(page["sourceVersion"], "sha-1");
+        assert_eq!(page["features"].as_array().unwrap().len(), 1);
+        assert_eq!(page["sourceReceipt"]["dataset"]["layer"], "edcl_customers");
+        assert_eq!(page["sourceReceipt"]["rows_total"], 1);
+        // Another layer's answer never seeds this dataset.
+        assert!(decode_cloud_read(&valid, &area, "rwanda_upi_parcels").is_err());
+        // A truncated cell can never extend coverage: the room would lie.
+        let mut truncated = valid.clone();
+        truncated["rows_total"] = json!(9000);
+        truncated["truncated"] = json!(true);
+        let refusal = decode_cloud_read(&truncated, &area, "edcl_customers").unwrap_err();
+        assert!(refusal.contains("truncated"), "{refusal}");
+        // Counts that disagree with the features are a malformed answer.
+        let mut miscounted = valid.clone();
+        miscounted["rows_returned"] = json!(2);
+        assert!(decode_cloud_read(&miscounted, &area, "edcl_customers").is_err());
+        let mut bundle = valid.clone();
+        bundle["dataset"]["residency"] = json!("bundle");
+        assert!(decode_cloud_read(&bundle, &area, "edcl_customers").is_err());
+        let mut malformed = valid.clone();
+        malformed["features"] = json!([{"type":"Feature","geometry":null}]);
+        assert!(decode_cloud_read(&malformed, &area, "edcl_customers").is_err());
     }
 
     #[test]

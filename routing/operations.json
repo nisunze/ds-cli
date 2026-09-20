@@ -1370,10 +1370,10 @@
           "resolution": { "web": "gateway", "desktop": "gateway" }
         },
         "foundation": {
-          "summary": "One bounded read of a cloud-resident dataset: one parcel by UPI, or the customers of one village, cell or small rectangle.",
+          "summary": "One bounded read of a cloud-resident dataset: one parcel by UPI, or the customers or parcels of one village, cell, small rectangle or boundary polygon.",
           "transport": "json",
           "action_key": "action",
-          "actions": ["upi_lookup", "customers_query"],
+          "actions": ["upi_lookup", "customers_query", "parcels_query"],
           "idempotency": "idempotent",
           "retry_class": "none",
           "timeout_s": 180,

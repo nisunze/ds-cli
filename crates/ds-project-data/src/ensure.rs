@@ -310,9 +310,9 @@ pub fn ensure(
                 let ticket = ticket["ticket"].as_str().unwrap_or("").to_owned();
                 let page = match source {
                     DeclaredSource::Catalog(resource) => acquire_catalog(root, resource, &area),
-                    DeclaredSource::Buildings | DeclaredSource::Contours(_) => {
-                        hosts.provider.acquire(dataset, &area)
-                    }
+                    DeclaredSource::Buildings
+                    | DeclaredSource::Contours(_)
+                    | DeclaredSource::Cloud(_) => hosts.provider.acquire(dataset, &area),
                 };
                 match page {
                     Ok(page) => {

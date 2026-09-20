@@ -55,7 +55,7 @@ pub const BUNDLE_DOWNLOAD_MAX_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
 /// The foundation reads: registry-pinned (`domains.data_distribution.foundation`),
 /// never profile-pinned. Order is the order of the request variants.
-pub const FOUNDATION_ACTIONS: [&str; 2] = ["upi_lookup", "customers_query"];
+pub const FOUNDATION_ACTIONS: [&str; 3] = ["upi_lookup", "customers_query", "parcels_query"];
 /// The most customers one read answers; ds-brain caps at the same number.
 pub const CUSTOMERS_ROW_CAP: u64 = 5_000;
 /// A UPI is 8–20 digits; the printed form `2/05/06/01/2183` is accepted and
@@ -143,8 +143,9 @@ pub enum DataDistributionRequest {
     },
     /// One parcel polygon by its exact UPI (cloud-resident `rwanda_upi_parcels`).
     UpiLookup { upi: String },
-    /// The customers of exactly one bound: a village code, a cell code, or a
-    /// `[west, south, east, north]` rectangle under the envelope bound.
+    /// The customers of exactly one bound: a village code, a cell code, a
+    /// `[west, south, east, north]` rectangle under the envelope bound, or a
+    /// boundary (one GeoJSON Polygon/MultiPolygon — a corridor, an area).
     CustomersQuery {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         village_code: Option<String>,
@@ -152,6 +153,23 @@ pub enum DataDistributionRequest {
         cell_code: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         bbox: Option<[f64; 4]>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        boundary: Option<Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u64>,
+    },
+    /// The parcels of exactly one bound — the classic read: the parcels a DS
+    /// Grid corridor crosses (`boundary` = the alignment buffer). Same bounds
+    /// as `CustomersQuery`, over the parcels authority.
+    ParcelsQuery {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        village_code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cell_code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bbox: Option<[f64; 4]>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        boundary: Option<Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         limit: Option<u64>,
     },
@@ -165,6 +183,98 @@ fn exact_digits(value: &str, digits: usize, what: &'static str) -> Result<(), Cl
     }
 }
 
+/// Exactly one bound for a foundation read; the rectangle and the boundary's
+/// envelope share the kernel's area cap. A boundary is validated the way a
+/// print-context area is (a GeoJSON Polygon/MultiPolygon within the request
+/// bound); ds-brain measures its envelope again.
+fn validate_bound(
+    village_code: Option<&str>,
+    cell_code: Option<&str>,
+    bbox: Option<[f64; 4]>,
+    boundary: Option<&Value>,
+    limit: Option<u64>,
+) -> Result<(), ClientError> {
+    let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
+    if let Some(limit) = limit {
+        if limit == 0 || limit > CUSTOMERS_ROW_CAP {
+            return Err(invalid("The limit is 1 to 5000"));
+        }
+    }
+    let named = village_code.is_some() as u8
+        + cell_code.is_some() as u8
+        + bbox.is_some() as u8
+        + boundary.is_some() as u8;
+    if named != 1 {
+        return Err(invalid(
+            "Name exactly one bound: a village code, a cell code, a rectangle, or a boundary",
+        ));
+    }
+    if let Some(code) = village_code {
+        exact_digits(code, 8, "A village code is exactly 8 digits")?;
+    }
+    if let Some(code) = cell_code {
+        exact_digits(code, 6, "A cell code is exactly 6 digits")?;
+    }
+    if let Some(bounds) = bbox {
+        rectangle_within_cap(bounds)?;
+    }
+    if let Some(area) = boundary {
+        ds_command_kernel::reference_cache::validate_area(area).map_err(|_| {
+            invalid("Invalid boundary: expected a GeoJSON Polygon or MultiPolygon in WGS84")
+        })?;
+        if serde_json::to_vec(area).map_or(true, |bytes| bytes.len() > DATA_DISTRIBUTION_MAX_AREA_BYTES)
+        {
+            return Err(invalid("The boundary exceeds its request bound"));
+        }
+        rectangle_within_cap(geometry_envelope(area).ok_or_else(|| {
+            invalid("Invalid boundary: no finite WGS84 positions")
+        })?)?;
+    }
+    Ok(())
+}
+
+fn rectangle_within_cap(bounds: [f64; 4]) -> Result<(), ClientError> {
+    let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
+    let area = ds_command_kernel::project_dataset_cache::bounds_area_m2(bounds)
+        .map_err(|_| invalid("A rectangle is finite, ordered WGS84 bounds"))?;
+    if bounds[0] >= bounds[2] || bounds[1] >= bounds[3] {
+        return Err(invalid("A rectangle is west < east and south < north"));
+    }
+    if area > ds_command_kernel::project_dataset_cache::MAX_ENVELOPE_M2 {
+        return Err(invalid(
+            "The rectangle exceeds the 25 km² bound; narrow it or name a village or cell",
+        ));
+    }
+    Ok(())
+}
+
+/// The envelope of a GeoJSON geometry's positions, `[west, south, east, north]`.
+fn geometry_envelope(geometry: &Value) -> Option<[f64; 4]> {
+    fn walk(node: &Value, env: &mut [f64; 4], seen: &mut usize) {
+        if let Some(list) = node.as_array() {
+            if list.len() >= 2 {
+                if let (Some(lng), Some(lat)) = (list[0].as_f64(), list[1].as_f64()) {
+                    if lng.is_finite() && lat.is_finite() {
+                        *seen += 1;
+                        env[0] = env[0].min(lng);
+                        env[1] = env[1].min(lat);
+                        env[2] = env[2].max(lng);
+                        env[3] = env[3].max(lat);
+                    }
+                    return;
+                }
+            }
+            for child in list {
+                walk(child, env, seen);
+            }
+        }
+    }
+    let mut env = [180.0, 90.0, -180.0, -90.0];
+    let mut seen = 0;
+    walk(&geometry["coordinates"], &mut env, &mut seen);
+    (seen > 0).then_some(env)
+}
+
 impl DataDistributionRequest {
     pub const fn action(&self) -> &'static str {
         match self {
@@ -172,12 +282,16 @@ impl DataDistributionRequest {
             Self::QueryPrintContext { .. } => "query_print_context",
             Self::UpiLookup { .. } => "upi_lookup",
             Self::CustomersQuery { .. } => "customers_query",
+            Self::ParcelsQuery { .. } => "parcels_query",
         }
     }
 
     /// A read of a cloud-resident dataset, as opposed to the seeding door.
     pub const fn is_foundation(&self) -> bool {
-        matches!(self, Self::UpiLookup { .. } | Self::CustomersQuery { .. })
+        matches!(
+            self,
+            Self::UpiLookup { .. } | Self::CustomersQuery { .. } | Self::ParcelsQuery { .. }
+        )
     }
 
     pub fn validate(&self) -> Result<(), ClientError> {
@@ -217,41 +331,22 @@ impl DataDistributionRequest {
                 village_code,
                 cell_code,
                 bbox,
+                boundary,
                 limit,
-            } => {
-                if let Some(limit) = limit {
-                    if *limit == 0 || *limit > CUSTOMERS_ROW_CAP {
-                        return Err(invalid("The customers limit is 1 to 5000"));
-                    }
-                }
-                let named =
-                    village_code.is_some() as u8 + cell_code.is_some() as u8 + bbox.is_some() as u8;
-                if named != 1 {
-                    return Err(invalid(
-                        "Name exactly one bound: a village code, a cell code, or a rectangle",
-                    ));
-                }
-                if let Some(code) = village_code {
-                    exact_digits(code, 8, "A village code is exactly 8 digits")?;
-                }
-                if let Some(code) = cell_code {
-                    exact_digits(code, 6, "A cell code is exactly 6 digits")?;
-                }
-                if let Some(bounds) = bbox {
-                    let area = ds_command_kernel::project_dataset_cache::bounds_area_m2(*bounds)
-                        .map_err(|_| invalid("A rectangle is finite, ordered WGS84 bounds"))?;
-                    if bounds[0] >= bounds[2] || bounds[1] >= bounds[3] {
-                        return Err(invalid("A rectangle is west < east and south < north"));
-                    }
-                    if area > ds_command_kernel::project_dataset_cache::MAX_ENVELOPE_M2 {
-                        return Err(ClientError::new(
-                            ErrorKind::InvalidInput,
-                            "The rectangle exceeds the 25 km² bound; narrow it or name a village or cell",
-                        ));
-                    }
-                }
-                Ok(())
             }
+            | Self::ParcelsQuery {
+                village_code,
+                cell_code,
+                bbox,
+                boundary,
+                limit,
+            } => validate_bound(
+                village_code.as_deref(),
+                cell_code.as_deref(),
+                *bbox,
+                boundary.as_ref(),
+                *limit,
+            ),
         }
     }
 
@@ -278,6 +373,8 @@ impl DataDistributionRequest {
             cell_code: Option<&'a str>,
             #[serde(skip_serializing_if = "Option::is_none")]
             bbox: Option<[f64; 4]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            boundary: Option<&'a Value>,
             #[serde(skip_serializing_if = "Option::is_none")]
             limit: Option<u64>,
         }
@@ -306,11 +403,20 @@ impl DataDistributionRequest {
                 village_code,
                 cell_code,
                 bbox,
+                boundary,
+                limit,
+            }
+            | Self::ParcelsQuery {
+                village_code,
+                cell_code,
+                bbox,
+                boundary,
                 limit,
             } => Body {
                 village_code: village_code.as_deref(),
                 cell_code: cell_code.as_deref(),
                 bbox: *bbox,
+                boundary: boundary.as_ref(),
                 limit: *limit,
                 ..base
             },
@@ -386,7 +492,8 @@ pub(crate) fn decode(
                 return Err(bad());
             }
         }
-        DataDistributionRequest::CustomersQuery { limit, .. } => {
+        DataDistributionRequest::CustomersQuery { limit, .. }
+        | DataDistributionRequest::ParcelsQuery { limit, .. } => {
             let cap = limit.unwrap_or(CUSTOMERS_ROW_CAP);
             let returned = data["rows_returned"].as_u64();
             let features = data["features"].as_array();
@@ -607,6 +714,7 @@ mod tests {
             village_code: Some("25060102".into()),
             cell_code: None,
             bbox: None,
+            boundary: None,
             limit: Some(10),
         };
         village.validate().unwrap();
@@ -618,6 +726,7 @@ mod tests {
             village_code: None,
             cell_code: Some("250601".into()),
             bbox: None,
+            boundary: None,
             limit: None,
         };
         cell.validate().unwrap();
@@ -629,6 +738,7 @@ mod tests {
             village_code: None,
             cell_code: None,
             bbox: Some([29.57, -2.53, 29.59, -2.51]),
+            boundary: None,
             limit: None,
         };
         small.validate().unwrap();
@@ -637,6 +747,7 @@ mod tests {
             village_code: None,
             cell_code: None,
             bbox: Some([29.5, -2.6, 29.9, -2.3]),
+            boundary: None,
             limit: None,
         };
         assert!(district.validate().is_err());
@@ -653,11 +764,19 @@ mod tests {
                 village_code: v.map(str::to_owned),
                 cell_code: c.map(str::to_owned),
                 bbox: b,
+                boundary: None,
                 limit: l,
             };
             assert!(request.validate().is_err(), "{request:?} admitted");
         }
-        assert_eq!([upi.action(), village.action()], FOUNDATION_ACTIONS);
+        let parcels = DataDistributionRequest::ParcelsQuery {
+            village_code: Some("25060102".into()),
+            cell_code: None,
+            bbox: None,
+            boundary: None,
+            limit: None,
+        };
+        assert_eq!([upi.action(), village.action(), parcels.action()], FOUNDATION_ACTIONS);
         assert!(upi.is_foundation() && !DataDistributionRequest::ListDatasets {}.is_foundation());
         // Never in the profile-pinned seeding vocabulary.
         for action in FOUNDATION_ACTIONS {
@@ -1389,5 +1508,48 @@ mod tests {
             Unreachable.data_distribution(call),
             Err(TransportError::Unreachable)
         ));
+    }
+
+    #[test]
+    fn a_boundary_is_a_bound_and_parcels_share_it() {
+        let corridor = serde_json::json!({
+            "type": "Polygon",
+            "coordinates": [[[29.57,-2.53],[29.59,-2.53],[29.59,-2.51],[29.57,-2.51],[29.57,-2.53]]]
+        });
+        let parcels = DataDistributionRequest::ParcelsQuery {
+            village_code: None,
+            cell_code: None,
+            bbox: None,
+            boundary: Some(corridor.clone()),
+            limit: Some(200),
+        };
+        parcels.validate().unwrap();
+        assert_eq!(parcels.action(), "parcels_query");
+        assert!(parcels.is_foundation());
+        let body: Value = serde_json::from_slice(&parcels.body("p1")).unwrap();
+        assert_eq!(body["action"], "parcels_query");
+        assert_eq!(body["boundary"]["type"], "Polygon");
+        assert!(body.get("bbox").is_none());
+        // A district-sized boundary is refused by its envelope, never sent.
+        let wide = DataDistributionRequest::CustomersQuery {
+            village_code: None,
+            cell_code: None,
+            bbox: None,
+            boundary: Some(serde_json::json!({
+                "type": "Polygon",
+                "coordinates": [[[29.5,-2.6],[29.9,-2.6],[29.9,-2.3],[29.5,-2.3],[29.5,-2.6]]]
+            })),
+            limit: None,
+        };
+        assert!(wide.validate().is_err());
+        // Two bounds are refused.
+        let two = DataDistributionRequest::CustomersQuery {
+            village_code: Some("25060102".into()),
+            cell_code: None,
+            bbox: None,
+            boundary: Some(corridor),
+            limit: None,
+        };
+        assert!(two.validate().is_err());
     }
 }
