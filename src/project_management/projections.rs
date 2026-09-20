@@ -13,8 +13,8 @@ use crate::design_dashboard::locale_compare;
 
 use super::hierarchy::wbs_by_task;
 use super::wire::{
-    CanonicalProjectGraph, CanonicalProjectTask, DeliveryState, ResidualStatus, ReviewState,
-    TaskType, DAY_MS,
+    AdmissionState, CanonicalProjectGraph, CanonicalProjectTask, DeliveryState, ResidualStatus,
+    ReviewState, TaskType, DAY_MS,
 };
 
 /// Below this a stamp is a fixture or a sentinel, not a wall-clock time —
@@ -51,6 +51,52 @@ pub struct Dashboard {
     /// Distinct tasks carrying at least one open residual — the honest
     /// "across N tasks" denominator for the residual KPI.
     pub residual_task_count: usize,
+    /// Task proposals (task-proposals.md): Inbox tasks whose admission is
+    /// `requested`, and tasks whose logged hours exceed their estimate.
+    pub proposals_pending: usize,
+    pub over_estimate: usize,
+}
+
+/// One proposal awaiting the PM, as `pm plan` lists it (task-proposals.md
+/// §Command surface): who asked, for what, with what estimate.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Proposal {
+    pub task_id: String,
+    pub title: String,
+    pub requested_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_hours: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_days: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub responsible: Option<String>,
+}
+
+/// The effort and delay facts of one task, derived beside the existing
+/// `late` rule (task-proposals.md §Definitions) so there is one lateness
+/// rule and one place that reads it. Every number is per task: no rollup.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskEffort {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_hours: Option<f64>,
+    pub actual_hours: f64,
+    /// `actual − estimated`, present only when an estimate exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimate_vs_actual: Option<f64>,
+    pub over_estimate: bool,
+    /// Signed whole days against the planned finish: `today − finish` for an
+    /// open task past its finish, `completed − finish` for a complete one
+    /// (negative when early), absent when there is no planned finish or the
+    /// task is cancelled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule_variance_days: Option<i64>,
+    pub late: bool,
 }
 
 /// One discipline's rollup — the KIND of work, which is what "phase" means on
@@ -74,6 +120,9 @@ pub struct Phase {
 pub enum AttentionKind {
     Blocked,
     Late,
+    /// Logged hours exceed the estimate (task-proposals.md). Ranked with the
+    /// slipped finish: both say the plan's numbers were wrong.
+    OverEstimate,
     Paused,
     Review,
     Residual,
@@ -81,7 +130,7 @@ pub enum AttentionKind {
 
 /// A compact, actionable signal derived from the canonical graph. Each item
 /// points back to the stable task identity; the caller owns presentation.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Attention {
     pub task_id: String,
@@ -94,6 +143,8 @@ pub struct Attention {
     pub blocker_count: i64,
     /// Whole days past the planned finish; 0 when the task is not late.
     pub days_late: i64,
+    /// Hours logged beyond the estimate; 0 when within it or unestimated.
+    pub hours_over: f64,
     /// Whole days since the canonical record last changed.
     pub days_since_change: i64,
     /// Open residual items on this task.
@@ -172,6 +223,82 @@ fn days_in_month(year: i64, month: i64) -> i64 {
         2 => 28,
         _ => 0,
     }
+}
+
+/// Signed whole days from one calendar date to another; `None` when either
+/// does not parse. The one place a variance may be negative.
+fn signed_dayspan(from_date: &str, to_date: &str) -> Option<i64> {
+    Some(epoch_days(to_date)? - epoch_days(from_date)?)
+}
+
+/// `effort(task, today)`: the one fold that reads a task's estimate, hours
+/// and planned finish together. `late` here IS the attention rule below —
+/// the same predicate, so a task cannot be late on the plan and on time on
+/// its own row.
+pub fn effort(task: &CanonicalProjectTask, today: &str) -> TaskEffort {
+    let resolved = matches!(
+        task.delivery_state,
+        DeliveryState::Complete | DeliveryState::Cancelled
+    );
+    let late = !resolved && !task.finish_date.is_empty() && task.finish_date.as_str() < today;
+    let estimate_vs_actual = task
+        .estimated_hours
+        .map(|estimated| task.actual_hours - estimated);
+    let schedule_variance_days =
+        if task.finish_date.is_empty() || task.delivery_state == DeliveryState::Cancelled {
+            None
+        } else if task.delivery_state == DeliveryState::Complete {
+            task.primary_completed_at
+                .as_deref()
+                .map(|stamp| stamp.chars().take(10).collect::<String>())
+                .and_then(|completed| signed_dayspan(&task.finish_date, &completed))
+        } else if late {
+            signed_dayspan(&task.finish_date, today)
+        } else {
+            Some(0)
+        };
+    TaskEffort {
+        estimated_hours: task.estimated_hours,
+        actual_hours: task.actual_hours,
+        estimate_vs_actual,
+        over_estimate: estimate_vs_actual.is_some_and(|delta| delta > 0.0),
+        schedule_variance_days,
+        late,
+    }
+}
+
+/// Every Inbox task whose admission is `requested`, oldest request first so
+/// the PM answers in the order people asked.
+pub fn proposals(graph: &CanonicalProjectGraph) -> Vec<Proposal> {
+    let mut rows: Vec<(Option<String>, Proposal)> = graph
+        .tasks
+        .iter()
+        .filter_map(|task| {
+            let admission = task.admission.as_ref()?;
+            if admission.state != AdmissionState::Requested {
+                return None;
+            }
+            Some((
+                admission.requested_at.clone(),
+                Proposal {
+                    task_id: task.id.clone(),
+                    title: task.title.clone(),
+                    requested_by: admission.requested_by.clone(),
+                    requested_at: admission.requested_at.clone(),
+                    note: admission.note.clone(),
+                    estimated_hours: task.estimated_hours,
+                    estimated_days: task.estimated_days,
+                    responsible: task.responsible_email.clone(),
+                },
+            ))
+        })
+        .collect();
+    rows.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| locale_compare(&left.1.task_id, &right.1.task_id))
+    });
+    rows.into_iter().map(|(_, row)| row).collect()
 }
 
 /// `dayspan` (views.ts:110-115): whole days between two calendar dates, or 0
@@ -279,6 +406,22 @@ pub fn dashboard(graph: &CanonicalProjectGraph, today: &str) -> Dashboard {
             .map(|item| item.task_id.as_str())
             .collect::<BTreeSet<&str>>()
             .len(),
+        proposals_pending: graph
+            .tasks
+            .iter()
+            .filter(|task| {
+                task.admission
+                    .as_ref()
+                    .is_some_and(|admission| admission.state == AdmissionState::Requested)
+            })
+            .count(),
+        over_estimate: graph
+            .tasks
+            .iter()
+            .filter(|task| {
+                task.delivery_state != DeliveryState::Cancelled && effort(task, today).over_estimate
+            })
+            .count(),
     }
 }
 
@@ -371,8 +514,10 @@ pub fn attention(graph: &CanonicalProjectGraph, today: &str) -> Vec<Attention> {
             let blocker_count = task.open_blocker_count + task.descendant_blocker_count;
             // Unlike the dashboard, `late` requires a finish date to exist:
             // an unscheduled task cannot have slipped past a date it has not.
-            let late =
-                !resolved && !task.finish_date.is_empty() && task.finish_date.as_str() < today;
+            // The predicate is `effort`'s, so the row and the plan agree.
+            let effort = effort(task, today);
+            let late = effort.late;
+            let over_estimate = !resolved && effort.over_estimate;
             let residual_count = residuals_by_task
                 .get(task.id.as_str())
                 .copied()
@@ -381,6 +526,8 @@ pub fn attention(graph: &CanonicalProjectGraph, today: &str) -> Vec<Attention> {
                 AttentionKind::Blocked
             } else if late {
                 AttentionKind::Late
+            } else if over_estimate {
+                AttentionKind::OverEstimate
             } else if task.delivery_state == DeliveryState::Paused {
                 AttentionKind::Paused
             } else if in_review(task.review_state) {
@@ -404,6 +551,7 @@ pub fn attention(graph: &CanonicalProjectGraph, today: &str) -> Vec<Attention> {
                 } else {
                     0
                 },
+                hours_over: effort.estimate_vs_actual.unwrap_or(0.0).max(0.0),
                 days_since_change: days_since(task.updated_at, today),
                 residual_count,
             })
@@ -630,6 +778,7 @@ mod tests {
                     wbs: "1.1.1".into(),
                     blocker_count: 3,
                     days_late: 8,
+                    hours_over: 0.0,
                     days_since_change: 0,
                     residual_count: 0,
                 },
@@ -640,6 +789,7 @@ mod tests {
                     wbs: "1.1".into(),
                     blocker_count: 0,
                     days_late: 6,
+                    hours_over: 0.0,
                     days_since_change: 0,
                     residual_count: 1,
                 },
@@ -650,10 +800,152 @@ mod tests {
                     wbs: "1".into(),
                     blocker_count: 0,
                     days_late: 0,
+                    hours_over: 0.0,
                     days_since_change: 0,
                     residual_count: 0,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn effort_reads_the_estimate_the_hours_and_the_one_lateness_rule() {
+        // task-proposals.md: `late` is the attention rule; the variance is its
+        // signed magnitude; a complete task measures against its completion
+        // day; no finish means no variance; hours compare only when estimated.
+        let graph = graph_of(json!([
+            patched(
+                "root",
+                None,
+                json!({"finish_date": "2026-08-04", "estimated_hours": 12, "estimated_days": 3,
+                       "hours_log": [{"id": "e1", "by": "c@x", "hours": 4}, {"id": "e2", "by": "c@x", "hours": 10.5}],
+                       "actual_hours": 14.5})
+            ),
+            patched(
+                "child",
+                Some("root"),
+                json!({"finish_date": "2026-08-12", "delivery_state": "complete",
+                       "primary_completed_at": "2026-08-09T15:00:00Z", "estimated_hours": 8,
+                       "hours_log": [{"id": "e3", "by": "c@x", "hours": 6}]})
+            ),
+            patched(
+                "grandchild",
+                Some("child"),
+                json!({"finish_date": "", "start_date": "",
+                       "hours_log": [{"id": "e4", "by": "c@x", "hours": 2}]})
+            ),
+        ]));
+        let by_id = |id: &str| graph.tasks.iter().find(|task| task.id == id).expect("task");
+        let root = effort(by_id("root"), "2026-08-10");
+        assert!(root.late);
+        assert_eq!(root.schedule_variance_days, Some(6));
+        assert_eq!(root.estimate_vs_actual, Some(2.5));
+        assert!(root.over_estimate);
+        assert_eq!(root.actual_hours, 14.5);
+        let child = effort(by_id("child"), "2026-08-10");
+        assert!(!child.late, "a complete task is never late");
+        assert_eq!(
+            child.schedule_variance_days,
+            Some(-3),
+            "finished three days early"
+        );
+        assert_eq!(child.estimate_vs_actual, Some(-2.0));
+        assert!(!child.over_estimate);
+        let grandchild = effort(by_id("grandchild"), "2026-08-10");
+        assert_eq!(
+            grandchild.schedule_variance_days, None,
+            "no planned finish, no variance"
+        );
+        assert_eq!(
+            grandchild.estimate_vs_actual, None,
+            "no estimate, no comparison"
+        );
+        assert_eq!(
+            grandchild.actual_hours, 2.0,
+            "an older row without the server sum still sums its log"
+        );
+        assert!(!grandchild.over_estimate);
+        // The attention list ranks the over-estimate after the slipped finish
+        // and carries the magnitude; the dashboard counts it.
+        let rows = attention(&graph, "2026-08-10");
+        let root_row = rows
+            .iter()
+            .find(|row| row.task_id == "root")
+            .expect("root row");
+        assert_eq!(
+            root_row.kind,
+            AttentionKind::Late,
+            "late outranks over-estimate"
+        );
+        assert_eq!(root_row.hours_over, 2.5);
+        // The fixture's one open residual sits on `child`; that is the only
+        // reason a complete task reaches the list — never late, never over.
+        let child_row = rows
+            .iter()
+            .find(|row| row.task_id == "child")
+            .expect("child row");
+        assert_eq!(child_row.kind, AttentionKind::Residual);
+        assert_eq!((child_row.days_late, child_row.hours_over), (0, 0.0));
+        assert_eq!(dashboard(&graph, "2026-08-10").over_estimate, 1);
+        let on_time = graph_of(json!([patched(
+            "root",
+            None,
+            json!({"finish_date": "2026-08-30", "estimated_hours": 1, "actual_hours": 3})
+        )]));
+        let rows = attention(&on_time, "2026-08-10");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].kind, AttentionKind::OverEstimate);
+        assert_eq!(rows[0].hours_over, 2.0);
+    }
+
+    #[test]
+    fn proposals_are_the_requested_inbox_tasks_oldest_first() {
+        let graph = graph_of(json!([
+            patched(
+                "root",
+                None,
+                json!({"placement": "inbox", "estimated_hours": 12, "estimated_days": 3, "responsible_email": "c@x.rw",
+                       "admission": {"state": "requested", "requested_by": "c@x.rw", "requested_at": "2026-08-02T09:00:00Z", "note": "site visit"}})
+            ),
+            patched(
+                "child",
+                None,
+                json!({"placement": "inbox",
+                       "admission": {"state": "requested", "requested_by": "d@x", "requested_at": "2026-08-01T09:00:00Z"}})
+            ),
+            patched(
+                "grandchild",
+                None,
+                json!({"placement": "inbox",
+                       "admission": {"state": "declined", "requested_by": "d@x", "requested_at": "2026-08-01T09:00:00Z", "reason": "no"}})
+            ),
+        ]));
+        let rows = proposals(&graph);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].task_id, "child", "the older request comes first");
+        assert_eq!(rows[1].task_id, "root");
+        assert_eq!(rows[1].estimated_hours, Some(12.0));
+        assert_eq!(rows[1].estimated_days, Some(3));
+        assert_eq!(rows[1].note.as_deref(), Some("site visit"));
+        assert_eq!(rows[1].responsible.as_deref(), Some("c@x.rw"));
+        assert_eq!(rows[1].requested_by, "c@x.rw");
+        assert_eq!(dashboard(&graph, "2026-08-10").proposals_pending, 2);
+        let declined = graph
+            .tasks
+            .iter()
+            .find(|task| task.id == "grandchild")
+            .expect("declined");
+        assert_eq!(
+            declined.admission.as_ref().map(|a| a.state),
+            Some(AdmissionState::Declined)
+        );
+        assert_eq!(
+            declined
+                .admission
+                .as_ref()
+                .and_then(|a| a.reason.clone())
+                .as_deref(),
+            Some("no")
         );
     }
 

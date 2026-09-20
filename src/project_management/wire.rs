@@ -262,6 +262,18 @@ pub struct CanonicalProjectTask {
     pub open_blocker_count: i64,
     pub descendant_blocker_count: i64,
     pub unscheduled_descendant_count: i64,
+    /// Task proposals (ds-brain docs/contracts/task-proposals.md). The
+    /// estimate is the proposer's statement, absent when never stated; the
+    /// log is what assignees declared; `actual_hours` is the server's sum;
+    /// `admission` is where the proposal stands with the PM.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_hours: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_days: Option<i64>,
+    pub actual_hours: f64,
+    pub hours_log: Vec<HoursEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admission: Option<Admission>,
     pub version: i64,
     pub created_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -269,6 +281,46 @@ pub struct CanonicalProjectTask {
     pub updated_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_by: Option<String>,
+}
+
+/// One appended statement of hours worked, as the server stored it.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HoursEntry {
+    pub id: String,
+    pub by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+    pub hours: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionState {
+    Requested,
+    Admitted,
+    Declined,
+}
+
+/// Where a proposed task stands with the PM; absent on a task nobody asked
+/// about.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Admission {
+    pub state: AdmissionState,
+    pub requested_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decided_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decided_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
@@ -377,6 +429,13 @@ pub struct ProjectFieldModel {
     pub residual_statuses: Vec<String>,
     pub scope_classifications: Vec<String>,
     pub work_classifications: Vec<String>,
+    /// Task proposals: the admission vocabulary and the four bounds, so a
+    /// client refuses an out-of-range number before the round trip.
+    pub admission_states: Vec<String>,
+    pub max_estimated_hours: i64,
+    pub max_estimated_days: i64,
+    pub max_hours_per_entry: i64,
+    pub max_hours_log_entries: i64,
     pub max_assignees: i64,
     pub max_batch_commands: i64,
 }
@@ -647,9 +706,60 @@ fn decode_field_model(value: Option<&Value>) -> Option<ProjectFieldModel> {
         residual_statuses: texts(raw.get("residual_statuses")),
         scope_classifications: texts(raw.get("scope_classifications")),
         work_classifications: texts(raw.get("work_classifications")),
+        admission_states: texts(raw.get("admission_states")),
+        max_estimated_hours: integer(raw.get("max_estimated_hours")),
+        max_estimated_days: integer(raw.get("max_estimated_days")),
+        max_hours_per_entry: integer(raw.get("max_hours_per_entry")),
+        max_hours_log_entries: integer(raw.get("max_hours_log_entries")),
         max_assignees: integer(raw.get("max_assignees")),
         max_batch_commands: integer(raw.get("max_batch_commands")),
     })
+}
+
+/// The proposal fields off the merged task map. A log is what the row
+/// carries; the sum is the server's `computed.actual_hours` when it is there
+/// and the log's own sum when a row predates the field — the same number
+/// either way, so an older row never reads as zero hours.
+fn decode_hours_log(value: Option<&Value>) -> Vec<HoursEntry> {
+    records(value)
+        .into_iter()
+        .filter_map(|entry| {
+            let id = non_empty(text(entry.get("id")))?;
+            Some(HoursEntry {
+                id,
+                by: text(entry.get("by")),
+                at: optional_instant(entry.get("at")),
+                hours: finite(entry.get("hours"), 0.0).max(0.0),
+                note: non_empty(text(entry.get("note"))),
+            })
+        })
+        .collect()
+}
+
+fn decode_admission(value: Option<&Value>) -> Option<Admission> {
+    let raw = record(value);
+    let state = match text(raw.get("state")).as_str() {
+        "requested" => AdmissionState::Requested,
+        "admitted" => AdmissionState::Admitted,
+        "declined" => AdmissionState::Declined,
+        _ => return None,
+    };
+    Some(Admission {
+        state,
+        requested_by: text(raw.get("requested_by")),
+        requested_at: optional_instant(raw.get("requested_at")),
+        note: non_empty(text(raw.get("note"))),
+        decided_by: non_empty(text(raw.get("decided_by"))),
+        decided_at: optional_instant(raw.get("decided_at")),
+        reason: non_empty(text(raw.get("reason"))),
+    })
+}
+
+fn optional_finite(value: Option<&Value>) -> Option<f64> {
+    match value {
+        Some(Value::Number(number)) => number.as_f64().filter(|candidate| candidate.is_finite()),
+        _ => None,
+    }
 }
 
 /// INVENTED DEFAULT (wire.ts:111): a calendar that does not author exactly
@@ -1009,6 +1119,16 @@ pub fn decode_task(envelope: &Map<String, Value>) -> Option<CanonicalProjectTask
         open_blocker_count: integer(raw.get("open_blocker_count")).max(0),
         descendant_blocker_count: integer(raw.get("descendant_blocker_count")).max(0),
         unscheduled_descendant_count: integer(raw.get("unscheduled_descendant_count")).max(0),
+        estimated_hours: optional_finite(raw.get("estimated_hours")).filter(|hours| *hours >= 0.0),
+        estimated_days: optional_integer(raw.get("estimated_days")).filter(|days| *days >= 0),
+        actual_hours: {
+            let log = decode_hours_log(raw.get("hours_log"));
+            optional_finite(raw.get("actual_hours"))
+                .unwrap_or_else(|| log.iter().map(|entry| entry.hours).sum())
+                .max(0.0)
+        },
+        hours_log: decode_hours_log(raw.get("hours_log")),
+        admission: decode_admission(raw.get("admission")),
         version: integer(raw.get("version")).max(0),
         created_at: metadata_created_at(&raw),
         created_by: non_empty(text(record(raw.get("metadata")).get("created_by"))),
