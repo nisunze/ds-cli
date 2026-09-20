@@ -140,7 +140,7 @@ pub const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "package_decode_failed",
-        when: "the package predates this build's canonical schema or does not verify",
+        when: "the package is damaged or carries a table schema this build does not decode",
         remedy: "re-convert it from its PLS-CADD workspace with `ds dsgrid-exchange convert`, then `ds dsgrid model import-external`",
     },
     Refusal {

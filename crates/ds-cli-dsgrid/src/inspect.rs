@@ -114,7 +114,7 @@ projections not requested and any collection that was truncated.",
         Refusal {
             code: "package_decode_failed",
             when: "--include library or extent was asked for and the tables would not decode",
-            remedy: "the package is damaged or predates this schema; re-export it",
+            remedy: "the package is damaged or carries a table schema this build does not decode; re-convert it from its PLS-CADD workspace",
         },
     ],
     reference: Some("docs/reference/dsgrid.inspect.md"),
@@ -155,6 +155,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "crs": manifest.model.coordinate_system.as_str(),
             "format_version": manifest.model.format_version,
             "schema_version": manifest.model.schema_version,
+            "prior_schema_members": package::prior_schema_members(&manifest),
             "fingerprint": manifest.model.snapshot_fingerprint,
         }),
     );

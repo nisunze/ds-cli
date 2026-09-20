@@ -76,9 +76,11 @@ Procedure, in this order:
    (`resulting_revision`, counts, the file digest).
 
 Never pass `--yes` and `--dry-run` together; never edit the package file
-beside the catalogue by hand; a package refused `package_decode_failed`
-predates the current schema and is re-converted from its PLS-CADD source, not
-repaired. These are proposals (`verification_level: proposal`): PLS-CADD
+beside the catalogue by hand; a package refused `package_decode_failed` is
+damaged or carries a table schema this build does not decode, and is
+re-converted from its PLS-CADD source, not repaired (a package that merely
+predates an appended column opens — `model show` lists it under
+`head.prior_schema_members`). These are proposals (`verification_level: proposal`): PLS-CADD
 confirms after `ds dsgrid-exchange sync` (contract 02).
 
 ## PLS-CADD sources

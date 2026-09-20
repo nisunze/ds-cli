@@ -45,7 +45,7 @@ const NOT_A_PACKAGE: Refusal = Refusal {
 };
 const SCHEMA_MOVED: Refusal = Refusal {
     code: "package_decode_failed",
-    when: "the package predates this build's canonical schema or does not verify",
+    when: "the package is damaged or carries a table schema this build does not decode",
     remedy: "re-convert it from its PLS-CADD workspace with `ds dsgrid-exchange convert`",
 };
 const IMPORT_OWN: [Refusal; 6] = [

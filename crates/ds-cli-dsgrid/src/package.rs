@@ -11,7 +11,7 @@ use std::path::Path;
 use ds_cli_contract::outcome::Failure;
 use ds_grid_exchange::dsgrid;
 use ds_grid_exchange::package::{GridPackage, PackageManifest, unpack};
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// Refuse a file larger than this before reading it. A `.dsgrid` is a zip of
 /// compressed Arrow tables; a real one is megabytes. The bound exists so a
@@ -124,9 +124,18 @@ pub fn decode(raw_path: &str, bytes: &[u8]) -> Result<GridPackage, Failure> {
             "package_decode_failed",
             format!("`{raw_path}` did not decode"),
         )
-        .remedy("the package is damaged or predates this schema; re-export it")
+        .remedy("the package is damaged or carries a table schema this build does not decode; re-convert it from its PLS-CADD workspace with `ds dsgrid-exchange convert`")
         .detail(json!({ "detail": error.to_string() }))
     })
+}
+
+/// The table members a package attests at a prior additive schema this build
+/// still decodes (`ds_grid_exchange::prior_schema_members`): `[]` for a
+/// package written by this build. Named on every read receipt so an engineer
+/// sees that a package predates a column (its values read as absent) and
+/// that the next write carries the current schema.
+pub fn prior_schema_members(manifest: &ds_grid_exchange::PackageManifest) -> Value {
+    json!(ds_grid_exchange::prior_schema_members(manifest))
 }
 
 /// The canonical serialized token for a table kind — taken from the model

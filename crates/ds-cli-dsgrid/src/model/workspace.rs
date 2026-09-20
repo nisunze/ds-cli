@@ -225,12 +225,15 @@ pub struct PackageIdentity {
 pub fn identity(bytes: &[u8]) -> Result<PackageIdentity, Failure> {
     let package = ds_grid_exchange::package::unpack(bytes).map_err(|error| {
         let message = error.to_string();
-        // A package this build's schema has moved past is a different
-        // situation from bytes that were never a package: the remedy is to
-        // re-convert from the PLS-CADD source, not to look for another file.
+        // A package carrying a table schema this build does not decode (an
+        // appended optional column is NOT that: the reader decodes every
+        // prior additive schema, `ds_grid_model::ipc::schema_lineage`) is a
+        // different situation from bytes that were never a package: the
+        // remedy is to re-convert from the PLS-CADD source, not to look for
+        // another file.
         if message.contains("schema") {
             Failure::invalid("package_decode_failed", message)
-                .remedy("this package predates the current canonical schema; re-convert it from its PLS-CADD workspace with `ds dsgrid-exchange convert`")
+                .remedy("this package carries a table schema this build does not decode; re-convert it from its PLS-CADD workspace with `ds dsgrid-exchange convert`")
                 .next("ds dsgrid-exchange convert --source <workspace> --target dsgrid --crs <crs> --out <dir>")
         } else {
             Failure::invalid("not_a_dsgrid_package", message)

@@ -151,6 +151,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "container": {
             "verified": true,
             "members": package.manifest.members.len(),
+            "prior_schema_members": package::prior_schema_members(&package.manifest),
         },
         "model": {
             "id": package.manifest.model.model_id.as_str(),

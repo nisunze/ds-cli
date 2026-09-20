@@ -234,9 +234,14 @@ classes but not the 10°–60° band, which is declared in code from EDCL drawin
 -04 "Not recommended"), `verification_level: proposal`, and a bounded page of
 rows (`--limit`, `more.withheld`); the file is whole.
 
-**Packages written before 2026-09-20** predate the `description` column and are
-refused `package_decode_failed`: re-convert from the PLS-CADD workspace
-(`ds dsgrid-exchange convert … --target dsgrid`) and `model import-external`.
+**Packages written before 2026-09-20** predate the `description` column and
+still open: the column is additive, every description reads as absent, and
+`inspect`, `validate` and `model show` name the member under
+`prior_schema_members[] {member, table, columns, current_columns}`
+(`tables/structures.arrow`, 15 of 16). The first write (`structure describe`,
+`structure retype`, any revision) carries the current schema; nothing is
+re-converted. `package_decode_failed` is kept for a package that is damaged
+or carries a table schema this build does not decode at all.
 
 ## Making a `.dsgrid`, and exporting one
 

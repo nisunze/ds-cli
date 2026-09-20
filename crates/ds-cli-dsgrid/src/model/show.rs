@@ -49,7 +49,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "package_decode_failed",
-        when: "the package predates this build's canonical schema or does not verify",
+        when: "the package is damaged or carries a table schema this build does not decode",
         remedy: "re-convert it from its PLS-CADD workspace with `ds dsgrid-exchange convert`, then `ds dsgrid model import-external`",
     },
     Refusal {
@@ -90,7 +90,7 @@ lands) and its project binding when it was taken from a project.",
 The catalogue row (`model`, `name`, `origin`, `crs`, `revision`, \
 `content_digest`, `head_revision`, `revised_at`, `pls_source`, \
 `project_binding`) plus `head` {authored_revision, package_revision, \
-model_id, fingerprint, valid, issue_count} read live, `counts` per table, \
+model_id, fingerprint, valid, issue_count, prior_schema_members} read live, `counts` per table, \
 and `head_matches_row` — false when the row's recorded head is stale.",
     examples: &[Example {
         command: "ds dsgrid model show --model local-… --output json",
@@ -109,6 +109,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let path = located.path.display().to_string();
     let bytes = crate::package::read_bytes(&path)?;
     let package = crate::package::decode(&path, &bytes)?;
+    let prior_schema_members = crate::package::prior_schema_members(&package.manifest);
     let session = ds_grid_engine::GridSession::open(package.snapshot);
     let head = session.current_revision().revision_id.as_str().to_string();
     let snapshot = session.snapshot();
@@ -126,6 +127,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "fingerprint": package.manifest.model.snapshot_fingerprint,
             "valid": session.is_valid(),
             "issue_count": session.validation().issues.len(),
+            "prior_schema_members": prior_schema_members,
         },
         "head_matches_row": located.row.head_revision.as_deref() == Some(head.as_str()),
         "counts": {
