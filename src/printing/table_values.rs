@@ -30,8 +30,9 @@ pub enum ValueKeyMode {
     /// Every value prints literally.
     #[default]
     Off,
-    /// Every bound column with at most `max_categories` distinct non-empty
-    /// values, whose widest value is wider than its index, compacts.
+    /// Every bound column whose non-empty values recur in at most
+    /// `max_categories` categories, and whose widest value is wider than its
+    /// index, compacts.
     Auto,
     /// Exactly the listed columns compact; one with more categories than
     /// `max_categories` allows refuses, naming the column and its count.
@@ -181,17 +182,23 @@ impl ValuePlan {
     }
 }
 
-/// Distinct non-empty values of one column, in legend order.
-fn categories(rows: &[Vec<String>], column: usize) -> Vec<String> {
+/// Distinct non-empty values of one column in legend order, and how many
+/// non-empty cells they came from.
+fn categories(rows: &[Vec<String>], column: usize) -> (Vec<String>, usize) {
     let mut seen: BTreeMap<(String, String), ()> = BTreeMap::new();
+    let mut filled = 0;
     for row in rows {
         let literal = row[column].trim();
         if !literal.is_empty() {
+            filled += 1;
             seen.entry((literal.to_lowercase(), literal.to_owned()))
                 .or_default();
         }
     }
-    seen.into_keys().map(|(_, literal)| literal).collect()
+    (
+        seen.into_keys().map(|(_, literal)| literal).collect(),
+        filled,
+    )
 }
 
 /// Decide which columns compact and what their legend says. `rows` are the
@@ -226,7 +233,7 @@ pub fn plan(
         if !chosen {
             continue;
         }
-        let values = categories(rows, column);
+        let (values, filled) = categories(rows, column);
         if values.is_empty() {
             continue;
         }
@@ -241,6 +248,12 @@ pub fn plan(
             continue;
         }
         if key.mode == ValueKeyMode::Auto {
+            // A category is a value that recurs. Values that each appear
+            // once are not categories: indexing them would only move every
+            // value from its cell into the legend.
+            if values.len() >= filled {
+                continue;
+            }
             let index = measure(&values.len().to_string());
             let widest = values.iter().map(|v| measure(v)).fold(0_f64, f64::max);
             if !index.is_finite() || !widest.is_finite() || index < 0. || widest < 0. {
@@ -330,11 +343,36 @@ mod tests {
         let plan = plan(&ValueKey::auto(), &columns, &headings, &narrow, width).unwrap();
         assert!(plan.compacted(0).is_none() && plan.compacted(3).is_none());
         assert_eq!(plan.columns.len(), 2);
+        // Raising the ceiling does not index five houses that each appear
+        // once: nothing recurs, so nothing is a category. Once one recurs,
+        // the column compacts under the raised ceiling.
         let mut wide = ValueKey::auto();
         wide.max_categories = 5;
         let plan = super::plan(&wide, &columns, &headings, &rows, width).unwrap();
-        assert!(plan.compacted(0).is_some());
-        assert_eq!(plan.legend[0], "House: 1 H1 · 2 H2 · 3 H3 · 4 H4 · 5 H5");
+        assert!(plan.compacted(0).is_none());
+        let mut recurring = rows.clone();
+        recurring[4][0] = "H1".into();
+        let plan = super::plan(&wide, &columns, &headings, &recurring, width).unwrap();
+        assert_eq!(plan.legend[0], "House: 1 H1 · 2 H2 · 3 H3 · 4 H4");
+        // Two rows of two different values are two singletons, not two
+        // categories; the explicit columns mode still compacts them.
+        let pair = vec![rows[0].clone(), rows[2].clone()];
+        assert!(
+            super::plan(&ValueKey::auto(), &columns, &headings, &pair, width)
+                .unwrap()
+                .is_empty()
+        );
+        let explicit = ValueKey {
+            mode: ValueKeyMode::Columns,
+            max_categories: 3,
+            columns: vec!["category".into()],
+        };
+        assert_eq!(
+            super::plan(&explicit, &columns, &headings, &pair, width)
+                .unwrap()
+                .legend,
+            ["Category: 1 Commercial · 2 Residential"]
+        );
     }
     #[test]
     fn columns_mode_compacts_exactly_the_listed_columns_or_refuses_naming_the_count() {
