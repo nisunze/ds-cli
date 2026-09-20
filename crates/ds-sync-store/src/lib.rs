@@ -18,6 +18,7 @@ mod jobs;
 
 pub use jobs::{Census, JobCaller, JobContext, Recovery};
 
+use ds_command_kernel::survey_moments::{MediaRecord, SyncState};
 use ds_command_kernel::sync_store::{
     self as kernel, ArtifactRow, Event, Fence, GrantRow, HeadRow, LeaseRow, QueueStatus,
     ReceiptRow, RowChange, Scope, Snapshot, Transition,
@@ -83,6 +84,11 @@ CREATE TABLE IF NOT EXISTS leases(
     account TEXT NOT NULL, deployment TEXT NOT NULL, install_id TEXT NOT NULL,
     scope TEXT NOT NULL, row TEXT NOT NULL,
     PRIMARY KEY(account, deployment, install_id, scope));
+CREATE TABLE IF NOT EXISTS survey_media(
+    account TEXT NOT NULL, deployment TEXT NOT NULL, install_id TEXT NOT NULL,
+    project TEXT NOT NULL, path TEXT NOT NULL, state TEXT NOT NULL,
+    size INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL, row TEXT NOT NULL,
+    PRIMARY KEY(account, deployment, install_id, project, path));
 ";
 
 fn schema_version(connection: &Connection) -> Result<Option<i64>> {
@@ -382,6 +388,123 @@ impl Store {
             out.push(serde_json::from_str(&row?)?);
         }
         Ok(out)
+    }
+
+    /// Whether this file holds the survey-media table: a store written by a
+    /// build before the table existed, opened read-only, holds no media.
+    fn has_survey_media(&self) -> Result<bool> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='survey_media'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .is_some())
+    }
+
+    /// Every survey-media record this file holds for one project, across
+    /// fences — one store is one owner's, so this is that owner's holdings
+    /// on this machine. Ordered by path for a stable answer.
+    pub fn survey_media_of_project(&self, project: &str) -> Result<Vec<MediaRecord>> {
+        if !self.has_survey_media()? {
+            return Ok(Vec::new());
+        }
+        let mut statement = self
+            .connection
+            .prepare("SELECT row FROM survey_media WHERE project=?1 ORDER BY path")?;
+        let rows = statement.query_map(params![project], |row| row.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(serde_json::from_str(&row?)?);
+        }
+        Ok(out)
+    }
+
+    /// One project's record for one object path, if held.
+    pub fn survey_media_record(&self, project: &str, path: &str) -> Result<Option<MediaRecord>> {
+        if !self.has_survey_media()? {
+            return Ok(None);
+        }
+        let row: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT row FROM survey_media WHERE project=?1 AND path=?2 ORDER BY updated_at_ms DESC LIMIT 1",
+                params![project, path],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(match row {
+            Some(row) => Some(serde_json::from_str(&row)?),
+            None => None,
+        })
+    }
+
+    /// Write or replace one record under this fence. The record's own
+    /// `project`/`path` are the key; nothing here decides a state.
+    pub fn survey_media_put(&mut self, fence: &Fence, record: &MediaRecord) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO survey_media(account, deployment, install_id, project, path, state, size, updated_at_ms, row)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(account, deployment, install_id, project, path)
+             DO UPDATE SET state=excluded.state, size=excluded.size, updated_at_ms=excluded.updated_at_ms, row=excluded.row",
+            params![
+                fence.account,
+                fence.deployment,
+                fence.install_id,
+                record.project,
+                record.path,
+                record.state.as_str(),
+                record.size as i64,
+                record.updated_at_ms as i64,
+                serde_json::to_string(record)?
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Remove one project's records for the given paths (every fence).
+    /// Answers how many rows went.
+    pub fn survey_media_remove(&mut self, project: &str, paths: &[String]) -> Result<usize> {
+        if !self.has_survey_media()? {
+            return Ok(0);
+        }
+        let tx = self.connection.transaction()?;
+        let mut removed = 0;
+        for path in paths {
+            removed += tx.execute(
+                "DELETE FROM survey_media WHERE project=?1 AND path=?2",
+                params![project, path],
+            )?;
+        }
+        tx.commit()?;
+        Ok(removed)
+    }
+
+    /// Remove every record of one project in one state (every fence),
+    /// answering the paths removed so the host can free their bytes.
+    pub fn survey_media_remove_state(&mut self, project: &str, state: SyncState) -> Result<Vec<String>> {
+        if !self.has_survey_media()? {
+            return Ok(Vec::new());
+        }
+        let tx = self.connection.transaction()?;
+        let paths: Vec<String> = {
+            let mut statement =
+                tx.prepare("SELECT path FROM survey_media WHERE project=?1 AND state=?2 ORDER BY path")?;
+            let rows = statement.query_map(params![project, state.as_str()], |row| row.get::<_, String>(0))?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            out
+        };
+        tx.execute(
+            "DELETE FROM survey_media WHERE project=?1 AND state=?2",
+            params![project, state.as_str()],
+        )?;
+        tx.commit()?;
+        Ok(paths)
     }
 
     fn rows<T: serde::de::DeserializeOwned>(
