@@ -50,7 +50,6 @@ struct App {
     cli_errors: String,
     materialize: String,
     analysis: String,
-    work: String,
     assets: String,
     dsgrid: String,
     dsgrid_contract: String,
@@ -84,7 +83,6 @@ fn app() -> Option<App> {
         cli_errors: read("src/lib/desktop/cli-errors.ts")?,
         materialize: read("src/lib/search-place/materialize.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
-        work: read("src/lib/desktop/cli-work.ts")?,
         assets: read("src/lib/desktop/cli-assets.ts")?,
         dsgrid: read("src/lib/desktop/cli-dsgrid.ts")?,
         dsgrid_contract: read("docs/dsgrid-local-model-and-project-publication-contract.md")?,
@@ -1005,67 +1003,6 @@ fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt(
     }
 }
 
-#[test]
-fn every_work_command_has_one_closed_operation_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-
-    let mut seen = BTreeSet::new();
-    let allowlist = between(
-        &app.transport,
-        "pub const CLI_OPERATIONS: &[&str] = &[",
-        "];",
-    );
-    assert!(
-        !allowlist.is_empty(),
-        "the desktop CLI operation allowlist is absent"
-    );
-    for operation in ds_cli_pm::BRIDGE_OPS {
-        assert!(
-            seen.insert(operation.operation),
-            "`{}` is declared twice by ds work; one semantic operation has one owner",
-            operation.operation
-        );
-        assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "`{}` must appear exactly once in the desktop allowlist",
-            operation.operation
-        );
-        assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
-            1,
-            "`{}` must have exactly one frontend handler",
-            operation.operation
-        );
-
-        let contract = operation_contract(&app.work, operation.operation);
-        assert!(
-            !contract.is_empty(),
-            "`{}` has no typed Project Work adapter argument contract",
-            operation.operation
-        );
-        for argument in operation.arguments {
-            let mut parts = argument.split('.');
-            let top = parts.next().expect("declared argument is non-empty");
-            assert!(
-                contract.contains(&format!("'{top}'")),
-                "ds pm sends `{argument}` to `{}`, but its typed adapter does not accept `{top}`",
-                operation.operation
-            );
-            for nested in parts {
-                assert!(
-                    app.work.contains(&format!("'{nested}'")),
-                    "ds pm sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
-                    operation.operation
-                );
-            }
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Project Assets
 // ---------------------------------------------------------------------------
@@ -1971,89 +1908,6 @@ fn the_global_catalog_no_longer_travels_through_the_window() {
 }
 
 #[test]
-fn work_bounds_and_refusals_match_the_desktop_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-
-    // A page bound enforced in two places must be the SAME bound, or an
-    // accepted --limit becomes a refusal from the application.
-    assert!(
-        app.work.contains(&format!(
-            "const MAX_PAGE_SIZE = {}",
-            ds_cli_pm::MAX_PAGE_SIZE
-        )),
-        "the desktop must bound a Project Work page exactly as ds pm does"
-    );
-    assert!(
-        app.work.contains(&format!(
-            "const MAX_RELATED_ROWS = {}",
-            ds_cli_pm::MAX_RELATED_ROWS
-        )),
-        "the desktop must bound Project Work detail collections exactly as ds pm documents"
-    );
-    // The assignee bound is the engine's, published in the graph's field
-    // model; ds pm carries a hand copy so an over-long list is refused
-    // locally, and the adapter must fall back to the same number.
-    assert!(
-        app.work
-            .contains(&format!("maxAssignees ?? {}", ds_cli_pm::MAX_ASSIGNEES)),
-        "the desktop must fall back to the same assignee bound as ds work"
-    );
-
-    let lowered = app.work.to_ascii_lowercase();
-    // Three conditions reach `ds work` as prose and leave it as codes. Each
-    // needs at least one marker still present in the application's own
-    // message, or the command reports `desktop_refused` for something that has
-    // a name, a remedy and a different next step.
-    for (condition, markers) in [
-        ("signed out", ds_cli_pm::SIGNED_OUT_MARKERS),
-        ("not permitted", ds_cli_pm::NOT_PERMITTED_MARKERS),
-        ("revision conflict", ds_cli_pm::CONFLICT_MARKERS),
-    ] {
-        assert!(
-            markers.iter().any(|marker| lowered.contains(marker)),
-            "no `{condition}` marker remains in the desktop Project Work adapter; \
-             `ds work` would report desktop_refused instead of its named refusal"
-        );
-    }
-}
-
-#[test]
-fn project_work_gets_no_messaging_door() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-
-    // messages-v1 is human-only. Assignment and state notifications are side
-    // effects of a governed command, never something `ds` composes.
-    let allowlist = between(
-        &app.transport,
-        "pub const CLI_OPERATIONS: &[&str] = &[",
-        "];",
-    );
-    for forbidden in ["messaging.send", "messages.send", "pm.message"] {
-        assert!(
-            !allowlist.contains(forbidden),
-            "the desktop allowlist admits `{forbidden}`; the CLI has no messaging door"
-        );
-        assert!(
-            !app.frontend.contains(&format!("case '{forbidden}")),
-            "the frontend dispatcher routes `{forbidden}`; the CLI has no messaging door"
-        );
-    }
-    for operation in ds_cli_pm::BRIDGE_OPS {
-        assert!(
-            !operation.operation.contains("message"),
-            "`{}` reads as a messaging operation",
-            operation.operation
-        );
-    }
-}
-
-#[test]
 fn map_bounds_and_session_projection_match_the_desktop_owner() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
@@ -2166,7 +2020,6 @@ fn retired_automation_bridge_is_not_a_map_fallback() {
         &app.map,
         &app.survey,
         &app.design,
-        &app.work,
     ] {
         assert!(
             !source.contains("agent_bridge") && !source.contains("agent-bridge"),

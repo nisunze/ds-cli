@@ -5,9 +5,10 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_command_kernel::project_management::writes::{self, CreateKind, CreateTask};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 
 const TITLE_ARG: Arg = Arg {
     name: "title",
@@ -89,7 +90,7 @@ const ID_ARG: Arg = Arg {
     summary: "Mint this id. Reuse it on a retry; a second create is refused.",
 };
 
-const INVALID_TASK_SHAPE: Refusal = Refusal {
+pub const INVALID_TASK_SHAPE: Refusal = Refusal {
     code: "invalid_task_shape",
     when: "a child has no parent, a root/inbox item names one, or a milestone names two dates",
     remedy: "use --parent only with --kind child or milestone, and give a milestone one date",
@@ -104,10 +105,12 @@ pub static COMMAND: Command = Command {
 Creates one work item through the same governed command the Plan sheet uses, \
 so it lands with the sort key, schedule state and duration the surface would \
 have given it. A retry that passes the same --id is refused rather than \
-duplicated, which is what makes this safe to run again after a lost answer.",
+duplicated, which is what makes this safe to run again after a lost answer. \
+Headless: commits to the selected project of the signed-in native credential, \
+no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         TITLE_ARG,
@@ -118,7 +121,7 @@ duplicated, which is what makes this safe to run again after a lost answer.",
         START_ARG,
         FINISH_ARG,
         ID_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "\
 The project, the minted `taskId`, the `committedRevision` the plan moved to, \
@@ -126,31 +129,20 @@ any `warnings` the engine returned, and `link` — the deep link that opens the 
 new item in the app.",
     examples: &[Example {
         command: "ds pm task create --title \"Stake MV route\" --kind parent --start 2026-09-01 --finish 2026-09-12 --yes",
-        note: "Without --yes dispatch refuses before the bridge is opened.",
+        note: "Without --yes dispatch refuses before anything is sent.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::WORK_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::CONFLICT,
+    refusals: &crate::write_refusals::<25>(&[
         crate::INVALID_DATE,
+        crate::INVALID_VALUE,
         INVALID_TASK_SHAPE,
-        crate::CONFIRMATION_REQUIRED,
-    ],
+    ]),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "subtask", "sub-task", "deadline", "due", "date", "backlog", "wbs", "schedule",
     ],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -169,39 +161,45 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .remedy(INVALID_TASK_SHAPE.remedy)
         .next("ds pm task create --help"));
     }
+    let kind = CreateKind::parse(kind).ok_or_else(|| {
+        Failure::invalid(
+            "invalid_choice",
+            "`--kind` is not one of parent, child, inbox, milestone",
+        )
+        .remedy(crate::INVALID_VALUE.remedy)
+    })?;
+    let start_date = start.map(|value| crate::date(value, "start")).transpose()?;
+    let finish_date = finish
+        .map(|value| crate::date(value, "finish"))
+        .transpose()?;
+    // The id is minted HERE when the caller supplied none: the engine takes
+    // identity from the caller, the kernel has no entropy, and a retry that
+    // repeats the same --id is what makes a create safe to run again.
+    let id = match inputs.value("id") {
+        Some(id) => id.to_owned(),
+        None => crate::command_id()?,
+    };
 
-    let mut arguments = Map::new();
-    arguments.insert("title".into(), json!(inputs.require("title")?));
-    if let Some(kind) = inputs.value("kind") {
-        arguments.insert("kind".into(), json!(kind));
-    }
-    for (flag, key) in [
-        ("parent", "parent"),
-        ("description", "description"),
-        ("discipline", "discipline"),
-        ("id", "id"),
-    ] {
-        if let Some(value) = inputs.value(flag) {
-            arguments.insert(key.into(), json!(value));
-        }
-    }
-    for (flag, key, value) in [
-        ("start", "startDate", start),
-        ("finish", "finishDate", finish),
-    ] {
-        if let Some(value) = value {
-            arguments.insert(key.into(), json!(crate::date(value, flag)?));
-        }
-    }
-
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TASK_CREATE,
-        Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let read = crate::graph(lane)?;
+    let prepared = writes::create_task(
+        &read.graph,
+        &CreateTask {
+            id: id.clone(),
+            title: inputs.require("title")?.to_owned(),
+            kind,
+            parent: parent.map(str::to_owned),
+            description: inputs.value("description").map(str::to_owned),
+            discipline: inputs.value("discipline").map(str::to_owned),
+            start_date,
+            finish_date,
+        },
     )
-    .map_err(crate::classify_work_failure)
+    .map_err(crate::refused)?;
+    let result = crate::commit(lane, &prepared)?;
+    let mut extra = Map::new();
+    extra.insert("kind".into(), json!(kind.token()));
+    Ok(writes::write_outcome(&read.project_id, &id, &result, extra))
 }
 
 pub fn render(data: &Value) -> String {

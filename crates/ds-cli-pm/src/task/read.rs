@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DESCRIPTOR_ARG, TASK_ARG};
+use crate::{LANE_ARG, TASK_ARG};
 
 pub static COMMAND: Command = Command {
     id: "pm.task.read",
@@ -16,12 +16,13 @@ pub static COMMAND: Command = Command {
 The whole canonical task: schedule, delivery, review and closeout state, who \
 holds it, who has been asked to take it, what it depends on, what is still \
 outstanding against it, and the records that reference it. Read this before \
-any write — the update, assign and respond commands all act on what is here.",
+any write — the update, assign and respond commands all act on what is here. \
+Headless: the selected project of the signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, DESCRIPTOR_ARG],
+    args: &[TASK_ARG, LANE_ARG],
     output: "\
 `task` with the canonical fields, `dependencies`, `residuals` (open first), \
 `episodes`, `records` referencing it, and a `*Total` for each bounded related \
@@ -31,17 +32,7 @@ collection; plus the project's `permissions`, graph `revision`, and `link`.",
         note: "`.data.task.assignmentOpen` tells you whether respond is available.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::WORK_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-    ],
+    refusals: &crate::read_refusals::<17>(&[crate::TASK_NOT_FOUND]),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "subtask",
@@ -54,19 +45,29 @@ collection; plus the project's `permissions`, graph `revision`, and `link`.",
         "progress",
         "assignee",
     ],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TASK_READ,
-        json!({ "task": inputs.require("task")? }),
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_work_failure)
+    let task_id = inputs.require("task")?;
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let read = crate::graph(lane)?;
+    // The records that reference a task are a separate server read the
+    // browser never made; a project with none costs the same round trip as
+    // one with a hundred, and an operator reading a task wants to know which
+    // correspondence names it.
+    let (_, records, _) = crate::records(lane)?;
+    match ds_command_kernel::project_management::reads::task_read(&read.graph, task_id, &records) {
+        Some(reply) => crate::data(&reply),
+        None => Err(Failure::invalid(
+            crate::TASK_NOT_FOUND.code,
+            format!("No task {task_id} in this project's plan."),
+        )
+        .detail(json!({ "task": task_id, "project": read.project_id }))
+        .remedy(crate::TASK_NOT_FOUND.remedy)
+        .next("ds pm task list")),
+    }
 }
 
 pub fn render(data: &Value) -> String {

@@ -1,19 +1,21 @@
 //! `ds pm task update` — change one work item's fields, states or dates.
 //!
-//! Everything given in one invocation is one saved draft: the application
-//! folds the flags into the project commands they imply and commits them
-//! against a single base revision, so a title change and a state change either
-//! both land or neither does. That is the same atomicity the Plan sheet's own
-//! save has, and it is why this is one command rather than six.
+//! Everything given in one invocation is one saved draft: the kernel folds
+//! the flags into the project commands they imply and the native client
+//! commits them against a single base revision, so a title change and a state
+//! change either both land or neither does. That is the same atomicity the
+//! Plan sheet's own save has, and it is why this is one command rather than
+//! six.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_command_kernel::project_management::writes::{self, UpdateTask};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, TASK_ARG};
+use crate::{LANE_ARG, TASK_ARG};
 
 const TITLE_ARG: Arg = Arg::value("title", "<text>", "Rename the work item.");
 const DESCRIPTION_ARG: Arg = Arg::value("description", "<text>", "Replace what done looks like.");
@@ -59,10 +61,11 @@ Applies every flag given as one atomic saved draft against a single base \
 revision, exactly as the Plan sheet's own save does. Nothing given, nothing \
 sent: a flag you omit is untouched, never reset. The engine owns the schedule \
 consequences — moving a date may move dependants, and the warnings it returns \
-are reported rather than swallowed.",
+are reported rather than swallowed. Headless: commits to the selected project \
+of the signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         TASK_ARG,
@@ -79,7 +82,7 @@ are reported rather than swallowed.",
         PROGRESS_ARG,
         START_ARG,
         FINISH_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "\
 The project, the `taskId`, `applied`, the `committedRevision`, the list of \
@@ -89,27 +92,21 @@ The project, the `taskId`, `applied`, the `committedRevision`, the list of \
         note: "Delivery and progress land together or not at all.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::WORK_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::CONFLICT,
+    refusals: &crate::write_refusals::<27>(&[
         crate::INVALID_DATE,
         crate::INVALID_NUMBER,
-        crate::CONFIRMATION_REQUIRED,
+        crate::INVALID_VALUE,
+        Refusal {
+            code: "invalid_task_shape",
+            when: "a milestone was given two different dates in one update",
+            remedy: "give a milestone one date",
+        },
         Refusal {
             code: "nothing_to_update",
             when: "no field, state, progress or date flag was given",
             remedy: "name at least one change, e.g. --delivery in_progress",
         },
-    ],
+    ]),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "deadline",
@@ -121,76 +118,73 @@ The project, the `taskId`, `applied`, the `committedRevision`, the list of \
         "subtask",
         "sub-task",
     ],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
-/// The authored fields, as (flag, the key inside the `fields` patch).
-///
-/// They travel as one nested object because the application folds them into a
-/// single `update_task_fields` command — a patch, not a replacement, so a key
-/// absent here is a field left alone rather than a field cleared.
-const FIELD_FLAGS: &[(&str, &str)] = &[
-    ("title", "title"),
-    ("description", "description"),
-    ("discipline", "discipline"),
-    ("priority", "priority"),
-    ("type", "type"),
-    ("placement", "placement"),
-    ("scheduling", "schedulingMode"),
-];
-
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let mut arguments = Map::new();
-    arguments.insert("task".into(), json!(inputs.require("task")?));
-
-    let mut fields = Map::new();
-    for (flag, key) in FIELD_FLAGS {
-        if let Some(value) = inputs.value(flag) {
-            fields.insert((*key).into(), json!(value));
-        }
-    }
-    if !fields.is_empty() {
-        arguments.insert("fields".into(), Value::Object(fields));
-    }
-
-    for state in ["delivery", "review", "closeout"] {
-        if let Some(value) = inputs.value(state) {
-            arguments.insert(state.into(), json!(value));
-        }
-    }
-    if let Some(progress) = inputs.value("progress") {
-        arguments.insert(
-            "progress".into(),
-            json!(crate::integer(progress, "progress", 0, 100)?),
-        );
-    }
-    for (flag, key) in [("start", "startDate"), ("finish", "finishDate")] {
-        if let Some(value) = inputs.value(flag) {
-            arguments.insert(key.into(), json!(crate::date(value, flag)?));
-        }
-    }
-
+    let task = inputs.require("task")?.to_owned();
+    let progress = inputs
+        .value("progress")
+        .map(|value| crate::integer(value, "progress", 0, 100))
+        .transpose()?
+        .map(|value| value as u64);
+    let start_date = inputs
+        .value("start")
+        .map(|value| crate::date(value, "start"))
+        .transpose()?;
+    let finish_date = inputs
+        .value("finish")
+        .map(|value| crate::date(value, "finish"))
+        .transpose()?;
+    let update = UpdateTask {
+        task: task.clone(),
+        title: inputs.value("title").map(str::to_owned),
+        description: inputs.value("description").map(str::to_owned),
+        discipline: inputs.value("discipline").map(str::to_owned),
+        priority: inputs.value("priority").map(str::to_owned),
+        task_type: inputs.value("type").map(str::to_owned),
+        placement: inputs.value("placement").map(str::to_owned),
+        scheduling_mode: inputs.value("scheduling").map(str::to_owned),
+        delivery: inputs.value("delivery").map(str::to_owned),
+        review: inputs.value("review").map(str::to_owned),
+        closeout: inputs.value("closeout").map(str::to_owned),
+        progress,
+        start_date,
+        finish_date,
+    };
     // `task` alone is a read wearing a write's confirmation gate. Refusing it
     // here means an empty invocation never spends a project round trip, and
     // never reports `applied` for a change nobody asked for.
-    if arguments.len() == 1 {
-        return Err(Failure::invalid(
-            "nothing_to_update",
-            "no field, state, progress or date flag was given",
-        )
-        .remedy("name at least one change, e.g. --delivery in_progress")
-        .next("ds pm task update --help"));
+    let nothing = update.title.is_none()
+        && update.description.is_none()
+        && update.discipline.is_none()
+        && update.priority.is_none()
+        && update.task_type.is_none()
+        && update.placement.is_none()
+        && update.scheduling_mode.is_none()
+        && update.delivery.is_none()
+        && update.review.is_none()
+        && update.closeout.is_none()
+        && update.progress.is_none()
+        && update.start_date.is_none()
+        && update.finish_date.is_none();
+    if nothing {
+        return Err(crate::refused(writes::Refusal::NothingToChange));
     }
 
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TASK_UPDATE,
-        Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
-    )
-    .map_err(crate::classify_work_failure)
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let read = crate::graph(lane)?;
+    let (prepared, kinds) = writes::update_task(&read.graph, &update).map_err(crate::refused)?;
+    let result = crate::commit_batch(lane, &prepared)?;
+    let mut extra = Map::new();
+    extra.insert("commands".into(), json!(kinds));
+    Ok(writes::write_outcome(
+        &read.project_id,
+        &task,
+        &result,
+        extra,
+    ))
 }
 
 pub fn render(data: &Value) -> String {

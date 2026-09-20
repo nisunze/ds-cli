@@ -117,6 +117,9 @@ pub fn parse(command: &Command, tokens: &[String]) -> Result<Inputs, Failure> {
         };
 
         let Some(arg) = command.arg(name) else {
+            if name == WINDOW_PATH_FLAG && command.requires == crate::spec::Requires::Server {
+                return Err(requires_window_retired(command));
+            }
             return Err(unknown_flag(command, name));
         };
 
@@ -239,6 +242,35 @@ fn choice_refusal_code(command: &Command, arg_name: &str) -> &'static str {
     };
     code.filter(|code| command.refusals.iter().any(|refusal| refusal.code == *code))
         .unwrap_or("invalid_choice")
+}
+
+/// The one flag that ever selected the paired-window transport.
+///
+/// A command that runs on the Server no longer declares it, so a caller who
+/// learned the flag from an older release is told the window path is retired
+/// — by name, with the remedy — rather than being sent to guess at a typo.
+pub const WINDOW_PATH_FLAG: &str = "desktop-descriptor";
+
+/// The refusal a Server command answers to the retired window path.
+///
+/// Documented once in the output contract like every parser code, because it
+/// applies to every `Requires::Server` command equally.
+pub const REQUIRES_WINDOW_RETIRED: Refusal = Refusal {
+    code: "requires_window_retired",
+    when: "`--desktop-descriptor` was passed to a command that runs headless on the Server",
+    remedy: "drop `--desktop-descriptor`; the command needs no paired window and runs under the signed-in native credential",
+};
+
+fn requires_window_retired(command: &Command) -> Failure {
+    Failure::invalid(
+        REQUIRES_WINDOW_RETIRED.code,
+        format!(
+            "`ds {}` runs headless on the Server; the paired-window path `--{WINDOW_PATH_FLAG}` is retired",
+            command.path.join(" ")
+        ),
+    )
+    .remedy(REQUIRES_WINDOW_RETIRED.remedy)
+    .next(format!("ds {} --help", command.path.join(" ")))
 }
 
 fn unknown_flag(command: &Command, name: &str) -> Failure {
@@ -376,6 +408,22 @@ mod tests {
 
     fn tokens(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_string()).collect()
+    }
+
+    /// A caller who learned `--desktop-descriptor` from a release where this
+    /// command still needed a window is told the path is retired, by name —
+    /// not sent hunting for a typo of a flag the command never had.
+    #[test]
+    fn the_retired_window_path_is_refused_by_name_on_a_server_command() {
+        let refused = parse(
+            &WITH_OPERAND,
+            &tokens(&["x", "--desktop-descriptor", "/tmp/d.json"]),
+        )
+        .expect_err("refused");
+        assert_eq!(refused.code(), "requires_window_retired");
+        // Any other unknown flag keeps the parser's ordinary answer.
+        let unknown = parse(&WITH_OPERAND, &tokens(&["x", "--desktop", "1"])).expect_err("refused");
+        assert_eq!(unknown.code(), "unknown_flag");
     }
 
     #[test]

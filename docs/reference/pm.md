@@ -4,22 +4,37 @@ Tier-4 reference. `ds pm <command> --help` is the contract; this document is
 the part that does not belong in any command's help because it is true of all
 of them.
 
-## Where Project Work is
+## Where Project Management is
 
-Not on disk, and not reachable with a credential this process holds.
+Not on disk, and not behind a window.
 
 The project's plan is a governed graph behind ds-brain, which is the only
 gateway and the only authority: it decides who may write, it arbitrates two
 people accepting the same assignment request in the same second, and it refuses
-a command authored against a revision that has since moved. So every command
-here is one named semantic operation the *paired application* performs under the
-session it already holds. `ds` sends a request and receives an outcome. It never
-receives a credential, and it never runs code inside the application —
-`docs/reference/desktop.status.md` has the pairing argument in full.
+a command authored against a revision that has since moved. `POST /api/v1/pm`
+is published on both gateway lanes and authenticates from the bearer alone, so
+every command here is one governed action the native client sends under the
+restored user or device credential, for the audience-fenced project
+`ds auth project use` selected. No pairing, no device link, no paired
+application — `ds pm` answers on a bare Server exactly as it answers beside a
+desktop (`ds auth status` shows the credential and the selected project).
+
+What the graph MEANS is not decided here either. The plan, a task list, one
+task, which project command a flag becomes and what the engine's answer
+means are `ds_command_kernel::project_management` — one fold for the CLI,
+MCP, the Server and the page, so the dashboard and the attention list cannot
+disagree about the same task by host.
 
 That is also why there is no `--project` flag anywhere in this domain. The
-active project is the one the application has open; a project id passed as an
-argument would be a claim `ds` has no standing to make.
+project is the one selected for this credential and lane; a project id passed
+as an argument would be a claim `ds` has no standing to make. `--lane`
+selects the native credential lane (`stable` by default, `canary` where the
+box is linked on canary).
+
+Until 2026-09-20 eight of these nine commands relayed through the paired
+desktop (`requires: window`). That path is retired: `--desktop-descriptor`
+is no longer an input, and a caller that still passes it is told
+`requires_window_retired`.
 
 ## The shape of a session
 
@@ -36,11 +51,15 @@ vocabulary**, and `--delivery`, `--review` and `--closeout` take their values
 from it. The engine owns those lists. This CLI keeps no copy — a hardcoded list
 is how a client once offered `task` for a node that was a milestone.
 
-## Reads cost the project nothing extra
+## Reads are one round trip each
 
-A read paints the same shared Project Work surface the application's own
-launchers read: cache first, reconciled once, no polling. A CLI session
-therefore adds no project reads to a plan the application already has open.
+A read fetches the selected project's canonical graph (`get_graph`) once and
+folds it in the kernel; `ds pm record list|read` and `ds pm task read`
+additionally fetch the project's context (`get_context`) — the records the
+graph does not carry, and which the browser never asked for, so this is the
+first `ds` that lists a project's records at all. The server answers at most
+100 records per context read; a project past that lists with
+`truncated: true`.
 
 Every read is bounded and every bound is reported. On list commands, `--limit`
 is a page, the matched `total` is always returned, and a page smaller than the
@@ -61,9 +80,9 @@ concurrency against the revision it was authored on.
 | Conflict | the plan moved while the command was in flight → re-read and decide again; nothing is merged silently |
 | Warnings | an accepted change that pushed a dependency out is reported, never swallowed |
 
-After a successful write the shared surface is brought forward, so the
-application's launchers do not keep painting one revision behind a change this
-process just made.
+A write that the engine evaluated and declined answers `pm_refused` with the
+engine's own sentence in `detail.service_message` (and its `violations`); a
+200 with `applied: false` is never reported as a receipt.
 
 ### Retrying a create
 
@@ -96,10 +115,15 @@ ds pm task assign  --task T-0007 --owner lead@example.com --yes   # direct trans
 former holder as a collaborator rather than removing them from work they know
 about.
 
-`respond` answers as the application's signed-in user. There is no flag for who
-is answering, because answering for somebody else is the one thing this must not
-allow — and it is why a contributor who may not edit the schedule can still run
-it.
+`respond` answers as the signed-in native credential's user. There is no flag
+for who is answering, because answering for somebody else is the one thing this
+must not allow — and it is why a contributor who may not edit the schedule can
+still run it.
+
+Every person named must be an **active member** of the project; an elevated
+platform account that can read every project is not thereby a member of any,
+and the engine refuses the request by name (`pm_refused`, "every task assignee
+must be an active project member").
 
 ## What is deliberately absent
 
@@ -108,23 +132,28 @@ delivery state all *cause* notifications, and they flow through the canonical
 notification spine as side effects of the governed action. What `ds` cannot do
 is send a message: `messages-v1` is human-only, and a domain that could compose
 one would be the same mistake as a domain that could run code inside the
-application. `tests/bridge_parity.rs` asserts it, in both the CLI and the
-application's allowlist.
+application.
 
-**Authoring a record.** `ds pm record list` and `ds pm record read` are
-reads. A record is authored on the Records surface, where the person writing it
-can see what it will be attached to.
+**Authoring a record, here.** `ds pm record list` and `ds pm record read` are
+reads. Authoring one from the terminal is the correspondence contract's door
+(`pm.record.create|reply`, ds-brain `docs/contracts/correspondence.md`), which
+lands beside these two.
 
-**A project id argument, a token, and a Firestore path.** See above.
+**A project id argument, a token, a window and a Firestore path.** See above.
 
 ## Refusals worth planning for
 
 | Code | Means |
 |---|---|
-| `desktop_not_paired` | no DS GridDesign session on this machine |
-| `desktop_signed_out` | running, but signed out or with no project open |
+| `headless_signed_out` | no restored native credential on this lane — `ds auth login` or `ds auth link begin` |
+| `headless_project_not_selected` | no project selected for this credential and lane — `ds auth project use --project <id>` |
+| `project_not_visible` | the selected project is not one this account is a member of |
+| `pm_refused` | ds-brain or the engine declined the command by name; `detail.service_message` says what |
 | `work_not_permitted` | this user may read the plan but not change it |
 | `work_revision_conflict` | the plan moved; re-read and decide again |
+| `task_not_found` / `record_not_found` | no such id in the selected project |
+| `invalid_choice` | a state, priority, type, placement or scheduling value outside the vocabulary `ds pm plan` publishes |
+| `requires_window_retired` | `--desktop-descriptor` was passed; drop it |
 | `nothing_to_update` | an update with no change flag — refused before a round trip |
 | `invalid_assignment` | `--request`, `--owner` and `--withdraw` are three different intents |
 | `invalid_date` | a schedule flag that is not `YYYY-MM-DD` |

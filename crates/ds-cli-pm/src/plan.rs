@@ -42,10 +42,7 @@ vocabulary the write commands take their state values from.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     // Headless, because this route is: it asks the native owner through
-    // `ds_cli_auth::project_management` and needs no paired application. The
-    // desktop `Project` authority was the other half of the retired paired
-    // route, and leaving it here would tell an operator their plan read needs
-    // a window it does not need.
+    // `ds_cli_auth::project_management` and needs no paired application.
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[LIMIT_ARG, crate::LANE_ARG],
@@ -60,16 +57,7 @@ and closeout states this project's engine accepts.",
         note: "Read .data.vocabulary before calling `ds pm task update --delivery`.",
         runnable: false,
     }],
-    refusals: &[
-        crate::PROJECT_NOT_OPEN,
-        crate::UNREACHABLE,
-        crate::WORK_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::INVALID_NUMBER,
-        crate::PLAN_UNREADABLE,
-    ],
+    refusals: &crate::read_refusals::<17>(&[crate::INVALID_NUMBER]),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "schedule",
@@ -92,17 +80,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Some(value) => crate::integer(value, "limit", 1, 100)?,
         None => 10,
     };
-    let report = ds_cli_auth::project_management(
-        inputs.value("lane").unwrap_or("stable"),
-        &ds_client_core::project_management::Command::Graph,
-    )?;
-    let project = report.project_id().to_owned();
-    let graph = report.into_result();
+    let read = crate::graph(inputs.value("lane").unwrap_or("stable"))?;
     // The graph is the SERVER's answer; what it MEANS is the kernel's. The
     // browser folded it for itself, which is why the dashboard and the
     // attention list could disagree about the same task — one answer now, for
     // the CLI, the Server and the page alike.
-    crate::fold_plan(&project, graph, limit)
+    fold_plan(&read.project_id, read.raw, limit)
 }
 
 pub fn render(data: &Value) -> String {
@@ -170,4 +153,52 @@ pub fn render(data: &Value) -> String {
         }
     }
     out
+}
+
+/// Fold the server's canonical graph into the plan the operator reads.
+///
+/// The host supplies the day because the kernel holds no clock: every date in
+/// the answer is compared against this one value, so a plan is reproducible
+/// from the pair (graph, today).
+fn fold_plan(project: &str, graph: Value, limit: i64) -> Result<Value, Failure> {
+    let request = serde_json::json!({
+        "schema": ds_command_kernel::project_management::SCHEMA,
+        "action": "plan",
+        "today": today_utc(),
+        "ds_project": project,
+        "graph": graph,
+        "limit": limit,
+    });
+    let unreadable = |error: String| {
+        Failure::internal(crate::PLAN_UNREADABLE.code, error).remedy(crate::PLAN_UNREADABLE.remedy)
+    };
+    let bytes = serde_json::to_vec(&request).map_err(|error| unreadable(error.to_string()))?;
+    let answer = ds_command_kernel::project_management::evaluate(&bytes).map_err(unreadable)?;
+    serde_json::from_str(&answer).map_err(|error| unreadable(error.to_string()))
+}
+
+/// The host's day as `YYYY-MM-DD`, UTC.
+fn today_utc() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or_default();
+    let days = seconds.div_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// Howard Hinnant's days-from-civil, inverted. Pure arithmetic: no chrono, no
+/// locale, and no dependency added for four lines.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }

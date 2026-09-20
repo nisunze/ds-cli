@@ -5,9 +5,10 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_command_kernel::project_management::reads;
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 
 const RECORD_ARG: Arg = Arg {
     name: "record",
@@ -29,12 +30,13 @@ The whole record: what it is, which direction it travelled, what state it is \
 in, whether a response is owed and by when, what it affects — scope, schedule, \
 quality, cost — and which tasks, residuals and other records it references. \
 The body is bounded, and a body that was cut says so rather than ending \
-quietly.",
+quietly. Headless: the selected project of the signed-in native credential, \
+no window.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[RECORD_ARG, DESCRIPTOR_ARG],
+    args: &[RECORD_ARG, LANE_ARG],
     output: "\
 `record` with its canonical fields and bounded `body`/related-id collections; \
 each sets a truncation flag and reports its full count when cut.",
@@ -43,17 +45,7 @@ each sets a truncation flag and reports its full count when cut.",
         note: "`.data.record.responseDueDate` is the date a reply is owed by.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::WORK_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-    ],
+    refusals: &crate::read_refusals::<17>(&[crate::RECORD_NOT_FOUND]),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "correspondence",
@@ -62,19 +54,23 @@ each sets a truncation flag and reports its full count when cut.",
         "submission",
         "decision",
     ],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::RECORDS_READ,
-        json!({ "record": inputs.require("record")? }),
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_work_failure)
+    let record_id = inputs.require("record")?;
+    let (project, records, truncated) = crate::records(inputs.value("lane").unwrap_or("stable"))?;
+    match reads::record_read(&project, &records, record_id) {
+        Some(reply) => crate::data(&reply),
+        None => Err(Failure::invalid(
+            crate::RECORD_NOT_FOUND.code,
+            format!("No record {record_id} in this project."),
+        )
+        .detail(json!({ "record": record_id, "project": project, "contextTruncated": truncated }))
+        .remedy(crate::RECORD_NOT_FOUND.remedy)
+        .next("ds pm record list")),
+    }
 }
 
 pub fn render(data: &Value) -> String {

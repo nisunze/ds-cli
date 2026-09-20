@@ -3230,15 +3230,25 @@ pub fn design_selections(
     )
 }
 
-/// One governed project-management read, for only the saved, audience-fenced
-/// selected project.
+/// The `pm` route's refusal, as `ds pm` documents it: the server declined
+/// the command by name. See [`map_project_management_refusal`].
+pub const PM_REFUSED_REFUSAL: Refusal = Refusal {
+    code: "pm_refused",
+    when: "ds-brain refused the command by name — a malformed intent, a duplicate id, a member who is not on the project, or a rule the engine enforces",
+    remedy: "read detail.service_message; correct the flag it names and retry",
+};
+
+/// One governed project-management action — a read of the graph or the
+/// context, or one committed command or draft — for only the saved,
+/// audience-fenced selected project.
 ///
 /// Until 2026-09-19 every `ds pm` command declared `Requires::Window` and
 /// relayed through the paired desktop to the page's own adapters, so a server
 /// — the host most likely to be asked what a plan says — could not read one at
 /// all. `POST /api/v1/pm` was already published on both gateway lanes and
 /// ds-brain already authenticated from the bearer: the window was habit, never
-/// contract.
+/// contract. On 2026-09-20 the writes followed the reads through this same
+/// door.
 pub fn project_management(
     lane_value: &str,
     command: &ds_client_core::project_management::Command,
@@ -4699,6 +4709,14 @@ fn map_service_refusal(
         Some(sentence) => format!("{owner_message} (HTTP {}): {sentence}", refusal.status()),
         None => format!("{owner_message} (HTTP {})", refusal.status()),
     };
+    // Project management authored this refusal (`ds-client-core::
+    // project_management::refusal` names the route in every sentence). Its
+    // three conditions each have a different next step — an admin, a re-read,
+    // a corrected flag — which is why `ds pm` documents them by name rather
+    // than as one `auth_rejected`.
+    if owner_message.starts_with("project management") {
+        return map_project_management_refusal(kind, refusal, message);
+    }
     match refusal.code() {
         Some("version_not_found") => Failure::invalid("version_not_found", message)
             .detail(serde_json::json!({
@@ -4738,6 +4756,60 @@ fn map_service_refusal(
                 _ => failure,
             }
         }
+    }
+}
+
+/// The `pm` route's own refusal, rendered as the failure `ds pm` documents.
+///
+/// The codes are `ds pm`'s, held to ds-brain's envelope: `PM_REVISION_CONFLICT`
+/// is the plan moving under a command (`work_revision_conflict`, re-read and
+/// decide again); a 403 is the permission gate (`work_not_permitted`, ask a
+/// project admin); a 404 is a project the caller is not a member of
+/// (`project_not_visible`); everything else the route refused by name
+/// (`VALIDATION_FAILED`, `PM_REFUSED`, `CONFLICT`) is `pm_refused`, carrying
+/// the server's sentence and code in `detail` so the operator reads exactly
+/// what was declined.
+pub fn map_project_management_refusal(
+    kind: ErrorKind,
+    refusal: &ds_client_core::ServiceRefusal,
+    message: String,
+) -> Failure {
+    let detail = json!({
+        "http_status": refusal.status(),
+        "service_code": refusal.code(),
+        "service_message": refusal.message(),
+    });
+    match (refusal.status(), refusal.code()) {
+        (409, Some("pm_revision_conflict")) => Failure::conflict(
+            "work_revision_conflict",
+            "the plan moved while the command was in flight",
+        )
+        .detail(detail)
+        .remedy("re-read with `ds pm task read` and issue the command again")
+        .next("ds pm task read --task <task-id>"),
+        (401 | 403, _) => Failure::unauthorized(
+            "work_not_permitted",
+            refusal.message().map(str::to_owned).unwrap_or_else(|| {
+                "the signed-in user may not perform this Project Management command".into()
+            }),
+        )
+        .detail(detail)
+        .remedy("ask a project admin for schedule-editor access")
+        .next("ds pm plan"),
+        (404, _) => Failure::unauthorized(
+            "project_not_visible",
+            "the selected project is not a project this account is a member of",
+        )
+        .detail(detail)
+        .remedy("choose an exact id from auth project list")
+        .next("ds auth project list"),
+        (400 | 409 | 422, _) => Failure::invalid("pm_refused", message)
+            .detail(detail)
+            .remedy("read detail.service_message; correct the flag it names and retry")
+            .next("ds pm task read --task <task-id>"),
+        _ => map_client_kind(kind, message.clone())
+            .with_message(message)
+            .detail(detail),
     }
 }
 

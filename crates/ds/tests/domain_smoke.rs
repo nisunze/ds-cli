@@ -5996,7 +5996,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
             assert_eq!(command["availability"], "unavailable", "{}", command["id"]);
         } else {
             assert!(
-                discoverable(&command),
+                discoverable(command),
                 "`{}` reports {} and gates on discovery, which puts --desktop-descriptor out of reach",
                 command["id"],
                 command["availability"]
@@ -8110,20 +8110,21 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
 }
 
 #[test]
-fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
-    // Every refusal below must be reachable on a machine with no application
-    // running, because that is every CI machine — and because a caller that
-    // transposed a date should hear which flag was wrong, not that no session
-    // was found.
+fn pm_validates_its_own_inputs_before_any_round_trip() {
+    // Every refusal below must be reachable on a machine with no credential,
+    // because that is every CI machine — and because a caller that transposed
+    // a date should hear which flag was wrong, not that nobody is signed in.
+    // The development catalogue makes the native availability gate pass so
+    // the command's own input validation is what answers.
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "pm", "task", "update", "--task", "T-1", "--output", "json", "--yes"
         ]),
         "nothing_to_update",
         "an update with no change must be refused before a project round trip"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "pm",
             "task",
             "create",
@@ -8139,15 +8140,15 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
         "a transposed day and month must be refused locally; the engine would accept it"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "pm", "task", "create", "--title", "Orphan", "--kind", "child", "--output", "json",
             "--yes",
         ]),
         "invalid_task_shape",
-        "a child with no parent must be refused before the bridge opens"
+        "a child with no parent must be refused before any round trip"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "pm",
             "task",
             "update",
@@ -8163,14 +8164,14 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
         "progress is a percent and must be held to 0..100"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "pm", "task", "assign", "--task", "T-1", "--output", "json", "--yes"
         ]),
         "invalid_assignment",
         "an assign that names nobody has no intent to send"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "pm",
             "task",
             "assign",
@@ -8188,7 +8189,7 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
         "asking and transferring are two different intents"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "pm",
             "task",
             "assign",
@@ -8204,12 +8205,12 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
         "a person flag that is not an address must be refused locally"
     );
     assert_eq!(
-        refusal(&["pm", "task", "list", "--limit", "500", "--output", "json"]),
+        native_refusal(&["pm", "task", "list", "--limit", "500", "--output", "json"]),
         "invalid_number",
-        "a page larger than the application returns must be refused by the bound it names"
+        "a page larger than the kernel returns must be refused by the bound it names"
     );
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "pm",
             "task",
             "respond",
@@ -8228,9 +8229,10 @@ fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
 
 #[test]
 fn every_work_write_refuses_without_confirmation() {
-    // Project Work is shared state governed by ds-brain. Every write here is
-    // `global_write`, so dispatch must stop it before the bridge opens —
-    // including `respond`, which is the one a person is most likely to script.
+    // Project Management is shared state governed by ds-brain. Every write
+    // here is `global_write`, so dispatch must stop it before any credential
+    // is restored — including `respond`, which is the one a person is most
+    // likely to script.
     for args in [
         vec!["pm", "task", "create", "--title", "Stake the route"],
         vec![
@@ -8305,7 +8307,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
             continue;
         }
         assert!(
-            discoverable(&command),
+            discoverable(command),
             "`{}` reports {} and gates on discovery, which puts --desktop-descriptor out of reach",
             command["id"],
             command["availability"]
@@ -8360,7 +8362,7 @@ fn feedback_is_one_confirmed_shared_write() {
             continue;
         }
         assert!(
-            discoverable(&command),
+            discoverable(command),
             "`{}` reports {} and gates on discovery, which puts --desktop-descriptor out of reach",
             command["id"],
             command["availability"]
@@ -8538,23 +8540,14 @@ fn feedback_validates_context_before_it_is_sent() {
 }
 
 #[test]
-fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
-    // Whatever this machine's desktop situation, a correct invocation must end
-    // in a pairing outcome — never an input refusal, and never an internal
-    // error. `undeclared_bridge_argument` in particular would mean a handler
-    // built an argument key its own BridgeOp does not declare, which no other
-    // suite can see.
-    let descriptor = temp_root("work-smoke-unreachable")
-        .join("session.json")
-        .display()
-        .to_string();
-    for args in [
-        // `pm plan` is deliberately absent: it left the paired route for the
-        // native headless one (`ds_cli_auth::project_management`), so it
-        // declares no `--desktop-descriptor` and a call carrying one is an
-        // unknown flag, not a pairing outcome. When it is given a headless
-        // smoke assertion, that assertion belongs beside the other native
-        // project reads — not in this paired-bridge sweep.
+fn a_well_formed_pm_call_ends_at_the_native_credential_and_never_at_a_window() {
+    // Whatever this machine holds, a correct invocation must end at the
+    // native credential — never an input refusal, never an internal error,
+    // and never a pairing outcome: since 2026-09-20 no `ds pm` command has a
+    // window path. With the development catalogue and an empty config home
+    // that end is `headless_signed_out`, reached AFTER every local check.
+    let calls: Vec<Vec<&str>> = vec![
+        vec!["pm", "plan"],
         vec!["pm", "task", "list"],
         vec![
             "pm",
@@ -8633,15 +8626,46 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
         ],
         vec!["pm", "record", "list", "--category", "review"],
         vec!["pm", "record", "read", "--record", "R-1"],
-    ] {
+    ];
+    for args in &calls {
         let mut argv = args.clone();
-        argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
-        let code = refusal(&argv);
-        assert!(
-            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
-            "`ds {}` failed with `{code}`, which is not a pairing outcome. \
-             A well-formed call must reach the bridge and stop there.",
+        argv.extend(["--output", "json"]);
+        assert_eq!(
+            native_refusal(&argv),
+            "headless_signed_out",
+            "`ds {}` must end at the native credential, not before and not at a window",
             args.join(" ")
+        );
+    }
+    // A caller who learned the window path from an older release is told it
+    // is retired, by name — before any credential is consulted.
+    for args in &calls {
+        let mut argv = args.clone();
+        argv.extend([
+            "--desktop-descriptor",
+            "/nowhere/session.json",
+            "--output",
+            "json",
+        ]);
+        assert_eq!(
+            native_refusal(&argv),
+            "requires_window_retired",
+            "`ds {}` must refuse the retired window path by name",
+            args.join(" ")
+        );
+    }
+    // And the surface says so: nothing in `pm` needs a window.
+    let index = ok(&["capabilities", "pm", "--output", "json"]);
+    for command in index["commands"].as_array().expect("commands") {
+        assert_eq!(
+            command["authority"], "headless_project",
+            "`{}` is not a headless project command",
+            command["id"]
+        );
+        assert_ne!(
+            command["availability"], "requires_window",
+            "`{}` still claims a window",
+            command["id"]
         );
     }
 }
@@ -9131,7 +9155,7 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
             continue;
         }
         assert!(
-            discoverable(&command),
+            discoverable(command),
             "`{}` reports {} and gates on discovery, which puts --desktop-descriptor out of reach",
             command["id"],
             command["availability"]

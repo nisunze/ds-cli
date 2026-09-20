@@ -9,9 +9,10 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use ds_command_kernel::project_management::reads::{PlacementFilter, TaskListFilter};
+use serde_json::Value;
 
-use crate::{DESCRIPTOR_ARG, LIMIT_ARG, PAGE_ARG};
+use crate::{LANE_ARG, LIMIT_ARG, PAGE_ARG};
 
 const QUERY_ARG: Arg = Arg {
     name: "query",
@@ -73,10 +74,11 @@ Names every task and milestone in the active project's plan, in WBS order, \
 with its delivery state, progress and responsible person. This is where a \
 Project Work session starts: every other `ds pm task` command needs an id \
 from here. Reads the same canonical graph the Plan and Table surfaces render \
-and changes nothing.",
+and changes nothing. Headless: the selected project of the signed-in native \
+credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         QUERY_ARG,
@@ -86,7 +88,7 @@ and changes nothing.",
         PLACEMENT_ARG,
         LIMIT_ARG,
         PAGE_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "\
 The project, its graph revision, the matched total, the page bounds, and rows \
@@ -98,18 +100,7 @@ of `wbs`, `id`, `title`, `type`, `delivery`, `review`, `closeout`, `progress`, \
         note: "Read .data.tasks[].id to feed read, update, assign or respond.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::WORK_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::INVALID_NUMBER,
-    ],
+    refusals: &crate::read_refusals::<17>(&[crate::INVALID_NUMBER]),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "subtask",
@@ -125,48 +116,36 @@ of `wbs`, `id`, `title`, `type`, `delivery`, `review`, `closeout`, `progress`, \
         "progress",
         "assignee",
     ],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let mut arguments = Map::new();
-    for (flag, key) in [
-        ("query", "query"),
-        ("state", "state"),
-        ("assignee", "assignee"),
-        ("discipline", "discipline"),
-    ] {
-        if let Some(value) = inputs.value(flag) {
-            arguments.insert(key.into(), json!(value));
-        }
-    }
-    // `any` is the application's own default; sending it would be a key that
-    // says nothing, so the absent flag stays absent on the wire.
-    if let Some(placement) = inputs.value("placement").filter(|value| *value != "any") {
-        arguments.insert("placement".into(), json!(placement));
-    }
-    if let Some(limit) = inputs.value("limit") {
-        arguments.insert(
-            "limit".into(),
-            json!(crate::integer(limit, "limit", 1, crate::MAX_PAGE_SIZE)?),
-        );
-    }
-    if let Some(page) = inputs.value("page") {
-        arguments.insert(
-            "page".into(),
-            json!(crate::integer(page, "page", 0, 10_000)?),
-        );
-    }
-
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TASKS_LIST,
-        Value::Object(arguments),
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_work_failure)
+    let filter = TaskListFilter {
+        query: inputs.value("query").unwrap_or_default().to_owned(),
+        state: inputs.value("state").map(str::to_owned),
+        assignee: inputs.value("assignee").map(str::to_owned),
+        discipline: inputs.value("discipline").map(str::to_owned),
+        // `any` is the default and matches everything.
+        placement: match inputs.value("placement") {
+            Some("wbs") => PlacementFilter::Wbs,
+            Some("inbox") => PlacementFilter::Inbox,
+            _ => PlacementFilter::Any,
+        },
+        page_size: match inputs.value("limit") {
+            Some(limit) => crate::integer(limit, "limit", 1, crate::MAX_PAGE_SIZE)?,
+            None => 50,
+        },
+        page: match inputs.value("page") {
+            Some(page) => crate::integer(page, "page", 0, 10_000)?,
+            None => 0,
+        },
+    };
+    let read = crate::graph(inputs.value("lane").unwrap_or("stable"))?;
+    crate::data(&ds_command_kernel::project_management::reads::task_list(
+        &read.graph,
+        &filter,
+    ))
 }
 
 pub fn render(data: &Value) -> String {

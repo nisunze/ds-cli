@@ -94,8 +94,10 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds-cli-dsgrid", Layer::CorePending, 1),
     // Solar runs read the workspace the application holds open.
     ("ds-cli-solar", Layer::CorePending, 2),
-    // Project Work tasks read the window's selection.
-    ("ds-cli-pm", Layer::CorePending, 1),
+    // `ds-cli-pm` left on 2026-09-20: every Project Management command is a
+    // governed action on `POST /api/v1/pm` under the native credential, and
+    // the kernel decides what the graph means and which command a flag
+    // becomes. Nothing of it needed a window.
 ];
 
 fn workspace_root() -> PathBuf {
@@ -282,9 +284,10 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     ("ds-cli-design", 26),
     ("ds-cli-dsgrid", 1),
     ("ds-cli-solar", 16),
-    // 9 → 8 on 2026-09-19: `pm plan` left the paired route for the native
-    // headless one, so the ratchet moves with it.
-    ("ds-cli-pm", 8),
+    // `ds-cli-pm` left this ledger on 2026-09-20: 9 → 8 on 2026-09-19 when
+    // `pm plan` took the native headless route, 8 → 0 when the other eight
+    // followed it (contract 01 of the dsgrid-authority program) and the
+    // crate dropped the bridge dependency with them.
 ];
 
 /// Non-test source lines in this crate that declare a window command.
@@ -487,7 +490,7 @@ fn the_window_ledger_and_the_bridge_inventory_name_the_same_crates() {
 ///
 /// Two ledgers because a crate is not a domain and a line is not a command;
 /// the same rule governs both, and the same rule governs the totals:
-/// 130 declaration sites, 133 registered commands, and both may only fall.
+/// 122 declaration sites, 123 registered commands, and both may only fall.
 ///
 /// Measured 2026-09-18 against the run tip.
 const WINDOW_BACKLOG: &[(&str, u64)] = &[
@@ -501,12 +504,15 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     ("map", 39),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
-    ("pm", 8),
+    // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
+    // record list/read run headless through `POST /api/v1/pm`.
+    ("pm", 0),
 ];
 
 /// What the filter answers for the whole surface. Pinned beside the rows so a
 /// domain cannot be quietly dropped from the ledger to hide its commands.
-const WINDOW_BACKLOG_TOTAL: u64 = 131;
+/// 131 → 123 on 2026-09-20 (`pm`).
+const WINDOW_BACKLOG_TOTAL: u64 = 123;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {
