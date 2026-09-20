@@ -943,6 +943,18 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pm.task.read", "read_only", "project"),
     ("pm.task.respond", "global_write", "project"),
     ("pm.task.update", "global_write", "project"),
+    // Task proposals (ds-brain docs/contracts/task-proposals.md): Server-native
+    // from the start — a third party proposes, the PM admits, an assignee
+    // logs hours. No window, no bridge.
+    ("pm.task.propose", "global_write", "headless_project"),
+    (
+        "pm.task.request-admission",
+        "global_write",
+        "headless_project",
+    ),
+    ("pm.task.admit", "global_write", "headless_project"),
+    ("pm.task.decline", "global_write", "headless_project"),
+    ("pm.task.log-hours", "global_write", "headless_project"),
     ("workstation.components", "discovery", "none"),
     ("workstation.configure", "machine_write", "none"),
     ("workstation.install", "machine_write", "none"),

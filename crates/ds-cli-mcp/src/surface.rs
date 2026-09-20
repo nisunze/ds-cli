@@ -246,6 +246,15 @@ impl Profile {
             // individual report produced in the cloud, which is how edge and
             // cloud production are proven to meet in one project.
             Self::ProjectOperations => 18,
+            // Nineteen leaves plus both bootstrap tools. Raised from the
+            // default on 2026-09-20 by the task-proposal loop (`ds pm task
+            // propose | request-admission | admit | decline | log-hours`): a
+            // third party proposes work with an estimate, the PM admits it,
+            // hours are logged against it. The five are one workflow with the
+            // plan they change, and a project profile that could read the
+            // proposals on `pm plan` but neither make nor answer one would
+            // publish the question without either side of the answer.
+            Self::Project => 21,
             _ => 16,
         }
     }

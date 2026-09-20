@@ -1170,6 +1170,10 @@ pub struct HeadlessTilePreflight {
 /// receipt can name what it acted on without a second read.
 pub struct HeadlessProjectReport<T> {
     identity: ProviderIdentity,
+    /// The signed-in account's email, as the credential that carried the call
+    /// states it — what a command needs when the caller is the subject (a
+    /// task proposed about one's own work).
+    user_email: String,
     lane: &'static str,
     project_id: String,
     project_name: String,
@@ -1180,6 +1184,9 @@ pub struct HeadlessProjectReport<T> {
 impl<T> HeadlessProjectReport<T> {
     pub const fn identity(&self) -> &ProviderIdentity {
         &self.identity
+    }
+    pub fn user_email(&self) -> &str {
+        &self.user_email
     }
     pub const fn lane(&self) -> &'static str {
         self.lane
@@ -2952,6 +2959,7 @@ fn headless_project_report<T>(
                 device.profile().credential_audience_sha256(),
                 device.context().uid(),
             )?,
+            user_email: device.context().email().to_owned(),
             lane: lane.token(),
             project_id: selected.project_id().to_owned(),
             project_name: selected.project_name().to_owned(),
@@ -2972,6 +2980,7 @@ fn headless_project_report<T>(
             client.profile().credential_audience_sha256(),
             user.uid(),
         )?,
+        user_email: user.email().to_owned(),
         lane: lane.token(),
         project_id: selected.project_id().to_owned(),
         project_name: selected.project_name().to_owned(),
@@ -4730,12 +4739,21 @@ fn map_service_refusal(
         // back over it rather than lost.
         _ => {
             let failure = map_client_kind(kind, message.clone()).with_message(message);
+            // A route that named its refusal hands the token on in `detail`,
+            // so a domain (`ds pm`, `ds solar seed`) can give it a code and a
+            // remedy of its own without this crate learning every vocabulary.
             match refusal.code() {
-                Some(code) if code.starts_with("solar_seed_") => failure.detail(json!({
-                    "http_status": refusal.status(),
-                    "service_code": code,
-                })),
-                _ => failure,
+                Some(code) => {
+                    let mut detail = json!({
+                        "http_status": refusal.status(),
+                        "service_code": code,
+                    });
+                    if let Some(sentence) = refusal.message() {
+                        detail["service_message"] = json!(sentence);
+                    }
+                    failure.detail(detail)
+                }
+                None => failure,
             }
         }
     }

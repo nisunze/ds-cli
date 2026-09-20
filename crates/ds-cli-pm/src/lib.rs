@@ -70,6 +70,11 @@ pub static DOMAIN: Domain = Domain {
         &task::update::COMMAND,
         &task::assign::COMMAND,
         &task::respond::COMMAND,
+        &task::proposals::PROPOSE,
+        &task::proposals::REQUEST_ADMISSION,
+        &task::proposals::ADMIT,
+        &task::proposals::DECLINE,
+        &task::proposals::LOG_HOURS,
         &record::list::COMMAND,
         &record::read::COMMAND,
     ],
@@ -417,6 +422,7 @@ pub fn truncate(text: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ds_cli_contract::spec::Requires;
 
     #[test]
     fn a_date_flag_is_refused_before_it_can_schedule_the_wrong_week() {
@@ -503,11 +509,20 @@ mod tests {
         let mut unique = names.clone();
         unique.dedup();
         assert_eq!(names, unique, "an operation is declared twice");
+        // Every window-bound command sends exactly one operation. The
+        // Server-native commands — the plan and the proposal loop — reach
+        // ds-brain through ds-client-core and declare none; `pm.plan.read`
+        // stays declared while the desktop still implements it.
+        let window_bound = DOMAIN
+            .commands
+            .iter()
+            .filter(|command| matches!(command.requires, Requires::Window))
+            .count();
         assert_eq!(
             names.len(),
-            DOMAIN.commands.len(),
-            "every ds pm command sends exactly one operation, and every \
-             declared operation belongs to a command"
+            window_bound + 1,
+            "every window-bound ds pm command sends exactly one operation, and every \
+             declared operation belongs to a command (plus the plan read the desktop still serves)"
         );
     }
 }

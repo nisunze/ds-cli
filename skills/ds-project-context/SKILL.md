@@ -56,6 +56,16 @@ visibility (`map.layer.list|show|hide`) and the working area's form selection
 Server; selecting a project never changes them, and they never change a
 selection.
 
+Project management runs on the CLI-selected project and needs no Desktop: a
+third party proposes work; the PM admits it. A contributor proposes their own
+Inbox task with an estimate (`ds pm task propose --title … --hours … --yes`)
+or asks for one they made elsewhere (`ds pm task request-admission`); a
+schedule editor answers with `ds pm task admit --task … --under <parent|root>`
+or `ds pm task decline --task … --reason …`; an assignee logs the hours taken
+with `ds pm task log-hours`. `ds pm plan` lists the pending proposals and
+flags work over its estimate; every write takes `--yes` and `--id` for a
+safe retry.
+
 Touched version and attachment boundaries instead require explicit `--project`:
 `design.version.*` and `design.attachment.*` capture that project for native
 authorization and never consult the Web active project or require Desktop.

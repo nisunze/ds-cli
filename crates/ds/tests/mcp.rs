@@ -1374,6 +1374,13 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // report produced in the cloud, which is how edge and cloud
             // production are proven to meet in one project.
             "project-operations" => 18,
+            // Nineteen leaves plus both bootstrap tools: the task-proposal
+            // loop (2026-09-20) — propose, request-admission, admit, decline,
+            // log-hours — is one workflow with the plan it changes, and a
+            // project profile that reads the proposals on `pm plan` but can
+            // neither make nor answer one publishes a question without either
+            // side of its answer.
+            "project" => 21,
             _ => 16,
         };
         assert!(
