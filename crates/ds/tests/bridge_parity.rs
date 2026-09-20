@@ -1033,8 +1033,11 @@ const DSGRID_RETIRED_OPERATIONS: &[&str] = &[
     "dsgrid.model.import",
     "dsgrid.model.set_active",
 ];
-const DSGRID_PROJECT_OPERATIONS: &[&str] =
-    &["dsgrid.model.prepare_project", "dsgrid.model.publish"];
+/// `dsgrid.model.prepare_project` left this door on 2026-09-20: readiness
+/// is a fact about this machine's catalogue against the project's governed
+/// heads, and a missing head is downloaded through `ds dsgrid project
+/// download`'s door (contract dsgrid-authority/01, decision 19).
+const DSGRID_PROJECT_OPERATIONS: &[&str] = &["dsgrid.model.publish"];
 
 #[test]
 fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments() {
@@ -1090,8 +1093,8 @@ fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments
     assert_eq!(
         seen.len(),
         DSGRID_PROJECT_OPERATIONS.len(),
-        "the family sends exactly the two operations that are about the application's own \
-         working copy and project cache"
+        "the family sends exactly the one operation that is about the application's own \
+         working copy"
     );
     let allowlist = between(
         &app.transport,
@@ -1113,9 +1116,9 @@ fn the_dsgrid_project_operations_still_name_the_applications_own_project() {
     // ds-web used to publish a project-independent operation list on each side
     // because the four local operations had to work in a projectless session.
     // They no longer cross a wire, so that list is empty and this suite holds
-    // what is left: the two operations that DO read the application's project
-    // are the only ones the door admits, and neither carries a project of its
-    // own — the application's selected project is the destination.
+    // what is left: the one operation that DOES read the application's project
+    // is the only one the door admits, and it carries no project of its own —
+    // the application's selected project is the destination.
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;

@@ -2914,6 +2914,9 @@ fn every_offline_command_is_available_without_any_engine_binary() {
             || id.starts_with("dsgrid-exchange.")
             || id.starts_with("pls."))
             && !id.starts_with("dsgrid.project.")
+            // Native, like `dsgrid.project.*`: honestly unavailable in a build
+            // with no digest-pinned release catalog, never for want of a binary.
+            && id != "dsgrid.model.prepare-project"
         {
             checked += 1;
             assert_eq!(

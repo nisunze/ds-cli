@@ -496,7 +496,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.model.import-external", "local_file_write", "none"),
     ("dsgrid.model.list", "read_only", "none"),
     ("dsgrid.model.show", "read_only", "none"),
-    ("dsgrid.model.prepare-project", "local_ui", "project"),
+    (
+        "dsgrid.model.prepare-project",
+        "local_file_write",
+        "headless_project",
+    ),
     ("dsgrid.model.set-active", "local_file_write", "none"),
     // The typed command family over the engine (program contract 01 §2):
     // authority none on a working copy or a package file, `local_file_write`

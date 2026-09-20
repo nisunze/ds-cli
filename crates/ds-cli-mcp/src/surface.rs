@@ -285,7 +285,8 @@ impl Profile {
                     && !PRINTING_COMMANDS.contains(&tool.id.as_str())
                     && !tool.id.starts_with("desktop.printing.")
                     && !tool.id.starts_with("report.layout.")
-                    // Project cache preparation belongs to the focused model
+                    // Project head preparation (this machine's working copies
+                    // against the governed heads) belongs to the focused model
                     // lifecycle surface. Keeping it out of this broad router
                     // preserves the profile's bounded tool budget.
                     && tool.id != "dsgrid.model.prepare-project"
