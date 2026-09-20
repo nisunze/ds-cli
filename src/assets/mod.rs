@@ -394,6 +394,11 @@ pub enum Link {
     PmTask {
         id: String,
     },
+    /// A correspondence record (ds-brain `docs/contracts/correspondence.md`):
+    /// the asset is authored against, or attached to, one record.
+    PmRecord {
+        id: String,
+    },
     DsObject {
         object_type: String,
         entity_id: String,
@@ -471,6 +476,109 @@ impl Asset {
         }
         Ok(())
     }
+
+    /// One catalogue row as ds-brain answers it (`AssetRow`), read into the
+    /// kernel's model — the members the projection needs, the rest left on
+    /// the wire. A translation of `decodeAssetRow` (ds-web
+    /// `api/assets-decode.ts:59-91`): a row missing its id, name, kind,
+    /// status, sensitivity, owner, source or byte count is not a row (`None`);
+    /// a link of a kind the model does not know is dropped, not the row.
+    pub fn from_wire(value: &Value) -> Option<Self> {
+        let row = value.as_object()?;
+        let text = |key: &str| {
+            row.get(key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        };
+        let nested = |key: &str| row.get(key).and_then(Value::as_object);
+        let word = |value: Option<&Value>| value.cloned();
+        let owner = nested("owner")?;
+        let source = nested("source")?;
+        let dated = nested("dated");
+        let reference = nested("reference").and_then(|reference| {
+            Some(ReportReference {
+                work_id: reference.get("work_id")?.as_str()?.to_owned(),
+                output_id: reference.get("output_id")?.as_str()?.to_owned(),
+                role: reference.get("role")?.as_str()?.to_owned(),
+            })
+        });
+        Some(Self {
+            reference,
+            schema: text("schema").unwrap_or_else(asset_schema),
+            asset_id: text("asset_id")?,
+            project_id: text("project_id").unwrap_or_default(),
+            folder: text("folder").unwrap_or_default(),
+            name: text("name")?,
+            kind: serde_json::from_value(word(row.get("kind"))?).ok()?,
+            format: serde_json::from_value(word(row.get("format"))?).unwrap_or_default(),
+            bytes: row.get("bytes")?.as_u64()?,
+            digest: text("digest"),
+            status: serde_json::from_value(word(row.get("status"))?).ok()?,
+            sensitivity: serde_json::from_value(word(row.get("sensitivity"))?).ok()?,
+            dated: Dated {
+                document_date: dated
+                    .and_then(|d| d.get("document_date"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned),
+                received_at: dated
+                    .and_then(|d| d.get("received_at"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned),
+                created_at: dated
+                    .and_then(|d| d.get("created_at"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned),
+                source_modified_at: dated
+                    .and_then(|d| d.get("source_modified_at"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned),
+            },
+            owner: Some(Owner {
+                kind: owner
+                    .get("kind")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                id: owner
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                display: owner
+                    .get("display")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned),
+            }),
+            source: Source {
+                kind: serde_json::from_value(word(source.get("kind"))?).ok()?,
+                detail: source
+                    .get("detail")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned),
+            },
+            classified_by: serde_json::from_value(word(row.get("classified_by"))?).ok()?,
+            container: text("container"),
+            links: row
+                .get("links")
+                .and_then(Value::as_array)
+                .map(|links| {
+                    links
+                        .iter()
+                        .filter_map(|link| serde_json::from_value(link.clone()).ok())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            origin: None,
+        })
+    }
 }
 
 /// §2.2 folder counts, computed per caller (D6).
@@ -511,6 +619,56 @@ fn folder_schema() -> String {
 }
 
 impl Folder {
+    /// One declared folder as ds-brain answers it (`AssetFolderRow`), read
+    /// into the kernel's model. A translation of `decodeFolderRow` (ds-web
+    /// `api/assets-decode.ts:93-110`): a row missing its id or path is not a
+    /// folder; `kind` defaults to `user`, which is what ds-brain stores.
+    pub fn from_wire(value: &Value) -> Option<Self> {
+        let row = value.as_object()?;
+        let text = |key: &str| {
+            row.get(key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        };
+        let path = text("path")?;
+        let counts = row.get("counts").and_then(Value::as_object);
+        Some(Self {
+            schema: text("schema").unwrap_or_else(folder_schema),
+            folder_id: text("folder_id")?,
+            project_id: text("project_id").unwrap_or_default(),
+            name: text("name")
+                .or_else(|| path.rsplit('/').next().map(str::to_owned))
+                .unwrap_or_default(),
+            path,
+            parent: text("parent"),
+            kind: row
+                .get("kind")
+                .cloned()
+                .and_then(|kind| serde_json::from_value(kind).ok())
+                .unwrap_or_default(),
+            default_sensitivity: row
+                .get("default_sensitivity")
+                .cloned()
+                .and_then(|value| serde_json::from_value(value).ok()),
+            default_status: row
+                .get("default_status")
+                .cloned()
+                .and_then(|value| serde_json::from_value(value).ok()),
+            counts: Counts {
+                assets: counts
+                    .and_then(|c| c.get("assets"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                folders: counts
+                    .and_then(|c| c.get("folders"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+            },
+        })
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != FOLDER_SCHEMA {
             return Err(format!(
@@ -1176,6 +1334,45 @@ pub fn digest_of(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// A catalogue row as ds-brain answers it carries `folder_id`, `version`,
+    /// `created_by`, `bytes_held`, `mail` … beside the model's members; the
+    /// reader takes what the projection needs and leaves the rest on the
+    /// wire, and a link kind it does not know drops the link, not the row.
+    #[test]
+    fn a_brain_row_reads_into_the_model_and_leaves_the_rest_on_the_wire() {
+        let row = json!({
+            "schema": "ds.assets.asset/v1", "asset_id": "a_7kq3nr2v0b1c", "project_id": "p",
+            "folder_id": "f_1", "folder": "contracts", "name": "lot3.pdf", "kind": "doc",
+            "format": "pdf", "bytes": 10, "digest": "sha256:ab", "status": "fresh",
+            "sensitivity": "internal", "dated": {"created_at": "2026-09-20T00:00:00Z"},
+            "owner": {"kind": "user", "id": "lead@ds.rw"}, "source": {"kind": "upload"},
+            "classified_by": "kernel", "container": null,
+            "links": [{"kind": "pm_task", "id": "t1"}, {"kind": "pm_record", "id": "R1"},
+                      {"kind": "something_new", "id": "x"}],
+            "bytes_held": true, "created_by": "lead@ds.rw", "updated_at": "2026-09-20T00:00:00Z",
+            "updated_by": "lead@ds.rw", "version": 3, "mail": {"subject": "hi"}
+        });
+        let asset = Asset::from_wire(&row).expect("a row");
+        assert_eq!(asset.folder, "contracts");
+        assert_eq!(asset.kind, Kind::Doc);
+        assert_eq!(asset.links.len(), 2);
+        assert!(asset.links.contains(&Link::PmRecord { id: "R1".into() }));
+        assert!(asset.validate().is_ok());
+        assert!(Asset::from_wire(&json!({"asset_id": "a_x", "name": "n"})).is_none());
+
+        let folder = Folder::from_wire(&json!({
+            "schema": "ds.assets.folder/v1", "folder_id": "f_1", "project_id": "p", "kind": "user",
+            "path": "contracts/2026", "name": "", "parent": "f_0", "default_sensitivity": "confidential",
+            "default_status": "fresh", "counts": {"assets": 4, "folders": 1}, "hidden_assets": 2,
+            "created_at": "2026-09-20T00:00:00Z", "updated_at": "2026-09-20T00:00:00Z", "version": 2
+        }))
+        .expect("a folder");
+        assert_eq!(folder.name, "2026");
+        assert_eq!(folder.counts.assets, 4);
+        assert_eq!(folder.default_sensitivity, Some(Sensitivity::Confidential));
+        assert!(folder.validate().is_ok());
+    }
     use super::*;
 
     fn request(value: Value) -> Vec<u8> {

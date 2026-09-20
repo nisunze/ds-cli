@@ -1208,7 +1208,9 @@ impl<'a> Projector<'a> {
             Some("record") => match self.records.get(linked) {
                 Some(reference) => (
                     Some(format!("Project work/records/{}", segment(reference))),
-                    None,
+                    Some(Link::PmRecord {
+                        id: linked.to_string(),
+                    }),
                 ),
                 None => (None, None),
             },

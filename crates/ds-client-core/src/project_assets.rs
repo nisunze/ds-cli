@@ -462,9 +462,9 @@ fn refusal(status: u16, body: &[u8]) -> ClientError {
             "project assets is temporarily unavailable",
         ),
     };
-    if envelope.code().is_none() && envelope.message().is_none() {
-        return ClientError::new(kind, owner);
-    }
+    // Always carried, even bare: the status alone tells a gateway 503 from a
+    // refusal the catalogue authored, and a caller reading "temporarily
+    // unavailable" deserves the number.
     ClientError::with_service_refusal(kind, owner, envelope)
 }
 

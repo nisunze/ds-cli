@@ -92,7 +92,7 @@ fn link_valid(link: &Link) -> bool {
             object_type,
             entity_id,
         } => object_type == "transformer" && token(entity_id),
-        Link::PmTask { id } => token(id),
+        Link::PmTask { id } | Link::PmRecord { id } => token(id),
     }
 }
 impl Command {

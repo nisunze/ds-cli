@@ -242,9 +242,8 @@ fn refusal(status: u16, body: &[u8]) -> ClientError {
             "project management is temporarily unavailable",
         ),
     };
-    if envelope.code().is_none() && envelope.message().is_none() {
-        return ClientError::new(kind, message);
-    }
+    // Always carried, even bare: the status alone tells a gateway 503 from a
+    // refusal the route authored.
     ClientError::with_service_refusal(kind, message, envelope)
 }
 
@@ -430,10 +429,13 @@ mod tests {
         let missing = refusal(404, br#"{"success":false,"error":{"code":"NOT_FOUND","message":"Project not found"}}"#);
         assert_eq!(missing.kind(), ErrorKind::ResourceNotFound);
 
-        // A gateway 503 with no DS envelope: the class, nothing invented.
+        // A gateway 503 with no DS envelope: the class and the status,
+        // nothing invented.
         let outage = refusal(503, b"upstream unavailable");
         assert_eq!(outage.kind(), ErrorKind::Transient);
-        assert!(outage.service_refusal().is_none());
+        let served = outage.service_refusal().expect("the status is carried");
+        assert_eq!(served.status(), 503);
+        assert!(served.code().is_none() && served.message().is_none());
     }
 
     /// A projectless call is refused before anything is sent, and the project
