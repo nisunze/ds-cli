@@ -60,7 +60,8 @@ pub use ds_client_core::{
 };
 pub use ds_client_core::{
     CompoundedArchive, CompoundedArchiveLayout, CompoundedReportReceipt, CompoundedReportRequest,
-    CompoundedReportStatus, LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
+    CompoundedReportStatus, ExportReportOutcome, ExportReportResult, ExportReportsReceipt,
+    LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
     LayerVisibilityDefaultReceipt, PROJECT_REPORT_MAX_REASON_CHARS,
     PROJECT_REPORT_MAX_TRANSFORMER_CHARS, PROJECT_REPORT_MAX_TRANSFORMERS, ReportFileLevel,
     RetirementAction, RetirementReceipt, RetirementRecord, RetirementRefusal, RetirementRequest,
@@ -2990,6 +2991,21 @@ pub fn compounded_report(
         lane_value,
         |device, project| device.compounded_report(project, request),
         |client, project| client.compounded_report(project, request, now()),
+    )
+}
+
+/// Ask the cloud to compute the individual reports of exact transformers of
+/// only the saved, audience-fenced selected project and publish them to it.
+/// ds-brain owns write governance, freshness, the claim and the fan-out to
+/// the cloud reporter; the receipt says per transformer what the cloud did.
+pub fn export_reports(
+    lane_value: &str,
+    request: &TransformerSet,
+) -> Result<HeadlessProjectReport<ExportReportsReceipt>, Failure> {
+    headless_project_report(
+        lane_value,
+        |device, project| device.export_reports(project, request),
+        |client, project| client.export_reports(project, request, now()),
     )
 }
 

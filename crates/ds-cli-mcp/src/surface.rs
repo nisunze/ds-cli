@@ -235,12 +235,15 @@ impl Profile {
             // for ambiguity and not publish the answer to it would not be a
             // smaller surface, only a stuck one.
             Self::Operations => 18,
-            // Fifteen leaves plus both bootstrap tools. Raised from the
+            // Sixteen leaves plus both bootstrap tools. Raised from the
             // default on 2026-09-19 by the publication queue: an agent doing
             // background delivery work produces report artifacts, and a
             // profile that can produce them but cannot publish them or read
-            // where they are strands its own output on the machine.
-            Self::ProjectOperations => 17,
+            // where they are strands its own output on the machine. Raised
+            // again on 2026-09-20 by `report.project.compute`: the same
+            // individual report produced in the cloud, which is how edge and
+            // cloud production are proven to meet in one project.
+            Self::ProjectOperations => 18,
             _ => 16,
         }
     }
@@ -611,6 +614,10 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "report.project.compounded",
     "report.project.archives",
     "report.project.export",
+    // The cloud twin of `export`: the same individual report, computed and
+    // published server-side. Listed here so the broad `grid` chapter router,
+    // which excludes this list, does not grow by one.
+    "report.project.compute",
     // Publishing a set this machine already holds, and the queue every one of
     // those exports enters. Without them this profile can PRODUCE report
     // artifacts and cannot publish them or say where they are — which is the

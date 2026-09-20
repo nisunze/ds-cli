@@ -487,6 +487,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::project::compounded::render,
     },
     Entry {
+        command: &ds_cli_report::project::compute::COMMAND,
+        handler: ds_cli_report::project::compute::run,
+        render: ds_cli_report::project::compute::render,
+    },
+    Entry {
         command: &ds_cli_report::project::archives::COMMAND,
         handler: ds_cli_report::project::archives::run,
         render: ds_cli_report::project::archives::render,

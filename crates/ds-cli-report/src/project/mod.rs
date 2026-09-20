@@ -12,15 +12,18 @@
 //!
 //! ```text
 //!   scope → compounded → archives
+//!   scope → compute            (individual reports, computed in the cloud)
 //! ```
 //!
 //! `scope` is the plan: it reads the lifecycle inventory and shows which
 //! transformers participate and which are excluded (retired, deleted, missing)
-//! before any artifact is produced.
+//! before any artifact is produced. `compute` is the cloud twin of the edge
+//! engine's `export`: the same individual report, produced server-side.
 
 pub mod archives;
 pub mod combined;
 pub mod compounded;
+pub mod compute;
 pub mod export;
 pub mod map_inputs;
 pub mod publish;

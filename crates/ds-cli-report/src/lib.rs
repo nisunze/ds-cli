@@ -90,6 +90,7 @@ pub static DOMAIN: Domain = Domain {
         &project::scope::COMMAND,
         &project::combined::COMMAND,
         &project::compounded::COMMAND,
+        &project::compute::COMMAND,
         &project::archives::COMMAND,
         &project::settings::COMMAND,
         &project::settings::OUTPUTS_SET,

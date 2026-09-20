@@ -1364,11 +1364,14 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // refusal an agent can meet tells it to name an instance, and this
             // is the only tool that says which instances exist.
             "operations" => 18,
-            // Fifteen leaves plus both bootstrap tools: `report project
+            // Sixteen leaves plus both bootstrap tools: `report project
             // publish` and the two `report outbox` commands joined the
             // delivery workflow, because a profile that produces report
-            // artifacts and cannot publish them strands its own output.
-            "project-operations" => 17,
+            // artifacts and cannot publish them strands its own output; and
+            // `report project compute` (2026-09-20) is the same individual
+            // report produced in the cloud, which is how edge and cloud
+            // production are proven to meet in one project.
+            "project-operations" => 18,
             _ => 16,
         };
         assert!(

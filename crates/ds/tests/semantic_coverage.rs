@@ -670,6 +670,14 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "artifact_write",
         "headless_project",
     ),
+    // The cloud twin of `report.project.export`: the same individual report,
+    // computed and published server-side. A durable artifact of the project,
+    // so it confirms like the Combined Report does.
+    (
+        "report.project.compute",
+        "artifact_write",
+        "headless_project",
+    ),
     // The retired spelling, kept as a deprecated alias for one release. It
     // shares the Combined Report's exact effect/authority because it IS that
     // command; a divergence here would mean the alias had become a fork.

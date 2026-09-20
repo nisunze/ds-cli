@@ -4633,6 +4633,14 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
                 "transformer",
             ]),
         ),
+        // The cloud twin of `report.project.export`: the same three inputs
+        // as the Combined Report's scope — the names, the lane, and the
+        // framework's `--yes` — and not one option more.
+        (
+            "report.project.compute",
+            "artifact_write",
+            BTreeSet::from(["lane", "transformer"]),
+        ),
         (
             "report.project.archives",
             "local_auth_state",
@@ -4783,7 +4791,31 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             "reserved_transformer_identity",
             "`compounded --transformer {reserved}` must refuse locally"
         );
+        assert_eq!(
+            headless(&[
+                "report",
+                "project",
+                "compute",
+                "--transformer",
+                reserved,
+                "--yes",
+                "--output",
+                "json"
+            ]),
+            "reserved_transformer_identity",
+            "`compute --transformer {reserved}` must refuse locally"
+        );
     }
+    // The cloud computation confirms before anything else, then needs the
+    // native user: neither costs a round trip.
+    assert_eq!(
+        headless(&["report", "project", "compute", "--output", "json"]),
+        "confirmation_required"
+    );
+    assert_eq!(
+        headless(&["report", "project", "compute", "--yes", "--output", "json"]),
+        "headless_signed_out"
+    );
     // The printing output policy reaches the same gate: a settings read with
     // no restorable native user refuses by code and performs no request, and
     // a save refuses its own document locally — before any credential — so an

@@ -112,6 +112,23 @@ ds report project compounded --file-level sector --yes     # publish; blocks unt
 ds report project archives --output json                   # the registry, newest first: achieved foldering and short-lived signed downloads
 ```
 
+`ds report project compute` is the cloud twin of `ds report project export`:
+the same individual transformer report, computed by the cloud reporter and
+published to the project by the governed service (what the application's
+"Export reports" button asks; ds-brain action `export_reports_only` on the
+Fast lane). `--transformer` names the scope; omitted, every active saved
+transformer is named from the same inventory `scope` reads, because the route
+takes exact names. The service skips a transformer whose report is fresh,
+refuses one another editor holds a lease on (`auth_input_invalid`, HTTP 423,
+the holder named), and answers per transformer. A run with any errored row
+exits non-zero as `report_compute_partial`, with the whole receipt in
+`detail`, so a script that asked for N reports never reads N-1 as success.
+
+```bash
+ds report project compute --transformer akagerero --lane canary --yes --output json
+ds design status --project it_rwanda --transformer akagerero --lane canary --output json   # the report the cloud stamped
+```
+
 `compounded` is `artifact_write` and needs `--yes`: it publishes a durable
 archive of record. Its receipt carries `status` (`success` or `partial`), the
 archive `prefix` (the registry stem), cloud locators, individual artifact
