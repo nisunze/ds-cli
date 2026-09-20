@@ -50,6 +50,17 @@ pub struct ReferenceResource {
     /// The catalogue's own reason the dataset cannot be used, when it cannot.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unavailable: Option<String>,
+    /// `bundle` or `cloud` (`docs/contracts/foundation-datasets.md` R1). A
+    /// catalogue published before residency existed reads as `bundle`.
+    #[serde(default)]
+    pub residency: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub residency_reason: Option<String>,
+    /// Retired ids and layer names this row answers for.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// The public bundle host every download is pinned to.
@@ -67,6 +78,23 @@ fn positive(value: Option<u64>) -> bool {
 }
 
 impl ReferenceResource {
+    /// Never held on this machine: BigQuery is its only holding.
+    pub fn is_cloud_resident(&self) -> bool {
+        self.residency == "cloud"
+    }
+
+    /// Does `needle` name this row — by id, by layer, or by a retired alias?
+    pub fn answers_to(&self, needle: &str) -> bool {
+        self.id == needle
+            || self.layer == needle
+            || self.aliases.iter().any(|alias| alias == needle)
+    }
+
+    /// A bundle-resident row the catalogue has not published a bundle for.
+    pub fn is_unpublished(&self) -> bool {
+        !self.is_cloud_resident() && !self.is_unavailable() && self.bundle().is_none()
+    }
+
     pub fn is_unavailable(&self) -> bool {
         self.unavailable
             .as_deref()
@@ -101,14 +129,21 @@ impl ReferenceResource {
             && positive(self.bundle_built_at)
     }
 
-    /// The desktop's `resourceValid`, exactly.
+    /// The desktop's `resourceValid`, exactly, plus residency: a cloud row
+    /// publishes no bundle, and residency is one of the two words.
     pub fn validate(&self) -> Result<(), Failure> {
+        let residency_valid = match self.residency.as_str() {
+            "" | "bundle" => true,
+            "cloud" => self.download_url.is_none(),
+            _ => false,
+        };
         let valid = digest(&self.id)
             && (digest(&self.version) || self.is_unavailable())
             && self.active
             && self.kind == "bigquery"
             && self.source_modified_at.is_none_or(|value| value > 0)
-            && self.bundle_valid();
+            && self.bundle_valid()
+            && residency_valid;
         if valid {
             Ok(())
         } else {
@@ -192,11 +227,15 @@ pub fn facts(
     resources
         .iter()
         .map(|resource| {
+            // A cloud row is neither installed nor downloadable anywhere:
+            // printing's `catalog()` never selects it.
             Ok(CatalogResource {
                 layer: resource.layer.clone(),
                 label: resource.label.clone(),
                 country: resource.country.clone(),
-                ready: !resource.is_unavailable() && installed(root, resource)?,
+                ready: !resource.is_unavailable()
+                    && !resource.is_cloud_resident()
+                    && installed(root, resource)?,
                 downloadable: resource.bundle().is_some(),
                 unavailable: resource.is_unavailable(),
             })
@@ -213,4 +252,33 @@ pub fn find<'a>(
     resources
         .iter()
         .find(|row| row.layer == layer && row.country.eq_ignore_ascii_case(country))
+}
+
+/// How one `--dataset` name resolved against the catalogue: the row, and the
+/// alias it was asked by when that differs from the row's own id.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Named<'a> {
+    pub resource: &'a ReferenceResource,
+    /// `Some(requested)` when the row answered for a retired alias or a layer
+    /// name rather than its exact id.
+    pub answered_as: Option<String>,
+}
+
+/// Resolve a dataset id, a layer name, or a retired alias to its authority
+/// row (`docs/contracts/foundation-datasets.md` R4, R6). An exact id wins;
+/// a layer name or alias answers as the row and says so.
+pub fn named<'a>(resources: &'a [ReferenceResource], needle: &str) -> Option<Named<'a>> {
+    if let Some(resource) = resources.iter().find(|row| row.id == needle) {
+        return Some(Named {
+            resource,
+            answered_as: None,
+        });
+    }
+    resources
+        .iter()
+        .find(|row| row.answers_to(needle))
+        .map(|resource| Named {
+            resource,
+            answered_as: Some(needle.to_owned()),
+        })
 }

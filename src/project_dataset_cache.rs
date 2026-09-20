@@ -775,6 +775,16 @@ fn rect_area_m2(rect: Rect) -> f64 {
     height * width
 }
 
+/// The area of one `[west, south, east, north]` rectangle, in square metres,
+/// measured the way coverage is planned. A cloud-resident read
+/// (`docs/contracts/foundation-datasets.md` R3) is bounded by
+/// [`MAX_ENVELOPE_M2`] through this: the same line that stops a district of
+/// chained sites from becoming one provider request stops a rectangle of
+/// customers from becoming a table pull.
+pub fn bounds_area_m2(bounds: [f64; 4]) -> Result<f64, String> {
+    Ok(rect_area_m2(Rect::from_bounds(bounds)?))
+}
+
 /// `plan`, narrowed to the clusters that contain a transformer named in
 /// `focus`. A print asks for its own transformer only: it must not pay for,
 /// or wait on, the rest of the project. An empty `focus` keeps everything.
@@ -1106,6 +1116,66 @@ pub struct Freshness {
     /// True when nothing held is known to have been superseded.
     pub fresh: bool,
     pub simplified: bool,
+}
+
+/// Why a room is, or is not, ready — decided once
+/// (`docs/contracts/foundation-datasets.md` R5).
+///
+/// `ready` was always the same conjunction — the index answers, nothing is
+/// mid-flight, something completed, and completed covers requested — but only
+/// the boolean left the store, so a held, indexed, fresh room reporting
+/// `ready:false` gave an operator nothing to act on. The reasons are tested in
+/// this order and the first failing one is named; a ready room names none.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Readiness {
+    pub ready: bool,
+    /// `index_absent` | `index_incomplete` | `acquisition_pending` |
+    /// `nothing_completed` | `coverage_gap` | `acquisition_failed`, or `None`.
+    pub ready_reason: Option<String>,
+}
+
+/// Readiness reasons a row can carry without a room: a dataset the catalogue
+/// lists but nobody seeded, a cloud-resident dataset that is never held here,
+/// and a bundle the catalogue has not published.
+pub const READY_REASON_NOT_SEEDED: &str = "not_seeded";
+pub const READY_REASON_CLOUD_RESIDENT: &str = "cloud_resident";
+pub const READY_REASON_BUNDLE_UNPUBLISHED: &str = "bundle_unpublished";
+
+pub fn readiness(
+    index_state: &str,
+    pending_queries: i64,
+    completed: &Coverage,
+    requested: &Coverage,
+    last_error: Option<&str>,
+) -> Result<Readiness, String> {
+    let reason = if index_state == "absent" {
+        Some("index_absent".to_owned())
+    } else if index_state == "incomplete" {
+        Some("index_incomplete".to_owned())
+    } else if pending_queries > 0 {
+        Some(format!("acquisition_pending ({pending_queries})"))
+    } else if completed.is_empty() {
+        Some("nothing_completed".to_owned())
+    } else {
+        let assessment = assess(completed, requested)?;
+        if !assessment.covered {
+            Some(format!("coverage_gap ({} cells)", assessment.gap_count))
+        } else {
+            None
+        }
+    };
+    // A failed acquisition that still left the room covered is reported as a
+    // fact, not as unreadiness: held data answers, and the error is on the row.
+    let reason = match (reason, last_error) {
+        (Some(reason), Some(error)) if reason == "nothing_completed" && !error.is_empty() => {
+            Some(format!("acquisition_failed: {}", quoted(error)))
+        }
+        (reason, _) => reason,
+    };
+    Ok(Readiness {
+        ready: reason.is_none(),
+        ready_reason: reason,
+    })
 }
 
 /// Report which held coverage was completed under an obsolete source version.
@@ -1602,6 +1672,15 @@ pub struct CatalogEntry {
     pub quality: String,
     #[serde(default)]
     pub parameters: BTreeMap<String, Value>,
+    /// `bundle` (held per project from a published bundle, or acquired
+    /// through a provider) or `cloud` (never held here; queried on demand).
+    /// Empty reads as `bundle`.
+    #[serde(default)]
+    pub residency: String,
+    /// The catalogue publishes no bundle for this row yet (bundle residency
+    /// only): reported as unpublished, never as an incomplete download.
+    #[serde(default)]
+    pub unpublished: bool,
 }
 
 /// A catalog entry paired with the project's own room for it, if any.
@@ -1652,6 +1731,21 @@ fn overview_row(dataset: &CatalogEntry, held: &Value, policy: &BufferPolicy) -> 
             Some(value) => value.clone(),
         }
     };
+    let cloud = dataset.residency == "cloud";
+    let residency = if cloud { "cloud" } else { "bundle" };
+    // The room's own readiness when it exists; otherwise the reason there is
+    // no room to be ready. A cloud row is never held, and says so.
+    let ready_reason = if cloud {
+        json!(READY_REASON_CLOUD_RESIDENT)
+    } else if !exists {
+        json!(if dataset.unpublished {
+            READY_REASON_BUNDLE_UNPUBLISHED
+        } else {
+            READY_REASON_NOT_SEEDED
+        })
+    } else {
+        member("ready_reason", Value::Null)
+    };
     let empty_coverage = json!({"cells": []});
     json!({
         "dataset_id": dataset.id,
@@ -1659,9 +1753,11 @@ fn overview_row(dataset: &CatalogEntry, held: &Value, policy: &BufferPolicy) -> 
         "provider": dataset.provider,
         "quality": dataset.quality,
         "parameters": dataset.parameters,
+        "residency": residency,
         // Absent is a distinct state from empty: nobody has asked yet.
         "seeded": exists,
-        "ready": member("ready", json!(false)) == Value::Bool(true),
+        "ready": !cloud && member("ready", json!(false)) == Value::Bool(true),
+        "ready_reason": ready_reason,
         // A room is one machine's holding. Saying so on every row is what
         // stops "Linux has it" from being read as "the project has it":
         // nothing in this cache publishes a dataset, and two installations of
@@ -1901,6 +1997,8 @@ mod tests {
             provider: "ds".into(),
             quality: "source".into(),
             parameters: BTreeMap::new(),
+            residency: String::new(),
+            unpublished: false,
         }
     }
 
@@ -1973,6 +2071,124 @@ mod tests {
         assert_eq!(rows[2]["feature_count"], 12);
         // The query log is bounded so a long history cannot become the answer.
         assert_eq!(rows[2]["queries"].as_array().unwrap().len(), 20);
+    }
+
+    /// `ready` is one decision with a named reason
+    /// (`docs/contracts/foundation-datasets.md` R5): the first failing
+    /// condition, in a fixed order, and none when ready.
+    #[test]
+    fn readiness_names_the_first_failing_condition() {
+        let empty = Coverage::default();
+        let one =
+            Coverage::from_rects(vec![Rect::from_bounds([30.0, -2.0, 30.01, -1.99]).unwrap()]);
+        let two = Coverage::from_rects(vec![
+            Rect::from_bounds([30.0, -2.0, 30.01, -1.99]).unwrap(),
+            Rect::from_bounds([30.02, -2.0, 30.03, -1.99]).unwrap(),
+        ]);
+        let reason = |index: &str,
+                      pending: i64,
+                      completed: &Coverage,
+                      requested: &Coverage,
+                      error: Option<&str>| {
+            readiness(index, pending, completed, requested, error).unwrap()
+        };
+        assert_eq!(
+            reason("absent", 0, &one, &one, None)
+                .ready_reason
+                .as_deref(),
+            Some("index_absent")
+        );
+        assert_eq!(
+            reason("incomplete", 0, &one, &one, None)
+                .ready_reason
+                .as_deref(),
+            Some("index_incomplete")
+        );
+        assert_eq!(
+            reason("ready", 2, &one, &one, None).ready_reason.as_deref(),
+            Some("acquisition_pending (2)")
+        );
+        assert_eq!(
+            reason("ready", 0, &empty, &one, None)
+                .ready_reason
+                .as_deref(),
+            Some("nothing_completed")
+        );
+        assert_eq!(
+            reason("ready", 0, &empty, &one, Some("provider refused"))
+                .ready_reason
+                .as_deref(),
+            Some("acquisition_failed: provider refused")
+        );
+        assert_eq!(
+            reason("ready", 0, &one, &two, None).ready_reason.as_deref(),
+            Some("coverage_gap (1 cells)")
+        );
+        // An empty room whose index answers is ready: asking again would spend
+        // money to learn the same emptiness.
+        let ready = reason("empty", 0, &one, &one, Some("an old error"));
+        assert!(ready.ready && ready.ready_reason.is_none());
+        let ready = reason("ready", 0, &two, &one, None);
+        assert!(ready.ready && ready.ready_reason.is_none());
+    }
+
+    /// A cloud-resident row is never held here and the overview says so; a
+    /// bundle row nobody seeded says why there is no room to be ready.
+    #[test]
+    fn an_overview_carries_residency_and_the_reason_a_row_is_not_ready() {
+        let policy = buffer_policy(&[50.0]).unwrap();
+        let cloud = OverviewRow {
+            dataset: CatalogEntry {
+                id: "parcels".into(),
+                residency: "cloud".into(),
+                ..catalog()
+            },
+            held: Value::Null,
+        };
+        let unpublished = OverviewRow {
+            dataset: CatalogEntry {
+                id: "wetlands".into(),
+                unpublished: true,
+                ..catalog()
+            },
+            held: Value::Null,
+        };
+        let held = OverviewRow {
+            dataset: CatalogEntry {
+                id: "roads".into(),
+                ..catalog()
+            },
+            held: json!({
+                "exists": true, "ready": false, "ready_reason": "coverage_gap (3 cells)",
+                "index_state": "ready", "feature_count": 9, "pending_queries": 0,
+                "requested": {"cells": ["a"]}, "completed": {"cells": ["a"]}, "fresh": true
+            }),
+        };
+        let answer = overview(
+            "p1",
+            &policy,
+            &[
+                cloud,
+                unpublished,
+                held,
+                OverviewRow {
+                    dataset: catalog(),
+                    held: Value::Null,
+                },
+            ],
+        );
+        let rows = answer["datasets"].as_array().unwrap();
+        assert_eq!(rows[0]["residency"], "cloud");
+        assert_eq!(rows[0]["ready"], false);
+        assert_eq!(rows[0]["ready_reason"], READY_REASON_CLOUD_RESIDENT);
+        assert_eq!(rows[1]["residency"], "bundle");
+        assert_eq!(rows[1]["ready_reason"], READY_REASON_BUNDLE_UNPUBLISHED);
+        assert_eq!(rows[2]["ready_reason"], "coverage_gap (3 cells)");
+        assert_eq!(rows[3]["ready_reason"], READY_REASON_NOT_SEEDED);
+        // The rectangle bound a cloud read is measured against.
+        assert!(bounds_area_m2([29.57, -2.53, 29.59, -2.51]).unwrap() < MAX_ENVELOPE_M2);
+        assert!(bounds_area_m2([29.5, -2.6, 29.9, -2.3]).unwrap() > MAX_ENVELOPE_M2);
+        assert!(bounds_area_m2([29.6, -2.5, 29.5, -2.4]).is_err());
     }
 
     /// A room that says it does not exist reports as absent even when stale

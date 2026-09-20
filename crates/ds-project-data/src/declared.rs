@@ -117,6 +117,12 @@ pub fn declared(resources: &[ReferenceResource]) -> Result<Vec<Declared>, Failur
 }
 
 /// Resolve one dataset id — declared or explicitly named — to its source.
+///
+/// A name may be an exact id, a layer name, or a retired alias; the row it
+/// answers as is the authority (`docs/contracts/foundation-datasets.md` R4).
+/// A cloud-resident row is never a seed target and refuses by name
+/// (`dataset_cloud_only`); a retired broad layer with no single authority
+/// refuses with its detailed alternatives (`dataset_retired`).
 pub fn resolve(resources: &[ReferenceResource], id: &str) -> Result<Option<Declared>, Failure> {
     if let Some(found) = declared(resources)?
         .into_iter()
@@ -124,16 +130,43 @@ pub fn resolve(resources: &[ReferenceResource], id: &str) -> Result<Option<Decla
     {
         return Ok(Some(found));
     }
-    Ok(resources
-        .iter()
-        .find(|resource| resource.id == id && !resource.is_unavailable())
-        .map(|resource| Declared {
-            candidate: SeedCandidate {
-                id: resource.id.clone(),
-                label: resource.label.clone(),
-                seeded: false,
-            },
-            dataset: catalog_dataset(resource),
-            source: DeclaredSource::Catalog(Box::new(resource.clone())),
-        }))
+    let Some(found) = crate::catalog::named(resources, id) else {
+        if let Some(alternatives) = ds_command_kernel::printing::context::retired_alternatives(id) {
+            return Err(Failure::Retired(format!(
+                "{id} is retired; its detailed alternatives are {}",
+                alternatives.join(", ")
+            )));
+        }
+        return Ok(None);
+    };
+    let resource = found.resource;
+    if resource.is_cloud_resident() {
+        return Err(Failure::CloudOnly(cloud_only_message(resource)));
+    }
+    if resource.is_unavailable() {
+        return Ok(None);
+    }
+    Ok(Some(Declared {
+        candidate: SeedCandidate {
+            id: resource.id.clone(),
+            label: resource.label.clone(),
+            seeded: false,
+        },
+        dataset: catalog_dataset(resource),
+        source: DeclaredSource::Catalog(Box::new(resource.clone())),
+    }))
+}
+
+/// The one sentence every host prints when a cloud-resident dataset is asked
+/// to be seeded, installed or downloaded.
+pub fn cloud_only_message(resource: &ReferenceResource) -> String {
+    let command = match resource.layer.as_str() {
+        "rwanda_upi_parcels" => "ds data upi lookup",
+        "edcl_customers" => "ds data customers query",
+        _ => "ds data",
+    };
+    format!(
+        "{} is cloud-resident; it is never seeded, installed or downloaded — query it with `{command}`",
+        resource.layer
+    )
 }

@@ -192,11 +192,11 @@ pub use transport::PrintingCall;
 
 pub mod data_distribution;
 pub use data_distribution::{
-    download_bundle, BundleDownloadReceipt, ContourParameters, DataDistributionRequest,
-    PrintContextKind, BUNDLE_DOWNLOAD_HOST, BUNDLE_DOWNLOAD_MAX_BYTES,
-    BUNDLE_DOWNLOAD_MAX_URL_BYTES, DATA_DISTRIBUTION_MAX_AREA_BYTES,
+    download_bundle, normalize_upi, BundleDownloadReceipt, ContourParameters,
+    DataDistributionRequest, PrintContextKind, BUNDLE_DOWNLOAD_HOST, BUNDLE_DOWNLOAD_MAX_BYTES,
+    BUNDLE_DOWNLOAD_MAX_URL_BYTES, CUSTOMERS_ROW_CAP, DATA_DISTRIBUTION_MAX_AREA_BYTES,
     DATA_DISTRIBUTION_MAX_CATALOG_ROWS, DATA_DISTRIBUTION_RESPONSE_LIMIT,
-    DATA_DISTRIBUTION_TIMEOUT_SECONDS,
+    DATA_DISTRIBUTION_TIMEOUT_SECONDS, FOUNDATION_ACTIONS,
 };
 pub use profile::{DATA_DISTRIBUTION_ACTIONS, DATA_DISTRIBUTION_METHOD, DATA_DISTRIBUTION_PATH};
 pub use transport::{BundleDownloadCall, DataDistributionCall};

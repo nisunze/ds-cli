@@ -391,6 +391,7 @@ fn status_value(
             "dataset_key": key,
             "exists": false,
             "ready": false,
+            "ready_reason": policy::READY_REASON_NOT_SEEDED,
             "feature_count": 0,
             "requested": policy::Coverage::default(),
             "completed": policy::Coverage::default(),
@@ -441,15 +442,22 @@ fn status_value(
         Some(db) => Some(freshness_of(db, metadata)?),
         None => None,
     };
+    // Ready means: this dataset holds a usable index and nothing is
+    // mid-flight. It says nothing about any other dataset. The kernel decides
+    // it once and names the first failing condition.
+    let readiness = policy::readiness(
+        index,
+        pending,
+        &metadata.completed,
+        &metadata.requested,
+        metadata.last_error.as_deref(),
+    )?;
     Ok(json!({
         "schema": policy::SCHEMA,
         "dataset_key": key,
         "exists": true,
-        // Ready means: this dataset holds a usable index and nothing is
-        // mid-flight. It says nothing about any other dataset.
-        "ready": index != "incomplete" && index != "absent" && pending == 0
-            && !metadata.completed.is_empty()
-            && policy::assess(&metadata.completed, &metadata.requested)?.covered,
+        "ready": readiness.ready,
+        "ready_reason": readiness.ready_reason,
         "principal": metadata.principal,
         "project": metadata.project,
         "dataset_id": metadata.dataset_id,
