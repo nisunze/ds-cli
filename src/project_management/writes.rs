@@ -216,6 +216,14 @@ pub struct CreateTask {
     pub discipline: Option<String>,
     pub start_date: Option<String>,
     pub finish_date: Option<String>,
+    /// The task's one optional top-level WGS84 geometry
+    /// (work-links-and-spatial-anchors.md), already shaped — by
+    /// `task_geometry::propose` when it comes from DS objects. Sent as the
+    /// engine's `geometry`; `None` sends none.
+    pub geometry: Option<Value>,
+    /// The task's outgoing `links[]`, as the engine's wire links. Empty is
+    /// what the Plan sheet sends for a new item.
+    pub links: Vec<Value>,
 }
 
 /// `createCliWorkTask` (cli-pm.ts:564-609) + `createTaskCommand`
@@ -298,7 +306,7 @@ pub fn create_task(
         "parent_id": parent_task_id.clone().unwrap_or_default(),
         "title": title,
         "description": description.unwrap_or_default(),
-        "links": [],
+        "links": input.links,
         "type": if milestone { "milestone" } else { "task" },
         "placement": if input.kind == CreateKind::Inbox { "inbox" } else { "wbs" },
         "schedule_state": schedule_state,
@@ -311,6 +319,9 @@ pub fn create_task(
     });
     if let Some(discipline) = discipline {
         payload["discipline"] = json!(discipline);
+    }
+    if let Some(geometry) = &input.geometry {
+        payload["geometry"] = geometry.clone();
     }
     Ok(PreparedCommand {
         project: graph.project_id.clone(),
@@ -340,6 +351,14 @@ pub struct UpdateTask {
     pub progress: Option<u64>,
     pub start_date: Option<String>,
     pub finish_date: Option<String>,
+    /// Set the task's one top-level geometry (`update_task_fields.geometry`);
+    /// `None` leaves it alone.
+    pub geometry: Option<Value>,
+    /// Remove the task's geometry (`update_task_fields.clear_geometry`).
+    pub clear_geometry: bool,
+    /// Replace the task's whole `links[]` — the engine keeps the first
+    /// attachment of a link that was already there. `None` leaves them alone.
+    pub links: Option<Vec<Value>>,
 }
 
 /// `updateCliWorkTask` (cli-pm.ts:611-689): every flag becomes one project
@@ -438,6 +457,17 @@ pub fn update_task(
         if let Some(value) = value {
             fields.insert(key.into(), json!(value));
         }
+    }
+    // Geometry and links ride the same `update_task_fields` command as the
+    // authored fields: one command, one revision, exactly as the map's
+    // drawing lifecycle commits them.
+    if input.clear_geometry {
+        fields.insert("clear_geometry".into(), json!(true));
+    } else if let Some(geometry) = &input.geometry {
+        fields.insert("geometry".into(), geometry.clone());
+    }
+    if let Some(links) = &input.links {
+        fields.insert("links".into(), json!(links));
     }
     if !fields.is_empty() {
         fields.insert("task_id".into(), json!(task_id));
@@ -819,7 +849,72 @@ mod tests {
             discipline: Some("Design".into()),
             start_date: start.map(str::to_owned),
             finish_date: finish.map(str::to_owned),
+            geometry: None,
+            links: Vec::new(),
         }
+    }
+
+    /// A create that carries WHERE: the geometry `task_geometry::propose`
+    /// shaped and one `ds_object` link per object, in the same command —
+    /// what `ds pm task create --geometry-from` sends.
+    #[test]
+    fn a_create_carries_its_geometry_and_links_in_the_one_command() {
+        let mut input = create(CreateKind::Inbox, None, None, None);
+        input.geometry = Some(json!({ "type": "Point", "coordinates": [29.61, -2.34] }));
+        input.links = vec![json!({
+            "kind": "ds_object", "project_id": "p", "object_type": "dsgrid_structure",
+            "entity_id": "m-1:s-74", "object_revision": "dsgrid:r3:abc", "label": "Structure 74",
+        })];
+        let payload =
+            create_task(&graph(true), &input).expect("valid").command["create_task"].clone();
+        assert_eq!(
+            payload["geometry"],
+            json!({ "type": "Point", "coordinates": [29.61, -2.34] })
+        );
+        assert_eq!(payload["links"][0]["entity_id"], "m-1:s-74");
+        // And without them the payload is exactly what it was.
+        let plain = create_task(&graph(true), &create(CreateKind::Inbox, None, None, None))
+            .expect("valid")
+            .command["create_task"]
+            .clone();
+        assert!(plain.get("geometry").is_none());
+        assert_eq!(plain["links"], json!([]));
+    }
+
+    /// `ds pm task geometry set|clear`: geometry and links travel in the same
+    /// `update_task_fields` command as any authored field — one revision.
+    #[test]
+    fn an_update_sets_or_clears_geometry_and_replaces_links_in_update_task_fields() {
+        let set = UpdateTask {
+            task: "t1".into(),
+            geometry: Some(json!({ "type": "Point", "coordinates": [29.61, -2.34] })),
+            links: Some(vec![
+                json!({ "kind": "pm_task", "project_id": "p", "entity_id": "m1" }),
+            ]),
+            ..UpdateTask::default()
+        };
+        let (batch, kinds) = update_task(&graph(true), &set).expect("valid");
+        assert_eq!(kinds, vec!["update_task_fields"]);
+        let fields = &batch.commands[0]["update_task_fields"];
+        assert_eq!(fields["task_id"], "t1");
+        assert_eq!(fields["geometry"]["type"], "Point");
+        assert_eq!(fields["links"][0]["entity_id"], "m1");
+        assert!(fields.get("clear_geometry").is_none());
+
+        let clear = UpdateTask {
+            task: "t1".into(),
+            clear_geometry: true,
+            links: Some(Vec::new()),
+            title: Some("Renamed".into()),
+            ..UpdateTask::default()
+        };
+        let (batch, kinds) = update_task(&graph(true), &clear).expect("valid");
+        assert_eq!(kinds, vec!["update_task_fields"]);
+        let fields = &batch.commands[0]["update_task_fields"];
+        assert_eq!(fields["clear_geometry"], true);
+        assert_eq!(fields["links"], json!([]));
+        assert_eq!(fields["title"], "Renamed");
+        assert!(fields.get("geometry").is_none());
     }
 
     #[test]
