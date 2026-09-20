@@ -1781,8 +1781,9 @@ fn overview_row(dataset: &CatalogEntry, held: &Value, policy: &BufferPolicy) -> 
     let cloud = dataset.residency == "cloud";
     let residency = if cloud { "cloud" } else { "bundle" };
     // The room's own readiness when it exists; otherwise the reason there is
-    // no room to be ready. A cloud row is never held, and says so.
-    let ready_reason = if cloud {
+    // no room to be ready. A cloud row without a room says where it lives;
+    // once seeded through its bounded read it reads like any other room.
+    let ready_reason = if cloud && !exists {
         json!(READY_REASON_CLOUD_RESIDENT)
     } else if !exists {
         json!(if dataset.unpublished {
@@ -1803,7 +1804,7 @@ fn overview_row(dataset: &CatalogEntry, held: &Value, policy: &BufferPolicy) -> 
         "residency": residency,
         // Absent is a distinct state from empty: nobody has asked yet.
         "seeded": exists,
-        "ready": !cloud && member("ready", json!(false)) == Value::Bool(true),
+        "ready": member("ready", json!(false)) == Value::Bool(true),
         "ready_reason": ready_reason,
         // A room is one machine's holding. Saying so on every row is what
         // stops "Linux has it" from being read as "the project has it":
@@ -2211,6 +2212,16 @@ mod tests {
                 "requested": {"cells": ["a"]}, "completed": {"cells": ["a"]}, "fresh": true
             }),
         };
+        // The same cloud row once its cells were seeded through the bounded
+        // read: a room like any other, ready on its own coverage.
+        let seeded_cloud = OverviewRow {
+            dataset: cloud.dataset.clone(),
+            held: json!({
+                "exists": true, "ready": true, "ready_reason": Value::Null,
+                "index_state": "ready", "feature_count": 10358, "pending_queries": 0,
+                "requested": {"cells": ["a"]}, "completed": {"cells": ["a"]}, "fresh": true
+            }),
+        };
         let answer = overview(
             "p1",
             &policy,
@@ -2222,12 +2233,18 @@ mod tests {
                     dataset: catalog(),
                     held: Value::Null,
                 },
+                seeded_cloud,
             ],
         );
         let rows = answer["datasets"].as_array().unwrap();
         assert_eq!(rows[0]["residency"], "cloud");
         assert_eq!(rows[0]["ready"], false);
         assert_eq!(rows[0]["ready_reason"], READY_REASON_CLOUD_RESIDENT);
+        assert_eq!(rows[4]["residency"], "cloud");
+        assert_eq!(rows[4]["seeded"], true);
+        assert_eq!(rows[4]["ready"], true);
+        assert_eq!(rows[4]["ready_reason"], Value::Null);
+        assert_eq!(rows[4]["feature_count"], 10358);
         assert_eq!(rows[1]["residency"], "bundle");
         assert_eq!(rows[1]["ready_reason"], READY_REASON_BUNDLE_UNPUBLISHED);
         assert_eq!(rows[2]["ready_reason"], "coverage_gap (3 cells)");
