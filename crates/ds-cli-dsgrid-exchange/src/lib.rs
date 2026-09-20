@@ -12,13 +12,19 @@
 //! what a model is never reads a help screen about producing one, and the
 //! blast radius of each domain is legible from its name.
 //!
-//! The three commands are one sequence, and the order is the contract:
+//! Three commands are one sequence, and the order is the contract:
 //!
 //! ```text
 //! inspect   what are these files, and what could they become?
 //! plan      exactly what would a conversion do — and what would it lose?
 //! convert   do that, and nothing else
 //! ```
+//!
+//! The fourth closes the loop the other way: `sync` writes a working copy's
+//! edits back INTO the PLS-CADD workspace it was converted from and linked
+//! to (`ds dsgrid model link`), member by member, leaving every untouched
+//! member byte-identical. Its `--dry-run` is the plan and its `--yes` the
+//! run, because there the two are one computation over one folder.
 //!
 //! `plan` pins the digest of every source it reads; `convert` re-digests them
 //! and refuses if any changed. That is what makes the sequence worth
@@ -39,13 +45,19 @@ pub mod refusals;
 pub mod render;
 pub mod request;
 pub mod sources;
+pub mod sync;
 
 use ds_cli_contract::spec::Domain;
 
 pub static DOMAIN: Domain = Domain {
     id: "dsgrid-exchange",
-    summary: "Import, export, compose: classify, plan, convert.",
-    commands: &[&inspect::COMMAND, &plan::COMMAND, &convert::COMMAND],
+    summary: "Import, export, sync back: classify, plan, convert, sync.",
+    commands: &[
+        &inspect::COMMAND,
+        &plan::COMMAND,
+        &convert::COMMAND,
+        &sync::COMMAND,
+    ],
 };
 
 /// A value's canonical serde token, rather than its `Debug` spelling.

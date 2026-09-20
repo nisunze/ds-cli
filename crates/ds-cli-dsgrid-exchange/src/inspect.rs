@@ -146,6 +146,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "sources": candidates,
         "byte_len": loaded.byte_len,
         "capabilities": capability_values,
+        "warnings": loaded.warnings,
     });
 
     if !show_blocked {
@@ -226,5 +227,6 @@ pub fn render(data: &Value) -> String {
             "\n{blocked} blocked — see `ds dsgrid-exchange inspect --blocked`\n"
         ));
     }
+    crate::render::list(&mut out, "WARNINGS", &data["warnings"]);
     out
 }

@@ -21,6 +21,9 @@ ds-cli-desktop = { workspace = true }
 ds-grid-model = { workspace = true }
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
+# Native member headers (TYPE/VERSION/UNITS) and digests for the PLS-CADD
+# link a working copy carries.
+ds-io = { workspace = true }
 serde = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 serde_json = { workspace = true }

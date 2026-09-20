@@ -155,8 +155,20 @@ fn available() -> Availability {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let out_dir = PathBuf::from(inputs.require("out")?);
     let loaded = sources::load(inputs.repeated("source"))?;
+    let source_warnings = loaded.warnings;
+    // The absolute paths the sources were read from, in `--source` order.
+    // They travel into the exchange report beside the pinned digests so a
+    // later `ds dsgrid model import-external` of this output can link the
+    // working copy to the workspace it came from without the operator
+    // re-typing it (contract 02 §1).
+    let source_paths = inputs
+        .repeated("source")
+        .iter()
+        .map(|raw| absolute_path(raw))
+        .collect::<Vec<_>>();
     let request = request::build(inputs, loaded.sources)?;
-    let plan = plan_conversion(&request);
+    let mut plan = plan_conversion(&request);
+    plan.warnings.extend(source_warnings);
 
     if !plan.blockers.is_empty() {
         return Err(Failure::conflict(
@@ -173,7 +185,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let outcome = execute_conversion(&plan, &request.sources).map_err(execution_failure)?;
     let written = materialize(&out_dir, &outcome)?;
-    let report_path = write_report(&out_dir, &plan, &outcome)?;
+    let report_path = write_report(&out_dir, &plan, &outcome, &source_paths)?;
 
     Ok(project(&plan, &outcome, written, &report_path))
 }
@@ -274,10 +286,24 @@ fn materialize(out_dir: &Path, outcome: &ConversionOutcome) -> Result<Vec<Value>
 /// The report carries the plan and the per-source outcome together, because
 /// the pair is the evidence: the plan says what was promised, the outcome
 /// says what happened, and a reader comparing them needs both in one file.
+/// The path a source was named by, made absolute against the working
+/// directory. Not canonicalized: a Drive stream or a mapped share may resolve
+/// to a name the operator would not recognise, and the link is for them.
+fn absolute_path(raw: &str) -> String {
+    let path = Path::new(raw);
+    if path.is_absolute() {
+        return raw.to_string();
+    }
+    std::env::current_dir()
+        .map(|cwd| cwd.join(path).to_string_lossy().into_owned())
+        .unwrap_or_else(|_| raw.to_string())
+}
+
 fn write_report(
     out_dir: &Path,
     plan: &ConversionPlan,
     outcome: &ConversionOutcome,
+    source_paths: &[String],
 ) -> Result<PathBuf, Failure> {
     let path = out_dir.join("exchange-report.json");
     if path.exists() {
@@ -288,11 +314,25 @@ fn write_report(
         .remedy("convert into a new directory; this command never overwrites"));
     }
 
+    let sources: Vec<Value> = plan
+        .per_source
+        .iter()
+        .map(|source| {
+            json!({
+                "source_index": source.source_index,
+                "name": source.display_name,
+                "kind": token(&source.kind),
+                "digest": source.digest,
+                "path": source_paths.get(source.source_index),
+            })
+        })
+        .collect();
     let document = json!({
         "plan": plan,
         "status": token(&outcome.status),
         "per_source": outcome.per_source,
         "reports": outcome.reports,
+        "sources": sources,
     });
     let bytes = serde_json::to_vec_pretty(&document).map_err(|error| {
         Failure::internal(

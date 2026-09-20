@@ -84,8 +84,10 @@ fn available() -> Availability {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let loaded = sources::load(inputs.repeated("source"))?;
+    let source_warnings = loaded.warnings;
     let request = request::build(inputs, loaded.sources)?;
-    let plan = plan_conversion(&request);
+    let mut plan = plan_conversion(&request);
+    plan.warnings.extend(source_warnings);
     Ok(project(&plan))
 }
 

@@ -116,6 +116,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             sha256: identity.sha256,
             created_at: None,
             project: None,
+            head_revision: None,
             // A new empty model is what the operator is about to work on.
             activate: true,
         },

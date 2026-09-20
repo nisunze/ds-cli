@@ -73,7 +73,7 @@ pub const SHARED_ARGS: &[Arg] = &[
     Arg::value(
         "crs",
         "<code>",
-        "Declare a native PLS source CRS, or the projected metric model CRS for GIS import.",
+        "Declare a native PLS source CRS, or the projected metric model CRS for GIS import. `rwanda-tm` is the Rwanda TM (EDCL) grid.",
     ),
     Arg::value(
         "alignment-layer",
@@ -464,12 +464,30 @@ pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, F
         // records that as a known gap rather than leaving a caller to guess
         // that the ordering is arbitrary. Default ordering is source order.
         combine: None,
-        declared_crs: inputs.value("crs").map(str::to_string),
+        declared_crs: inputs.value("crs").map(expand_crs_alias),
         expected_location,
         swap_xy: inputs.switch("swap-xy"),
         selection,
         pls_project,
     })
+}
+
+/// The CRS aliases `--crs` accepts, beside a proj string, WKT or EPSG code.
+///
+/// `rwanda-tm` is the one national grid PLS-CADD workspaces in Rwanda are
+/// authored in; its parameters (`lon_0=30`, `k=0.9999`, `x_0=500000`,
+/// `y_0=5000000`, GRS80) have no EPSG code, so without an alias every
+/// operator has to know the proj string by heart (contract 02 §5). The
+/// expansion is the engine's own canonical declaration.
+pub const CRS_ALIASES: &[(&str, &str)] =
+    &[("rwanda-tm", ds_grid_exchange::conversion::RWANDA_TM_CRS)];
+
+pub fn expand_crs_alias(raw: &str) -> String {
+    let key = raw.trim().to_ascii_lowercase().replace('_', "-");
+    CRS_ALIASES
+        .iter()
+        .find(|(alias, _)| *alias == key)
+        .map_or_else(|| raw.to_string(), |(_, crs)| (*crs).to_string())
 }
 
 fn mv_required<'a>(inputs: &'a Inputs, name: &str) -> Result<&'a str, Failure> {

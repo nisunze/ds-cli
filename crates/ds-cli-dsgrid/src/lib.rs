@@ -27,6 +27,7 @@ pub mod apply;
 pub mod backup;
 pub mod create;
 pub mod describe;
+pub mod folder;
 pub mod inspect;
 pub mod model;
 pub mod package;
@@ -50,8 +51,10 @@ pub static DOMAIN: Domain = Domain {
         &run::COMMAND,
         &apply::COMMAND,
         &model::list::COMMAND,
+        &model::show::COMMAND,
         &model::create_local::COMMAND,
         &model::import_external::COMMAND,
+        &model::link::COMMAND,
         &model::set_active::COMMAND,
         &model::prepare_project::COMMAND,
         &model::publish_version::COMMAND,

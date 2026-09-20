@@ -192,7 +192,12 @@ impl Profile {
             // or `grid-local-model` (paired lifecycle).
             // Project list/download add two native asset reads to this
             // model workflow; no arbitrary download route is exposed.
-            Self::Grid => 22,
+            // 2026-09-20 (contract 02): three more leaves — `dsgrid model
+            // show|link` and `dsgrid-exchange sync` — the working copy's
+            // record, its pin to a live PLS-CADD workspace, and the write
+            // back into that workspace. Without them the broad router could
+            // import from PLS-CADD but never deliver to it.
+            Self::Grid => 25,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -480,8 +485,13 @@ const PRINT_STYLE_COMMANDS: &[&str] = &[
 // and it stays confirmation-gated exactly as the CLI declares it.
 const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.model.list",
+    "dsgrid.model.show",
     "dsgrid.model.create-local",
     "dsgrid.model.import-external",
+    // The link to a live PLS-CADD workspace is a fact about this machine's
+    // working copy, so it lives with the copy's lifecycle; the sync that
+    // uses it is file-in/file-out engine work and stays native.
+    "dsgrid.model.link",
     "dsgrid.model.set-active",
     "dsgrid.model.prepare-project",
     "dsgrid.publish-version",

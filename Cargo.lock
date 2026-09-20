@@ -846,6 +846,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -969,6 +970,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",
+ "ds-io",
  "ds-layer-store",
  "serde",
  "serde_json",
@@ -982,10 +984,15 @@ name = "ds-cli-dsgrid-exchange"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "ds-cli-dsgrid",
+ "ds-command-kernel",
  "ds-grid-exchange",
+ "ds-io",
+ "ds-layer-store",
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
 ]
 
 [[package]]

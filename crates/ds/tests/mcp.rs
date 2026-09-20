@@ -1471,6 +1471,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "dsgrid-exchange_inspect",
         "dsgrid-exchange_plan",
         "dsgrid-exchange_convert",
+        "dsgrid-exchange_sync",
     ] {
         assert!(
             published["grid-native"].contains(native),
@@ -1481,6 +1482,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(!published["grid-native"].contains("dsgrid_publish-version"));
     assert!(
         published["grid-local-model"].contains("dsgrid_model_list")
+            && published["grid-local-model"].contains("dsgrid_model_show")
+            && published["grid-local-model"].contains("dsgrid_model_link")
             && published["grid-local-model"].contains("dsgrid_model_create-local")
             && published["grid-local-model"].contains("dsgrid_model_import-external")
             && published["grid-local-model"].contains("dsgrid_model_set-active")

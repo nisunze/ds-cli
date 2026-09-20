@@ -239,6 +239,100 @@ Three rules hold, and they are the reason this is safe to hand to an agent:
 `convert` is `local_file_write`, not `artifact_write`, so it does not require
 `--yes`. It writes into a directory the caller named, and publishes nothing.
 
+## `sync` — writing back into the workspace you came from
+
+```bash
+ds dsgrid model link --model local-<id> --workspace "/srv/pls/Nyamagabe" --account <uid>
+ds dsgrid-exchange sync --model local-<id> --account <uid> --dry-run
+ds dsgrid-exchange sync --model local-<id> --account <uid> --yes
+```
+
+`convert --target pls-folder` writes a *new* workspace: a healed, portable
+engineering projection (`project/`, `structures/`, `cables/`, relative
+references, presentation and attachment blocks stripped) that drops the
+members the engineering model does not carry. That is the right shape for a
+folder nobody has opened and the wrong shape for the one an engineer has open
+in PLS-CADD: the DON's `FILENAME='G:\…\x.don'` header is the home PLS-CADD
+checks on open, a different home is a "project moved" dialog, and the
+feature codes (`.fea`) and plan-and-profile sheets (`.pps`) a review lives in
+are exactly what the projection omits.
+
+`sync` closes the loop the other way. It rewrites, **in place**, only the
+members whose engineering changed in the working copy and leaves every other
+member byte-identical:
+
+| change in the working copy | member rewritten | writer |
+|---|---|---|
+| structure retype to a definition the workspace holds | DON 57 | surgical path-line splice |
+| structure move along its route | DON 57 | surgical station/offset splice |
+| placed structure description (`describe_structure`) | DON 57, comment slot 1 (`structure_comment_1`) | surgical slot splice, Windows-1252 |
+| definition description (`StructureTypeRow.description`) | STRUCT 13, the line after the header | surgical line splice, Windows-1252 |
+| active terrain point set | XYZ 5 | active-block replacement |
+
+Everything else — `.fea .pps .brk .tin .cri .str .num .con`, attachments,
+logos, dxf, the previous DON, untouched definitions and cables — is emitted as
+exactly the bytes on disk. FEA 15 and CRI 94 rows say `unchanged (writer
+pending: 03)` until contract 03's writers exist.
+
+How it is proven before a byte is written:
+
+1. **The folder is re-digested against the link.** `ds dsgrid model link`
+   pinned the exchange digest of the member tree (the one `inspect` prints);
+   a folder whose bytes moved since — PLS-CADD saved, a file appeared — is
+   `workspace_digest_moved`. Nothing is ever merged.
+2. **The export planner verifies the edit set** on the healed tree it was
+   built for: the emitted healed bytes re-ingest to the pinned snapshot.
+3. **The same edits are applied to the original bytes** the package preserved
+   at import (`pls-original-workspace.bak`), with the same surgical ds-io
+   writers, so headers and absolute references are never touched.
+4. **Every structure record is cross-checked** — number, station, offset,
+   definition leaf — between the patched original DON and the export's
+   verified DON, and the DON home (`FILENAME=` and every reference under
+   it) is proven unchanged.
+
+`--dry-run` is the same plan; only the file writes are skipped. A write needs
+`--yes`; both together is `mode_conflict`. `--into <folder>` writes into a copy
+of the workspace that still digests to the link — the acceptance path when
+the real folder is on a streamed drive. `--container bak --out <new.bak>`
+frames the synced tree as one exact-byte backup through the same container
+writer `ds pls backup-create` uses; a Restore of it lands at a new home, so
+the folder container is the no-dialog path.
+
+The receipt names every member's `TYPE VERSION UNITS` as read and as written,
+the action (`rewritten | unchanged | added`), byte counts and digests before
+and after, the notes that produced a rewrite, the DON home, the native
+structure numbers touched, the unresolved external references by containing
+member, reference and class, and a `verification` block at level `proposal`.
+
+Not in this cut, and refused by name (`sync_edit_class_unsupported`):
+whole-design materialization (added or deleted structures, re-strung
+sections, re-routed alignments), section projection, capacity-value edits
+and project-STR spotting edits. They rewrite members from the healed
+projection and have no original-tree writer yet. `pull` (PLS → DS after a
+PLS-CADD session) is contract 02 §3 and not landed; today a workspace that
+moved is re-imported and re-linked.
+
+A retype of a strung structure through the raw `retype_structure` envelope
+is refused by model validation (the supports still bind the old type's
+attachment points); the typed `ds dsgrid structure retype` of contract 01-B
+rebinds them. The sync's retype writer is proven on the synthetic gate and
+the export's own retype gate.
+
+### `--crs rwanda-tm`
+
+`plan` and `convert` accept `--crs rwanda-tm` for the Rwanda TM (EDCL) grid
+— `+proj=tmerc +lat_0=0 +lon_0=30 +k=0.9999 +x_0=500000 +y_0=5000000
++ellps=GRS80 +units=m +no_defs` — which has no EPSG code. The expansion is the
+engine's own canonical declaration, so the plan id is the same as with the
+proj string.
+
+### Streamed volumes
+
+A source or workspace on a Google Drive stream, a UNC share or a cloud-synced
+folder is flagged `streamed_volume` in `warnings` (never a refusal): its
+bytes can change under a pinned digest and reads can stall. Copy the
+workspace to a local disk before converting or syncing.
+
 ## Why this could ship now
 
 [`dsgrid.md`](dsgrid.md) previously recorded `convert plan` and `convert run`
@@ -291,6 +385,7 @@ Stated rather than left to be discovered:
 | `inspect` | `ds_grid_exchange::conversion::{inspect_sources, conversion_capabilities}` |
 | `plan` | `ds_grid_exchange::conversion::plan_conversion` |
 | `convert` | `ds_grid_exchange::conversion::{plan_conversion, execute_conversion}` |
+| `sync` | `ds_grid_exchange::pls_cadd_workspace_sync::plan_workspace_sync` over `pls_cadd_workspace_export::plan_workspace_export` |
 
 There is no second implementation of source classification, planning or
 conversion in this repository, and there must not be one: two planners with

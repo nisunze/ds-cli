@@ -49,11 +49,14 @@
 
 pub mod create_local;
 pub mod import_external;
+pub mod link;
 pub mod list;
+pub mod pls_source;
 pub mod prepare_project;
 mod publish_native;
 pub mod publish_version;
 pub mod set_active;
+pub mod show;
 pub mod workspace;
 
 use std::path::Path;
@@ -287,7 +290,7 @@ pub fn external_dsgrid_path(raw: &str, flag: &str) -> Result<String, Failure> {
 /// Render one local model row the same way in every human projection.
 pub fn model_line(row: &serde_json::Value, active: &str) -> String {
     let id = row["model"].as_str().unwrap_or("?");
-    format!(
+    let mut line = format!(
         "  {} {:<24} {:<22} {:<10} {}\n",
         if id == active { "*" } else { " " },
         truncate(id, 24),
@@ -300,7 +303,25 @@ pub fn model_line(row: &serde_json::Value, active: &str) -> String {
                 "idle"
             }),
         row["revision"].as_str().unwrap_or("—"),
-    )
+    );
+    // A linked copy says where a sync would write, under its own line: the
+    // path is long and the table columns are not the place for it.
+    if let Some(link) = row["pls_source"].as_object() {
+        line.push_str(&format!(
+            "      ↳ PLS-CADD {} · {} · {}\n",
+            link.get("pls_version")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("?"),
+            link.get("path")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("?"),
+            link.get("digest")
+                .and_then(serde_json::Value::as_str)
+                .map(|digest| truncate(digest, 19))
+                .unwrap_or_default(),
+        ));
+    }
+    line
 }
 
 /// Keep a human line one line wide without hiding that it was cut.

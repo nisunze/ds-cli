@@ -29,12 +29,41 @@ use ds_cli_contract::spec::{Domain, Refusal};
 use ds_cli_contract::{Context, help};
 
 fn main() -> ExitCode {
+    console_utf8();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     match run(&argv) {
         Ok(()) => ExitCode::SUCCESS,
         Err((class, ())) => ExitCode::from(class.code()),
     }
 }
+
+/// Print UTF-8 on a Windows console.
+///
+/// `ds` writes UTF-8 bytes. When stdout is the console itself Windows renders
+/// them correctly, because Rust's standard library hands a console UTF-16;
+/// when stdout is a pipe — a PowerShell pipeline, an agent capturing the
+/// output, a redirect to a file — the bytes go through as they are and the
+/// reader decodes them with the console's output code page, which on a
+/// Rwandan workstation is Windows-1252. That is how the em dash in a working
+/// copy's name became `â€”` in a receipt (contract 02 §7 / gap G6). Setting the
+/// console's code pages to UTF-8 for this process's console tells that reader
+/// what the bytes are. Best effort: a process with no console (a service, an
+/// MCP host) has nothing to set and nothing to lose.
+#[cfg(windows)]
+fn console_utf8() {
+    use windows_sys::Win32::System::Console::{SetConsoleCP, SetConsoleOutputCP};
+    const CP_UTF8: u32 = 65_001;
+    // SAFETY: both calls take a code page identifier and touch only the
+    // console attached to this process; they cannot fault and their failure
+    // is reported by return value, which is ignored deliberately.
+    unsafe {
+        let _ = SetConsoleOutputCP(CP_UTF8);
+        let _ = SetConsoleCP(CP_UTF8);
+    }
+}
+
+#[cfg(not(windows))]
+fn console_utf8() {}
 
 /// Global flags, stripped before routing so they may appear anywhere. They
 /// are the only flags with that privilege; everything else belongs to exactly

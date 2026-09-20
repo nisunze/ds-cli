@@ -461,6 +461,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid-exchange.convert", "local_file_write", "none"),
     ("dsgrid-exchange.inspect", "discovery", "none"),
     ("dsgrid-exchange.plan", "discovery", "none"),
+    ("dsgrid-exchange.sync", "local_file_write", "none"),
     ("dsgrid.apply", "local_file_write", "none"),
     ("dsgrid.create", "local_file_write", "none"),
     ("dsgrid.describe", "discovery", "none"),
@@ -478,7 +479,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // durable is written outside it and nothing governed is published.
     ("dsgrid.model.create-local", "local_file_write", "none"),
     ("dsgrid.model.import-external", "local_file_write", "none"),
+    ("dsgrid.model.link", "local_file_write", "none"),
     ("dsgrid.model.list", "read_only", "none"),
+    ("dsgrid.model.show", "read_only", "none"),
     ("dsgrid.model.prepare-project", "local_ui", "project"),
     ("dsgrid.model.set-active", "local_file_write", "none"),
     // The one project act, and the only command in the family that carries
