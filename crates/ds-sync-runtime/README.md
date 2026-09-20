@@ -23,6 +23,17 @@ enumerates the artifact directory to decide what is queued;
 `run_reports`, registering the exact reporter release before each work grant.
 That scoped pass never submits Solar rows to the report protocol.
 
+Solar seals the same way. `solar::seal` records a completed prepared job's
+`held` row at the job's completion, under the host's local fence, with no
+session and no gateway — the job's `result` column in the same SQLite is the
+bytes, so the seal has none to write — and a city computed again frees the
+result it supersedes through the producer (`reclaimed:superseded_locally`).
+Both seals run one choreography, `seal::record`; the Solar producer's
+inventory is read only to adopt a job completed before the seal existed (or
+whose seal the store could not record) and to free a result the store has
+settled as lost (`Store::retire_job_result`). `run_solar_publications`
+drains the rows the store holds.
+
 `StoreOnlyProducer` and `UnavailableGateway` explicitly refuse missing effects;
 other producers require their own real adapters before their effects are enabled.
 

@@ -41,6 +41,8 @@ pub mod reads;
 pub mod routes;
 pub mod rows;
 pub mod run;
+pub mod seal;
+pub mod solar;
 
 #[cfg(feature = "fakes")]
 pub mod fakes;

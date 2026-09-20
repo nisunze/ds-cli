@@ -71,6 +71,19 @@ enumerated to decide what is queued. `StoreHost::local` adopts a batch that
 is on disk with no row exactly once (`adopted` receipt, legacy batches sealed
 before this rule) and is otherwise a no-op over the producer.
 
+Solar is the same rule on the same tables (`ds-sync-runtime::solar::seal`):
+a completed prepared job's row is recorded at completion under the host's
+local fence, with no session and no gateway. Its bytes are the job's `result`
+column in this file, so the seal writes none and undoes none when the store
+refuses — the pump adopts that row on its next observation, as it adopts a
+job completed before the seal existed. Both seals share one choreography
+(`seal::record`): the identity's previous result on this machine is freed
+through the producer first (`reclaimed:superseded_locally`; for Solar,
+`Store::retire_job_result`), then the new row takes the identity. A second
+job of the same city with the SAME bytes is `already_recorded`: the standing
+row stands and the duplicate result's retention is the owner's ruling
+(`ds-cli-server/docs-routes.md` §6), not the seal's.
+
 `sync_store::queue_status(rows, leases, project?, now_ms)` is the queue's
 reading, pure over one fence's rows and leases: queued = `held | uploading`
 (count, bytes, oldest `produced_at_ms`, rooms, distinct hold reasons),

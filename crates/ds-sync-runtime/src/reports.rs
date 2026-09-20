@@ -6,7 +6,6 @@
 //! has to go there"). Nothing here enumerates the artifact directory to
 //! decide what is queued; the directory is bytes, and every decision reads
 //! the row.
-use crate::rows::store_scope;
 use crate::{
     kernel_sync as sync, store, LocalOutput, LocalRow, Producer, SharedStore, TransferReceipt,
     MAX_ROWS,
@@ -302,7 +301,6 @@ pub fn seal(
     root: &Path,
     request: &SealRequest<'_>,
 ) -> Result<SealOutcome, String> {
-    let scope = store_scope(request.project_id);
     let identity = sync::Identity {
         engine: ENGINE.to_string(),
         operation: format!("export-{}", request.transformer),
@@ -314,26 +312,7 @@ pub fn seal(
         .map(|artifact| (artifact.format.clone(), artifact.sha256.clone()))
         .collect();
     let inventory_sha256 = crate::inventory_digest(&mut pairs);
-    let with_store =
-        |f: &dyn Fn(&mut ds_sync_store::Store) -> Result<store::Transition, String>| {
-            let mut store = store
-                .lock()
-                .map_err(|_| "The sync gate is unavailable".to_string())?;
-            f(&mut store)
-        };
-    let snapshot = {
-        let store = store
-            .lock()
-            .map_err(|_| "The sync gate is unavailable".to_string())?;
-        store
-            .snapshot(fence, &scope)
-            .map_err(|error| error.to_string())?
-    };
-    let previous = snapshot
-        .artifacts
-        .iter()
-        .find(|row| row.identity == identity)
-        .cloned();
+    let previous = crate::seal::standing(store, fence, request.project_id, &identity)?;
     if let Some(previous) = previous.as_ref() {
         if previous.sha256 == inventory_sha256 {
             return Ok(SealOutcome::AlreadyRecorded {
@@ -366,139 +345,76 @@ pub fn seal(
     let batch = ds_report_artifacts::committed_batch(root, &committed.receipt.batch_id)?
         .ok_or("the sealed batch is not committed where it was written")?;
     let row = row_of(&batch);
-    let now = crate::now_ms();
 
-    // The room's previous batch on this machine lost to this one. Its
-    // bytes are freed and its row told so BEFORE the new row takes the
-    // identity: the kernel keys the `reclaimed` transition by identity, and
-    // afterwards the identity is the new row's.
-    let mut superseded = None;
-    if let Some(previous) = previous.as_ref() {
-        if previous.readable && !previous.bytes_locator.is_empty() {
-            let (action, outcome, bytes) = match reclaim_batch(
-                root,
-                request.project_id,
-                &previous.bytes_locator,
-                &previous.client_publish_id,
-            ) {
-                Ok(bytes) => ("reclaimed", "superseded_locally".to_string(), Some(bytes)),
-                Err(error) => (
-                    "reclaim_failed",
-                    format!("superseded_locally: {error}"),
-                    None,
-                ),
-            };
-            let receipt = store::ReceiptRow {
-                receipt_id: format!("{action}:{now}:{}", uuid::Uuid::new_v4().simple()),
-                scope: scope.clone(),
-                action: action.to_string(),
-                identity: Some(identity.clone()),
-                outcome,
-                detail: Some(format!(
-                    "batch {} lost to a later computation of this room sealed on this machine ({})",
-                    previous.client_publish_id, committed.receipt.client_publish_id
-                )),
-                grant_id: None,
-                work_id: None,
-                head_revision: None,
-                head_sha256: None,
-                head_counter: None,
-                committed_bytes: bytes,
-                at_ms: now,
-            };
-            with_store(&|store| {
-                store
-                    .apply(
-                        fence,
-                        now,
-                        store::Event::ActionReceipt {
-                            receipt: receipt.clone(),
-                        },
-                    )
-                    .map_err(|error| error.to_string())
-            })?;
-            if let Some(bytes) = bytes {
-                superseded = Some((previous.client_publish_id.clone(), bytes));
-            }
-        }
-    }
-
-    let stored = crate::rows::store_row(request.project_id, &row, now);
-    let recorded = with_store(&|store| {
-        store
-            .apply(
-                fence,
-                now,
-                store::Event::LocalProduced {
-                    row: stored.clone(),
-                },
-            )
-            .map_err(|error| error.to_string())
-    });
-    let refusal = match recorded {
-        Ok(transition) => transition.refusals.into_iter().next(),
-        Err(error) => {
-            // Not acknowledged: the bytes leave with the failure.
+    // The row: the room's previous batch on this machine lost to this one
+    // and is freed first; then the new row is recorded. Not acknowledged
+    // means the new bytes leave with the failure.
+    let free = |previous: &store::ArtifactRow| {
+        reclaim_batch(
+            root,
+            request.project_id,
+            &previous.bytes_locator,
+            &previous.client_publish_id,
+        )
+    };
+    let recorded = crate::seal::record(
+        store,
+        fence,
+        request.project_id,
+        &row,
+        previous.as_ref(),
+        &free,
+    );
+    match recorded {
+        Ok(crate::seal::Recorded::Recorded {
+            row: stored,
+            superseded,
+        }) => Ok(SealOutcome::Sealed(Sealed {
+            receipt: committed.receipt,
+            artifacts: committed.artifacts,
+            row: *stored,
+            superseded,
+        })),
+        Ok(crate::seal::Recorded::AlreadyRecorded { replay_key, state }) => {
+            // A race with another seal of the same bytes: theirs stands.
             let _ = reclaim_batch(
                 root,
                 request.project_id,
                 &row.bytes_locator,
                 &row.client_publish_id,
             );
-            return Err(format!(
-                "the seal was not recorded in the sync store: {error}"
-            ));
+            Ok(SealOutcome::AlreadyRecorded { replay_key, state })
         }
-    };
-    if let Some(refusal) = refusal {
-        let _ = reclaim_batch(
-            root,
-            request.project_id,
-            &row.bytes_locator,
-            &row.client_publish_id,
-        );
-        return match refusal.code.as_str() {
-            "already_recorded" => {
-                // A race with another seal of the same bytes: theirs stands.
-                let snapshot = {
-                    let store = store
-                        .lock()
-                        .map_err(|_| "The sync gate is unavailable".to_string())?;
-                    store
-                        .snapshot(fence, &scope)
-                        .map_err(|error| error.to_string())?
-                };
-                let standing = snapshot
-                    .artifacts
-                    .into_iter()
-                    .find(|held| held.identity == identity)
-                    .ok_or_else(|| {
-                        format!("the sync store refused the seal: {}", refusal.detail)
-                    })?;
-                Ok(SealOutcome::AlreadyRecorded {
-                    replay_key: standing.replay_key,
-                    state: standing.state,
-                })
-            }
-            _ => Err(format!(
+        Ok(crate::seal::Recorded::Refused(refusal)) => {
+            let _ = reclaim_batch(
+                root,
+                request.project_id,
+                &row.bytes_locator,
+                &row.client_publish_id,
+            );
+            Err(format!(
                 "the sync store refused the seal ({}): {}",
                 refusal.code, refusal.detail
-            )),
-        };
+            ))
+        }
+        Err(error) => {
+            let _ = reclaim_batch(
+                root,
+                request.project_id,
+                &row.bytes_locator,
+                &row.client_publish_id,
+            );
+            Err(format!(
+                "the seal was not recorded in the sync store: {error}"
+            ))
+        }
     }
-    let mut stored = stored;
-    stored.updated_at_ms = now;
-    Ok(SealOutcome::Sealed(Sealed {
-        receipt: committed.receipt,
-        artifacts: committed.artifacts,
-        row: stored,
-        superseded,
-    }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rows::store_scope;
     use ds_report_artifacts::publication::{
         PendingPublicationCommit, PublicationBatchReceipt, PublicationOutput, BATCH_SCHEMA,
     };
