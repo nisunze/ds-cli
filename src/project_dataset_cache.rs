@@ -981,10 +981,17 @@ pub const CONTOURS_DATASET_ID: &str = "elevation_contours";
 /// which is the same rule its subsets are admitted and refreshed under.
 pub const REFERENCE_CACHE_PROVIDER: &str = "desktop:reference_resource_cache";
 
+/// The cloud-resident datasets (foundation-datasets contract R2/R3) seed a
+/// project's cells through ds-brain's bounded read, whose boundary bound is
+/// `ST_INTERSECTS(geometry, boundary)`: a parcel crossing the cell's edge
+/// belongs to that cell, exactly as a footprint does. Recorded against the
+/// provider because the datasets are addressed by catalogue digests.
+pub const CLOUD_READ_PROVIDER: &str = "brain_data_distribution";
+
 pub fn acquisition_selection(dataset_id: &str, provider: &str) -> Result<AreaSelection, String> {
     match (dataset_id, provider) {
         (BUILDINGS_DATASET_ID | CONTOURS_DATASET_ID, _) => Ok(AreaSelection::Intersects),
-        (_, REFERENCE_CACHE_PROVIDER) => Ok(AreaSelection::Intersects),
+        (_, REFERENCE_CACHE_PROVIDER | CLOUD_READ_PROVIDER) => Ok(AreaSelection::Intersects),
         (other, provider) => Err(format!(
             "dataset `{other}` from provider `{provider}` does not record the area rule its provider selects with; register it in acquisition_selection before a room may hold or refresh it"
         )),
@@ -2798,6 +2805,11 @@ mod tests {
         assert!(acquisition_selects(BUILDINGS_DATASET_ID, "", &crossing, &area).unwrap());
         assert_eq!(
             acquisition_selection("4eebae72digest", REFERENCE_CACHE_PROVIDER).unwrap(),
+            AreaSelection::Intersects
+        );
+        // A cloud dataset's bounded read is ST_INTERSECTS on the cell.
+        assert_eq!(
+            acquisition_selection("5815decbdigest", CLOUD_READ_PROVIDER).unwrap(),
             AreaSelection::Intersects
         );
         // An unregistered dataset has no rule, and a room may not invent a

@@ -185,7 +185,9 @@ pub fn cloud_dataset(resource: &ReferenceResource) -> Dataset {
 }
 
 /// The governed door a cloud-resident dataset is seeded through.
-pub const CLOUD_READ_PROVIDER: &str = "brain_data_distribution";
+/// The kernel records the area rule against this provider name
+/// (`project_dataset_cache::acquisition_selection`); one constant, re-exported.
+pub use ds_command_kernel::project_dataset_cache::CLOUD_READ_PROVIDER;
 
 /// The one sentence every host prints when a cloud-resident dataset is asked
 /// to be installed nationally or downloaded as a bundle. Seeding per project
