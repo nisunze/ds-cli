@@ -213,6 +213,9 @@ pub struct Moment {
 pub struct Filter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub form: Option<String>,
+    /// Any of these forms; composes with `form` as one set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forms: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -230,8 +233,9 @@ pub struct Filter {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AppliedFilter {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub form: Option<String>,
+    /// The forms kept, any of; empty is every form.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forms: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -436,11 +440,19 @@ fn valid_slug(value: &str) -> bool {
 /// grid and never "no bound".
 pub fn resolve(filter: &Filter) -> Result<AppliedFilter, Refusal> {
     let invalid = |what: &str| Refusal::new(INVALID_FILTER, what.to_string(), REMEDY_FILTER);
-    let form = match filter.form.as_deref().map(str::trim) {
-        None | Some("") => None,
-        Some(slug) if valid_slug(slug) => Some(slug.to_string()),
-        Some(slug) => return Err(invalid(&format!("form `{slug}` is not a form slug"))),
-    };
+    let mut forms: Vec<String> = Vec::new();
+    for slug in filter.form.iter().chain(filter.forms.iter()) {
+        let slug = slug.trim();
+        if slug.is_empty() {
+            continue;
+        }
+        if !valid_slug(slug) {
+            return Err(invalid(&format!("form `{slug}` is not a form slug")));
+        }
+        if !forms.iter().any(|kept| kept == slug) {
+            forms.push(slug.to_string());
+        }
+    }
     let since_ms = match filter.since.as_deref().map(str::trim) {
         None | Some("") => None,
         Some(raw) => Some(bound_ms(raw, false).ok_or_else(|| {
@@ -473,12 +485,12 @@ pub fn resolve(filter: &Filter) -> Result<AppliedFilter, Refusal> {
         Some(limit) => return Err(invalid(&format!("limit {limit} is outside 1 through 500"))),
     };
     Ok(AppliedFilter {
-        empty: form.is_none()
+        empty: forms.is_empty()
             && since_ms.is_none()
             && until_ms.is_none()
             && filter.sync.is_none()
             && text.is_none(),
-        form,
+        forms,
         since_ms,
         until_ms,
         sync: filter.sync,
@@ -494,11 +506,7 @@ fn keeps(filter: &AppliedFilter, moment: &Moment) -> bool {
     if filter.until_ms.is_some_and(|until| moment.when_ms > until) {
         return false;
     }
-    if filter
-        .form
-        .as_deref()
-        .is_some_and(|form| moment.form != form)
-    {
+    if !filter.forms.is_empty() && !filter.forms.iter().any(|form| *form == moment.form) {
         return false;
     }
     if filter.sync.is_some_and(|sync| moment.state != sync) {
@@ -999,6 +1007,17 @@ mod tests {
             files(&list(PROJECT, &rows(), &by_form).unwrap()),
             ["IMG_0001.jpg", "IMG_0003.jpg"]
         );
+        // Several forms are one set, any of; a repeated slug counts once.
+        let any_of = filter(|f| {
+            f.form = Some("poles".into());
+            f.forms = vec!["lines".into(), "poles".into()];
+        });
+        let answer = list(PROJECT, &rows(), &any_of).unwrap();
+        assert_eq!(
+            files(&answer),
+            ["IMG_0001.jpg", "span_0002.jpg", "IMG_0003.jpg"]
+        );
+        assert_eq!(answer.filter.forms, ["poles", "lines"]);
         let waiting = filter(|f| f.sync = Some(SyncState::Waiting));
         assert_eq!(
             files(&list(PROJECT, &rows(), &waiting).unwrap()),
