@@ -17,7 +17,7 @@ The owner's ruling is propose → confirm with no LLM in the stack: the intellig
 | Term | Meaning in this contract |
 |---|---|
 | **Reference** | One typed string naming DS objects: `dsgrid:<source>:structure:<sel>` or `dsgrid:<source>:alignment:<aln>[:<a>..<b>]`. The grammar is closed (§Reference grammar) and parsed by the kernel. |
-| **Source** | Where the objects' model comes from: `local-<id>` — a DS Grid working copy in this machine's catalogue (`ds dsgrid model list`, scoped by the session's lane and account); or `package` — the `.dsgrid` file named by `--package <path>`. |
+| **Source** | Where the objects' model comes from: `local-<id>` — a DS Grid working copy in this machine's catalogue, named by its id exactly as `ds dsgrid model list` reports it (the catalogue mints the `local-` prefix; the token is the id), scoped by the session's lane and account; or `package` — the `.dsgrid` file named by `--package <path>`. |
 | **Object index** | The deterministic engine result a host produces from one `.dsgrid`: every structure's stable id, engineering number, alignment and station, and every alignment's polyline, **all in EPSG:4326**, plus the model's identity (`model_id`, `model_revision`, `snapshot_fingerprint`, declared CRS). The kernel never reads a package ([ds-kernel-network-boundary.md](ds-kernel-network-boundary.md) §1); it reads this index. |
 | **Resolution** | Matching each selector of a reference to exactly one object of the index. Deterministic; unresolved and ambiguous selectors are named, never guessed. |
 | **Shaping** | Turning the resolved objects into the task's ONE top-level geometry by a declared rule (§Shaping rules). |
@@ -37,7 +37,7 @@ The owner's ruling is propose → confirm with no LLM in the stack: the intellig
 
 ```
 reference  := "dsgrid:" source ":" object
-source     := "local-" id            # this machine's DS Grid working copy (ds dsgrid model list)
+source     := "local-" hex           # this machine's DS Grid working copy, the id ds dsgrid model list reports
             | "package"              # the .dsgrid named by --package <path>
 object     := "structure:" sel ("," sel)*
             | "alignment:" aln

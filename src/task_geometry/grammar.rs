@@ -30,7 +30,9 @@ pub const MAX_REFERENCE_BYTES: usize = 4_096;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Source {
-    /// A working copy in this machine's DS Grid catalogue, by its opaque id.
+    /// A working copy in this machine's DS Grid catalogue, by its opaque id
+    /// exactly as `ds dsgrid model list` reports it (`local-<16 hex>`): the
+    /// catalogue mints the `local-` prefix, so the token IS the id.
     Local { id: String },
     /// The `.dsgrid` the command named with `--package <path>`.
     Package,
@@ -40,7 +42,7 @@ impl Source {
     /// The token the index is keyed by: `local-<id>` or `package`.
     pub fn key(&self) -> String {
         match self {
-            Self::Local { id } => format!("local-{id}"),
+            Self::Local { id } => id.clone(),
             Self::Package => "package".to_owned(),
         }
     }
@@ -114,8 +116,7 @@ pub fn parse(raw: &str) -> Result<Reference, Refusal> {
     let source = match parts.next() {
         Some("package") => Source::Package,
         Some(local) if local.starts_with("local-") => {
-            let id = &local["local-".len()..];
-            if id.is_empty() || !crate::local_models::id_is_safe(id) {
+            if local.len() == "local-".len() || !crate::local_models::id_is_safe(local) {
                 return Err(invalid(
                     reference,
                     "source",
@@ -124,7 +125,9 @@ pub fn parse(raw: &str) -> Result<Reference, Refusal> {
                     ),
                 ));
             }
-            Source::Local { id: id.to_owned() }
+            Source::Local {
+                id: local.to_owned(),
+            }
         }
         Some(other) => {
             return Err(invalid(
@@ -243,7 +246,14 @@ mod tests {
     #[test]
     fn the_owner_s_example_parses_to_three_selectors_on_a_local_copy() {
         let parsed = parse("dsgrid:local-abc-1:structure:74,76,77").expect("parses");
-        assert_eq!(parsed.source, Source::Local { id: "abc-1".into() });
+        // The token is the catalogue id itself, `local-` prefix included:
+        // what `ds dsgrid model list` prints is what a reference names.
+        assert_eq!(
+            parsed.source,
+            Source::Local {
+                id: "local-abc-1".into()
+            }
+        );
         assert_eq!(parsed.source.key(), "local-abc-1");
         assert_eq!(
             parsed.object,

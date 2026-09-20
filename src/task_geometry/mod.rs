@@ -1259,7 +1259,7 @@ mod tests {
         assert_eq!(parsed["references"][1]["object"]["kind"], "alignment_range");
         assert_eq!(
             parsed["sources"],
-            json!([{ "kind": { "kind": "local", "id": "abc" }, "ref": "local-abc" }, { "kind": { "kind": "package" }, "ref": "package" }])
+            json!([{ "kind": { "kind": "local", "id": "local-abc" }, "ref": "local-abc" }, { "kind": { "kind": "package" }, "ref": "package" }])
         );
 
         let mut body = serde_json::to_value(json!({
