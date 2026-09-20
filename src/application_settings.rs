@@ -926,10 +926,9 @@ pub fn working_area_update_interval_label(value: Option<&Value>) -> String {
 
 // ── The lane seam ───────────────────────────────────────────────────────
 
-/// The two facts that decide whether the Standard (legacy Python) lane is
-/// reachable at all: the installed desktop shell is fast-only by ruling
-/// (2026-08-13), and a project must declare Standard support in its
-/// `processing_lanes` property (absent by default → fast-only).
+/// The two facts a host reports about the Standard (legacy Python) lane.
+/// They are still read off the wire — the shape is a contract with every
+/// deployed client — and they no longer decide anything: see below.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct LaneFacts {
@@ -937,9 +936,18 @@ pub struct LaneFacts {
     pub project_standard_lane: bool,
 }
 
-/// `standardLaneAvailable`.
-pub fn standard_lane_available(facts: LaneFacts) -> bool {
-    !facts.desktop_surface && facts.project_standard_lane
+/// `standardLaneAvailable` — retired 2026-09-20, for every host and every
+/// project. The installed desktop was fast-only by ruling since 2026-08-13;
+/// deployed web kept Standard as a "sunset path" for projects that declared
+/// it. On 2026-09-17 that path stamped `updated_by: legacy_pipeline` on 134
+/// transformers of one project — the Python pipeline writing itself where
+/// the person belongs, three days before this line — and the activities
+/// ledger, which exists to say who did what, could not. A backup that writes
+/// a different actor and a different shape is not a backup; it is a second
+/// writer. The Rust lane is the one lane. The facts stay on the wire so no
+/// client changes; they simply cannot grant Standard any more.
+pub fn standard_lane_available(_facts: LaneFacts) -> bool {
+    false
 }
 
 /// `normalizeLane`: where Standard is unreachable the answer is fast, with
@@ -2084,7 +2092,11 @@ mod tests {
             ask(json!({"kind": "lane", "settings": settings, "lane_facts": facts})).unwrap()["lane"]
                 .clone()
         };
-        assert_eq!(lane(web(), &confirmed), json!("standard"));
+        // Retired 2026-09-20: not even the web with a project that declares
+        // Standard resolves to it. The preference below is still kept as
+        // written — a record is never rewritten by a rule — it just cannot
+        // reach the lane it names.
+        assert_eq!(lane(web(), &confirmed), json!("fast"));
         assert_eq!(
             lane(
                 json!({"desktop_surface": true, "project_standard_lane": true}),
@@ -2122,13 +2134,13 @@ mod tests {
                     project_standard_lane: true
                 }
             ),
-            "standard"
+            "fast"
         );
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg_attr(not(target_arch = "wasm32"), test)]
-    fn set_lane_writes_standard_only_where_it_is_reachable() {
+    fn set_lane_never_writes_standard_anywhere() {
         let on_web = ask(json!({
             "kind": "set_lane",
             "current": {"fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z"},
@@ -2137,13 +2149,13 @@ mod tests {
             "lane_facts": web(),
         }))
         .unwrap();
-        assert_eq!(on_web["settings"]["processingLane"], json!("standard"));
-        assert_eq!(
-            on_web["settings"]["standardLaneConfirmedAt"],
-            json!("2026-05-31T10:00:00.000Z")
-        );
-        assert!(settings_of(&on_web).get("fastLaneConfirmedAt").is_none());
-        assert_eq!(on_web["lane"], json!("standard"));
+        // Retired 2026-09-20: the web behaves exactly as the desktop always
+        // has — a Standard request writes fast and confirms nothing.
+        assert_eq!(on_web["settings"]["processingLane"], json!("fast"));
+        assert!(settings_of(&on_web)
+            .get("standardLaneConfirmedAt")
+            .is_none());
+        assert_eq!(on_web["lane"], json!("fast"));
 
         let on_desktop = ask(json!({
             "kind": "set_lane",

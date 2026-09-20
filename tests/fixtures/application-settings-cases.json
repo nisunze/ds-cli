@@ -945,7 +945,7 @@
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "standard",
+        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -1384,7 +1384,7 @@
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "standard",
+        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -4484,7 +4484,7 @@
           "maxParallelBatchProcessing": 25,
           "workingAreaUpdateIntervalMinutes": 120
         },
-        "lane": "standard",
+        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": false,
@@ -4898,7 +4898,7 @@
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "standard"
+        "lane": "fast"
       }
     },
     {
@@ -5117,7 +5117,7 @@
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "standard"
+        "lane": "fast"
       }
     },
     {
@@ -5991,7 +5991,7 @@
         }
       },
       "expected": {
-        "lane": "standard"
+        "lane": "fast"
       }
     },
     {
@@ -6137,12 +6137,12 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
+          "processingLane": "fast",
+          "fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "standard"
+        "lane": "fast"
       }
     },
     {
