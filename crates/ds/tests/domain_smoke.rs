@@ -2065,16 +2065,6 @@ fn no_dsgrid_model_command_can_carry_model_content() {
         }
     }
     // Six since `dsgrid.model.prepare-project` joined the family in 7a92551;
-<<<<<<< HEAD
-    // seven since `dsgrid.model.show` (2026-09-20: `--model`, `--lane`,
-    // `--account` — an id and a catalogue, no content field). The count is
-    // here so a new command cannot join unexamined — it did its job both
-    // times: the command was read against the content rule before this number
-    // moved.
-    assert_eq!(
-        checked, 7,
-        "the DS Grid model family must be seven commands; this check would \
-=======
     // eight since `dsgrid.model.show` and `dsgrid.model.link` joined on
     // 2026-09-20 (contract 02 §1) — `link` names a workspace by path and
     // records digests, never bytes. The count is here so a new command cannot
@@ -2083,7 +2073,6 @@ fn no_dsgrid_model_command_can_carry_model_content() {
     assert_eq!(
         checked, 8,
         "the DS Grid model family must be eight commands; this check would \
->>>>>>> origin/program/02-d6
          otherwise silently stop covering one"
     );
 }
