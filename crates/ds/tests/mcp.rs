@@ -1368,7 +1368,12 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Native creation completes the file workflow: one new bounded
             // leaf. Focused clients can use grid-native or grid-local-model.
             // Native project list/download complete the same model workflow.
-            "grid" => 22,
+            // 2026-09-20 (contract 02): `dsgrid model show|link` and
+            // `dsgrid-exchange sync` — the working copy's record, its pin to a
+            // live PLS-CADD workspace, and the write back into it. A router
+            // that imports from PLS-CADD and cannot deliver to it is half a
+            // workflow.
+            "grid" => 25,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,

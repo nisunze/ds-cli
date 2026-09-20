@@ -90,7 +90,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "tension_sections": snapshot.tension_sections.len(),
             "terrain_points": snapshot.terrain_points.len(),
             "bytes": opened.package_bytes.len(),
-            "sha256": format!("sha256:{}", ds_io::pls_cadd_native::sha256_hex_digest(&opened.package_bytes)),
+            "sha256": ds_io::pls_cadd_native::sha256_hex_digest(&opened.package_bytes),
             "path": opened.package_path.to_string_lossy(),
         },
     }))
