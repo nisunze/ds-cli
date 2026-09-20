@@ -2,7 +2,9 @@
 //! The exporter seals bytes and their row through `ds_sync_runtime::reports`.
 //! This adapter only connects that store to the authenticated runtime used by
 //! Desktop as well. The sync store is the queue: every reading here is of the
-//! store's rows, never of the artifact directory.
+//! store's rows, never of the artifact directory. The producer a pass runs
+//! over is the host's ONE set (`SolarActivity::with_producers`): report and
+//! Solar, keyed by engine.
 use crate::server_sync::ServerSyncSession;
 use ds_sync_runtime::{
     Reads, Receipt, Reclaimed, SyncHost, SyncRun, Trigger,
@@ -39,7 +41,8 @@ pub struct Pass {
     pub receipts: Vec<Receipt>,
 }
 
-fn root(database: &Path) -> Result<std::path::PathBuf, String> {
+/// Where this host's committed report batches live: beside the store.
+pub(crate) fn root(database: &Path) -> Result<std::path::PathBuf, String> {
     Ok(database
         .parent()
         .ok_or("server database has no state directory")?
@@ -95,29 +98,16 @@ pub fn inventory(session: &ServerSyncSession) -> Result<Inventory, String> {
     })
 }
 
+/// One pass of the report protocol over `producer` — the host's whole
+/// producer set, so a lost row of any engine this pass observes is freed
+/// by the producer that owns its bytes (`ds_sync_runtime::Producers`).
 pub fn drain(
-    database: &Path,
     session: &ServerSyncSession,
+    producer: &dyn ds_sync_runtime::Producer,
     reads: &dyn Reads,
     trigger: Trigger,
 ) -> Result<Pass, String> {
-    let root = root(database)?;
-    let upload =
-        |handle: ds_report_artifacts::SealedArtifactHandle, output_id: &str, session_uri: &str| {
-            ds_sync_runtime::transfer_verified_output(
-                output_id,
-                session_uri,
-                handle.size_bytes,
-                &handle.sha256,
-                handle.file,
-            )
-        };
-    let producer = ds_sync_runtime::reports::ReportProducer {
-        root: &root,
-        project: session.project(),
-        upload: &upload,
-    };
-    session.with_host_for_project(session.project(), &producer, reads, |host| {
+    session.with_host_for_project(session.project(), producer, reads, |host| {
         let result = ds_sync_runtime::run::run_reports(host, session.project(), trigger);
         match result {
             Ok(run) => Ok(pass(inventory(session)?, run)),

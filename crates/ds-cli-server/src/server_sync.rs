@@ -27,6 +27,10 @@ use crate::{auth, host::Connection};
 pub struct ServerSyncSession {
     store: SharedStore,
     fence: Fence,
+    /// The host identity this session's rows and jobs are fenced by — what
+    /// a producer set opened beside this session (`ds report outbox drain`)
+    /// reads the compute table with.
+    identity: ds_compute_runtime::HostIdentity,
     worker_id: String,
     project: String,
     owner: String,
@@ -79,6 +83,15 @@ impl ServerSyncSession {
         Ok(Self {
             store: open_store(database)?,
             fence: fence_for(context.account_uid(), context.deployment(), &install_id),
+            identity: ds_compute_runtime::HostIdentity {
+                owner: owner.clone(),
+                principal: ds_command_kernel::execution_context::Principal {
+                    uid: context.account_uid().to_owned(),
+                    lane: connection.lane.clone(),
+                    deployment: context.deployment().to_owned(),
+                    install_id: install_id.clone(),
+                },
+            },
             worker_id: format!(
                 "{install_id}#{}#{}",
                 digest(gateway.credential_binding().as_bytes()),
@@ -93,6 +106,11 @@ impl ServerSyncSession {
 
     pub fn fence(&self) -> &Fence {
         &self.fence
+    }
+
+    /// The host identity this session's rows and jobs are fenced by.
+    pub fn identity(&self) -> &ds_compute_runtime::HostIdentity {
+        &self.identity
     }
 
     pub fn project(&self) -> &str {

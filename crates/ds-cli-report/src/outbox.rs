@@ -354,11 +354,22 @@ pub fn drain(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             // `Manual` is the kernel's own name for "the operator pressed
             // Sync now". A hand-driven drain is exactly that, and it must not
             // borrow a scheduler trigger that changes retry policy.
-            let pass = ds_cli_server::server_reports::drain(
+            // Over the host's one producer set — report + Solar — so a lost
+            // row of either engine this drain observes is freed by the
+            // producer that owns its bytes.
+            let pass = ds_cli_server::solar_sync::with_producers(
                 &database,
-                &session,
-                &reads,
-                ds_sync_runtime::Trigger::Manual,
+                session.identity(),
+                &project_id,
+                None,
+                |producers| {
+                    ds_cli_server::server_reports::drain(
+                        &session,
+                        producers,
+                        &reads,
+                        ds_sync_runtime::Trigger::Manual,
+                    )
+                },
             )?;
             let receipts: Vec<Value> = pass
                 .receipts
