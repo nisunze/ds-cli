@@ -50,6 +50,9 @@ pub const UNKNOWN_MODEL: &str = "local_model_not_found";
 pub const DUPLICATE_NAME: &str = "local_model_name_taken";
 pub const CATALOGUE_FULL: &str = "local_model_catalogue_full";
 pub const MALFORMED: &str = "local_model_request_invalid";
+/// A revision was built on a package the working copy no longer holds:
+/// another writer advanced it between the caller's read and its write.
+pub const REVISION_CONFLICT: &str = "local_model_revision_conflict";
 
 /// Why an operation changed nothing.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -120,6 +123,16 @@ pub struct LocalModel {
     /// the pin says where it CAME from, never what it still equals.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectPin>,
+    /// The authored head revision the engine reported for the package as it
+    /// stands (`rev:…`), when the host opened the engine to read it. `None`
+    /// for a copy registered without one; a listing prints what it has and
+    /// never invents a head.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_revision: Option<String>,
+    /// RFC3339, supplied by the host at the last `Revise`; absent for a copy
+    /// never revised in place.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revised_at: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -243,12 +256,33 @@ pub enum Op {
         created_at: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         project: Option<ProjectPin>,
+        /// The authored head the engine read off the package, when the host
+        /// opened it. Optional: acquisition never has to open the engine.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        head_revision: Option<String>,
         /// Open it as the active model once it is registered. A machine's first
         /// model is active whether or not this is set: a catalogue with exactly
         /// one working copy and nothing active would be a state an operator has
         /// no way to read as deliberate.
         #[serde(default)]
         activate: bool,
+    },
+    /// Advance one working copy in place: the host has written a new package
+    /// for the same id and hands over its identity. The row keeps its id,
+    /// name, origin, coordinate system, creation time and project pin; the
+    /// package revision, byte count, digest and head move. `expected_sha256`
+    /// is the digest the caller read before building the revision — when the
+    /// row no longer carries it, another writer got there first and the
+    /// operation is refused rather than silently overwriting their work.
+    Revise {
+        id: String,
+        expected_sha256: Option<String>,
+        model_revision: u64,
+        bytes: u64,
+        sha256: String,
+        head_revision: Option<String>,
+        /// RFC3339. `None` asks the host for its clock, exactly as `Register`.
+        revised_at: Option<String>,
     },
     /// Open one existing model as the active one.
     SetActive { id: String },
@@ -289,6 +323,7 @@ pub fn evaluate(catalogue: &Catalogue, scope: &Scope, op: Op) -> Result<Outcome,
             sha256,
             created_at,
             project,
+            head_revision,
             activate,
         } => {
             if !id_is_safe(&id) {
@@ -337,12 +372,63 @@ pub fn evaluate(catalogue: &Catalogue, scope: &Scope, op: Op) -> Result<Outcome,
                 sha256,
                 created_at,
                 project,
+                head_revision: head_revision.filter(|value| bounded(value)),
+                revised_at: None,
             };
             if activate || next.models.is_empty() {
                 next.active = Some(model.id.clone());
             }
             next.models.push(model.clone());
             Some(model)
+        }
+        Op::Revise {
+            id,
+            expected_sha256,
+            model_revision,
+            bytes,
+            sha256,
+            head_revision,
+            revised_at,
+        } => {
+            let index = next.position(&id)?;
+            if bytes == 0 {
+                return refusal(MALFORMED, "a revised package cannot be empty");
+            }
+            if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return refusal(MALFORMED, "a revised package needs its digest");
+            }
+            let revised_at = revised_at.filter(|value| bounded(value));
+            if revised_at.is_none() {
+                return refusal(MALFORMED, "a revision needs the host's clock");
+            }
+            let row = &mut next.models[index];
+            if let Some(expected) = expected_sha256 {
+                if expected != row.sha256 {
+                    return refusal(
+                        REVISION_CONFLICT,
+                        format!(
+                            "local model {id} moved: the revision was built on package {} but the working copy now holds {}",
+                            &expected[..expected.len().min(12)],
+                            &row.sha256[..row.sha256.len().min(12)]
+                        ),
+                    );
+                }
+            }
+            if model_revision < row.model_revision {
+                return refusal(
+                    MALFORMED,
+                    format!(
+                        "a revision never goes backwards: package revision {model_revision} is below the working copy's {}",
+                        row.model_revision
+                    ),
+                );
+            }
+            row.model_revision = model_revision;
+            row.bytes = bytes;
+            row.sha256 = sha256;
+            row.head_revision = head_revision.filter(|value| bounded(value));
+            row.revised_at = revised_at;
+            Some(row.clone())
         }
         Op::SetActive { id } => {
             let index = next.position(&id)?;
@@ -391,8 +477,84 @@ mod tests {
             sha256: "a".repeat(64),
             created_at: Some("2026-09-18T10:00:00Z".into()),
             project: None,
+            head_revision: None,
             activate: false,
         }
+    }
+
+    fn revise(id: &str, expected: Option<&str>, revision: u64) -> Op {
+        Op::Revise {
+            id: id.into(),
+            expected_sha256: expected.map(str::to_owned),
+            model_revision: revision,
+            bytes: 4096,
+            sha256: "b".repeat(64),
+            head_revision: Some("rev:1".into()),
+            revised_at: Some("2026-09-20T12:00:00Z".into()),
+        }
+    }
+
+    #[test]
+    fn a_revision_moves_the_package_identity_and_nothing_else_on_the_row() {
+        let one = evaluate(&Catalogue::empty(scope()), &scope(), register("m-1", "A")).unwrap();
+        let two = evaluate(&one.catalogue, &scope(), register("m-2", "B")).unwrap();
+        let before = two.catalogue.models[0].clone();
+        let revised = evaluate(
+            &two.catalogue,
+            &scope(),
+            revise("m-1", Some(&"a".repeat(64)), 1),
+        )
+        .expect("revises");
+        let row = revised.model.expect("the revised row");
+        assert_eq!(row.id, before.id);
+        assert_eq!(row.display_name, before.display_name);
+        assert_eq!(row.origin, before.origin);
+        assert_eq!(row.crs, before.crs);
+        assert_eq!(row.created_at, before.created_at);
+        assert_eq!(row.project, before.project);
+        assert_eq!(row.model_revision, 1);
+        assert_eq!(row.bytes, 4096);
+        assert_eq!(row.sha256, "b".repeat(64));
+        assert_eq!(row.head_revision.as_deref(), Some("rev:1"));
+        assert_eq!(row.revised_at.as_deref(), Some("2026-09-20T12:00:00Z"));
+        assert_eq!(
+            revised.catalogue.models.len(),
+            2,
+            "no row was added or lost"
+        );
+        assert_eq!(revised.catalogue.active.as_deref(), Some("m-1"));
+        assert!(!revised.active_changed);
+    }
+
+    #[test]
+    fn a_revision_built_on_a_package_the_copy_no_longer_holds_is_refused() {
+        let one = evaluate(&Catalogue::empty(scope()), &scope(), register("m-1", "A")).unwrap();
+        let stale = evaluate(
+            &one.catalogue,
+            &scope(),
+            revise("m-1", Some(&"c".repeat(64)), 1),
+        )
+        .unwrap_err();
+        assert_eq!(stale.code, REVISION_CONFLICT);
+        // Without an expectation the caller declared none, and the write is
+        // admitted; a backwards package revision never is.
+        assert!(evaluate(&one.catalogue, &scope(), revise("m-1", None, 1)).is_ok());
+        let forward = evaluate(&one.catalogue, &scope(), revise("m-1", None, 3)).unwrap();
+        let backwards = evaluate(&forward.catalogue, &scope(), revise("m-1", None, 2)).unwrap_err();
+        assert_eq!(backwards.code, MALFORMED);
+        let unknown = evaluate(&one.catalogue, &scope(), revise("m-9", None, 1)).unwrap_err();
+        assert_eq!(unknown.code, UNKNOWN_MODEL);
+        let mut clockless = revise("m-1", None, 1);
+        if let Op::Revise { revised_at, .. } = &mut clockless {
+            *revised_at = None;
+        }
+        assert_eq!(
+            evaluate(&one.catalogue, &scope(), clockless)
+                .unwrap_err()
+                .code,
+            MALFORMED,
+            "the kernel invented a revision time"
+        );
     }
 
     #[test]

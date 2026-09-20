@@ -25,7 +25,11 @@
 //! minted. What the store guarantees is the ORDER: the package is written
 //! before the catalogue row that names it, and a row is removed before its
 //! package, so a crash leaves a file with no row — recoverable — rather than a
-//! row pointing at nothing.
+//! row pointing at nothing. A revision in place follows the same order under
+//! the same lock: the new package bytes replace the old atomically, then the
+//! row moves to name them; a crash between the two leaves a row naming the
+//! previous digest beside newer bytes, which the next `Revise` reports as a
+//! conflict rather than overwriting silently.
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -250,6 +254,7 @@ pub fn execute_at(
             bytes,
             sha256,
             project,
+            head_revision,
             activate,
         } => Op::Register {
             created_at: Some(created_at.unwrap_or_else(now_rfc3339)),
@@ -261,14 +266,32 @@ pub fn execute_at(
             bytes,
             sha256,
             project,
+            head_revision,
             activate,
+        },
+        Op::Revise {
+            id,
+            expected_sha256,
+            model_revision,
+            bytes,
+            sha256,
+            head_revision,
+            revised_at,
+        } => Op::Revise {
+            id,
+            expected_sha256,
+            model_revision,
+            bytes,
+            sha256,
+            head_revision,
+            revised_at: Some(revised_at.unwrap_or_else(now_rfc3339)),
         },
         other => other,
     };
-    let registering = matches!(op, Op::Register { .. });
-    if registering != package.is_some() {
+    let takes_package = matches!(op, Op::Register { .. } | Op::Revise { .. });
+    if takes_package != package.is_some() {
         return Err(StoreError::Store(
-            "registering a local model needs its package bytes, and no other operation takes them"
+            "registering or revising a local model needs its package bytes, and no other operation takes them"
                 .into(),
         ));
     }
@@ -311,7 +334,9 @@ pub fn execute_at(
 
     match package {
         // The package is written before the catalogue, so a row never names a
-        // file that is not there.
+        // file that is not there. For a revision the atomic rename replaces
+        // the previous package in one step: there is never a moment with no
+        // package under the id.
         Some(bytes) => {
             fs::create_dir_all(packages_dir(&dir)).map_err(io_error)?;
             write_atomic(&file, &packages_dir(&dir), bytes)?;
@@ -367,8 +392,86 @@ mod tests {
             sha256: "c".repeat(64),
             created_at: None,
             project: None,
+            head_revision: None,
             activate: false,
         }
+    }
+
+    #[test]
+    fn a_revision_replaces_the_package_under_its_id_and_moves_the_row() {
+        let root = tempfile::tempdir().expect("temp root");
+        execute_at(root.path(), &scope(), register("m-1", "A"), Some(b"pkg1")).unwrap();
+        let dir = scope_dir(root.path(), &scope()).unwrap();
+        let package = package_path(&dir, "m-1").unwrap();
+
+        let revised = execute_at(
+            root.path(),
+            &scope(),
+            Op::Revise {
+                id: "m-1".to_owned(),
+                expected_sha256: Some("c".repeat(64)),
+                model_revision: 1,
+                bytes: 5,
+                sha256: "d".repeat(64),
+                head_revision: Some("rev:abc".into()),
+                revised_at: None,
+            },
+            Some(b"pkg-2"),
+        )
+        .expect("revises");
+        assert_eq!(std::fs::read(&package).unwrap(), b"pkg-2");
+        let row = revised.model.expect("row");
+        assert_eq!(row.model_revision, 1);
+        assert_eq!(row.sha256, "d".repeat(64));
+        assert_eq!(row.head_revision.as_deref(), Some("rev:abc"));
+        assert_eq!(
+            row.revised_at.as_deref().map(str::len),
+            Some(20),
+            "the store's clock"
+        );
+        assert_eq!(read_at(root.path(), &scope()).unwrap(), revised.catalogue);
+
+        // A stale expectation leaves both the row and the bytes alone.
+        let stale = execute_at(
+            root.path(),
+            &scope(),
+            Op::Revise {
+                id: "m-1".to_owned(),
+                expected_sha256: Some("c".repeat(64)),
+                model_revision: 2,
+                bytes: 5,
+                sha256: "e".repeat(64),
+                head_revision: None,
+                revised_at: None,
+            },
+            Some(b"pkg-3"),
+        )
+        .unwrap_err();
+        assert_eq!(
+            stale.code(),
+            ds_command_kernel::local_models::REVISION_CONFLICT
+        );
+        assert_eq!(std::fs::read(&package).unwrap(), b"pkg-2");
+        assert_eq!(read_at(root.path(), &scope()).unwrap(), revised.catalogue);
+
+        // A revision without bytes is not a revision.
+        assert!(
+            execute_at(
+                root.path(),
+                &scope(),
+                Op::Revise {
+                    id: "m-1".to_owned(),
+                    expected_sha256: None,
+                    model_revision: 2,
+                    bytes: 5,
+                    sha256: "e".repeat(64),
+                    head_revision: None,
+                    revised_at: None,
+                },
+                None
+            )
+            .is_err()
+        );
     }
 
     #[test]
