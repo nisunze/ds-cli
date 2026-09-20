@@ -250,6 +250,7 @@ pub fn execute_at(
             bytes,
             sha256,
             project,
+            head_revision,
             activate,
         } => Op::Register {
             created_at: Some(created_at.unwrap_or_else(now_rfc3339)),
@@ -261,6 +262,7 @@ pub fn execute_at(
             bytes,
             sha256,
             project,
+            head_revision,
             activate,
         },
         // A link records the host's clock the same way, and for the same
@@ -375,6 +377,7 @@ mod tests {
             sha256: "c".repeat(64),
             created_at: None,
             project: None,
+            head_revision: None,
             activate: false,
         }
     }
