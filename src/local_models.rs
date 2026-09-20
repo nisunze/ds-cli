@@ -571,6 +571,88 @@ pub fn evaluate(catalogue: &Catalogue, scope: &Scope, op: Op) -> Result<Outcome,
     })
 }
 
+// ── a project's governed heads against this machine's working copies ─────
+
+/// One governed head of a project, as the catalogue read lists it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GovernedHead {
+    pub model_id: String,
+    pub display_name: String,
+    pub head_revision_id: String,
+    /// `sha256:<hex>` or bare hex, as the service wrote it.
+    pub head_model_digest: String,
+}
+
+/// Whether one governed head is held on this machine, and by which copy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeadReadiness {
+    pub model_id: String,
+    pub name: String,
+    pub revision: String,
+    /// Bare hex.
+    pub digest: String,
+    pub cached: bool,
+    /// The working copy that holds these exact bytes, when one does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u64>,
+}
+
+/// The fold `ds dsgrid model prepare-project` answers with: which of a
+/// project's exact MV heads this machine already holds as a working copy.
+///
+/// A head is *cached* when a copy pinned to exactly that project, model,
+/// revision and digest exists (`Origin::Project`, the pin says where it came
+/// from), or when any copy's bytes ARE that digest — a package imported by
+/// hand that happens to be the governed head is the governed head. A copy
+/// edited since it was pinned keeps the pin but no longer carries the digest,
+/// and is therefore not the head: what is asked is whether the exact bytes
+/// are here, never whether they once were. Order follows the service's
+/// listing; nothing is sorted or deduplicated for the caller.
+pub fn project_readiness(
+    project_id: &str,
+    heads: &[GovernedHead],
+    catalogue: &Catalogue,
+) -> Vec<HeadReadiness> {
+    heads
+        .iter()
+        .map(|head| {
+            let digest = head
+                .head_model_digest
+                .trim_start_matches("sha256:")
+                .to_ascii_lowercase();
+            let holder = catalogue.models.iter().find(|model| {
+                model.sha256.eq_ignore_ascii_case(&digest)
+                    && (model.origin != Origin::Project
+                        || model.project.as_ref().is_none_or(|pin| {
+                            pin.project_id == project_id
+                                && pin.model_id == head.model_id
+                                && pin.revision_id == head.head_revision_id
+                        }))
+            });
+            HeadReadiness {
+                model_id: head.model_id.clone(),
+                name: head.display_name.clone(),
+                revision: head.head_revision_id.clone(),
+                digest,
+                cached: holder.is_some(),
+                local_id: holder.map(|model| model.id.clone()),
+                bytes: holder.map(|model| model.bytes),
+            }
+        })
+        .collect()
+}
+
+/// Is this governed row an MV model the project's Design and printing consume?
+/// The browser's rule, carried over: not deleted, and of kind `mv_line` or of
+/// no declared kind (rows older than the kind field are MV lines).
+pub fn is_mv_head(state: Option<&str>, model_kind: Option<&str>) -> bool {
+    state != Some("deleted") && matches!(model_kind, None | Some("mv_line"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1001,5 +1083,87 @@ mod tests {
         assert_eq!(model.pls_source, None);
         let text = serde_json::to_string(&model).unwrap();
         assert!(!text.contains("pls_source"));
+    }
+
+    fn sample(id: &str) -> LocalModel {
+        evaluate(&Catalogue::empty(scope()), &scope(), register(id, id))
+            .unwrap()
+            .catalogue
+            .models
+            .remove(0)
+    }
+
+    #[test]
+    fn a_project_head_is_ready_when_its_exact_bytes_are_held_by_any_copy() {
+        let mut catalogue = Catalogue::empty(scope());
+        let mut pinned = sample("m-pinned");
+        pinned.origin = Origin::Project;
+        pinned.sha256 = "a".repeat(64);
+        pinned.bytes = 10;
+        pinned.project = Some(ProjectPin {
+            project_id: "p1".into(),
+            model_id: "gm-1".into(),
+            revision_id: "rev-1".into(),
+            digest: "a".repeat(64),
+        });
+        let mut imported = sample("m-imported");
+        imported.origin = Origin::Imported;
+        imported.sha256 = "b".repeat(64);
+        imported.bytes = 20;
+        let mut edited = sample("m-edited");
+        edited.origin = Origin::Project;
+        edited.sha256 = "d".repeat(64);
+        edited.project = Some(ProjectPin {
+            project_id: "p1".into(),
+            model_id: "gm-3".into(),
+            revision_id: "rev-3".into(),
+            digest: "c".repeat(64),
+        });
+        catalogue.models = vec![pinned, imported, edited];
+        let heads = [
+            GovernedHead {
+                model_id: "gm-1".into(),
+                display_name: "Pinned".into(),
+                head_revision_id: "rev-1".into(),
+                head_model_digest: format!("sha256:{}", "A".repeat(64)),
+            },
+            GovernedHead {
+                model_id: "gm-2".into(),
+                display_name: "Imported by hand".into(),
+                head_revision_id: "rev-2".into(),
+                head_model_digest: "b".repeat(64),
+            },
+            GovernedHead {
+                model_id: "gm-3".into(),
+                display_name: "Edited since".into(),
+                head_revision_id: "rev-3".into(),
+                head_model_digest: "c".repeat(64),
+            },
+            GovernedHead {
+                model_id: "gm-1".into(),
+                display_name: "Pinned, newer head".into(),
+                head_revision_id: "rev-9".into(),
+                head_model_digest: "a".repeat(64),
+            },
+        ];
+        let rows = project_readiness("p1", &heads, &catalogue);
+        assert_eq!(rows.len(), 4);
+        assert!(rows[0].cached && rows[0].local_id.as_deref() == Some("m-pinned"));
+        assert_eq!(
+            rows[0].digest,
+            "a".repeat(64),
+            "the digest is bare lowercase hex"
+        );
+        assert_eq!(rows[0].bytes, Some(10));
+        assert!(rows[1].cached && rows[1].local_id.as_deref() == Some("m-imported"));
+        assert!(
+            !rows[2].cached && rows[2].local_id.is_none(),
+            "edited bytes are not the head"
+        );
+        // Same bytes, but pinned to another revision of the same model: the
+        // pin disagrees, so the pinned copy does not answer for it.
+        assert!(!rows[3].cached);
+        assert!(is_mv_head(None, None) && is_mv_head(Some("active"), Some("mv_line")));
+        assert!(!is_mv_head(Some("deleted"), None) && !is_mv_head(None, Some("lv_design")));
     }
 }
