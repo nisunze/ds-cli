@@ -929,7 +929,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // application's catalogue; `read` writes one new local file through the
     // desktop; `promote` changes the desktop's local layers and nothing
     // governed; classify/attach/ingest/folder are ds-brain writes.
-    ("assets.attach", "global_write", "project"),
+    ("assets.attach", "global_write", "headless_project"),
     ("assets.reference", "global_write", "headless_project"),
     ("assets.map.publish", "global_write", "headless_project"),
     // Backup planning reads only supplied deletion metadata. Archive fetch
@@ -940,14 +940,14 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.network.resolve", "global_write", "headless_project"),
     ("solar.network.save", "local_file_write", "none"),
     ("solar.network.map", "global_write", "headless_project"),
-    ("assets.classify", "global_write", "project"),
-    ("assets.folder", "global_write", "project"),
-    ("assets.ingest", "global_write", "project"),
-    ("assets.list", "read_only", "project"),
-    ("assets.preview", "read_only", "project"),
-    ("assets.promote", "local_ui", "project"),
-    ("assets.read", "local_file_write", "project"),
-    ("assets.tree", "read_only", "project"),
+    ("assets.classify", "global_write", "headless_project"),
+    ("assets.folder", "global_write", "headless_project"),
+    ("assets.ingest", "global_write", "headless_project"),
+    ("assets.list", "read_only", "headless_project"),
+    ("assets.preview", "read_only", "headless_project"),
+    ("assets.promote", "local_file_write", "headless_project"),
+    ("assets.read", "local_file_write", "headless_project"),
+    ("assets.tree", "read_only", "headless_project"),
     // Every `pm` command is a headless project command since 2026-09-20:
     // `POST /api/v1/pm` under the native credential, folded by the kernel.
     ("pm.plan", "read_only", "headless_project"),

@@ -1,10 +1,11 @@
 //! `ds assets read` — one asset's bytes, or one pack member's, to a new file.
 //!
-//! The bytes never cross the bridge (decision D22). This command names the
-//! asset and the destination; the paired desktop fetches the source's own
-//! signed read, writes a temporary sibling, verifies the digest and renames
-//! it. What comes back is the receipt for a file that already exists on disk.
+//! This command names the asset and the destination; the native client
+//! fetches the catalogue's signed read, verifies the bytes against the row's
+//! digest, and this host writes a temporary sibling and renames it. What
+//! comes back is the receipt for a file that already exists on disk.
 
+use std::io::Write;
 use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
@@ -14,7 +15,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, DESCRIPTOR_ARG, MEMBER_ARG};
+use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG};
 
 const OUT_ARG: Arg = Arg::value(
     "out",
@@ -33,18 +34,19 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Save one asset's bytes, or one pack member, to a new file.",
     purpose: "\
-Fetches the asset's bytes through its source's own signed read and has the \
-paired desktop write them to --out through one closed native command: a new \
-absolute path only, written to a temporary sibling, digest-verified and \
-renamed. Bytes never cross the bridge and an existing file is never \
-overwritten. A restricted or confidential asset the caller may not read is \
-refused by class or reported absent, exactly as the listing does. Offline, a \
-cached copy is written; otherwise the refusal says the bytes are not held.",
+Fetches the asset's bytes through the catalogue's signed read, verifies them \
+against the row's digest, and writes them to --out on the host running `ds`: \
+a new absolute path only, written to a temporary sibling and renamed. An \
+existing file is never overwritten. With --member, one member of a pack is \
+extracted by the kernel and written instead. A restricted or confidential \
+asset the caller may not read is refused by class or reported absent, exactly \
+as the listing does. Reads up to 32 MiB; a projected sys: row is refused by \
+name. Headless: no window.",
     chapter: Chapter::Assets,
     effect: Effect::LocalFileWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[ASSET_ARG, MEMBER_ARG, OUT_ARG, DESCRIPTOR_ARG],
+    args: &[ASSET_ARG, MEMBER_ARG, OUT_ARG, LANE_ARG],
     output: "\
 The `path` written, its `bytes` and `digest` (sha256), and the `asset_id` and \
 `member` it came from.",
@@ -53,37 +55,19 @@ The `path` written, its `bytes` and `digest` (sha256), and the `asset_id` and \
         note: "Compare .data.digest with the catalogue row's before trusting the file.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::refusals::<29>(&[
         crate::INVALID_ASSET_ID,
+        crate::INVALID_MEMBER,
         crate::INVALID_OUT_PATH,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
-        crate::ASSET_IS_NOT_A_FILE,
         crate::ASSET_TOO_LARGE,
         crate::ORIGIN_READ_FAILED,
-        crate::ORIGIN_UNREACHABLE,
         crate::ORIGIN_READ_UNAVAILABLE,
-        crate::INVALID_MEMBER,
-    ],
+        crate::ASSETS_UNREADABLE,
+    ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 /// The read, validated locally, in the exact keys the operation declares.
@@ -108,14 +92,85 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ASSETS_READ,
-        arguments,
-        crate::WRITE_TIMEOUT,
-    )
-    .map_err(crate::classify_assets_failure)
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let asset_id = arguments["asset"].as_str().unwrap_or_default().to_owned();
+    let member = arguments["member"].as_str().map(str::to_owned);
+    let out = arguments["out"].as_str().unwrap_or_default().to_owned();
+
+    let (row, bytes) = crate::bytes(lane, &asset_id)?;
+    let (payload, digest) = match member.as_deref() {
+        None => {
+            let digest = row["digest"]
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| crate::digest_of(&bytes));
+            (bytes, digest)
+        }
+        Some(member) => {
+            let extracted = crate::with_bytes(
+                &bytes,
+                &json!({
+                    "schema": crate::REQUEST_SCHEMA,
+                    "action": "extract_member",
+                    "member": member,
+                }),
+            )?;
+            let digest = extracted["digest"].as_str().unwrap_or_default().to_owned();
+            (crate::decode_base64(&extracted["bytes_b64"])?, digest)
+        }
+    };
+    write_new_file(&out, &payload)?;
+    Ok(json!({
+        "path": out,
+        "bytes": payload.len(),
+        "digest": digest,
+        "asset_id": asset_id,
+        "member": member,
+    }))
+}
+
+/// Write to a temporary sibling and rename, so a half-written file never
+/// carries the destination's name; the destination was checked to be new
+/// before any byte was fetched, and is checked again here.
+fn write_new_file(out: &str, bytes: &[u8]) -> Result<(), Failure> {
+    let failed = |why: String| {
+        Failure::failed("origin_read_failed", why).remedy(crate::ORIGIN_READ_FAILED.remedy)
+    };
+    let path = Path::new(out);
+    let parent = path
+        .parent()
+        .ok_or_else(|| failed("the destination has no parent directory".into()))?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| failed("the destination has no file name".into()))?;
+    let temporary = parent.join(format!(".{name}.ds-{}.part", std::process::id()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|error| failed(format!("could not create {}: {error}", temporary.display())))?;
+    let written = file
+        .write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(|error| failed(format!("could not write {}: {error}", temporary.display())));
+    if let Err(error) = written {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    drop(file);
+    if std::fs::symlink_metadata(path).is_ok() {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(Failure::invalid(
+            "invalid_out_path",
+            "`--out` came into existence while the bytes were fetched; assets are never written over an existing file",
+        )
+        .remedy(crate::INVALID_OUT_PATH.remedy));
+    }
+    std::fs::rename(&temporary, path).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        failed(format!("could not rename into {out}: {error}"))
+    })
 }
 
 /// The destination: a path, absolute, a file rather than a directory, free
@@ -207,7 +262,6 @@ pub fn render(data: &Value) -> String {
 mod tests {
     use ds_cli_contract::args::parse;
     use ds_cli_contract::output::{Format, Output};
-    use ds_cli_desktop::ops::undeclared_key;
 
     use super::*;
 
@@ -229,33 +283,23 @@ mod tests {
             .to_string()
     }
 
-    /// A descriptor path that cannot exist, so nothing pairs and no file is
-    /// ever written by this test module.
-    fn unpaired() -> [String; 2] {
-        [
-            "--desktop-descriptor".to_string(),
-            std::env::temp_dir()
-                .join(format!(
-                    "ds-cli-assets-read-{}-absent.json",
-                    std::process::id()
-                ))
-                .display()
-                .to_string(),
-        ]
+    /// Every local refusal below is proved on the arguments alone: nothing
+    /// is fetched and no file is written by this test module.
+    fn unpaired() -> [String; 0] {
+        []
     }
 
     fn refusal(flags: &[&str]) -> String {
-        let mut tokens: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
-        tokens.extend(unpaired());
+        let tokens: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
-        run(&inputs, &context())
-            .expect_err("an unpaired read cannot write a file")
+        arguments(&inputs)
+            .expect_err("a malformed read is refused before any round trip")
             .code()
             .to_string()
     }
 
     #[test]
-    fn the_asset_and_the_destination_are_refused_by_name_before_the_bridge() {
+    fn the_asset_and_the_destination_are_refused_by_name_before_any_round_trip() {
         assert_eq!(
             refusal(&["--asset", "a_7Kq3nR2v", "--out", &new_file("shape")]),
             "invalid_asset_id"
@@ -292,7 +336,7 @@ mod tests {
                 .to_vec();
             tokens.extend(unpaired());
             let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
-            run(&inputs, &context()).expect_err("an existing file is never overwritten")
+            arguments(&inputs).expect_err("an existing file is never overwritten")
         };
         let _ = std::fs::remove_file(&existing);
         assert_eq!(failure.code(), "invalid_out_path");
@@ -325,29 +369,30 @@ mod tests {
     }
 
     #[test]
-    fn a_well_formed_read_reaches_the_pairing_boundary() {
-        // A projected `sys:` asset may be read (§7.1), and a member may be
-        // named; the only thing left to refuse is the absent desktop.
+    fn a_well_formed_read_passes_every_local_check() {
+        // A member may be named; the only thing left is the catalogue, which
+        // a unit test does not reach. A projected `sys:` id passes the local
+        // checks too and is refused by name only when its bytes are asked for.
         let out = new_file("well-formed");
-        let code = refusal(&[
+        let tokens: Vec<String> = [
             "--asset",
             "sys:design_attachment:att_1:rev_2",
             "--member",
             "Lot3/gis/poles.shp",
             "--out",
             &out,
-        ]);
-        assert!(
-            !code.starts_with("invalid_"),
-            "a well-formed read was refused locally as `{code}`"
-        );
+        ]
+        .map(str::to_string)
+        .to_vec();
+        let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
+        assert!(arguments(&inputs).is_ok());
+        let _ = context();
     }
 
     #[test]
     fn the_payload_carries_exactly_the_keys_the_operation_declares() {
-        // `invoke` refuses an undeclared key, but only once a desktop has
-        // paired — which no CI machine has. This is the one place the
-        // handler is held against its own declaration.
+        // The handler is held against its own declaration, with every flag
+        // set.
         let out = new_file("payload");
         let mut tokens = [
             "--asset",
@@ -362,7 +407,6 @@ mod tests {
         tokens.extend(unpaired());
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
         let payload = arguments(&inputs).expect("valid");
-        assert_eq!(undeclared_key(&crate::ASSETS_READ, &payload), None);
         let mut keys: Vec<&str> = payload
             .as_object()
             .expect("object")

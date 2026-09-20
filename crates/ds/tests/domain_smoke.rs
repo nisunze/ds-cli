@@ -8844,12 +8844,12 @@ fn a_well_formed_pm_call_ends_at_the_native_credential_and_never_at_a_window() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn assets_validates_its_own_inputs_before_it_opens_the_bridge() {
-    // Every refusal below must be reachable on a machine with no application
-    // running, because that is every CI machine — and because a caller who
-    // pasted half an asset id should hear which flag was wrong, not that no
-    // session was found. A handler that resolved the desktop first would
-    // answer `desktop_not_paired` for every row here.
+fn assets_validates_its_own_inputs_before_any_round_trip() {
+    // Every refusal below must be reachable on a machine with no credential,
+    // because that is every CI machine — and because a caller who pasted half
+    // an asset id should hear which flag was wrong, not that nobody is signed
+    // in. The development catalogue makes the native availability gate pass
+    // so the command's own input validation is what answers.
     let long_query = "contract ".repeat(30); // 270 characters; the bound is 200
     let long_layer = "L".repeat(96); // the local layer name is bounded at 80, as the desktop bounds it
     let missing_file = temp_root("assets-ingest-missing").display().to_string();
@@ -9059,7 +9059,7 @@ fn assets_validates_its_own_inputs_before_it_opens_the_bridge() {
         let mut argv = args.clone();
         argv.extend(["--output", "json"]);
         assert_eq!(
-            refusal(&argv),
+            native_refusal(&argv),
             expected,
             "`ds {}` must be refused locally as `{expected}`, before any project round trip",
             args.join(" ")
@@ -9288,9 +9288,10 @@ fn assets_backup_plans_files_and_zip_without_identity_or_a_desktop() {
 
 #[test]
 fn every_assets_command_is_reachable_without_the_desktop_installed() {
-    // Same reasoning as the map and work domains: dispatch checks availability
-    // before parsing, so a discovery gate would put `--desktop-descriptor` and
-    // every input refusal above out of reach on a machine with no application.
+    // Every command of this domain is headless since 2026-09-20; the index
+    // is pinned so a new command gets its own smoke assertion, and the effect
+    // classes are pinned because they decide what an unattended session may
+    // run.
     let index = ok(&["capabilities", "assets", "--output", "json"]);
     let commands = index["commands"].as_array().expect("commands");
     let actual: BTreeSet<&str> = commands
@@ -9320,27 +9321,23 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "assets command coverage list changed; add a specific smoke assertion for the new command before accepting it"
     );
     for command in commands {
-        if command["authority"] == "headless_project" {
-            continue;
-        }
-        assert!(
-            discoverable(command),
-            "`{}` reports {} and gates on discovery, which puts --desktop-descriptor out of reach",
-            command["id"],
-            command["availability"]
+        assert_ne!(
+            command["availability"], "requires_window",
+            "`{}` still claims a window",
+            command["id"]
         );
     }
     // The effect class is what decides whether an unattended session may run
     // the command at all, and it is invisible until one does. `read` writes
-    // one local file, `promote` adds a layer to the running map, and the four
-    // catalogue writes change what everyone on the project sees.
+    // one local file, `promote` adds a layer to this machine's prepared local
+    // store, and the four catalogue writes change what everyone on the
+    // project sees.
     for command in commands {
         let id = command["id"].as_str().expect("id");
         let expected = match id {
             "assets.list" | "assets.tree" | "assets.preview" | "assets.resolve" | "assets.maps"
             | "assets.backup.plan" => "read_only",
-            "assets.read" => "local_file_write",
-            "assets.promote" => "local_ui",
+            "assets.read" | "assets.promote" => "local_file_write",
             _ => "global_write",
         };
         assert_eq!(
@@ -9352,23 +9349,17 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
 }
 
 #[test]
-fn a_well_formed_assets_call_only_ever_fails_on_the_pairing_state() {
-    // Whatever this machine's desktop situation, a correct invocation must end
-    // in a pairing outcome — never an input refusal, and never an internal
-    // error. `undeclared_bridge_argument` in particular would mean a handler
-    // built an argument key its own BridgeOp does not declare, which no other
-    // suite can see: bridge_parity holds the declaration against the
-    // application, and only this holds the handler against the declaration.
-    let descriptor = temp_root("assets-smoke-unreachable")
-        .join("session.json")
-        .display()
-        .to_string();
+fn a_well_formed_assets_call_ends_at_the_native_credential_and_never_at_a_window() {
+    // Whatever this machine holds, a correct invocation must end at the
+    // native credential — never an input refusal, never an internal error,
+    // and never a pairing outcome: since 2026-09-20 no `ds assets` command has
+    // a window path. With the development catalogue and an empty config home
+    // that end is `headless_signed_out`, reached AFTER every local check.
     let out = temp_root("assets-smoke-out").display().to_string();
     let source = temp_root("assets-smoke-source.pdf");
     std::fs::write(&source, b"%PDF-1.7 smoke\n").expect("temp ingest source is writable");
     let source = source.display().to_string();
-
-    for args in [
+    let calls: Vec<Vec<&str>> = vec![
         vec!["assets", "list"],
         vec![
             "assets",
@@ -9502,18 +9493,34 @@ fn a_well_formed_assets_call_only_ever_fails_on_the_pairing_state() {
             "epc-signed",
             "--yes",
         ],
-    ] {
+    ];
+    for args in &calls {
         let mut argv = args.clone();
-        argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
-        let code = refusal(&argv);
-        assert!(
-            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
-            "`ds {}` failed with `{code}`, which is not a pairing outcome. \
-             A well-formed call must reach the bridge and stop there.",
+        argv.extend(["--output", "json"]);
+        assert_eq!(
+            native_refusal(&argv),
+            "headless_signed_out",
+            "`ds {}` must end at the native credential, not before and not at a window",
             args.join(" ")
         );
     }
-
+    // A caller who learned the window path from an older release is told it
+    // is retired, by name — before any credential is consulted.
+    for args in &calls {
+        let mut argv = args.clone();
+        argv.extend([
+            "--desktop-descriptor",
+            "/nowhere/session.json",
+            "--output",
+            "json",
+        ]);
+        assert_eq!(
+            native_refusal(&argv),
+            "requires_window_retired",
+            "`ds {}` must refuse the retired window path by name",
+            args.join(" ")
+        );
+    }
     let _ = std::fs::remove_file(&source);
 }
 

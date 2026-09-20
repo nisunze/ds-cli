@@ -2,23 +2,45 @@
 //!
 //! Promotion is the one place an asset becomes something the map draws
 //! permanently, and it is always explicit and always local (§5, §12.7). The
-//! geometry goes to the local-overlay admission path `ds map layer add`
-//! already uses: no new store, no upload, no second copy of the bytes. The
+//! geometry goes to this machine's prepared local layer store — the store
+//! `ds map local register` writes and `ds map local list` reads, kept per
+//! lane and DS account: no new store, no upload, one copied payload. The
 //! asset is not touched, and the layer cannot be shared more widely than the
 //! class it inherits.
 //!
-//! A projected `sys:` row is promotable — a transformer version or an
-//! attachment is exactly the thing an operator wants on the map — because
-//! promoting reads a source and writes nothing back to it.
+//! Headless, the store admits GeoJSON feature collections of one geometry
+//! type; the asset (or the member) must be one, and its geometry type is read
+//! from its features. A projected `sys:` row is refused by name, as every
+//! byte-level command refuses it here.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_layer_store::prepared::{self, GeometryType, Host, Op, Register, Scope, StoreError};
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, DESCRIPTOR_ARG, MEMBER_ARG};
+use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG};
+
+/// The prepared layer store's own refusals, in the words `ds map local`
+/// declares them, so a caller who planned for them there has planned for
+/// them here.
+const INVALID_PAYLOAD: Refusal = Refusal {
+    code: "invalid_payload",
+    when: "the asset or member is not a bounded GeoJSON FeatureCollection of one geometry type",
+    remedy: "promote a GeoJSON asset of at most 64 MiB whose features all carry one geometry type; convert another geo format first",
+};
+const MALFORMED_DESCRIPTOR: Refusal = Refusal {
+    code: "malformed_descriptor",
+    when: "the kernel refused the layer name, a bound or a row already in the catalogue",
+    remedy: "use a trimmed name of 1 to 80 characters; repair a row the message names",
+};
+const STORE_REFUSED: Refusal = Refusal {
+    code: "local_layer_refused",
+    when: "this machine's prepared layer catalogue cannot be read or persisted, or is malformed",
+    remedy: "repair the store under DS_LAYER_HOME (or the local data directory); it is never overwritten for you",
+};
 
 const AS_LAYER_ARG: Arg =
     Arg::value("as-layer", "<name>", "The local layer's display name.").required();
@@ -29,58 +51,43 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Promote a geo asset, or a geo pack member, to a local layer.",
     purpose: "\
-Hands the asset's geometry to the existing local-overlay admission path behind \
-`ds map layer add` — never a new store, never an upload. Promotion is local and \
-explicit: the layer becomes orderable, stylable and printable on this device, \
-records the source asset as provenance, inherits its sensitivity and cannot be \
-shared more widely than it. The asset itself is unchanged. A non-geo asset, a \
-feature count over the owning path's cap, or a promotion that would widen \
-sensitivity is refused with the reason.",
+Fetches the asset's bytes through the catalogue's signed read and admits them \
+to this machine's prepared local layer store — the one `ds map local` reads \
+and writes, per lane and DS account — never a new store, never an upload. \
+The layer records the source asset as provenance; the asset is unchanged. The \
+store admits a GeoJSON feature collection of one geometry type: a non-geo \
+asset, another geo format, mixed geometries or a feature count over the cap \
+is refused with the reason. A projected sys: row is refused by name.",
     chapter: Chapter::Assets,
-    effect: Effect::LocalUi,
-    authority: Authority::Project,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[ASSET_ARG, MEMBER_ARG, AS_LAYER_ARG, DESCRIPTOR_ARG],
+    args: &[ASSET_ARG, MEMBER_ARG, AS_LAYER_ARG, LANE_ARG],
     output: "\
-`layer_id` of the created local layer, its `feature_count`, and its `style_ref` \
-for `ds style` once it is ready.",
+`layer_id` of the prepared local layer, its `feature_count`, `geometry_type`, \
+`source_name` (the asset's name, its provenance) and the copied `payload`.",
     examples: &[Example {
         command: "ds assets promote --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --as-layer Lot3-poles --output json",
-        note: "The layer then appears in `ds map layer list`; the asset is untouched.",
+        note: "The layer then appears in `ds map local list`; the asset is untouched.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::refusals::<33>(&[
         crate::INVALID_ASSET_ID,
         crate::INVALID_LAYER_NAME,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
-        crate::ASSET_IS_NOT_A_FILE,
+        crate::INVALID_MEMBER,
         crate::ASSET_TOO_LARGE,
         crate::ORIGIN_READ_FAILED,
-        crate::ORIGIN_UNREACHABLE,
         crate::ORIGIN_READ_UNAVAILABLE,
-        crate::INVALID_MEMBER,
         crate::ASSET_NOT_GEOGRAPHIC,
-    ],
+        crate::ASSETS_UNREADABLE,
+        INVALID_PAYLOAD,
+        MALFORMED_DESCRIPTOR,
+        STORE_REFUSED,
+    ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 /// The promotion, validated locally, in the exact keys the operation
@@ -131,29 +138,167 @@ fn layer_name(raw: &str) -> Result<String, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ASSETS_PROMOTE,
-        arguments,
-        crate::WRITE_TIMEOUT,
-    )
-    .map_err(crate::classify_assets_failure)
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let asset_id = arguments["asset"].as_str().unwrap_or_default().to_owned();
+    let member = arguments["member"].as_str().map(str::to_owned);
+    let as_layer = arguments["as_layer"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+
+    let report = ds_cli_auth::read_asset_bytes(lane, &asset_id)?;
+    let uid = report.identity().uid().to_owned();
+    let (row, bytes) = report.into_result();
+    if member.is_none() && row["kind"] != "geo" {
+        return Err(Failure::invalid(
+            "asset_not_geographic",
+            format!(
+                "{} is a {} asset, and only a geographic asset promotes",
+                row["name"].as_str().unwrap_or(&asset_id),
+                row["kind"].as_str().unwrap_or("?")
+            ),
+        )
+        .remedy(crate::ASSET_NOT_GEOGRAPHIC.remedy));
+    }
+    let (payload, source_name) = match member.as_deref() {
+        None => (bytes, row["name"].as_str().unwrap_or(&asset_id).to_owned()),
+        Some(member) => {
+            let extracted = crate::with_bytes(
+                &bytes,
+                &json!({
+                    "schema": crate::REQUEST_SCHEMA,
+                    "action": "extract_member",
+                    "member": member,
+                }),
+            )?;
+            (
+                crate::decode_base64(&extracted["bytes_b64"])?,
+                member.to_owned(),
+            )
+        }
+    };
+    let geometry = geometry_of(&payload)?;
+
+    // The store copies a payload from a path on this host; the fetched bytes
+    // are written beside the store's own root and removed once admitted.
+    let staging = std::env::temp_dir().join(format!(
+        "ds-assets-promote-{}-{}.geojson",
+        std::process::id(),
+        asset_id.trim_start_matches("a_")
+    ));
+    std::fs::write(&staging, &payload).map_err(|error| {
+        Failure::failed(
+            "origin_read_failed",
+            format!(
+                "could not stage the payload at {}: {error}",
+                staging.display()
+            ),
+        )
+        .remedy(crate::ORIGIN_READ_FAILED.remedy)
+    })?;
+    let scope = Scope {
+        host: Host::Native,
+        lane: Some(lane.to_owned()),
+        uid: Some(uid),
+    };
+    let admitted = prepared::execute(
+        &scope,
+        Op::Register(Register {
+            name: as_layer,
+            geometry,
+            source_name: Some(source_name),
+            from: Some(staging.clone()),
+            now_ms: None,
+        }),
+    );
+    let _ = std::fs::remove_file(&staging);
+    let answer = admitted.map_err(refuse)?;
+    let receipt = &answer["receipt"];
+    Ok(json!({
+        "layer_id": receipt["id"],
+        "name": receipt["name"],
+        "feature_count": receipt["featureCount"],
+        "geometry_type": receipt["geometryType"],
+        "source_name": receipt["sourceName"],
+        "color": receipt["color"],
+        "payload": answer["payload"],
+        "asset_id": asset_id,
+        "member": member,
+        "lane": lane,
+    }))
+}
+
+/// The one geometry type a GeoJSON feature collection carries, read from its
+/// features; a collection of two kinds, or of none, is not a layer the store
+/// admits.
+fn geometry_of(payload: &[u8]) -> Result<GeometryType, Failure> {
+    let refuse = |why: &str| {
+        Failure::invalid("invalid_payload", format!("the asset {why}"))
+            .remedy(INVALID_PAYLOAD.remedy)
+    };
+    let document: Value =
+        serde_json::from_slice(payload).map_err(|_| refuse("is not a GeoJSON document"))?;
+    let features = document["features"]
+        .as_array()
+        .filter(|_| document["type"] == "FeatureCollection")
+        .ok_or_else(|| refuse("is not a GeoJSON FeatureCollection"))?;
+    let mut found: Option<GeometryType> = None;
+    for feature in features {
+        let kind = match feature["geometry"]["type"].as_str() {
+            Some("Point" | "MultiPoint") => GeometryType::Point,
+            Some("LineString" | "MultiLineString") => GeometryType::LineString,
+            Some("Polygon" | "MultiPolygon") => GeometryType::Polygon,
+            _ => {
+                return Err(refuse(
+                    "holds a feature with no point, line or polygon geometry",
+                ));
+            }
+        };
+        match found {
+            None => found = Some(kind),
+            Some(seen) if seen != kind => {
+                return Err(refuse("mixes geometry types; a local layer holds one"));
+            }
+            Some(_) => {}
+        }
+    }
+    found.ok_or_else(|| refuse("holds no features"))
+}
+
+/// Re-raise the store's refusal under its own name, as `ds map local` does.
+fn refuse(error: StoreError) -> Failure {
+    match error {
+        StoreError::Refused { code, message } => match code.as_str() {
+            "malformed_descriptor" | "duplicate_layer" | "scope_mismatch" => {
+                Failure::invalid("malformed_descriptor", message)
+                    .remedy(MALFORMED_DESCRIPTOR.remedy)
+            }
+            _ => Failure::invalid("local_layer_refused", message).remedy(STORE_REFUSED.remedy),
+        },
+        StoreError::Payload(message) => {
+            Failure::invalid("invalid_payload", message).remedy(INVALID_PAYLOAD.remedy)
+        }
+        StoreError::Store(message) => {
+            Failure::invalid("local_layer_refused", message).remedy(STORE_REFUSED.remedy)
+        }
+    }
 }
 
 pub fn render(data: &Value) -> String {
     format!(
-        "local layer {} · {} · style {}\n",
+        "prepared {} · {} ({} {} features)\n  filed under {}\n  from asset {}\n",
         data["layer_id"].as_str().unwrap_or("?"),
-        crate::plural(data["feature_count"].as_u64().unwrap_or(0), "feature"),
-        data["style_ref"].as_str().unwrap_or("—"),
+        data["name"].as_str().unwrap_or("?"),
+        data["feature_count"],
+        data["geometry_type"].as_str().unwrap_or("?"),
+        data["source_name"].as_str().unwrap_or("?"),
+        data["asset_id"].as_str().unwrap_or("?"),
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ds_cli_desktop::ops::undeclared_key;
 
     fn parse(tokens: &[&str]) -> Inputs {
         let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
@@ -161,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn a_layer_name_is_one_short_label_and_is_checked_before_the_bridge() {
+    fn a_layer_name_is_one_short_label_and_is_checked_before_any_round_trip() {
         let long = "x".repeat(crate::MAX_LAYER_NAME_CHARS + 1);
         for bad in ["", "   ", "poles\nlayer", "poles\tlayer", long.as_str()] {
             let failure = arguments(&parse(&["--asset", "a_7kq3nr2v0b1c", "--as-layer", bad]))
@@ -202,9 +347,10 @@ mod tests {
 
     #[test]
     fn a_projected_row_is_promotable_because_promoting_writes_nothing_back() {
-        // classify, attach and folder refuse a `sys:` id; promote, read and
-        // preview accept one (§7.1). A transformer version on the map is the
-        // whole point of indexing it.
+        // classify, attach and folder refuse a `sys:` id at the flag; promote,
+        // read and preview accept the id (§7.1) and refuse it by name only
+        // when its bytes are asked for, because headless the catalogue does
+        // not serve a projected row's bytes.
         let payload = arguments(&parse(&[
             "--asset",
             "sys:transformer_version:AGASHARU:v3",
@@ -229,7 +375,6 @@ mod tests {
             "Lot3-poles",
         ]))
         .expect("valid");
-        assert_eq!(undeclared_key(&crate::ASSETS_PROMOTE, &with_member), None);
         let mut keys: Vec<&str> = with_member
             .as_object()
             .expect("object")
@@ -255,19 +400,59 @@ mod tests {
     #[test]
     fn the_human_projection_reports_the_layer_the_caller_can_now_style() {
         let rendered = render(&json!({
-            "layer_id": "local:lot3-poles", "feature_count": 412, "style_ref": "sty_7"
+            "layer_id": "sketch-1758000000000-0", "name": "Lot3-poles", "feature_count": 412,
+            "geometry_type": "point", "source_name": "poles.geojson", "asset_id": "a_7kq3nr2v0b1c"
         }));
-        assert!(rendered.contains("local layer local:lot3-poles"));
-        assert!(rendered.contains("412 features"));
-        assert!(rendered.contains("style sty_7"));
+        assert!(rendered.contains("prepared sketch-1758000000000-0"));
+        assert!(rendered.contains("412 point features"));
+        assert!(rendered.contains("from asset a_7kq3nr2v0b1c"));
+    }
+
+    #[test]
+    fn the_geometry_type_is_read_from_the_features_and_must_be_one() {
+        let collection = |geometries: &[&str]| {
+            let features: Vec<Value> = geometries
+                .iter()
+                .map(|kind| json!({"type": "Feature", "geometry": {"type": kind, "coordinates": []}, "properties": {}}))
+                .collect();
+            serde_json::to_vec(&json!({"type": "FeatureCollection", "features": features})).unwrap()
+        };
+        assert_eq!(
+            geometry_of(&collection(&["Point", "MultiPoint"])).expect("points"),
+            GeometryType::Point
+        );
+        assert_eq!(
+            geometry_of(&collection(&["LineString"])).expect("lines"),
+            GeometryType::LineString
+        );
+        assert_eq!(
+            geometry_of(&collection(&["Point", "Polygon"]))
+                .expect_err("mixed")
+                .code(),
+            "invalid_payload"
+        );
+        assert_eq!(
+            geometry_of(&collection(&[])).expect_err("empty").code(),
+            "invalid_payload"
+        );
+        assert_eq!(
+            geometry_of(b"not json").expect_err("not geojson").code(),
+            "invalid_payload"
+        );
+        assert_eq!(
+            geometry_of(br#"{"type":"Feature"}"#)
+                .expect_err("not a collection")
+                .code(),
+            "invalid_payload"
+        );
     }
 
     #[test]
     fn promoting_is_local_and_asks_for_no_confirmation() {
-        // A local overlay on this device is not governed shared state: it
-        // costs nobody else anything, and gating it behind `--yes` would
-        // teach a caller to pass `--yes` to a read.
-        assert_eq!(COMMAND.effect, Effect::LocalUi);
+        // A local layer on this host is not governed shared state: it costs
+        // nobody else anything, and gating it behind `--yes` would teach a
+        // caller to pass `--yes` to a read.
+        assert_eq!(COMMAND.effect, Effect::LocalFileWrite);
         assert!(!COMMAND.effect.needs_confirmation());
         assert!(!COMMAND.confirmation_required_for(&parse(&[
             "--asset",

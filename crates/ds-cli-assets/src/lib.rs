@@ -1,22 +1,22 @@
 //! `ds assets` — Project Assets: the documents a project holds, in folders,
 //! with previews, classification and links to the work they belong to.
 //!
-//! ## Why this domain is a bridge domain
+//! ## Why this domain is headless
 //!
 //! An asset's catalogue row lives behind ds-brain, which is the only authority
 //! on who may see it: a `restricted` or `confidential` document the caller
-//! cannot read has no row at all. Its bytes sit in project storage behind
-//! short-lived signed reads; its previews are decoded by the kernel inside the
-//! paired application, which also holds the offline catalogue and the content
-//! cache; and a file lands on disk through one closed native command of the
-//! desktop. None of that is reachable from a file or with an ambient
-//! credential, so every command here is one named semantic operation the
-//! paired application performs under the session it already holds.
-//!
-//! The chain is the printing chain: `ds assets …` → the desktop's loopback
-//! bridge → the webview executor → the kernel and ds-brain. The Assets tab
-//! consumes the same executor, so nothing here is UI-only and nothing in the
-//! UI is invisible to the CLI.
+//! cannot read has no row at all. `POST /api/v1/assets` authenticates from the
+//! bearer and resolves the caller's class authority against the project named
+//! in the body — no pairing, no device, no window. Its bytes sit in project
+//! storage behind short-lived signed reads the same route mints, and enter
+//! through the same resumable uploader. So every command here is one governed
+//! action the native client sends under the restored user or device
+//! credential, for the audience-fenced project `ds auth project use` selected;
+//! what the bytes ARE — their format, their members, their preview, the folder
+//! tree — is the kernel's decision (`ds_command_kernel::assets`), made here on
+//! the host that fetched them. Until 2026-09-20 these nine commands relayed
+//! through the paired desktop instead; on a server with no window the owner
+//! could file nothing. The window was habit, never contract.
 //!
 //! ## What the family is
 //!
@@ -36,6 +36,14 @@
 //! **An editor.** No command writes asset bytes, under any flag. **A durable
 //! link** to anything above `open`. **A second catalogue, uploader or
 //! digest** — this surface composes the paths the project already has.
+//! **The system-folder projection, headless.** The `Transformers/`,
+//! `MV models/`, `Reports/` … roots are projected over inventories the paired
+//! application holds; the headless tree renders them *not loaded* and answers
+//! the declared folders and catalogued assets. A projected `sys:` id is
+//! refused by name (`origin_read_unavailable`) rather than served from a
+//! window. **A window path.** `--desktop-descriptor` is not an input of any
+//! `ds assets` command; a caller that still passes it is told
+//! `requires_window_retired` by the parser.
 
 pub mod attach;
 pub mod backup;
@@ -49,24 +57,14 @@ pub mod read;
 pub mod shared;
 pub mod tree;
 
-use std::time::Duration;
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
 use serde_json::{Value, json};
 
-// The paired-application primitives every bridge domain shares. They are
-// declared once in `ds-cli-desktop` — the authority surface — so a caller who
-// learned `--desktop-descriptor` and the pairing refusals from `ds map` or
-// `ds work` has learned them here too.
 // Neutral argument helpers: a numeric bound and an English count say
-// nothing about a paired window, so they come from the contract crate.
+// nothing about a transport, so they come from the contract crate.
 pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
-pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BACKEND_UNREACHABLE, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, OFFLINE,
-    PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE,
-    UNREADABLE, UNSUPPORTED, classify_signed_out, invoke, paired, paired_availability,
-};
+pub use ds_client_core::project_assets::Command as CatalogueCommand;
 
 /// The domain, with its commands in the order a session uses them: find the
 /// asset, look at it, then act on it. Domain help prints this order verbatim,
@@ -93,81 +91,162 @@ pub static DOMAIN: Domain = Domain {
 };
 
 // ---------------------------------------------------------------------------
-// The declared wire contract (project-assets-contract.md §7.1, pinned)
+// The door
 // ---------------------------------------------------------------------------
 
-pub const ASSETS_LIST: BridgeOp = BridgeOp {
-    operation: "assets.list",
-    arguments: &[
-        "folder",
-        "kind",
-        "status",
-        "sensitivity",
-        "since",
-        "limit",
-        "cursor",
-    ],
-};
-pub const ASSETS_TREE: BridgeOp = BridgeOp {
-    operation: "assets.tree",
-    arguments: &["folder", "depth", "into", "query", "link", "kind"],
-};
-pub const ASSETS_READ: BridgeOp = BridgeOp {
-    operation: "assets.read",
-    arguments: &["asset", "member", "out"],
-};
-pub const ASSETS_PREVIEW: BridgeOp = BridgeOp {
-    operation: "assets.preview",
-    arguments: &["asset", "member", "sheet", "pages", "rows"],
-};
-pub const ASSETS_CLASSIFY: BridgeOp = BridgeOp {
-    operation: "assets.classify",
-    arguments: &[
-        "asset",
-        "kind",
-        "status",
-        "owner",
-        "folder",
-        "sensitivity",
-        "reason",
-    ],
-};
-pub const ASSETS_PROMOTE: BridgeOp = BridgeOp {
-    operation: "assets.promote",
-    arguments: &["asset", "member", "as_layer"],
-};
-pub const ASSETS_ATTACH: BridgeOp = BridgeOp {
-    operation: "assets.attach",
-    arguments: &["asset", "task", "object_type", "entity_id", "detach"],
-};
-pub const ASSETS_INGEST: BridgeOp = BridgeOp {
-    operation: "assets.ingest",
-    arguments: &["path", "folder", "sensitivity"],
-};
-pub const ASSETS_FOLDER: BridgeOp = BridgeOp {
-    operation: "assets.folder",
-    arguments: &["path", "sensitivity", "status", "rename_to"],
-};
+/// Which native credential lane a `ds assets` command authenticates on.
+pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
+    .choices(&["stable", "canary"])
+    .default("stable");
 
-/// Every operation this domain can send, for the parity test to walk. A new
-/// operation absent from this list cannot be sent: [`invoke`] takes a
-/// [`BridgeOp`], and the test requires each one to be an operation the
-/// application actually implements.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[
-    &ASSETS_LIST,
-    &ASSETS_TREE,
-    &ASSETS_READ,
-    &ASSETS_PREVIEW,
-    &ASSETS_CLASSIFY,
-    &ASSETS_PROMOTE,
-    &ASSETS_ATTACH,
-    &ASSETS_INGEST,
-    &ASSETS_FOLDER,
+/// The refusals the headless project client can answer with, for every
+/// command of this domain: profile, state, session, identity, transport and
+/// project-context conditions. Declared once in `ds auth`.
+pub const HEADLESS_REFUSALS: &[Refusal] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
+const _: () = assert!(HEADLESS_REFUSALS.len() == 15);
+
+/// The catalogue's own refusals, as the route answers them and `ds auth`
+/// maps them (`map_project_assets_refusal`).
+pub const CATALOGUE_REFUSALS: [Refusal; 7] = [
+    ds_cli_auth::ASSET_NOT_FOUND_REFUSAL,
+    ds_cli_auth::ASSET_CLASS_FORBIDDEN_REFUSAL,
+    ds_cli_auth::ASSET_VERSION_CONFLICT_REFUSAL,
+    ds_cli_auth::ASSET_REQUEST_INVALID_REFUSAL,
+    ds_cli_auth::ASSET_REFUSED_REFUSAL,
+    ds_cli_auth::ASSETS_NOT_IMPLEMENTED_REFUSAL,
+    ds_cli_auth::ASSETS_SERVICE_FAILED_REFUSAL,
 ];
+/// Every command of this domain declares the headless set and the
+/// catalogue's, then its own.
+pub const BASE: usize = 15 + 7;
+
+/// `TOTAL` is `22 + own.len()`, checked at compile time — const generics
+/// cannot add, so the caller states it.
+pub const fn refusals<const TOTAL: usize>(own: &[Refusal]) -> [Refusal; TOTAL] {
+    assert!(TOTAL == BASE + own.len());
+    let mut out = [ASSET_NOT_FOUND; TOTAL];
+    let mut i = 0;
+    while i < HEADLESS_REFUSALS.len() {
+        out[i] = HEADLESS_REFUSALS[i];
+        i += 1;
+    }
+    let mut k = 0;
+    while k < CATALOGUE_REFUSALS.len() {
+        out[i + k] = CATALOGUE_REFUSALS[k];
+        k += 1;
+    }
+    i += CATALOGUE_REFUSALS.len();
+    let mut j = 0;
+    while j < own.len() {
+        out[i + j] = own[j];
+        j += 1;
+    }
+    out
+}
+
+/// One governed catalogue action on the selected project.
+pub fn catalogue(lane: &str, command: &CatalogueCommand) -> Result<Value, Failure> {
+    Ok(ds_cli_auth::project_assets(lane, command, None)?.into_result())
+}
+
+/// One asset's row and its verified bytes. A projected `sys:` id has no
+/// stored bytes the catalogue serves; it is refused by name here.
+pub fn bytes(lane: &str, asset_id: &str) -> Result<(Value, Vec<u8>), Failure> {
+    if is_projected(asset_id) {
+        return Err(projected_unavailable(asset_id));
+    }
+    Ok(ds_cli_auth::read_asset_bytes(lane, asset_id)?.into_result())
+}
+
+/// The declared folder at `path`, from the one folder authority.
+pub fn folder_at(lane: &str, path: &str) -> Result<Value, Failure> {
+    let folders = catalogue(lane, &CatalogueCommand::Folders)?;
+    folders["folders"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|row| row["path"].as_str() == Some(path))
+        .cloned()
+        .ok_or_else(|| {
+            Failure::invalid("unknown_folder", format!("No declared folder at {path}."))
+                .remedy(UNKNOWN_FOLDER.remedy)
+                .detail(json!({ "path": path }))
+                .next("ds assets tree --output json")
+        })
+}
+
+fn projected_unavailable(asset_id: &str) -> Failure {
+    Failure::unavailable(
+        "origin_read_unavailable",
+        format!(
+            "`{asset_id}` is a projected system row; its bytes are served by the surface that owns it, not by the catalogue"
+        ),
+    )
+    .remedy(ORIGIN_READ_UNAVAILABLE.remedy)
+    .detail(json!({ "asset": asset_id }))
+}
+
+/// The kernel's own refusal of a byte-level request (`evaluate_with_bytes`),
+/// as the failure this domain documents: a bound is `asset_too_large`, a
+/// member the container does not hold is `invalid_member`, anything else the
+/// kernel said is `asset_request_invalid` with its sentence.
+pub fn kernel_refused(message: String) -> Failure {
+    let lowered = message.to_ascii_lowercase();
+    if lowered.contains("bound") {
+        Failure::invalid("asset_too_large", message).remedy(ASSET_TOO_LARGE.remedy)
+    } else if lowered.contains("member") {
+        Failure::invalid("invalid_member", message).remedy(INVALID_MEMBER.remedy)
+    } else {
+        Failure::invalid("asset_request_invalid", message)
+            .remedy(ds_cli_auth::ASSET_REQUEST_INVALID_REFUSAL.remedy)
+    }
+}
+
+/// Run one kernel request over fetched bytes.
+pub fn with_bytes(bytes: &[u8], request: &Value) -> Result<Value, Failure> {
+    let request = serde_json::to_vec(request)
+        .map_err(|error| Failure::internal("assets_unreadable", error.to_string()))?;
+    let answer =
+        ds_command_kernel::assets::evaluate_with_bytes(bytes, &request).map_err(kernel_refused)?;
+    serde_json::from_str(&answer)
+        .map_err(|error| Failure::internal("assets_unreadable", error.to_string()))
+}
+
+/// The `assets` request schema every kernel request carries.
+pub const REQUEST_SCHEMA: &str = ds_command_kernel::assets::REQUEST_SCHEMA;
+
+/// `sha256:<hex>` of bytes this host holds, spelled as the catalogue spells
+/// a digest.
+pub fn digest_of(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    format!("sha256:{:x}", sha2::Sha256::digest(bytes))
+}
+
+/// The bytes a kernel answer carried as `bytes_b64`.
+pub fn decode_base64(value: &Value) -> Result<Vec<u8>, Failure> {
+    use base64::Engine;
+    let encoded = value.as_str().ok_or_else(|| {
+        Failure::internal(ASSETS_UNREADABLE.code, "the kernel answered no bytes")
+            .remedy(ASSETS_UNREADABLE.remedy)
+    })?;
+    base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|error| {
+            Failure::internal(ASSETS_UNREADABLE.code, error.to_string())
+                .remedy(ASSETS_UNREADABLE.remedy)
+        })
+}
+
+/// The wire spelling of one closed kernel vocabulary word (`Kind`, `Format`).
+pub fn enum_token<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
 
 // ---------------------------------------------------------------------------
-// Bounds — hand copies of the contract's, held to the application's adapter
-// by `tests/bridge_parity.rs`
+// Bounds — the contract's, shared with the kernel and the catalogue
 // ---------------------------------------------------------------------------
 
 /// The largest page of catalogue rows one `list` returns. `more` and
@@ -199,20 +278,6 @@ pub const MAX_LAYER_NAME_CHARS: usize = 80;
 pub const MAX_LINKS: usize = 32;
 
 // ---------------------------------------------------------------------------
-// Timeouts
-// ---------------------------------------------------------------------------
-
-/// Inventory joins the existing project source readers; preview may acquire
-/// a large document first. Let those owners finish within the same bridge
-/// budget as asset ingestion rather than abandoning a healthy read at 60s.
-pub const READ_TIMEOUT: Duration = INGEST_TIMEOUT;
-/// A write is one governed round trip to ds-brain, or one local file write.
-pub const WRITE_TIMEOUT: Duration = Duration::from_secs(120);
-/// An ingest streams the file through the resumable uploader; a field
-/// connection decides how long that takes.
-pub const INGEST_TIMEOUT: Duration = Duration::from_secs(30 * 60);
-
-// ---------------------------------------------------------------------------
 // Vocabularies — the contract's closed words, enforced by the parser
 // ---------------------------------------------------------------------------
 
@@ -228,69 +293,21 @@ pub const SENSITIVITIES: &[&str] = &["open", "internal", "restricted", "confiden
 pub const FOLDER_KINDS: &[&str] = &["system", "user"];
 
 // ---------------------------------------------------------------------------
-// Refusals this domain adds to the shared pairing set
+// Refusals this domain declares beyond the headless and catalogue sets
 // ---------------------------------------------------------------------------
 
-pub const ASSETS_REFUSED: Refusal = Refusal {
-    code: "desktop_refused",
-    when: "no such asset or folder, or the assets surface declined the command",
-    remedy: "check the id with `ds assets list` or `ds assets tree`; read detail.detail for its message",
-};
-
-// The application's own structured refusals. The desktop's Project Assets
-// adapter mints these from the catalogue's answer and they cross the bridge
-// with their class, code and remedy intact, so every one is declared here
-// where a caller can look it up; `tests/refusal_coverage.rs` holds the two
-// sides equal. Which commands list which follows what the catalogue can say
-// to each: a read is never a version conflict.
-pub const ASSET_NOT_FOUND: Refusal = Refusal {
-    code: "asset_not_found",
-    when: "no asset or folder has this id or path, or it is confidential and the caller may not know it exists",
-    remedy: "read the available ids and paths with `ds assets list` or `ds assets tree`",
-};
-pub const ASSET_CLASS_FORBIDDEN: Refusal = Refusal {
-    code: "asset_class_forbidden",
-    when: "the signed-in user lacks the assets capability this sensitivity class or this write requires",
-    remedy: "ask a project admin for the assets capability the message names",
-};
-pub const ASSET_VERSION_CONFLICT: Refusal = Refusal {
-    code: "asset_version_conflict",
-    when: "the catalogue row or folder moved while the write was in flight",
-    remedy: "re-read it with `ds assets list` or `ds assets tree` and issue the command again",
-};
-pub const ASSET_REQUEST_INVALID: Refusal = Refusal {
-    code: "asset_request_invalid",
-    when: "the catalogue declined the request as malformed, or over a bound it names with the number",
-    remedy: "change the request as the message says rather than repeating it",
-};
-pub const ASSET_RULE_REFUSED: Refusal = Refusal {
-    code: "asset_refused",
-    when: "the catalogue refused the action by one of its rules: a loosening the caller may not make, a promotion that would widen sensitivity, a write onto a system row",
-    remedy: "the message names the rule; act on what it names rather than retrying",
-};
-pub const ASSETS_NOT_IMPLEMENTED: Refusal = Refusal {
-    code: "assets_not_implemented",
-    when: "the installed application or its catalogue does not serve this action yet",
-    remedy: "update DS GridDesign; the action lands later in the Project Assets campaign",
-};
-pub const ASSETS_SERVICE_FAILED: Refusal = Refusal {
-    code: "assets_service_failed",
-    when: "the catalogue service faulted while serving the request",
-    remedy: "retry once; nothing in the request changes the outcome while the service faults",
-};
+/// The catalogue's codes, re-exported under the names the command files use.
+pub const ASSET_NOT_FOUND: Refusal = ds_cli_auth::ASSET_NOT_FOUND_REFUSAL;
+pub const ASSET_CLASS_FORBIDDEN: Refusal = ds_cli_auth::ASSET_CLASS_FORBIDDEN_REFUSAL;
+pub const ASSET_VERSION_CONFLICT: Refusal = ds_cli_auth::ASSET_VERSION_CONFLICT_REFUSAL;
+pub const ASSET_REQUEST_INVALID: Refusal = ds_cli_auth::ASSET_REQUEST_INVALID_REFUSAL;
+pub const ASSET_RULE_REFUSED: Refusal = ds_cli_auth::ASSET_REFUSED_REFUSAL;
 
 // The read path's own refusals. `read`, `preview`, `promote` and `tree
-// --into` need an asset's bytes, and the application fetches them through
-// each source's own read action (§2.5): a projected row that is a summary
-// rather than a file, a source with no read action on this surface yet, a
-// signed read that expired, or bytes above the read bound are all refused
-// by name there, and every name is declared here so a caller can plan for
-// it instead of reading `desktop_refused` prose.
-pub const ASSET_IS_NOT_A_FILE: Refusal = Refusal {
-    code: "asset_is_not_a_file",
-    when: "the projected row is a summary, not bytes: a dataset room, a report room, a print setup or a transformer version",
-    remedy: "preview it with `ds assets preview`; the summary is the whole of it",
-};
+// --into` need an asset's bytes, fetched through the catalogue's signed
+// read: bytes above the read bound, a signed read that expired, and a
+// projected `sys:` row — served by the surface that owns it, not by the
+// catalogue — are each refused by name.
 pub const ASSET_TOO_LARGE: Refusal = Refusal {
     code: "asset_too_large",
     when: "the bytes are above the read bound the message names with the number",
@@ -298,33 +315,22 @@ pub const ASSET_TOO_LARGE: Refusal = Refusal {
 };
 pub const ORIGIN_READ_FAILED: Refusal = Refusal {
     code: "origin_read_failed",
-    when: "the source's own read action returned nothing usable: a row naming no source object, a signed read that expired, or an origin that answered an error",
-    remedy: "re-read the row with `ds assets tree` and retry once; a signed read expires quickly by design",
-};
-pub const ORIGIN_UNREACHABLE: Refusal = Refusal {
-    code: "origin_unreachable",
-    when: "the source's bytes could not be fetched from this device",
-    remedy: "check the connection and retry",
+    when: "the signed read answered nothing usable: it expired, the bytes did not match the row's digest, or the destination could not be written",
+    remedy: "re-read the row with `ds assets list` and retry once; a signed read expires quickly by design",
 };
 pub const ORIGIN_READ_UNAVAILABLE: Refusal = Refusal {
     code: "origin_read_unavailable",
-    when: "rows projected from this source carry no read action on this surface yet, DS Grid export outputs among them",
-    remedy: "open the row from the surface that owns it; the message names it",
+    when: "a projected `sys:` row was named; its bytes are served by the surface that owns it (the application), not by the catalogue",
+    remedy: "name a catalogued `a_…` asset; open a projected row from the surface that owns it",
 };
 
-// Refusals the adapter constructs from what only it can see: the declared
-// folder set, the device's connectivity, a member path against a real
-// container, and an asset's kind. Each crosses the bridge under its own
-// name; `ds assets` declares the name and the remedy.
+// Refusals this domain constructs from what it can see before or after the
+// round trip: the declared folder set, a member path against a real
+// container, an asset's kind, and the flags themselves.
 pub const UNKNOWN_FOLDER: Refusal = Refusal {
     code: "unknown_folder",
     when: "a folder flag names a path no declared folder has",
     remedy: "declare it with `ds assets folder --path <path>`, or read the declared folders with `ds assets tree`",
-};
-pub const ASSETS_OFFLINE_WRITE: Refusal = Refusal {
-    code: "assets_offline_write",
-    when: "this device is offline and the command is a catalogue write",
-    remedy: "reconnect, or turn offline mode off with `ds desktop offline set --enabled false`",
 };
 pub const INVALID_MEMBER: Refusal = Refusal {
     code: "invalid_member",
@@ -348,8 +354,8 @@ pub const INVALID_FOLDER_PATH: Refusal = Refusal {
 };
 pub const INVALID_LINK: Refusal = Refusal {
     code: "invalid_link",
-    when: "--link is not `pm_task:<id>` or `ds_object:<type>:<id>`, or was given more than once",
-    remedy: "pass e.g. --link pm_task:t_4812 or --link ds_object:transformer:TX-104",
+    when: "--link is not `pm_task:<id>`, `pm_record:<id>` or `ds_object:<type>:<id>`, or was given more than once",
+    remedy: "pass e.g. --link pm_task:t_4812, --link pm_record:R-0012 or --link ds_object:transformer:TX-104",
 };
 pub const INVALID_QUERY: Refusal = Refusal {
     code: "invalid_query",
@@ -382,13 +388,19 @@ const _: () = assert!(
 );
 pub const INVALID_ATTACHMENT: Refusal = Refusal {
     code: "invalid_attachment",
-    when: "neither --task nor --object-type with --entity-id was given, or both were",
-    remedy: "link to a task with --task, or to a DS object with --object-type and --entity-id",
+    when: "none of --task, --record or --object-type with --entity-id was given, or more than one was",
+    remedy: "link to a task with --task, to a record with --record, or to a DS object with --object-type and --entity-id",
 };
 pub const PROJECTED_ASSET_READ_ONLY: Refusal = Refusal {
     code: "projected_asset_read_only",
     when: "a projected `sys:` asset or a system folder was named by classify, attach or folder",
-    remedy: "sys: assets cannot be classified, attached or foldered in this slice; act on the source object they project",
+    remedy: "sys: assets cannot be classified, attached or foldered; act on the source object they project",
+};
+/// The kernel could not decode the catalogue's or the file's answer.
+pub const ASSETS_UNREADABLE: Refusal = Refusal {
+    code: "assets_unreadable",
+    when: "the catalogue answered a shape this build cannot fold, or a kernel answer could not be read",
+    remedy: "report this with the project id; the CLI and the catalogue disagree about the row",
 };
 pub const NOTHING_TO_UPDATE: Refusal = Refusal {
     code: "nothing_to_update",
@@ -400,17 +412,6 @@ pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     when: "--yes was not given for a command that changes the project's catalogue",
     remedy: "re-run with --yes once you intend the change",
 };
-
-/// Give the application's refusals the names a caller can plan for.
-///
-/// The shared rule turns "no active project" prose into `desktop_signed_out`.
-/// Everything else this surface refuses — a class the caller lacks, an
-/// offline write, a bound with its number — crosses the bridge as the
-/// application's own structured refusal, with its class, code and remedy
-/// intact, so no prose of this domain's own is keyed on here.
-pub fn classify_assets_failure(failure: Failure) -> Failure {
-    classify_signed_out(failure)
-}
 
 // ---------------------------------------------------------------------------
 // Flag shapes shared across the domain
@@ -594,14 +595,14 @@ pub fn link(raw: &str, flag: &str) -> Result<String, Failure> {
     let trimmed = raw.trim();
     let segments: Vec<&str> = trimmed.split(':').collect();
     let well_formed = match segments.as_slice() {
-        ["pm_task", id] => !id.is_empty(),
+        ["pm_task", id] | ["pm_record", id] => !id.is_empty(),
         ["ds_object", object_type, id] => !object_type.is_empty() && !id.is_empty(),
         _ => false,
     };
     if !well_formed {
         return Err(Failure::invalid(
             "invalid_link",
-            format!("`--{flag}` must be pm_task:<id> or ds_object:<type>:<id>"),
+            format!("`--{flag}` must be pm_task:<id>, pm_record:<id> or ds_object:<type>:<id>"),
         )
         .remedy(INVALID_LINK.remedy)
         .detail(json!({ "given": raw })));
@@ -768,36 +769,60 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_declared_operation_is_listed_for_the_parity_test_to_walk() {
-        // An operation a handler can send but the list does not carry is one
-        // the parity test never proves against the application. The list is
-        // the only thing standing between a typo and a runtime refusal.
-        let mut names: Vec<&str> = BRIDGE_OPS.iter().map(|op| op.operation).collect();
-        names.sort_unstable();
-        let mut unique = names.clone();
-        unique.dedup();
-        assert_eq!(names, unique, "an operation is declared twice");
-        assert_eq!(
-            names.len(),
-            DOMAIN
-                .commands
-                .iter()
-                .filter(|command| command.authority == ds_cli_contract::spec::Authority::Project)
-                .count(),
-            "every paired ds assets command sends exactly one operation, and every \
-             declared operation belongs to a command"
-        );
-        for command in DOMAIN
-            .commands
-            .iter()
-            .filter(|command| command.authority == ds_cli_contract::spec::Authority::Project)
-        {
+    fn every_command_of_the_domain_is_a_headless_project_command_or_a_native_one() {
+        // No command of this domain needs a window: the catalogue commands
+        // are headless project commands, the shared-reference commands were
+        // already native, and the backup plan is local.
+        for command in DOMAIN.commands {
+            assert_ne!(
+                command.requires,
+                ds_cli_contract::spec::Requires::Window,
+                "`{}` still claims a window",
+                command.id
+            );
             assert!(
-                BRIDGE_OPS.iter().any(|op| op.operation == command.id),
-                "`{}` has no operation of the same name",
+                !command
+                    .args
+                    .iter()
+                    .any(|arg| arg.name == "desktop-descriptor"),
+                "`{}` still declares the retired window path",
                 command.id
             );
         }
+    }
+
+    #[test]
+    fn the_refusal_table_holds_the_headless_and_catalogue_sets_first() {
+        let table = refusals::<23>(&[INVALID_QUERY]);
+        assert_eq!(table[0].code, HEADLESS_REFUSALS[0].code);
+        assert_eq!(table[15].code, "asset_not_found");
+        assert_eq!(table[21].code, "assets_service_failed");
+        assert_eq!(table[22].code, "invalid_query");
+        let codes: std::collections::BTreeSet<&str> = table.iter().map(|r| r.code).collect();
+        assert_eq!(codes.len(), table.len(), "a code is declared twice");
+    }
+
+    #[test]
+    fn the_kernels_sentence_becomes_the_code_the_commands_document() {
+        assert_eq!(
+            kernel_refused(
+                "preview input is 40000000 bytes; the preview input bound is 33554432".into()
+            )
+            .code(),
+            "asset_too_large"
+        );
+        assert_eq!(
+            kernel_refused("member gis/poles.shp is not in the container".into()).code(),
+            "invalid_member"
+        );
+        assert_eq!(
+            kernel_refused("assets request must use ds.assets.request/v1".into()).code(),
+            "asset_request_invalid"
+        );
+        assert_eq!(
+            projected_unavailable("sys:transformers:T1").code(),
+            "origin_read_unavailable"
+        );
     }
 
     #[test]
@@ -962,22 +987,5 @@ mod tests {
                 "`{bad}` was accepted as a --since value"
             );
         }
-    }
-
-    #[test]
-    fn the_shared_signed_out_rule_still_applies_and_nothing_else_is_renamed() {
-        let refused = |detail: &str| {
-            classify_assets_failure(
-                Failure::failed("desktop_refused", "refused").detail(json!({ "detail": detail })),
-            )
-        };
-        assert_eq!(
-            refused("No active project. Open a project first.").code(),
-            "desktop_signed_out"
-        );
-        assert_eq!(
-            refused("asset a_7kq3nr2v0b1c not found").code(),
-            "desktop_refused"
-        );
     }
 }

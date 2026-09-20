@@ -3,18 +3,20 @@
 //! Two answers behind one verb, because they are the same question asked at
 //! two depths: where does this project keep its documents, and what is inside
 //! this one. Without `--into` the answer is the folder tree the Assets tab
-//! renders — declared folders and the system folders projected from what the
-//! project already holds. With `--into` it is one pack's central directory,
-//! read but never unpacked.
+//! renders — the declared folders and the catalogued assets, projected by the
+//! kernel; the system folders it projects over the application's inventories
+//! render *not loaded* here, because those inventories are the window's.
+//! With `--into` it is one pack's central directory, read but never unpacked.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_command_kernel::assets::{Asset, Folder, Link, TreeRequest};
 use serde_json::{Map, Value, json};
 
-use crate::{DEPTH_ARG, DESCRIPTOR_ARG, FOLDER_ARG};
+use crate::{CatalogueCommand, DEPTH_ARG, FOLDER_ARG, LANE_ARG};
 
 const INTO_ARG: Arg = Arg::value(
     "into",
@@ -31,7 +33,7 @@ const QUERY_ARG: Arg = Arg::value(
 const LINK_ARG: Arg = Arg::repeated(
     "link",
     "<kind:id>",
-    "Only assets linked to this: pm_task:<id> or ds_object:<type>:<id>. One filter per read.",
+    "Only assets linked to this: pm_task:<id>, pm_record:<id> or ds_object:<type>:<id>. One filter per read.",
 );
 
 const KIND_ARG: Arg = Arg::value(
@@ -56,25 +58,20 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Show the folder tree, or walk inside one container asset.",
     purpose: "\
-Projects the open project's folder tree: the folders a person declared and the \
-system folders auto-indexed from what the project already holds — transformer \
-attachments and versions, MV model revisions, project-work attachments, report \
-and print artifacts — each with its counts, expanded to --depth. With --into it \
-walks one `pack` asset's central directory and lists its members with sizes, \
-never unpacking to disk. --query and --link narrow to the same rows the Assets \
-tab and the Project work page search, computed by the same kernel.",
+Projects the selected project's folder tree: the declared folders and the \
+catalogued assets in them, with counts, expanded to --depth, by the same \
+kernel the Assets tab uses. The system folders that tab also shows are \
+projected over inventories the application holds and render `not loaded` \
+here (`sources_omitted` names them). With --into it walks one `pack` asset's \
+central directory and lists its members with sizes, never unpacking to disk. \
+--query and --link narrow to the same rows the Assets tab searches. Headless: \
+no window.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
-        FOLDER_ARG,
-        DEPTH_ARG,
-        INTO_ARG,
-        QUERY_ARG,
-        LINK_ARG,
-        KIND_ARG,
-        DESCRIPTOR_ARG,
+        FOLDER_ARG, DEPTH_ARG, INTO_ARG, QUERY_ARG, LINK_ARG, KIND_ARG, LANE_ARG,
     ],
     output: "\
 `ds.assets.tree/v1`: `folders` nested to `depth`, each with `path`, `kind` \
@@ -87,39 +84,20 @@ tab and the Project work page search, computed by the same kernel.",
         note: "Read .data.members[].path to feed `preview --member` or `read --member`.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::refusals::<30>(&[
         crate::INVALID_NUMBER,
         crate::INVALID_ASSET_ID,
         crate::INVALID_FOLDER_PATH,
         crate::INVALID_QUERY,
         crate::INVALID_LINK,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
-        crate::ASSET_IS_NOT_A_FILE,
         crate::ASSET_TOO_LARGE,
-        crate::ORIGIN_READ_FAILED,
-        crate::ORIGIN_UNREACHABLE,
         crate::ORIGIN_READ_UNAVAILABLE,
-    ],
+        crate::ASSETS_UNREADABLE,
+    ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 /// The tree read, validated locally, in the exact keys the operation
@@ -158,14 +136,107 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ASSETS_TREE,
-        arguments,
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_assets_failure)
+    let lane = inputs.value("lane").unwrap_or("stable");
+    if let Some(into) = arguments["into"].as_str() {
+        let (row, bytes) = crate::bytes(lane, into)?;
+        let mut container = crate::with_bytes(
+            &bytes,
+            &json!({
+                "schema": crate::REQUEST_SCHEMA,
+                "action": "container_walk",
+                "format": row["format"],
+            }),
+        )?;
+        container["asset_id"] = json!(into);
+        return Ok(container);
+    }
+
+    // One read per authority, both bounded: the declared folders, and the
+    // first page of the catalogue (everything but archive, newest first).
+    // The projection is the kernel's; the application's own inventories are
+    // not loaded here and their roots say so.
+    let folders = crate::catalogue(lane, &CatalogueCommand::Folders)?;
+    let page = crate::catalogue(
+        lane,
+        &CatalogueCommand::List {
+            folder_id: None,
+            kind: None,
+            status: None,
+            sensitivity: None,
+            since: None,
+            limit: crate::MAX_PAGE_SIZE as u16,
+            cursor: None,
+        },
+    )?;
+    let unreadable = |what: &str| {
+        Failure::internal(
+            crate::ASSETS_UNREADABLE.code,
+            format!("the catalogue answered {what} this build cannot fold"),
+        )
+        .remedy(crate::ASSETS_UNREADABLE.remedy)
+    };
+    let folders: Vec<Folder> = folders["folders"]
+        .as_array()
+        .ok_or_else(|| unreadable("folders"))?
+        .iter()
+        .filter_map(Folder::from_wire)
+        .collect();
+    let assets: Vec<Asset> = page["assets"]
+        .as_array()
+        .ok_or_else(|| unreadable("assets"))?
+        .iter()
+        .filter_map(Asset::from_wire)
+        .collect();
+    let link: Option<Link> = match arguments["link"].as_str() {
+        Some(link) => Some(parse_link(link)?),
+        None => None,
+    };
+    let request = TreeRequest {
+        schema: crate::REQUEST_SCHEMA.to_owned(),
+        sources: Default::default(),
+        folders,
+        assets,
+        query: arguments["query"].as_str().map(str::to_owned),
+        link,
+        folder: arguments["folder"].as_str().map(str::to_owned),
+        depth: arguments["depth"].as_u64().map(|depth| depth as u32),
+        kind: arguments["kind"]
+            .as_str()
+            .and_then(|kind| serde_json::from_value(json!(kind)).ok()),
+    };
+    let omitted = ds_command_kernel::assets::tree::not_loaded_sources(&request);
+    let mut tree = ds_command_kernel::assets::tree::build_value(&request)
+        .map_err(crate::kernel_refused)?;
+    tree["sources_omitted"] = json!(omitted);
+    tree["sources_unavailable"] = json!([]);
+    tree["offline"] = json!(false);
+    tree["catalogue_loaded"] = json!(true);
+    tree["catalogue_more"] = json!(page["has_more"] == Value::Bool(true));
+    tree["catalogue_error"] = Value::Null;
+    Ok(tree)
+}
+
+/// `pm_task:<id>`, `pm_record:<id>` or `ds_object:<type>:<id>` as the kernel
+/// spells a link. The shape was checked by `crate::link` already.
+fn parse_link(raw: &str) -> Result<Link, Failure> {
+    let segments: Vec<&str> = raw.split(':').collect();
+    match segments.as_slice() {
+        ["pm_task", id] => Ok(Link::PmTask {
+            id: (*id).to_owned(),
+        }),
+        ["pm_record", id] => Ok(Link::PmRecord {
+            id: (*id).to_owned(),
+        }),
+        ["ds_object", object_type, id] => Ok(Link::DsObject {
+            object_type: (*object_type).to_owned(),
+            entity_id: (*id).to_owned(),
+        }),
+        _ => Err(Failure::invalid(
+            "invalid_link",
+            format!("`--link` must be pm_task:<id>, pm_record:<id> or ds_object:<type>:<id>, not `{raw}`"),
+        )
+        .remedy(crate::INVALID_LINK.remedy)),
+    }
 }
 
 /// The one `--link` filter, as the text the application's adapter parses:
@@ -355,33 +426,23 @@ mod tests {
         }
     }
 
-    /// A descriptor path that cannot exist, so nothing pairs and every local
-    /// refusal below is proved to happen before the bridge is reached.
-    fn unpaired() -> [String; 2] {
-        [
-            "--desktop-descriptor".to_string(),
-            std::env::temp_dir()
-                .join(format!(
-                    "ds-cli-assets-tree-{}-absent.json",
-                    std::process::id()
-                ))
-                .display()
-                .to_string(),
-        ]
+    /// The local refusals below are proved on the arguments alone: nothing
+    /// is fetched before a flag is checked.
+    fn unpaired() -> [String; 0] {
+        []
     }
 
     fn refusal(flags: &[&str]) -> String {
-        let mut tokens: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
-        tokens.extend(unpaired());
+        let tokens: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
-        run(&inputs, &context())
-            .expect_err("an unpaired tree read cannot succeed")
+        arguments(&inputs)
+            .expect_err("a malformed read is refused before any round trip")
             .code()
             .to_string()
     }
 
     #[test]
-    fn every_local_input_is_refused_by_name_before_the_bridge() {
+    fn every_local_input_is_refused_by_name_before_any_round_trip() {
         assert_eq!(refusal(&["--depth", "9"]), "invalid_number");
         assert_eq!(refusal(&["--depth", "0"]), "invalid_number");
         assert_eq!(refusal(&["--folder", "/contracts"]), "invalid_folder_path");
@@ -396,10 +457,10 @@ mod tests {
     }
 
     #[test]
-    fn a_well_formed_read_reaches_the_pairing_boundary() {
-        // Everything this command validates locally is valid here, so the
-        // only thing left to refuse is the desktop that is not running.
-        let code = refusal(&[
+    fn a_well_formed_read_passes_every_local_check() {
+        // Everything this command validates locally is valid here; the only
+        // thing left is the catalogue, which a unit test does not reach.
+        let tokens: Vec<String> = [
             "--folder",
             "contracts/2026",
             "--depth",
@@ -412,18 +473,18 @@ mod tests {
             "ds_object:transformer:TX-104",
             "--kind",
             "system",
-        ]);
-        assert!(
-            !code.starts_with("invalid_"),
-            "a well-formed read was refused locally as `{code}`"
-        );
+        ]
+        .map(str::to_string)
+        .to_vec();
+        let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
+        assert!(arguments(&inputs).is_ok());
+        let _ = context();
     }
 
     #[test]
     fn the_payload_carries_exactly_the_keys_the_operation_declares() {
-        // `invoke` refuses an undeclared key, but only once a desktop has
-        // paired — which no CI machine has. This is the one place the
-        // handler is held against its own declaration, with every flag set.
+        // The handler is held against its own declaration, with every flag
+        // set.
         let mut tokens = [
             "--folder",
             "contracts/2026",
@@ -443,10 +504,6 @@ mod tests {
         tokens.extend(unpaired());
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
         let payload = arguments(&inputs).expect("valid");
-        assert_eq!(
-            ds_cli_desktop::ops::undeclared_key(&crate::ASSETS_TREE, &payload),
-            None
-        );
         let mut keys: Vec<&str> = payload
             .as_object()
             .expect("object")
@@ -469,10 +526,9 @@ mod tests {
 
     #[test]
     fn a_link_is_sent_as_the_text_the_adapter_parses() {
-        // The desktop adapter's `link()` validator takes the typed text and
-        // builds the kernel's `Link` itself. What leaves here is therefore the
-        // validated string under the one declared key, not a second reading of
-        // it — a shape the parity suite cannot see, so this holds it.
+        // The typed text is validated once here and read into the kernel's
+        // `Link` by `parse_link` at run time; what the arguments carry is the
+        // validated string under the one declared key.
         let mut tokens = vec![
             "--link".to_string(),
             " ds_object:transformer:TX-104 ".to_string(),

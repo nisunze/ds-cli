@@ -4,12 +4,16 @@
 //! narrow: one named file, confirmed with `--yes`, never a directory, never a
 //! drag onto the map, never implied by a preview (§12.2, D13). The bytes go
 //! through the project's existing resumable uploader — there is no second
-//! uploader, digest or catalogue here (§12.10).
+//! uploader, digest or catalogue here (§12.10). The boundary is three steps
+//! the native client walks as one: `ingest_start` mints the upload target,
+//! the file streams to it from the path named here, `ingest_finalize` seals
+//! the row against the digest this command computed.
 //!
 //! `--sensitivity` is never inferred. Absent means the folder's default, and
 //! failing that `internal` (D4); `open` is a class a person states, and one
 //! only ds-brain can grant.
 
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
@@ -17,9 +21,11 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_client_core::project_assets::{IngestRequest, MAX_INGEST_BYTES, RECOGNISE_HEAD_BYTES};
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 
-use crate::{DESCRIPTOR_ARG, FOLDER_ARG};
+use crate::{CatalogueCommand, FOLDER_ARG, LANE_ARG};
 
 const PATH_ARG: Arg = Arg::value(
     "path",
@@ -41,17 +47,19 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Add one local file to the project's assets, explicitly.",
     purpose: "\
-Recognises the file's format from its head in the kernel, sends the bytes \
-through the project's existing resumable uploader, and finalises the catalogue \
-row in ds-brain. Ingest is never implicit: it needs --yes, dragging a file onto \
-the map never sends anything, and a sensitivity is never inferred as open — the \
-default is the folder's default or internal, and only a stricter class may be \
-named here. Refused by name when offline in this slice.",
+Recognises the file's format from its head in the kernel, digests the whole \
+file in one streaming pass, mints the upload target in ds-brain, streams the \
+bytes to it through the project's existing resumable uploader from the path \
+named here, and finalises the catalogue row against that digest. Ingest is \
+never implicit: it needs --yes, and a sensitivity is never inferred as open — \
+the default is the folder's default or internal, and only a stricter class \
+may be named here. Headless: the file is read on the host running `ds`; no \
+window is involved. Files up to 256 MiB.",
     chapter: Chapter::Assets,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PATH_ARG, FOLDER_ARG, SENSITIVITY_ARG, DESCRIPTOR_ARG],
+    args: &[PATH_ARG, FOLDER_ARG, SENSITIVITY_ARG, LANE_ARG],
     output: "\
 `asset` — the created row, with its `asset_id`, `digest`, `kind`, `format`, \
 `folder` and `sensitivity`.",
@@ -60,35 +68,17 @@ named here. Refused by name when offline in this slice.",
         note: "The row's asset_id feeds classify, attach and read from here on.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::refusals::<27>(&[
         crate::INVALID_SOURCE_PATH,
         crate::INVALID_FOLDER_PATH,
         crate::CONFIRMATION_REQUIRED,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_VERSION_CONFLICT,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
-        crate::ASSETS_OFFLINE_WRITE,
         crate::UNKNOWN_FOLDER,
-    ],
+        crate::ASSETS_UNREADABLE,
+    ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 /// The ingest, validated locally, in the exact keys the operation declares.
@@ -113,10 +103,9 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 /// `--path`, held to an absolute path naming an existing regular file.
 ///
 /// `ds` may read a local file; it never runs one, and it never resolves a
-/// relative one. The process that will read these bytes is the desktop, with
-/// its own working directory, so a path that resolves here would resolve
-/// somewhere else — or nowhere — there. A directory is refused rather than
-/// walked: ingest is one file, explicitly.
+/// relative one — a receipt that names an absolute path is one a reader can
+/// check. A directory is refused rather than walked: ingest is one file,
+/// explicitly.
 fn source_file(raw: &str) -> Result<String, Failure> {
     let refuse = |why: &str| {
         Failure::invalid("invalid_source_path", format!("`--path` {why}"))
@@ -129,9 +118,7 @@ fn source_file(raw: &str) -> Result<String, Failure> {
     }
     let path = Path::new(trimmed);
     if !path.is_absolute() {
-        return Err(refuse(
-            "is not absolute, and the application resolves it in its own working directory",
-        ));
+        return Err(refuse("is not absolute; name the file so the receipt can"));
     }
     let metadata = std::fs::metadata(path)
         .map_err(|_| refuse("does not name a readable file on this machine"))?;
@@ -145,14 +132,90 @@ fn source_file(raw: &str) -> Result<String, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ASSETS_INGEST,
-        arguments,
-        crate::INGEST_TIMEOUT,
-    )
-    .map_err(crate::classify_assets_failure)
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let path = Path::new(arguments["path"].as_str().unwrap_or_default());
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| {
+            Failure::invalid("invalid_source_path", "`--path` has no file name")
+                .remedy(crate::INVALID_SOURCE_PATH.remedy)
+        })?
+        .to_owned();
+    let folder_id = match arguments["folder"].as_str() {
+        Some(folder) => Some(
+            crate::folder_at(lane, folder)?["folder_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+        ),
+        None => None,
+    };
+
+    // One streaming pass digests the whole file and keeps its head for the
+    // kernel to recognise; the file is then rewound and streamed to the
+    // upload target. A 200 MiB pack never sits in memory.
+    let unreadable = |why: &str| {
+        Failure::invalid("invalid_source_path", format!("`--path` {why}"))
+            .remedy(crate::INVALID_SOURCE_PATH.remedy)
+            .detail(json!({ "given": path.display().to_string() }))
+    };
+    let mut file = std::fs::File::open(path).map_err(|_| unreadable("could not be opened"))?;
+    let mut hasher = Sha256::new();
+    let mut head: Vec<u8> = Vec::with_capacity(RECOGNISE_HEAD_BYTES);
+    let mut size: u64 = 0;
+    let mut buffer = vec![0u8; 256 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|_| unreadable("could not be read"))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        if head.len() < RECOGNISE_HEAD_BYTES {
+            let take = (RECOGNISE_HEAD_BYTES - head.len()).min(read);
+            head.extend_from_slice(&buffer[..take]);
+        }
+        size += read as u64;
+        if size > MAX_INGEST_BYTES {
+            return Err(Failure::invalid(
+                "invalid_source_path",
+                format!("`--path` is above the {MAX_INGEST_BYTES} byte ingest bound"),
+            )
+            .remedy("ingest a file of at most 256 MiB; a larger deliverable is a pack to split")
+            .detail(json!({ "max": MAX_INGEST_BYTES })));
+        }
+    }
+    if size == 0 {
+        return Err(unreadable("is empty; there is nothing to ingest"));
+    }
+    let digest = format!("{:x}", hasher.finalize());
+    let recognised = ds_command_kernel::assets::recognise(Some(&name), &head, size);
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| unreadable("could not be rewound for upload"))?;
+
+    let request = IngestRequest {
+        name,
+        size,
+        sha256: digest.clone(),
+        // The catalogue takes the content type as a hint; the kernel's
+        // recognition of the head is the authority, and it names no MIME.
+        content_type: None,
+        folder_id,
+        sensitivity: arguments["sensitivity"].as_str().map(str::to_owned),
+        kind: crate::enum_token(&recognised.kind),
+        format: crate::enum_token(&recognised.format),
+    };
+    let report =
+        ds_cli_auth::project_assets(lane, &CatalogueCommand::Ingest(request), Some(&mut file))?;
+    let mut answer = report.into_result();
+    answer["bytes"] = json!(size);
+    answer["digest"] = json!(format!("sha256:{digest}"));
+    answer["recognised"] = serde_json::to_value(&recognised)
+        .map_err(|error| Failure::internal(crate::ASSETS_UNREADABLE.code, error.to_string()))?;
+    Ok(answer)
 }
 
 pub fn render(data: &Value) -> String {
@@ -171,7 +234,6 @@ pub fn render(data: &Value) -> String {
 mod tests {
     use super::*;
     use ds_cli_contract::spec::ArgKind;
-    use ds_cli_desktop::ops::undeclared_key;
 
     /// A file that certainly exists on any machine building this crate, and
     /// the directory that holds it.
@@ -234,7 +296,6 @@ mod tests {
             "confidential",
         ]))
         .expect("valid");
-        assert_eq!(undeclared_key(&crate::ASSETS_INGEST, &payload), None);
         let mut keys: Vec<&str> = payload
             .as_object()
             .expect("object")

@@ -76,9 +76,10 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds", Layer::Host, 1),
     ("ds-cli-map", Layer::Lens, 4),
     // ── core, pending a headless form ───────────────────────────────────────
-    // Project documents: preview, read, classify and ingest still ask the
-    // paired application for bytes.
-    ("ds-cli-assets", Layer::CorePending, 10),
+    // `ds-cli-assets` left on 2026-09-20: the catalogue answers on
+    // `POST /api/v1/assets` under the native credential, the kernel decides
+    // what the bytes are, and a promoted layer lands in the prepared local
+    // layer store. Nothing of it needed a window.
     // The paired Desktop is the approval fallback for a lane with no native
     // session; the one file that names it is that fallback.
     ("ds-cli-auth", Layer::CorePending, 1),
@@ -276,7 +277,8 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // (the machine-local layer catalogue) are not counted here.
     ("ds-cli-map", 39),
     // ── core, pending a headless form ───────────────────────────────────────
-    ("ds-cli-assets", 9),
+    // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
+    // command headless (contract 01 of the dsgrid-authority program).
     // 1 → 0 on 2026-09-19: `auth link approve` approves under the native
     // user; it was the last governance write bound to a window.
     ("ds-cli-auth", 0),
@@ -490,11 +492,13 @@ fn the_window_ledger_and_the_bridge_inventory_name_the_same_crates() {
 ///
 /// Two ledgers because a crate is not a domain and a line is not a command;
 /// the same rule governs both, and the same rule governs the totals:
-/// 122 declaration sites, 123 registered commands, and both may only fall.
+/// 113 declaration sites, 114 registered commands, and both may only fall.
 ///
 /// Measured 2026-09-18 against the run tip.
 const WINDOW_BACKLOG: &[(&str, u64)] = &[
-    ("assets", 9),
+    // 9 → 0 on 2026-09-20: list/tree/read/preview/classify/promote/attach/
+    // ingest/folder run headless through `POST /api/v1/assets`.
+    ("assets", 0),
     // 1 → 0: `auth.link.approve` is the native user's write now.
     ("auth", 0),
     ("data", 4),
@@ -511,8 +515,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 
 /// What the filter answers for the whole surface. Pinned beside the rows so a
 /// domain cannot be quietly dropped from the ledger to hide its commands.
-/// 131 → 123 on 2026-09-20 (`pm`).
-const WINDOW_BACKLOG_TOTAL: u64 = 123;
+/// 131 → 123 on 2026-09-20 (`pm`), 123 → 114 the same day (`assets`).
+const WINDOW_BACKLOG_TOTAL: u64 = 114;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {

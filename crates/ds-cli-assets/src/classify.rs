@@ -19,7 +19,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, DESCRIPTOR_ARG, FOLDER_ARG};
+use crate::{ASSET_ARG, CatalogueCommand, FOLDER_ARG, LANE_ARG};
 
 const KIND_ARG: Arg =
     Arg::value("kind", "<kind>", "Override the kind the kernel inferred.").choices(crate::KINDS);
@@ -80,11 +80,13 @@ Applies every flag given as one audited catalogue change through ds-brain, \
 which decides whether the caller may make it: loosening sensitivity needs the \
 capability for the class being left, and a person's override is never \
 re-inferred away. Nothing given, nothing sent — a flag you omit is untouched. \
-Projected sys: rows are read-only in this slice and refused by name. Refused \
-offline, because a queued access change is a queued exposure.",
+Projected sys: rows are read-only and refused by name. The change is pinned to \
+the row's current version, so a row that moved is refused rather than \
+overwritten. Headless: the selected project of the signed-in native \
+credential, no window.",
     chapter: Chapter::Assets,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         ASSET_ARG,
@@ -94,7 +96,7 @@ offline, because a queued access change is a queued exposure.",
         FOLDER_ARG,
         SENSITIVITY_ARG,
         REASON_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "\
 `asset` — the row after the change — the `audit_id` recorded for it, and \
@@ -104,38 +106,19 @@ offline, because a queued access change is a queued exposure.",
         note: "Status and class land together or not at all; the audit row names the reason.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::refusals::<29>(&[
         crate::INVALID_ASSET_ID,
         crate::INVALID_FOLDER_PATH,
-        INVALID_REASON,
         crate::PROJECTED_ASSET_READ_ONLY,
         crate::NOTHING_TO_UPDATE,
         crate::CONFIRMATION_REQUIRED,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_VERSION_CONFLICT,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
-        crate::ASSETS_OFFLINE_WRITE,
         crate::UNKNOWN_FOLDER,
-    ],
+        INVALID_REASON,
+    ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 /// The patch, validated locally, in the exact keys the operation declares.
@@ -208,14 +191,39 @@ fn audit_reason(raw: &str) -> Result<String, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ASSETS_CLASSIFY,
-        arguments,
-        crate::WRITE_TIMEOUT,
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let text = |key: &str| arguments[key].as_str().map(str::to_owned);
+    let asset_id = text("asset").unwrap_or_default();
+    let folder_id = match text("folder") {
+        Some(path) => Some(
+            crate::folder_at(lane, &path)?["folder_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+        ),
+        None => None,
+    };
+    // The row's current version pins the change: a row that moved between
+    // this read and the write is refused by the catalogue, never overwritten.
+    let current = crate::catalogue(
+        lane,
+        &CatalogueCommand::Get {
+            asset_id: asset_id.clone(),
+        },
+    )?;
+    crate::catalogue(
+        lane,
+        &CatalogueCommand::Classify {
+            asset_id,
+            kind: text("kind"),
+            status: text("status"),
+            sensitivity: text("sensitivity"),
+            folder_id,
+            owner: text("owner"),
+            reason: text("reason"),
+            expected_version: current["version"].as_u64().unwrap_or(1),
+        },
     )
-    .map_err(crate::classify_assets_failure)
 }
 
 pub fn render(data: &Value) -> String {
@@ -268,7 +276,6 @@ fn warnings(data: &Value) -> String {
 mod tests {
     use super::*;
     use ds_cli_contract::spec::ArgKind;
-    use ds_cli_desktop::ops::undeclared_key;
 
     fn parse(tokens: &[&str]) -> Inputs {
         let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
@@ -409,7 +416,6 @@ mod tests {
             "signed copy received",
         ]))
         .expect("valid");
-        assert_eq!(undeclared_key(&crate::ASSETS_CLASSIFY, &payload), None);
         let mut keys: Vec<&str> = payload
             .as_object()
             .expect("object")

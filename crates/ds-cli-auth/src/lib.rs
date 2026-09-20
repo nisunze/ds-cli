@@ -3260,6 +3260,44 @@ pub fn project_management(
     )
 }
 
+/// One governed catalogue action on the project's assets, for only the
+/// saved, audience-fenced selected project. `reader` carries the bytes of
+/// an ingest and nothing else; the door streams them once.
+///
+/// Until 2026-09-20 nine `ds assets` commands relayed through the paired
+/// desktop; `POST /api/v1/assets` authenticates from the bearer and needs no
+/// window, exactly as `shared_assets` beside this already proved.
+pub fn project_assets(
+    lane_value: &str,
+    command: &ds_client_core::project_assets::Command,
+    reader: Option<&mut dyn std::io::Read>,
+) -> Result<HeadlessProjectReport<Value>, Failure> {
+    // Exactly one of the two closures runs, and the reader is consumed by
+    // whichever does: a shared cell hands it to that one without the borrow
+    // checker having to know which.
+    let reader = std::cell::RefCell::new(reader);
+    headless_project_report(
+        lane_value,
+        |device, project| device.project_assets(project, command, reader.borrow_mut().take()),
+        |client, project| {
+            client.project_assets(project, command, reader.borrow_mut().take(), now())
+        },
+    )
+}
+
+/// One asset's catalogue row and its verified bytes, through the signed read
+/// the catalogue mints for this caller, for only the selected project.
+pub fn read_asset_bytes(
+    lane_value: &str,
+    asset_id: &str,
+) -> Result<HeadlessProjectReport<(Value, Vec<u8>)>, Failure> {
+    headless_project_report(
+        lane_value,
+        |device, project| device.read_asset_bytes(project, asset_id),
+        |client, project| client.read_asset_bytes(project, asset_id, now()),
+    )
+}
+
 /// Retire or restore exact transformers in only the saved, audience-fenced
 /// selected project. ds-brain decides governance, ownership, and lifecycle
 /// per name and answers every name in order.
@@ -4717,6 +4755,9 @@ fn map_service_refusal(
     if owner_message.starts_with("project management") {
         return map_project_management_refusal(kind, refusal, message);
     }
+    if owner_message.starts_with("project assets") {
+        return map_project_assets_refusal(kind, refusal, message);
+    }
     match refusal.code() {
         Some("version_not_found") => Failure::invalid("version_not_found", message)
             .detail(serde_json::json!({
@@ -4758,6 +4799,100 @@ fn map_service_refusal(
         }
     }
 }
+
+/// The assets route's own refusal, rendered as the failure `ds assets`
+/// documents — the same seven codes the paired adapter minted from ds-brain's
+/// answer (`assetsRefusal`, ds-web `cli-assets.ts`), so a caller who planned
+/// for them on the desktop has planned for them headless: a 404 is
+/// `asset_not_found` (also a confidential row the caller may not know exists,
+/// by design), 401/403 `asset_class_forbidden`, 409 `asset_version_conflict`,
+/// a 400 the catalogue refused by rule `asset_refused`, any other 400
+/// `asset_request_invalid`, 501 `assets_not_implemented` and 5xx
+/// `assets_service_failed`. The server's sentence, code and the rule it
+/// names travel in `detail` and in the message.
+pub fn map_project_assets_refusal(
+    kind: ErrorKind,
+    refusal: &ds_client_core::ServiceRefusal,
+    message: String,
+) -> Failure {
+    let detail = json!({
+        "http_status": refusal.status(),
+        "service_code": refusal.code(),
+        "service_message": refusal.message(),
+    });
+    let sentence = refusal
+        .message()
+        .map(str::to_owned)
+        .unwrap_or_else(|| message.clone());
+    match (refusal.status(), refusal.code()) {
+        (404, _) => Failure::invalid(ASSET_NOT_FOUND_REFUSAL.code, sentence)
+            .detail(detail)
+            .remedy(ASSET_NOT_FOUND_REFUSAL.remedy)
+            .next("ds assets list --output json"),
+        (401 | 403, _) => Failure::unauthorized(ASSET_CLASS_FORBIDDEN_REFUSAL.code, sentence)
+            .detail(detail)
+            .remedy(ASSET_CLASS_FORBIDDEN_REFUSAL.remedy),
+        (409, _) => Failure::conflict(ASSET_VERSION_CONFLICT_REFUSAL.code, sentence)
+            .detail(detail)
+            .remedy(ASSET_VERSION_CONFLICT_REFUSAL.remedy),
+        (400 | 422, Some("asset_refused")) => {
+            Failure::invalid(ASSET_REFUSED_REFUSAL.code, sentence)
+                .detail(detail)
+                .remedy(ASSET_REFUSED_REFUSAL.remedy)
+        }
+        (400 | 422, _) => Failure::invalid(ASSET_REQUEST_INVALID_REFUSAL.code, sentence)
+            .detail(detail)
+            .remedy(ASSET_REQUEST_INVALID_REFUSAL.remedy),
+        (501, _) => Failure::unavailable(ASSETS_NOT_IMPLEMENTED_REFUSAL.code, sentence)
+            .detail(detail)
+            .remedy(ASSETS_NOT_IMPLEMENTED_REFUSAL.remedy),
+        (500..=599, _) => Failure::unavailable(ASSETS_SERVICE_FAILED_REFUSAL.code, sentence)
+            .detail(detail)
+            .remedy(ASSETS_SERVICE_FAILED_REFUSAL.remedy),
+        _ => map_client_kind(kind, message.clone())
+            .with_message(message)
+            .detail(detail),
+    }
+}
+
+/// The catalogue's refusals as `ds assets` documents them — one table, so
+/// the mapping above and every command's `REFUSALS` section read the same
+/// words.
+pub const ASSET_NOT_FOUND_REFUSAL: Refusal = Refusal {
+    code: "asset_not_found",
+    when: "no asset or folder has this id or path, or it is confidential and the caller may not know it exists",
+    remedy: "read the available ids and paths with `ds assets list` or `ds assets tree`",
+};
+pub const ASSET_CLASS_FORBIDDEN_REFUSAL: Refusal = Refusal {
+    code: "asset_class_forbidden",
+    when: "the signed-in user lacks the assets capability this sensitivity class or this write requires",
+    remedy: "ask a project admin for the assets capability the message names",
+};
+pub const ASSET_VERSION_CONFLICT_REFUSAL: Refusal = Refusal {
+    code: "asset_version_conflict",
+    when: "the catalogue row or folder moved while the write was in flight",
+    remedy: "re-read it with `ds assets list` or `ds assets tree` and issue the command again",
+};
+pub const ASSET_REQUEST_INVALID_REFUSAL: Refusal = Refusal {
+    code: "asset_request_invalid",
+    when: "the catalogue declined the request as malformed, or over a bound it names with the number",
+    remedy: "change the request as the message says rather than repeating it",
+};
+pub const ASSET_REFUSED_REFUSAL: Refusal = Refusal {
+    code: "asset_refused",
+    when: "the catalogue refused the action by one of its rules: a loosening the caller may not make, a reserved root, a write onto a system row; the message names the rule in brackets",
+    remedy: "the message names the rule; act on what it names rather than retrying",
+};
+pub const ASSETS_NOT_IMPLEMENTED_REFUSAL: Refusal = Refusal {
+    code: "assets_not_implemented",
+    when: "this lane's ds-brain does not serve this action yet",
+    remedy: "the action lands with the next ds-brain deployment on this lane; retry then",
+};
+pub const ASSETS_SERVICE_FAILED_REFUSAL: Refusal = Refusal {
+    code: "assets_service_failed",
+    when: "the catalogue service faulted while serving the request",
+    remedy: "retry once; nothing in the request changes the outcome while the service faults",
+};
 
 /// The `pm` route's own refusal, rendered as the failure `ds pm` documents.
 ///
