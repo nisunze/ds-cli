@@ -22,6 +22,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "survey",
     "form-factory",
     "survey-projects",
+    "survey-media",
     "survey-migration",
     "design-edit",
     "design-run",
@@ -81,6 +82,7 @@ pub enum Profile {
     Survey,
     FormFactory,
     SurveyProjects,
+    SurveyMedia,
     SurveyMigration,
     DesignEdit,
     DesignRun,
@@ -118,6 +120,7 @@ impl Profile {
             "survey" => Some(Self::Survey),
             "form-factory" => Some(Self::FormFactory),
             "survey-projects" => Some(Self::SurveyProjects),
+            "survey-media" => Some(Self::SurveyMedia),
             "survey-migration" => Some(Self::SurveyMigration),
             "design-edit" => Some(Self::DesignEdit),
             "design-run" => Some(Self::DesignRun),
@@ -156,6 +159,7 @@ impl Profile {
             Self::Survey => "survey",
             Self::FormFactory => "form-factory",
             Self::SurveyProjects => "survey-projects",
+            Self::SurveyMedia => "survey-media",
             Self::SurveyMigration => "survey-migration",
             Self::DesignEdit => "design-edit",
             Self::DesignRun => "design-run",
@@ -197,10 +201,10 @@ impl Profile {
             // Query, spatial selection, fenced changes, and governed
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
-            // Three image leaves add offline rotation and pinned publication.
             // Three working-area leaves read, choose and forget which forms
-            // the map loads for the project — a local choice, no fetch.
-            Self::SurveyProjects => 24,
+            // the map loads for the project — a local choice, no fetch. The
+            // photo leaves are `survey-media`'s (2026-09-20).
+            Self::SurveyProjects => 21,
             // Twenty-one governed design-edit leaves plus the two bootstrap
             // tools. Version history and the pinned Working set project the
             // same bounded desktop-owned workflow without transporting
@@ -290,6 +294,7 @@ impl Profile {
             Self::Survey => SURVEY_MAP_COMMANDS.contains(&tool.id.as_str()),
             Self::FormFactory => FORM_FACTORY_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS.contains(&tool.id.as_str()),
+            Self::SurveyMedia => SURVEY_MEDIA_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyMigration => SURVEY_MIGRATION_COMMANDS.contains(&tool.id.as_str()),
             Self::Map => {
                 tool.chapter == Chapter::MapPresentation
@@ -340,6 +345,7 @@ impl Profile {
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
+            Self::SurveyMedia => SURVEY_MEDIA_COMMANDS,
             Self::SurveyMigration => SURVEY_MIGRATION_COMMANDS,
             Self::Layers => LAYER_COMMANDS,
             Self::Styles => STYLE_COMMANDS,
@@ -380,6 +386,7 @@ impl Profile {
             Self::Survey
             | Self::FormFactory
             | Self::SurveyProjects
+            | Self::SurveyMedia
             | Self::SurveyMigration
             | Self::Layers => chapter == Chapter::Survey,
             Self::DesignEdit | Self::DesignRun | Self::DesignMigration => {
@@ -547,10 +554,20 @@ const FORM_FACTORY_COMMANDS: &[&str] = &[
     "survey.form.lifecycle",
 ];
 
-const SURVEY_PROJECT_COMMANDS: &[&str] = &[
-    "survey.photo.rotate-local",
+// Survey photos as one operator workflow: what this machine holds, one
+// photo's details, the one rotation (held locally first) and its
+// publication, plus the offline file rotation. Split out of
+// `survey-projects` on 2026-09-20 when the moments leaves would have taken
+// that profile past its bound.
+const SURVEY_MEDIA_COMMANDS: &[&str] = &[
+    "survey.moments.list",
+    "survey.moments.read",
     "survey.photo.rotate",
     "survey.photo.publish",
+    "survey.photo.rotate-local",
+];
+
+const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.query",
     "survey.entries.select",
     "survey.entries.changes",
@@ -1390,7 +1407,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Inspect platform health, manage shell reachability, and report product gaps. Describe a command before invoking it."
         }
         Chapter::Workstation => {
-            "Inspect workstation prerequisites and governed reference components, review mutation-free plans, and verify local evidence. Describe a command before invoking it."
+            "Inspect workstation prerequisites and governed reference components, review mutation-free plans, verify local evidence, and read or clean what this machine holds for a project. Describe a command before invoking it."
         }
     }
 }

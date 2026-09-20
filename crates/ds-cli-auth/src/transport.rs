@@ -530,7 +530,7 @@ impl Transport for NativeTransport {
         call: ds_client_core::SurveyPhotoCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         debug_assert_eq!(call.method(), "POST");
-        debug_assert_eq!(call.path(), "/media");
+        debug_assert_eq!(call.path(), "/api/v1/media");
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();

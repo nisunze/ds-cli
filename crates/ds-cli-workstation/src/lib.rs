@@ -8,6 +8,7 @@ pub mod components;
 pub mod configure;
 pub mod detect;
 pub mod install;
+pub mod local_data;
 pub mod plan;
 pub mod policy;
 pub mod status;
@@ -25,6 +26,8 @@ pub static DOMAIN: Domain = Domain {
         &configure::COMMAND,
         &verify::COMMAND,
         &components::COMMAND,
+        &local_data::STATUS_COMMAND,
+        &local_data::CLEAN_COMMAND,
     ],
 };
 

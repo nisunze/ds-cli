@@ -1146,6 +1146,16 @@ static SURVEY_ENTRIES: &[Entry] = &[
         render: ds_cli_survey::photo::render,
     },
     Entry {
+        command: &ds_cli_survey::moments::LIST_COMMAND,
+        handler: ds_cli_survey::moments::list,
+        render: ds_cli_survey::moments::render_list,
+    },
+    Entry {
+        command: &ds_cli_survey::moments::READ_COMMAND,
+        handler: ds_cli_survey::moments::read,
+        render: ds_cli_survey::moments::render_read,
+    },
+    Entry {
         command: &ds_cli_survey::project_forms::READ_COMMAND,
         handler: ds_cli_survey::project_forms::read,
         render: ds_cli_survey::project_forms::render_read,
@@ -2383,6 +2393,16 @@ static WORKSTATION_ENTRIES: &[Entry] = &[
         command: &ds_cli_workstation::components::COMMAND,
         handler: ds_cli_workstation::components::run,
         render: ds_cli_workstation::components::render,
+    },
+    Entry {
+        command: &ds_cli_workstation::local_data::STATUS_COMMAND,
+        handler: ds_cli_workstation::local_data::status,
+        render: ds_cli_workstation::local_data::render_status,
+    },
+    Entry {
+        command: &ds_cli_workstation::local_data::CLEAN_COMMAND,
+        handler: ds_cli_workstation::local_data::clean,
+        render: ds_cli_workstation::local_data::render_clean,
     },
 ];
 

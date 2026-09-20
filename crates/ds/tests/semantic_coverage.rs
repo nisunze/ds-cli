@@ -800,6 +800,10 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("survey.photo.rotate-local", "local_file_write", "none"),
     ("survey.photo.rotate", "local_file_write", "headless_user"),
     ("survey.photo.publish", "global_write", "headless_user"),
+    // The survey photos this machine holds: read off the lane's sync store
+    // with no session, like `report.outbox.status`.
+    ("survey.moments.list", "read_only", "none"),
+    ("survey.moments.read", "read_only", "none"),
     (
         "survey.project.create-from-template",
         "global_write",
@@ -944,6 +948,10 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pm.task.respond", "global_write", "project"),
     ("pm.task.update", "global_write", "project"),
     ("workstation.components", "discovery", "none"),
+    // What this machine holds for a project, off the Server's state root;
+    // the clean removes replicas only and is gated by --yes.
+    ("workstation.local-data.status", "read_only", "none"),
+    ("workstation.local-data.clean", "artifact_write", "none"),
     ("workstation.configure", "machine_write", "none"),
     ("workstation.install", "machine_write", "none"),
     ("workstation.plan", "proposal", "none"),

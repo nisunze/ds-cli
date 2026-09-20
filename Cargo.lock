@@ -1201,9 +1201,10 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
- "ds-cli-server",
  "ds-client-core",
- "ds-layer-ops",
+ "ds-command-kernel",
+ "ds-compute-runtime",
+ "ds-sync-store",
  "libc",
  "serde",
  "serde_json",
@@ -1225,6 +1226,9 @@ name = "ds-cli-workstation"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "ds-command-kernel",
+ "ds-compute-runtime",
+ "ds-sync-store",
  "serde",
  "serde_json",
  "sha2",

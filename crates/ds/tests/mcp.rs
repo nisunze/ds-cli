@@ -631,6 +631,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
         Profile::Survey,
         Profile::FormFactory,
         Profile::SurveyProjects,
+        Profile::SurveyMedia,
         Profile::SurveyMigration,
         Profile::Layers,
     ] {
@@ -643,7 +644,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
     }
     assert_eq!(
         listed_survey, expected_survey,
-        "survey, form-factory, survey-projects, survey-migration, and layers must partition the live Survey chapter"
+        "survey, form-factory, survey-projects, survey-media, survey-migration, and layers must partition the live Survey chapter"
     );
 }
 
@@ -707,6 +708,33 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert!(survey_project_names.contains("survey_entries_create"));
     assert!(!survey_project_names.contains("survey_form_lifecycle"));
     assert!(!survey_project_names.contains("survey_entries_import"));
+    assert!(!survey_project_names.contains("survey_photo_rotate"));
+
+    // The photo workflow is its own bounded profile: what this machine holds,
+    // the one rotation and its publication, nothing of forms or templates.
+    let (media_responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "survey-media"],
+        &[json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/list" })],
+    );
+    let media = response(&media_responses, 5)["result"]["tools"]
+        .as_array()
+        .expect("survey-media tools");
+    let media_names = media
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        media_names,
+        BTreeSet::from([
+            "ds_catalog",
+            "ds_diagnostics",
+            "survey_moments_list",
+            "survey_moments_read",
+            "survey_photo_publish",
+            "survey_photo_rotate",
+            "survey_photo_rotate-local",
+        ])
+    );
 
     let (migration_responses, _) = mcp(
         &["--exposure", "commands", "--profile", "survey-migration"],
@@ -1303,6 +1331,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "survey",
         "form-factory",
         "survey-projects",
+        "survey-media",
         "survey-migration",
         "design-edit",
         "design-run",
@@ -1343,10 +1372,14 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
-            // Headless photo rotation, offline file rotation and verified
-            // publication; then the three working-area form leaves (read,
-            // choose, forget which forms the map loads).
-            "survey-projects" => 24,
+            // Governed reads, project-form settings, templates,
+            // create-from-template and the three working-area form leaves
+            // (read, choose, forget which forms the map loads); the photo
+            // leaves moved to survey-media.
+            "survey-projects" => 21,
+            // Held survey photos (list, read), the one rotation and its
+            // publication, and the offline file rotation, plus bootstrap.
+            "survey-media" => 7,
             "design-edit" => 23,
             // Twenty-six printing leaves plus bootstrap: city-vector input,
             // local rendering and standalone map delivery complete the headless

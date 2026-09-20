@@ -31,6 +31,12 @@ mod common;
 /// Codes a caller cannot reach, with why.
 const NOT_A_REFUSAL: &[(&str, &str)] = &[
     (
+        "clean_store_unhandled",
+        "raised only if the kernel's local-data clean plan names a cleanable \
+         store this host has no remover for — the roster and the removers are \
+         the same closed list, so a caller cannot reach it",
+    ),
+    (
         "missing_declared_input",
         "raised only if a command declares an input required and the parser \
          then fails to supply it — a defect in ds, not a situation a caller \

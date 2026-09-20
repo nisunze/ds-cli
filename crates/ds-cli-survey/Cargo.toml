@@ -17,6 +17,11 @@ ds-client-core = { workspace = true }
 # transport. No cycle: nothing in either knows `ds survey`.
 ds-layer-ops = { workspace = true }
 ds-cli-server = { workspace = true }
+# Survey moments read the Server's survey-media store (rows in the lane's
+# sync store) and hand the rows to the kernel's gallery decisions.
+ds-command-kernel = { workspace = true }
+ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }
+ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

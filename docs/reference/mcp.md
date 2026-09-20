@@ -50,14 +50,16 @@ ds mcp serve --exposure commands --profile pls
 ```
 
 Profiles are `auth-context`, `grid`, `grid-native`, `pls`, `pls-library`, `library-governance`, `survey`,
-`form-factory`, `survey-projects`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
+`form-factory`, `survey-projects`, `survey-media`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
 `tiling`, `project`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
 `solar-portfolio-batch`, `solar-migration`, `design-migration`,
 `operations`, and `project-operations`. `survey`
 retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns governed
 aggregate/spatial/change-feed reads, project-form settings, reusable templates, and
-create-from-template. `layers` isolates
+create-from-template; `survey-media` owns the survey photos this machine holds
+(`survey.moments.list|read`), the one rotation and its publication
+(`survey.photo.rotate|publish`) and the offline file rotation. `layers` isolates
 project ordering and desktop-local remote overlays; `tiling` owns governed
 tile generation and catalogue membership; `project-operations` owns
 map-independent background work — paired local-room materialization plus
