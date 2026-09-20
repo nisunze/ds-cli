@@ -55,7 +55,8 @@ pub const SERVER_STORES: &[StoreSpec] = &[
     StoreSpec {
         id: "sync_store",
         retention: Retention::Retained,
-        note: "publication rows, heads, grants, receipts and leases for this project in store.sqlite",
+        note:
+            "publication rows, heads, grants, receipts and leases for this project in store.sqlite",
     },
     StoreSpec {
         id: "report_artifacts",
@@ -204,19 +205,28 @@ pub fn rows(host: Host, readings: &[Reading]) -> Vec<StoreRow> {
         .collect()
 }
 
-pub fn answer(host: Host, project: &str, readings: &[Reading], storage: Storage, now_ms: u64) -> Answer {
+pub fn answer(
+    host: Host,
+    project: &str,
+    readings: &[Reading],
+    storage: Storage,
+    now_ms: u64,
+) -> Answer {
     let stores = rows(host, readings);
     let cleanable: Vec<&StoreRow> = stores
         .iter()
         .filter(|row| row.retention == Retention::Cleanable && row.count > 0)
         .collect();
-    let cleanable_bytes = if cleanable.iter().all(|row| row.bytes.is_some()) && !cleanable.is_empty() {
-        Some(cleanable.iter().filter_map(|row| row.bytes).sum())
-    } else {
-        None
-    };
+    let cleanable_bytes =
+        if cleanable.iter().all(|row| row.bytes.is_some()) && !cleanable.is_empty() {
+            Some(cleanable.iter().filter_map(|row| row.bytes).sum())
+        } else {
+            None
+        };
     let storage_fraction = match (storage.usage_bytes, storage.quota_bytes) {
-        (Some(usage), Some(quota)) if quota > 0 => Some((usage as f64 / quota as f64).clamp(0.0, 1.0)),
+        (Some(usage), Some(quota)) if quota > 0 => {
+            Some((usage as f64 / quota as f64).clamp(0.0, 1.0))
+        }
         _ => None,
     };
     Answer {
@@ -297,7 +307,11 @@ pub fn clean_plan(
             code: CONFIRMATION_REQUIRED,
             message: format!(
                 "cleaning would remove {count} item(s) from {} for project {project}",
-                stores.iter().map(|row| row.id.as_str()).collect::<Vec<_>>().join(", ")
+                stores
+                    .iter()
+                    .map(|row| row.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             remedy: "repeat with --yes to confirm",
         });
@@ -340,8 +354,8 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > 1024 * 1024 {
         return Err("local data request exceeds its byte bound".into());
     }
-    let request: Request =
-        serde_json::from_slice(input).map_err(|error| format!("invalid local data request: {error}"))?;
+    let request: Request = serde_json::from_slice(input)
+        .map_err(|error| format!("invalid local data request: {error}"))?;
     let value = match request {
         Request::Status {
             host,
@@ -387,12 +401,24 @@ mod tests {
         let rows = rows(Host::Window, &readings);
         assert_eq!(
             rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(),
-            ["survey", "design_rooms", "design_drafts", "version_downloads"]
+            [
+                "survey",
+                "design_rooms",
+                "design_drafts",
+                "version_downloads"
+            ]
         );
-        assert_eq!(rows.iter().map(|row| row.count).collect::<Vec<_>>(), [12, 3, 5, 2]);
-        assert!(rows.iter().all(|row| !row.size_tracked && row.bytes.is_none()));
+        assert_eq!(
+            rows.iter().map(|row| row.count).collect::<Vec<_>>(),
+            [12, 3, 5, 2]
+        );
+        assert!(rows
+            .iter()
+            .all(|row| !row.size_tracked && row.bytes.is_none()));
         assert_eq!(rows[3].retention, Retention::Cleanable);
-        assert!(rows[..3].iter().all(|row| row.retention == Retention::Retained));
+        assert!(rows[..3]
+            .iter()
+            .all(|row| row.retention == Retention::Retained));
     }
 
     #[test]
@@ -400,8 +426,14 @@ mod tests {
         let rows = rows(Host::Server, &[reading("sync_downloads", 4, Some(4096))]);
         assert_eq!(rows.len(), SERVER_STORES.len());
         let downloads = rows.iter().find(|row| row.id == "sync_downloads").unwrap();
-        assert_eq!((downloads.count, downloads.bytes, downloads.size_tracked), (4, Some(4096), true));
-        assert!(rows.iter().filter(|row| row.id != "sync_downloads").all(|row| row.count == 0));
+        assert_eq!(
+            (downloads.count, downloads.bytes, downloads.size_tracked),
+            (4, Some(4096), true)
+        );
+        assert!(rows
+            .iter()
+            .filter(|row| row.id != "sync_downloads")
+            .all(|row| row.count == 0));
     }
 
     #[test]
@@ -419,7 +451,10 @@ mod tests {
         };
         let answer = answer(Host::Server, "p", &readings, storage, 7);
         assert_eq!(answer.cleanable, ["survey_media_synced", "sync_downloads"]);
-        assert_eq!((answer.cleanable_count, answer.cleanable_bytes), (6, Some(5096)));
+        assert_eq!(
+            (answer.cleanable_count, answer.cleanable_bytes),
+            (6, Some(5096))
+        );
         assert_eq!(answer.storage_fraction, Some(0.25));
         assert_eq!(answer.refreshed_at_ms, 7);
         let unknown = super::answer(Host::Window, "p", &[], Storage::default(), 1);
@@ -441,7 +476,10 @@ mod tests {
 
     #[test]
     fn a_clean_is_refused_before_anything_moves() {
-        let readings = [reading("version_downloads", 2, None), reading("survey", 9, None)];
+        let readings = [
+            reading("version_downloads", 2, None),
+            reading("survey", 9, None),
+        ];
         let plan = clean_plan(Host::Window, "p", &readings, &[], false).unwrap_err();
         assert_eq!(plan.code, CONFIRMATION_REQUIRED);
         assert!(plan.message.contains("2 item(s)") && plan.message.contains("version_downloads"));
@@ -449,34 +487,62 @@ mod tests {
         assert_eq!(plan.stores.len(), 1);
         assert_eq!((plan.count, plan.bytes), (2, None));
         assert_eq!(
-            clean_plan(Host::Window, "p", &readings, &["survey".into()], true).unwrap_err().code,
+            clean_plan(Host::Window, "p", &readings, &["survey".into()], true)
+                .unwrap_err()
+                .code,
             STORE_RETAINED
         );
         assert_eq!(
-            clean_plan(Host::Window, "p", &readings, &["nope".into()], true).unwrap_err().code,
+            clean_plan(Host::Window, "p", &readings, &["nope".into()], true)
+                .unwrap_err()
+                .code,
             UNKNOWN_STORE
         );
         assert_eq!(
-            clean_plan(Host::Window, "p", &[reading("version_downloads", 0, None)], &[], true)
-                .unwrap_err()
-                .code,
+            clean_plan(
+                Host::Window,
+                "p",
+                &[reading("version_downloads", 0, None)],
+                &[],
+                true
+            )
+            .unwrap_err()
+            .code,
             NOTHING_TO_CLEAN
         );
         // A Server clean of one named store leaves the others alone.
-        let server = [reading("sync_downloads", 4, Some(40)), reading("survey_media_synced", 1, Some(9))];
-        let plan = clean_plan(Host::Server, "p", &server, &["survey_media_synced".into()], true).unwrap();
-        assert_eq!(plan.stores.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(), ["survey_media_synced"]);
+        let server = [
+            reading("sync_downloads", 4, Some(40)),
+            reading("survey_media_synced", 1, Some(9)),
+        ];
+        let plan = clean_plan(
+            Host::Server,
+            "p",
+            &server,
+            &["survey_media_synced".into()],
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            plan.stores
+                .iter()
+                .map(|row| row.id.as_str())
+                .collect::<Vec<_>>(),
+            ["survey_media_synced"]
+        );
         assert_eq!(plan.bytes, Some(9));
     }
 
     #[test]
     fn the_json_door_answers_status_and_plans() {
         let input = json!({"op": "status", "host": "window", "project": "p", "readings": [{"id": "survey", "count": 3}], "now_ms": 5});
-        let answer: Value = serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
+        let answer: Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
         assert_eq!(answer["data"]["stores"][0]["count"], 3);
         assert_eq!(answer["data"]["stores"][0]["size_tracked"], false);
         let input = json!({"op": "clean_plan", "host": "window", "project": "p", "readings": [], "stores": []});
-        let answer: Value = serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
+        let answer: Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
         assert_eq!(answer["refusal"]["code"], NOTHING_TO_CLEAN);
     }
 }

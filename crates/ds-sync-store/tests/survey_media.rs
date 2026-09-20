@@ -54,8 +54,14 @@ fn records_are_written_replaced_read_and_removed_per_project() {
     let held = store.survey_media_of_project("p").unwrap();
     assert_eq!(held.len(), 2);
     assert_eq!(held[0].path, a.path);
-    assert_eq!(store.survey_media_record("p", &a.path).unwrap(), Some(a.clone()));
-    assert_eq!(store.survey_media_record("p", "p/forms/none.jpg").unwrap(), None);
+    assert_eq!(
+        store.survey_media_record("p", &a.path).unwrap(),
+        Some(a.clone())
+    );
+    assert_eq!(
+        store.survey_media_record("p", "p/forms/none.jpg").unwrap(),
+        None
+    );
 
     // Replacing settles the same key rather than adding a row.
     let mut settled = a.clone();
@@ -65,16 +71,27 @@ fn records_are_written_replaced_read_and_removed_per_project() {
     store.survey_media_put(&fence(), &settled).unwrap();
     assert_eq!(store.survey_media_of_project("p").unwrap().len(), 2);
     assert_eq!(
-        store.survey_media_record("p", &a.path).unwrap().unwrap().state,
+        store
+            .survey_media_record("p", &a.path)
+            .unwrap()
+            .unwrap()
+            .state,
         SyncState::Synced
     );
 
     // A clean removes the synced records of one project and names them.
-    let removed = store.survey_media_remove_state("p", SyncState::Synced).unwrap();
+    let removed = store
+        .survey_media_remove_state("p", SyncState::Synced)
+        .unwrap();
     assert_eq!(removed, vec![a.path.clone(), b.path.clone()]);
     assert!(store.survey_media_of_project("p").unwrap().is_empty());
     assert_eq!(store.survey_media_of_project("q").unwrap().len(), 1);
-    assert_eq!(store.survey_media_remove("q", &[other.path.clone()]).unwrap(), 1);
+    assert_eq!(
+        store
+            .survey_media_remove("q", &[other.path.clone()])
+            .unwrap(),
+        1
+    );
     assert_eq!(store.survey_media_remove("q", &[other.path]).unwrap(), 0);
 
     // The read-only opener answers the same rows without writing.
@@ -82,7 +99,11 @@ fn records_are_written_replaced_read_and_removed_per_project() {
     drop(store);
     let reader = Store::open_read_only(&path).unwrap().unwrap();
     assert_eq!(reader.survey_media_of_project("p").unwrap().len(), 1);
-    let row = reader.survey_media_of_project("p").unwrap().remove(0).moment_row();
+    let row = reader
+        .survey_media_of_project("p")
+        .unwrap()
+        .remove(0)
+        .moment_row();
     assert_eq!(row.state, SyncState::Synced);
     assert!(row.thumbnail);
 }

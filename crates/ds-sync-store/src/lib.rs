@@ -502,15 +502,22 @@ impl Store {
 
     /// Remove every record of one project in one state (every fence),
     /// answering the paths removed so the host can free their bytes.
-    pub fn survey_media_remove_state(&mut self, project: &str, state: SyncState) -> Result<Vec<String>> {
+    pub fn survey_media_remove_state(
+        &mut self,
+        project: &str,
+        state: SyncState,
+    ) -> Result<Vec<String>> {
         if !self.has_survey_media()? {
             return Ok(Vec::new());
         }
         let tx = self.connection.transaction()?;
         let paths: Vec<String> = {
-            let mut statement =
-                tx.prepare("SELECT path FROM survey_media WHERE project=?1 AND state=?2 ORDER BY path")?;
-            let rows = statement.query_map(params![project, state.as_str()], |row| row.get::<_, String>(0))?;
+            let mut statement = tx.prepare(
+                "SELECT path FROM survey_media WHERE project=?1 AND state=?2 ORDER BY path",
+            )?;
+            let rows = statement.query_map(params![project, state.as_str()], |row| {
+                row.get::<_, String>(0)
+            })?;
             let mut out = Vec::new();
             for row in rows {
                 out.push(row?);

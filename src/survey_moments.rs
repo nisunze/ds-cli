@@ -389,17 +389,19 @@ pub fn resolve(filter: &Filter) -> Result<AppliedFilter, Refusal> {
     };
     let since_ms = match filter.since.as_deref().map(str::trim) {
         None | Some("") => None,
-        Some(raw) => Some(
-            bound_ms(raw, false)
-                .ok_or_else(|| invalid(&format!("since `{raw}` is not an RFC 3339 instant or a YYYY-MM-DD day")))?,
-        ),
+        Some(raw) => Some(bound_ms(raw, false).ok_or_else(|| {
+            invalid(&format!(
+                "since `{raw}` is not an RFC 3339 instant or a YYYY-MM-DD day"
+            ))
+        })?),
     };
     let until_ms = match filter.until.as_deref().map(str::trim) {
         None | Some("") => None,
-        Some(raw) => Some(
-            bound_ms(raw, true)
-                .ok_or_else(|| invalid(&format!("until `{raw}` is not an RFC 3339 instant or a YYYY-MM-DD day")))?,
-        ),
+        Some(raw) => Some(bound_ms(raw, true).ok_or_else(|| {
+            invalid(&format!(
+                "until `{raw}` is not an RFC 3339 instant or a YYYY-MM-DD day"
+            ))
+        })?),
     };
     if let (Some(since), Some(until)) = (since_ms, until_ms) {
         if since > until {
@@ -438,7 +440,11 @@ fn keeps(filter: &AppliedFilter, moment: &Moment) -> bool {
     if filter.until_ms.is_some_and(|until| moment.when_ms > until) {
         return false;
     }
-    if filter.form.as_deref().is_some_and(|form| moment.form != form) {
+    if filter
+        .form
+        .as_deref()
+        .is_some_and(|form| moment.form != form)
+    {
         return false;
     }
     if filter.sync.is_some_and(|sync| moment.state != sync) {
@@ -606,7 +612,12 @@ pub struct Rotation {
 
 /// The properties panel's rotation gate, in one place. `waiting` says
 /// whether this machine already holds a waiting rotation of `path`.
-pub fn rotation(project: &str, path: &str, degrees: i64, waiting: bool) -> Result<Rotation, Refusal> {
+pub fn rotation(
+    project: &str,
+    path: &str,
+    degrees: i64,
+    waiting: bool,
+) -> Result<Rotation, Refusal> {
     let address: SurveyMediaAddress = survey_media_address::parse(path).map_err(|_| {
         Refusal::new(
             NOT_SURVEY_MEDIA,
@@ -617,7 +628,10 @@ pub fn rotation(project: &str, path: &str, degrees: i64, waiting: bool) -> Resul
     if address.project != project {
         return Err(Refusal::new(
             PROJECT_MISMATCH,
-            format!("{path} belongs to project {}, not {project}", address.project),
+            format!(
+                "{path} belongs to project {}, not {project}",
+                address.project
+            ),
             REMEDY_ADDRESS,
         ));
     }
@@ -631,7 +645,10 @@ pub fn rotation(project: &str, path: &str, degrees: i64, waiting: bool) -> Resul
     if address.object_path != path {
         return Err(Refusal::new(
             NOT_SURVEY_MEDIA,
-            format!("{path} is not the canonical object path {}", address.object_path),
+            format!(
+                "{path} is not the canonical object path {}",
+                address.object_path
+            ),
             REMEDY_ADDRESS,
         ));
     }
@@ -687,8 +704,8 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > 64 * 1024 * 1024 {
         return Err("survey moments request exceeds its byte bound".into());
     }
-    let request: Request =
-        serde_json::from_slice(input).map_err(|error| format!("invalid survey moments request: {error}"))?;
+    let request: Request = serde_json::from_slice(input)
+        .map_err(|error| format!("invalid survey moments request: {error}"))?;
     let answer = match request {
         Request::List {
             project,
@@ -748,10 +765,38 @@ mod tests {
     /// The gallery's five rows, transcribed from `survey-moments-filters.test.ts`.
     fn rows() -> Vec<MomentRow> {
         vec![
-            row("poles", "e1", "IMG_0001.jpg", true, day(2026, 9, 20, 9), true),
-            row("lines", "e2", "span_0002.jpg", false, day(2026, 9, 19, 12), true),
-            row("poles", "e3", "IMG_0003.jpg", false, day(2026, 9, 15, 12), true),
-            row("meters", "e4", "meter_0004.jpg", true, day(2026, 8, 25, 12), true),
+            row(
+                "poles",
+                "e1",
+                "IMG_0001.jpg",
+                true,
+                day(2026, 9, 20, 9),
+                true,
+            ),
+            row(
+                "lines",
+                "e2",
+                "span_0002.jpg",
+                false,
+                day(2026, 9, 19, 12),
+                true,
+            ),
+            row(
+                "poles",
+                "e3",
+                "IMG_0003.jpg",
+                false,
+                day(2026, 9, 15, 12),
+                true,
+            ),
+            row(
+                "meters",
+                "e4",
+                "meter_0004.jpg",
+                true,
+                day(2026, 8, 25, 12),
+                true,
+            ),
             row("scan", "e5", "scan.jpg", false, day(2026, 1, 1, 12), false),
         ]
     }
@@ -771,14 +816,34 @@ mod tests {
         let answer = list(PROJECT, &rows(), &Filter::default()).unwrap();
         assert_eq!(
             files(&answer),
-            ["IMG_0001.jpg", "span_0002.jpg", "IMG_0003.jpg", "meter_0004.jpg", "scan.jpg"]
+            [
+                "IMG_0001.jpg",
+                "span_0002.jpg",
+                "IMG_0003.jpg",
+                "meter_0004.jpg",
+                "scan.jpg"
+            ]
         );
         assert!(answer.filter.empty);
-        assert_eq!((answer.count, answer.matched, answer.total, answer.more), (5, 5, 5, false));
+        assert_eq!(
+            (answer.count, answer.matched, answer.total, answer.more),
+            (5, 5, 5, false)
+        );
         assert_eq!((answer.waiting, answer.synced), (2, 3));
-        assert!(!resolve(&filter(|f| f.text = Some("  ".into()))).unwrap().text.is_some());
-        assert!(!resolve(&filter(|f| f.sync = Some(SyncState::Waiting))).unwrap().empty);
-        assert!(!resolve(&filter(|f| f.since = Some("2026-09-01".into()))).unwrap().empty);
+        assert!(!resolve(&filter(|f| f.text = Some("  ".into())))
+            .unwrap()
+            .text
+            .is_some());
+        assert!(
+            !resolve(&filter(|f| f.sync = Some(SyncState::Waiting)))
+                .unwrap()
+                .empty
+        );
+        assert!(
+            !resolve(&filter(|f| f.since = Some("2026-09-01".into())))
+                .unwrap()
+                .empty
+        );
     }
 
     #[test]
@@ -787,7 +852,10 @@ mod tests {
             f.since = Some("2026-09-20".into());
             f.until = Some("2026-09-20".into());
         });
-        assert_eq!(files(&list(PROJECT, &rows(), &today).unwrap()), ["IMG_0001.jpg"]);
+        assert_eq!(
+            files(&list(PROJECT, &rows(), &today).unwrap()),
+            ["IMG_0001.jpg"]
+        );
         let week = filter(|f| {
             f.since = Some("2026-09-14".into());
             f.until = Some("2026-09-20".into());
@@ -805,15 +873,29 @@ mod tests {
         let until = filter(|f| f.until = Some("2026-09-19".into()));
         assert_eq!(
             files(&list(PROJECT, &rows(), &until).unwrap()),
-            ["span_0002.jpg", "IMG_0003.jpg", "meter_0004.jpg", "scan.jpg"]
+            [
+                "span_0002.jpg",
+                "IMG_0003.jpg",
+                "meter_0004.jpg",
+                "scan.jpg"
+            ]
         );
         let since = filter(|f| f.since = Some("2026-09-19".into()));
-        assert_eq!(files(&list(PROJECT, &rows(), &since).unwrap()), ["IMG_0001.jpg", "span_0002.jpg"]);
+        assert_eq!(
+            files(&list(PROJECT, &rows(), &since).unwrap()),
+            ["IMG_0001.jpg", "span_0002.jpg"]
+        );
         // An instant with an offset is honoured as an instant.
         let instant = filter(|f| f.since = Some("2026-09-20T11:00:00+02:00".into()));
-        assert_eq!(files(&list(PROJECT, &rows(), &instant).unwrap()), ["IMG_0001.jpg"]);
+        assert_eq!(
+            files(&list(PROJECT, &rows(), &instant).unwrap()),
+            ["IMG_0001.jpg"]
+        );
         let instant = filter(|f| f.since = Some("2026-09-20T11:00:00+01:00".into()));
-        assert_eq!(files(&list(PROJECT, &rows(), &instant).unwrap()), [] as [&str; 0]);
+        assert_eq!(
+            files(&list(PROJECT, &rows(), &instant).unwrap()),
+            [] as [&str; 0]
+        );
     }
 
     #[test]
@@ -826,17 +908,30 @@ mod tests {
             f.since = Some("2026-09-20".into());
             f.until = Some("2026-09-19".into());
         });
-        assert_eq!(list(PROJECT, &rows(), &crossed).unwrap_err().code, INVALID_FILTER);
         assert_eq!(
-            list(PROJECT, &rows(), &filter(|f| f.limit = Some(0))).unwrap_err().code,
+            list(PROJECT, &rows(), &crossed).unwrap_err().code,
             INVALID_FILTER
         );
         assert_eq!(
-            list(PROJECT, &rows(), &filter(|f| f.limit = Some(501))).unwrap_err().code,
+            list(PROJECT, &rows(), &filter(|f| f.limit = Some(0)))
+                .unwrap_err()
+                .code,
             INVALID_FILTER
         );
         assert_eq!(
-            list(PROJECT, &rows(), &filter(|f| f.form = Some("no slug".into()))).unwrap_err().code,
+            list(PROJECT, &rows(), &filter(|f| f.limit = Some(501)))
+                .unwrap_err()
+                .code,
+            INVALID_FILTER
+        );
+        assert_eq!(
+            list(
+                PROJECT,
+                &rows(),
+                &filter(|f| f.form = Some("no slug".into()))
+            )
+            .unwrap_err()
+            .code,
             INVALID_FILTER
         );
     }
@@ -844,18 +939,30 @@ mod tests {
     #[test]
     fn filters_by_form_sync_state_and_file_name_case_insensitively() {
         let by_form = filter(|f| f.form = Some("poles".into()));
-        assert_eq!(files(&list(PROJECT, &rows(), &by_form).unwrap()), ["IMG_0001.jpg", "IMG_0003.jpg"]);
+        assert_eq!(
+            files(&list(PROJECT, &rows(), &by_form).unwrap()),
+            ["IMG_0001.jpg", "IMG_0003.jpg"]
+        );
         let waiting = filter(|f| f.sync = Some(SyncState::Waiting));
-        assert_eq!(files(&list(PROJECT, &rows(), &waiting).unwrap()), ["IMG_0001.jpg", "meter_0004.jpg"]);
+        assert_eq!(
+            files(&list(PROJECT, &rows(), &waiting).unwrap()),
+            ["IMG_0001.jpg", "meter_0004.jpg"]
+        );
         let synced = filter(|f| f.sync = Some(SyncState::Synced));
         assert_eq!(
             files(&list(PROJECT, &rows(), &synced).unwrap()),
             ["span_0002.jpg", "IMG_0003.jpg", "scan.jpg"]
         );
         let text = filter(|f| f.text = Some("img".into()));
-        assert_eq!(files(&list(PROJECT, &rows(), &text).unwrap()), ["IMG_0001.jpg", "IMG_0003.jpg"]);
+        assert_eq!(
+            files(&list(PROJECT, &rows(), &text).unwrap()),
+            ["IMG_0001.jpg", "IMG_0003.jpg"]
+        );
         let padded = filter(|f| f.text = Some(" 0004 ".into()));
-        assert_eq!(files(&list(PROJECT, &rows(), &padded).unwrap()), ["meter_0004.jpg"]);
+        assert_eq!(
+            files(&list(PROJECT, &rows(), &padded).unwrap()),
+            ["meter_0004.jpg"]
+        );
     }
 
     #[test]
@@ -867,7 +974,10 @@ mod tests {
             f.sync = Some(SyncState::Synced);
             f.text = Some("img".into());
         });
-        assert_eq!(files(&list(PROJECT, &rows(), &all).unwrap()), ["IMG_0003.jpg"]);
+        assert_eq!(
+            files(&list(PROJECT, &rows(), &all).unwrap()),
+            ["IMG_0003.jpg"]
+        );
         let none = filter(|f| {
             f.form = Some("poles".into());
             f.sync = Some(SyncState::Waiting);
@@ -875,7 +985,10 @@ mod tests {
         });
         let answer = list(PROJECT, &rows(), &none).unwrap();
         assert_eq!(answer.count, 0);
-        assert_eq!(answer.total, 5, "the total is the project's holdings, not the page");
+        assert_eq!(
+            answer.total, 5,
+            "the total is the project's holdings, not the page"
+        );
     }
 
     #[test]
@@ -884,20 +997,42 @@ mod tests {
         assert_eq!(
             answer.forms,
             [
-                FormCount { form: "poles".into(), count: 2 },
-                FormCount { form: "lines".into(), count: 1 },
-                FormCount { form: "meters".into(), count: 1 },
-                FormCount { form: "scan".into(), count: 1 },
+                FormCount {
+                    form: "poles".into(),
+                    count: 2
+                },
+                FormCount {
+                    form: "lines".into(),
+                    count: 1
+                },
+                FormCount {
+                    form: "meters".into(),
+                    count: 1
+                },
+                FormCount {
+                    form: "scan".into(),
+                    count: 1
+                },
             ]
         );
-        assert_eq!((answer.count, answer.matched, answer.total, answer.more), (2, 5, 5, true));
+        assert_eq!(
+            (answer.count, answer.matched, answer.total, answer.more),
+            (2, 5, 5, true)
+        );
         assert_eq!(list(PROJECT, &[], &Filter::default()).unwrap().forms, []);
     }
 
     #[test]
     fn only_this_projects_originals_are_moments() {
         let mut rows = rows();
-        rows.push(row("poles", "e9", "IMG_0009.jpg", false, day(2026, 9, 21, 9), true));
+        rows.push(row(
+            "poles",
+            "e9",
+            "IMG_0009.jpg",
+            false,
+            day(2026, 9, 21, 9),
+            true,
+        ));
         rows.last_mut().unwrap().path = format!("other_project/forms/poles/e9/IMG_0009.jpg");
         rows.push(MomentRow {
             path: format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg"),
@@ -916,14 +1051,26 @@ mod tests {
     fn a_moment_is_described_with_its_clock_location_and_navigate_verdict() {
         let held = &rows()[0];
         let moment = describe(PROJECT, held).unwrap();
-        assert_eq!((moment.form.as_str(), moment.entry.as_str()), ("poles", "e1"));
-        assert_eq!(moment.thumbnail_path, format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg"));
+        assert_eq!(
+            (moment.form.as_str(), moment.entry.as_str()),
+            ("poles", "e1")
+        );
+        assert_eq!(
+            moment.thumbnail_path,
+            format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg")
+        );
         assert_eq!(moment.when_ms, moment.captured_at_ms.unwrap());
         assert!(moment.navigate.enabled && moment.location.is_some());
 
         let not_local = describe(PROJECT, &rows()[4]).unwrap();
-        assert_eq!(not_local.navigate.reason, Some(NavigateRefusal::EntryNotLocal));
-        assert_eq!(not_local.when_ms, not_local.cached_at_ms, "the cache clock stands in");
+        assert_eq!(
+            not_local.navigate.reason,
+            Some(NavigateRefusal::EntryNotLocal)
+        );
+        assert_eq!(
+            not_local.when_ms, not_local.cached_at_ms,
+            "the cache clock stands in"
+        );
 
         let mut without_location = rows()[1].clone();
         without_location.entry = Some(EntryFacts {
@@ -931,7 +1078,10 @@ mod tests {
             geometry: None,
         });
         let described = describe(PROJECT, &without_location).unwrap();
-        assert_eq!(described.navigate.reason, Some(NavigateRefusal::EntryWithoutLocation));
+        assert_eq!(
+            described.navigate.reason,
+            Some(NavigateRefusal::EntryWithoutLocation)
+        );
         assert_eq!(described.when_ms, 7);
     }
 
@@ -939,14 +1089,26 @@ mod tests {
     fn read_answers_the_held_row_or_one_refusal() {
         let held = rows();
         let path = held[0].path.clone();
-        assert_eq!(read(PROJECT, &path, Some(&held[0])).unwrap().file, "IMG_0001.jpg");
-        assert_eq!(read(PROJECT, &path, None).unwrap_err().code, MOMENT_NOT_HELD);
-        assert_eq!(read(PROJECT, &path, Some(&held[1])).unwrap_err().code, MOMENT_NOT_HELD);
+        assert_eq!(
+            read(PROJECT, &path, Some(&held[0])).unwrap().file,
+            "IMG_0001.jpg"
+        );
+        assert_eq!(
+            read(PROJECT, &path, None).unwrap_err().code,
+            MOMENT_NOT_HELD
+        );
+        assert_eq!(
+            read(PROJECT, &path, Some(&held[1])).unwrap_err().code,
+            MOMENT_NOT_HELD
+        );
         let thumb = MomentRow {
             path: format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg"),
             ..held[0].clone()
         };
-        assert_eq!(read(PROJECT, &thumb.path, Some(&thumb)).unwrap_err().code, NOT_SURVEY_MEDIA);
+        assert_eq!(
+            read(PROJECT, &thumb.path, Some(&thumb)).unwrap_err().code,
+            NOT_SURVEY_MEDIA
+        );
     }
 
     #[test]
@@ -955,37 +1117,65 @@ mod tests {
         let admitted = rotation(PROJECT, &path, 90, false).unwrap();
         assert_eq!(admitted.degrees, 90);
         assert_eq!(admitted.source, RotationSource::Published);
-        assert_eq!(admitted.thumbnail_path, format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg"));
+        assert_eq!(
+            admitted.thumbnail_path,
+            format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg")
+        );
         // A counter-clockwise click is the net turn 270; a waiting rotation is
         // turned again in place.
         assert_eq!(rotation(PROJECT, &path, -90, true).unwrap().degrees, 270);
-        assert_eq!(rotation(PROJECT, &path, -90, true).unwrap().source, RotationSource::Waiting);
+        assert_eq!(
+            rotation(PROJECT, &path, -90, true).unwrap().source,
+            RotationSource::Waiting
+        );
         assert_eq!(rotation(PROJECT, &path, 180, false).unwrap().degrees, 180);
         // The refusals, before any byte moves.
-        assert_eq!(rotation(PROJECT, &path, 0, false).unwrap_err().code, INVALID_TURN);
-        assert_eq!(rotation(PROJECT, &path, 360, false).unwrap_err().code, INVALID_TURN);
-        assert_eq!(rotation(PROJECT, &path, 45, false).unwrap_err().code, INVALID_TURN);
-        let thumb = format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg");
-        assert_eq!(rotation(PROJECT, &thumb, 90, false).unwrap_err().code, DERIVED_THUMBNAIL);
-        assert_eq!(rotation("other", &path, 90, false).unwrap_err().code, PROJECT_MISMATCH);
         assert_eq!(
-            rotation(PROJECT, "data:image/png;base64,AAAA", 90, false).unwrap_err().code,
+            rotation(PROJECT, &path, 0, false).unwrap_err().code,
+            INVALID_TURN
+        );
+        assert_eq!(
+            rotation(PROJECT, &path, 360, false).unwrap_err().code,
+            INVALID_TURN
+        );
+        assert_eq!(
+            rotation(PROJECT, &path, 45, false).unwrap_err().code,
+            INVALID_TURN
+        );
+        let thumb = format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg");
+        assert_eq!(
+            rotation(PROJECT, &thumb, 90, false).unwrap_err().code,
+            DERIVED_THUMBNAIL
+        );
+        assert_eq!(
+            rotation("other", &path, 90, false).unwrap_err().code,
+            PROJECT_MISMATCH
+        );
+        assert_eq!(
+            rotation(PROJECT, "data:image/png;base64,AAAA", 90, false)
+                .unwrap_err()
+                .code,
             NOT_SURVEY_MEDIA
         );
         assert_eq!(
-            rotation(PROJECT, "https://example.test/x.jpg", 90, false).unwrap_err().code,
+            rotation(PROJECT, "https://example.test/x.jpg", 90, false)
+                .unwrap_err()
+                .code,
             NOT_SURVEY_MEDIA
         );
     }
 
     #[test]
     fn the_json_door_answers_ok_or_refused() {
-        let input = json!({"op": "list", "project": PROJECT, "rows": rows(), "filter": {"form": "poles"}});
-        let answer: Value = serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
+        let input =
+            json!({"op": "list", "project": PROJECT, "rows": rows(), "filter": {"form": "poles"}});
+        let answer: Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
         assert_eq!(answer["status"], "ok");
         assert_eq!(answer["data"]["count"], 2);
         let input = json!({"op": "rotation", "project": PROJECT, "path": "nope", "degrees": 90});
-        let answer: Value = serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
+        let answer: Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
         assert_eq!(answer["status"], "refused");
         assert_eq!(answer["refusal"]["code"], NOT_SURVEY_MEDIA);
         assert!(evaluate(b"{\"op\":\"nope\"}").is_err());
