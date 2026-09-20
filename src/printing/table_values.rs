@@ -30,7 +30,7 @@ pub enum ValueKeyMode {
     /// Every value prints literally.
     #[default]
     Off,
-    /// Every bound column whose non-empty values recur in at most
+    /// Every bound column whose non-empty values recur in two to
     /// `max_categories` categories, and whose widest value is wider than its
     /// index, compacts.
     Auto,
@@ -248,10 +248,11 @@ pub fn plan(
             continue;
         }
         if key.mode == ValueKeyMode::Auto {
-            // A category is a value that recurs. Values that each appear
-            // once are not categories: indexing them would only move every
-            // value from its cell into the legend.
-            if values.len() >= filled {
+            // A category is a value that recurs, and a key has at least two
+            // entries. Values that each appear once are not categories:
+            // indexing them would only move every value from its cell into
+            // the legend; one value everywhere is a caption, not a key.
+            if values.len() < MIN_MAX_CATEGORIES || values.len() >= filled {
                 continue;
             }
             let index = measure(&values.len().to_string());
@@ -354,6 +355,25 @@ mod tests {
         recurring[4][0] = "H1".into();
         let plan = super::plan(&wide, &columns, &headings, &recurring, width).unwrap();
         assert_eq!(plan.legend[0], "House: 1 H1 · 2 H2 · 3 H3 · 4 H4");
+        // One value everywhere is a caption, not a key: auto leaves it
+        // literal; the explicit columns mode still compacts it.
+        let mut uniform = rows.clone();
+        for row in &mut uniform {
+            row[1] = "Residential".into();
+        }
+        let plan = super::plan(&ValueKey::auto(), &columns, &headings, &uniform, width).unwrap();
+        assert!(plan.compacted(1).is_none());
+        let only = ValueKey {
+            mode: ValueKeyMode::Columns,
+            max_categories: 3,
+            columns: vec!["category".into()],
+        };
+        assert_eq!(
+            super::plan(&only, &columns, &headings, &uniform, width)
+                .unwrap()
+                .legend,
+            ["Category: 1 Residential"]
+        );
         // Two rows of two different values are two singletons, not two
         // categories; the explicit columns mode still compacts them.
         let pair = vec![rows[0].clone(), rows[2].clone()];
