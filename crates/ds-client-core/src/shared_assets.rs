@@ -36,7 +36,10 @@ pub struct DownloadCall<'a> {
     url: &'a str,
     size: usize,
 }
-impl DownloadCall<'_> {
+impl<'a> DownloadCall<'a> {
+    pub(crate) fn new(url: &'a str, size: usize) -> Self {
+        Self { url, size }
+    }
     pub fn url(&self) -> &str {
         self.url
     }

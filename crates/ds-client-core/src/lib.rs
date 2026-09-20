@@ -236,6 +236,9 @@ pub mod design_tags;
 pub use transport::DesignMigrationCall;
 pub use transport::DesignTagsCall;
 
+/// The project's document catalogue — folders, rows, bytes, classification,
+/// links and ingest — reachable without a window.
+pub mod project_assets;
 pub mod shared_assets;
 mod shared_map_publish;
 pub use transport::ProjectManagementCall;

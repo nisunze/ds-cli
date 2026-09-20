@@ -1528,6 +1528,38 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::shared_assets::run(self.profile, transport, self.authority(), project, command)
     }
+    /// One governed catalogue action on the project's assets, on a device
+    /// session. The same door the restored-user path takes.
+    pub fn project_assets<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        command: &crate::project_assets::Command,
+        reader: Option<&mut dyn std::io::Read>,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project)?;
+        self.ensure_active(now)?;
+        crate::project_assets::run(
+            self.profile,
+            transport,
+            self.authority(),
+            project,
+            command,
+            reader,
+        )
+    }
+    /// One asset's row and its verified bytes, on a device session.
+    pub fn read_asset_bytes<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        asset_id: &str,
+        now: u64,
+    ) -> Result<(serde_json::Value, Vec<u8>), ClientError> {
+        self.ensure_active(now)?;
+        crate::project_assets::read_bytes(self.profile, transport, self.authority(), project, asset_id)
+    }
     pub fn design_versions<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

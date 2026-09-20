@@ -1085,6 +1085,54 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             command,
         )
     }
+    /// One governed catalogue action on the project's assets. `reader`
+    /// carries the bytes of an ingest and nothing else.
+    pub fn project_assets(
+        &mut self,
+        project: &str,
+        command: &crate::project_assets::Command,
+        reader: Option<&mut dyn std::io::Read>,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project)?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::project_assets::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            command,
+            reader,
+        )
+    }
+    /// One asset's row and its verified bytes, through the signed read.
+    pub fn read_asset_bytes(
+        &mut self,
+        project: &str,
+        asset_id: &str,
+        now: u64,
+    ) -> Result<(serde_json::Value, Vec<u8>), ClientError> {
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::project_assets::read_bytes(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            asset_id,
+        )
+    }
     pub fn design_versions(
         &mut self,
         project: &str,
