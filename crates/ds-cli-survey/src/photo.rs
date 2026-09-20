@@ -102,7 +102,13 @@ pub static ROTATE_COMMAND: Command = Command {
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    search: &["moments", "turn photo", "orientation", "sideways picture", "rotate image"],
+    search: &[
+        "moments",
+        "turn photo",
+        "orientation",
+        "sideways picture",
+        "rotate image",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -237,23 +243,32 @@ fn replace_bundle(target: &Path, prepared: &survey_photo::Prepared) -> Result<()
     let parent = target
         .parent()
         .ok_or_else(|| invalid("Survey-media directory has no parent"))?;
-    fs::create_dir_all(parent).map_err(|_| moments::unreadable("Cannot create survey-media directory"))?;
+    fs::create_dir_all(parent)
+        .map_err(|_| moments::unreadable("Cannot create survey-media directory"))?;
     let staging = parent.join(format!(
         "{}.staging-{}",
-        target.file_name().and_then(|n| n.to_str()).unwrap_or("bundle"),
+        target
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("bundle"),
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&staging);
     write_bundle(&staging, prepared)?;
     let previous = parent.join(format!(
         "{}.previous-{}",
-        target.file_name().and_then(|n| n.to_str()).unwrap_or("bundle"),
+        target
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("bundle"),
         std::process::id()
     ));
     if target.exists() {
-        fs::rename(target, &previous).map_err(|_| moments::unreadable("Cannot retire the held bundle"))?;
+        fs::rename(target, &previous)
+            .map_err(|_| moments::unreadable("Cannot retire the held bundle"))?;
     }
-    fs::rename(&staging, target).map_err(|_| moments::unreadable("Cannot place the held bundle"))?;
+    fs::rename(&staging, target)
+        .map_err(|_| moments::unreadable("Cannot place the held bundle"))?;
     let _ = fs::remove_dir_all(&previous);
     Ok(())
 }
@@ -264,7 +279,11 @@ fn held_manifest(root: &Path) -> Result<Manifest, Failure> {
         .map_err(|_| invalid("Invalid rotation manifest"))
 }
 
-fn record_of(prepared: &survey_photo::Prepared, previous: Option<&MediaRecord>, now: u64) -> MediaRecord {
+fn record_of(
+    prepared: &survey_photo::Prepared,
+    previous: Option<&MediaRecord>,
+    now: u64,
+) -> MediaRecord {
     let m = &prepared.manifest;
     MediaRecord {
         schema: survey_moments::RECORD_SCHEMA.into(),
@@ -308,9 +327,15 @@ pub fn rotate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     // The store mode consults the held record; the private-bundle mode never
     // touches the store.
-    let state = if out.is_none() { Some(moments::server_state(inputs)?) } else { None };
+    let state = if out.is_none() {
+        Some(moments::server_state(inputs)?)
+    } else {
+        None
+    };
     let waiting = match &state {
-        Some(state) => moments::record(state, project, path)?.filter(|r| r.state == SyncState::Waiting),
+        Some(state) => {
+            moments::record(state, project, path)?.filter(|r| r.state == SyncState::Waiting)
+        }
         None => None,
     };
     let rotation = survey_moments::rotation(project, path, degrees, waiting.is_some())
@@ -325,7 +350,9 @@ pub fn rotate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             let manifest = held_manifest(&root)?;
             let held = read(&root, "original.bin", 50 * 1024 * 1024)?;
             if hash(&held) != record.sha256 || manifest.original_sha256 != record.sha256 {
-                return Err(moments::unreadable("Held rotation bytes differ from their record"));
+                return Err(moments::unreadable(
+                    "Held rotation bytes differ from their record",
+                ));
             }
             let net = (manifest.degrees + rotation.degrees) % 360;
             if net == 0 {
@@ -336,8 +363,10 @@ pub fn rotate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     .survey_media_remove(project, &[path.to_string()])
                     .map_err(moments::unreadable)?;
                 let _ = fs::remove_dir_all(&root);
-                return Ok(json!({"publication": "discarded", "project": project, "path": path,
-                    "reason": "the net turn is a full circle; the published image stands"}));
+                return Ok(
+                    json!({"publication": "discarded", "project": project, "path": path,
+                    "reason": "the net turn is a full circle; the published image stands"}),
+                );
             }
             let bundle = survey_photo::rotate_local(&held, rotation.degrees)
                 .map_err(|_| invalid("Held image is malformed or unsupported"))?;
@@ -385,11 +414,15 @@ pub fn rotate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             let root = moments::media_dir(&state, project, path);
             replace_bundle(&root, &prepared)?;
             let record = record_of(&prepared, waiting.as_ref(), now_ms());
-            let mut store =
-                ds_sync_store::Store::open(&state.join("store.sqlite")).map_err(moments::unreadable)?;
-            store.survey_media_put(&fence, &record).map_err(moments::unreadable)?;
-            Ok(json!({"publication":"held", "state": "waiting", "bundle": root, "manifest": prepared.manifest,
-                "next": format!("ds survey photo publish --project {project} --path {path} --lane {lane} --yes")}))
+            let mut store = ds_sync_store::Store::open(&state.join("store.sqlite"))
+                .map_err(moments::unreadable)?;
+            store
+                .survey_media_put(&fence, &record)
+                .map_err(moments::unreadable)?;
+            Ok(
+                json!({"publication":"held", "state": "waiting", "bundle": root, "manifest": prepared.manifest,
+                "next": format!("ds survey photo publish --project {project} --path {path} --lane {lane} --yes")}),
+            )
         }
         (None, None) => unreachable!("the store mode resolved its state root"),
     }
@@ -409,11 +442,16 @@ pub fn publish(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     .ok_or_else(|| {
                         Failure::conflict(
                             "moment_not_waiting",
-                            format!("no rotation of {path} is waiting on this machine for {project}"),
+                            format!(
+                                "no rotation of {path} is waiting on this machine for {project}"
+                            ),
                         )
                         .remedy(NOT_WAITING.remedy)
                     })?;
-                (moments::media_dir(&state, project, path), Some((state, record)))
+                (
+                    moments::media_dir(&state, project, path),
+                    Some((state, record)),
+                )
             }
             _ => return Err(invalid("Pass exactly one of --path or --bundle")),
         };
@@ -425,8 +463,14 @@ pub fn publish(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let manifest = held_manifest(&root)?;
     let original = read(&root, "original.bin", 50 * 1024 * 1024)?;
     let thumbnail = read(&root, "thumbnail.jpeg", 50 * 1024 * 1024)?;
-    survey_photo::validate_manifest(project, &manifest.account_id, &manifest, &original, &thumbnail)
-        .map_err(|_| invalid("Rotation bundle bytes or project differ from the manifest"))?;
+    survey_photo::validate_manifest(
+        project,
+        &manifest.account_id,
+        &manifest,
+        &original,
+        &thumbnail,
+    )
+    .map_err(|_| invalid("Rotation bundle bytes or project differ from the manifest"))?;
     let value = match ds_cli_auth::survey_photo(
         lane,
         project,
@@ -437,7 +481,9 @@ pub fn publish(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         },
     )? {
         Receipt::Published(value) => value,
-        Receipt::Prepared(_) => return Err(invalid("Native photo owner returned an unexpected receipt")),
+        Receipt::Prepared(_) => {
+            return Err(invalid("Native photo owner returned an unexpected receipt"));
+        }
     };
     if let Some((state, mut record)) = held {
         // The held bytes now ARE the head: the record settles to synced and
@@ -450,7 +496,9 @@ pub fn publish(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let fence = moments::fence(lane)?;
         let mut store =
             ds_sync_store::Store::open(&state.join("store.sqlite")).map_err(moments::unreadable)?;
-        store.survey_media_put(&fence, &record).map_err(moments::unreadable)?;
+        store
+            .survey_media_put(&fence, &record)
+            .map_err(moments::unreadable)?;
     }
     Ok(value)
 }

@@ -15,6 +15,7 @@ asset inventory.
 | Surveyed assets for a design handoff | `survey.entries.select` | Area, exact identities, freshness, digest and completeness; explicitly identify required engineering attributes or photos absent from this projection. |
 | Changes since a prior delivery | `survey.entries.changes` | Last completed replication checkpoint, retained cursors and tombstones; a partial page does not advance the checkpoint. |
 | Work without connectivity | Browser Survey capture | Cached project/forms, local media and durable IndexedDB entry/outbox commits; there is no separate native CLI capture workspace. |
+| Which survey photos this machine holds; a photo shot sideways | `survey.moments.list`, `survey.moments.read`, `survey.photo.rotate`, `survey.photo.publish` | The Server's survey-media store (rows in the lane's sync store, bundles under `survey-media/`): `waiting` is held and not yet published, `synced` equals the published head. See [Survey moments and the one rotation](#survey-moments-and-the-one-rotation). |
 | Standardize or reuse collection forms | Project-form and template commands below | Current settings and versions; configuration reuse does not copy observations. |
 | The map's working area loads too much, or nothing | `survey.working-area.forms`, then `survey.working-area.select` | The forms the operator is working on. The working area loads only the selected forms and, until a choice is made, nothing. |
 
@@ -449,19 +450,50 @@ map-owned local state, such as Working Area transfer or survey-data migration.
 Form Factory, project-form settings, project templates, and project creation
 are API control-plane operations and stay usable with no map open.
 
-### Headless image rotation
+### Survey moments and the one rotation
 
-`ds survey photo rotate --project <id> --path <canonical-object-path> --degrees 90 --out ./rotation --lane canary`
-downloads the pinned source and saves a Rust-generated original and thumbnail
-with a digest-bound `manifest.json`. Use `--expected-generation` to bind the
-operation to a previously inspected image. Review the saved images, then run
-`ds survey photo publish --project <id> --bundle ./rotation --lane canary --yes`.
-The receipt reports publication only after both storage generations verify.
-Retry the same bundle after interruption: publication sends the same bytes and
-never rotates them again. Foreign project, account, deployment audience or
-concurrent source edits are refused. Neither command needs a paired desktop or
-changes the selected project. The Survey MCP chapter exposes these same typed
-commands and arguments, including the separate publication confirmation.
+A moment is one survey original this machine holds bytes for. The Server's
+survey-media store is the authority for what the machine holds: rows in the
+lane's `store.sqlite`, each photo's bundle (`original.bin`, `thumbnail.jpeg`,
+`manifest.json`) under `<state>/survey-media/<project>/`. Reads need no
+credential and no running Server; pass `--server-state-dir` only when the
+Server runs on a custom state root.
+
+`ds survey moments list --project <id> --lane canary --output json` answers
+the kernel's gallery: newest first, N of M (`count`, `matched`, `total`,
+`more`), `waiting`/`synced` counts and the `forms[]` present. Filters compose
+with AND: `--form <slug>`, `--since`/`--until` (a bare `YYYY-MM-DD` is a whole
+UTC day, inclusive; an RFC 3339 instant is honoured as an instant), `--sync
+waiting|synced`, `--text <file-name substring>`, `--limit 1..500`. A malformed
+criterion is one `invalid_filter` refusal, never an empty grid. Each moment
+carries `path`, `file`, `form`, `entry`, `thumbnail_path`, `media_type`, `size`,
+`state`, `cached_at_ms`, `when_ms`, `generation`, `sha256` and a `navigate`
+verdict (`entry_not_local` on a Server that holds no survey entries).
+`ds survey moments read --project <id> --path <object-path>` adds the bundle
+directory and file paths, `degrees`, `source_generation` and
+`published_generation`; a path the machine does not hold is `moment_not_held`.
+
+`ds survey photo rotate` is the ONE rotation, with the properties panel's
+semantics: only a stored original of the project (a thumbnail, a URL or another
+project's photo is `not_rotatable` before any byte moves); `--degrees` is the
+net clockwise quarter-turn (90, 180 or 270 — counter-clockwise is 270),
+applied once to the generation-pinned source through the shared Rust image
+engine, which regenerates the JPEG thumbnail. Without `--out` the result is
+HELD on this machine: the moments list shows it `waiting`, a further turn of a
+waiting photo turns the held bytes and supersedes them (the precondition stays
+the one the first turn pinned), and a full circle discards the wait because
+the published image already stands. Nothing reaches the bucket until
+`ds survey photo publish --project <id> --path <object-path> --lane canary --yes`,
+which sends those exact bytes under storage-generation preconditions, verifies
+the thumbnail against the published original and settles the record to
+`synced` with the published generations. Retry the same publish after an
+interruption; it never rotates again. `moment_not_waiting` says nothing is
+held for that path. With `--out <new-dir>` the rotation is a private bundle
+instead (the store is not consulted or touched) and is published with
+`--bundle`. Use `--expected-generation` to bind a first turn to a previously
+inspected image. Foreign project, account, deployment audience or concurrent
+source edits are refused. The `survey-media` MCP profile exposes exactly these
+typed commands.
 
 For downloaded files, `ds survey photo rotate-local --input ./photo.jpg --degrees 90 --out ./rotated`
 uses the same Rust pixels offline and returns local image and thumbnail paths.

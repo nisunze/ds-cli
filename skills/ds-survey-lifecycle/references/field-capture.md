@@ -19,6 +19,20 @@ normalization and thumbnails run locally in WASM; Flutter retains its existing
 server thumbnail path. Local pending means collected, not yet published.
 Initial preparation and later publication still require connectivity.
 
+## Held photos and the one rotation
+
+`survey.moments.list --project <id>` is what this machine holds: the Server's
+survey-media store, read without a credential or a running Server. `waiting`
+rows are rotations not yet published (the only copy); `synced` rows equal the
+published head. `survey.moments.read` gives one photo's details and bundle
+paths. Rotate with `survey.photo.rotate --path <original> --degrees 90|180|270`
+(net clockwise; 270 is counter-clockwise): the result is held `waiting`, a
+further turn turns the held bytes, a full circle discards the wait; publish
+the exact held bytes with `survey.photo.publish --path <original> --yes`. A
+thumbnail, URL or foreign path is refused before any byte moves. The browser
+answers the same commands over its own photo cache; do not read IndexedDB
+or the store files directly.
+
 ## Publication and migration
 
 Follow the browser's supported synchronization workflow and verify pending,

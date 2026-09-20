@@ -96,6 +96,31 @@ Without it the command refuses `workstation_approval_required` rather than
 starting an installer that will silently block on a dialogue nobody is
 watching. The flag grants no privilege of its own and never bypasses UAC.
 
+## Local data: what this machine holds for a project
+
+`ds workstation local-data status --project <id> --lane canary --output json`
+reads the Server's state root and answers one row per local store, in the
+kernel's roster: `sync_store` (publication rows, heads, grants, receipts,
+leases; size not tracked), `report_artifacts` (sealed report batches),
+`survey_media_waiting` (rotated survey photos not yet published — the only
+copy), `survey_media_synced` (photos equal to the published head, with their
+thumbnails), `sync_downloads` (verified replicas). Each row says `count`,
+`bytes` where the store tracks them (`size_tracked: false` otherwise) and
+`retention`: `retained` is the machine's only copy of work; `cleanable` is a
+replica the machine can take again. `cleanable[]` names what a clean would
+remove; `storage.root` is the state root. No credential and no running Server
+are needed; `--server-state-dir` names a custom root. The browser answers the
+same command over its own stores (survey records, design rooms, drafts,
+version downloads) through the same kernel module.
+
+`ds workstation local-data clean --project <id> [--store <id>…] --lane canary --yes`
+removes only the cleanable stores named (every cleanable store when none is
+named) and answers `removed[]` with the status after. A retained store is
+refused `store_retained`; an unknown id `unknown_store`; nothing to remove
+`nothing_to_clean`. Cleaning a synced survey photo removes its bundle and
+record; cleaning sync downloads removes the project's replica directory, which
+the next sync pass downloads again.
+
 ## Refusals and gaps
 
 `ds workstation <command> --help` is the live list per command; these are the
@@ -106,6 +131,15 @@ Shared by more than one command:
 - `workstation_component_unknown` — id outside the governed catalogue.
 - `workstation_mutation_unsupported` — the component, platform or target has no
   proven mutation contract, so `install` and `configure` fail closed.
+
+`local-data status` and `local-data clean`:
+
+- `local_root_invalid` — the state root cannot be resolved from the lane and
+  `--server-state-dir`.
+- `local_store_unreadable` — the lane's sync store or a state subdirectory
+  cannot be read.
+- `unknown_store`, `store_retained`, `nothing_to_clean` — `clean` only, before
+  anything moves.
 
 `plan` only:
 

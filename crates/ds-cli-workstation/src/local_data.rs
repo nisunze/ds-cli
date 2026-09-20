@@ -21,10 +21,14 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::local_data::{self, Host, Reading, Storage};
 use ds_command_kernel::survey_moments::{self, SyncState};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-const PROJECT_ARG: Arg = Arg::value("project", "<project-id>", "Exact project whose local data is read.")
-    .required();
+const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<project-id>",
+    "Exact project whose local data is read.",
+)
+.required();
 const SERVER_STATE_DIR_ARG: Arg = Arg::value(
     "server-state-dir",
     "<absolute-path>",
@@ -114,9 +118,21 @@ pub static CLEAN_COMMAND: Command = Command {
         note: "Free the project's verified downloads; the next sync pass takes them again.",
         runnable: false,
     }],
-    refusals: &[UNKNOWN_STORE, STORE_RETAINED, NOTHING_TO_CLEAN, ROOT_INVALID, STORE_UNREADABLE],
+    refusals: &[
+        UNKNOWN_STORE,
+        STORE_RETAINED,
+        NOTHING_TO_CLEAN,
+        ROOT_INVALID,
+        STORE_UNREADABLE,
+    ],
     reference: Some("docs/reference/workstation.md"),
-    search: &["clean up", "free space", "clear cache", "delete local data", "remove downloads"],
+    search: &[
+        "clean up",
+        "free space",
+        "clear cache",
+        "delete local data",
+        "remove downloads",
+    ],
     requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };
@@ -146,7 +162,9 @@ fn walk(root: &Path) -> (u64, u64) {
         if depth > 16 {
             return;
         }
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         for entry in entries.flatten() {
             let Ok(meta) = entry.metadata() else { continue };
             if meta.is_dir() {
@@ -169,7 +187,9 @@ fn readings(state: &Path, project: &str) -> Result<Vec<Reading>, Failure> {
     let (rows, batches, batch_bytes, media) = match &store {
         Some(store) => {
             let rows = store.rows_of_project(project).map_err(unreadable)?;
-            let queue = store.queue_all(Some(project), now_ms()).map_err(unreadable)?;
+            let queue = store
+                .queue_all(Some(project), now_ms())
+                .map_err(unreadable)?;
             let (batches, bytes) = queue
                 .projects
                 .iter()
@@ -181,14 +201,21 @@ fn readings(state: &Path, project: &str) -> Result<Vec<Reading>, Failure> {
         None => (0, 0, 0, Vec::new()),
     };
     let media_reading = |state: SyncState| {
-        let held: Vec<_> = media.iter().filter(|record| record.state == state).collect();
+        let held: Vec<_> = media
+            .iter()
+            .filter(|record| record.state == state)
+            .collect();
         Reading {
             id: match state {
                 SyncState::Waiting => "survey_media_waiting".into(),
                 SyncState::Synced => "survey_media_synced".into(),
             },
             count: held.len() as u64,
-            bytes: Some(held.iter().map(|record| record.size + record.thumbnail_size).sum()),
+            bytes: Some(
+                held.iter()
+                    .map(|record| record.size + record.thumbnail_size)
+                    .sum(),
+            ),
         }
     };
     let (download_count, download_bytes) = walk(&state.join("sync-downloads").join(project));
@@ -226,7 +253,13 @@ pub fn status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let state = server_state(inputs)?;
     let readings = readings(&state, project)?;
     let storage = storage(&state, &readings);
-    Ok(json!(local_data::answer(Host::Server, project, &readings, storage, now_ms())))
+    Ok(json!(local_data::answer(
+        Host::Server,
+        project,
+        &readings,
+        storage,
+        now_ms()
+    )))
 }
 
 /// The kernel's refusal, re-raised under the code it named and the class
@@ -235,7 +268,9 @@ fn refused(refusal: local_data::Refusal) -> Failure {
     let message = refusal.message;
     match refusal.code {
         "unknown_store" => Failure::invalid("unknown_store", message).remedy(UNKNOWN_STORE.remedy),
-        "store_retained" => Failure::invalid("store_retained", message).remedy(STORE_RETAINED.remedy),
+        "store_retained" => {
+            Failure::invalid("store_retained", message).remedy(STORE_RETAINED.remedy)
+        }
         "confirmation_required" => {
             Failure::invalid("confirmation_required", message).remedy(refusal.remedy)
         }
@@ -280,8 +315,10 @@ pub fn clean(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
             other => {
                 return Err(Failure::internal(
                     "clean_store_unhandled",
-                    format!("the kernel planned a clean of {other}, which this host cannot perform"),
-                ))
+                    format!(
+                        "the kernel planned a clean of {other}, which this host cannot perform"
+                    ),
+                ));
             }
         }
     }
@@ -305,7 +342,9 @@ pub fn render_status(data: &Value) -> String {
     for row in data["stores"].as_array().into_iter().flatten() {
         let bytes = row["bytes"]
             .as_u64()
-            .map_or("size not tracked".to_string(), |bytes| format!("{:.1} MiB", bytes as f64 / 1048576.0));
+            .map_or("size not tracked".to_string(), |bytes| {
+                format!("{:.1} MiB", bytes as f64 / 1048576.0)
+            });
         out.push_str(&format!(
             "{:<22} {:>8} {:>18} {}\n",
             row["id"].as_str().unwrap_or(""),
@@ -317,7 +356,11 @@ pub fn render_status(data: &Value) -> String {
     if let Some(cleanable) = data["cleanable"].as_array().filter(|list| !list.is_empty()) {
         out.push_str(&format!(
             "cleanable: {} ({} items)\n",
-            cleanable.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "),
+            cleanable
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", "),
             data["cleanable_count"]
         ));
     }
@@ -327,7 +370,11 @@ pub fn render_status(data: &Value) -> String {
 pub fn render_clean(data: &Value) -> String {
     let mut out = String::new();
     for row in data["removed"].as_array().into_iter().flatten() {
-        out.push_str(&format!("removed {:<22} {} items\n", row["id"].as_str().unwrap_or(""), row["count"]));
+        out.push_str(&format!(
+            "removed {:<22} {} items\n",
+            row["id"].as_str().unwrap_or(""),
+            row["count"]
+        ));
     }
     out.push_str(&render_status(&data["status"]));
     out

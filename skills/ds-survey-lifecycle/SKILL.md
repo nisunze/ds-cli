@@ -26,6 +26,7 @@ form slugs, field keys, command names or internal storage.
 | “Give the designer the surveyed assets in this area.” | Preserve observed locations and identities as design inputs. | Bounded spatial selection; state which required attributes it cannot supply. |
 | “What changed since the last delivery?” | Refresh a downstream copy without rereading everything. | `survey.entries.changes`; retain the completed checkpoint. |
 | “Our team will work without connectivity.” | Prepare browser forms and retain captures until publication succeeds. | [Field capture](references/field-capture.md). |
+| “Which survey photos does this machine hold?” / “This photo is sideways.” | The Server's survey-media store is what the machine holds; a rotation is held there first and published after. | `survey.moments.list` (filters: form, since/until, waiting/synced, text), `survey.moments.read`; `survey.photo.rotate` then `survey.photo.publish --path`; [field capture](references/field-capture.md). |
 | “Set up or reuse our collection forms.” | Define observations consistently for one project or future projects. | [Configuration](references/configuration.md). |
 | “The map loads every form / shows no survey entries.” | The working area loads only the forms chosen on this host; never chosen loads nothing. | `survey.working-area.forms` to read, `survey.working-area.select --form <slug>…` (or `--all`, `--none`) to choose, `survey.working-area.clear` to forget. |
 

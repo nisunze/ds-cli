@@ -27,6 +27,12 @@ Read the exact live descriptor before the next call. Use
 a no-side-effect plan, and `ds workstation verify --component <id> --output
 json` only on the host that owns the component.
 
+What the machine holds for one project (sync store rows, sealed report
+batches, survey photos waiting or synced, verified downloads) is
+`ds workstation local-data status --project <id> --output json`; only its
+`cleanable[]` stores may be removed, with `ds workstation local-data clean
+--project <id> --yes`.
+
 ## Apply only the proven exact actions
 
 After explicit user intent, review the live install descriptor. Native Windows

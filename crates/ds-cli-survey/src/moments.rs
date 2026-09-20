@@ -22,7 +22,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::survey_moments::{self, Filter, MediaRecord, SyncState};
 use ds_command_kernel::sync_store::Fence;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const PROJECT_ARG: Arg = Arg::value(
     "project",
@@ -53,8 +53,12 @@ const SYNC_ARG: Arg = Arg::value(
 )
 .choices(&["waiting", "synced"]);
 const TEXT_ARG: Arg = Arg::value("text", "<substring>", "Case-insensitive file-name search.");
-const LIMIT_ARG: Arg = Arg::value("limit", "<1-500>", "Rows answered; `more` says if the filter kept more.")
-    .default("60");
+const LIMIT_ARG: Arg = Arg::value(
+    "limit",
+    "<1-500>",
+    "Rows answered; `more` says if the filter kept more.",
+)
+.default("60");
 const PATH_ARG: Arg = Arg::value(
     "path",
     "<object-path>",
@@ -240,8 +244,11 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         text: inputs.value("text").map(str::to_string),
         limit: match inputs.value("limit") {
             Some(raw) => Some(raw.parse().map_err(|_| {
-                Failure::invalid(INVALID_FILTER.code, format!("limit `{raw}` is not a number"))
-                    .remedy(INVALID_FILTER.remedy)
+                Failure::invalid(
+                    INVALID_FILTER.code,
+                    format!("limit `{raw}` is not a number"),
+                )
+                .remedy(INVALID_FILTER.remedy)
             })?),
             None => None,
         },
@@ -301,5 +308,8 @@ pub fn render_list(data: &Value) -> String {
 }
 
 pub fn render_read(data: &Value) -> String {
-    format!("{}\n", serde_json::to_string_pretty(data).unwrap_or_default())
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(data).unwrap_or_default()
+    )
 }

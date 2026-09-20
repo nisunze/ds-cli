@@ -50,6 +50,10 @@ ds-client-core = { workspace = true }
 # carry from canonical project data with no map, using the same kernel calls
 # the command makes. Only the contract test names the kernel directly.
 ds-command-kernel = { workspace = true }
+# tests/survey_moments.rs seeds the Server's survey-media records exactly as
+# `ds survey photo rotate` writes them, then proves the read side and the
+# clean through the binary with no gateway.
+ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
 ds-solar-contracts = { workspace = true }

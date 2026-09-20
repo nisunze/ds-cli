@@ -56,6 +56,13 @@ visibility (`map.layer.list|show|hide`) and the working area's form selection
 Server; selecting a project never changes them, and they never change a
 selection.
 
+What this machine holds for a project — store by store, retained or
+cleanable — is `workstation.local-data.status --project <id>`; free the
+cleanable replicas (synced survey photos, verified sync downloads) with
+`workstation.local-data.clean --project <id> --yes`. Both read the Server's
+state root with no credential and no running Server; the browser answers the
+same command over its own stores. Never clean by deleting files or IndexedDB.
+
 Touched version and attachment boundaries instead require explicit `--project`:
 `design.version.*` and `design.attachment.*` capture that project for native
 authorization and never consult the Web active project or require Desktop.
