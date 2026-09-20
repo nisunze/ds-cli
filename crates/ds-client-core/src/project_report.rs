@@ -1,9 +1,10 @@
 //! Fixed selected-project operations behind ds-brain's `/report` action gate.
 //!
 //! These are the map-independent project operations: the compounded report
-//! deliverable, the registry of compounded archives, the project transformer
-//! inventory, the transformer status rows every Design read is built from, and
-//! reversible transformer retirement. None of them consumes a Desktop room, a
+//! deliverable, the cloud computation of individual transformer reports, the
+//! registry of compounded archives, the project transformer inventory, the
+//! transformer status rows every Design read is built from, and reversible
+//! transformer retirement. None of them consumes a Desktop room, a
 //! browser store, or a visible map project; the selected
 //! project is injected by the host from its audience-fenced context and the
 //! core owns every request key, action spelling, bound, and deadline.
@@ -35,6 +36,13 @@ pub(crate) const ACTION_INVENTORY: &str = "transformer_inventory";
 pub(crate) const ACTION_LIST_STATUS: &str = "list_transformers_status";
 pub(crate) const ACTION_RETIRE: &str = "retire_transformer";
 pub(crate) const ACTION_RESTORE: &str = "restore_transformer";
+/// The cloud individual-report computation. It is one of the four browser-lane
+/// `/report` actions the routing descriptor names as served by ds-brain but
+/// not yet declared in [`crate::PROJECT_REPORT_ACTIONS`]; declaring it there
+/// is a descriptor edit plus a profile-schema bump (a release event that
+/// re-keys every installed catalogue and device credential), so the core
+/// sends it on the same fixed route without widening the profile identity.
+pub(crate) const ACTION_EXPORT_REPORTS: &str = "export_reports_only";
 
 /// Folder level for individual transformer artifacts inside a compounded ZIP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,6 +248,10 @@ impl RetirementRequest {
 pub(crate) enum ProjectReportOperation<'a> {
     Compounded(&'a CompoundedReportRequest),
     CompoundedList,
+    /// Compute the individual reports of exact transformers in the cloud and
+    /// publish them to the project. The set is never empty: ds-brain routes an
+    /// empty list to the retired generic proxy instead of refusing it.
+    ExportReports(&'a TransformerSet),
     Inventory(&'a TransformerSet),
     ListStatus(&'a TransformerSet),
     Retire(&'a RetirementRequest),
@@ -251,6 +263,7 @@ impl ProjectReportOperation<'_> {
         match self {
             Self::Compounded(_) => ACTION_COMPOUNDED,
             Self::CompoundedList => ACTION_COMPOUNDED_LIST,
+            Self::ExportReports(_) => ACTION_EXPORT_REPORTS,
             Self::Inventory(_) => ACTION_INVENTORY,
             Self::ListStatus(_) => ACTION_LIST_STATUS,
             Self::Retire(_) => ACTION_RETIRE,
@@ -258,18 +271,21 @@ impl ProjectReportOperation<'_> {
         }
     }
 
-    /// The compounded deliverable is computed by ds-brain's Go orchestrator
-    /// only on the Fast lane; every other action is lane-neutral.
+    /// The compounded deliverable and the individual-report computation are
+    /// fanned out by ds-brain's Go orchestrator to the cloud reporter only on
+    /// the Fast lane; every other action is lane-neutral.
     pub(crate) const fn processing_lane(&self) -> Option<&'static str> {
         match self {
-            Self::Compounded(_) => Some("fast"),
+            Self::Compounded(_) | Self::ExportReports(_) => Some("fast"),
             _ => None,
         }
     }
 
     pub(crate) const fn timeout_seconds(&self) -> u64 {
         match self {
-            Self::Compounded(_) => crate::transport::PROJECT_REPORT_TIMEOUT_SECONDS,
+            Self::Compounded(_) | Self::ExportReports(_) => {
+                crate::transport::PROJECT_REPORT_TIMEOUT_SECONDS
+            }
             _ => crate::transport::PROJECT_REPORT_READ_TIMEOUT_SECONDS,
         }
     }
@@ -315,6 +331,9 @@ impl ProjectReportOperation<'_> {
             }
             Self::CompoundedList => {
                 body.insert("include_artifacts".into(), Value::Bool(true));
+            }
+            Self::ExportReports(set) => {
+                body.insert("transformers".into(), names_value(set));
             }
             Self::Inventory(set) | Self::ListStatus(set) => {
                 if !set.is_empty() {
@@ -580,6 +599,199 @@ pub(crate) fn decode_compounded(
         registry_write_failed: wire.registry_write_failed,
         registry_write_error: nonempty(wire.registry_write_error),
     })
+}
+
+// ---------------------------------------------------------------------------
+// Cloud individual-report computation receipt
+// ---------------------------------------------------------------------------
+
+/// What the cloud did with one requested transformer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportReportOutcome {
+    /// The reporter computed and published the individual report.
+    Success,
+    /// Nothing was computed: the artifacts were fresh, or the work was not
+    /// claimed. `reason` says which.
+    Skipped,
+    /// The reporter refused or failed; `error` is ds-brain's bounded sentence.
+    Error,
+}
+
+impl ExportReportOutcome {
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Skipped => "skipped",
+            Self::Error => "error",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "success" => Some(Self::Success),
+            "skipped" => Some(Self::Skipped),
+            "error" => Some(Self::Error),
+            _ => None,
+        }
+    }
+}
+
+/// One transformer's row of the cloud computation receipt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportReportResult {
+    name: String,
+    outcome: ExportReportOutcome,
+    reason: Option<String>,
+    error: Option<String>,
+}
+
+impl ExportReportResult {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub const fn outcome(&self) -> ExportReportOutcome {
+        self.outcome
+    }
+    /// Why nothing was computed; present only on a skipped row.
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+    /// ds-brain's bounded failure sentence; present only on an error row.
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+}
+
+/// The receipt of one cloud individual-report computation: every requested
+/// transformer, in request order, with what the cloud did to it. `partial`
+/// is the route's own verdict (HTTP 207) and holds exactly when a row errored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportReportsReceipt {
+    project: String,
+    partial: bool,
+    results: Vec<ExportReportResult>,
+}
+
+impl ExportReportsReceipt {
+    pub fn project(&self) -> &str {
+        &self.project
+    }
+    /// `true` when at least one transformer errored (the route answered 207).
+    pub const fn partial(&self) -> bool {
+        self.partial
+    }
+    pub fn results(&self) -> &[ExportReportResult] {
+        &self.results
+    }
+    fn names_with(&self, outcome: ExportReportOutcome) -> impl Iterator<Item = &str> {
+        self.results
+            .iter()
+            .filter(move |row| row.outcome == outcome)
+            .map(|row| row.name.as_str())
+    }
+    /// Transformers whose individual report the cloud computed and published.
+    pub fn computed(&self) -> Vec<&str> {
+        self.names_with(ExportReportOutcome::Success).collect()
+    }
+    pub fn skipped(&self) -> Vec<&str> {
+        self.names_with(ExportReportOutcome::Skipped).collect()
+    }
+    pub fn failed(&self) -> Vec<&str> {
+        self.names_with(ExportReportOutcome::Error).collect()
+    }
+}
+
+/// ds-brain's batch envelope for `export_reports_only` (and its two list
+/// siblings), exactly as `handleCombinedReportBatch` writes it. Closed: every
+/// member is one this decoder reads, and the three name lists are the same
+/// partition of `results` the decoder re-derives.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExportReportsWire {
+    message: String,
+    included: Vec<String>,
+    skipped: Vec<String>,
+    failed: Vec<String>,
+    results: Vec<ExportReportResultWire>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExportReportResultWire {
+    name: String,
+    status: String,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    error_message: Option<String>,
+}
+
+pub(crate) fn decode_export_reports(
+    response: TransportResponse,
+    limit: usize,
+    project: &str,
+    request: &TransformerSet,
+) -> Result<ExportReportsReceipt, ClientError> {
+    let partial = match response.status {
+        200 => false,
+        207 => true,
+        _ => return Err(unreadable()),
+    };
+    let wire: ExportReportsWire = decode(response, limit)?;
+    // The route's sentence is fixed per status; anything else is not this route.
+    let expected_message = if partial {
+        "Partial success"
+    } else {
+        "Success"
+    };
+    if wire.message != expected_message || wire.results.len() != request.len() {
+        return Err(unreadable());
+    }
+    let mut results = Vec::with_capacity(wire.results.len());
+    for (row, expected_name) in wire.results.into_iter().zip(request.names()) {
+        if row.name != *expected_name
+            || !opt_bounded(row.reason.as_deref(), MAX_TEXT_CHARS)
+            || !opt_bounded(row.error_message.as_deref(), MAX_TEXT_CHARS)
+        {
+            return Err(unreadable());
+        }
+        let Some(outcome) = ExportReportOutcome::parse(&row.status) else {
+            return Err(unreadable());
+        };
+        // A skipped row carries its reason and an error row its sentence;
+        // the other members are absent on the wire, never both present.
+        let (reason, error) = match outcome {
+            ExportReportOutcome::Success => (None, None),
+            ExportReportOutcome::Skipped => (nonempty(row.reason), None),
+            ExportReportOutcome::Error => (None, nonempty(row.error_message)),
+        };
+        results.push(ExportReportResult {
+            name: row.name,
+            outcome,
+            reason,
+            error,
+        });
+    }
+    let receipt = ExportReportsReceipt {
+        project: project.to_owned(),
+        partial,
+        results,
+    };
+    // The three lists are the partition of `results`, in order, and the 207
+    // is exactly "some row errored"; a receipt that says otherwise is not
+    // one this route wrote.
+    if !same_names(&wire.included, &receipt.computed())
+        || !same_names(&wire.skipped, &receipt.skipped())
+        || !same_names(&wire.failed, &receipt.failed())
+        || partial != !wire.failed.is_empty()
+    {
+        return Err(unreadable());
+    }
+    Ok(receipt)
+}
+
+fn same_names(wire: &[String], names: &[&str]) -> bool {
+    wire.len() == names.len() && wire.iter().zip(names).all(|(a, b)| a == b)
 }
 
 // ---------------------------------------------------------------------------

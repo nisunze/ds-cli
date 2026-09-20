@@ -8,8 +8,8 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
 use crate::project_report::{
-    CompoundedArchive, CompoundedReportReceipt, CompoundedReportRequest, RetirementAction,
-    RetirementReceipt, RetirementRequest, TransformerInventory, TransformerSet,
+    CompoundedArchive, CompoundedReportReceipt, CompoundedReportRequest, ExportReportsReceipt,
+    RetirementAction, RetirementReceipt, RetirementRequest, TransformerInventory, TransformerSet,
     TransformerStatusList,
 };
 use crate::{
@@ -1562,6 +1562,33 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         self.ensure_fresh_session(now_epoch_seconds)?;
         let session = self.session.as_ref().ok_or_else(signed_out)?;
         crate::authorized::compounded_report(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            ds_project,
+            request,
+        )
+    }
+
+    /// Ask the cloud to compute the individual reports of exact transformers
+    /// of the selected project and publish them to it. ds-brain owns the
+    /// write governance, freshness, claim, and the fan-out to the reporter;
+    /// the receipt says per transformer what the cloud did.
+    pub fn export_reports(
+        &mut self,
+        ds_project: &str,
+        request: &TransformerSet,
+        now_epoch_seconds: u64,
+    ) -> Result<ExportReportsReceipt, ClientError> {
+        crate::authorized::validate_project_report(ds_project)?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::authorized::export_reports(
             &self.profile,
             &mut self.transport,
             crate::authorized::Authority {

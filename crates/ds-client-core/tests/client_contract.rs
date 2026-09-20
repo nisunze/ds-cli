@@ -16,8 +16,9 @@ use ds_client_core::{
     Transport, TransportError, TransportResponse, CLIENT_PROFILE_SCHEMA,
 };
 use ds_client_core::{
-    CompoundedReportRequest, CompoundedReportStatus, ProjectReportCall, ReportFileLevel,
-    RetirementAction, RetirementRefusal, RetirementRequest, TransformerLifecycle, TransformerSet,
+    CompoundedReportRequest, CompoundedReportStatus, ExportReportOutcome, ProjectReportCall,
+    ReportFileLevel, RetirementAction, RetirementRefusal, RetirementRequest, TransformerLifecycle,
+    TransformerSet,
 };
 use serde_json::json;
 use sha2::Digest;
@@ -5525,6 +5526,256 @@ fn compounded_no_artifacts_424_is_a_bounded_report_refusal() {
         "no selected transformer had an individual report to package"
     );
     assert!(!error.to_string().contains("private backend detail"));
+}
+
+/// The cloud individual-report computation is the seventh `/report`
+/// operation: `export_reports_only`, on the Fast lane and the compounded
+/// deadline, with the exact transformer list and nothing else. The route's
+/// 200 and 207 are both receipts — the 207 is its own "some row errored" —
+/// and every row comes back in request order with what the cloud did.
+#[test]
+fn export_reports_sends_the_fast_lane_action_and_decodes_both_verdicts() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project_report(
+        200,
+        &serde_json::to_vec(&json!({
+            "message": "Success",
+            "included": ["akagerero", "tx_b"],
+            "skipped": [],
+            "failed": [],
+            "results": [
+                {"name": "akagerero", "status": "success"},
+                {"name": "tx_b", "status": "success"}
+            ]
+        }))
+        .unwrap(),
+    );
+    transport.push_project_report(
+        207,
+        &serde_json::to_vec(&json!({
+            "message": "Partial success",
+            "included": ["akagerero"],
+            "skipped": ["tx_b"],
+            "failed": ["tx_c"],
+            "results": [
+                {"name": "akagerero", "status": "success"},
+                {"name": "tx_b", "status": "skipped", "reason": "report artifacts are fresh; no re-export needed"},
+                {"name": "tx_c", "status": "error", "error_message": "reporter unreachable"}
+            ]
+        }))
+        .unwrap(),
+    );
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+
+    let two = TransformerSet::new(["Akagerero".to_owned(), "tx_b".to_owned()]).unwrap();
+    let receipt = client.export_reports("project_a", &two, NOW + 1).unwrap();
+    assert_eq!(receipt.project(), "project_a");
+    assert!(!receipt.partial());
+    assert_eq!(receipt.computed(), ["akagerero", "tx_b"]);
+    assert!(receipt.skipped().is_empty());
+    assert!(receipt.failed().is_empty());
+
+    let three = TransformerSet::new(["akagerero".to_owned(), "tx_b".to_owned(), "tx_c".to_owned()])
+        .unwrap();
+    let receipt = client.export_reports("project_a", &three, NOW + 1).unwrap();
+    assert!(receipt.partial());
+    assert_eq!(receipt.computed(), ["akagerero"]);
+    assert_eq!(receipt.skipped(), ["tx_b"]);
+    assert_eq!(receipt.failed(), ["tx_c"]);
+    let rows = receipt.results();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].outcome(), ExportReportOutcome::Success);
+    assert_eq!(rows[0].reason(), None);
+    assert_eq!(rows[1].outcome(), ExportReportOutcome::Skipped);
+    assert_eq!(
+        rows[1].reason(),
+        Some("report artifacts are fresh; no re-export needed")
+    );
+    assert_eq!(rows[2].outcome(), ExportReportOutcome::Error);
+    assert_eq!(rows[2].error(), Some("reporter unreachable"));
+
+    let calls = transport.calls();
+    assert!(calls.iter().any(|call| call.contains(
+        "project_report method=POST origin=https://eds-gateway-3c0q477h.ue.gateway.dev path=/report action=export_reports_only lane=fast content_type=application/json body={\"action\":\"export_reports_only\",\"eds_project_id\":\"project_a\",\"transformers\":[\"akagerero\",\"tx_b\"]} limit=8388608 timeout=600"
+    )), "{calls:#?}");
+    assert!(calls.iter().any(|call| call.contains(
+        "body={\"action\":\"export_reports_only\",\"eds_project_id\":\"project_a\",\"transformers\":[\"akagerero\",\"tx_b\",\"tx_c\"]}"
+    )));
+    assert_eq!(
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .correlated_project_report_requests,
+        2
+    );
+}
+
+/// An empty set is refused before any bytes: on this route an empty list is
+/// not "every active" but a fall-through to the retired generic proxy.
+#[test]
+fn export_reports_refuses_an_empty_set_locally() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let error = client
+        .export_reports("project_a", &TransformerSet::default(), NOW + 1)
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidInput);
+    assert!(
+        !transport
+            .calls()
+            .iter()
+            .any(|call| call.contains("export_reports_only")),
+        "nothing was sent"
+    );
+}
+
+/// The refusals the route emits for this action, each classified without
+/// exposing backend prose: the 423 write-governance lock carries its typed
+/// code and the holder's sentence as a bounded service refusal; the rest
+/// classify as the report route always has.
+#[test]
+fn export_reports_refusals_are_classified() {
+    let names = TransformerSet::new(["akagerero".to_owned()]).unwrap();
+    for (status, body, expected) in [
+        (
+            423,
+            br#"{"error_code":"TRANSFORMER_EDIT_LOCKED","detail":"Transformer is locked by other@example.com."}"#.as_slice(),
+            ErrorKind::InvalidInput,
+        ),
+        (
+            423,
+            br#"{"error_code":"TRANSFORMER_FINAL_LOCKED","detail":"Transformer is permanently locked."}"#.as_slice(),
+            ErrorKind::InvalidInput,
+        ),
+        (
+            403,
+            br#"{"detail":"missing design.download capability"}"#.as_slice(),
+            ErrorKind::AuthenticationRejected,
+        ),
+        (
+            400,
+            br#"{"detail":"transformers must contain at least one transformer"}"#.as_slice(),
+            ErrorKind::InvalidInput,
+        ),
+        (
+            404,
+            br#"{"detail":"private backend detail"}"#.as_slice(),
+            ErrorKind::ResourceNotFound,
+        ),
+        (
+            500,
+            br#"{"detail":"Failed to verify transformer governance."}"#.as_slice(),
+            ErrorKind::Transient,
+        ),
+    ] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_project_report(status, body);
+        let mut client = signed_in(transport, MemoryStore::default());
+        let error = client
+            .export_reports("project_a", &names, NOW + 1)
+            .unwrap_err();
+        assert_eq!(error.kind(), expected, "status {status}");
+        assert!(!error.to_string().contains("private backend detail"));
+        assert_eq!(error.project_report_service_code(), None);
+        if status == 423 {
+            let refusal = error.service_refusal().expect("the lock is named");
+            assert_eq!(refusal.status(), 423);
+            assert!(
+                matches!(
+                    refusal.code(),
+                    Some("transformer_edit_locked") | Some("transformer_final_locked")
+                ),
+                "{:?}",
+                refusal.code()
+            );
+            assert!(refusal.message().unwrap().contains("locked"));
+            assert_eq!(
+                error.to_string(),
+                "the governed report service refused a locked transformer"
+            );
+        } else {
+            assert_eq!(error.service_refusal(), None);
+        }
+    }
+}
+
+/// The receipt is closed. A member this decoder does not read, a row for a
+/// transformer that was not asked for, a partition that disagrees with the
+/// rows, a 207 with nothing failed, or a sentence that is not the route's
+/// are all "not this route", never a partial reading.
+#[test]
+fn export_reports_receipt_is_closed() {
+    let names = TransformerSet::new(["akagerero".to_owned(), "tx_b".to_owned()]).unwrap();
+    let good = json!({
+        "message": "Success",
+        "included": ["akagerero", "tx_b"],
+        "skipped": [],
+        "failed": [],
+        "results": [
+            {"name": "akagerero", "status": "success"},
+            {"name": "tx_b", "status": "success"}
+        ]
+    });
+    let mutations: Vec<(u16, serde_json::Value)> = vec![
+        (200, {
+            let mut v = good.clone();
+            v["job_id"] = json!("j-1");
+            v
+        }),
+        (200, {
+            let mut v = good.clone();
+            v["results"][1]["name"] = json!("tx_z");
+            v["included"][1] = json!("tx_z");
+            v
+        }),
+        (200, {
+            let mut v = good.clone();
+            v["results"][1]["status"] = json!("queued");
+            v
+        }),
+        (200, {
+            let mut v = good.clone();
+            v["included"] = json!(["akagerero"]);
+            v
+        }),
+        (200, {
+            let mut v = good.clone();
+            v["message"] = json!("Partial success");
+            v
+        }),
+        (207, good.clone()),
+        (200, {
+            let mut v = good.clone();
+            v["results"][1] = json!({"name": "tx_b", "status": "error", "error_message": "x"});
+            v["included"] = json!(["akagerero"]);
+            v["failed"] = json!(["tx_b"]);
+            v
+        }),
+        (200, {
+            let mut v = good.clone();
+            v["results"][1]["extra"] = json!(true);
+            v
+        }),
+    ];
+    for (status, body) in mutations {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_project_report(status, &serde_json::to_vec(&body).unwrap());
+        let mut client = signed_in(transport, MemoryStore::default());
+        let error = client
+            .export_reports("project_a", &names, NOW + 1)
+            .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            ErrorKind::UnreadableResponse,
+            "{status} {body}"
+        );
+    }
+    // And the unmutated body is a receipt.
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project_report(200, &serde_json::to_vec(&good).unwrap());
+    let mut client = signed_in(transport, MemoryStore::default());
+    assert!(client.export_reports("project_a", &names, NOW + 1).is_ok());
 }
 
 fn jwt(claims: serde_json::Value) -> String {

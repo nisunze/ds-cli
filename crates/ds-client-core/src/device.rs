@@ -1716,6 +1716,24 @@ impl DeviceApiAuthorization<'_> {
         )
     }
 
+    pub fn export_reports<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        request: &TransformerSet,
+        now: u64,
+    ) -> Result<crate::project_report::ExportReportsReceipt, ClientError> {
+        crate::authorized::validate_project_report(ds_project)?;
+        self.ensure_active(now)?;
+        crate::authorized::export_reports(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            request,
+        )
+    }
+
     pub fn compounded_report_list<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

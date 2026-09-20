@@ -91,10 +91,11 @@ pub use project_form_editor::ProjectFormSettingsEditor;
 pub use project_forms::{ProjectFormOrphan, ProjectFormSummary, ProjectFormsSnapshot};
 pub use project_report::{
     CompoundedArchive, CompoundedArchiveLayout, CompoundedReportReceipt, CompoundedReportRequest,
-    CompoundedReportStatus, MissingIndividualArtifactCause, ReportFileLevel, RetirementAction,
-    RetirementReceipt, RetirementRecord, RetirementRefusal, RetirementRequest, RetirementResult,
-    TransformerInventory, TransformerInventoryRow, TransformerKind, TransformerLifecycle,
-    TransformerSet, TransformerStatusList, TransformerStatusRow, PROJECT_REPORT_MAX_REASON_CHARS,
+    CompoundedReportStatus, ExportReportOutcome, ExportReportResult, ExportReportsReceipt,
+    MissingIndividualArtifactCause, ReportFileLevel, RetirementAction, RetirementReceipt,
+    RetirementRecord, RetirementRefusal, RetirementRequest, RetirementResult, TransformerInventory,
+    TransformerInventoryRow, TransformerKind, TransformerLifecycle, TransformerSet,
+    TransformerStatusList, TransformerStatusRow, PROJECT_REPORT_MAX_REASON_CHARS,
     PROJECT_REPORT_MAX_TRANSFORMERS, PROJECT_REPORT_MAX_TRANSFORMER_CHARS,
 };
 pub use projects::{Project, ProjectDirectory, ProjectStatus, PROJECT_STATUS_ORDER};
