@@ -76,6 +76,46 @@ pub struct EntryFacts {
     pub geometry: Option<Value>,
 }
 
+impl EntryFacts {
+    /// The facts a stored survey entry feature carries, read the way the
+    /// browser's survey store persists it: the capture clock is
+    /// `properties.metadata.created_at`, or a server row's prefix-flattened
+    /// `metadata_created_at`, or `created_at` — an RFC 3339 string or epoch
+    /// milliseconds — and the geometry is the feature's, when it names a
+    /// type. A feature with neither is still a held entry (without a
+    /// location); the host hands the feature over and decides nothing.
+    pub fn from_feature(feature: &Value) -> Self {
+        let props = feature
+            .get("properties")
+            .filter(|v| v.is_object())
+            .unwrap_or(feature);
+        let metadata = props.get("metadata").filter(|v| v.is_object());
+        let candidates = [
+            metadata.and_then(|m| m.get("created_at")),
+            props.get("metadata_created_at"),
+            props.get("created_at"),
+        ];
+        let captured_at_ms = candidates.into_iter().flatten().find_map(|raw| match raw {
+            Value::String(text) => OffsetDateTime::parse(text.trim(), &Rfc3339)
+                .ok()
+                .and_then(|instant| ms_of(instant).ok()),
+            Value::Number(number) => number
+                .as_f64()
+                .filter(|ms| ms.is_finite() && *ms >= 0.0)
+                .map(|ms| ms as u64),
+            _ => None,
+        });
+        let geometry = feature
+            .get("geometry")
+            .filter(|geometry| geometry.get("type").and_then(Value::as_str).is_some())
+            .cloned();
+        Self {
+            captured_at_ms,
+            geometry,
+        }
+    }
+}
+
 /// One cached survey original as a host's store keeps it. Both stores map
 /// to this shape; nothing here is decided.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -94,12 +134,26 @@ pub struct MomentRow {
     /// The entry, when the host holds it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<EntryFacts>,
+    /// The stored entry feature itself, for a host that holds the feature
+    /// and reads nothing off it: the kernel derives the facts
+    /// ([`EntryFacts::from_feature`]) when `entry` is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature: Option<Value>,
     /// The storage generation these bytes equal (`synced`) or were pinned
     /// to (`waiting`), when the host recorded one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+}
+
+impl MomentRow {
+    /// The entry facts: declared, else derived from the held feature.
+    fn facts(&self) -> Option<EntryFacts> {
+        self.entry
+            .clone()
+            .or_else(|| self.feature.as_ref().map(EntryFacts::from_feature))
+    }
 }
 
 /// Why "navigate to" is not on offer for a moment.
@@ -257,14 +311,13 @@ fn file_name_of(path: &str) -> &str {
 
 /// The moment's clock: the entry's capture time when held, else the cache time.
 pub fn when_ms(row: &MomentRow) -> u64 {
-    row.entry
-        .as_ref()
+    row.facts()
         .and_then(|entry| entry.captured_at_ms)
         .unwrap_or(row.cached_at_ms)
 }
 
 fn navigate(row: &MomentRow) -> Navigate {
-    match &row.entry {
+    match &row.facts() {
         None => Navigate {
             enabled: false,
             reason: Some(NavigateRefusal::EntryNotLocal),
@@ -290,7 +343,8 @@ pub fn describe(project: &str, row: &MomentRow) -> Option<Moment> {
     if address.project != project || address.object_path == address.thumbnail_object_path {
         return None;
     }
-    let location = row.entry.as_ref().and_then(|entry| {
+    let facts = row.facts();
+    let location = facts.as_ref().and_then(|entry| {
         entry
             .geometry
             .as_ref()
@@ -314,7 +368,7 @@ pub fn describe(project: &str, row: &MomentRow) -> Option<Moment> {
         size: row.size,
         state: row.state,
         cached_at_ms: row.cached_at_ms,
-        captured_at_ms: row.entry.as_ref().and_then(|entry| entry.captured_at_ms),
+        captured_at_ms: facts.as_ref().and_then(|entry| entry.captured_at_ms),
         when_ms: when_ms(row),
         location,
         navigate: navigate(row),
@@ -567,6 +621,7 @@ impl MediaRecord {
             state: self.state,
             thumbnail: true,
             entry: self.entry.clone(),
+            feature: None,
             generation: match self.state {
                 SyncState::Synced => self.published_generation.clone(),
                 SyncState::Waiting => Some(self.source_generation.clone()),
@@ -757,6 +812,7 @@ mod tests {
                 captured_at_ms: Some(when),
                 geometry: Some(json!({"type": "Point", "coordinates": [30.1, -1.9]})),
             }),
+            feature: None,
             generation: None,
             sha256: None,
         }
@@ -1083,6 +1139,51 @@ mod tests {
             Some(NavigateRefusal::EntryWithoutLocation)
         );
         assert_eq!(described.when_ms, 7);
+    }
+
+    #[test]
+    fn entry_facts_are_read_off_the_stored_feature_in_either_spelling() {
+        let nested = json!({"type": "Feature", "geometry": {"type": "Point", "coordinates": [30.0, -2.0]},
+            "properties": {"metadata": {"created_at": "2026-09-20T09:00:00Z"}}});
+        let facts = EntryFacts::from_feature(&nested);
+        assert_eq!(facts.captured_at_ms, Some(day(2026, 9, 20, 9)));
+        assert!(facts.geometry.is_some());
+        let flattened = json!({"geometry": null, "properties": {"metadata_created_at": "2026-09-19T12:00:00+02:00"}});
+        assert_eq!(
+            EntryFacts::from_feature(&flattened).captured_at_ms,
+            Some(day(2026, 9, 19, 10))
+        );
+        assert_eq!(EntryFacts::from_feature(&flattened).geometry, None);
+        let epoch = json!({"properties": {"created_at": 1_789_900_000_000u64}});
+        assert_eq!(
+            EntryFacts::from_feature(&epoch).captured_at_ms,
+            Some(1_789_900_000_000)
+        );
+        let bare = json!({"created_at": "not a date", "geometry": {"coordinates": [1, 2]}});
+        let facts = EntryFacts::from_feature(&bare);
+        assert_eq!((facts.captured_at_ms, facts.geometry), (None, None));
+
+        // A row that hands the feature over is described exactly as one that
+        // declared the facts; a feature without a location refuses navigate
+        // with the location reason, not "not local".
+        let mut row = rows()[4].clone();
+        assert_eq!(
+            describe(PROJECT, &row).unwrap().navigate.reason,
+            Some(NavigateRefusal::EntryNotLocal)
+        );
+        row.feature = Some(nested.clone());
+        let moment = describe(PROJECT, &row).unwrap();
+        assert!(moment.navigate.enabled);
+        assert_eq!(
+            moment.when_ms,
+            day(2026, 9, 20, 9),
+            "the entry clock outranks the cache clock"
+        );
+        row.feature = Some(flattened);
+        assert_eq!(
+            describe(PROJECT, &row).unwrap().navigate.reason,
+            Some(NavigateRefusal::EntryWithoutLocation)
+        );
     }
 
     #[test]
