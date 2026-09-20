@@ -40,3 +40,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # rather than copied, so the fixture cannot drift into agreeing with a rule
 # the product no longer has. Already in this lock through ds-cli-auth.
 ds-client-core = { workspace = true }
+# The proof that a completed prepared Solar job seals its row runs the real
+# engine over the Solar fixture city, so the prepared input is built the way
+# `ds solar prepare` builds it. Already in this lock through ds-compute-runtime.
+ds-solar-contracts = { path = "../../../ds-solar/crates/ds-solar-contracts", default-features = false }

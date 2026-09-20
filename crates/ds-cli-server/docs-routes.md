@@ -122,6 +122,18 @@ wins. Sending it is still recommended (it is how a caller learns it prepared the
 wrong city): a `project` that differs from the sealed input is `scope_mismatch`.
 202 → `{"job": <Job>}`.
 
+When the job completes, the worker seals its publication row into the sync
+store in the completion's own step (`ds-sync-runtime::solar::seal`), under
+this host's local fence — no session, no gateway — so `ds report outbox
+status` counts it as queued at once and the pump drains it from the store.
+The city's previous result on this machine is freed (`Store::retire_job_result`,
+`reclaimed:superseded_locally` receipt): an artefact never accumulates on the
+edge. A job completed before this rule, or whose seal the store could not
+record, is adopted by the pump's next observation (`adopted:from_producer`),
+exactly once. A second job of the same city with the SAME bytes is
+`already_recorded`: the standing row stands and the duplicate result stays
+readable by id — its retention is the ruling §6 owes, not the seal's.
+
 ### `GET /v1/jobs?project=<id>`
 `project` — OPTIONAL narrowing. Without it: every job visible to this
 connection, whatever its project. With it: only that project's, and a project

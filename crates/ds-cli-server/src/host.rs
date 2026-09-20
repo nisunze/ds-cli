@@ -2308,6 +2308,257 @@ pub(crate) mod tests {
         transaction.commit().expect("seeded queue");
     }
 
+    /// The prepared input `ds solar prepare` seals for the fixture city,
+    /// with the snapshot provenance a publication needs: what a Server is
+    /// handed, built the same way the compute runtime's own lifecycle proof
+    /// builds it.
+    fn prepared_solar_request(project: &str, run_id: &str) -> Vec<u8> {
+        use ds_solar_contracts::{
+            BundleBytes, CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision,
+            SolarCityInput, WeatherDataset, WeatherKey, WeatherPin,
+        };
+        let root =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-solar/fixtures");
+        let city = "aderm_bere";
+        let snapshot: Value = serde_json::from_slice(
+            &fs::read(root.join(format!("city/{city}.snapshot.json"))).unwrap(),
+        )
+        .unwrap();
+        let input = SolarCityInput::from_city_snapshot(
+            CityIdentity {
+                project_id: project.to_string(),
+                root: "solar".to_string(),
+                city_id: city.to_string(),
+                display_name: snapshot["_root"]["display_name"]
+                    .as_str()
+                    .unwrap()
+                    .to_string(),
+            },
+            SnapshotRevision {
+                source: "ds-brain".to_string(),
+                captured_at: "2026-08-08T00:00:00Z".to_string(),
+                record_updated_at_ms: None,
+                revision: Some("a".repeat(64)),
+            },
+            RunOptions::default(),
+            &snapshot,
+        )
+        .unwrap();
+        let weather: WeatherDataset = serde_json::from_slice(
+            &fs::read(root.join(format!("weather/{city}.weather.json"))).unwrap(),
+        )
+        .unwrap();
+        let weather_key = WeatherKey::new(
+            input.site.latitude,
+            input.site.longitude,
+            weather.provenance.timezone.clone(),
+            WeatherPin::pvgis_tmy(),
+        )
+        .unwrap();
+        let reference_root = root.join("reference").join(city);
+        let reference = ds_solar_contracts::reference_unit::open(&BundleBytes {
+            weather_json: fs::read(reference_root.join("weather.json")).unwrap(),
+            reference_unit_json: fs::read(reference_root.join("reference-unit.json")).unwrap(),
+            reference_unit_parquet: fs::read(reference_root.join("reference-unit.parquet"))
+                .unwrap(),
+            manifest_json: fs::read(reference_root.join("manifest.json")).unwrap(),
+        })
+        .unwrap()
+        .reference_unit;
+        let prepared = PreparedSolarCityInput::commit(
+            input,
+            weather_key,
+            weather,
+            reference,
+            "2026-08-20T00:00:00Z",
+        )
+        .unwrap();
+        serde_json::to_vec(&json!({
+            "prepared": prepared,
+            "render_charts": false,
+            "run_id": run_id,
+            "provenance": {
+                "project_id": project, "root": "solar", "template_id": city,
+                "input_base_fingerprint": "a".repeat(64), "source_snapshot_sha256": "b".repeat(64),
+                "snapshot_receipt_id": "550e8400-e29b-51d4-a716-446655440000"
+            }
+        }))
+        .unwrap()
+    }
+
+    /// A completed prepared Solar job seals its row into the sync store in
+    /// the completion's own step — under this host's local fence, with no
+    /// session and no gateway — so the queue holds it before any pump runs,
+    /// and the producer's inventory offers nothing to adopt for it. The
+    /// engine is the real one over the fixture city.
+    #[test]
+    fn a_completed_solar_job_seals_its_row_with_no_session_and_the_pump_adopts_nothing() {
+        use ds_command_kernel::sync_store::ArtifactState;
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        let identity = app.sessions.identity().clone();
+        let activity =
+            crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
+                .expect("the activity host needs no gateway to exist");
+        let bytes = prepared_solar_request(A, "sealed-at-completion");
+        let job = runtime::submit_solar(
+            &app.database,
+            &Admission {
+                identity: &identity,
+                client: "test:1",
+                key: "solar-seal",
+                requested_project: None,
+                saved_project: None,
+                limits: limits(),
+                now_ms: runtime::now_ms(),
+            },
+            &bytes,
+        )
+        .expect("admitted");
+        let fence = crate::server_sync::fence_of(&identity);
+        let scope = ds_sync_runtime::rows::store_scope(A);
+        let rows = |database: &Path| {
+            ds_sync_store::Store::open(database)
+                .unwrap()
+                .snapshot(&fence, &scope)
+                .unwrap()
+                .artifacts
+        };
+        assert!(
+            rows(&app.database).is_empty(),
+            "queued work is not a publication"
+        );
+
+        let context = runtime::WorkerContext {
+            path: app.database.clone(),
+            identity: identity.clone(),
+            limits: limits(),
+            auth: app.auth.clone(),
+            observer: Some(activity.clone()),
+        };
+        assert!(runtime::run_one(&context, "worker").expect("the real engine runs"));
+
+        // The row: held, keyed by the job, naming its bytes in this file.
+        let held = rows(&app.database);
+        assert_eq!(held.len(), 1, "{held:?}");
+        assert_eq!(held[0].replay_key, job.id);
+        assert_eq!(held[0].client_publish_id, job.id);
+        assert_eq!(held[0].state, ArtifactState::Held);
+        assert_eq!(
+            held[0].identity,
+            ds_sync_runtime::solar::identity_of("aderm_bere")
+        );
+        assert_eq!(
+            held[0].bytes_locator,
+            format!("solar:prepared:job:{}", job.id)
+        );
+        assert_eq!(
+            held[0].base_revision.as_deref(),
+            Some("a".repeat(64).as_str())
+        );
+        assert_eq!(held[0].outputs.len(), 1);
+        assert_eq!(held[0].outputs[0].output_id, "report-input");
+        let result = runtime::open(&app.database)
+            .unwrap()
+            .job_result(&identity.caller(Some(A)), &job.id)
+            .unwrap()
+            .expect("the result is the bytes");
+        let publication = runtime::solar_publication(
+            &runtime::open(&app.database)
+                .unwrap()
+                .job(&identity.caller(None), &job.id)
+                .unwrap()
+                .unwrap(),
+            &bytes,
+            &result,
+        )
+        .unwrap();
+        assert_eq!(held[0].outputs[0].sha256, publication.outputs[0].sha256);
+        // The queue holds it, read with no session and no identity.
+        let queue = ds_sync_store::Store::open_read_only(&app.database)
+            .unwrap()
+            .expect("the store exists")
+            .queue_all(Some(A), runtime::now_ms())
+            .unwrap();
+        assert_eq!(queue.queued_batches, 1);
+        assert_eq!(queue.queued_bytes, held[0].size_bytes);
+        // The seal is evidence-free: no adoption, no receipt, nothing but
+        // the row (the first computation of a city supersedes nothing).
+        let receipts = ds_sync_store::Store::open(&app.database)
+            .unwrap()
+            .receipts(&fence, &scope, 10)
+            .unwrap();
+        assert!(receipts.is_empty(), "{receipts:?}");
+        // The producer's adoption inventory reads the store's rows first and
+        // offers nothing for a job the store already knows — without
+        // reading the job's input or result.
+        assert!(activity.adoption_inventory_for_test(A).unwrap().is_empty());
+        // The completion projected again (a replayed observer) changes
+        // nothing: already recorded, one row.
+        let completed = runtime::open(&app.database)
+            .unwrap()
+            .job(&identity.caller(None), &job.id)
+            .unwrap()
+            .unwrap();
+        ds_compute_runtime::CompletionObserver::completed(&*activity, &completed)
+            .expect("already recorded is not an error");
+        assert_eq!(rows(&app.database).len(), 1);
+    }
+
+    /// A row the store does not know — a job completed before the seal
+    /// existed — is what the producer's inventory still offers, exactly
+    /// once: the adoption path the shared host keeps for legacy rows.
+    #[test]
+    fn a_solar_job_completed_before_the_seal_is_offered_for_adoption_and_a_sealed_one_is_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        let identity = app.sessions.identity().clone();
+        let bytes = prepared_solar_request(A, "before-the-seal");
+        let job = runtime::submit_solar(
+            &app.database,
+            &Admission {
+                identity: &identity,
+                client: "test:1",
+                key: "solar-legacy",
+                requested_project: None,
+                saved_project: None,
+                limits: limits(),
+                now_ms: runtime::now_ms(),
+            },
+            &bytes,
+        )
+        .expect("admitted");
+        // Completed with no observer: the way every release before today
+        // completed a Solar job — the result is durable, the row is not.
+        let context = runtime::WorkerContext {
+            path: app.database.clone(),
+            identity: identity.clone(),
+            limits: limits(),
+            auth: app.auth.clone(),
+            observer: None,
+        };
+        assert!(runtime::run_one(&context, "worker").expect("the real engine runs"));
+        let activity =
+            crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
+                .expect("the activity host needs no gateway to exist");
+        let offered = activity.adoption_inventory_for_test(A).unwrap();
+        assert_eq!(offered.len(), 1);
+        assert_eq!(offered[0].client_publish_id, job.id);
+        assert_eq!(
+            offered[0].bytes_locator,
+            format!("solar:prepared:job:{}", job.id)
+        );
+        // Sealed now (the pump's adoption applies exactly this row): the
+        // producer offers it no more.
+        let completed = runtime::open(&app.database)
+            .unwrap()
+            .job(&identity.caller(None), &job.id)
+            .unwrap()
+            .unwrap();
+        ds_compute_runtime::CompletionObserver::completed(&*activity, &completed).unwrap();
+        assert!(activity.adoption_inventory_for_test(A).unwrap().is_empty());
+    }
+
     #[cfg(unix)]
     #[test]
     fn owner_only_connection_survives_restart_and_refuses_identity_switch() {
