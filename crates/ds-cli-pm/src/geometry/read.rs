@@ -37,7 +37,7 @@ and `link`.",
     reference: Some("docs/reference/pm.md"),
     search: &[
         "task geometry",
-        "where is the task",
+        "where",
         "task location",
         "structures",
         "map",
