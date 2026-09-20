@@ -746,6 +746,14 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, installs, command)
     }
+    /// Project creation and property edits: also server-side, also admitted
+    /// under a device credential.
+    pub fn project_properties(
+        &mut self,
+        command: &ds_client_core::project_properties::Command,
+    ) -> Result<ds_client_core::project_properties::Receipt, ClientError> {
+        fixed_device_call!(self, project_properties, command)
+    }
     pub fn sre(&mut self, command: &ds_client_core::sre::Command) -> Result<Value, ClientError> {
         fixed_device_call!(self, sre, command)
     }
@@ -1435,6 +1443,15 @@ mod tests {
         let _ = device.global_tiles(&global_tiles::Command::List {
             domain: global_tiles::Domain::NetworkTemplate,
         });
+        // Project creation and property edits are the same kind of door:
+        // server-side, decided by the principal's capabilities.
+        let _ = device.project_properties(&ds_client_core::project_properties::Command::Update {
+            project_id: "it_rwanda".into(),
+            properties: ds_client_core::project_properties::Properties {
+                country: Some("Rwanda".into()),
+                ..Default::default()
+            },
+        });
 
         let expected: Vec<String> = [
             "installs",
@@ -1442,6 +1459,7 @@ mod tests {
             "admin_bounds",
             "grid_catalog",
             "global_tiles",
+            "project_properties",
         ]
         .iter()
         .map(|door| format!("{door} {DEVICE_ACCESS_TOKEN} device-1"))

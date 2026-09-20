@@ -97,6 +97,10 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("auth.project.list", "local_auth_state", "headless_user"),
     ("auth.project.status", "local_auth_state", "headless_user"),
     ("auth.project.use", "local_auth_state", "headless_user"),
+    // Creating a project and editing its properties mutate governed shared
+    // state on the gateway; neither touches local auth state or a window.
+    ("auth.project.create", "global_write", "headless_user"),
+    ("auth.project.update", "global_write", "headless_user"),
     ("auth.status", "local_auth_state", "none"),
     // Local data preparation. `none` authority is exact: a file on the
     // operator's own disk involves no project and no principal. `convert`

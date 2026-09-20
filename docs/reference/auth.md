@@ -97,6 +97,21 @@ credential audience, Firebase UID, and canonical email. A project ID alone is
 never authority. Harmless profile provenance/public-key rotation does not
 invalidate the context; changing the stable audience, account, or lane does.
 
+`auth project create` and `auth project update` are the two confirmed global
+writes in this family, and the reason a project no longer needs a window to
+be created or named. Both post to `POST /api/v1/projects` (`create` /
+`update`) under the lane's credential — its device credential when it holds
+one, otherwise the restored native user — and ds-brain decides by the
+principal's capabilities: `project.create` for a creation, and
+`project.properties.edit` (the project admin role) for an edit. Create takes
+the display name and derives the `project_name` slug from it exactly as the
+Projects page does, so the two hosts create the same document from the same
+name; country, client, description, location, network template and styling
+template ride when given and are the server's defaults when not. Update names
+the project by id and changes only the properties given. Neither selects a
+project, and neither touches lifecycle flags, project type, CRS, phases or
+components.
+
 Firebase-backed status/project reads can rotate a durable refresh credential,
 while login/logout/project use can also clear or replace context. Device-link
 begin/complete mutate only protected device state; device inventory mints a

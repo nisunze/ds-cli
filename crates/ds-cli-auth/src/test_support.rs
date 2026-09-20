@@ -38,6 +38,9 @@ pub(crate) struct Scripted {
     /// One `200` body per lifecycle bucket read, in call order.
     pub projects: VecDeque<Vec<u8>>,
     pub device_approve: VecDeque<TransportResponse>,
+    /// Scripted answers for `POST /api/v1/projects`; the door records like a
+    /// governance door and answers Unreachable when the script is empty.
+    pub project_properties: VecDeque<TransportResponse>,
     /// Every call recorded as `door bearer device-id|user`, or with the
     /// request body for the approval door.
     pub calls: Vec<String>,
@@ -68,6 +71,12 @@ impl FixtureTransport {
     pub(crate) fn push_device_approve(&self, status: u16, body: &[u8]) {
         self.lock()
             .device_approve
+            .push_back(TransportResponse::new(status, body.to_vec()));
+    }
+
+    pub(crate) fn push_project_properties(&self, status: u16, body: &[u8]) {
+        self.lock()
+            .project_properties
             .push_back(TransportResponse::new(status, body.to_vec()));
     }
 
@@ -161,6 +170,17 @@ impl Transport for FixtureTransport {
         call: ds_client_core::SreOverviewCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         self.record("sre_overview", call.bearer_token(), call.device_id())
+    }
+
+    fn project_properties(
+        &mut self,
+        call: ds_client_core::ProjectPropertiesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let recorded = self.record("project_properties", call.bearer_token(), call.device_id());
+        match self.lock().project_properties.pop_front() {
+            Some(response) => Ok(response),
+            None => recorded,
+        }
     }
 
     fn admin_bounds(

@@ -330,6 +330,8 @@ pub static DOMAIN: Domain = Domain {
         &PROJECT_LIST_COMMAND,
         &PROJECT_USE_COMMAND,
         &PROJECT_STATUS_COMMAND,
+        &PROJECT_CREATE_COMMAND,
+        &PROJECT_UPDATE_COMMAND,
     ],
 };
 
@@ -357,6 +359,27 @@ const LIST_LIMIT: Arg = Arg::value(
     "Maximum number of project rows emitted; default 100.",
 )
 .default("100");
+const DISPLAY_NAME_REQUIRED: Arg = Arg::value(
+    "display-name",
+    "<text>",
+    "The project's name as people read it; its id slug is derived from it.",
+)
+.required();
+const DISPLAY_NAME: Arg = Arg::value(
+    "display-name",
+    "<text>",
+    "The project's name as people read it.",
+);
+const COUNTRY: Arg = Arg::value("country", "<name>", "Country the project is in.");
+const CLIENT: Arg = Arg::value("client", "<name>", "Client the project is for.");
+const DESCRIPTION: Arg = Arg::value("description", "<text>", "What the project is.");
+const LOCATION: Arg = Arg::value("location", "<text>", "Where the project is.");
+const NETWORK_TEMPLATE: Arg = Arg::value(
+    "network-template",
+    "<id>",
+    "Network template; ds-brain defaults to master.",
+);
+const STYLING_TEMPLATE: Arg = Arg::value("styling-template", "<id>", "Styling template id.");
 
 const PROFILE_REFUSAL: Refusal = Refusal {
     code: "native_profile_not_configured",
@@ -493,6 +516,29 @@ const NOT_VISIBLE_REFUSAL: Refusal = Refusal {
     when: "the exact project id is absent from all fresh buckets",
     remedy: "choose an exact id from auth project list",
 };
+// The codes below are the ones `POST /api/v1/projects` actually emits through
+// the shared native client. What is this command's own is the WHEN and the
+// REMEDY: a 403 here names the capability a project admin has to grant.
+const PROJECT_CREATE_FORBIDDEN_REFUSAL: Refusal = Refusal {
+    code: "auth_rejected",
+    when: "the signed-in account lacks project.create",
+    remedy: "ask a platform administrator to grant project.create",
+};
+const PROJECT_EDIT_FORBIDDEN_REFUSAL: Refusal = Refusal {
+    code: "auth_rejected",
+    when: "the account lacks project.properties.edit on this project, or the project is archived or expired",
+    remedy: "ask a project admin for the admin role on this project, or unarchive it first",
+};
+const PROJECT_PROPERTIES_INVALID_REFUSAL: Refusal = Refusal {
+    code: "auth_input_invalid",
+    when: "a property is empty, untrimmed, over 200 characters (description 2000), the server refused the payload, or an update names no property",
+    remedy: "correct the named property, or pass at least one property to change",
+};
+const PROJECT_UNKNOWN_REFUSAL: Refusal = Refusal {
+    code: "project_not_visible",
+    when: "no project carries this id on this lane (HTTP 404)",
+    remedy: "choose an exact id from auth project list",
+};
 
 const STATUS_REFUSALS: &[Refusal] = &[
     PROFILE_REFUSAL,
@@ -599,6 +645,43 @@ const PROJECT_STATUS_REFUSALS: &[Refusal] = &[
     TRANSIENT_REFUSAL,
     UNREADABLE_REFUSAL,
     CONTEXT_STALE_REFUSAL,
+];
+const PROJECT_CREATE_REFUSALS: &[Refusal] = &[
+    PROFILE_REFUSAL,
+    PROFILE_DIGEST_REFUSAL,
+    PROFILE_UNSAFE_REFUSAL,
+    STATE_REFUSAL,
+    STATE_UNAVAILABLE_REFUSAL,
+    STATE_PROTECTION_REFUSAL,
+    STATE_ROOT_REFUSAL,
+    STATE_CONFLICT_REFUSAL,
+    CLEANUP_REFUSAL,
+    SIGNED_OUT_REFUSAL,
+    PROJECT_CREATE_FORBIDDEN_REFUSAL,
+    PROJECT_PROPERTIES_INVALID_REFUSAL,
+    AUTH_REVOKED_REFUSAL,
+    IDENTITY_REFUSAL,
+    TRANSIENT_REFUSAL,
+    UNREADABLE_REFUSAL,
+];
+const PROJECT_UPDATE_REFUSALS: &[Refusal] = &[
+    PROFILE_REFUSAL,
+    PROFILE_DIGEST_REFUSAL,
+    PROFILE_UNSAFE_REFUSAL,
+    STATE_REFUSAL,
+    STATE_UNAVAILABLE_REFUSAL,
+    STATE_PROTECTION_REFUSAL,
+    STATE_ROOT_REFUSAL,
+    STATE_CONFLICT_REFUSAL,
+    CLEANUP_REFUSAL,
+    SIGNED_OUT_REFUSAL,
+    PROJECT_EDIT_FORBIDDEN_REFUSAL,
+    PROJECT_PROPERTIES_INVALID_REFUSAL,
+    PROJECT_UNKNOWN_REFUSAL,
+    AUTH_REVOKED_REFUSAL,
+    IDENTITY_REFUSAL,
+    TRANSIENT_REFUSAL,
+    UNREADABLE_REFUSAL,
 ];
 
 pub static STATUS_COMMAND: Command = Command {
@@ -741,6 +824,76 @@ pub static PROJECT_STATUS_COMMAND: Command = Command {
     refusals: PROJECT_STATUS_REFUSALS,
     reference: Some("docs/reference/auth.md"),
     search: &[],
+    requires: Requires::Server,
+    availability: native_availability,
+};
+
+pub static PROJECT_CREATE_COMMAND: Command = Command {
+    id: "auth.project.create",
+    path: &["auth", "project", "create"],
+    contract: 1,
+    chapter: Chapter::Project,
+    summary: "Create one project with its properties.",
+    purpose: "Creates a project on the lane under the signed-in account. The id slug is derived from the display name exactly as the Projects page derives it; every other property is optional and, when absent, is the server's default. Needs project.create. It selects nothing.",
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[
+        DISPLAY_NAME_REQUIRED,
+        COUNTRY,
+        CLIENT,
+        DESCRIPTION,
+        LOCATION,
+        NETWORK_TEMPLATE,
+        STYLING_TEMPLATE,
+        LANE,
+    ],
+    output: "The project as created: id, slug, display name, template and the parameters the server defaulted.",
+    examples: &[Example {
+        command: "ds auth project create --display-name \"Gisagara LV\" --country Rwanda --client EDCL --yes",
+        note: "The id slug becomes gisagara_lv.",
+        runnable: false,
+    }],
+    refusals: PROJECT_CREATE_REFUSALS,
+    reference: Some("docs/reference/auth.md"),
+    search: &["new project", "add project", "register"],
+    requires: Requires::Server,
+    availability: native_availability,
+};
+
+pub static PROJECT_UPDATE_COMMAND: Command = Command {
+    id: "auth.project.update",
+    path: &["auth", "project", "update"],
+    contract: 1,
+    chapter: Chapter::Project,
+    summary: "Edit one project's name, country, client, description or location.",
+    purpose: "Changes the named properties of the project given by id, and nothing else: an absent property is untouched. Needs project.properties.edit on that project (project admin). It edits the project it names, never the selected one.",
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[
+        PROJECT_ID,
+        DISPLAY_NAME,
+        COUNTRY,
+        CLIENT,
+        DESCRIPTION,
+        LOCATION,
+        LANE,
+    ],
+    output: "The project id and how many fields changed.",
+    examples: &[Example {
+        command: "ds auth project update --project it_rwanda --display-name \"Integration test — Rwanda\" --country Rwanda --yes",
+        note: "Only the two named properties change.",
+        runnable: false,
+    }],
+    refusals: PROJECT_UPDATE_REFUSALS,
+    reference: Some("docs/reference/auth.md"),
+    search: &[
+        "rename",
+        "edit project",
+        "project country",
+        "project client",
+    ],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -4105,6 +4258,142 @@ pub fn run_project_status(inputs: &Inputs, _context: &Context) -> Result<Value, 
 /// Restore before taking the project-context lease. Refresh-token rotation has
 /// its own durable store lease, so a remote Firebase refresh must not serialize
 /// unrelated selected-project reads.
+/// One property flag as the kernel wants it: absent when not given.
+fn property(inputs: &Inputs, name: &str) -> Option<String> {
+    inputs.value(name).map(str::to_owned)
+}
+
+fn properties(
+    inputs: &Inputs,
+    with_display_name: bool,
+) -> ds_client_core::project_properties::Properties {
+    ds_client_core::project_properties::Properties {
+        display_name: if with_display_name {
+            property(inputs, "display-name")
+        } else {
+            None
+        },
+        location: property(inputs, "location"),
+        country: property(inputs, "country"),
+        client: property(inputs, "client"),
+        description: property(inputs, "description"),
+    }
+}
+
+pub fn run_project_create(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let command = ds_client_core::project_properties::Command::Create {
+        display_name: inputs.require("display-name")?.to_owned(),
+        properties: properties(inputs, false),
+        network_template: property(inputs, "network-template"),
+        styling_template: property(inputs, "styling-template"),
+    };
+    project_properties(inputs.require("lane")?, &command)
+}
+
+pub fn run_project_update(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let command = ds_client_core::project_properties::Command::Update {
+        project_id: inputs.require("project")?.to_owned(),
+        properties: properties(inputs, true),
+    };
+    project_properties(inputs.require("lane")?, &command)
+}
+
+/// Create a project or edit its properties, through the lane's credential —
+/// its device credential when it holds one, otherwise the restored native
+/// user. ds-brain admits both on `/api/v1/projects` and decides by the
+/// principal's capabilities; no window and no project selection are involved.
+pub fn project_properties(
+    lane_value: &str,
+    command: &ds_client_core::project_properties::Command,
+) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let receipt = if let Some(mut device) = restored_device_session(lane)? {
+        device
+            .project_properties(command)
+            .map_err(map_project_properties_client)?
+    } else {
+        let profile = profile::load(lane)?;
+        let store = NativeRefreshStore::open()?;
+        let mut client = Client::new(profile, NativeTransport, store);
+        require_restore_before_context(&mut client)?;
+        client
+            .project_properties(command, now())
+            .map_err(map_project_properties_client)?
+    };
+    let mut answer = serde_json::to_value(&receipt)
+        .map_err(|error| Failure::unavailable(UNREADABLE_REFUSAL.code, error.to_string()))?;
+    answer["lane"] = json!(lane.token());
+    answer["action"] = json!(command.action());
+    Ok(answer)
+}
+
+/// One project-properties error as the refusal the two commands declare for
+/// it. The route's own sentence is the actionable half of a 403 — WHICH
+/// capability a project admin has to grant — so it is carried on the message
+/// and the remedy names who can grant it. A 404 is the project-directory
+/// refusal `auth project use` already declares, not the shared mapping's
+/// transformer one.
+fn map_project_properties_client(error: ClientError) -> Failure {
+    use ds_client_core::ProjectPropertiesServiceCode as Code;
+    let Some(code) = error.project_properties_service_code() else {
+        return map_client(error);
+    };
+    let owner = error.to_string();
+    let (status, sentence) = match error.service_refusal() {
+        Some(refusal) => (Some(refusal.status()), refusal.message().map(str::to_owned)),
+        None => (None, None),
+    };
+    let message = match (&status, &sentence) {
+        (Some(status), Some(sentence)) => format!("{owner} (HTTP {status}): {sentence}"),
+        (Some(status), None) => format!("{owner} (HTTP {status})"),
+        _ => owner,
+    };
+    let detail = json!({ "http_status": status, "service_message": sentence });
+    match code {
+        Code::Invalid => Failure::invalid(PROJECT_PROPERTIES_INVALID_REFUSAL.code, message)
+            .detail(detail)
+            .remedy(PROJECT_PROPERTIES_INVALID_REFUSAL.remedy),
+        Code::CapabilityMissing => {
+            let remedy = if sentence
+                .as_deref()
+                .is_some_and(|s| s.contains("project.create"))
+            {
+                PROJECT_CREATE_FORBIDDEN_REFUSAL.remedy
+            } else {
+                PROJECT_EDIT_FORBIDDEN_REFUSAL.remedy
+            };
+            Failure::unauthorized(PROJECT_EDIT_FORBIDDEN_REFUSAL.code, message)
+                .detail(detail)
+                .remedy(remedy)
+        }
+        Code::ProjectReadOnly => {
+            Failure::unauthorized(PROJECT_EDIT_FORBIDDEN_REFUSAL.code, message)
+                .detail(detail)
+                .remedy("unarchive the project, or extend its expiry, before editing it")
+        }
+        Code::ProjectNotFound => Failure::invalid(PROJECT_UNKNOWN_REFUSAL.code, message)
+            .detail(detail)
+            .remedy(PROJECT_UNKNOWN_REFUSAL.remedy)
+            .next("ds auth project list --output json"),
+    }
+}
+
+pub fn render_project_properties(data: &Value) -> String {
+    match data["action"].as_str() {
+        Some("create") => format!(
+            "created  {}  {}  ({})\n",
+            data["project_id"].as_str().unwrap_or(""),
+            data["display_name"].as_str().unwrap_or(""),
+            data["project_name"].as_str().unwrap_or(""),
+        ),
+        _ => format!(
+            "updated  {}  {} field(s) changed\n",
+            data["project_id"].as_str().unwrap_or(""),
+            data["fields_updated"].as_u64().unwrap_or(0),
+        ),
+    }
+}
+
 fn require_restore_before_context(
     client: &mut NativeClient,
 ) -> Result<ds_client_core::AuthenticatedUser, Failure> {
@@ -5949,7 +6238,13 @@ mod tests {
             ) {
                 assert_eq!(command.effect, Effect::ReadOnly);
                 assert!(command.arg("desktop-descriptor").is_none());
-            } else if command.id == "auth.device.revoke" {
+            } else if matches!(
+                command.id,
+                "auth.device.revoke" | "auth.project.create" | "auth.project.update"
+            ) {
+                // The confirmed global writes: a device revocation, a project
+                // creation and a project edit. Each mutates governed shared
+                // state on the gateway and none touches local auth state.
                 assert_eq!(command.effect, Effect::GlobalWrite);
                 assert_eq!(command.authority, Authority::HeadlessUser);
                 assert!(command.arg("desktop-descriptor").is_none());
@@ -6104,6 +6399,128 @@ mod tests {
         assert_eq!(first.len(), 64);
         assert!(!first.contains("uid-1"));
         assert!(!first.contains("operator@example.com"));
+    }
+
+    /// `ds auth project update` on a project the account does not administer
+    /// reads as the capability a project admin has to grant, not as a generic
+    /// authentication failure; a 404 is the directory refusal `auth project
+    /// use` already declares; a 400 carries the server's own sentence. Each
+    /// code and remedy is the one the command's `--help` declares.
+    #[test]
+    fn project_properties_refusals_read_as_the_commands_declare_them() {
+        use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
+        use ds_client_core::project_properties::{Command, Properties, Receipt};
+
+        fn envelope(code: &str, message: &str) -> Vec<u8> {
+            serde_json::to_vec(&json!({
+                "success": false,
+                "error": {"code": code, "message": message, "timestamp": 1},
+                "timestamp": "2026-09-20T10:00:00Z",
+                "service": "data-solutions-backend",
+                "version": "1.0.0"
+            }))
+            .unwrap()
+        }
+        let update = Command::Update {
+            project_id: "it_rwanda".into(),
+            properties: Properties {
+                display_name: Some("Integration test — Rwanda".into()),
+                ..Properties::default()
+            },
+        };
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_project_properties(
+            403,
+            &envelope(
+                "INSUFFICIENT_PERMISSIONS",
+                "Requires project.properties.edit capability (project admin)",
+            ),
+        );
+        transport.push_project_properties(
+            403,
+            &envelope(
+                "INSUFFICIENT_PERMISSIONS",
+                "Requires project.create capability",
+            ),
+        );
+        transport.push_project_properties(
+            403,
+            &envelope("PROJECT_ARCHIVED", "This project is archived."),
+        );
+        transport.push_project_properties(404, &envelope("PROJECT_NOT_FOUND", "Project not found"));
+        transport.push_project_properties(
+            400,
+            &envelope("VALIDATION_FAILED", "unsupported project_type \"x\""),
+        );
+        transport.push_project_properties(
+            200,
+            &serde_json::to_vec(&json!({
+                "success": true,
+                "message": "Project updated successfully",
+                "data": {"project_id": "it_rwanda", "resources_ensured": true, "dataset_exists": true, "fields_updated": 1},
+                "timestamp": "2026-09-20T10:00:00Z", "service": "data-solutions-backend", "version": "1.0.0"
+            }))
+            .unwrap(),
+        );
+        let mut client = signed_in(transport);
+        let mut refused = || {
+            map_project_properties_client(client.project_properties(&update, NOW + 1).unwrap_err())
+        };
+
+        let edit = refused();
+        assert_eq!(edit.code(), PROJECT_EDIT_FORBIDDEN_REFUSAL.code);
+        assert_eq!(
+            edit.remedy_text(),
+            Some(PROJECT_EDIT_FORBIDDEN_REFUSAL.remedy)
+        );
+        assert!(
+            edit.message().contains(
+                "(HTTP 403): Requires project.properties.edit capability (project admin)"
+            ),
+            "{edit:?}"
+        );
+        let create = refused();
+        assert_eq!(create.code(), PROJECT_CREATE_FORBIDDEN_REFUSAL.code);
+        assert_eq!(
+            create.remedy_text(),
+            Some(PROJECT_CREATE_FORBIDDEN_REFUSAL.remedy)
+        );
+        let archived = refused();
+        assert_eq!(archived.code(), "auth_rejected");
+        assert!(archived.message().contains("archived"), "{archived:?}");
+        let unknown = refused();
+        assert_eq!(unknown.code(), PROJECT_UNKNOWN_REFUSAL.code);
+        assert_eq!(unknown.remedy_text(), Some(PROJECT_UNKNOWN_REFUSAL.remedy));
+        let invalid = refused();
+        assert_eq!(invalid.code(), PROJECT_PROPERTIES_INVALID_REFUSAL.code);
+        assert!(
+            invalid.message().contains("unsupported project_type"),
+            "{invalid:?}"
+        );
+
+        // A success is the receipt, and the rendered line names the project.
+        let receipt = client.project_properties(&update, NOW + 1).unwrap();
+        assert!(matches!(receipt, Receipt::Updated(ref r) if r.fields_updated == 1));
+        let mut answer = serde_json::to_value(&receipt).unwrap();
+        answer["action"] = json!("update");
+        assert_eq!(
+            render_project_properties(&answer),
+            "updated  it_rwanda  1 field(s) changed\n"
+        );
+
+        // Nothing to change is refused before the transport is reached.
+        let nothing = map_project_properties_client(
+            client
+                .project_properties(
+                    &Command::Update {
+                        project_id: "it_rwanda".into(),
+                        properties: Properties::default(),
+                    },
+                    NOW + 1,
+                )
+                .unwrap_err(),
+        );
+        assert_eq!(nothing.code(), PROJECT_PROPERTIES_INVALID_REFUSAL.code);
     }
 
     /// The receipt an operator actually reads. On 2026-09-10 a print layout
