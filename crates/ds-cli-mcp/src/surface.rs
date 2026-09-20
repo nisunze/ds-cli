@@ -16,6 +16,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "grid-native",
     "printing",
     "grid-local-model",
+    "clearance",
     "pls",
     "pls-library",
     "library-governance",
@@ -76,6 +77,7 @@ pub enum Profile {
     GridNative,
     Printing,
     GridLocalModel,
+    GridClearance,
     Pls,
     PlsLibrary,
     LibraryGovernance,
@@ -114,6 +116,7 @@ impl Profile {
             "grid-native" => Some(Self::GridNative),
             "printing" => Some(Self::Printing),
             "grid-local-model" => Some(Self::GridLocalModel),
+            "clearance" => Some(Self::GridClearance),
             "pls" => Some(Self::Pls),
             "pls-library" => Some(Self::PlsLibrary),
             "library-governance" => Some(Self::LibraryGovernance),
@@ -153,6 +156,7 @@ impl Profile {
             Self::GridNative => "grid-native",
             Self::Printing => "printing",
             Self::GridLocalModel => "grid-local-model",
+            Self::GridClearance => "clearance",
             Self::Pls => "pls",
             Self::PlsLibrary => "pls-library",
             Self::LibraryGovernance => "library-governance",
@@ -276,6 +280,10 @@ impl Profile {
                     // from the file-in/file-out engine workflow, and it keeps
                     // its own profile.
                     && !GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str())
+                    // The feature-code and clearance workflow (program
+                    // contract 03) is one operator job over a working copy
+                    // and keeps its own profile, like the local-model family.
+                    && !GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str())
             }
             Self::Grid => {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
@@ -292,6 +300,9 @@ impl Profile {
                     // So do the working copy's typed edits and its structure
                     // list (`grid-local-model`, 2026-09-20).
                     && !GRID_LOCAL_MODEL_TYPED_EDITS.contains(&tool.id.as_str())
+                    // And the feature-code / clearance workflow (program
+                    // contract 03, 2026-09-20): its own profile, `clearance`.
+                    && !GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str())
                     // Deleted LV snapshot recovery is an Assets workflow,
                     // outside this engineering-model profile. The global
                     // catalogue and Grid Model chapter retain its command.
@@ -299,6 +310,7 @@ impl Profile {
             }
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
+            Self::GridClearance => GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str()),
             Self::Pls => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls."),
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS.contains(&tool.id.as_str()),
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS.contains(&tool.id.as_str()),
@@ -353,6 +365,7 @@ impl Profile {
             Self::Installations => INSTALLATION_COMMANDS,
             Self::Printing => PRINTING_COMMANDS,
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
+            Self::GridClearance => GRID_CLEARANCE_COMMANDS,
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
@@ -392,7 +405,7 @@ impl Profile {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::GridNative => chapter == Chapter::GridModel,
             Self::Printing => matches!(chapter, Chapter::Reports | Chapter::MapPresentation),
-            Self::GridLocalModel => chapter == Chapter::GridModel,
+            Self::GridLocalModel | Self::GridClearance => chapter == Chapter::GridModel,
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
             Self::Survey
             | Self::FormFactory
@@ -514,6 +527,22 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.structure.describe",
     "dsgrid.structure.retype",
     "dsgrid.report.structures",
+];
+
+// Program contract 03: feature codes and clearance across the PLS-CADD
+// boundary — the table report, the standard import, the migration of survey
+// tokens, the FEA export, the clearance criteria (set and show) and the
+// clearance report. One operator workflow over one working copy, from the
+// consultant's "clearances not configured" to the list of violations by
+// feature code; the surrounding file workflow stays in `grid-native`.
+const GRID_CLEARANCE_COMMANDS: &[&str] = &[
+    "dsgrid.feature-codes.report",
+    "dsgrid.feature-codes.import",
+    "dsgrid.feature-codes.migrate",
+    "dsgrid.feature-codes.export",
+    "dsgrid.criteria.show",
+    "dsgrid.criteria.clearance.set",
+    "dsgrid.analyse.clearance",
 ];
 
 const PLS_LIBRARY_COMMANDS: &[&str] = &[

@@ -242,6 +242,56 @@ still open: the column is additive, every description reads as absent, and
 `structure retype`, any revision) carries the current schema; nothing is
 re-converted. `package_decode_failed` is kept for a package that is damaged
 or carries a table schema this build does not decode at all.
+## Feature codes and clearance (program contract 03)
+
+PLS-CADD's clearance check knows only what the feature-code table tells it:
+per survey point, the code's required vertical (RV) and horizontal (RH)
+clearance at the weather cases named under Criteria › Survey Point
+Clearances. The DS feature-code standard (`pls-feature-codes.v1.json`,
+owner-issued, bundled into `ds`, digest-verified, never edited by code) is 60
+codes with RV/RH per voltage class from the REG Reticulation Standards,
+ground = 200, unknown = 999, 376 aliases and the legacy code maps of the
+models we migrate. The verbs below run over a working copy (`--model
+local-…`, revised in place) or an immutable package (`--package … --out …`)
+through the same plumbing as every typed mutation: `--revision` pin,
+`--dry-run` xor `--yes`, one receipt shape.
+
+```bash
+ds dsgrid feature-codes report  --model local-<id> --output json
+ds dsgrid feature-codes import  --model local-<id> --standard pls-feature-codes.v1.json --voltage-class MV --yes
+ds dsgrid feature-codes migrate --model local-<id> --standard pls-feature-codes.v1.json --yes      # --deliver refuses while any 999 remains
+ds dsgrid criteria show         --model local-<id>
+ds dsgrid criteria clearance set --model local-<id> --voltage-class MV \
+    --vertical-case "Maximum Conductor Temperature" --horizontal-case "High wind" --yes
+ds dsgrid analyse clearance     --model local-<id> --output json --limit 500
+ds dsgrid feature-codes export  --model local-<id> --voltage-class MV --out ./nyamagabe-mv.fea
+```
+
+`report` lists every code (number, RV/RH, ground/obstacle, class, assumed,
+usage) and the survey tokens no code resolves, by name and count. `import`
+authors the standard's codes with one class's clearances (updating by name,
+retiring the rest unless `--merge`). `migrate` classifies every survey token
+exactly as the standard's classifier script — normalise, exact alias,
+heuristics, residue — joins legacy FEA numbers through the standard's legacy
+map, renders each point's description from the code's template, and lists
+the mapping, the counts per code and the UNKNOWN tokens; `--deliver` refuses
+`feature_code_unknown_in_delivery`. `criteria clearance set` fills the
+criterion set's clearance voltage, survey-point vertical and horizontal cases
+and wire clearance line from the class; a label the model's weather set does
+not carry is `clearance_case_missing`, and a vertical case colder than the
+75 °C REG rates conductors at is a finding. `analyse clearance` is the
+engine's `clearance_report`: every corridor point of every span against its
+code's RV/RH (obstacle height applied) at the survey-point cases — vertical
+at the maximum-temperature case, horizontal blow-out at the high-wind case,
+solved in the load plane — with deficits, violations, per-alignment and
+per-code totals; verification level `proposal` (PLS-CADD's Terrain ›
+Clearances confirms; contract 06 compares). `export` writes the table as
+FEA 15 for PLS-CADD 16.81; the workspace sync (`dsgrid-exchange sync`,
+contract 02) rewrites FEA 15 and CRI 94 from the same model.
+
+On `dsgrid-exchange convert`, a workspace's `.fea` member becomes the
+model's feature-code definitions and every survey point resolves to its
+definition by number; the receipt names `FEA 15` and the unresolved tokens.
 
 ## Making a `.dsgrid`, and exporting one
 
@@ -271,6 +321,10 @@ identity still reaches it without loading exchange planning.
 | `structure describe/retype` | `ds_grid_engine::GridSession::apply_transaction_at_head` (`describe_structure`, `retype_structure`), `ds_grid_engine::evaluate_structure_type`, `ds_grid_exchange::dsgrid::emit`, `local_models::Op::Revise` |
 | `report structures` | `ds_grid_engine::report_structures` (+ `structure_rules::load_standard`), `ds_io::layers_to_xlsx` |
 | `publish-version` | paired Desktop `dsgrid.model.publish`, composing its existing project version flow |
+| `feature-codes report/import/migrate` | `ds_grid_engine::feature_code_ops` over `ds_grid_engine::feature_code_standard` (the bundled standard and its classifier) |
+| `feature-codes export` | `ds_grid_exchange::feature_code_fea::export_fea`, `ds_io::pls_cadd_fea::write_fea` |
+| `criteria show`, `criteria clearance set` | `ds_grid_engine::clearance_criteria` |
+| `analyse clearance` | `ds_grid_engine::clearance_report` (engine operation `clearance_report`) |
 
 There is no second implementation of the `.dsgrid` format, model validation,
 source classification, browser-local session state, or project publication in

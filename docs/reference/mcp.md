@@ -87,7 +87,11 @@ all-command publication temporarily for compatibility.
 validation, command discovery, reads/solves, revision-gated edits and exchange.
 Its nine command leaves require no desktop, TypeScript runtime or signed-in
 project. `grid-local-model` retains the paired application lifecycle and
-project publication; the broad `grid` profile includes both kinds of control.
+project publication; `clearance` is the feature-code and clearance
+workflow over one working copy (`dsgrid feature-codes report|import|migrate|
+export`, `dsgrid criteria show|clearance set`, `dsgrid analyse clearance`);
+the broad `grid` router keeps its budget and leaves the typed edits and the
+clearance workflow to those two profiles.
 
 The `design-edit` profile includes the same canonical `map.design.open`,
 map-owned `map.design.pin` Working-set operation, and

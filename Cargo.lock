@@ -1405,6 +1405,7 @@ dependencies = [
  "ds-grid-physics",
  "ds-profile",
  "geo",
+ "regex",
  "serde",
  "serde_json",
  "sha2",

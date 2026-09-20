@@ -443,9 +443,12 @@ fn inspect_reports_the_engine_s_own_identity() {
     assert_eq!(data["model"]["schema_version"], 1);
     assert_eq!(data["model"]["format_version"], 1);
     // Canonical ds-network granular-tag schema regenerated this self-authored fixture.
+    // Regenerated again on 2026-09-20 when the FEA member became engineering
+    // (program contract 03): the fixture carries its feature-code definition
+    // and its survey points resolve by number.
     // Keep the source fingerprint and its derived model id coupled: changing
     // one while leaving the other stale would conceal an identity drift.
-    const HUMBLE_FINGERPRINT: &str = "fnv1a64:6b325cf842b29531";
+    const HUMBLE_FINGERPRINT: &str = "fnv1a64:bd82b3ba56689510";
     assert_eq!(data["model"]["fingerprint"], HUMBLE_FINGERPRINT);
     assert_eq!(
         data["model"]["id"],

@@ -472,6 +472,15 @@ fn dispatch(operation_id: &str, params: &Value, session: &GridSession) -> Result
             ds_grid_engine::report_structures(session.snapshot(), None)
                 .map_err(|error| engine_error(operation_id, error))?,
         ),
+        "clearance_report" => {
+            let options: ds_grid_engine::ClearanceReportOptions = parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                session
+                    .clearance_report(&options)
+                    .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
         "terrain_anomaly_analysis" => {
             let options: TerrainAnomalyOptions = parse(operation_id, params)?;
             serialize(
