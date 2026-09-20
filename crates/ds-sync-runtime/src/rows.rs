@@ -53,6 +53,11 @@ pub struct LocalRow {
     pub resource: String,
     pub client_publish_id: String,
     pub outputs: Vec<LocalOutput>,
+    /// The producer store reference the bytes live at — a batch id in the
+    /// report artifact root, a durable job id for Solar — as the store keeps
+    /// it (`ArtifactRow::bytes_locator`). The producer reads it to move or
+    /// free the bytes; nothing else interprets it.
+    pub bytes_locator: String,
 }
 
 impl LocalRow {
@@ -187,7 +192,8 @@ pub struct Receipt {
     /// The planned action this answers: `open_grant`, `upload`, `download`,
     /// `conflict`, `nothing`, `refused`, `offline`, `lease`, `store` — and
     /// `reclaimed` / `reclaim_failed`, what became of the bytes of a
-    /// publication that lost (its outcome names the verdict it lost to).
+    /// publication that lost (its outcome names the verdict it lost to), and
+    /// `adopted`, a batch found on disk with no row and recorded once.
     pub action: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub identity: Option<sync::Identity>,
@@ -529,12 +535,7 @@ pub fn store_scope(project: &str) -> store::Scope {
 
 /// A producer's row as the store keeps it. The locator names the producer
 /// store that owns the bytes; the store never interprets it.
-pub fn store_row(
-    project: &str,
-    row: &LocalRow,
-    bytes_locator: String,
-    now: u64,
-) -> store::ArtifactRow {
+pub fn store_row(project: &str, row: &LocalRow, now: u64) -> store::ArtifactRow {
     store::ArtifactRow {
         scope: store_scope(project),
         identity: row.identity.clone(),
@@ -560,7 +561,7 @@ pub fn store_row(
                 size_bytes: output.size_bytes,
             })
             .collect(),
-        bytes_locator,
+        bytes_locator: row.bytes_locator.clone(),
         readable: row.readable,
         state: store::ArtifactState::Held,
         state_reason: None,
@@ -605,6 +606,7 @@ pub fn local_row_from_store(row: &store::ArtifactRow) -> LocalRow {
                 size_bytes: output.size_bytes,
             })
             .collect(),
+        bytes_locator: row.bytes_locator.clone(),
     }
 }
 

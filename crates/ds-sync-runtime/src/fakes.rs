@@ -63,6 +63,15 @@ pub struct FakeWorld {
     /// row can be uncovered after a request that reported success.
     pub issue_release: Option<String>,
     pub refuse_publish: Option<String>,
+    /// Refuse the n-th declaration (0-based) and every later one — a gateway
+    /// that goes away after the uploads and before the restated declaration
+    /// is acknowledged, which is what a crash between transfer and commit
+    /// looks like from the edge.
+    pub refuse_publish_from: Option<usize>,
+    /// Never commit: every declaration answers `upload_required` naming every
+    /// artifact, committed or not. Transport succeeds, the record never
+    /// advances.
+    pub never_commit: bool,
     pub refuse_list: Option<String>,
     /// Answer every publish with this state instead of the two-phase flow.
     pub publish_state: Option<String>,
@@ -98,6 +107,8 @@ impl Default for FakeWorld {
             refuse_open_resource: None,
             issue_release: None,
             refuse_publish: None,
+            refuse_publish_from: None,
+            never_commit: false,
             refuse_list: None,
             publish_state: None,
             record: Vec::new(),
@@ -163,6 +174,7 @@ pub fn local_row(bytes: &[u8]) -> LocalRow {
         resource: "tx_1".into(),
         client_publish_id: "publish-11111111-1111-4111-8111-111111111111".into(),
         outputs,
+        bytes_locator: "fake:batch:publish-11111111-1111-4111-8111-111111111111".into(),
     }
 }
 
@@ -276,6 +288,14 @@ impl Gateway for FakeGateway {
                 if let Some(reason) = &world.refuse_publish {
                     return Err(reason.clone());
                 }
+                if world
+                    .refuse_publish_from
+                    .is_some_and(|from| world.declarations.len() > from)
+                {
+                    return Err(
+                        "the gateway went away before the declaration was acknowledged".into(),
+                    );
+                }
                 if let Some(state) = &world.publish_state {
                     return Ok(json!({"state": state, "work_id": "work-1"}));
                 }
@@ -284,12 +304,13 @@ impl Gateway for FakeGateway {
                     .unwrap_or_default()
                     .to_string();
                 let artifacts = body["artifacts"].as_array().cloned().unwrap_or_default();
+                let never_commit = world.never_commit;
                 let missing: Vec<Value> = artifacts
                     .iter()
                     .filter_map(|artifact| {
                         let kind = artifact["kind"].as_str().unwrap_or_default().to_string();
                         let uri = session_uri(&publish_id, &kind);
-                        (!world.committed_sessions.contains(&uri))
+                        (never_commit || !world.committed_sessions.contains(&uri))
                             .then(|| json!({"kind": kind, "session_uri": uri}))
                     })
                     .collect();
@@ -380,10 +401,6 @@ impl FakeProducer {
 impl Producer for FakeProducer {
     fn inventory(&self, _project: &str) -> Result<Vec<LocalRow>, String> {
         Ok(self.rows.lock().expect("rows").clone())
-    }
-
-    fn locator(&self, row: &LocalRow) -> String {
-        format!("fake:batch:{}", row.client_publish_id)
     }
 
     fn transfer(

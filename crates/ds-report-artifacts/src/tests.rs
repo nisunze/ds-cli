@@ -837,127 +837,17 @@ fn a_crash_mid_publication_recovers_on_the_next_run_with_no_human_step() {
     drop(orphaned);
 }
 
-/// A sealed batch in the shape the shared sync runtime actually drains
-/// (schema 3), so queue readings are pinned against the real queue and not
-/// against the upgrade-recovery fixture above.
-fn write_queued_batch(root: &Path, locator: &str, transformer: &str, bytes: &[u8]) {
-    write_batch_for(
-        root,
-        locator,
-        "project-1",
-        transformer,
-        bytes,
-        &format!(
-            "publish-123e4567-e89b-42d3-a456-4266141740{:02}",
-            bytes.len() % 100
-        ),
-    );
-}
-
-/// The same sealed batch, with the facts a settlement is decided from —
-/// project, room and publish id — under the caller's control.
-fn write_batch_for(
-    root: &Path,
-    locator: &str,
-    project: &str,
-    transformer: &str,
-    bytes: &[u8],
-    publish_id: &str,
-) {
-    let batch_id = locator_id(locator).expect("valid locator").to_string();
-    let sha256 = format!("{:x}", Sha256::digest(bytes));
-    let entry = root.join(&batch_id);
-    std::fs::create_dir_all(&entry).expect("create artifact entry");
-    std::fs::write(entry.join(ARTIFACT_FILE), bytes).expect("write artifact");
-    let receipt = NetworkReporterArtifactReceipt {
-        schema: RECEIPT_SCHEMA,
-        batch_id: batch_id.clone(),
-        output_id: "shp".to_string(),
-        locator: locator.to_string(),
-        artifact_file: ARTIFACT_FILE.to_string(),
-        size_bytes: bytes.len() as u64,
-        sha256: sha256.clone(),
-    };
-    let mut receipt_bytes = serde_json::to_vec_pretty(&receipt).expect("encode receipt");
-    receipt_bytes.push(b'\n');
-    std::fs::write(entry.join(RECEIPT_FILE), receipt_bytes).expect("write receipt");
-    let pending = HeldDirectory::ensure_absolute(root).expect("hold pending root");
-    PendingPublicationCommit::stage(
-        &pending,
-        &PublicationBatchReceipt {
-            schema: publication::BATCH_SCHEMA,
-            batch_id,
-            owner_uid: "owner-1".to_string(),
-            organization_id: Some("org-1".to_string()),
-            project_id: project.to_string(),
-            root: format!("eds_project/{project}/eds_design"),
-            client_run_id: "report-0123456789abcdef0123456789abcdef".to_string(),
-            engine: "network_reporter".to_string(),
-            operation: format!("export-{transformer}"),
-            variant: "default".to_string(),
-            engine_version: format!("ds-network-reporter@0.1.0+{}", "a".repeat(40)),
-            engine_build_manifest_sha256: "e".repeat(64),
-            transformer: transformer.to_string(),
-            transformer_revision: 7,
-            input_base_fingerprint: "b".repeat(64),
-            room_content_sha256: "c".repeat(64),
-            grant_id: None,
-            snapshot_base: BTreeMap::new(),
-            client_publish_id: publish_id.to_string(),
-            outputs: vec![PublicationOutput {
-                output_id: "shp".to_string(),
-                locator: locator.to_string(),
-                filename: format!("{transformer}.shp.zip"),
-                format: "shp".to_string(),
-                content_type: "application/zip".to_string(),
-                sha256,
-                size_bytes: bytes.len() as u64,
-                paper_size: None,
-                presentation: None,
-            }],
-        },
-    )
-    .expect("stage publication receipt")
-    .commit()
-    .expect("commit publication receipt");
-}
-
-#[test]
-fn the_queue_says_how_much_is_waiting_and_for_how_long() {
-    // WHY: 593 sealed artifacts sat on one PC because nothing counted them.
-    // A queue that cannot say what it holds is indistinguishable from an
-    // empty one, and that is how a day of work went missing.
-    let test = TestDirectory::new("queue-status");
-    let root = test.0.join("pending-upload");
-    write_queued_batch(&root, &locator(0x41), "tx_1", b"first queued report");
-    write_queued_batch(&root, &locator(0x42), "tx_2", b"second queued report!");
-
-    let status =
-        queue_status(&root, None, &|_| Settlement::Queued).expect("read the publication queue");
-    assert_eq!(status.queued_batches, 2);
-    assert_eq!(status.queued_bytes, 19 + 21);
-    assert_eq!(status.projects.len(), 1);
-    assert_eq!(status.projects[0].project_id, "project-1");
-    assert_eq!(status.projects[0].batches, 2);
-    assert_eq!(status.projects[0].transformers.len(), 2);
-    assert!(!status.stuck, "a queue holding work is not a stuck queue");
-    assert_eq!(status.next, "ds report outbox drain");
-
-    let scoped = queue_status(&root, Some("project-2"), &|_| Settlement::Queued)
-        .expect("read another project's queue");
-    assert_eq!(scoped.queued_batches, 0);
-    assert_eq!(scoped.next, "nothing is queued on this machine");
-}
-
 #[cfg(unix)]
 #[test]
 fn a_lock_from_an_earlier_boot_resolves_itself_instead_of_waiting_for_a_human() {
     // WHY: a machine that was power-cycled mid-publication is the plainest
     // form of the wedge: the marker survives the reboot, its holder cannot.
-    // The recorded boot proves it, so nothing here needs an operator.
-    let test = TestDirectory::new("queue-status-stuck");
+    // The recorded boot proves it, so nothing here needs an operator. This
+    // is the bytes directory's own lock; the queue's liveness is the store's
+    // lease and is read there.
+    let test = TestDirectory::new("lock-earlier-boot");
     let root = test.0.join("pending-upload");
-    write_queued_batch(&root, &locator(0x43), "tx_1", b"queued report");
+    write_fixture(&root, &locator(0x43), b"queued report");
     let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
     let _orphaned = held
         .try_lock_file(
@@ -976,27 +866,25 @@ fn a_lock_from_an_earlier_boot_resolves_itself_instead_of_waiting_for_a_human() 
         ),
     );
 
-    let status =
-        queue_status(&root, None, &|_| Settlement::Queued).expect("read the publication queue");
+    let lock = inspect_pending_upload_lock(&root).expect("read the lock");
     // A recorded boot that is not this one proves the holder is gone, so this
     // resolves itself on the next run rather than waiting for a human.
-    assert!(status.lock.held);
-    assert!(status.lock.reclaimable);
-    assert!(!status.stuck);
-    assert_eq!(status.lock.holder, "gone");
-    assert_eq!(status.queued_batches, 1);
+    assert!(lock.held);
+    assert!(lock.reclaimable);
+    assert!(!lock.wedged);
+    assert_eq!(lock.holder, "gone");
 }
 
 #[cfg(unix)]
 #[test]
-fn a_held_lock_with_no_owner_evidence_is_reported_stuck_and_never_broken() {
-    // WHY: acceptance D's other half. A holder that left no record cannot be
-    // proved dead, and breaking that lock would put two writers inside the
-    // crash-durable section. So the queue says plainly that it is stuck, and
-    // says which process to end — instead of a hidden file and a guess.
-    let test = TestDirectory::new("queue-status-unproven");
+fn a_held_lock_with_no_owner_evidence_is_reported_wedged_and_never_broken() {
+    // WHY: a holder that left no record cannot be proved dead, and breaking
+    // that lock would put two writers inside the crash-durable section. So
+    // the lock says plainly that it is wedged and names nothing it cannot
+    // prove — instead of a hidden file and a guess.
+    let test = TestDirectory::new("lock-unproven");
     let root = test.0.join("pending-upload");
-    write_queued_batch(&root, &locator(0x44), "tx_1", b"queued report");
+    write_fixture(&root, &locator(0x44), b"queued report");
     let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
     let _orphaned = held
         .try_lock_file(
@@ -1006,319 +894,15 @@ fn a_held_lock_with_no_owner_evidence_is_reported_stuck_and_never_broken() {
         .expect("the marker is locked");
     stamp_crashed_owner(&root, "");
 
-    let status =
-        queue_status(&root, None, &|_| Settlement::Queued).expect("read the publication queue");
-    assert!(status.lock.held);
-    assert!(!status.lock.reclaimable);
+    let lock = inspect_pending_upload_lock(&root).expect("read the lock");
+    assert!(lock.held);
+    assert!(!lock.reclaimable);
     assert!(
-        status.stuck,
+        lock.wedged,
         "an unprovable holder is the one state a human owns"
-    );
-    assert!(status.next.contains("lock.owner"));
-    assert_eq!(
-        status.queued_batches, 1,
-        "the work is still counted while it waits"
     );
     assert!(
         recorded_lock_reclaims(&root).unwrap().is_empty(),
         "an unprovable holder is never broken"
     );
-}
-
-#[cfg(unix)]
-#[test]
-fn a_drain_releases_an_abandoned_lock_before_it_runs_and_leaves_a_live_one_alone() {
-    // WHY: acceptance E depends on this. The uploader never takes the queue's
-    // lock, so a marker that outlived its holder would otherwise sit there
-    // until someone happened to export again — which is the same wedge with a
-    // longer fuse. `ds report outbox drain` calls this first.
-    let test = TestDirectory::new("drain-reclaim");
-    let root = test.0.join("pending-upload");
-    write_queued_batch(&root, &locator(0x45), "tx_1", b"queued report");
-    let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
-
-    let live = held
-        .try_lock_file(
-            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
-            PENDING_UPLOAD_LOCK_LABEL,
-        )
-        .expect("a live owner holds the lock");
-    assert_eq!(
-        reclaim_pending_upload_lock(&root).expect("a live holder is not an error"),
-        None,
-        "a publication in progress is left to finish"
-    );
-    assert!(recorded_lock_reclaims(&root).unwrap().is_empty());
-
-    let dead = reaped_pid();
-    let stale = confined_fs::now_ms() - confined_fs::LOCK_STALE_AFTER_MS - 1;
-    stamp_crashed_owner(
-        &root,
-        &format!(
-            "{{\"schema\":1,\"pid\":{dead},\"boot\":null,\"processStartedAt\":null,\
-             \"worker\":\"ds-report\",\"takenAtMs\":{stale},\"heartbeatAtMs\":{stale}}}\n"
-        ),
-    );
-    let reclaim = reclaim_pending_upload_lock(&root)
-        .expect("an abandoned lock is released")
-        .expect("the release is reported to the caller");
-    assert_eq!(reclaim.previous_pid, dead);
-    assert!(!inspect_pending_upload_lock(&root).unwrap().held);
-    drop(live);
-}
-
-#[cfg(unix)]
-#[test]
-fn a_drain_still_reports_its_reclaim_after_the_journal_has_filled_up() {
-    // WHY: the journal is capped, so a caller that detected its own reclaim
-    // by the journal GROWING would stop detecting it once the cap was
-    // reached — on precisely the machine that keeps wedging, which is the one
-    // whose operator most needs to be told the queue was unstuck. The drain
-    // therefore compares the newest entry, not the count.
-    let test = TestDirectory::new("drain-reclaim-saturated");
-    let root = test.0.join("pending-upload");
-    write_queued_batch(&root, &locator(0x46), "tx_1", b"queued report");
-
-    let mut last = None;
-    for round in 0..(MAX_RECORDED_RECLAIMS + 2) {
-        let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
-        let orphaned = held
-            .try_lock_file(
-                std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
-                PENDING_UPLOAD_LOCK_LABEL,
-            )
-            .expect("the marker is locked");
-        let dead = reaped_pid();
-        let stale = confined_fs::now_ms() - confined_fs::LOCK_STALE_AFTER_MS - 1;
-        stamp_crashed_owner(
-            &root,
-            &format!(
-                "{{\"schema\":1,\"pid\":{dead},\"boot\":null,\"processStartedAt\":null,\
-                 \"worker\":\"ds-report\",\"takenAtMs\":{stale},\"heartbeatAtMs\":{stale}}}\n"
-            ),
-        );
-        last = Some(
-            reclaim_pending_upload_lock(&root)
-                .expect("an abandoned lock is released")
-                .unwrap_or_else(|| {
-                    panic!("round {round} released a dead holder without reporting it")
-                }),
-        );
-        drop(orphaned);
-    }
-
-    assert_eq!(
-        recorded_lock_reclaims(&root).unwrap().len(),
-        MAX_RECORDED_RECLAIMS,
-        "the journal stays bounded"
-    );
-    assert_eq!(
-        recorded_lock_reclaims(&root).unwrap().pop().as_ref(),
-        last.as_ref(),
-        "the reclaim the caller was told about is the one that was recorded"
-    );
-}
-
-/// Make a committed batch look as if it was sealed `age_ms` ago. The queue
-/// reads production time from the batch directory's mtime.
-fn age_batch(root: &Path, locator: &str, age_ms: u64) {
-    let batch_id = locator_id(locator).expect("valid locator");
-    let directory = root.join(publication::BATCH_DIRECTORY).join(batch_id);
-    let then = std::time::SystemTime::now() - Duration::from_millis(age_ms);
-    File::open(&directory)
-        .expect("open the batch directory")
-        .set_modified(then)
-        .expect("age the batch directory");
-}
-
-/// Three batches, one per settlement, in the shape `ds report outbox status`
-/// meets on a machine that has published, lost and is still waiting.
-fn three_settled_batches(
-    root: &Path,
-) -> (
-    BTreeMap<ds_command_kernel::sync::Identity, String>,
-    BTreeSet<String>,
-) {
-    let publish = |n: u8| format!("publish-123e4567-e89b-42d3-a456-4266141740{n:02}");
-    write_batch_for(
-        root,
-        &locator(0x51),
-        "project-1",
-        "tx_queued",
-        b"queued",
-        &publish(1),
-    );
-    write_batch_for(
-        root,
-        &locator(0x52),
-        "project-1",
-        "tx_held",
-        b"the head",
-        &publish(2),
-    );
-    write_batch_for(
-        root,
-        &locator(0x53),
-        "project-1",
-        "tx_lost",
-        b"lost it",
-        &publish(3),
-    );
-    let held = list_project_publication_batches_from_root(root, "project-1")
-        .expect("list")
-        .into_iter()
-        .find(|batch| batch.transformer == "tx_held")
-        .expect("the held batch is committed");
-    let heads = BTreeMap::from([(held.identity(), held.inventory_sha256())]);
-    let terminal = BTreeSet::from([publish(3)]);
-    (heads, terminal)
-}
-
-#[test]
-fn the_queue_counts_only_what_is_queued_and_names_what_stays_and_what_goes() {
-    // WHY: 350 batches and 2.08 GB were reported queued on a machine where
-    // 172 had published and 86 had lost. A published copy is not waiting and
-    // a lost batch never will be; counting them as queued told the operator
-    // to drain a queue that drain could not move.
-    let test = TestDirectory::new("queue-settlement");
-    let root = test.0.join("pending-upload");
-    let (heads, terminal) = three_settled_batches(&root);
-    let settle = settlement_from(&heads, &terminal);
-    age_batch(&root, &locator(0x52), 3 * ABANDONED_AFTER_MS);
-    age_batch(&root, &locator(0x53), 3 * ABANDONED_AFTER_MS);
-
-    let status = queue_status(&root, None, &settle).expect("read the publication queue");
-    assert_eq!(status.queued_batches, 1);
-    assert_eq!(status.queued_bytes, "queued".len() as u64);
-    assert_eq!(status.held_batches, 1);
-    assert_eq!(status.held_bytes, "the head".len() as u64);
-    assert_eq!(status.reclaimable_batches, 1);
-    assert_eq!(status.reclaimable_bytes, "lost it".len() as u64);
-    assert!(
-        status.oldest_age_ms < ABANDONED_AFTER_MS,
-        "age is measured over queued batches only, not over the old settled ones"
-    );
-    assert_eq!(status.projects.len(), 1);
-    assert_eq!(status.projects[0].batches, 1);
-    assert_eq!(
-        status.projects[0].transformers,
-        vec!["tx_queued".to_string()]
-    );
-    assert!(
-        !status.stuck,
-        "fresh queued work with nobody holding the queue is not stuck yet"
-    );
-    assert_eq!(status.next, "ds report outbox drain");
-
-    // The caller that knows nothing gets the old, all-queued reading.
-    let blind = queue_status(&root, None, &|_| Settlement::Queued).expect("blind reading");
-    assert_eq!(blind.queued_batches, 3);
-    assert_eq!(blind.held_batches, 0);
-    assert_eq!(blind.reclaimable_batches, 0);
-}
-
-#[test]
-fn queued_work_nobody_has_pumped_for_an_hour_is_stuck_and_says_who_should() {
-    // WHY: the owner's box: a 7-day-old queue, no live holder, and
-    // `stuck: false` with `next: drain` — a confident answer that was wrong.
-    // `stuck` is "does an operator have to do something"; an hour of queued
-    // work with no pump is exactly that.
-    let test = TestDirectory::new("queue-abandoned");
-    let root = test.0.join("pending-upload");
-    let (heads, terminal) = three_settled_batches(&root);
-    let settle = settlement_from(&heads, &terminal);
-    age_batch(&root, &locator(0x51), ABANDONED_AFTER_MS + 60_000);
-
-    let status = queue_status(&root, None, &settle).expect("read the publication queue");
-    assert!(!status.lock.held, "no holder at all");
-    assert!(status.stuck, "queued for over an hour with nobody pumping");
-    assert!(status.next.contains("no publisher holds this queue"));
-    assert!(status.next.contains("ds report outbox drain"));
-    assert!(!status.lock.wedged, "this is abandonment, not a wedge");
-}
-
-#[cfg(unix)]
-#[test]
-fn old_queued_work_under_a_live_holder_is_not_stuck() {
-    // WHY: a holder that is running and heartbeating IS the pump. Old work
-    // under it is slow, not abandoned, and calling it stuck would send an
-    // operator to restart the very process that is working.
-    let test = TestDirectory::new("queue-live-holder");
-    let root = test.0.join("pending-upload");
-    let (heads, terminal) = three_settled_batches(&root);
-    let settle = settlement_from(&heads, &terminal);
-    age_batch(&root, &locator(0x51), ABANDONED_AFTER_MS + 60_000);
-    let held = HeldDirectory::open_absolute(&root).unwrap().unwrap();
-    let _live = held
-        .try_lock_file(
-            std::ffi::OsStr::new(PENDING_UPLOAD_LOCK_FILE),
-            PENDING_UPLOAD_LOCK_LABEL,
-        )
-        .expect("a live owner holds the lock");
-
-    let status = queue_status(&root, None, &settle).expect("read the publication queue");
-    assert!(status.lock.held);
-    assert!(status.lock.held_by_live_holder());
-    assert_eq!(status.queued_batches, 1);
-    assert!(
-        !status.stuck,
-        "a live holder is pumping; old work under it is not abandoned"
-    );
-    assert_eq!(status.next, "ds report outbox drain");
-}
-
-#[test]
-fn an_empty_queue_is_never_stuck_however_old_its_settled_batches_are() {
-    // WHY: held copies and lost batches age forever; they are not waiting
-    // for anything and nobody has to do anything about them.
-    let test = TestDirectory::new("queue-empty-settled");
-    let root = test.0.join("pending-upload");
-    let (heads, terminal) = three_settled_batches(&root);
-    // Settle the queued one as terminal too: nothing is queued.
-    let mut terminal = terminal;
-    terminal.insert("publish-123e4567-e89b-42d3-a456-426614174001".to_string());
-    let settle = settlement_from(&heads, &terminal);
-    for byte in [0x51, 0x52, 0x53] {
-        age_batch(&root, &locator(byte), 3 * ABANDONED_AFTER_MS);
-    }
-
-    let status = queue_status(&root, None, &settle).expect("read the publication queue");
-    assert_eq!(status.queued_batches, 0);
-    assert_eq!(status.oldest_age_ms, 0);
-    assert_eq!(status.reclaimable_batches, 2);
-    assert_eq!(status.held_batches, 1);
-    assert!(!status.stuck);
-    assert_eq!(
-        status.next, "ds report outbox drain",
-        "lost batches are freed by the next pass, so the next step is still a drain"
-    );
-
-    // Everything on disk is a published copy: nothing waits, nothing goes.
-    let status =
-        queue_status(&root, None, &|_| Settlement::Held).expect("read the publication queue");
-    assert_eq!(status.queued_batches, 0);
-    assert_eq!(status.reclaimable_batches, 0);
-    assert!(!status.stuck);
-    assert_eq!(status.next, "nothing is queued on this machine");
-}
-
-#[test]
-fn a_terminal_id_settles_a_batch_whatever_its_bytes_equal() {
-    // WHY: the store's verdict is the authority; a lost batch whose bytes
-    // happen to equal the head is still lost.
-    let test = TestDirectory::new("queue-terminal-wins");
-    let root = test.0.join("pending-upload");
-    let (heads, _) = three_settled_batches(&root);
-    let terminal = BTreeSet::from(["publish-123e4567-e89b-42d3-a456-426614174002".to_string()]);
-    let settle = settlement_from(&heads, &terminal);
-    let held = list_project_publication_batches_from_root(&root, "project-1")
-        .expect("list")
-        .into_iter()
-        .find(|batch| batch.transformer == "tx_held")
-        .expect("the held batch");
-    assert_eq!(settle(&held), Settlement::Terminal);
-    let status = queue_status(&root, None, &settle).expect("read the publication queue");
-    assert_eq!(status.held_batches, 0);
-    assert_eq!(status.reclaimable_batches, 1);
-    assert_eq!(status.queued_batches, 2);
 }

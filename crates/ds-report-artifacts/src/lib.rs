@@ -11,7 +11,7 @@ use publication::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, HashMap},
     fs::File,
     io::{Read, Seek, Write},
     path::{Path, PathBuf},
@@ -257,8 +257,10 @@ pub struct LockReclaim {
     pub reclaimed_by_pid: u32,
 }
 
-/// What `ds report outbox status` reports about the lock, with no hidden file
-/// for anyone to go looking for.
+/// What `ds report outbox status` reports about the bytes directory's lock,
+/// with no hidden file for anyone to go looking for. This lock serialises
+/// writers of the sealed-bytes directory (a seal, a discard); it is NOT the
+/// queue's liveness signal — that is the sync store's lease.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingUploadLockStatus {
@@ -277,20 +279,6 @@ pub struct PendingUploadLockStatus {
     /// question "is anything stuck?" is answered from.
     pub wedged: bool,
     pub recent_reclaims: Vec<LockReclaim>,
-}
-
-impl PendingUploadLockStatus {
-    /// Whether someone is working the queue right now: the marker is held
-    /// and its holder is either proved running or heartbeated within
-    /// [`confined_fs::LOCK_STALE_AFTER_MS`]. The same reading `wedged` is
-    /// built from, exposed so the queue can ask it.
-    pub fn held_by_live_holder(&self) -> bool {
-        self.held
-            && (self.holder == "live"
-                || self
-                    .heartbeat_age_ms
-                    .is_some_and(|age| age < confined_fs::LOCK_STALE_AFTER_MS))
-    }
 }
 
 /// Read the lock's state without taking it, for diagnosis.
@@ -360,107 +348,6 @@ pub fn inspect_pending_upload_lock(root: &Path) -> Result<PendingUploadLockStatu
     })
 }
 
-/// One project's sealed work, as the queue itself holds it, split by what
-/// each batch has settled to.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueuedProject {
-    pub project_id: String,
-    /// Batches still waiting to publish — the only ones a pump will move.
-    pub batches: usize,
-    pub bytes: u64,
-    pub oldest_produced_at_ms: u64,
-    /// How long the oldest QUEUED batch has been waiting. This is the number
-    /// that turned into "593 artifacts on one PC": it grows silently, and
-    /// nothing used to show it.
-    pub oldest_age_ms: u64,
-    /// The rooms this project is holding queued work for, newest first,
-    /// bounded.
-    pub transformers: Vec<String>,
-    /// Batches whose bytes ARE the room's head: this machine's readable copy
-    /// of what it published. Not queued, not reclaimable — they stay.
-    pub held_batches: usize,
-    pub held_bytes: u64,
-    /// Batches that lost — a conflict or a refusal the store holds as
-    /// terminal. They will never publish; the next pass frees them.
-    pub reclaimable_batches: usize,
-    pub reclaimable_bytes: u64,
-}
-
-/// What `ds report outbox status` answers, decided here rather than in the
-/// CLI: the command renders this, it does not re-derive it.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueueStatus {
-    /// Only what is QUEUED: sealed, not the head, not settled as lost. Every
-    /// committed batch directory used to count here, so 350 batches and
-    /// 2.08 GB were reported as waiting on a machine where nothing was.
-    pub queued_batches: usize,
-    pub queued_bytes: u64,
-    /// Over queued batches only.
-    pub oldest_age_ms: u64,
-    /// Published copies of the rooms' heads, kept readable on this machine.
-    pub held_batches: usize,
-    pub held_bytes: u64,
-    /// Batches that lost and will never publish: freed by the next pass.
-    pub reclaimable_batches: usize,
-    pub reclaimable_bytes: u64,
-    pub projects: Vec<QueuedProject>,
-    pub lock: PendingUploadLockStatus,
-    /// Whether an operator has to do something. The queue being non-empty is
-    /// not stuck — a queue exists to hold work. A lock nobody can take, whose
-    /// holder is neither working nor provably dead, is; and so is queued work
-    /// that has waited longer than [`ABANDONED_AFTER_MS`] with nobody pumping
-    /// it.
-    pub stuck: bool,
-    /// The one command to run next, always stated.
-    pub next: &'static str,
-}
-
-/// What one committed batch on this machine has settled to.
-///
-/// The queue cannot tell on its own: whether a batch's bytes are the room's
-/// head is known to whoever holds the heads, and whether it lost is known to
-/// the sync store. The caller answers per batch through a closure, and the
-/// queue counts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Settlement {
-    /// Sealed and waiting: the room's row a pump will move.
-    Queued,
-    /// The batch's inventory digest equals the room's held head: this is
-    /// the machine's published copy. It stays, and it is not queued.
-    Held,
-    /// The store holds this publication as `conflict` or `refused`. It will
-    /// never publish and the next pass frees its bytes.
-    Terminal,
-}
-
-/// The settlement closure a caller composes from what it already holds:
-/// the heads it has read (`sync-downloads/<project>/<engine>/<operation>/
-/// <variant>/head.json` carries the head's `sha256`, the inventory digest)
-/// and the `client_publish_id`s the store holds as terminal.
-///
-/// A terminal id wins over a head match: a batch the store has settled as
-/// lost is lost whatever its bytes happen to equal.
-pub fn settlement_from<'a>(
-    heads: &'a BTreeMap<ds_command_kernel::sync::Identity, String>,
-    terminal: &'a BTreeSet<String>,
-) -> impl Fn(&LocalPublicationBatch) -> Settlement + 'a {
-    move |batch| {
-        if terminal.contains(&batch.client_publish_id) {
-            return Settlement::Terminal;
-        }
-        if heads
-            .get(&batch.identity())
-            .is_some_and(|sha256| *sha256 == batch.inventory_sha256())
-        {
-            return Settlement::Held;
-        }
-        Settlement::Queued
-    }
-}
-
 /// The one digest that stands for a publication's output inventory.
 ///
 /// Used for the local row and the remote head alike, so "the digests differ"
@@ -476,157 +363,6 @@ pub fn inventory_digest(outputs: &mut [(String, String)]) -> String {
         hasher.update(*b"\n");
     }
     format!("{:x}", hasher.finalize())
-}
-
-/// How long queued work may wait with nobody holding the queue before the
-/// status calls it stuck. A healthy pump publishes within minutes of a seal;
-/// an hour with no live holder means nothing is pumping — the desktop and
-/// the Server are both closed, or their pump is not running — and that is
-/// something an operator has to do, which is what `stuck` means.
-pub const ABANDONED_AFTER_MS: u64 = 60 * 60 * 1000;
-
-/// How many room names one project's row carries before it is summarised.
-pub const MAX_REPORTED_TRANSFORMERS: usize = 20;
-
-/// Read the local publication queue: what is sealed and waiting, how old it
-/// is, what has settled and stays or goes, and who holds the lock.
-///
-/// Credential-free and read-only on purpose. The question "is anything
-/// stuck?" must be answerable on a headless box with no session, no gateway
-/// and no running Server — those are exactly the machines where a wedged pump
-/// goes unnoticed. `settlement` is the caller's knowledge of each batch (see
-/// [`settlement_from`]); a caller that knows nothing passes
-/// `&|_| Settlement::Queued` and gets the old, all-queued reading.
-pub fn queue_status(
-    root: &Path,
-    project: Option<&str>,
-    settlement: &dyn Fn(&LocalPublicationBatch) -> Settlement,
-) -> Result<QueueStatus, String> {
-    if project.is_some_and(|project| !valid_semantic_text(project, 128)) {
-        return Err("Network Reporter publication scope is invalid".to_string());
-    }
-    let lock = inspect_pending_upload_lock(root)?;
-    let now = confined_fs::now_ms();
-    let mut projects: Vec<QueuedProject> = Vec::new();
-    for project_id in queued_projects(root)? {
-        if project.is_some_and(|wanted| wanted != project_id) {
-            continue;
-        }
-        let batches = list_project_publication_batches_from_root(root, &project_id)?;
-        if batches.is_empty() {
-            continue;
-        }
-        let mut row = QueuedProject {
-            project_id,
-            batches: 0,
-            bytes: 0,
-            oldest_produced_at_ms: 0,
-            oldest_age_ms: 0,
-            transformers: Vec::new(),
-            held_batches: 0,
-            held_bytes: 0,
-            reclaimable_batches: 0,
-            reclaimable_bytes: 0,
-        };
-        let mut oldest = u64::MAX;
-        for batch in &batches {
-            let size = batch.size_bytes();
-            match settlement(batch) {
-                Settlement::Held => {
-                    row.held_batches += 1;
-                    row.held_bytes = row.held_bytes.saturating_add(size);
-                }
-                Settlement::Terminal => {
-                    row.reclaimable_batches += 1;
-                    row.reclaimable_bytes = row.reclaimable_bytes.saturating_add(size);
-                }
-                Settlement::Queued => {
-                    row.batches += 1;
-                    row.bytes = row.bytes.saturating_add(size);
-                    if batch.produced_at_ms > 0 {
-                        oldest = oldest.min(batch.produced_at_ms);
-                    }
-                    if row.transformers.len() < MAX_REPORTED_TRANSFORMERS
-                        && !row.transformers.contains(&batch.transformer)
-                    {
-                        row.transformers.push(batch.transformer.clone());
-                    }
-                }
-            }
-        }
-        if oldest != u64::MAX {
-            row.oldest_produced_at_ms = oldest;
-            row.oldest_age_ms = now.saturating_sub(oldest);
-        }
-        projects.push(row);
-    }
-    projects.sort_by(|left, right| {
-        right
-            .oldest_age_ms
-            .cmp(&left.oldest_age_ms)
-            .then_with(|| left.project_id.cmp(&right.project_id))
-    });
-    let queued_batches: usize = projects.iter().map(|project| project.batches).sum();
-    let reclaimable_batches: usize = projects
-        .iter()
-        .map(|project| project.reclaimable_batches)
-        .sum();
-    let oldest_age_ms = projects
-        .iter()
-        .map(|project| project.oldest_age_ms)
-        .max()
-        .unwrap_or(0);
-    // Queued work nobody is pumping. A holder that is running, or one that
-    // heartbeated recently, is working the queue; anything else — no marker,
-    // a marker whose holder is gone, a stale heartbeat — is not.
-    let abandoned =
-        queued_batches > 0 && !lock.held_by_live_holder() && oldest_age_ms > ABANDONED_AFTER_MS;
-    Ok(QueueStatus {
-        queued_batches,
-        queued_bytes: projects
-            .iter()
-            .fold(0_u64, |total, project| total.saturating_add(project.bytes)),
-        oldest_age_ms,
-        held_batches: projects.iter().map(|project| project.held_batches).sum(),
-        held_bytes: projects.iter().fold(0_u64, |total, project| {
-            total.saturating_add(project.held_bytes)
-        }),
-        reclaimable_batches,
-        reclaimable_bytes: projects.iter().fold(0_u64, |total, project| {
-            total.saturating_add(project.reclaimable_bytes)
-        }),
-        next: if lock.wedged {
-            // Deliberately not an override flag. A lock whose holder cannot
-            // be proved gone is the one case where breaking it could put two
-            // writers in the crash-durable section; the remedy is to end the
-            // named holder, after which the next run reclaims it by itself.
-            "stop the process named in `lock.owner`, then run `ds report outbox drain`"
-        } else if abandoned {
-            "no publisher holds this queue — start DS GridDesign or the DS Server, which pumps it, or run `ds report outbox drain`"
-        } else if queued_batches == 0 && reclaimable_batches == 0 {
-            "nothing is queued on this machine"
-        } else {
-            "ds report outbox drain"
-        },
-        stuck: lock.wedged || abandoned,
-        projects,
-        lock,
-    })
-}
-
-/// Which projects hold sealed publications on this machine.
-///
-/// The receipts themselves are the index: a machine that serves several
-/// projects must be able to find its pending work without being told which
-/// project it is "on".
-pub fn queued_projects(root: &Path) -> Result<BTreeSet<String>, String> {
-    let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
-        return Ok(BTreeSet::new());
-    };
-    Ok(publication::list_committed(&pending_root)?
-        .into_iter()
-        .map(|receipt| receipt.project_id)
-        .collect())
 }
 
 /// Why this marker may be released, or `None` to leave it alone.
@@ -646,36 +382,6 @@ fn abandoned_reason(owner: &confined_fs::LockOwner, now_ms: u64) -> Option<Strin
         // exists for it; refusing here would wedge every upgraded machine.
         None => Some(format!("{reason}; the marker records no heartbeat")),
     }
-}
-
-/// Release an abandoned lock before a publication pass runs.
-///
-/// The uploader itself never takes this lock, so without this a queue whose
-/// marker outlived its holder would wait for the next export to clear it.
-/// `ds report outbox drain` calls this first, which is what makes "restart and
-/// the queue moves" true with no human step.
-///
-/// A lock a live holder is working under is not an error here: that is a
-/// publication in progress, and the caller's own status reading names it.
-pub fn reclaim_pending_upload_lock(root: &Path) -> Result<Option<LockReclaim>, String> {
-    let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
-        return Ok(None);
-    };
-    // Compare the newest entry, not the journal's length: the journal is
-    // capped at `MAX_RECORDED_RECLAIMS`, so once a machine has wedged that
-    // many times a length comparison never grows again and the drain would
-    // silently stop telling the operator it had cleared a dead holder —
-    // exactly on the machine that keeps wedging.
-    let before = read_recorded_reclaims(&pending_root)?.pop();
-    match lock_pending_upload_root(&pending_root, None) {
-        Ok(lock) => drop(lock),
-        Err(_) => return Ok(None),
-    }
-    let after = read_recorded_reclaims(&pending_root)?.pop();
-    Ok(match (after, before) {
-        (Some(after), Some(before)) if after == before => None,
-        (after, _) => after,
-    })
 }
 
 /// The releases this queue has already performed, newest last.
@@ -1503,6 +1209,70 @@ impl LocalPublicationBatch {
     }
 }
 
+/// The batch one committed receipt describes, with its production time read
+/// from the batch directory.
+fn batch_from_receipt(root: &Path, receipt: PublicationBatchReceipt) -> LocalPublicationBatch {
+    let produced_at_ms = std::fs::metadata(
+        root.join(publication::BATCH_DIRECTORY)
+            .join(&receipt.batch_id),
+    )
+    .and_then(|metadata| metadata.modified())
+    .ok()
+    .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+    .map_or(0, |elapsed| {
+        elapsed.as_millis().min(u64::MAX as u128) as u64
+    });
+    LocalPublicationBatch {
+        batch_id: receipt.batch_id,
+        owner_uid: receipt.owner_uid,
+        project_id: receipt.project_id,
+        client_publish_id: receipt.client_publish_id,
+        engine: receipt.engine,
+        operation: receipt.operation,
+        variant: receipt.variant,
+        engine_release: receipt.engine_version,
+        engine_build_manifest_sha256: receipt.engine_build_manifest_sha256,
+        transformer: receipt.transformer,
+        input_base_fingerprint: receipt.input_base_fingerprint,
+        produced_at_ms,
+        outputs: receipt
+            .outputs
+            .into_iter()
+            .map(|output| PublishedArtifact {
+                output_id: output.output_id,
+                locator: output.locator,
+                filename: output.filename,
+                format: output.format,
+                content_type: output.content_type,
+                sha256: output.sha256,
+                size_bytes: output.size_bytes,
+                paper_size: output.paper_size,
+                presentation: output.presentation,
+            })
+            .collect(),
+    }
+}
+
+/// One committed batch by its id — what a store row's `bytes_locator` names.
+/// No enumeration: the row says which batch holds its bytes, and this opens
+/// exactly that one. `None` when the batch is not committed here (freed, or
+/// never sealed on this machine).
+pub fn committed_batch(
+    root: &Path,
+    batch_id: &str,
+) -> Result<Option<LocalPublicationBatch>, String> {
+    let Some(pending_root) = HeldDirectory::open_absolute(root)? else {
+        return Ok(None);
+    };
+    Ok(publication::committed_receipt(&pending_root, batch_id)?
+        .filter(|receipt| receipt.schema == publication::BATCH_SCHEMA)
+        .map(|receipt| batch_from_receipt(root, receipt)))
+}
+
+/// Every committed batch of one project on this machine, newest first. This
+/// is a reading of the BYTES directory: the sync store is the queue, and
+/// this exists so a batch sealed before the store knew it can be adopted and
+/// a row written before locators named batch ids can still find its bytes.
 pub fn list_project_publication_batches_from_root(
     root: &Path,
     project_id: &str,
@@ -1518,47 +1288,7 @@ pub fn list_project_publication_batches_from_root(
         .filter(|receipt| {
             receipt.project_id == project_id && receipt.schema == publication::BATCH_SCHEMA
         })
-        .map(|receipt| {
-            let produced_at_ms = std::fs::metadata(
-                root.join(publication::BATCH_DIRECTORY)
-                    .join(&receipt.batch_id),
-            )
-            .and_then(|metadata| metadata.modified())
-            .ok()
-            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or(0, |elapsed| {
-                elapsed.as_millis().min(u64::MAX as u128) as u64
-            });
-            LocalPublicationBatch {
-                batch_id: receipt.batch_id,
-                owner_uid: receipt.owner_uid,
-                project_id: receipt.project_id,
-                client_publish_id: receipt.client_publish_id,
-                engine: receipt.engine,
-                operation: receipt.operation,
-                variant: receipt.variant,
-                engine_release: receipt.engine_version,
-                engine_build_manifest_sha256: receipt.engine_build_manifest_sha256,
-                transformer: receipt.transformer,
-                input_base_fingerprint: receipt.input_base_fingerprint,
-                produced_at_ms,
-                outputs: receipt
-                    .outputs
-                    .into_iter()
-                    .map(|output| PublishedArtifact {
-                        output_id: output.output_id,
-                        locator: output.locator,
-                        filename: output.filename,
-                        format: output.format,
-                        content_type: output.content_type,
-                        sha256: output.sha256,
-                        size_bytes: output.size_bytes,
-                        paper_size: output.paper_size,
-                        presentation: output.presentation,
-                    })
-                    .collect(),
-            }
-        })
+        .map(|receipt| batch_from_receipt(root, receipt))
         .collect();
     batches.sort_by(|left, right| {
         right

@@ -51,8 +51,28 @@ impl Harness {
         }
     }
 
+    /// Seal `rows` the way a producer's seal does: bytes (the fake's
+    /// scripted rows) and the store row in one step. The store is the
+    /// queue; a row that is only on disk is a legacy batch and is adopted
+    /// with a receipt, which is its own test.
+    fn seal(&self, rows: &[LocalRow]) {
+        let mut store = self.store.lock().unwrap();
+        for row in rows {
+            store
+                .apply(
+                    &fence(),
+                    ds_sync_runtime::now_ms(),
+                    ds_sync_runtime::store::Event::LocalProduced {
+                        row: ds_sync_runtime::rows::store_row(PROJECT, row, 1_000),
+                    },
+                )
+                .expect("the seal records its row");
+        }
+    }
+
     /// Run one trigger through a fresh host bound to this harness's durable
-    /// store — a new host every call, the way a restart gets one.
+    /// store — a new host every call, the way a restart gets one. The rows
+    /// are sealed first (bytes and row together), as a producer seals them.
     fn run(&self, rows: Vec<ds_sync_runtime::LocalRow>, trigger: sync::Trigger) -> SyncRun {
         self.run_with(rows, trigger, "install-1#100").0
     }
@@ -63,6 +83,7 @@ impl Harness {
         trigger: sync::Trigger,
         worker_id: &str,
     ) -> (SyncRun, Arc<std::sync::atomic::AtomicBool>) {
+        self.seal(&rows);
         let gateway = FakeGateway {
             world: self.world.clone(),
         };
@@ -124,6 +145,7 @@ fn solar_row() -> LocalRow {
         resource: "city-1".into(),
         client_publish_id: "solar-job-1".into(),
         outputs: vec![output],
+        bytes_locator: "solar:prepared:job:solar-job-1".into(),
     }
 }
 
@@ -582,8 +604,11 @@ fn a_project_the_store_holds_rows_for_is_recovered_after_restart() {
     assert_eq!(projects, vec![PROJECT.to_string()]);
 }
 
+/// Invariant (3): two hosts, one store, one project — one holds the lease,
+/// the other records who holds it and leaves, executing nothing.
 #[test]
-fn a_lease_held_by_a_second_host_stops_the_first_from_executing() {
+fn invariant_3_two_hosts_one_store_one_project_one_holds_the_lease_the_other_records_it_and_leaves()
+{
     let harness = Harness::new();
     let bytes = vec![5_u8; 4096];
 
@@ -629,6 +654,14 @@ fn a_lease_held_by_a_second_host_stops_the_first_from_executing() {
         "the first host reports the lease and executes nothing",
     );
     assert_eq!(outcome.receipts[0].outcome, "held");
+    assert!(
+        outcome.receipts[0]
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.starts_with("lease_held: install-1#200#")),
+        "the holder is named: {:?}",
+        outcome.receipts[0].detail
+    );
     let world = fakes::lock(&harness.world);
     assert_eq!(world.commits, 0, "nothing was published under a held lease");
     assert_eq!(world.grants_minted, 0);
@@ -1084,9 +1117,6 @@ fn authority_loss_during_transfer_prevents_publication() {
         fn inventory(&self, project: &str) -> Result<Vec<LocalRow>, String> {
             self.0.inventory(project)
         }
-        fn locator(&self, row: &LocalRow) -> String {
-            self.0.locator(row)
-        }
         fn transfer(
             &self,
             row: &LocalRow,
@@ -1238,10 +1268,9 @@ fn report_pass_does_not_send_solar_through_the_work_grant_protocol() {
     let gateway = FakeGateway {
         world: harness.world.clone(),
     };
-    let producer = FakeProducer::new(
-        harness.world.clone(),
-        vec![local_row(b"report"), solar_row()],
-    );
+    let rows = vec![local_row(b"report"), solar_row()];
+    harness.seal(&rows);
+    let producer = FakeProducer::new(harness.world.clone(), rows);
     let reads = FakeReads {
         world: harness.world.clone(),
         root: harness.reads_root.clone(),
@@ -1540,6 +1569,7 @@ fn a_published_batch_is_this_machines_copy_of_the_head_and_is_never_reclaimed() 
         world: h.world.clone(),
     };
     let row = local_row(b"published output");
+    h.seal(std::slice::from_ref(&row));
     let producer = FakeProducer::new(h.world.clone(), vec![row.clone()]);
     let reads = FakeReads {
         world: h.world.clone(),
@@ -1663,4 +1693,403 @@ fn a_changed_source_reopens_a_held_grant_before_publishing_new_reports() {
     );
     assert_eq!(fakes::lock(&h.world).commits, 2);
     assert_eq!(fakes::lock(&h.world).grants_minted, 2);
+}
+
+// ---------------------------------------------------------------------------
+// "Reliably synced": the seven invariants, each driven through the real
+// StoreHost over a real store on disk. (5) — fences — is in
+// ds-sync-store/tests/store.rs, where the fence is persisted.
+// ---------------------------------------------------------------------------
+
+fn stored_rows(h: &Harness, project: &str) -> Vec<ds_sync_runtime::store::ArtifactRow> {
+    h.store
+        .lock()
+        .unwrap()
+        .snapshot(
+            &fence(),
+            &ds_sync_runtime::store::Scope::Project {
+                project: project.into(),
+            },
+        )
+        .unwrap()
+        .artifacts
+}
+
+/// Invariant (1): a pass killed after the seal, after the transfer, or
+/// before the acknowledgement, then restarted against the same store,
+/// neither duplicates nor loses the publication.
+#[test]
+fn invariant_1_a_pass_killed_after_seal_after_transfer_or_before_ack_resumes_without_duplicating() {
+    use ds_sync_runtime::store::ArtifactState;
+    // (a) Killed after the seal, before any pass: the row is held in the
+    // store and the next process publishes it once.
+    let h = Harness::new();
+    let row = local_row(b"sealed then killed");
+    h.seal(std::slice::from_ref(&row));
+    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Held);
+    let resumed = h.run(vec![row.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&resumed),
+        vec!["open_grant:granted", "upload:published"]
+    );
+    assert_eq!(fakes::lock(&h.world).commits, 1);
+
+    // (b) Killed after the transfer, before the restated declaration is
+    // acknowledged: the bytes are in the session, the record has not
+    // advanced, the row is held with the failure as its reason.
+    let h = Harness::new();
+    fakes::lock(&h.world).refuse_publish_from = Some(1);
+    let row = local_row(b"transferred then killed");
+    let first = h.run(vec![row.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&first),
+        vec!["open_grant:granted", "upload:failed"]
+    );
+    {
+        let world = fakes::lock(&h.world);
+        assert_eq!(world.transfers.len(), 1, "the bytes went up");
+        assert_eq!(world.commits, 0, "the record did not advance");
+    }
+    let rows = stored_rows(&h, PROJECT);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].state, ArtifactState::Held);
+    assert!(rows[0]
+        .state_reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("went away")));
+    // The restart: the gateway is back. The same declaration is restated,
+    // the session is already committed, nothing is transferred twice.
+    fakes::lock(&h.world).refuse_publish_from = None;
+    let second = h.run(vec![row.clone()], sync::Trigger::Startup);
+    assert!(
+        outcomes(&second).contains(&"upload:published".to_string()),
+        "{:?}",
+        outcomes(&second)
+    );
+    let world = fakes::lock(&h.world);
+    assert_eq!(world.commits, 1, "exactly one commit across the two passes");
+    assert_eq!(
+        world.transfers.len(),
+        1,
+        "the bytes were not transferred twice"
+    );
+    drop(world);
+    let rows = stored_rows(&h, PROJECT);
+    assert_eq!(rows.len(), 1, "one row, not two");
+    assert_eq!(rows[0].state, ArtifactState::Published);
+    // (c) A third pass finds it in sync: nothing is lost, nothing repeats.
+    let third = h.run(vec![row], sync::Trigger::Manual);
+    assert_eq!(outcomes(&third), vec!["nothing:in_sync"]);
+    assert_eq!(fakes::lock(&h.world).commits, 1);
+}
+
+/// Invariant (2): the same `client_publish_id` published twice is one row,
+/// and the second pass answers `nothing:in_sync`.
+#[test]
+fn invariant_2_the_same_publish_id_published_twice_is_one_row_and_in_sync() {
+    let h = Harness::new();
+    let row = local_row(b"published twice");
+    h.seal(std::slice::from_ref(&row));
+    // The seal again — a retried export of the same bytes — is refused as
+    // already recorded and changes nothing.
+    let refused = h
+        .store
+        .lock()
+        .unwrap()
+        .apply(
+            &fence(),
+            2_000,
+            ds_sync_runtime::store::Event::LocalProduced {
+                row: ds_sync_runtime::rows::store_row(PROJECT, &row, 2_000),
+            },
+        )
+        .unwrap();
+    assert_eq!(refused.refusals[0].code, "already_recorded");
+    assert!(refused.changes.is_empty());
+    let first = h.run(vec![row.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&first),
+        vec!["open_grant:granted", "upload:published"]
+    );
+    let second = h.run(vec![row.clone()], sync::Trigger::Manual);
+    assert_eq!(outcomes(&second), vec!["nothing:in_sync"]);
+    assert_eq!(second.replanned.summary.in_sync, 1);
+    assert_eq!(stored_rows(&h, PROJECT).len(), 1);
+    let world = fakes::lock(&h.world);
+    assert_eq!(world.commits, 1);
+    assert_eq!(world.grants_minted, 1);
+    assert_eq!(world.transfers.len(), 1);
+}
+
+/// Invariant (4): two projects' rows interleave in one store, and each pass
+/// publishes under its own scope only.
+#[test]
+fn invariant_4_two_projects_rows_interleave_and_each_publishes_under_its_own_scope_only() {
+    use ds_sync_runtime::store::ArtifactState;
+    const OTHER: &str = "p2";
+    let h = Harness::new();
+    let mine = local_row(b"project one's report");
+    let mut theirs = local_row(b"project two's report");
+    theirs.client_publish_id = "publish-22222222-2222-4222-8222-222222222222".into();
+    theirs.bytes_locator = "fake:batch:publish-22222222-2222-4222-8222-222222222222".into();
+    // Interleaved: theirs is sealed under its own scope between two of ours.
+    h.seal(std::slice::from_ref(&mine));
+    h.store
+        .lock()
+        .unwrap()
+        .apply(
+            &fence(),
+            1_001,
+            ds_sync_runtime::store::Event::LocalProduced {
+                row: ds_sync_runtime::rows::store_row(OTHER, &theirs, 1_001),
+            },
+        )
+        .unwrap();
+    let queue = h
+        .store
+        .lock()
+        .unwrap()
+        .queue(&fence(), None, 2_000)
+        .unwrap();
+    assert_eq!(queue.queued_batches, 2);
+    assert_eq!(queue.projects.len(), 2);
+
+    // Our pass: our row publishes, theirs is untouched.
+    let ours = h.run(vec![mine.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&ours),
+        vec!["open_grant:granted", "upload:published"]
+    );
+    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Published);
+    assert_eq!(stored_rows(&h, OTHER)[0].state, ArtifactState::Held);
+    {
+        let world = fakes::lock(&h.world);
+        assert_eq!(world.commits, 1);
+        assert!(
+            world
+                .declarations
+                .iter()
+                .all(|declaration| { declaration["client_publish_id"] == mine.client_publish_id }),
+            "only our publication was declared"
+        );
+    }
+    // Their pass, through a host bound to their project on the SAME store.
+    // The fake record is one project's (its heads are not project-keyed),
+    // so the other project gets its own record; the store is what is shared.
+    let their_world = fakes::world();
+    let gateway = FakeGateway {
+        world: their_world.clone(),
+    };
+    let producer = FakeProducer::new(their_world.clone(), vec![theirs.clone()]);
+    let reads = FakeReads {
+        world: their_world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = StoreHost::new(
+        h.store.clone(),
+        fence(),
+        "install-1#300".into(),
+        OTHER,
+        &gateway,
+        &producer,
+        &reads,
+        &online,
+    )
+    .unwrap();
+    let theirs_run = run(&host, OTHER, sync::Trigger::Startup).unwrap();
+    assert_eq!(
+        outcomes(&theirs_run),
+        vec!["open_grant:granted", "upload:published"]
+    );
+    assert_eq!(stored_rows(&h, OTHER)[0].state, ArtifactState::Published);
+    assert_eq!(
+        fakes::lock(&h.world).commits,
+        1,
+        "our record saw nothing of theirs"
+    );
+    let world = fakes::lock(&their_world);
+    assert_eq!(world.commits, 1);
+    assert!(world
+        .declarations
+        .iter()
+        .all(|declaration| { declaration["client_publish_id"] == theirs.client_publish_id }));
+    drop(world);
+    let queue = h
+        .store
+        .lock()
+        .unwrap()
+        .queue(&fence(), None, 3_000)
+        .unwrap();
+    assert_eq!(queue.queued_batches, 0);
+    assert_eq!(queue.held_batches, 2);
+}
+
+/// Invariant (6): a run aborted between receipts — the host loses its
+/// authority after the transfer, before the commit — leaves the row held,
+/// never published, and the next pass resumes it.
+#[test]
+fn invariant_6_a_run_aborted_between_receipts_leaves_rows_held_and_the_next_pass_resumes() {
+    use ds_sync_runtime::store::ArtifactState;
+    use std::sync::atomic::AtomicBool;
+    struct AbortingProducer(FakeProducer, Arc<AtomicBool>);
+    impl Producer for AbortingProducer {
+        fn inventory(&self, project: &str) -> Result<Vec<LocalRow>, String> {
+            self.0.inventory(project)
+        }
+        fn transfer(
+            &self,
+            row: &LocalRow,
+            output: &str,
+            uri: &str,
+        ) -> Result<TransferReceipt, String> {
+            let receipt = self.0.transfer(row, output, uri)?;
+            // The abort: the host's authority is gone from here on.
+            self.1.store(false, Ordering::SeqCst);
+            Ok(receipt)
+        }
+        fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
+            self.0.reclaim(project, row)
+        }
+    }
+    let h = Harness::new();
+    let row = local_row(b"aborted mid-pass");
+    h.seal(std::slice::from_ref(&row));
+    let allowed = Arc::new(AtomicBool::new(true));
+    let gateway = FakeGateway {
+        world: h.world.clone(),
+    };
+    let producer = AbortingProducer(
+        FakeProducer::new(h.world.clone(), vec![row.clone()]),
+        allowed.clone(),
+    );
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || allowed.load(Ordering::SeqCst);
+    let host = StoreHost::new(
+        h.store.clone(),
+        fence(),
+        "worker".into(),
+        PROJECT,
+        &gateway,
+        &producer,
+        &reads,
+        &online,
+    )
+    .unwrap();
+    let aborted = run(&host, PROJECT, sync::Trigger::Startup).unwrap();
+    assert!(
+        aborted
+            .receipts
+            .iter()
+            .all(|receipt| receipt.outcome != "published"),
+        "{:?}",
+        outcomes(&aborted)
+    );
+    let rows = stored_rows(&h, PROJECT);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].state, ArtifactState::Held, "held, never published");
+    assert_eq!(fakes::lock(&h.world).commits, 0);
+    drop(host);
+
+    // The next pass, authority restored: it resumes and commits once.
+    allowed.store(true, Ordering::SeqCst);
+    let resumed = h.run(vec![row], sync::Trigger::Startup);
+    assert!(
+        outcomes(&resumed).contains(&"upload:published".to_string()),
+        "{:?}",
+        outcomes(&resumed)
+    );
+    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Published);
+    assert_eq!(fakes::lock(&h.world).commits, 1);
+}
+
+/// Invariant (7): `published` is set only from the publish-work commit
+/// receipt, never from transport success. A transfer that succeeds while
+/// the record never commits leaves the row held and no head.
+#[test]
+fn invariant_7_transfer_success_without_a_commit_receipt_leaves_the_row_held() {
+    use ds_sync_runtime::store::ArtifactState;
+    let h = Harness::new();
+    fakes::lock(&h.world).never_commit = true;
+    let row = local_row(b"uploaded, never committed");
+    let result = h.run(vec![row.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&result),
+        vec!["open_grant:granted", "upload:upload_required"],
+        "the run stops at its bounded round ceiling without a commit"
+    );
+    {
+        let world = fakes::lock(&h.world);
+        assert!(!world.transfers.is_empty(), "the transport succeeded");
+        assert_eq!(world.commits, 0, "the record never advanced");
+        assert!(
+            world.record.is_empty(),
+            "no head was written from transport success"
+        );
+    }
+    let rows = stored_rows(&h, PROJECT);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].state, ArtifactState::Held);
+    assert!(h
+        .store
+        .lock()
+        .unwrap()
+        .snapshot(
+            &fence(),
+            &ds_sync_runtime::store::Scope::Project {
+                project: PROJECT.into()
+            }
+        )
+        .unwrap()
+        .heads
+        .is_empty());
+    assert_eq!(result.replanned.summary.uploads, 1, "still queued");
+}
+
+/// A batch on disk with no row — sealed before the seal wrote its row — is
+/// adopted exactly once, with a receipt, and never again.
+#[test]
+fn a_batch_the_store_does_not_know_is_adopted_once_with_a_receipt() {
+    use ds_sync_runtime::store::ArtifactState;
+    let h = Harness::new();
+    let legacy = local_row(b"sealed by an older release");
+    // Not sealed through the harness: only the producer holds it.
+    let gateway = FakeGateway {
+        world: h.world.clone(),
+    };
+    let producer = FakeProducer::new(h.world.clone(), vec![legacy.clone()]);
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = host_over(&h, &gateway, &producer, &reads, &online);
+    let first = run(&host, PROJECT, sync::Trigger::Startup).unwrap();
+    assert_eq!(
+        outcomes(&first),
+        vec![
+            "adopted:from_producer",
+            "open_grant:granted",
+            "upload:published"
+        ]
+    );
+    let adopted = &first.receipts[0];
+    assert!(adopted
+        .detail
+        .as_deref()
+        .unwrap()
+        .contains(&legacy.client_publish_id));
+    let rows = stored_rows(&h, PROJECT);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].bytes_locator, legacy.bytes_locator);
+    assert_eq!(rows[0].state, ArtifactState::Published);
+    assert!(
+        host_receipt_actions(&h).contains(&"adopted".to_string()),
+        "the adoption is kept in the store"
+    );
+    let second = run(&host, PROJECT, sync::Trigger::Manual).unwrap();
+    assert_eq!(outcomes(&second), vec!["nothing:in_sync"], "adopted once");
 }

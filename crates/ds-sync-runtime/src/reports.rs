@@ -1,11 +1,36 @@
-//! One report publication producer, shared by native hosts.
-use crate::{kernel_sync as sync, LocalOutput, LocalRow, Producer, TransferReceipt, MAX_ROWS};
-use ds_report_artifacts::SealedArtifactHandle;
+//! The report publication producer, shared by native hosts: it seals bytes
+//! and records the row in the same step, moves bytes the store's rows name,
+//! and frees the bytes of rows the store has settled as lost.
+//!
+//! The sync store is the queue (owner, 2026-09-20: "what has to be in SQLite
+//! has to go there"). Nothing here enumerates the artifact directory to
+//! decide what is queued; the directory is bytes, and every decision reads
+//! the row.
+use crate::rows::store_scope;
+use crate::{
+    kernel_sync as sync, store, LocalOutput, LocalRow, Producer, SharedStore, TransferReceipt,
+    MAX_ROWS,
+};
+use ds_report_artifacts::publication::PublicationBatchReceipt;
+use ds_report_artifacts::{
+    LocalPublicationBatch, PublishedArtifact, SealedArtifactHandle, VerifiedSidecarArtifact,
+};
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::time::Instant;
 
 pub type ArtifactTransfer<'a> =
     dyn Fn(SealedArtifactHandle, &str, &str) -> Result<TransferReceipt, String> + 'a;
+
+/// The engine name the compute-artifact record keys report heads by.
+pub const ENGINE: &str = "network_reporter";
+/// The engine name the edge lane spells, which is what a grant scopes.
+pub const GRANT_ENGINE: &str = "ds-network-reporter";
+/// The locator a report row's bytes live at: `network_reporter:batch:<id>`.
+/// The id is the committed batch's own (64 hex) for rows sealed through
+/// [`seal`]; rows recorded before 2026-09-20 carry the publish id instead
+/// and are resolved by it.
+const LOCATOR_PREFIX: &str = "network_reporter:batch:";
 
 pub struct ReportProducer<'a> {
     pub root: &'a Path,
@@ -13,12 +38,10 @@ pub struct ReportProducer<'a> {
     pub upload: &'a ArtifactTransfer<'a>,
 }
 
-/// Projects with committed report publications on this machine.
-///
-/// Desktop and Server call this same inventory function so neither host
-/// depends on a selected project or maintains a second queue index. The
-/// optional owner fence is used by a multi-account Desktop installation;
-/// Server already runs inside one native account and therefore passes none.
+/// Projects with committed report batches on disk, optionally fenced by
+/// owner. The store's `projects_of_fence` is the queue's own answer; this
+/// reads the bytes directory so a project whose batches were sealed before
+/// the store knew them is still visited and adopted.
 pub fn projects(root: &Path, owner_uid: Option<&str>) -> Result<BTreeSet<String>, String> {
     if owner_uid.is_some_and(|owner| owner.is_empty() || owner.len() > 128) {
         return Err("report publication owner is invalid".to_string());
@@ -32,6 +55,85 @@ pub fn projects(root: &Path, owner_uid: Option<&str>) -> Result<BTreeSet<String>
         .map(|receipt| receipt.project_id)
         .collect())
 }
+
+/// The locator a committed batch's bytes live at.
+pub fn locator_of(batch_id: &str) -> String {
+    format!("{LOCATOR_PREFIX}{batch_id}")
+}
+
+/// The row a committed batch stands for. `readable` is what the seal
+/// established: the batch was verified as it was written, and the transfer
+/// verifies again as it reads.
+fn row_of(batch: &LocalPublicationBatch) -> LocalRow {
+    let outputs: Vec<LocalOutput> = batch
+        .outputs
+        .iter()
+        .map(|output| LocalOutput {
+            output_id: output.output_id.clone(),
+            format: output.format.clone(),
+            content_type: output.content_type.clone(),
+            sha256: output.sha256.clone(),
+            size_bytes: output.size_bytes,
+        })
+        .collect();
+    let mut pairs: Vec<(String, String)> = outputs
+        .iter()
+        .map(|output| (output.output_id.clone(), output.sha256.clone()))
+        .collect();
+    LocalRow {
+        identity: sync::Identity {
+            engine: batch.engine.clone(),
+            operation: batch.operation.clone(),
+            variant: batch.variant.clone(),
+        },
+        sha256: crate::inventory_digest(&mut pairs),
+        size_bytes: outputs.iter().map(|output| output.size_bytes).sum(),
+        produced_at_ms: batch.produced_at_ms,
+        // Deliberately none, and it must stay none. A report is not computed
+        // against an output head, so there is no OCC revision to carry; the
+        // batch's `input_base_fingerprint` is a SOURCE digest and
+        // `sync::RemoteHead` says in as many words that it is never an OCC
+        // revision. Ordering for these rows is `sync::derived_winner` — last
+        // writer by production time — not a base-revision comparison.
+        base_revision: None,
+        input_base_fingerprint: Some(batch.input_base_fingerprint.clone())
+            .filter(|value| !value.is_empty()),
+        readable: true,
+        engine_release: batch.engine_release.clone(),
+        engine_build_manifest_sha256: batch.engine_build_manifest_sha256.clone(),
+        grant_engine: GRANT_ENGINE.to_string(),
+        resource: batch.transformer.clone(),
+        client_publish_id: batch.client_publish_id.clone(),
+        outputs,
+        bytes_locator: locator_of(&batch.batch_id),
+    }
+}
+
+/// The batch a row's bytes live in, by its locator — one directory open for
+/// a row sealed through [`seal`]; a scan by publish id for a row recorded
+/// before locators named batch ids. `None` when the batch is not committed
+/// on this machine any more.
+fn batch_for(
+    root: &Path,
+    project: &str,
+    locator: &str,
+    client_publish_id: &str,
+) -> Result<Option<LocalPublicationBatch>, String> {
+    if let Some(batch_id) = locator.strip_prefix(LOCATOR_PREFIX) {
+        if ds_report_artifacts::exact_lower_sha256(batch_id) {
+            return ds_report_artifacts::committed_batch(root, batch_id);
+        }
+    }
+    if client_publish_id.is_empty() {
+        return Ok(None);
+    }
+    Ok(
+        ds_report_artifacts::list_project_publication_batches_from_root(root, project)?
+            .into_iter()
+            .find(|batch| batch.client_publish_id == client_publish_id),
+    )
+}
+
 impl Producer for ReportProducer<'_> {
     fn inventory(&self, project: &str) -> Result<Vec<LocalRow>, String> {
         if project != self.project {
@@ -39,23 +141,19 @@ impl Producer for ReportProducer<'_> {
         }
         inventory(self.root, project)
     }
-    fn locator(&self, row: &LocalRow) -> String {
-        format!("network_reporter:batch:{}", row.client_publish_id)
-    }
     fn transfer(
         &self,
         row: &LocalRow,
         output_id: &str,
         session_uri: &str,
     ) -> Result<TransferReceipt, String> {
-        let batches = ds_report_artifacts::list_project_publication_batches_from_root(
+        let batch = batch_for(
             self.root,
             self.project,
-        )?;
-        let batch = batches
-            .into_iter()
-            .find(|batch| batch.client_publish_id == row.client_publish_id)
-            .ok_or("that publication is no longer committed locally")?;
+            &row.bytes_locator,
+            &row.client_publish_id,
+        )?
+        .ok_or("that publication is no longer committed locally")?;
         let handle = ds_report_artifacts::open_batch_output(self.root, &batch, output_id)?;
         (self.upload)(handle, output_id, session_uri)
     }
@@ -71,7 +169,7 @@ impl ReportProducer<'_> {
     /// [`ds_report_artifacts::discard_artifact_from_root_with_gate`], which
     /// verifies the bytes against the receipt before unlinking them and
     /// retires the batch directory itself once its last output is gone.
-    /// Nothing outside the batch the row's publish id names is touched.
+    /// Nothing outside the batch the row's locator names is touched.
     ///
     /// Idempotent: a batch that is not on disk any more answers `Ok(0)`.
     pub fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
@@ -82,227 +180,320 @@ impl ReportProducer<'_> {
             // A replica of the head, not a publication of this producer.
             return Ok(0);
         }
-        let batches =
-            ds_report_artifacts::list_project_publication_batches_from_root(self.root, project)?;
-        let Some(batch) = batches
-            .into_iter()
-            .find(|batch| batch.client_publish_id == row.client_publish_id)
-        else {
-            return Ok(0);
-        };
-        let mut freed = 0_u64;
-        for output in &batch.outputs {
-            let id = ds_report_artifacts::locator_id(&output.locator)?;
-            // Count only what is actually there: the discard is idempotent
-            // over an absent output and would otherwise report bytes freed
-            // twice for a batch retried after a partial failure.
-            let present = std::fs::symlink_metadata(self.root.join(id)).is_ok();
-            ds_report_artifacts::discard_artifact_from_root_with_gate(
-                self.root,
-                &output.locator,
-                &output.sha256,
-                |_| Ok(std::time::Instant::now()),
-            )?;
-            if present {
-                freed = freed.saturating_add(output.size_bytes);
-            }
-        }
-        Ok(freed)
+        reclaim_batch(
+            self.root,
+            project,
+            &row.bytes_locator,
+            &row.client_publish_id,
+        )
     }
 }
 
-/// One committed batch this machine holds that is NOT the queue row for its
-/// room, with the batch that displaced it.
-///
-/// It exists because "not the current row" used to be spelled `continue`: the
-/// batch vanished from every surface and could be reached by no pump and no
-/// command. A superseded batch is still bytes on a disk and still the
-/// operator's, so it is named, counted and reclaimable.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct SupersededBatch {
-    pub batch_id: String,
-    pub client_publish_id: String,
-    pub transformer: String,
-    pub produced_at_ms: u64,
-    pub size_bytes: u64,
-    /// The `client_publish_id` of the batch that is the queue row instead.
-    pub superseded_by: String,
-}
-
-/// Everything this machine holds for one project's reports, counted.
-///
-/// `ds_command_kernel::report::PublicationStage::Sealed` is exactly
-/// `batches - queued`: committed, digest-verified bytes with no queue row. The
-/// blocker was that this number had no reader at all, so 593 of them looked
-/// like nothing had ever run.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
-pub struct SealedCensus {
-    /// Committed publication batches, superseded ones included.
-    pub batches: usize,
-    /// Rooms with a queue row — one per `(engine, operation, variant)`.
-    pub queued: usize,
-    pub bytes: u64,
-    pub oldest_produced_at_ms: Option<u64>,
-    pub superseded: Vec<SupersededBatch>,
-}
-
-/// Count what is committed on this machine without opening a single artifact.
-///
-/// Deliberately cheap: `inventory` rehashes every output to decide
-/// `readable`, which is right before an upload and wrong for a status line an
-/// operator asks for repeatedly.
-pub fn census(root: &Path, project: &str) -> Result<SealedCensus, String> {
-    let batches = ds_report_artifacts::list_project_publication_batches_from_root(root, project)?;
-    let mut census = SealedCensus {
-        batches: batches.len(),
-        ..SealedCensus::default()
+fn reclaim_batch(
+    root: &Path,
+    project: &str,
+    locator: &str,
+    client_publish_id: &str,
+) -> Result<u64, String> {
+    let Some(batch) = batch_for(root, project, locator, client_publish_id)? else {
+        return Ok(0);
     };
-    let mut current: std::collections::BTreeMap<sync::Identity, &_> =
-        std::collections::BTreeMap::new();
-    for batch in &batches {
-        let identity = sync::Identity {
-            engine: batch.engine.clone(),
-            operation: batch.operation.clone(),
-            variant: batch.variant.clone(),
-        };
-        let size: u64 = batch.outputs.iter().map(|output| output.size_bytes).sum();
-        census.bytes = census.bytes.saturating_add(size);
-        if batch.produced_at_ms > 0 {
-            census.oldest_produced_at_ms = Some(
-                census
-                    .oldest_produced_at_ms
-                    .map_or(batch.produced_at_ms, |old| old.min(batch.produced_at_ms)),
-            );
-        }
-        match current.get(&identity) {
-            Some(held) if !newer(batch, held) => {
-                census
-                    .superseded
-                    .push(superseded(batch, size, &held.client_publish_id))
-            }
-            Some(held) => {
-                let displaced: u64 = held.outputs.iter().map(|output| output.size_bytes).sum();
-                census
-                    .superseded
-                    .push(superseded(held, displaced, &batch.client_publish_id));
-                current.insert(identity, batch);
-            }
-            None => {
-                current.insert(identity, batch);
-            }
+    let mut freed = 0_u64;
+    for output in &batch.outputs {
+        let id = ds_report_artifacts::locator_id(&output.locator)?;
+        // Count only what is actually there: the discard is idempotent over
+        // an absent output and would otherwise report bytes freed twice for
+        // a batch retried after a partial failure.
+        let present = std::fs::symlink_metadata(root.join(id)).is_ok();
+        ds_report_artifacts::discard_artifact_from_root_with_gate(
+            root,
+            &output.locator,
+            &output.sha256,
+            |_| Ok(std::time::Instant::now()),
+        )?;
+        if present {
+            freed = freed.saturating_add(output.size_bytes);
         }
     }
-    census.queued = current.len();
-    census
-        .superseded
-        .sort_by(|left, right| left.batch_id.cmp(&right.batch_id));
-    Ok(census)
+    Ok(freed)
 }
 
-fn superseded(
-    batch: &ds_report_artifacts::LocalPublicationBatch,
-    size_bytes: u64,
-    superseded_by: &str,
-) -> SupersededBatch {
-    SupersededBatch {
-        batch_id: batch.batch_id.clone(),
-        client_publish_id: batch.client_publish_id.clone(),
-        transformer: batch.transformer.clone(),
-        produced_at_ms: batch.produced_at_ms,
-        size_bytes,
-        superseded_by: superseded_by.to_string(),
-    }
-}
-
-/// Which of two committed batches for the same room is the current one.
-///
-/// Ordered here rather than trusted from the listing's order: the listing
-/// sorts, but a caller that ever stops sorting must not silently change which
-/// of 593 batches is the one that publishes. Production time decides, and the
-/// batch id breaks a tie so the answer is the same on every machine.
-fn newer(
-    candidate: &ds_report_artifacts::LocalPublicationBatch,
-    held: &ds_report_artifacts::LocalPublicationBatch,
-) -> bool {
-    (candidate.produced_at_ms, &candidate.batch_id) > (held.produced_at_ms, &held.batch_id)
-}
-
+/// Every committed batch of one project as a row, one per batch, each naming
+/// the batch its bytes live in. Cheap: the receipts are read, the bytes are
+/// not. The host adopts the ones the store does not know and frees the ones
+/// the store has settled as lost; it decides nothing else from this.
 pub fn inventory(root: &Path, project: &str) -> Result<Vec<LocalRow>, String> {
     let batches = ds_report_artifacts::list_project_publication_batches_from_root(root, project)?;
-    let mut current: std::collections::BTreeMap<
-        sync::Identity,
-        ds_report_artifacts::LocalPublicationBatch,
-    > = std::collections::BTreeMap::new();
-    for batch in batches {
-        let identity = sync::Identity {
-            engine: batch.engine.clone(),
-            operation: batch.operation.clone(),
-            variant: batch.variant.clone(),
+    if batches.len() > MAX_ROWS {
+        return Err("this project holds more publications than the sync gate admits".to_string());
+    }
+    // Oldest first, so two batches of one room sealed before the store knew
+    // them are adopted in production order and the newer supersedes.
+    let mut rows: Vec<LocalRow> = batches.iter().map(row_of).collect();
+    rows.sort_by(|left, right| {
+        left.produced_at_ms
+            .cmp(&right.produced_at_ms)
+            .then_with(|| left.client_publish_id.cmp(&right.client_publish_id))
+    });
+    Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// The seal
+// ---------------------------------------------------------------------------
+
+/// Everything a seal needs, as the producing host established it: the
+/// verified engine outputs and the facts the batch receipt carries.
+pub struct SealRequest<'a> {
+    pub owner_uid: &'a str,
+    pub project_id: &'a str,
+    pub engine_version: &'a str,
+    pub engine_build_manifest_sha256: &'a str,
+    pub transformer: &'a str,
+    pub transformer_revision: i64,
+    pub input_base_fingerprint: &'a str,
+    pub room_content_sha256: &'a str,
+    pub client_run_id: &'a str,
+    pub artifacts: &'a [VerifiedSidecarArtifact],
+    pub expected_formats: &'a [&'a str],
+    pub deadline: Instant,
+    /// Re-checked at the one durable visibility boundary, after every copy,
+    /// rename and fsync and before the batch becomes visible: the producing
+    /// host's own scope fence (account, project, credential generation).
+    pub guard: &'a dyn Fn() -> Result<(), String>,
+}
+
+/// What one seal established.
+#[derive(Debug)]
+pub struct Sealed {
+    pub receipt: PublicationBatchReceipt,
+    pub artifacts: Vec<PublishedArtifact>,
+    /// The row as the store now holds it: `held`, queued.
+    pub row: store::ArtifactRow,
+    /// The batch this seal superseded on this machine and freed, if the
+    /// room already held one with other bytes: `(publish id, bytes freed)`.
+    pub superseded: Option<(String, u64)>,
+}
+
+#[derive(Debug)]
+pub enum SealOutcome {
+    /// Bytes on disk, integrity receipt written, row recorded — one
+    /// acknowledged step.
+    Sealed(Sealed),
+    /// The store already holds this exact publication for the room (same
+    /// inventory digest). Nothing was written, or what was written was
+    /// removed again; the store's row is the one that stands.
+    AlreadyRecorded {
+        replay_key: String,
+        state: store::ArtifactState,
+    },
+}
+
+/// Seal one report run: write the bytes and their integrity receipts,
+/// commit the batch, and record its `held` row in the sync store — in that
+/// order, acknowledged together or not at all. If the store refuses or
+/// cannot be written, the bytes are removed and the seal is not
+/// acknowledged. A room that already held another batch on this machine
+/// has it freed: online overwrites local, and a superseded local result is
+/// not the project's artefact.
+pub fn seal(
+    store: &SharedStore,
+    fence: &store::Fence,
+    root: &Path,
+    request: &SealRequest<'_>,
+) -> Result<SealOutcome, String> {
+    let scope = store_scope(request.project_id);
+    let identity = sync::Identity {
+        engine: ENGINE.to_string(),
+        operation: format!("export-{}", request.transformer),
+        variant: "default".to_string(),
+    };
+    let mut pairs: Vec<(String, String)> = request
+        .artifacts
+        .iter()
+        .map(|artifact| (artifact.format.clone(), artifact.sha256.clone()))
+        .collect();
+    let inventory_sha256 = crate::inventory_digest(&mut pairs);
+    let with_store =
+        |f: &dyn Fn(&mut ds_sync_store::Store) -> Result<store::Transition, String>| {
+            let mut store = store
+                .lock()
+                .map_err(|_| "The sync gate is unavailable".to_string())?;
+            f(&mut store)
         };
-        // One room, one head: the queue row is the LATEST computation of it.
-        // This used to keep whichever batch the listing happened to yield
-        // first and drop the rest without a word.
-        match current.get(&identity) {
-            Some(held) if !newer(&batch, held) => continue,
-            _ => {
-                current.insert(identity, batch);
+    let snapshot = {
+        let store = store
+            .lock()
+            .map_err(|_| "The sync gate is unavailable".to_string())?;
+        store
+            .snapshot(fence, &scope)
+            .map_err(|error| error.to_string())?
+    };
+    let previous = snapshot
+        .artifacts
+        .iter()
+        .find(|row| row.identity == identity)
+        .cloned();
+    if let Some(previous) = previous.as_ref() {
+        if previous.sha256 == inventory_sha256 {
+            return Ok(SealOutcome::AlreadyRecorded {
+                replay_key: previous.replay_key.clone(),
+                state: previous.state,
+            });
+        }
+    }
+
+    // The bytes: verified as they are copied, receipted per output, and
+    // committed by one rename. Everything below this line either ends in a
+    // recorded row or removes what it wrote.
+    let pending = ds_report_artifacts::promote_local_artifacts(
+        root,
+        request.artifacts,
+        request.owner_uid,
+        request.project_id,
+        request.engine_version,
+        request.engine_build_manifest_sha256,
+        request.transformer,
+        request.transformer_revision,
+        request.input_base_fingerprint,
+        request.room_content_sha256,
+        request.client_run_id,
+        request.expected_formats,
+        request.deadline,
+    )?;
+    (request.guard)()?;
+    let committed = pending.commit(request.deadline)?;
+    let batch = ds_report_artifacts::committed_batch(root, &committed.receipt.batch_id)?
+        .ok_or("the sealed batch is not committed where it was written")?;
+    let row = row_of(&batch);
+    let now = crate::now_ms();
+
+    // The room's previous batch on this machine lost to this one. Its
+    // bytes are freed and its row told so BEFORE the new row takes the
+    // identity: the kernel keys the `reclaimed` transition by identity, and
+    // afterwards the identity is the new row's.
+    let mut superseded = None;
+    if let Some(previous) = previous.as_ref() {
+        if previous.readable && !previous.bytes_locator.is_empty() {
+            let (action, outcome, bytes) = match reclaim_batch(
+                root,
+                request.project_id,
+                &previous.bytes_locator,
+                &previous.client_publish_id,
+            ) {
+                Ok(bytes) => ("reclaimed", "superseded_locally".to_string(), Some(bytes)),
+                Err(error) => (
+                    "reclaim_failed",
+                    format!("superseded_locally: {error}"),
+                    None,
+                ),
+            };
+            let receipt = store::ReceiptRow {
+                receipt_id: format!("{action}:{now}:{}", uuid::Uuid::new_v4().simple()),
+                scope: scope.clone(),
+                action: action.to_string(),
+                identity: Some(identity.clone()),
+                outcome,
+                detail: Some(format!(
+                    "batch {} lost to a later computation of this room sealed on this machine ({})",
+                    previous.client_publish_id, committed.receipt.client_publish_id
+                )),
+                grant_id: None,
+                work_id: None,
+                head_revision: None,
+                head_sha256: None,
+                head_counter: None,
+                committed_bytes: bytes,
+                at_ms: now,
+            };
+            with_store(&|store| {
+                store
+                    .apply(
+                        fence,
+                        now,
+                        store::Event::ActionReceipt {
+                            receipt: receipt.clone(),
+                        },
+                    )
+                    .map_err(|error| error.to_string())
+            })?;
+            if let Some(bytes) = bytes {
+                superseded = Some((previous.client_publish_id.clone(), bytes));
             }
         }
     }
-    let mut rows: std::collections::BTreeMap<sync::Identity, LocalRow> =
-        std::collections::BTreeMap::new();
-    for (identity, batch) in current {
-        let outputs: Vec<LocalOutput> = batch
-            .outputs
-            .iter()
-            .map(|output| LocalOutput {
-                output_id: output.output_id.clone(),
-                format: output.format.clone(),
-                content_type: output.content_type.clone(),
-                sha256: output.sha256.clone(),
-                size_bytes: output.size_bytes,
-            })
-            .collect();
-        let mut pairs: Vec<(String, String)> = outputs
-            .iter()
-            .map(|output| (output.output_id.clone(), output.sha256.clone()))
-            .collect();
-        let readable = outputs.iter().all(|output| {
-            ds_report_artifacts::open_batch_output(root, &batch, &output.output_id).is_ok_and(
-                |handle| handle.size_bytes == output.size_bytes && handle.sha256 == output.sha256,
+
+    let stored = crate::rows::store_row(request.project_id, &row, now);
+    let recorded = with_store(&|store| {
+        store
+            .apply(
+                fence,
+                now,
+                store::Event::LocalProduced {
+                    row: stored.clone(),
+                },
             )
-        });
-        rows.insert(
-            identity.clone(),
-            LocalRow {
-                identity,
-                sha256: crate::inventory_digest(&mut pairs),
-                size_bytes: outputs.iter().map(|output| output.size_bytes).sum(),
-                produced_at_ms: batch.produced_at_ms,
-                // Deliberately none, and it must stay none. A report is not
-                // computed against an output head, so there is no OCC
-                // revision to carry; the batch's `input_base_fingerprint` is
-                // a SOURCE digest and `sync::RemoteHead` says in as many
-                // words that it is never an OCC revision. Ordering for these
-                // rows is `sync::derived_winner` — last writer by production
-                // time — not a base-revision comparison.
-                base_revision: None,
-                input_base_fingerprint: Some(batch.input_base_fingerprint.clone())
-                    .filter(|value| !value.is_empty()),
-                readable,
-                engine_release: batch.engine_release.clone(),
-                engine_build_manifest_sha256: batch.engine_build_manifest_sha256.clone(),
-                grant_engine: "ds-network-reporter".to_string(),
-                resource: batch.transformer.clone(),
-                client_publish_id: batch.client_publish_id.clone(),
-                outputs,
-            },
+            .map_err(|error| error.to_string())
+    });
+    let refusal = match recorded {
+        Ok(transition) => transition.refusals.into_iter().next(),
+        Err(error) => {
+            // Not acknowledged: the bytes leave with the failure.
+            let _ = reclaim_batch(
+                root,
+                request.project_id,
+                &row.bytes_locator,
+                &row.client_publish_id,
+            );
+            return Err(format!(
+                "the seal was not recorded in the sync store: {error}"
+            ));
+        }
+    };
+    if let Some(refusal) = refusal {
+        let _ = reclaim_batch(
+            root,
+            request.project_id,
+            &row.bytes_locator,
+            &row.client_publish_id,
         );
+        return match refusal.code.as_str() {
+            "already_recorded" => {
+                // A race with another seal of the same bytes: theirs stands.
+                let snapshot = {
+                    let store = store
+                        .lock()
+                        .map_err(|_| "The sync gate is unavailable".to_string())?;
+                    store
+                        .snapshot(fence, &scope)
+                        .map_err(|error| error.to_string())?
+                };
+                let standing = snapshot
+                    .artifacts
+                    .into_iter()
+                    .find(|held| held.identity == identity)
+                    .ok_or_else(|| {
+                        format!("the sync store refused the seal: {}", refusal.detail)
+                    })?;
+                Ok(SealOutcome::AlreadyRecorded {
+                    replay_key: standing.replay_key,
+                    state: standing.state,
+                })
+            }
+            _ => Err(format!(
+                "the sync store refused the seal ({}): {}",
+                refusal.code, refusal.detail
+            )),
+        };
     }
-    if rows.len() > MAX_ROWS {
-        return Err("this project holds more publications than the sync gate admits".to_string());
-    }
-    Ok(rows.into_values().collect())
+    let mut stored = stored;
+    stored.updated_at_ms = now;
+    Ok(SealOutcome::Sealed(Sealed {
+        receipt: committed.receipt,
+        artifacts: committed.artifacts,
+        row: stored,
+        superseded,
+    }))
 }
 
 #[cfg(test)]
@@ -349,13 +540,10 @@ mod tests {
         }
     }
 
-    /// The 593-artifact defect, in miniature. Three committed batches for one
-    /// room used to collapse to a single queue row and the other two vanished
-    /// from every surface — no pump could reach them and no command could
-    /// name them. The queue still carries one row per room, which is what a
-    /// head means, but the batches it displaced are now counted and named.
+    /// Every committed batch is a row naming its own batch, oldest first,
+    /// and the same three batches list the same on every machine and run.
     #[test]
-    fn displaced_batches_are_counted_and_named_instead_of_vanishing() {
+    fn every_committed_batch_is_one_row_naming_its_batch_in_production_order() {
         let directory = tempfile::tempdir().expect("temp root");
         let held =
             ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
@@ -373,57 +561,24 @@ mod tests {
                 .commit()
                 .expect("commit");
         }
-
-        let census = census(directory.path(), "project-a").expect("census");
-        assert_eq!(census.batches, 3, "every committed batch is still counted");
-        assert_eq!(census.queued, 1, "one room, one head");
-        assert_eq!(census.superseded.len(), 2);
-        assert_eq!(census.bytes, 126);
-        for displaced in &census.superseded {
-            assert_eq!(displaced.transformer, "tx_1");
-            assert!(
-                !displaced.superseded_by.is_empty(),
-                "a displaced batch names the batch that replaced it"
-            );
-        }
-        // The queue row is one of the three, not an invention.
         let rows = inventory(directory.path(), "project-a").expect("inventory");
-        assert_eq!(rows.len(), 1);
-        assert!(census
-            .superseded
-            .iter()
-            .all(|displaced| displaced.client_publish_id != rows[0].client_publish_id));
-    }
-
-    /// Which batch publishes cannot depend on the order a directory listing
-    /// happened to produce: the same three batches must choose the same
-    /// winner on every machine and every run.
-    #[test]
-    fn the_queue_row_for_a_room_is_chosen_deterministically() {
-        let directory = tempfile::tempdir().expect("temp root");
-        let held =
-            ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
-                .expect("hold root");
-        for batch in ['a', 'b', 'c'] {
-            let mut row = receipt(
-                batch,
-                "owner-1",
-                "project-a",
-                &format!(
-                    "publish-a23e4567-e89b-42d3-a456-4266141740{}0",
-                    batch as u8 % 10
-                ),
-            );
-            row.outputs[0].sha256 = batch.to_string().repeat(64);
-            PendingPublicationCommit::stage(&held, &row)
-                .expect("stage")
-                .commit()
-                .expect("commit");
+        assert_eq!(
+            rows.len(),
+            3,
+            "the queue is the store's; every batch is offered for adoption"
+        );
+        for row in &rows {
+            assert!(row.bytes_locator.starts_with(LOCATOR_PREFIX));
+            let batch_id = row.bytes_locator.strip_prefix(LOCATOR_PREFIX).unwrap();
+            assert!(ds_report_artifacts::exact_lower_sha256(batch_id));
+            assert_eq!(row.resource, "tx_1");
+            assert!(row.readable);
         }
-        let first = inventory(directory.path(), "project-a").expect("inventory");
         for _ in 0..4 {
-            let again = inventory(directory.path(), "project-a").expect("inventory");
-            assert_eq!(first, again);
+            assert_eq!(
+                inventory(directory.path(), "project-a").expect("inventory"),
+                rows
+            );
         }
     }
 
@@ -440,28 +595,10 @@ mod tests {
         }
     }
 
-    /// The 86-batch defect, in miniature: a row the store settled as lost
-    /// is freed through the store's own discard, the batch directory goes
-    /// with its last output, and asking again costs nothing and frees 0.
-    #[test]
-    fn a_lost_row_is_reclaimed_once_and_an_absent_batch_answers_zero() {
-        let directory = tempfile::tempdir().expect("temp root");
-        let held =
-            ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
-                .expect("hold root");
-        let row = receipt(
-            '1',
-            "owner-1",
-            "project-a",
-            "publish-123e4567-e89b-42d3-a456-426614174000",
-        );
-        // Put real bytes under the output's locator so the discard has a
-        // receipt-bound artifact to verify and unlink, as a sealed batch does.
-        let bytes = b"lost report";
-        let mut row = row;
+    fn write_bytes(root: &Path, row: &mut PublicationBatchReceipt, bytes: &[u8]) {
         row.outputs[0].sha256 = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(bytes));
         row.outputs[0].size_bytes = bytes.len() as u64;
-        let entry = directory.path().join('1'.to_string().repeat(64));
+        let entry = root.join(ds_report_artifacts::locator_id(&row.outputs[0].locator).unwrap());
         std::fs::create_dir_all(&entry).expect("artifact entry");
         std::fs::write(entry.join(ds_report_artifacts::ARTIFACT_FILE), bytes).expect("bytes");
         let receipt_json = serde_json::json!({
@@ -478,6 +615,27 @@ mod tests {
             serde_json::to_vec_pretty(&receipt_json).expect("encode"),
         )
         .expect("receipt");
+    }
+
+    /// The 86-batch defect, in miniature: a row the store settled as lost
+    /// is freed through the store's own discard, the batch directory goes
+    /// with its last output, and asking again costs nothing and frees 0 —
+    /// by the batch id the row's locator names, and by publish id for a row
+    /// recorded before locators named batch ids.
+    #[test]
+    fn a_lost_row_is_reclaimed_once_by_its_locator_or_its_publish_id() {
+        let directory = tempfile::tempdir().expect("temp root");
+        let held =
+            ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
+                .expect("hold root");
+        let mut row = receipt(
+            '1',
+            "owner-1",
+            "project-a",
+            "publish-123e4567-e89b-42d3-a456-426614174000",
+        );
+        let bytes = b"lost report";
+        write_bytes(directory.path(), &mut row, bytes);
         PendingPublicationCommit::stage(&held, &row)
             .expect("stage")
             .commit()
@@ -489,10 +647,24 @@ mod tests {
         let producer = producer(directory.path(), "project-a", &upload);
         let rows = inventory(directory.path(), "project-a").expect("inventory");
         assert_eq!(rows.len(), 1);
-        assert!(rows[0].readable, "the fixture is a readable sealed batch");
+        // A row from before this rule: its locator is the publish id.
+        let mut legacy = rows[0].clone();
+        legacy.bytes_locator = format!("{LOCATOR_PREFIX}{}", legacy.client_publish_id);
+        assert!(
+            batch_for(
+                directory.path(),
+                "project-a",
+                &legacy.bytes_locator,
+                &legacy.client_publish_id
+            )
+            .expect("resolve")
+            .is_some(),
+            "a publish-id locator still finds its batch"
+        );
 
         let freed = producer.reclaim("project-a", &rows[0]).expect("reclaim");
         assert_eq!(freed, bytes.len() as u64);
+        let entry = directory.path().join('1'.to_string().repeat(64));
         assert!(!entry.exists(), "the output's bytes are gone");
         assert!(
             !directory
@@ -505,13 +677,18 @@ mod tests {
         assert!(inventory(directory.path(), "project-a")
             .expect("inventory")
             .is_empty());
-
         assert_eq!(
             producer
                 .reclaim("project-a", &rows[0])
                 .expect("reclaim again"),
             0,
             "a batch that is not on disk any more is not an error"
+        );
+        assert_eq!(
+            producer
+                .reclaim("project-a", &legacy)
+                .expect("legacy again"),
+            0
         );
         assert_eq!(
             producer.reclaim("project-b", &rows[0]),
@@ -564,5 +741,286 @@ mod tests {
                 "project-c".to_string(),
             ])
         );
+    }
+
+    // -- the seal -----------------------------------------------------------
+
+    fn seal_fence() -> store::Fence {
+        store::Fence {
+            account: "owner-1".into(),
+            deployment: "https://gateway.example".into(),
+            install_id: "install-1".into(),
+        }
+    }
+
+    /// One verified engine output on disk, as the report host hands it over.
+    fn staged(dir: &Path, name: &str, bytes: &[u8]) -> VerifiedSidecarArtifact {
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).expect("stage");
+        VerifiedSidecarArtifact {
+            format: "xlsx".into(),
+            filename: name.into(),
+            size_bytes: bytes.len() as u64,
+            sha256: format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(bytes)),
+            paper_size: None,
+            presentation: None,
+            held_file: std::fs::File::open(&path).expect("open staged"),
+        }
+    }
+
+    fn seal_request<'a>(
+        artifacts: &'a [VerifiedSidecarArtifact],
+        formats: &'a [&'a str],
+        deadline: Instant,
+        guard: &'a dyn Fn() -> Result<(), String>,
+    ) -> SealRequest<'a> {
+        SealRequest {
+            owner_uid: "owner-1",
+            project_id: "project-a",
+            engine_version: "ds-network-reporter@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            engine_build_manifest_sha256:
+                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            transformer: "tx_1",
+            transformer_revision: 3,
+            input_base_fingerprint:
+                "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            room_content_sha256: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            client_run_id: "report-0123456789abcdef0123456789abcdef",
+            artifacts,
+            expected_formats: formats,
+            deadline,
+            guard,
+        }
+    }
+
+    fn rows_in(store: &SharedStore, project: &str) -> Vec<store::ArtifactRow> {
+        store
+            .lock()
+            .unwrap()
+            .snapshot(&seal_fence(), &store_scope(project))
+            .unwrap()
+            .artifacts
+    }
+
+    fn receipts_in(store: &SharedStore, project: &str) -> Vec<store::ReceiptRow> {
+        store
+            .lock()
+            .unwrap()
+            .receipts(&seal_fence(), &store_scope(project), 50)
+            .unwrap()
+    }
+
+    /// The seal is one acknowledged step: bytes committed, integrity receipt
+    /// written, row `held` — and the queue reads the row, not the disk.
+    #[test]
+    fn a_seal_writes_bytes_receipt_and_row_in_one_step_and_the_queue_reads_the_row() {
+        let dir = tempfile::tempdir().expect("temp");
+        let root = dir.path().join("report-artifacts");
+        let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
+        let staged = [staged(dir.path(), "tx_1.xlsx", b"first bytes")];
+        let deadline = Instant::now() + std::time::Duration::from_secs(30);
+        let guard = || Ok(());
+        let outcome = seal(
+            &store,
+            &seal_fence(),
+            &root,
+            &seal_request(&staged, &["xlsx"], deadline, &guard),
+        )
+        .expect("seal");
+        let SealOutcome::Sealed(sealed) = outcome else {
+            panic!("a first seal is sealed: {outcome:?}");
+        };
+        assert_eq!(sealed.row.state, store::ArtifactState::Held);
+        assert_eq!(
+            sealed.row.bytes_locator,
+            locator_of(&sealed.receipt.batch_id)
+        );
+        assert!(sealed.superseded.is_none());
+        let committed = ds_report_artifacts::committed_batch(&root, &sealed.receipt.batch_id)
+            .expect("read")
+            .expect("the batch is committed");
+        assert_eq!(committed.client_publish_id, sealed.row.client_publish_id);
+        let rows = rows_in(&store, "project-a");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].replay_key, sealed.receipt.client_publish_id);
+        assert_eq!(rows[0].resource.as_deref(), Some("tx_1"));
+        let status = store
+            .lock()
+            .unwrap()
+            .queue(&seal_fence(), None, crate::now_ms())
+            .unwrap();
+        assert_eq!(status.queued_batches, 1);
+        assert_eq!(status.queued_bytes, b"first bytes".len() as u64);
+        assert_eq!(status.projects[0].transformers, vec!["tx_1".to_string()]);
+        // Nothing on disk is adopted: the row the seal wrote is the one the
+        // producer's inventory names.
+        assert_eq!(
+            inventory(&root, "project-a").unwrap()[0].bytes_locator,
+            rows[0].bytes_locator
+        );
+    }
+
+    /// Invariant (2), at the seal: the same bytes sealed twice are one row,
+    /// and the second seal leaves no second batch on disk.
+    #[test]
+    fn invariant_2_the_same_bytes_sealed_twice_are_one_row_and_one_batch() {
+        let dir = tempfile::tempdir().expect("temp");
+        let root = dir.path().join("report-artifacts");
+        let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
+        let deadline = Instant::now() + std::time::Duration::from_secs(30);
+        let guard = || Ok(());
+        let first = [staged(dir.path(), "tx_1.xlsx", b"same bytes")];
+        let SealOutcome::Sealed(sealed) = seal(
+            &store,
+            &seal_fence(),
+            &root,
+            &seal_request(&first, &["xlsx"], deadline, &guard),
+        )
+        .expect("seal") else {
+            panic!("first seal")
+        };
+        let again = [staged(dir.path(), "tx_1-again.xlsx", b"same bytes")];
+        let outcome = seal(
+            &store,
+            &seal_fence(),
+            &root,
+            &seal_request(&again, &["xlsx"], deadline, &guard),
+        )
+        .expect("seal again");
+        let SealOutcome::AlreadyRecorded { replay_key, state } = outcome else {
+            panic!("the same bytes are already recorded: {outcome:?}");
+        };
+        assert_eq!(replay_key, sealed.receipt.client_publish_id);
+        assert_eq!(state, store::ArtifactState::Held);
+        assert_eq!(rows_in(&store, "project-a").len(), 1);
+        assert_eq!(
+            inventory(&root, "project-a").unwrap().len(),
+            1,
+            "no second batch was written for the same bytes"
+        );
+    }
+
+    /// If the store cannot record the row, the seal is not acknowledged and
+    /// the bytes it wrote are removed: a batch on disk with no row is exactly
+    /// the state this rule exists to end. The seam is the store's own mutex,
+    /// poisoned by a panicking holder — no fake store, no flag.
+    #[test]
+    fn a_seal_the_store_cannot_record_leaves_no_bytes_behind() {
+        let dir = tempfile::tempdir().expect("temp");
+        let root = dir.path().join("report-artifacts");
+        let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
+        let poisoned = store.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoned.lock().unwrap();
+            panic!("the store's holder died mid-transition");
+        })
+        .join();
+        assert!(store.lock().is_err(), "the mutex is poisoned");
+        let staged = [staged(dir.path(), "tx_1.xlsx", b"unrecorded bytes")];
+        let deadline = Instant::now() + std::time::Duration::from_secs(30);
+        let guard = || Ok(());
+        let error = seal(
+            &store,
+            &seal_fence(),
+            &root,
+            &seal_request(&staged, &["xlsx"], deadline, &guard),
+        )
+        .expect_err("not acknowledged");
+        assert!(error.contains("sync gate is unavailable"), "{error}");
+        assert!(
+            inventory(&root, "project-a").unwrap().is_empty(),
+            "no batch is committed for a seal that was not recorded"
+        );
+    }
+
+    /// A room sealed again with other bytes: the earlier batch lost locally
+    /// and leaves the disk with a `reclaimed` receipt; the row is the new
+    /// one. An artefact never accumulates on the edge.
+    #[test]
+    fn a_new_seal_of_a_room_frees_the_batch_it_supersedes_and_says_so() {
+        let dir = tempfile::tempdir().expect("temp");
+        let root = dir.path().join("report-artifacts");
+        let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
+        let deadline = Instant::now() + std::time::Duration::from_secs(30);
+        let guard = || Ok(());
+        let first = [staged(dir.path(), "tx_1.xlsx", b"first computation")];
+        let SealOutcome::Sealed(older) = seal(
+            &store,
+            &seal_fence(),
+            &root,
+            &seal_request(&first, &["xlsx"], deadline, &guard),
+        )
+        .expect("seal") else {
+            panic!("first seal")
+        };
+        let second = [staged(
+            dir.path(),
+            "tx_1-v2.xlsx",
+            b"second computation, longer",
+        )];
+        let SealOutcome::Sealed(newer) = seal(
+            &store,
+            &seal_fence(),
+            &root,
+            &seal_request(&second, &["xlsx"], deadline, &guard),
+        )
+        .expect("seal") else {
+            panic!("second seal")
+        };
+        assert_eq!(
+            newer.superseded,
+            Some((
+                older.receipt.client_publish_id.clone(),
+                b"first computation".len() as u64
+            ))
+        );
+        assert!(
+            ds_report_artifacts::committed_batch(&root, &older.receipt.batch_id)
+                .unwrap()
+                .is_none(),
+            "the superseded batch left the disk"
+        );
+        let rows = rows_in(&store, "project-a");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].replay_key, newer.receipt.client_publish_id);
+        assert_eq!(rows[0].state, store::ArtifactState::Held);
+        let receipts = receipts_in(&store, "project-a");
+        let reclaimed = receipts
+            .iter()
+            .find(|receipt| receipt.action == "reclaimed")
+            .expect("the supersession is evidence");
+        assert_eq!(reclaimed.outcome, "superseded_locally");
+        assert_eq!(
+            reclaimed.committed_bytes,
+            Some(b"first computation".len() as u64)
+        );
+        assert!(reclaimed
+            .detail
+            .as_deref()
+            .unwrap()
+            .contains(&older.receipt.client_publish_id));
+        assert_eq!(inventory(&root, "project-a").unwrap().len(), 1);
+    }
+
+    /// The guard is re-checked at the durable boundary: a scope that moved
+    /// between the copy and the commit seals nothing and records nothing.
+    #[test]
+    fn a_guard_that_refuses_at_the_boundary_seals_nothing() {
+        let dir = tempfile::tempdir().expect("temp");
+        let root = dir.path().join("report-artifacts");
+        let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
+        let staged = [staged(dir.path(), "tx_1.xlsx", b"scoped bytes")];
+        let deadline = Instant::now() + std::time::Duration::from_secs(30);
+        let guard = || Err("the native publication scope changed".to_string());
+        let error = seal(
+            &store,
+            &seal_fence(),
+            &root,
+            &seal_request(&staged, &["xlsx"], deadline, &guard),
+        )
+        .expect_err("refused at the boundary");
+        assert!(error.contains("scope changed"));
+        assert!(rows_in(&store, "project-a").is_empty());
+        assert!(inventory(&root, "project-a").unwrap().is_empty());
     }
 }

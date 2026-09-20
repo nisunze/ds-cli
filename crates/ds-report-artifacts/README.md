@@ -15,10 +15,14 @@ An interrupted promotion is invisible and recoverable; a committed batch stays
 available across restarts. `open_batch_output` reopens only a receipt-declared
 output. A copied file path is not publication evidence.
 
-`ds-web/crates/ds-sync-runtime::reports::ReportProducer` is the shared projection
-of those committed batches into Sync Center. Desktop and Server supply their
-root and the common native storage-session transfer adapter. The shared sync
-store remains the sole owner of grants, heads, leases and transfer receipts.
+This crate is BYTES, not the queue (owner, 2026-09-20). The sync store is the
+queue: `ds-sync-runtime::reports::seal` writes a batch here and records its
+row in the store in the same acknowledged step, `ReportProducer` moves and
+frees bytes the store's rows name, and `sync_store::queue_status` reads the
+queue from the rows. Nothing here decides what is queued; the batch receipts
+under `publication-batches/` bind outputs to their integrity receipts and are
+what a discard verifies against. The file lock serialises writers of this
+directory and is not a liveness signal.
 
 The native crate has its own workspace so its filesystem dependencies never
 enter the WASM dependency graph. Its moved tests exercise receipt corruption,

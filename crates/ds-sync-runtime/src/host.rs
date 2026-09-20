@@ -48,13 +48,18 @@ pub struct ActivityRow {
 }
 
 /// Where this host's bytes come from, and how they leave it.
+///
+/// The sync store is the queue (owner, 2026-09-20). A producer holds BYTES
+/// and names them by the row's `bytes_locator`; it never decides what is
+/// queued. Its inventory is read only to adopt what was sealed before the
+/// seal wrote its row, and to free what the store has settled as lost.
 pub trait Producer {
-    /// What the producer stores hold for one project. Read-only over the
-    /// stores that already exist; project-keyed, never account-keyed.
+    /// Every publication this producer still holds bytes for in one project,
+    /// each carrying the locator its bytes live at. Cheap: it reads the
+    /// producer's own receipts, never the bytes. Project-keyed, never
+    /// account-keyed. A row the store already knows is ignored by the host;
+    /// one it does not is adopted once.
     fn inventory(&self, project: &str) -> Result<Vec<LocalRow>, String>;
-    /// The producer store reference a row's bytes live at. Host-opaque: the
-    /// store keeps it and never interprets it.
-    fn locator(&self, row: &LocalRow) -> String;
     /// Stream one declared output's bytes into a DS-minted resumable session
     /// through this host's one native transport host. Every resume point and
     /// retry inside is `ds_command_kernel::transfer`'s.
@@ -441,8 +446,9 @@ impl<'a> StoreHost<'a> {
     }
 
     /// Free one row the store already holds as lost, and keep the evidence.
-    /// Silent only when there was nothing to do: a batch already gone is
-    /// neither a receipt nor an error, so a second observation costs nothing.
+    /// Never silent: a batch already gone is a `reclaimed` receipt of 0
+    /// bytes, which is what tells the store the row names nothing here any
+    /// more — so a second observation does not ask again.
     fn reclaim_settled(&self, project: &str, row: &LocalRow, verdict: &str) -> Result<(), String> {
         let name = if row.client_publish_id.is_empty() {
             "a replica of the head".to_string()
@@ -450,7 +456,15 @@ impl<'a> StoreHost<'a> {
             format!("batch {}", row.client_publish_id)
         };
         let receipt = match self.producer.reclaim(project, row) {
-            Ok(0) => return Ok(()),
+            Ok(0) => {
+                let mut receipt = Receipt::new("reclaimed", verdict.to_string())
+                    .about(&row.identity)
+                    .detail(format!(
+                        "{name} held no bytes on this machine any more; the store holds this publication as {verdict}"
+                    ));
+                receipt.bytes = Some(0);
+                receipt
+            }
             Ok(bytes) => {
                 let mut receipt = Receipt::new("reclaimed", verdict.to_string())
                     .about(&row.identity)
@@ -581,69 +595,103 @@ impl SyncHost for StoreHost<'_> {
         self.install_id.clone()
     }
 
-    /// The producer's inventory, recorded in the store as it is seen, plus
-    /// every row the store holds that no producer lists any more (handed-off
-    /// rows, other engines' rows): one inventory, one owner.
+    /// The store's rows ARE the inventory: every row that is not settled as
+    /// lost, as the store holds it, plus the replicas of heads this machine
+    /// has downloaded. The producer is consulted for two things only, and
+    /// both are reconciliations, not decisions:
+    ///
+    /// * a batch it holds bytes for that the store does not know — sealed
+    ///   before the seal wrote its row (2026-09-20) — is adopted once, with
+    ///   an `adopted` receipt; a producer whose every batch is known adds
+    ///   nothing here;
+    /// * a row the store holds as lost (`conflict` / `refused`) whose bytes
+    ///   are still here is freed through the producer, once, with a
+    ///   `reclaimed` receipt the kernel turns into "bytes gone" on the row.
+    ///   Online overwrites local; a lost batch never stays.
     fn local(&self, project: &str) -> Result<Vec<LocalRow>, String> {
-        let mut rows = self.producer.inventory(project)?;
-        let snapshot = self.snapshot()?;
+        let mut snapshot = self.snapshot()?;
         let now = now_ms();
-        for row in &rows {
-            let known = snapshot.artifacts.iter().any(|held| {
-                held.replay_key == row.client_publish_id
-                    || (held.identity == row.identity && held.sha256 == row.sha256)
+        let held = self.producer.inventory(project)?;
+        let mut adopted = false;
+        // A batch the producer holds that the store has settled as lost, by
+        // publish id: its bytes are freed below whether or not the row still
+        // says they are here — a store restored beside old artifacts, or an
+        // earlier failed reclaim, must not leave them orphaned.
+        let mut to_free: Vec<(LocalRow, String)> = Vec::new();
+        for row in &held {
+            let known = snapshot.artifacts.iter().find(|stored| {
+                stored.replay_key == row.client_publish_id
+                    || (stored.identity == row.identity && stored.sha256 == row.sha256)
             });
-            if !known {
-                // A refusal (already recorded under another key) is the
-                // store's answer, not a failure of this inventory.
-                let recorded = self.apply(store::Event::LocalProduced {
-                    row: store_row(project, row, self.producer.locator(row), now),
-                })?;
-                if let Some(refusal) = recorded.refusals.first() {
-                    return Err(refusal.detail.clone());
+            match known {
+                None => {
+                    let recorded = self.apply(store::Event::LocalProduced {
+                        row: store_row(project, row, now),
+                    })?;
+                    // A refusal is the store's answer (a replay key already
+                    // naming another identity), kept as evidence and never
+                    // a failure of this observation.
+                    let receipt = match recorded.refusals.first() {
+                        None => Receipt::new("adopted", "from_producer")
+                            .about(&row.identity)
+                            .detail(format!(
+                                "batch {} was held by the producer with no row in the store (sealed before the seal wrote its row); recorded once",
+                                row.client_publish_id
+                            )),
+                        Some(refusal) => Receipt::new("adopted", refusal.code.clone())
+                            .about(&row.identity)
+                            .detail(format!(
+                                "batch {} was not adopted: {}",
+                                row.client_publish_id, refusal.detail
+                            )),
+                    };
+                    self.record_receipt(project, &receipt)?;
+                    self.housekeeping
+                        .lock()
+                        .map_err(|_| "sync housekeeping receipts unavailable".to_string())?
+                        .push(receipt);
+                    adopted = true;
                 }
+                Some(stored) if matches!(stored.state.as_str(), "conflict" | "refused") => {
+                    to_free.push((row.clone(), stored.state.as_str().to_string()));
+                }
+                Some(_) => {}
             }
         }
-        // A conflict/refusal is terminal for the exact sealed publication.
-        // Its store row remains visible to the Sync Center, but it must not
-        // re-enter a later plan and open another grant on every recovery
-        // wake. A newly produced digest or replay key does not match and
-        // therefore proceeds normally.
-        //
-        // Its bytes do not stay either. Until 2026-09-20 they were kept
-        // "locally readable", which on one machine was 86 lost batches and
-        // half a gigabyte counted as queued for seven days with nothing able
-        // to move them. Online overwrites local: a row the store has settled
-        // as lost is freed here, once — a batch already gone answers 0 and
-        // writes nothing — and the receipt is kept in the store and handed to
-        // the run, so a store that already holds lost rows is cleaned on the
-        // next pass without re-planning them.
-        let mut lost: Vec<(LocalRow, String)> = Vec::new();
-        rows.retain(|row| {
-            let verdict = snapshot.artifacts.iter().find(|held| {
-                held.identity == row.identity
-                    && (held.replay_key == row.client_publish_id || held.sha256 == row.sha256)
-                    && matches!(held.state.as_str(), "conflict" | "refused")
-            });
-            match verdict {
-                Some(held) => {
-                    lost.push((row.clone(), held.state.as_str().to_string()));
-                    false
-                }
-                None => true,
-            }
-        });
-        for (row, verdict) in lost {
-            self.reclaim_settled(project, &row, &verdict)?;
+        if adopted {
+            snapshot = self.snapshot()?;
         }
-        for held in snapshot.artifacts.iter() {
-            if matches!(held.state.as_str(), "conflict" | "refused") {
+        // Rows the store holds as lost whose bytes it still names: freed
+        // once. After the receipt the row says its bytes are gone and is not
+        // asked about again; a failed reclaim leaves it, and the next pass
+        // tries again in the open.
+        for stored in &snapshot.artifacts {
+            if !matches!(stored.state.as_str(), "conflict" | "refused") {
                 continue;
             }
-            if !rows.iter().any(|row| row.identity == held.identity) {
-                rows.push(local_row_from_store(held));
+            if !(stored.readable && !stored.bytes_locator.is_empty()) {
+                continue;
             }
+            if to_free
+                .iter()
+                .any(|(row, _)| row.client_publish_id == stored.replay_key)
+            {
+                continue;
+            }
+            to_free.push((
+                local_row_from_store(stored),
+                stored.state.as_str().to_string(),
+            ));
         }
+        for (row, verdict) in to_free {
+            self.reclaim_settled(project, &row, &verdict)?;
+        }
+        let mut rows: Vec<LocalRow> = snapshot
+            .artifacts
+            .iter()
+            .filter(|stored| !matches!(stored.state.as_str(), "conflict" | "refused"))
+            .map(local_row_from_store)
+            .collect();
         for stored in &snapshot.heads {
             let head = remote_row_from_head(stored);
             // A producer's readable local result remains authoritative for its
@@ -678,6 +726,7 @@ impl SyncHost for StoreHost<'_> {
                 resource: String::new(),
                 client_publish_id: String::new(),
                 outputs: Vec::new(),
+                bytes_locator: String::new(),
             });
         }
         Ok(rows)
@@ -723,6 +772,7 @@ impl SyncHost for StoreHost<'_> {
                 | "cancel"
                 | "reclaimed"
                 | "reclaim_failed"
+                | "adopted"
         ) {
             return Ok(());
         }
@@ -924,12 +974,6 @@ pub struct StoreOnlyProducer;
 impl Producer for StoreOnlyProducer {
     fn inventory(&self, _project: &str) -> Result<Vec<LocalRow>, String> {
         Ok(Vec::new())
-    }
-
-    fn locator(&self, row: &LocalRow) -> String {
-        // Unreached for an empty inventory; a store row already carries its own
-        // locator. Kept total so the seam has no panic path.
-        format!("store:{}", row.client_publish_id)
     }
 
     fn transfer(

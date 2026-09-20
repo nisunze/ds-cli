@@ -10,11 +10,18 @@ Desktop's `src-tauri/src/sync_loop.rs` consumes this runtime. Linux Server's
 registered installation identity and sealed prepared Solar jobs. Solar publishes
 through its existing Compute Artifacts protocol under the same StoreHost lease,
 rows and receipts. It does not use Network Reporter's work-grant protocol.
-`reports::ReportProducer` is the shared Desktop/Server inventory over
-`ds-report-artifacts`, which owns sealing, promotion, recovery and verified
-output handles outside Tauri. Server drains sealed exports through `run_reports`,
-registering the exact reporter release before each work grant. That scoped pass
-never submits Solar rows to the report protocol.
+The sync store is the queue (owner, 2026-09-20). `reports::seal` writes a
+report batch's bytes and integrity receipts through `ds-report-artifacts` and
+records its `held` row in the store in the same acknowledged step — a seal the
+store cannot record leaves no bytes behind, and a room sealed again frees the
+batch it supersedes. `reports::ReportProducer` moves and frees bytes the
+store's rows name (`LocalRow::bytes_locator`); its inventory is read only to
+adopt a batch sealed before the seal wrote its row (`adopted` receipt, once)
+and to free a batch the store has settled as lost (`reclaimed`). Nothing
+enumerates the artifact directory to decide what is queued;
+`sync_store::queue_status` reads the rows. Server drains sealed exports through
+`run_reports`, registering the exact reporter release before each work grant.
+That scoped pass never submits Solar rows to the report protocol.
 
 `StoreOnlyProducer` and `UnavailableGateway` explicitly refuse missing effects;
 other producers require their own real adapters before their effects are enabled.
