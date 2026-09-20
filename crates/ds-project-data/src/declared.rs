@@ -25,6 +25,11 @@ pub enum DeclaredSource {
     Buildings,
     /// Elevation contours through ds-brain, at the template's intervals.
     Contours(ContourSettings),
+    /// A cloud-resident dataset (foundation-datasets contract): never a
+    /// national bundle, seeded per project cell by cell through the bounded
+    /// read — the parcels a project's extents cover, its existing customers —
+    /// and held like building footprints, so the project reuses them.
+    Cloud(Box<ReferenceResource>),
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +122,12 @@ pub fn declared(resources: &[ReferenceResource]) -> Result<Vec<Declared>, Failur
 }
 
 /// Resolve one dataset id — declared or explicitly named — to its source.
+///
+/// A name may be an exact id, a layer name, or a retired alias; the row it
+/// answers as is the authority (`docs/contracts/foundation-datasets.md` R4).
+/// A cloud-resident row is never a seed target and refuses by name
+/// (`dataset_cloud_only`); a retired broad layer with no single authority
+/// refuses with its detailed alternatives (`dataset_retired`).
 pub fn resolve(resources: &[ReferenceResource], id: &str) -> Result<Option<Declared>, Failure> {
     if let Some(found) = declared(resources)?
         .into_iter()
@@ -124,16 +135,71 @@ pub fn resolve(resources: &[ReferenceResource], id: &str) -> Result<Option<Decla
     {
         return Ok(Some(found));
     }
-    Ok(resources
-        .iter()
-        .find(|resource| resource.id == id && !resource.is_unavailable())
-        .map(|resource| Declared {
+    let Some(found) = crate::catalog::named(resources, id) else {
+        if let Some(alternatives) = ds_command_kernel::printing::context::retired_alternatives(id) {
+            return Err(Failure::Retired(format!(
+                "{id} is retired; its detailed alternatives are {}",
+                alternatives.join(", ")
+            )));
+        }
+        return Ok(None);
+    };
+    let resource = found.resource;
+    if resource.is_unavailable() {
+        return Ok(None);
+    }
+    if resource.is_cloud_resident() {
+        // Seedable per project (the owner's generalization, 2026-09-20): the
+        // project's extents are read from the cloud cell by cell and held.
+        // The national install is what a cloud row refuses.
+        return Ok(Some(Declared {
             candidate: SeedCandidate {
                 id: resource.id.clone(),
                 label: resource.label.clone(),
                 seeded: false,
             },
-            dataset: catalog_dataset(resource),
-            source: DeclaredSource::Catalog(Box::new(resource.clone())),
-        }))
+            dataset: cloud_dataset(resource),
+            source: DeclaredSource::Cloud(Box::new(resource.clone())),
+        }));
+    }
+    Ok(Some(Declared {
+        candidate: SeedCandidate {
+            id: resource.id.clone(),
+            label: resource.label.clone(),
+            seeded: false,
+        },
+        dataset: catalog_dataset(resource),
+        source: DeclaredSource::Catalog(Box::new(resource.clone())),
+    }))
+}
+
+/// The room of a cloud-resident dataset: the bounded-read door, addressed
+/// by the catalogue row's layer so the host knows which read answers it.
+pub fn cloud_dataset(resource: &ReferenceResource) -> Dataset {
+    let mut dataset = catalog_dataset(resource);
+    dataset.provider = CLOUD_READ_PROVIDER.to_owned();
+    dataset
+        .parameters
+        .insert("layer".to_owned(), serde_json::Value::String(resource.layer.clone()));
+    dataset
+}
+
+/// The governed door a cloud-resident dataset is seeded through.
+/// The kernel records the area rule against this provider name
+/// (`project_dataset_cache::acquisition_selection`); one constant, re-exported.
+pub use ds_command_kernel::project_dataset_cache::CLOUD_READ_PROVIDER;
+
+/// The one sentence every host prints when a cloud-resident dataset is asked
+/// to be installed nationally or downloaded as a bundle. Seeding per project
+/// is not refused: that is how the project holds what it needs.
+pub fn cloud_only_message(resource: &ReferenceResource) -> String {
+    let command = match resource.layer.as_str() {
+        "rwanda_upi_parcels" => "ds data parcels query --boundary …, or seed the project's extents",
+        "edcl_customers" => "ds data customers query --boundary …, or seed the project's extents",
+        _ => "ds data",
+    };
+    format!(
+        "{} is cloud-resident; it is never installed nationally or downloaded as a bundle — read it bounded ({command}) or `ds data project-cache seed --dataset {}`",
+        resource.layer, resource.layer
+    )
 }

@@ -38,6 +38,17 @@ const DETAILED_ALTERNATIVES: [(&str, &[&str]); 2] = [
     ),
 ];
 
+/// The detailed layers a retired broad representation answers by name with
+/// (`docs/contracts/foundation-datasets.md` R4/R6): `powerlines` and
+/// `elementary_school` were retired on 2026-09-18 and are never seeded again;
+/// a request naming one is refused with these alternatives.
+pub fn retired_alternatives(layer: &str) -> Option<&'static [&'static str]> {
+    DETAILED_ALTERNATIVES
+        .iter()
+        .find(|(broad, _)| *broad == layer)
+        .map(|(_, detailed)| *detailed)
+}
+
 fn default_omission(resource: &CatalogResource, resources: &[CatalogResource]) -> Option<String> {
     if DEFAULT_CATALOG_EXCLUSIONS.contains(&resource.layer.as_str()) {
         return Some("Cadastral parcels are not selected by default.".into());

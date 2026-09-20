@@ -1341,7 +1341,16 @@
         "publication is an operator surface. Declaring them is a descriptor edit",
         "plus a review, not a code change. The bundle a catalogue row names is",
         "fetched from storage.googleapis.com without any DS credential; that is",
-        "not a gateway operation and is pinned in ds-client-core."
+        "not a gateway operation and is pinned in ds-client-core.",
+        "",
+        "`foundation` is the second operation on the same path: the two bounded",
+        "reads of cloud-resident datasets (docs/contracts/foundation-datasets.md",
+        "R3) — `upi_lookup` (one UPI → one parcel polygon) and `customers_query`",
+        "(customers of one village, one cell or one rectangle under the kernel's",
+        "envelope bound, capped at 5,000). Pinned here (ds-client-core",
+        "FOUNDATION_ACTIONS), NOT in the client profile: extending the profile's",
+        "data_distribution_actions would refuse every installed bundle, and a",
+        "read of a table that is never bundled changes nothing about seeding."
       ],
       "operations": {
         "action": {
@@ -1350,6 +1359,22 @@
           "action_key": "action",
           "actions": ["list_datasets", "query_print_context"],
           "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 180,
+          "response_cap_bytes": 33554432,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/data-distribution",
+            "backend": "ds_brain_bulk_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "foundation": {
+          "summary": "One bounded read of a cloud-resident dataset: one parcel by UPI, or the customers or parcels of one village, cell, small rectangle or boundary polygon.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["upi_lookup", "customers_query", "parcels_query"],
+          "idempotency": "idempotent",
           "retry_class": "none",
           "timeout_s": 180,
           "response_cap_bytes": 33554432,

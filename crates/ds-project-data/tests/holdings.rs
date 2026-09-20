@@ -595,3 +595,114 @@ fn a_desktop_held_source_is_refused_not_omitted() {
     .expect_err("refused");
     assert_eq!(refused.code(), "print_context_unsupported");
 }
+
+/// Cloud-resident rows (foundation-datasets contract R1/R2/R4/R6): valid only
+/// without a bundle, never declared, never a seed target, named by id, layer
+/// or alias, and refused by name when a seed asks for one.
+#[test]
+fn a_cloud_resident_row_seeds_through_its_bounded_read() {
+    let roads = ReferenceResource {
+        id: "a".repeat(64),
+        version: "b".repeat(64),
+        label: "Roads".into(),
+        layer: "roads".into(),
+        country: "Rwanda".into(),
+        kind: "bigquery".into(),
+        active: true,
+        download_url: Some("https://storage.googleapis.com/bucket/roads.geojsonl.gz".into()),
+        bundle_sha256: Some("c".repeat(64)),
+        expanded_sha256: Some("d".repeat(64)),
+        download_bytes: Some(10),
+        expanded_bytes: Some(20),
+        bundle_features: Some(3),
+        bundle_built_at: Some(1),
+        ..Default::default()
+    };
+    let parcels = ReferenceResource {
+        id: "e".repeat(64),
+        layer: "rwanda_upi_parcels".into(),
+        label: "Land parcels (UPI)".into(),
+        residency: "cloud".into(),
+        residency_reason: Some("declared foundation dataset".into()),
+        download_url: None,
+        bundle_sha256: None,
+        expanded_sha256: None,
+        download_bytes: None,
+        expanded_bytes: None,
+        bundle_features: None,
+        bundle_built_at: None,
+        ..roads.clone()
+    };
+    let villages = ReferenceResource {
+        id: "1".repeat(64),
+        layer: "village_boundaries".into(),
+        label: "Village boundaries".into(),
+        aliases: vec!["rwanda_villages".into(), "2".repeat(64)],
+        ..roads.clone()
+    };
+    parcels
+        .validate()
+        .expect("a cloud row without a bundle is valid");
+    assert!(
+        ReferenceResource {
+            download_url: Some("https://storage.googleapis.com/bucket/p.geojsonl.gz".into()),
+            ..parcels.clone()
+        }
+        .validate()
+        .is_err(),
+        "a cloud row publishing a bundle is a contradiction"
+    );
+    assert!(ReferenceResource {
+        residency: "orbit".into(),
+        ..parcels.clone()
+    }
+    .validate()
+    .is_err());
+    let rows = [roads.clone(), parcels.clone(), villages.clone()];
+    let declared = declared(&rows).expect("declaration");
+    assert!(
+        !declared.iter().any(|d| d.dataset.id == parcels.id),
+        "a cloud row is never declared"
+    );
+    // Named by id, layer and alias; the answered-as note travels.
+    let by_layer = ds_project_data::named(&rows, "rwanda_villages").unwrap();
+    assert_eq!(by_layer.resource.id, villages.id);
+    assert_eq!(by_layer.answered_as.as_deref(), Some("rwanda_villages"));
+    let by_alias_id = ds_project_data::named(&rows, &"2".repeat(64)).unwrap();
+    assert_eq!(by_alias_id.resource.id, villages.id);
+    assert!(ds_project_data::named(&rows, &villages.id)
+        .unwrap()
+        .answered_as
+        .is_none());
+    assert!(ds_project_data::named(&rows, "nothing").is_none());
+    // A seed naming a cloud row — by id or layer — resolves to the bounded
+    // read as its provider: the project's cells are read, never a bundle.
+    for needle in [parcels.id.as_str(), "rwanda_upi_parcels"] {
+        let resolved = ds_project_data::declared::resolve(&rows, needle)
+            .expect("a cloud row is a seed target")
+            .expect("named");
+        assert_eq!(resolved.dataset.id, parcels.id);
+        assert_eq!(
+            resolved.dataset.provider,
+            ds_project_data::declared::CLOUD_READ_PROVIDER
+        );
+        assert_eq!(resolved.dataset.parameters["layer"], "rwanda_upi_parcels");
+        assert!(matches!(resolved.source, DeclaredSource::Cloud(_)));
+    }
+    // Installing it nationally is still refused by name.
+    assert!(
+        ds_project_data::declared::cloud_only_message(&parcels).contains("project-cache seed"),
+        "the refusal points at the per-project seed"
+    );
+    // A retired broad layer names its detailed alternatives.
+    match ds_project_data::declared::resolve(&rows, "powerlines") {
+        Err(Failure::Retired(message)) => assert!(message.contains("hv_line, mv_line, lv_line")),
+        other => panic!("retired layer resolved: {other:?}"),
+    }
+    assert_eq!(Failure::Retired(String::new()).code(), "dataset_retired");
+    // An alias resolves to its authority as a seed target.
+    let resolved = ds_project_data::declared::resolve(&rows, "rwanda_villages")
+        .unwrap()
+        .unwrap();
+    assert_eq!(resolved.dataset.id, villages.id);
+}

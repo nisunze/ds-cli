@@ -9,6 +9,16 @@
 //! deliberately outside the vocabulary: a catalogue row without a published
 //! bundle is a refusal upstream, never a silent fallback to a per-page query.
 //!
+//! Two more travel on the same wire for cloud-resident datasets
+//! (`docs/contracts/foundation-datasets.md`): `upi_lookup` (one UPI → one
+//! parcel polygon) and `customers_query` (customers of one village, one cell
+//! or one rectangle under the kernel's envelope bound, capped at 5,000). They
+//! are pinned by the gateway registry ([`FOUNDATION_ACTIONS`]), not by the
+//! client profile: extending the profile's `data_distribution_actions` would
+//! refuse every installed bundle (`ProfileError::DataDistributionRoute`), and a
+//! bounded read of a table that is never bundled changes nothing about how a
+//! seeder plans.
+//!
 //! ds-brain rechecks project membership (`requireProjectAccess`) on every call.
 //! Project identity is injected from the selected-client context and cannot be
 //! supplied inside the request.
@@ -42,6 +52,31 @@ pub const BUNDLE_DOWNLOAD_HOST: &str = "storage.googleapis.com";
 pub const BUNDLE_DOWNLOAD_MAX_URL_BYTES: usize = 2048;
 /// A bundle larger than this is not a national catalogue layer; it is a defect.
 pub const BUNDLE_DOWNLOAD_MAX_BYTES: u64 = 16 * 1024 * 1024 * 1024;
+
+/// The foundation reads: registry-pinned (`domains.data_distribution.foundation`),
+/// never profile-pinned. Order is the order of the request variants.
+pub const FOUNDATION_ACTIONS: [&str; 3] = ["upi_lookup", "customers_query", "parcels_query"];
+/// The most customers one read answers; ds-brain caps at the same number.
+pub const CUSTOMERS_ROW_CAP: u64 = 5_000;
+/// A UPI is 8–20 digits; the printed form `2/05/06/01/2183` is accepted and
+/// sent without its slashes.
+pub const UPI_MIN_DIGITS: usize = 8;
+pub const UPI_MAX_DIGITS: usize = 20;
+
+/// The digits of one UPI, or the refusal.
+pub fn normalize_upi(raw: &str) -> Result<String, ClientError> {
+    let digits: String = raw.trim().chars().filter(|c| *c != '/').collect();
+    if digits.len() < UPI_MIN_DIGITS
+        || digits.len() > UPI_MAX_DIGITS
+        || !digits.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Err(ClientError::new(
+            ErrorKind::InvalidInput,
+            "A UPI is 8 to 20 digits, slashes allowed",
+        ));
+    }
+    Ok(digits)
+}
 
 /// The closed derived print-context kinds ds-brain relays to the vector tiler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,6 +141,138 @@ pub enum DataDistributionRequest {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         contour_parameters: Option<ContourParameters>,
     },
+    /// One parcel polygon by its exact UPI (cloud-resident `rwanda_upi_parcels`).
+    UpiLookup { upi: String },
+    /// The customers of exactly one bound: a village code, a cell code, a
+    /// `[west, south, east, north]` rectangle under the envelope bound, or a
+    /// boundary (one GeoJSON Polygon/MultiPolygon — a corridor, an area).
+    CustomersQuery {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        village_code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cell_code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bbox: Option<[f64; 4]>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        boundary: Option<Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u64>,
+    },
+    /// The parcels of exactly one bound — the classic read: the parcels a DS
+    /// Grid corridor crosses (`boundary` = the alignment buffer). Same bounds
+    /// as `CustomersQuery`, over the parcels authority.
+    ParcelsQuery {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        village_code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cell_code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bbox: Option<[f64; 4]>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        boundary: Option<Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u64>,
+    },
+}
+
+fn exact_digits(value: &str, digits: usize, what: &'static str) -> Result<(), ClientError> {
+    if value.len() == digits && value.bytes().all(|b| b.is_ascii_digit()) {
+        Ok(())
+    } else {
+        Err(ClientError::new(ErrorKind::InvalidInput, what))
+    }
+}
+
+/// Exactly one bound for a foundation read; the rectangle and the boundary's
+/// envelope share the kernel's area cap. A boundary is validated the way a
+/// print-context area is (a GeoJSON Polygon/MultiPolygon within the request
+/// bound); ds-brain measures its envelope again.
+fn validate_bound(
+    village_code: Option<&str>,
+    cell_code: Option<&str>,
+    bbox: Option<[f64; 4]>,
+    boundary: Option<&Value>,
+    limit: Option<u64>,
+) -> Result<(), ClientError> {
+    let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
+    if let Some(limit) = limit {
+        if limit == 0 || limit > CUSTOMERS_ROW_CAP {
+            return Err(invalid("The limit is 1 to 5000"));
+        }
+    }
+    let named = village_code.is_some() as u8
+        + cell_code.is_some() as u8
+        + bbox.is_some() as u8
+        + boundary.is_some() as u8;
+    if named != 1 {
+        return Err(invalid(
+            "Name exactly one bound: a village code, a cell code, a rectangle, or a boundary",
+        ));
+    }
+    if let Some(code) = village_code {
+        exact_digits(code, 8, "A village code is exactly 8 digits")?;
+    }
+    if let Some(code) = cell_code {
+        exact_digits(code, 6, "A cell code is exactly 6 digits")?;
+    }
+    if let Some(bounds) = bbox {
+        rectangle_within_cap(bounds)?;
+    }
+    if let Some(area) = boundary {
+        ds_command_kernel::reference_cache::validate_area(area).map_err(|_| {
+            invalid("Invalid boundary: expected a GeoJSON Polygon or MultiPolygon in WGS84")
+        })?;
+        if serde_json::to_vec(area).map_or(true, |bytes| bytes.len() > DATA_DISTRIBUTION_MAX_AREA_BYTES)
+        {
+            return Err(invalid("The boundary exceeds its request bound"));
+        }
+        rectangle_within_cap(geometry_envelope(area).ok_or_else(|| {
+            invalid("Invalid boundary: no finite WGS84 positions")
+        })?)?;
+    }
+    Ok(())
+}
+
+fn rectangle_within_cap(bounds: [f64; 4]) -> Result<(), ClientError> {
+    let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
+    let area = ds_command_kernel::project_dataset_cache::bounds_area_m2(bounds)
+        .map_err(|_| invalid("A rectangle is finite, ordered WGS84 bounds"))?;
+    if bounds[0] >= bounds[2] || bounds[1] >= bounds[3] {
+        return Err(invalid("A rectangle is west < east and south < north"));
+    }
+    if area > ds_command_kernel::project_dataset_cache::MAX_ENVELOPE_M2 {
+        return Err(invalid(
+            "The rectangle exceeds the 25 km² bound; narrow it or name a village or cell",
+        ));
+    }
+    Ok(())
+}
+
+/// The envelope of a GeoJSON geometry's positions, `[west, south, east, north]`.
+fn geometry_envelope(geometry: &Value) -> Option<[f64; 4]> {
+    fn walk(node: &Value, env: &mut [f64; 4], seen: &mut usize) {
+        if let Some(list) = node.as_array() {
+            if list.len() >= 2 {
+                if let (Some(lng), Some(lat)) = (list[0].as_f64(), list[1].as_f64()) {
+                    if lng.is_finite() && lat.is_finite() {
+                        *seen += 1;
+                        env[0] = env[0].min(lng);
+                        env[1] = env[1].min(lat);
+                        env[2] = env[2].max(lng);
+                        env[3] = env[3].max(lat);
+                    }
+                    return;
+                }
+            }
+            for child in list {
+                walk(child, env, seen);
+            }
+        }
+    }
+    let mut env = [180.0, 90.0, -180.0, -90.0];
+    let mut seen = 0;
+    walk(&geometry["coordinates"], &mut env, &mut seen);
+    (seen > 0).then_some(env)
 }
 
 impl DataDistributionRequest {
@@ -113,7 +280,18 @@ impl DataDistributionRequest {
         match self {
             Self::ListDatasets {} => "list_datasets",
             Self::QueryPrintContext { .. } => "query_print_context",
+            Self::UpiLookup { .. } => "upi_lookup",
+            Self::CustomersQuery { .. } => "customers_query",
+            Self::ParcelsQuery { .. } => "parcels_query",
         }
+    }
+
+    /// A read of a cloud-resident dataset, as opposed to the seeding door.
+    pub const fn is_foundation(&self) -> bool {
+        matches!(
+            self,
+            Self::UpiLookup { .. } | Self::CustomersQuery { .. } | Self::ParcelsQuery { .. }
+        )
     }
 
     pub fn validate(&self) -> Result<(), ClientError> {
@@ -148,6 +326,27 @@ impl DataDistributionRequest {
                     }
                 }
             }
+            Self::UpiLookup { upi } => normalize_upi(upi).map(|_| ()),
+            Self::CustomersQuery {
+                village_code,
+                cell_code,
+                bbox,
+                boundary,
+                limit,
+            }
+            | Self::ParcelsQuery {
+                village_code,
+                cell_code,
+                bbox,
+                boundary,
+                limit,
+            } => validate_bound(
+                village_code.as_deref(),
+                cell_code.as_deref(),
+                *bbox,
+                boundary.as_ref(),
+                *limit,
+            ),
         }
     }
 
@@ -156,7 +355,7 @@ impl DataDistributionRequest {
     /// with the project injected by the host boundary. ds-brain decodes with
     /// `DisallowUnknownFields`, so the key set is closed here too.
     pub(crate) fn body(&self, project: &str) -> Vec<u8> {
-        #[derive(Serialize)]
+        #[derive(Serialize, Default)]
         struct Body<'a> {
             action: &'static str,
             project_id: &'a str,
@@ -166,25 +365,60 @@ impl DataDistributionRequest {
             area: Option<&'a Value>,
             #[serde(skip_serializing_if = "Option::is_none")]
             contour_parameters: Option<&'a ContourParameters>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            upi: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            village_code: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            cell_code: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            bbox: Option<[f64; 4]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            boundary: Option<&'a Value>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            limit: Option<u64>,
         }
+        let base = Body {
+            action: self.action(),
+            project_id: project,
+            ..Body::default()
+        };
         let body = match self {
-            Self::ListDatasets {} => Body {
-                action: self.action(),
-                project_id: project,
-                context_kind: None,
-                area: None,
-                contour_parameters: None,
-            },
+            Self::ListDatasets {} => base,
             Self::QueryPrintContext {
                 context_kind,
                 area,
                 contour_parameters,
             } => Body {
-                action: self.action(),
-                project_id: project,
                 context_kind: Some(*context_kind),
                 area: Some(area),
                 contour_parameters: contour_parameters.as_ref(),
+                ..base
+            },
+            Self::UpiLookup { upi } => Body {
+                upi: Some(normalize_upi(upi).expect("validated UPI")),
+                ..base
+            },
+            Self::CustomersQuery {
+                village_code,
+                cell_code,
+                bbox,
+                boundary,
+                limit,
+            }
+            | Self::ParcelsQuery {
+                village_code,
+                cell_code,
+                bbox,
+                boundary,
+                limit,
+            } => Body {
+                village_code: village_code.as_deref(),
+                cell_code: cell_code.as_deref(),
+                bbox: *bbox,
+                boundary: boundary.as_ref(),
+                limit: *limit,
+                ..base
             },
         };
         serde_json::to_vec(&body).expect("closed validated data distribution request")
@@ -244,6 +478,34 @@ pub(crate) fn decode(
         }
         DataDistributionRequest::QueryPrintContext { .. } => {
             if !data.is_object() {
+                return Err(bad());
+            }
+        }
+        // A foundation receipt names its dataset, its query and its counts;
+        // anything else is not an answer to this request.
+        DataDistributionRequest::UpiLookup { .. } => {
+            if !data["dataset"].is_object()
+                || !data["query"].is_object()
+                || data["rows_returned"].as_u64() != Some(1)
+                || !data["feature"].is_object()
+            {
+                return Err(bad());
+            }
+        }
+        DataDistributionRequest::CustomersQuery { limit, .. }
+        | DataDistributionRequest::ParcelsQuery { limit, .. } => {
+            let cap = limit.unwrap_or(CUSTOMERS_ROW_CAP);
+            let returned = data["rows_returned"].as_u64();
+            let features = data["features"].as_array();
+            if !data["dataset"].is_object()
+                || !data["query"].is_object()
+                || !data["truncated"].is_boolean()
+                || data["rows_total"].as_u64().is_none()
+                || returned.is_none()
+                || features.is_none_or(|rows| {
+                    rows.len() as u64 != returned.unwrap_or(0) || rows.len() as u64 > cap
+                })
+            {
                 return Err(bad());
             }
         }
@@ -427,6 +689,132 @@ mod tests {
         format!(
             r#"{{"success":false,"service":"data-solutions-backend","version":"1.0.0","error":{{"code":"{code}","message":"{message}","timestamp":1}}}}"#
         )
+    }
+
+    /// The foundation reads (`docs/contracts/foundation-datasets.md` R3):
+    /// exactly the keys ds-brain's `data_distribution.go` decoder reads, one
+    /// bound each, bounded before a socket opens, and pinned by the registry
+    /// rather than the profile.
+    #[test]
+    fn foundation_reads_send_one_bound_and_are_registry_pinned() {
+        let upi = DataDistributionRequest::UpiLookup {
+            upi: "2/05/06/01/2183".into(),
+        };
+        upi.validate().unwrap();
+        assert_eq!(
+            upi.body("proj-1"),
+            br#"{"action":"upi_lookup","project_id":"proj-1","upi":"20506012183"}"#
+        );
+        for bad in ["", "1234567", "abc", "205060121831234567890"] {
+            assert!(DataDistributionRequest::UpiLookup { upi: bad.into() }
+                .validate()
+                .is_err());
+        }
+        let village = DataDistributionRequest::CustomersQuery {
+            village_code: Some("25060102".into()),
+            cell_code: None,
+            bbox: None,
+            boundary: None,
+            limit: Some(10),
+        };
+        village.validate().unwrap();
+        assert_eq!(
+            village.body("proj-1"),
+            br#"{"action":"customers_query","project_id":"proj-1","village_code":"25060102","limit":10}"#
+        );
+        let cell = DataDistributionRequest::CustomersQuery {
+            village_code: None,
+            cell_code: Some("250601".into()),
+            bbox: None,
+            boundary: None,
+            limit: None,
+        };
+        cell.validate().unwrap();
+        assert_eq!(
+            cell.body("p"),
+            br#"{"action":"customers_query","project_id":"p","cell_code":"250601"}"#
+        );
+        let small = DataDistributionRequest::CustomersQuery {
+            village_code: None,
+            cell_code: None,
+            bbox: Some([29.57, -2.53, 29.59, -2.51]),
+            boundary: None,
+            limit: None,
+        };
+        small.validate().unwrap();
+        // A district-sized rectangle is refused before a socket opens.
+        let district = DataDistributionRequest::CustomersQuery {
+            village_code: None,
+            cell_code: None,
+            bbox: Some([29.5, -2.6, 29.9, -2.3]),
+            boundary: None,
+            limit: None,
+        };
+        assert!(district.validate().is_err());
+        for (v, c, b, l) in [
+            (None, None, None, None),
+            (Some("25060102"), Some("250601"), None, None),
+            (Some("2506010"), None, None, None),
+            (None, Some("25060102"), None, None),
+            (None, Some("250601"), None, Some(0)),
+            (None, Some("250601"), None, Some(5001)),
+            (None, None, Some([29.6, -2.5, 29.5, -2.4]), None),
+        ] {
+            let request = DataDistributionRequest::CustomersQuery {
+                village_code: v.map(str::to_owned),
+                cell_code: c.map(str::to_owned),
+                bbox: b,
+                boundary: None,
+                limit: l,
+            };
+            assert!(request.validate().is_err(), "{request:?} admitted");
+        }
+        let parcels = DataDistributionRequest::ParcelsQuery {
+            village_code: Some("25060102".into()),
+            cell_code: None,
+            bbox: None,
+            boundary: None,
+            limit: None,
+        };
+        assert_eq!([upi.action(), village.action(), parcels.action()], FOUNDATION_ACTIONS);
+        assert!(upi.is_foundation() && !DataDistributionRequest::ListDatasets {}.is_foundation());
+        // Never in the profile-pinned seeding vocabulary.
+        for action in FOUNDATION_ACTIONS {
+            assert!(!crate::DATA_DISTRIBUTION_ACTIONS.contains(&action));
+        }
+        // A receipt is decoded only when it names its dataset, query and counts.
+        let ok = r#"{"success":true,"data":{"dataset":{"id":"a","layer":"rwanda_upi_parcels","residency":"cloud"},"query":{"action":"upi_lookup"},"rows_returned":1,"rows_total":1,"truncated":false,"feature":{"type":"Feature"}}}"#;
+        let decoded = decode(TransportResponse::new(200, ok.as_bytes().to_vec()), &upi).unwrap();
+        assert_eq!(decoded["dataset"]["residency"], "cloud");
+        let bare = r#"{"success":true,"data":{"feature":{"type":"Feature"}}}"#;
+        assert!(decode(TransportResponse::new(200, bare.as_bytes().to_vec()), &upi).is_err());
+        let customers = r#"{"success":true,"data":{"dataset":{},"query":{},"rows_cap":10,"rows_returned":2,"rows_total":137,"truncated":true,"features":[{},{}]}}"#;
+        let decoded = decode(
+            TransportResponse::new(200, customers.as_bytes().to_vec()),
+            &village,
+        )
+        .unwrap();
+        assert_eq!(decoded["truncated"], true);
+        let over = r#"{"success":true,"data":{"dataset":{},"query":{},"rows_returned":11,"rows_total":11,"truncated":false,"features":[{},{},{},{},{},{},{},{},{},{},{}]}}"#;
+        assert!(decode(
+            TransportResponse::new(200, over.as_bytes().to_vec()),
+            &village
+        )
+        .is_err());
+        // ds-brain's own refusal code travels: `upi_not_found` at 404.
+        let missing = decode(
+            TransportResponse::new(
+                404,
+                brain_envelope("upi_not_found", "no parcel").into_bytes(),
+            ),
+            &upi,
+        )
+        .unwrap_err();
+        assert_eq!(missing.kind(), ErrorKind::ResourceNotFound);
+        assert_eq!(
+            missing.service_refusal().and_then(|r| r.code()),
+            Some("upi_not_found")
+        );
     }
 
     /// The exact bytes the page sends, transcribed from the deleted-in-spirit
@@ -1120,5 +1508,48 @@ mod tests {
             Unreachable.data_distribution(call),
             Err(TransportError::Unreachable)
         ));
+    }
+
+    #[test]
+    fn a_boundary_is_a_bound_and_parcels_share_it() {
+        let corridor = serde_json::json!({
+            "type": "Polygon",
+            "coordinates": [[[29.57,-2.53],[29.59,-2.53],[29.59,-2.51],[29.57,-2.51],[29.57,-2.53]]]
+        });
+        let parcels = DataDistributionRequest::ParcelsQuery {
+            village_code: None,
+            cell_code: None,
+            bbox: None,
+            boundary: Some(corridor.clone()),
+            limit: Some(200),
+        };
+        parcels.validate().unwrap();
+        assert_eq!(parcels.action(), "parcels_query");
+        assert!(parcels.is_foundation());
+        let body: Value = serde_json::from_slice(&parcels.body("p1")).unwrap();
+        assert_eq!(body["action"], "parcels_query");
+        assert_eq!(body["boundary"]["type"], "Polygon");
+        assert!(body.get("bbox").is_none());
+        // A district-sized boundary is refused by its envelope, never sent.
+        let wide = DataDistributionRequest::CustomersQuery {
+            village_code: None,
+            cell_code: None,
+            bbox: None,
+            boundary: Some(serde_json::json!({
+                "type": "Polygon",
+                "coordinates": [[[29.5,-2.6],[29.9,-2.6],[29.9,-2.3],[29.5,-2.3],[29.5,-2.6]]]
+            })),
+            limit: None,
+        };
+        assert!(wide.validate().is_err());
+        // Two bounds are refused.
+        let two = DataDistributionRequest::CustomersQuery {
+            village_code: Some("25060102".into()),
+            cell_code: None,
+            bbox: None,
+            boundary: Some(corridor),
+            limit: None,
+        };
+        assert!(two.validate().is_err());
     }
 }

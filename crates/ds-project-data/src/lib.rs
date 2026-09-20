@@ -37,7 +37,7 @@ pub mod held;
 pub mod print_context;
 
 pub use bundle::{install_bundle, BundleReceipt};
-pub use catalog::{facts, validate_resources, ReferenceResource};
+pub use catalog::{facts, named, validate_resources, Named, ReferenceResource};
 pub use datasets::{buildings_dataset, catalog_dataset, contours_dataset, ContourSettings};
 pub use declared::{declared, Declared, DeclaredSource};
 pub use ensure::{ensure, Acquisition, EnsureOutcome, Hosts, Mode, Provider};
@@ -67,6 +67,9 @@ pub enum Failure {
     CatalogInvalid(String),
     /// The local store or the kernel refused; a defect, not a state.
     Store(String),
+    /// A request named a retired layer with no single authority; the message
+    /// names the detailed alternatives.
+    Retired(String),
 }
 
 impl Failure {
@@ -81,6 +84,7 @@ impl Failure {
             Failure::TooLarge(_) => "print_context_too_large",
             Failure::CatalogInvalid(_) => "catalog_invalid",
             Failure::Store(_) => "project_dataset_store_failed",
+            Failure::Retired(_) => "dataset_retired",
         }
     }
 
@@ -93,7 +97,8 @@ impl Failure {
             | Failure::Unsupported(m)
             | Failure::TooLarge(m)
             | Failure::CatalogInvalid(m)
-            | Failure::Store(m) => m,
+            | Failure::Store(m)
+            | Failure::Retired(m) => m,
         }
     }
 }

@@ -480,6 +480,7 @@ dependencies = [
 name = "ds-grid-exchange"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "ds-geo",
  "ds-grid-engine",
  "ds-grid-model",

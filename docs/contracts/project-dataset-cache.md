@@ -108,3 +108,15 @@ rectangles — and are exact, because they are persisted as the room's
 `last_error`. The named proof is `tests/fixtures/contours-decode/corpus.json`,
 run by `tests/contours_decode_corpus.rs`; the request door is
 `{action: "decode_contours", schema, response, area}`.
+
+## 2026-09-20 — `ready` names its reason; residency
+
+`readiness(index_state, pending, completed, requested, last_error)` is the one
+decision behind a room's `ready`; the store calls it and every projection
+echoes `ready_reason` (`index_absent`, `index_incomplete`,
+`acquisition_pending (n)`, `nothing_completed`, `acquisition_failed: …`,
+`coverage_gap (n cells)`, or `null` when ready). Rows without a room say why
+there is none: `not_seeded`, `bundle_unpublished`, or `cloud_resident` for a
+dataset that is never held on any machine. `CatalogEntry` carries `residency`
+and `unpublished` for that. Contract: [foundation-datasets.md](foundation-datasets.md)
+R5–R6.

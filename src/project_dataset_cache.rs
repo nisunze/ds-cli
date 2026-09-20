@@ -775,6 +775,16 @@ fn rect_area_m2(rect: Rect) -> f64 {
     height * width
 }
 
+/// The area of one `[west, south, east, north]` rectangle, in square metres,
+/// measured the way coverage is planned. A cloud-resident read
+/// (`docs/contracts/foundation-datasets.md` R3) is bounded by
+/// [`MAX_ENVELOPE_M2`] through this: the same line that stops a district of
+/// chained sites from becoming one provider request stops a rectangle of
+/// customers from becoming a table pull.
+pub fn bounds_area_m2(bounds: [f64; 4]) -> Result<f64, String> {
+    Ok(rect_area_m2(Rect::from_bounds(bounds)?))
+}
+
 /// `plan`, narrowed to the clusters that contain a transformer named in
 /// `focus`. A print asks for its own transformer only: it must not pay for,
 /// or wait on, the rest of the project. An empty `focus` keeps everything.
@@ -971,10 +981,17 @@ pub const CONTOURS_DATASET_ID: &str = "elevation_contours";
 /// which is the same rule its subsets are admitted and refreshed under.
 pub const REFERENCE_CACHE_PROVIDER: &str = "desktop:reference_resource_cache";
 
+/// The cloud-resident datasets (foundation-datasets contract R2/R3) seed a
+/// project's cells through ds-brain's bounded read, whose boundary bound is
+/// `ST_INTERSECTS(geometry, boundary)`: a parcel crossing the cell's edge
+/// belongs to that cell, exactly as a footprint does. Recorded against the
+/// provider because the datasets are addressed by catalogue digests.
+pub const CLOUD_READ_PROVIDER: &str = "brain_data_distribution";
+
 pub fn acquisition_selection(dataset_id: &str, provider: &str) -> Result<AreaSelection, String> {
     match (dataset_id, provider) {
         (BUILDINGS_DATASET_ID | CONTOURS_DATASET_ID, _) => Ok(AreaSelection::Intersects),
-        (_, REFERENCE_CACHE_PROVIDER) => Ok(AreaSelection::Intersects),
+        (_, REFERENCE_CACHE_PROVIDER | CLOUD_READ_PROVIDER) => Ok(AreaSelection::Intersects),
         (other, provider) => Err(format!(
             "dataset `{other}` from provider `{provider}` does not record the area rule its provider selects with; register it in acquisition_selection before a room may hold or refresh it"
         )),
@@ -1106,6 +1123,66 @@ pub struct Freshness {
     /// True when nothing held is known to have been superseded.
     pub fresh: bool,
     pub simplified: bool,
+}
+
+/// Why a room is, or is not, ready — decided once
+/// (`docs/contracts/foundation-datasets.md` R5).
+///
+/// `ready` was always the same conjunction — the index answers, nothing is
+/// mid-flight, something completed, and completed covers requested — but only
+/// the boolean left the store, so a held, indexed, fresh room reporting
+/// `ready:false` gave an operator nothing to act on. The reasons are tested in
+/// this order and the first failing one is named; a ready room names none.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Readiness {
+    pub ready: bool,
+    /// `index_absent` | `index_incomplete` | `acquisition_pending` |
+    /// `nothing_completed` | `coverage_gap` | `acquisition_failed`, or `None`.
+    pub ready_reason: Option<String>,
+}
+
+/// Readiness reasons a row can carry without a room: a dataset the catalogue
+/// lists but nobody seeded, a cloud-resident dataset that is never held here,
+/// and a bundle the catalogue has not published.
+pub const READY_REASON_NOT_SEEDED: &str = "not_seeded";
+pub const READY_REASON_CLOUD_RESIDENT: &str = "cloud_resident";
+pub const READY_REASON_BUNDLE_UNPUBLISHED: &str = "bundle_unpublished";
+
+pub fn readiness(
+    index_state: &str,
+    pending_queries: i64,
+    completed: &Coverage,
+    requested: &Coverage,
+    last_error: Option<&str>,
+) -> Result<Readiness, String> {
+    let reason = if index_state == "absent" {
+        Some("index_absent".to_owned())
+    } else if index_state == "incomplete" {
+        Some("index_incomplete".to_owned())
+    } else if pending_queries > 0 {
+        Some(format!("acquisition_pending ({pending_queries})"))
+    } else if completed.is_empty() {
+        Some("nothing_completed".to_owned())
+    } else {
+        let assessment = assess(completed, requested)?;
+        if !assessment.covered {
+            Some(format!("coverage_gap ({} cells)", assessment.gap_count))
+        } else {
+            None
+        }
+    };
+    // A failed acquisition that still left the room covered is reported as a
+    // fact, not as unreadiness: held data answers, and the error is on the row.
+    let reason = match (reason, last_error) {
+        (Some(reason), Some(error)) if reason == "nothing_completed" && !error.is_empty() => {
+            Some(format!("acquisition_failed: {}", quoted(error)))
+        }
+        (reason, _) => reason,
+    };
+    Ok(Readiness {
+        ready: reason.is_none(),
+        ready_reason: reason,
+    })
 }
 
 /// Report which held coverage was completed under an obsolete source version.
@@ -1400,6 +1477,46 @@ pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String>
         "sourceReceipt":{"provider":receipt,"coverage":response["coverage"]}}))
 }
 
+/// Decode one bounded cloud read (foundation-datasets contract R3) as a
+/// seeding page: the receipt must be complete for the cell — a truncated
+/// answer (more rows than the cap inside one cell) can never extend coverage,
+/// because a room that holds part of a cell would read as covered.
+pub fn decode_cloud_read(response: &Value, area: &Value, layer: &str) -> Result<Value, String> {
+    crate::reference_cache::validate_area(area)?;
+    if response["dataset"]["layer"].as_str() != Some(layer) {
+        return Err(format!("the cloud read did not answer for {layer}"));
+    }
+    if response["dataset"]["residency"].as_str() != Some("cloud") {
+        return Err("the cloud read's dataset is not cloud-resident".into());
+    }
+    let features = response["features"]
+        .as_array()
+        .ok_or("the cloud read has no feature collection")?;
+    let returned = response["rows_returned"].as_u64();
+    let total = response["rows_total"].as_u64();
+    if returned != Some(features.len() as u64) {
+        return Err("the cloud read's row count does not match its features".into());
+    }
+    if response["truncated"] != Value::Bool(false) || total != returned {
+        return Err(format!(
+            "the cloud read is truncated for this cell ({} of {} rows): the cell is too dense to hold whole — narrow the design buffer",
+            returned.unwrap_or(0),
+            total.unwrap_or(0)
+        ));
+    }
+    for (index, feature) in features.iter().enumerate() {
+        if feature["type"] != "Feature" || feature["geometry"].get("type").and_then(Value::as_str).is_none() {
+            return Err(format!("cloud read feature {index} is not a GeoJSON Feature with a geometry"));
+        }
+    }
+    let version = response["dataset"]["version"].as_str().unwrap_or("");
+    if version.len() > 512 {
+        return Err("the cloud read's dataset version exceeds its bound".into());
+    }
+    Ok(json!({"features": features, "sourceVersion": version,
+        "sourceReceipt": {"dataset": response["dataset"], "query": response["query"], "rows_total": total}}))
+}
+
 /// The two layers a contour acquisition arrives in, one per `contour_kind`.
 ///
 /// A room holds both kinds as one dataset — every line carries its own
@@ -1602,6 +1719,15 @@ pub struct CatalogEntry {
     pub quality: String,
     #[serde(default)]
     pub parameters: BTreeMap<String, Value>,
+    /// `bundle` (held per project from a published bundle, or acquired
+    /// through a provider) or `cloud` (never held here; queried on demand).
+    /// Empty reads as `bundle`.
+    #[serde(default)]
+    pub residency: String,
+    /// The catalogue publishes no bundle for this row yet (bundle residency
+    /// only): reported as unpublished, never as an incomplete download.
+    #[serde(default)]
+    pub unpublished: bool,
 }
 
 /// A catalog entry paired with the project's own room for it, if any.
@@ -1652,6 +1778,21 @@ fn overview_row(dataset: &CatalogEntry, held: &Value, policy: &BufferPolicy) -> 
             Some(value) => value.clone(),
         }
     };
+    let cloud = dataset.residency == "cloud";
+    let residency = if cloud { "cloud" } else { "bundle" };
+    // The room's own readiness when it exists; otherwise the reason there is
+    // no room to be ready. A cloud row is never held, and says so.
+    let ready_reason = if cloud {
+        json!(READY_REASON_CLOUD_RESIDENT)
+    } else if !exists {
+        json!(if dataset.unpublished {
+            READY_REASON_BUNDLE_UNPUBLISHED
+        } else {
+            READY_REASON_NOT_SEEDED
+        })
+    } else {
+        member("ready_reason", Value::Null)
+    };
     let empty_coverage = json!({"cells": []});
     json!({
         "dataset_id": dataset.id,
@@ -1659,9 +1800,11 @@ fn overview_row(dataset: &CatalogEntry, held: &Value, policy: &BufferPolicy) -> 
         "provider": dataset.provider,
         "quality": dataset.quality,
         "parameters": dataset.parameters,
+        "residency": residency,
         // Absent is a distinct state from empty: nobody has asked yet.
         "seeded": exists,
-        "ready": member("ready", json!(false)) == Value::Bool(true),
+        "ready": !cloud && member("ready", json!(false)) == Value::Bool(true),
+        "ready_reason": ready_reason,
         // A room is one machine's holding. Saying so on every row is what
         // stops "Linux has it" from being read as "the project has it":
         // nothing in this cache publishes a dataset, and two installations of
@@ -1901,6 +2044,8 @@ mod tests {
             provider: "ds".into(),
             quality: "source".into(),
             parameters: BTreeMap::new(),
+            residency: String::new(),
+            unpublished: false,
         }
     }
 
@@ -1973,6 +2118,124 @@ mod tests {
         assert_eq!(rows[2]["feature_count"], 12);
         // The query log is bounded so a long history cannot become the answer.
         assert_eq!(rows[2]["queries"].as_array().unwrap().len(), 20);
+    }
+
+    /// `ready` is one decision with a named reason
+    /// (`docs/contracts/foundation-datasets.md` R5): the first failing
+    /// condition, in a fixed order, and none when ready.
+    #[test]
+    fn readiness_names_the_first_failing_condition() {
+        let empty = Coverage::default();
+        let one =
+            Coverage::from_rects(vec![Rect::from_bounds([30.0, -2.0, 30.01, -1.99]).unwrap()]);
+        let two = Coverage::from_rects(vec![
+            Rect::from_bounds([30.0, -2.0, 30.01, -1.99]).unwrap(),
+            Rect::from_bounds([30.02, -2.0, 30.03, -1.99]).unwrap(),
+        ]);
+        let reason = |index: &str,
+                      pending: i64,
+                      completed: &Coverage,
+                      requested: &Coverage,
+                      error: Option<&str>| {
+            readiness(index, pending, completed, requested, error).unwrap()
+        };
+        assert_eq!(
+            reason("absent", 0, &one, &one, None)
+                .ready_reason
+                .as_deref(),
+            Some("index_absent")
+        );
+        assert_eq!(
+            reason("incomplete", 0, &one, &one, None)
+                .ready_reason
+                .as_deref(),
+            Some("index_incomplete")
+        );
+        assert_eq!(
+            reason("ready", 2, &one, &one, None).ready_reason.as_deref(),
+            Some("acquisition_pending (2)")
+        );
+        assert_eq!(
+            reason("ready", 0, &empty, &one, None)
+                .ready_reason
+                .as_deref(),
+            Some("nothing_completed")
+        );
+        assert_eq!(
+            reason("ready", 0, &empty, &one, Some("provider refused"))
+                .ready_reason
+                .as_deref(),
+            Some("acquisition_failed: provider refused")
+        );
+        assert_eq!(
+            reason("ready", 0, &one, &two, None).ready_reason.as_deref(),
+            Some("coverage_gap (1 cells)")
+        );
+        // An empty room whose index answers is ready: asking again would spend
+        // money to learn the same emptiness.
+        let ready = reason("empty", 0, &one, &one, Some("an old error"));
+        assert!(ready.ready && ready.ready_reason.is_none());
+        let ready = reason("ready", 0, &two, &one, None);
+        assert!(ready.ready && ready.ready_reason.is_none());
+    }
+
+    /// A cloud-resident row is never held here and the overview says so; a
+    /// bundle row nobody seeded says why there is no room to be ready.
+    #[test]
+    fn an_overview_carries_residency_and_the_reason_a_row_is_not_ready() {
+        let policy = buffer_policy(&[50.0]).unwrap();
+        let cloud = OverviewRow {
+            dataset: CatalogEntry {
+                id: "parcels".into(),
+                residency: "cloud".into(),
+                ..catalog()
+            },
+            held: Value::Null,
+        };
+        let unpublished = OverviewRow {
+            dataset: CatalogEntry {
+                id: "wetlands".into(),
+                unpublished: true,
+                ..catalog()
+            },
+            held: Value::Null,
+        };
+        let held = OverviewRow {
+            dataset: CatalogEntry {
+                id: "roads".into(),
+                ..catalog()
+            },
+            held: json!({
+                "exists": true, "ready": false, "ready_reason": "coverage_gap (3 cells)",
+                "index_state": "ready", "feature_count": 9, "pending_queries": 0,
+                "requested": {"cells": ["a"]}, "completed": {"cells": ["a"]}, "fresh": true
+            }),
+        };
+        let answer = overview(
+            "p1",
+            &policy,
+            &[
+                cloud,
+                unpublished,
+                held,
+                OverviewRow {
+                    dataset: catalog(),
+                    held: Value::Null,
+                },
+            ],
+        );
+        let rows = answer["datasets"].as_array().unwrap();
+        assert_eq!(rows[0]["residency"], "cloud");
+        assert_eq!(rows[0]["ready"], false);
+        assert_eq!(rows[0]["ready_reason"], READY_REASON_CLOUD_RESIDENT);
+        assert_eq!(rows[1]["residency"], "bundle");
+        assert_eq!(rows[1]["ready_reason"], READY_REASON_BUNDLE_UNPUBLISHED);
+        assert_eq!(rows[2]["ready_reason"], "coverage_gap (3 cells)");
+        assert_eq!(rows[3]["ready_reason"], READY_REASON_NOT_SEEDED);
+        // The rectangle bound a cloud read is measured against.
+        assert!(bounds_area_m2([29.57, -2.53, 29.59, -2.51]).unwrap() < MAX_ENVELOPE_M2);
+        assert!(bounds_area_m2([29.5, -2.6, 29.9, -2.3]).unwrap() > MAX_ENVELOPE_M2);
+        assert!(bounds_area_m2([29.6, -2.5, 29.5, -2.4]).is_err());
     }
 
     /// A room that says it does not exist reports as absent even when stale
@@ -2058,6 +2321,40 @@ mod tests {
         assert_eq!(buffer_policy(&[1500.]).unwrap().isolated_buffer_m, 1500.);
         assert!(buffer_policy(&[f64::NAN]).is_err());
         assert!(!buffer_policy(&[]).unwrap().provisional);
+    }
+
+    #[test]
+    fn cloud_read_decoder_seeds_only_a_complete_cell() {
+        let area = json!({"type":"Polygon","coordinates":[[[29.,-3.],[31.,-3.],[31.,-1.],[29.,-1.],[29.,-3.]]]});
+        let feature = json!({"type":"Feature","geometry":{"type":"Point","coordinates":[30.,-2.]},
+            "properties":{"customer_segmentation":"Residential"}});
+        let valid = json!({"status":"success",
+            "dataset":{"id":"abc","layer":"edcl_customers","residency":"cloud","version":"sha-1","source":"p.d.t"},
+            "query":{"bound":{"kind":"boundary"}},
+            "features":[feature.clone()],"rows_cap":5000,"rows_returned":1,"rows_total":1,"truncated":false});
+        let page = decode_cloud_read(&valid, &area, "edcl_customers").unwrap();
+        assert_eq!(page["sourceVersion"], "sha-1");
+        assert_eq!(page["features"].as_array().unwrap().len(), 1);
+        assert_eq!(page["sourceReceipt"]["dataset"]["layer"], "edcl_customers");
+        assert_eq!(page["sourceReceipt"]["rows_total"], 1);
+        // Another layer's answer never seeds this dataset.
+        assert!(decode_cloud_read(&valid, &area, "rwanda_upi_parcels").is_err());
+        // A truncated cell can never extend coverage: the room would lie.
+        let mut truncated = valid.clone();
+        truncated["rows_total"] = json!(9000);
+        truncated["truncated"] = json!(true);
+        let refusal = decode_cloud_read(&truncated, &area, "edcl_customers").unwrap_err();
+        assert!(refusal.contains("truncated"), "{refusal}");
+        // Counts that disagree with the features are a malformed answer.
+        let mut miscounted = valid.clone();
+        miscounted["rows_returned"] = json!(2);
+        assert!(decode_cloud_read(&miscounted, &area, "edcl_customers").is_err());
+        let mut bundle = valid.clone();
+        bundle["dataset"]["residency"] = json!("bundle");
+        assert!(decode_cloud_read(&bundle, &area, "edcl_customers").is_err());
+        let mut malformed = valid.clone();
+        malformed["features"] = json!([{"type":"Feature","geometry":null}]);
+        assert!(decode_cloud_read(&malformed, &area, "edcl_customers").is_err());
     }
 
     #[test]
@@ -2508,6 +2805,11 @@ mod tests {
         assert!(acquisition_selects(BUILDINGS_DATASET_ID, "", &crossing, &area).unwrap());
         assert_eq!(
             acquisition_selection("4eebae72digest", REFERENCE_CACHE_PROVIDER).unwrap(),
+            AreaSelection::Intersects
+        );
+        // A cloud dataset's bounded read is ST_INTERSECTS on the cell.
+        assert_eq!(
+            acquisition_selection("5815decbdigest", CLOUD_READ_PROVIDER).unwrap(),
             AreaSelection::Intersects
         );
         // An unregistered dataset has no rule, and a room may not invent a
