@@ -13,8 +13,8 @@ use crate::design_dashboard::locale_compare;
 
 use super::hierarchy::wbs_by_task;
 use super::wire::{
-    CanonicalProjectGraph, CanonicalProjectTask, DeliveryState, ResidualStatus, ReviewState,
-    TaskType, DAY_MS,
+    CanonicalProjectGraph, CanonicalProjectTask, Correspondence, CorrespondenceCounters,
+    DeliveryState, ResidualStatus, ReviewState, TaskType, DAY_MS,
 };
 
 /// Below this a stamp is a fixture or a sentinel, not a wall-clock time —
@@ -416,6 +416,208 @@ pub fn attention(graph: &CanonicalProjectGraph, today: &str) -> Vec<Attention> {
             .then_with(|| locale_compare(&left.task_id, &right.task_id))
     });
     items
+}
+
+/// One awaiting record as the plan's correspondence attention shows it.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorrespondenceAttentionRecord {
+    pub record_id: String,
+    pub thread_id: String,
+    pub subject: String,
+    pub category: String,
+    pub channel: String,
+    pub direction: String,
+    /// `overdue` or `outstanding`.
+    pub response_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_due_date: Option<String>,
+    pub days_overdue: i64,
+    pub days_until_due: i64,
+    /// `party` when the counterparty owes the answer, `project` when we do.
+    pub owed_by: &'static str,
+    pub blocked_task_ids: Vec<String>,
+    pub sensitivity: String,
+}
+
+/// One task the plan reports as blocked on correspondence, under the party
+/// whose answer it waits for.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorrespondenceBlockedTask {
+    pub task_id: String,
+    pub title: String,
+    pub record_ids: Vec<String>,
+}
+
+/// The attention rows for one party: what is overdue, what is due within the
+/// window, and which tasks wait on it. Bounded per party; the totals say
+/// what was cut.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorrespondenceParty {
+    pub party_id: String,
+    pub party_name: String,
+    pub overdue: usize,
+    pub due_within_window: usize,
+    pub records: Vec<CorrespondenceAttentionRecord>,
+    pub record_total: usize,
+    pub blocked_tasks: Vec<CorrespondenceBlockedTask>,
+    pub blocked_task_total: usize,
+}
+
+/// `ds pm plan`'s correspondence section: the three dashboard counters and
+/// the attention rows grouped by party (contract §Plan attention).
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorrespondencePlan {
+    pub as_of: String,
+    pub due_window_days: i64,
+    pub counters: CorrespondenceCounters,
+    pub parties: Vec<CorrespondenceParty>,
+    pub party_total: usize,
+    /// Every awaiting record the server counted, listed or not.
+    pub records_total: i64,
+    /// The server capped its own listing; some awaiting rows are not here.
+    pub truncated: bool,
+}
+
+/// The plan's correspondence fold: the server's awaiting rows grouped under
+/// the party the answer is owed to, overdue parties first, then the soonest
+/// due. Only rows that have earned attention are listed — `overdue`, or
+/// `outstanding` and due within the window — and every blocked task; the
+/// counters count what the server counted. `None` when the graph carries no
+/// projection at all, which a caller must not read as "nothing awaited".
+pub fn correspondence(graph: &CanonicalProjectGraph, limit: i64) -> Option<CorrespondencePlan> {
+    let projection: &Correspondence = graph.correspondence.as_ref()?;
+    let bounded = limit.clamp(1, i64::MAX) as usize;
+    struct Bucket {
+        name: String,
+        records: Vec<CorrespondenceAttentionRecord>,
+        tasks: Vec<CorrespondenceBlockedTask>,
+    }
+    let mut buckets: BTreeMap<String, Bucket> = BTreeMap::new();
+    for row in &projection.records {
+        let attention = row.response_status == "overdue" || row.due_within_window;
+        if !attention {
+            continue;
+        }
+        let bucket = buckets
+            .entry(row.party_id.clone())
+            .or_insert_with(|| Bucket {
+                name: row.party_name.clone(),
+                records: Vec::new(),
+                tasks: Vec::new(),
+            });
+        if bucket.name.is_empty() {
+            bucket.name = row.party_name.clone();
+        }
+        bucket.records.push(CorrespondenceAttentionRecord {
+            record_id: row.record_id.clone(),
+            thread_id: row.thread_id.clone(),
+            subject: row.subject.clone(),
+            category: row.category.clone(),
+            channel: row.channel.clone(),
+            direction: row.direction.clone(),
+            response_status: row.response_status.clone(),
+            response_due_date: row.response_due_date.clone(),
+            days_overdue: row.days_overdue,
+            days_until_due: row.days_until_due,
+            owed_by: if row.response_owner_party_id.is_some() {
+                "party"
+            } else {
+                "project"
+            },
+            blocked_task_ids: row.blocked_task_ids.clone(),
+            sensitivity: row.sensitivity.clone(),
+        });
+    }
+    for task in &projection.blocked_tasks {
+        // A blocked task sits under every party it waits on; a task whose
+        // record named no party sits under the nameless bucket.
+        let parties: Vec<String> = if task.party_ids.is_empty() {
+            vec![String::new()]
+        } else {
+            task.party_ids.clone()
+        };
+        for party in parties {
+            let bucket = buckets.entry(party).or_insert_with(|| Bucket {
+                name: String::new(),
+                records: Vec::new(),
+                tasks: Vec::new(),
+            });
+            bucket.tasks.push(CorrespondenceBlockedTask {
+                task_id: task.task_id.clone(),
+                title: task.title.clone(),
+                record_ids: task.record_ids.clone(),
+            });
+        }
+    }
+    let mut parties: Vec<CorrespondenceParty> = buckets
+        .into_iter()
+        .map(|(party_id, mut bucket)| {
+            // Overdue first, longest overdue first; then soonest due.
+            bucket.records.sort_by(|left, right| {
+                let overdue =
+                    |row: &CorrespondenceAttentionRecord| row.response_status == "overdue";
+                overdue(right)
+                    .cmp(&overdue(left))
+                    .then_with(|| right.days_overdue.cmp(&left.days_overdue))
+                    .then_with(|| left.days_until_due.cmp(&right.days_until_due))
+                    .then_with(|| locale_compare(&left.record_id, &right.record_id))
+            });
+            bucket
+                .tasks
+                .sort_by(|left, right| locale_compare(&left.task_id, &right.task_id));
+            let overdue = bucket
+                .records
+                .iter()
+                .filter(|row| row.response_status == "overdue")
+                .count();
+            let record_total = bucket.records.len();
+            let blocked_task_total = bucket.tasks.len();
+            CorrespondenceParty {
+                party_id,
+                party_name: bucket.name,
+                overdue,
+                due_within_window: record_total - overdue,
+                records: bucket.records.into_iter().take(bounded).collect(),
+                record_total,
+                blocked_tasks: bucket.tasks.into_iter().take(bounded).collect(),
+                blocked_task_total,
+            }
+        })
+        .collect();
+    parties.sort_by(|left, right| {
+        right
+            .overdue
+            .cmp(&left.overdue)
+            .then_with(|| soonest(left).cmp(&soonest(right)))
+            .then_with(|| right.blocked_task_total.cmp(&left.blocked_task_total))
+            .then_with(|| locale_compare(&left.party_name, &right.party_name))
+            .then_with(|| locale_compare(&left.party_id, &right.party_id))
+    });
+    let party_total = parties.len();
+    Some(CorrespondencePlan {
+        as_of: projection.as_of.clone(),
+        due_window_days: projection.due_window_days,
+        counters: projection.counters,
+        parties: parties.into_iter().take(bounded).collect(),
+        party_total,
+        records_total: projection.records_total,
+        truncated: projection.truncated,
+    })
+}
+
+/// The soonest non-overdue due day among a party's listed rows.
+fn soonest(party: &CorrespondenceParty) -> i64 {
+    party
+        .records
+        .iter()
+        .filter(|row| row.response_status != "overdue")
+        .map(|row| row.days_until_due)
+        .min()
+        .unwrap_or(i64::MAX)
 }
 
 /// `projectWorkRecentlyUpdated` (views.ts:344-358).
