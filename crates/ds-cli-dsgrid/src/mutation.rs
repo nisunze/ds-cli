@@ -426,6 +426,19 @@ pub fn run(
     if !writing {
         return Ok(receipt);
     }
+    if resulting == head {
+        // Nothing moved (an idempotent replay, or a value already held): a
+        // revision that equals its parent is not written, so a repeated
+        // command never advances the package revision for no change.
+        receipt["warnings"]
+            .as_array_mut()
+            .expect("warnings is an array")
+            .push(json!({
+                "code": "no_change",
+                "message": "the target already holds this state; no revision was written",
+            }));
+        return Ok(receipt);
+    }
 
     // Persist: a new package for the immutable target, or the working copy's
     // next revision in place.

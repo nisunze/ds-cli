@@ -99,7 +99,7 @@ and `head_matches_row` — false when the row's recorded head is stale.",
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["head", "revision", "working copy", "inspect local model"],
+    search: &["working copy", "local model", "pin"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

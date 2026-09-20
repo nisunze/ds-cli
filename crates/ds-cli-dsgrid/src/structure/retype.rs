@@ -308,7 +308,7 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         .collect();
     if writing && !blocking.is_empty() {
         return Err(Failure::invalid(
-            FINDING_STRUCTURE_TYPE_NOT_ALLOWED,
+            "structure_type_not_allowed",
             format!(
                 "retyping to {new_type_name} would leave or create {} single pole(s) in the 10°–60° band",
                 blocking.len()
