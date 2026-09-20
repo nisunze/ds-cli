@@ -54,6 +54,7 @@ pub mod prepare_project;
 mod publish_native;
 pub mod publish_version;
 pub mod set_active;
+pub mod show;
 pub mod workspace;
 
 use std::path::Path;
@@ -288,7 +289,7 @@ pub fn external_dsgrid_path(raw: &str, flag: &str) -> Result<String, Failure> {
 pub fn model_line(row: &serde_json::Value, active: &str) -> String {
     let id = row["model"].as_str().unwrap_or("?");
     format!(
-        "  {} {:<24} {:<22} {:<10} {}\n",
+        "  {} {:<24} {:<22} {:<10} rev {:<4} {}\n",
         if id == active { "*" } else { " " },
         truncate(id, 24),
         truncate(row["name"].as_str().unwrap_or(""), 22),
@@ -299,7 +300,11 @@ pub fn model_line(row: &serde_json::Value, active: &str) -> String {
             } else {
                 "idle"
             }),
-        row["revision"].as_str().unwrap_or("—"),
+        row["revision"],
+        row["head_revision"]
+            .as_str()
+            .map(|head| crate::mutation::short(head))
+            .unwrap_or_else(|| "—".to_string()),
     )
 }
 

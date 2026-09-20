@@ -970,6 +970,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",
+ "ds-io",
  "ds-layer-store",
  "serde",
  "serde_json",

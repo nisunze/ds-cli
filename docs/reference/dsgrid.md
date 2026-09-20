@@ -171,6 +171,73 @@ The expected revision is the authored revision returned by the package's
 engine session, not the package's monotonic `model_revision`. They are
 reported separately in the apply receipt and must never be substituted.
 
+## Typed edits of a working copy: `structure describe|retype`, `report structures`
+
+The first typed mutations over the engine (program contract 01 §2, landed
+2026-09-20 for the Nyamagabe resubmission). They share one plumbing,
+`ds-cli-dsgrid::mutation`, and therefore one vocabulary:
+
+| Input | Meaning |
+|---|---|
+| `--model <local-id>` | one of this machine's working copies (`ds dsgrid model list`); the edit becomes its **next revision in place**, same id, package revision +1, `head_revision` updated on the row |
+| `--package <path> --out <path>` | an immutable `.dsgrid` file; a new file is written, never over the source |
+| `--revision <rev>` | the authored head you observed (`ds dsgrid model show --model <id>` prints it); a moved head refuses `revision_conflict` |
+| `--dry-run` / `--yes` | exactly one: evaluate against the exact head and write nothing, or write |
+
+The receipt names the engine operation(s) with the SHA-256 of their published
+descriptors, `source_revision → resulting_revision`, the counts touched, the
+warnings, the working copy's `pls_source` link (contract 02; null until
+`model link`) and `pls_members_affected` as `TYPE VERSION` from that link.
+
+```bash
+ds dsgrid model list --account <uid>                       # ids and heads
+ds dsgrid model show --model local-…                       # the live head to pin
+ds dsgrid structure describe --model local-… --structure 230     --text "W045S-A0101-11 MV H-Poles Assembly, 12 m wooden, 10–60°, 2 stays" --dry-run
+ds dsgrid structure describe --model local-… --structure 230 --text "…" --yes
+ds dsgrid structure retype --model local-… --structure 3 --type j-w-60d-S190.012 --dry-run
+ds dsgrid structure retype --model local-… --from-finding structure_type_not_allowed     --skip 346 --skip 446 --type j-w-60d-S190.012 --dry-run     # then --yes: ONE revision
+ds dsgrid report structures --model local-… --out structures.csv     # or .xlsx
+ds dsgrid report structures --model local-… --only-findings --output json
+```
+
+`--structure` takes a structure id (`str-…`) or, when unique, the engineering
+number the sheet prints; `--type` a type id (`st-…`) or the exact library name
+(`j-w-60d-S325.014`). An engineer types what they read; the receipt carries
+the id.
+
+**What the engine decides.** `describe_structure` stores one trimmed line of
+at most 500 characters on the placed structure (`StructureRow.description`,
+distinct from the library type's description; contract 02 exports it into the
+DON 57 structure record on sync). `retype_structure` re-binds every strung
+support of the structure to the new type's attachment point with the same set
+label and slot — what PLS-CADD keeps on a structure-file substitution — and
+refuses by name when the new type lacks a strung set (a T-off's `30kV [set 4]`
+cannot become a plain H-pole: `--skip` it or choose a type carrying the set).
+Before a retype is written the REG v7 angle-pole rule is evaluated: the dry-run
+receipt lists `findings {cleared, remaining, created}` and a write that would
+leave or create `structure_type_not_allowed` (a single pole carrying
+10° ≤ |line angle| < 60°) is refused with that code.
+
+**The structure list** (`report structures`, contract 04 §5) is the engine's
+`report_structures` read: one row per placed structure — id, number,
+alignment, station, line angle from the model's own alignment geometry (right
+turn positive, as PLS-CADD prints it; the native source's recorded angle beside
+it), structure type, the structure's own description and the library's, pole
+family / material / height / class / stays parsed from the type name, the
+assembly drawing number when a description carries one, REG Table 14
+foundation depth/width by pole height, and the findings with rule id, source
+clause and an empty reason slot. CSV always (UTF-8 BOM); XLSX through the
+stack's shared `ds-io` workbook writer. The receipt carries the standard's
+`{schema, version, issued, digest}`, the `assumptions[]` the engine evaluated
+in the standard's silence (`assumed: true`: the JSON carries the angle-pole
+classes but not the 10°–60° band, which is declared in code from EDCL drawing
+-04 "Not recommended"), `verification_level: proposal`, and a bounded page of
+rows (`--limit`, `more.withheld`); the file is whole.
+
+**Packages written before 2026-09-20** predate the `description` column and are
+refused `package_decode_failed`: re-convert from the PLS-CADD workspace
+(`ds dsgrid-exchange convert … --target dsgrid`) and `model import-external`.
+
 ## Making a `.dsgrid`, and exporting one
 
 Classification, planning and conversion are not in this domain. They are
@@ -195,7 +262,9 @@ identity still reaches it without loading exchange planning.
 | `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections}` |
 | `run` | the operation selected from `ds_grid_engine::operation_descriptors` and its typed native engine API |
 | `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
-| `model list/create-local/import-external/set-active` | paired Desktop `dsgrid.model.*` operations |
+| `model list/show/create-local/import-external/set-active` | `ds_command_kernel::local_models` over `ds_layer_store::local_models` (this machine's catalogue); `show` opens the package with `ds_grid_engine::GridSession` |
+| `structure describe/retype` | `ds_grid_engine::GridSession::apply_transaction_at_head` (`describe_structure`, `retype_structure`), `ds_grid_engine::evaluate_structure_type`, `ds_grid_exchange::dsgrid::emit`, `local_models::Op::Revise` |
+| `report structures` | `ds_grid_engine::report_structures` (+ `structure_rules::load_standard`), `ds_io::layers_to_xlsx` |
 | `publish-version` | paired Desktop `dsgrid.model.publish`, composing its existing project version flow |
 
 There is no second implementation of the `.dsgrid` format, model validation,

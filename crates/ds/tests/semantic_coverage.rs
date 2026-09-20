@@ -479,8 +479,18 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.model.create-local", "local_file_write", "none"),
     ("dsgrid.model.import-external", "local_file_write", "none"),
     ("dsgrid.model.list", "read_only", "none"),
+    ("dsgrid.model.show", "read_only", "none"),
     ("dsgrid.model.prepare-project", "local_ui", "project"),
     ("dsgrid.model.set-active", "local_file_write", "none"),
+    // The typed command family over the engine (program contract 01 §2):
+    // authority none on a working copy or a package file, `local_file_write`
+    // because a working copy's next revision — or a new package — lands on
+    // this machine's disk and nothing governed is published. Every write
+    // takes --yes inside the command (dry-run/--yes), not through the
+    // effect-class gate. The structure list writes its CSV/XLSX the same way.
+    ("dsgrid.structure.describe", "local_file_write", "none"),
+    ("dsgrid.structure.retype", "local_file_write", "none"),
+    ("dsgrid.report.structures", "local_file_write", "none"),
     // The one project act, and the only command in the family that carries
     // `project` authority: it registers one immutable revision in the paired
     // session's own selected project's catalogue, so it is `global_write` and

@@ -289,6 +289,9 @@ impl Profile {
                     // lifecycle surface. Keeping it out of this broad router
                     // preserves the profile's bounded tool budget.
                     && tool.id != "dsgrid.model.prepare-project"
+                    // So do the working copy's typed edits and its structure
+                    // list (`grid-local-model`, 2026-09-20).
+                    && !GRID_LOCAL_MODEL_TYPED_EDITS.contains(&tool.id.as_str())
                     // Deleted LV snapshot recovery is an Assets workflow,
                     // outside this engineering-model profile. The global
                     // catalogue and Grid Model chapter retain its command.
@@ -488,11 +491,29 @@ const PRINT_STYLE_COMMANDS: &[&str] = &[
 // and it stays confirmation-gated exactly as the CLI declares it.
 const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.model.list",
+    "dsgrid.model.show",
     "dsgrid.model.create-local",
     "dsgrid.model.import-external",
     "dsgrid.model.set-active",
     "dsgrid.model.prepare-project",
     "dsgrid.publish-version",
+    // The typed edits of a working copy and its structure list (program
+    // contract 01 §2, 2026-09-20) are the working-copy workflow: read the
+    // head, describe, retype, list. They live here beside the copy they edit
+    // rather than widening the broad `grid` router past its budget, exactly
+    // as `prepare-project` does; the chapter router carries them regardless.
+    "dsgrid.structure.describe",
+    "dsgrid.structure.retype",
+    "dsgrid.report.structures",
+];
+
+/// The members of `grid-local-model` that the broad `grid` router leaves to
+/// it (its budget holds the file-in/file-out engine workflow).
+const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
+    "dsgrid.model.show",
+    "dsgrid.structure.describe",
+    "dsgrid.structure.retype",
+    "dsgrid.report.structures",
 ];
 
 const PLS_LIBRARY_COMMANDS: &[&str] = &[

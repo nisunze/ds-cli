@@ -22,6 +22,13 @@
 //! application, not a file, so [`model`] asks the paired application for each
 //! named transition. Its module header states the boundary that family holds;
 //! nothing in it manufactures a `.dsgrid` either.
+//!
+//! The typed command family (`structure describe|retype`, `report
+//! structures`, program contract 01 §2) shares one plumbing, [`mutation`]:
+//! target selection (`--model` working copy revised in place, or `--package`
+//! → `--out`), the revision pin, dry-run/--yes, and one receipt shape. A new
+//! typed verb is its inputs, its engine commands and its render; nothing
+//! else.
 
 pub mod apply;
 pub mod backup;
@@ -30,9 +37,12 @@ pub mod describe;
 pub mod inspect;
 pub mod model;
 pub mod objects;
+pub mod mutation;
 pub mod package;
 pub mod project;
+pub mod report;
 pub mod run;
+pub mod structure;
 pub mod validate;
 
 use ds_cli_contract::spec::Domain;
@@ -51,10 +61,14 @@ pub static DOMAIN: Domain = Domain {
         &run::COMMAND,
         &apply::COMMAND,
         &model::list::COMMAND,
+        &model::show::COMMAND,
         &model::create_local::COMMAND,
         &model::import_external::COMMAND,
         &model::set_active::COMMAND,
         &model::prepare_project::COMMAND,
         &model::publish_version::COMMAND,
+        &structure::describe::COMMAND,
+        &structure::retype::COMMAND,
+        &report::structures::COMMAND,
     ],
 };
