@@ -71,6 +71,35 @@ ds dsgrid model list --lane canary --account <uid>       # the copies, origin "p
 PLS-CADD workspaces and `.bak` files remain under `ds dsgrid-exchange inspect`,
 `plan`, and `convert`; there is no second conversion verb here.
 
+## The link to a PLS-CADD workspace
+
+```bash
+ds dsgrid model link --model local-<id> --workspace "/srv/pls/Nyamagabe" --account <uid>
+ds dsgrid model show --model local-<id> --account <uid>
+```
+
+A working copy converted from a PLS-CADD folder knows the bytes it came from
+— the package preserves the original member tree — but not where they live.
+`link` records where, on the catalogue row, as `pls_source`: the folder, the
+exchange digest of its member tree (the digest `ds dsgrid-exchange inspect`
+prints), the PLS-CADD program version (`16.81`), every member family's
+version (`DON 57`, `NUM 14`, `CRI 94`, `FEA 15`, `STRUCT 13`, `XYZ 5`, `TIN
+5`, `PPS 57` …), the member count and when. The folder must digest to the
+workspace the package was imported from; any other folder is
+`workspace_not_this_package`, because a sync into it would write edits
+computed against a different baseline. Relinking replaces the link.
+
+`import-external` links automatically when the package sits beside the
+`exchange-report.json` `convert` wrote, the report names one PLS-CADD folder
+source with its pinned digest, the package preserved a tree digesting to that
+pin, and the folder still digests to it now. Anything short of that leaves
+the copy unlinked with the reason in `auto_link`, and `link` is the explicit
+act. `list` prints the link under the row; `show` prints the row, the package
+identity as its bytes declare it now, and the link in full.
+
+The link is what `ds dsgrid-exchange sync` writes into; see
+[`dsgrid-exchange.md`](dsgrid-exchange.md).
+
 ## `validate` answers two questions, not one
 
 A `.dsgrid` can be a sound container holding an unsound model, and the two are

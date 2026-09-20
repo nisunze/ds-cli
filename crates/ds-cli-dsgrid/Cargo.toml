@@ -25,7 +25,9 @@ ds-grid-exchange = { workspace = true }
 # MV print projection reprojects. The task-geometry index reads it here.
 ds-geo = { workspace = true }
 # The shared workbook writer every tabular export in the stack uses; the
-# structure list reaches .xlsx through it and through nothing else.
+# structure list reaches .xlsx through it and through nothing else. Also the
+# native member headers (TYPE/VERSION/UNITS) and digests for the PLS-CADD
+# link a working copy carries.
 ds-io = { workspace = true }
 serde = { workspace = true }
 uuid = { version = "1", features = ["v4"] }

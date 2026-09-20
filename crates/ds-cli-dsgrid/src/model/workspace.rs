@@ -289,6 +289,9 @@ pub fn row(model: &LocalModel, active: Option<&str>) -> Value {
             "revision": pin.revision_id,
             "digest": pin.digest,
         })),
+        "head_revision": model.head_revision,
+        "revised_at": model.revised_at,
+        "pls_source": crate::model::pls_source::link_json(model.pls_source.as_ref()),
     })
 }
 

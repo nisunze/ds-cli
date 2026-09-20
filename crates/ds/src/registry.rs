@@ -171,6 +171,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::model::show::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::model::link::COMMAND,
+        handler: ds_cli_dsgrid::model::link::run,
+        render: ds_cli_dsgrid::model::link::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::model::create_local::COMMAND,
         handler: ds_cli_dsgrid::model::create_local::run,
         render: ds_cli_dsgrid::model::create_local::render,
@@ -233,6 +238,11 @@ static DSGRID_EXCHANGE_ENTRIES: &[Entry] = &[
         command: &ds_cli_dsgrid_exchange::convert::COMMAND,
         handler: ds_cli_dsgrid_exchange::convert::run,
         render: ds_cli_dsgrid_exchange::convert::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid_exchange::sync::COMMAND,
+        handler: ds_cli_dsgrid_exchange::sync::run,
+        render: ds_cli_dsgrid_exchange::sync::render,
     },
 ];
 

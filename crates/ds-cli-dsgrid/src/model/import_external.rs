@@ -98,8 +98,11 @@ is `ds dsgrid-exchange`'s act, not this one's.",
     ],
     output: "\
 `status: imported`, the new opaque `model` id, its `name` and `revision`, the \
-`imported_from` file name, `source_path`, `size_bytes`, and \
-`became_active: false` — acquisition never activates.",
+`imported_from` file name, `source_path`, `size_bytes`, \
+`became_active: false` — acquisition never activates — and `auto_link`: \
+`linked` with the PLS-CADD workspace path and digest when an \
+exchange-report.json beside the package named a folder source that still \
+digests to its pin, else `unlinked` with the reason.",
     examples: &[Example {
         command: "ds dsgrid model import-external --path /srv/models/kamonyi.dsgrid --output json",
         note: "Then `ds dsgrid model set-active --model <id>` to work in it.",
@@ -169,22 +172,149 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             sha256: identity.sha256,
             created_at: None,
             project: None,
+<<<<<<< HEAD
             head_revision: Some(identity.authored_revision),
+=======
+            head_revision: None,
+>>>>>>> origin/program/02-d6
             // Acquisition is not a decision to work in it.
             activate: false,
         },
         Some(&bytes),
     )?;
-    let imported = outcome.model.as_ref().ok_or_else(|| {
+    let mut imported = outcome.model.clone().ok_or_else(|| {
         Failure::internal("local_model_store_unavailable", "nothing was imported")
     })?;
+
+    // An exchange output links itself (contract 02 §1): `ds dsgrid-exchange
+    // convert` writes `exchange-report.json` beside the package, naming the
+    // folder each source was read from and the digest it pinned. When that
+    // report is beside this package, its source is a PLS-CADD folder, the
+    // package preserved a tree digesting to the same pin, and the folder
+    // still digests to it now, the copy is linked without the operator
+    // re-typing the path. Anything short of that leaves the copy unlinked
+    // and says why — `ds dsgrid model link` is the explicit act.
+    let auto_link = auto_link(inputs, &imported.id, &bytes, file)?;
+    if let AutoLink::Linked(link) = &auto_link {
+        let relinked = workspace::execute(
+            inputs,
+            Op::Link {
+                id: imported.id.clone(),
+                pls_source: link.clone(),
+            },
+            None,
+        )?;
+        if let Some(model) = relinked.model {
+            imported = model;
+        }
+    }
     Ok(json!({
         "status": "imported",
-        "model": workspace::row(imported, outcome.catalogue.active.as_deref()),
+        "model": workspace::row(&imported, outcome.catalogue.active.as_deref()),
         "active_model": outcome.catalogue.active,
         "became_active": outcome.active_changed,
         "source": path,
+        "auto_link": auto_link.json(),
     }))
+}
+
+enum AutoLink {
+    Linked(ds_command_kernel::local_models::PlsSourceLink),
+    Skipped(String),
+}
+
+impl AutoLink {
+    fn json(&self) -> Value {
+        match self {
+            Self::Linked(link) => json!({
+                "status": "linked",
+                "path": link.path,
+                "digest": link.digest,
+            }),
+            Self::Skipped(reason) => json!({ "status": "unlinked", "reason": reason }),
+        }
+    }
+}
+
+/// The sibling `exchange-report.json` of an exchange output, when the
+/// package sits where `convert` wrote it.
+fn auto_link(
+    inputs: &Inputs,
+    id: &str,
+    package_bytes: &[u8],
+    package_file: &std::path::Path,
+) -> Result<AutoLink, Failure> {
+    let _ = inputs;
+    let report_path = package_file
+        .parent()
+        .map(|dir| dir.join("exchange-report.json"))
+        .filter(|path| path.is_file());
+    let Some(report_path) = report_path else {
+        return Ok(AutoLink::Skipped(
+            "no exchange-report.json beside the package; link with `ds dsgrid model link`"
+                .to_string(),
+        ));
+    };
+    let report: Value = std::fs::read(&report_path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or(Value::Null);
+    let Some(sources) = report["sources"].as_array() else {
+        return Ok(AutoLink::Skipped(
+            "the exchange report beside the package predates source paths; link with `ds dsgrid model link`".to_string(),
+        ));
+    };
+    let folder_sources = sources
+        .iter()
+        .filter(|source| source["kind"].as_str() == Some("pls_workspace_folder"))
+        .filter_map(|source| {
+            Some((
+                source["path"].as_str()?.to_string(),
+                source["digest"].as_str()?.to_string(),
+            ))
+        })
+        .collect::<Vec<_>>();
+    let [(path, pinned)] = folder_sources.as_slice() else {
+        return Ok(AutoLink::Skipped(format!(
+            "the exchange report names {} PLS-CADD folder source(s); a link needs exactly one",
+            folder_sources.len()
+        )));
+    };
+    let package = ds_grid_exchange::package::unpack(package_bytes).map_err(|error| {
+        Failure::invalid(NOT_A_PACKAGE.code, error.to_string()).remedy(NOT_A_PACKAGE.remedy)
+    })?;
+    let Some(source) = ds_grid_exchange::conversion::dsgrid_package_pls_source(&package)
+        .map_err(|detail| Failure::failed(NOT_A_PACKAGE.code, detail))?
+    else {
+        return Ok(AutoLink::Skipped(
+            "the package preserved no PLS-CADD workspace".to_string(),
+        ));
+    };
+    if &source.origin_digest != pinned {
+        return Ok(AutoLink::Skipped(format!(
+            "the package's preserved workspace ({}) is not the report's pinned source ({pinned})",
+            source.origin_digest
+        )));
+    }
+    let workspace_read = match crate::model::pls_source::read_workspace(path) {
+        Ok(read) => read,
+        Err(failure) => {
+            return Ok(AutoLink::Skipped(format!(
+                "the report's source folder `{path}` cannot be read here: {}",
+                failure.message()
+            )));
+        }
+    };
+    if workspace_read.digest != *pinned {
+        return Ok(AutoLink::Skipped(format!(
+            "`{path}` no longer digests to the pinned {pinned} (now {}); re-convert or link explicitly",
+            workspace_read.digest
+        )));
+    }
+    let _ = id;
+    Ok(AutoLink::Linked(crate::model::pls_source::link_for(
+        &workspace_read,
+    )))
 }
 
 pub fn render(data: &Value) -> String {

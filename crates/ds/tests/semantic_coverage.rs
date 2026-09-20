@@ -477,6 +477,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid-exchange.convert", "local_file_write", "none"),
     ("dsgrid-exchange.inspect", "discovery", "none"),
     ("dsgrid-exchange.plan", "discovery", "none"),
+    ("dsgrid-exchange.sync", "local_file_write", "none"),
     ("dsgrid.apply", "local_file_write", "none"),
     ("dsgrid.create", "local_file_write", "none"),
     ("dsgrid.describe", "discovery", "none"),
@@ -494,13 +495,18 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // durable is written outside it and nothing governed is published.
     ("dsgrid.model.create-local", "local_file_write", "none"),
     ("dsgrid.model.import-external", "local_file_write", "none"),
+    ("dsgrid.model.link", "local_file_write", "none"),
     ("dsgrid.model.list", "read_only", "none"),
     ("dsgrid.model.show", "read_only", "none"),
+<<<<<<< HEAD
     (
         "dsgrid.model.prepare-project",
         "local_file_write",
         "headless_project",
     ),
+=======
+    ("dsgrid.model.prepare-project", "local_ui", "project"),
+>>>>>>> origin/program/02-d6
     ("dsgrid.model.set-active", "local_file_write", "none"),
     // The typed command family over the engine (program contract 01 §2):
     // authority none on a working copy or a package file, `local_file_write`

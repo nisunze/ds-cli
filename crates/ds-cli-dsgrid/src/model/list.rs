@@ -49,8 +49,10 @@ answers with an empty catalogue rather than a refusal.",
     output: "\
 `active_model`, the matched `total`, `more` when the page was cut, and rows of \
 `model`, `name`, `active`, `origin`, `crs`, `revision`, `size_bytes`, \
-`content_digest`, `created_at` and — for a copy taken from a project — the \
-`project_binding` it came from. Never model content.",
+`content_digest`, `created_at`, `head_revision`, — for a copy taken from a \
+project — the `project_binding` it came from, and — for a copy linked to a \
+PLS-CADD workspace — its `pls_source` {path, digest, pls_version, \
+member_versions}. Never model content.",
     examples: &[Example {
         command: "ds dsgrid model list --output json",
         note: "Read .data.models[].model to feed set-active or publish-version.",
