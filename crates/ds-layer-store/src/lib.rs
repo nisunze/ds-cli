@@ -203,7 +203,9 @@ pub mod local_models;
 pub mod prepared;
 pub mod project_dataset_cache;
 pub mod reference_cache;
+pub mod scoped;
 pub mod visibility;
+pub mod working_area_forms;
 
 // The prepared local layer catalogue answers with the kernel's own types, so a
 // host names them once and never re-declares them.

@@ -343,6 +343,14 @@ pub mod survey_entries_select;
 pub mod survey_entry_create;
 pub mod survey_entry_outbox;
 pub mod survey_query;
+/// Which survey forms the working area loads for one project on one host.
+pub mod survey_working_area_forms;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyWorkingAreaForms)]
+pub fn survey_working_area_forms_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    survey_working_area_forms::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyEntryCreate)]
