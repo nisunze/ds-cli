@@ -151,6 +151,27 @@ fn compare_roots(left: &Node<'_>, right: &Node<'_>) -> Ordering {
 /// picks — never at wherever the walk happened to enter it, so the same input
 /// always yields the same repair.
 pub fn wbs_by_task(tasks: &[CanonicalProjectTask]) -> BTreeMap<String, String> {
+    ordered_rows(tasks)
+        .into_iter()
+        .map(|row| (row.id, row.wbs))
+        .collect()
+}
+
+/// One task in display order: its id, the WBS label of its position and how
+/// deep it sits. The same walk `projectRows` (`gantt/hierarchy.ts:191-217`)
+/// makes for the Table, without the collapse state a window keeps.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedRow {
+    pub id: String,
+    pub wbs: String,
+    pub depth: usize,
+}
+
+/// Every task in the order the plan lists it — roots by placement then sort
+/// key, children under their parent — with the WBS label each position earns.
+/// `wbs_by_task` is this walk indexed by id; the list form is what a bounded
+/// task listing pages over.
+pub fn ordered_rows(tasks: &[CanonicalProjectTask]) -> Vec<OrderedRow> {
     let order = sibling_order(tasks);
     let mut nodes: Vec<Node<'_>> = Vec::new();
     let mut index_of: BTreeMap<&str, usize> = BTreeMap::new();
@@ -241,19 +262,23 @@ pub fn wbs_by_task(tasks: &[CanonicalProjectTask]) -> BTreeMap<String, String> {
         }
     }
 
-    let mut wbs: BTreeMap<String, String> = BTreeMap::new();
-    let mut stack: Vec<(usize, String)> = roots
+    let mut rows: Vec<OrderedRow> = Vec::with_capacity(nodes.len());
+    let mut stack: Vec<(usize, String, usize)> = roots
         .iter()
         .rev()
-        .map(|root| (*root, labels.get(root).cloned().unwrap_or_default()))
+        .map(|root| (*root, labels.get(root).cloned().unwrap_or_default(), 0))
         .collect();
-    while let Some((index, label)) = stack.pop() {
-        wbs.insert(nodes[index].id.to_string(), label.clone());
+    while let Some((index, label, depth)) = stack.pop() {
+        rows.push(OrderedRow {
+            id: nodes[index].id.to_string(),
+            wbs: label.clone(),
+            depth,
+        });
         for (position, child) in children[index].iter().enumerate().rev() {
-            stack.push((*child, format!("{label}.{}", position + 1)));
+            stack.push((*child, format!("{label}.{}", position + 1), depth + 1));
         }
     }
-    wbs
+    rows
 }
 
 #[cfg(test)]

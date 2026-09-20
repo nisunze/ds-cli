@@ -27,14 +27,23 @@
 //!
 //! **Pure by the crate's contract**: no clock, no IO, no network. `today` is an
 //! input, and the caller that has a clock supplies it.
+//!
+//! Since 2026-09-20 the rest of `ds pm` is decided here too: [`reads`] holds
+//! the task and record projections (`task list|read`, `record list|read`) and
+//! [`writes`] the validated project commands (`task create|update|assign|
+//! respond`) and the fold of the engine's answer. Same doctrine — the browser's
+//! rules, translated as they were, reachable without a window.
 
 mod hierarchy;
 pub mod projections;
+pub mod reads;
 pub mod wire;
+pub mod writes;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use hierarchy::{ordered_rows, OrderedRow};
 pub use projections::{Attention, AttentionKind, Dashboard, Phase, RecentTask};
 pub use wire::{decode_project_graph, CanonicalProjectGraph, ProjectGraphPermissions};
 
