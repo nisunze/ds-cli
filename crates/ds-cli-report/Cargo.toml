@@ -38,4 +38,7 @@ ds-cli-data = { workspace = true }
 # one-way edge.
 ds-cli-server = { workspace = true }
 ds-sync-runtime = { workspace = true }
+# `ds report outbox status` reads the lane's sync store — the queue — read-only
+# and with no session: the store is where a queued report is, not a directory.
+ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
 tempfile = "3"

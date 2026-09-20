@@ -726,13 +726,15 @@ messages without implementing a separate warning policy.
 ## The publication queue
 
 A produced report is not finished when the engine stops: its verified bytes
-are sealed into one local publication queue and published from there. The
-queue is the same for every producer on the machine — it is the Server's own
-`report-artifacts` root beside its store — and one shared runner drains it.
-
-`ds report outbox status` is that queue's reading, and it needs no credential,
-no project selection and no running Server, because the machines where a
-stopped queue goes unnoticed have none of those:
+are sealed into the Server's `report-artifacts` root and its row into the
+lane's sync store (`store.sqlite` beside it) in one acknowledged step, and it
+is published from there. **The sync store is the queue** (owner,
+2026-09-20): a `held` row is queued, a `published` row is this machine's copy
+of the room's head, a `conflict`/`refused` row lost and its bytes are freed
+by the next pass. The directory of sealed batches is bytes, not an index; a
+batch sealed by an earlier release with no row is adopted once (`adopted`
+receipt). One shared runner drains the queue — the Server's pump, or
+`ds report outbox drain` by hand.
 
 ```bash
 ds report outbox status --output json          # every project queued on this machine
@@ -740,35 +742,26 @@ ds report outbox status --project <exact-id>   # one project's queued reports
 ds report outbox drain --yes --output json     # publish what is queued, now
 ```
 
-`status` answers, for the whole machine and per project: how many batches are
-sealed and waiting, how many bytes, and how long the oldest has been waiting
-(`oldest_age_ms`). Then the queue's lock, which is the part that used to be
-invisible: whether it is `held`, the `owner` that holds it (pid and
-executable), whether that holder is `live`, `gone` or `unknown` and the
-evidence for it, when it last renewed its heartbeat, whether the next run will
-release it by itself (`reclaimable`), and the releases already performed
-(`recent_reclaims`). `stuck` is the single answer to "does anything here need
-me?", and `next` is the one command to run.
-
-### Locks are reclaimed when their holder is gone
-
-The queue's lock carries an owner record: pid, the machine boot it was taken
-in, the holder's process start time, the executable's name, and a heartbeat
-the holder renews while it works. A pid alone is not evidence — pids are
-reused — so a lock is released automatically only when the recorded holder is
-PROVED gone (an earlier boot, an exited process, or a live pid that belongs to
-a different process than the one recorded) **and** its heartbeat is older than
-two minutes. Every automatic release is recorded in the queue and reported by
-`status` and `drain`: a lock that could be stolen silently would simply be the
-next invisible failure. A holder that cannot be proved gone is never broken;
-the queue says it is `stuck` and names the process to end.
-
-Markers written by earlier releases hold only a bare pid. They are read, and a
-dead holder's marker is still released — an upgraded machine must not stay
-wedged waiting for a record format it never wrote.
+`status` reads the store read-only — no gateway session, no project
+selection, no running Server; it needs only the native identity on this
+machine to name the store's fence. It answers, for the machine and per
+project: how many rows are queued, how many bytes, how long the oldest has
+waited (`oldest_age_ms`), the rooms and the distinct hold `reasons` a receipt
+left on them, how many published copies stay (`held_batches`), how many lost
+rows still hold bytes (`reclaimable_batches`), and whether a live lease is
+pumping the project (`pumped`, `leases[]`). `stuck` is the single answer to
+"does anything here need me?": queued work older than an hour on a project no
+live lease holds. `next` is the one command to run. `bytes_lock` reports the
+artifact directory's own writer lock — a seal or a discard waits on it, and
+one whose holder is proved gone is released by the next seal or discard
+itself; it is not the queue's liveness.
 
 `drain` runs one pass through the same shared runner the Server's background
 pump uses. There is deliberately no second pump and no second queue. It is
 safe to run twice: a publication carries its own client publish id, so a batch
-already in the shared store is recognised instead of published again. An
-offline pass changes nothing and says so, and the queue keeps its work.
+already in the shared store is recognised instead of published again. A pass
+never says nothing: per project it reports `summary` (uploads, downloads,
+conflicts, refused, in_sync after the pass), `reclaimed` (batches and bytes
+freed for rows that lost), `idle` (why nothing moved, when nothing did) and
+the pass's `receipts`. An offline pass changes nothing and says so, and the
+queue keeps its work.

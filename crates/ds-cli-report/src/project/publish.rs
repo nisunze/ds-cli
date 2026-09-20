@@ -14,10 +14,11 @@
 //! that are not the bytes the receipt attests to would put a lie in the shared
 //! store, which is worse than leaving them stranded.
 //!
-//! It is idempotent by construction: a run whose `client_run_id` is already
-//! committed to the publication queue is reported as already published and
-//! nothing is promoted for it. Pointing this command at the same directory
-//! twice cannot stack a second copy of the same work on the edge.
+//! It is idempotent by construction: a run whose exact bytes the sync store
+//! already holds for its room — by inventory digest — is reported as already
+//! recorded and nothing is sealed for it. Pointing this command at the same
+//! directory twice cannot stack a second copy of the same work on the edge.
+//! The store is the queue; the seal writes bytes and row in one step.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -30,8 +31,10 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::report::PublicationState;
 use ds_report_artifacts::{VerifiedSidecarArtifact, confined_fs::HeldDirectory};
+use ds_sync_runtime::reports::{SealOutcome, SealRequest};
 use serde_json::{Value, json};
 
+use super::export::PublicationQueue;
 use super::{LANE_ARG, TRANSFORMER_ARG};
 
 const FROM_ARG: Arg = Arg::value(
@@ -151,9 +154,9 @@ without publishing them.",
     args: &[FROM_ARG, TRANSFORMER_ARG, SERVER_STATE_DIR_ARG, LANE_ARG],
     output: "\
 Lane, project, the source directory, and one row per run: transformer, \
-`state` (`queued`, `already_queued` or `refused`), artifact count, bytes and \
-the batch identity it was sealed under. Totals name what entered the queue \
-and what was already there.",
+`state` (`queued` or `already_recorded`), artifact count, bytes and the \
+batch identity it was sealed under. Totals name what entered the queue and \
+what the store already held.",
     examples: &[
         Example {
             command: "ds report project publish --from ./reports --yes --output json",
@@ -379,10 +382,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let inventory = ds_cli_auth::transformer_inventory(lane, &requested)?;
     let project_id = inventory.project_id().to_string();
     verify_scope(lane, &fence, &project_id)?;
-    let root = super::export::server_report_artifacts_root(
-        lane,
-        inputs.value("server-state-dir").map(Path::new),
-    )?;
+    let queue = PublicationQueue::open(lane, inputs.value("server-state-dir").map(Path::new))?;
 
     let mut directories = vec![from.clone()];
     for entry in std::fs::read_dir(&from)
@@ -427,11 +427,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .remedy(NOTHING_TO_PUBLISH.remedy));
     }
 
-    // Which runs this machine has already committed. Read once, before any
-    // promotion, so a second pass over the same directory is a no-op rather
-    // than a second copy of the same work stacking on the edge.
-    let committed = already_committed(&root, &project_id)?;
-
     let mut rows = Vec::with_capacity(runs.len());
     let mut queued = 0_usize;
     let mut already = 0_usize;
@@ -450,32 +445,45 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )
             .remedy(LOCAL_ONLY.remedy));
         }
-        if committed.contains(&run.client_run_id) {
-            already += 1;
-            rows.push(json!({
-                "transformer": run.transformer,
-                "state": "already_queued",
-                "client_run_id": run.client_run_id,
-                "artifacts": run.outputs.len(),
-                "note": "this exact run is already in the publication queue; nothing was promoted",
-            }));
-            continue;
-        }
         let (bytes, _) = verify(run)?;
-        let receipt = seal(run, fence.uid(), &project_id, &root, &|| {
+        // The store answers "already there" by the exact bytes for the
+        // room, before anything is written; a second pass over the same
+        // directory is a no-op rather than a second copy stacking on the
+        // edge.
+        match seal(run, fence.uid(), &project_id, &queue, &|| {
             verify_scope(lane, &fence, &project_id)
-        })?;
-        queued += 1;
-        queued_bytes = queued_bytes.saturating_add(bytes);
-        rows.push(json!({
-            "transformer": run.transformer,
-            "state": ds_command_kernel::report::PublicationStage::Queued.as_str(),
-            "client_run_id": run.client_run_id,
-            "client_publish_id": receipt.client_publish_id,
-            "batch_id": receipt.batch_id,
-            "artifacts": run.outputs.len(),
-            "bytes": bytes,
-        }));
+        })? {
+            SealOutcome::AlreadyRecorded { replay_key, state } => {
+                already += 1;
+                rows.push(json!({
+                    "transformer": run.transformer,
+                    "state": "already_recorded",
+                    "client_run_id": run.client_run_id,
+                    "client_publish_id": replay_key,
+                    "store_state": state.as_str(),
+                    "artifacts": run.outputs.len(),
+                    "note": "the store already holds these exact bytes for this room; nothing was sealed",
+                }));
+            }
+            SealOutcome::Sealed(sealed) => {
+                queued += 1;
+                queued_bytes = queued_bytes.saturating_add(bytes);
+                rows.push(json!({
+                    "transformer": run.transformer,
+                    "state": ds_command_kernel::report::PublicationStage::Queued.as_str(),
+                    "client_run_id": run.client_run_id,
+                    "client_publish_id": sealed.receipt.client_publish_id,
+                    "batch_id": sealed.receipt.batch_id,
+                    "bytes_locator": sealed.row.bytes_locator,
+                    "artifacts": run.outputs.len(),
+                    "bytes": bytes,
+                    "superseded": sealed.superseded.as_ref().map(|(publish_id, freed)| json!({
+                        "client_publish_id": publish_id,
+                        "bytes_freed": freed,
+                    })),
+                }));
+            }
+        }
     }
 
     let mut output = super::project_receipt(&inventory);
@@ -485,11 +493,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "requested": scope,
     });
     output["publication"] = json!({
-        "root": root.display().to_string(),
+        "root": queue.root.display().to_string(),
         "queued": queued,
-        "already_queued": already,
+        "already_recorded": already,
         "queued_bytes": queued_bytes,
-        "note": "Verified from each run's own receipt and sealed into the one publication queue; the engine did not run.",
+        "note": "Verified from each run's own receipt and sealed into the sync store, the one publication queue; the engine did not run.",
     });
     output["runs"] = json!(rows);
     Ok(output)
@@ -509,37 +517,19 @@ fn verify_scope(
     })
 }
 
-/// The `client_run_id` of every batch already committed for this project.
-fn already_committed(
-    root: &Path,
-    project_id: &str,
-) -> Result<std::collections::BTreeSet<String>, Failure> {
-    let opened = HeldDirectory::open_absolute(root)
-        .map_err(|error| Failure::failed(ROOT_INVALID.code, error).remedy(ROOT_INVALID.remedy))?;
-    let Some(held) = opened else {
-        return Ok(std::collections::BTreeSet::new());
-    };
-    Ok(ds_report_artifacts::publication::list_committed(&held)
-        .map_err(|error| Failure::failed(ROOT_INVALID.code, error).remedy(ROOT_INVALID.remedy))?
-        .into_iter()
-        .filter(|receipt| receipt.project_id == project_id)
-        .map(|receipt| receipt.client_run_id)
-        .collect())
-}
-
-/// Promote one held run into the publication queue.
+/// Seal one held run into the publication queue.
 ///
-/// The same `ds-report-artifacts` door an export uses, called with facts read
-/// from the run's own receipt rather than from a live engine result. The guard
-/// is re-checked at the one durable visibility boundary, exactly as the
-/// producing path does it.
+/// The same producer seal an export uses — bytes, integrity receipts and the
+/// store row in one step — called with facts read from the run's own receipt
+/// rather than from a live engine result. The guard is re-checked at the one
+/// durable visibility boundary, exactly as the producing path does it.
 fn seal(
     run: &HeldRun,
     owner_uid: &str,
     project_id: &str,
-    root: &Path,
+    queue: &PublicationQueue,
     guard: &dyn Fn() -> Result<(), Failure>,
-) -> Result<ds_report_artifacts::publication::PublicationBatchReceipt, Failure> {
+) -> Result<SealOutcome, Failure> {
     let directory = HeldDirectory::open_absolute(&run.directory)
         .map_err(artifact_missing)?
         .ok_or_else(|| artifact_missing(format!("{} disappeared", run.directory.display())))?;
@@ -561,37 +551,49 @@ fn seal(
         });
     }
     let deadline = Instant::now() + Duration::from_secs(30);
-    let pending = ds_report_artifacts::promote_local_artifacts(
-        root,
-        &held,
+    let refused: std::cell::RefCell<Option<Failure>> = std::cell::RefCell::new(None);
+    let scope_guard = || match guard() {
+        Ok(()) => Ok(()),
+        Err(failure) => {
+            let message = failure.message().to_owned();
+            *refused.borrow_mut() = Some(failure);
+            Err(message)
+        }
+    };
+    let request = SealRequest {
         owner_uid,
         project_id,
-        &run.engine_version,
-        &run.engine_build_manifest_sha256,
-        &run.transformer,
-        run.transformer_revision,
-        &run.input_base_fingerprint,
-        &run.room_content_sha256,
-        &run.client_run_id,
-        &formats,
+        engine_version: &run.engine_version,
+        engine_build_manifest_sha256: &run.engine_build_manifest_sha256,
+        transformer: &run.transformer,
+        transformer_revision: run.transformer_revision,
+        input_base_fingerprint: &run.input_base_fingerprint,
+        room_content_sha256: &run.room_content_sha256,
+        client_run_id: &run.client_run_id,
+        artifacts: &held,
+        expected_formats: &formats,
         deadline,
+        guard: &scope_guard,
+    };
+    ds_sync_runtime::reports::seal(&queue.store, &queue.fence, &queue.root, &request).map_err(
+        |error| {
+            refused.borrow_mut().take().unwrap_or_else(|| {
+                Failure::failed(ROOT_INVALID.code, error).remedy(ROOT_INVALID.remedy)
+            })
+        },
     )
-    .map_err(|error| Failure::failed(ROOT_INVALID.code, error).remedy(ROOT_INVALID.remedy))?;
-    guard()?;
-    let committed = pending
-        .commit(deadline)
-        .map_err(|error| Failure::failed(ROOT_INVALID.code, error).remedy(ROOT_INVALID.remedy))?;
-    Ok(committed.receipt)
 }
 
 pub fn render(data: &Value) -> String {
     let mut out = format!(
-        "project {} ({}) · {} · {} queued · {} already queued\n  from {}\n",
+        "project {} ({}) · {} · {} queued · {} already recorded\n  from {}\n",
         data["project"]["project_name"].as_str().unwrap_or("?"),
         data["project"]["ds_project"].as_str().unwrap_or("?"),
         data["lane"].as_str().unwrap_or("?"),
         data["publication"]["queued"].as_u64().unwrap_or(0),
-        data["publication"]["already_queued"].as_u64().unwrap_or(0),
+        data["publication"]["already_recorded"]
+            .as_u64()
+            .unwrap_or(0),
         data["from"].as_str().unwrap_or("?"),
     );
     for row in data["runs"].as_array().into_iter().flatten() {

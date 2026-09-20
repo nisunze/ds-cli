@@ -43,15 +43,14 @@ use ds_command_kernel::{
     report::PublicationState,
     report_export::{InputReceipt, reportable_transformer},
 };
-use ds_report_artifacts::{
-    CommittedAuthorizedPublication, VerifiedSidecarArtifact, confined_fs::HeldDirectory,
-};
+use ds_report_artifacts::{VerifiedSidecarArtifact, confined_fs::HeldDirectory};
 use ds_report_host::{
     BatchSettings, DEFAULT_RESIDENT_LIMIT, EngineExit, HeldContext, HeldRoom, HeldState, Holdings,
     HostFailure, MAX_RESIDENT_LIMIT, PageRef, PreviewPage, PreviewRefusal, PreviewSettings,
     ReportEngine, RunSettings, TransformerReportInputs, batch_plan, installed_admin_bounds_path,
     run_batch, shared_root, verify_admin_bounds_asset,
 };
+use ds_sync_runtime::reports::{SealOutcome, SealRequest};
 use serde_json::{Value, json};
 
 use super::{LANE_ARG, TRANSFORMER_ARG};
@@ -604,13 +603,64 @@ fn receipt_revision(receipt: &Value) -> Result<i64, Failure> {
         })
 }
 
+/// The one publication queue a seal enters: the lane's sync store (the
+/// queue) under this machine's fence, and the artifact root beside it (the
+/// bytes). Resolved exactly as the Server resolves its own, so an export, the
+/// pump and `ds report outbox` never disagree about which queue they mean.
+pub struct PublicationQueue {
+    pub root: PathBuf,
+    pub store: ds_sync_runtime::SharedStore,
+    pub fence: ds_command_kernel::sync_store::Fence,
+}
+
+impl PublicationQueue {
+    pub fn open(lane: &str, server_state_dir: Option<&Path>) -> Result<Self, Failure> {
+        let state = ds_compute_runtime::server_state_directory(lane, server_state_dir).map_err(
+            |error| Failure::invalid(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy),
+        )?;
+        let store = ds_sync_runtime::open_store(&state.join("store.sqlite")).map_err(|error| {
+            Failure::failed(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy)
+        })?;
+        Ok(Self {
+            root: state.join("report-artifacts"),
+            store,
+            fence: crate::outbox::fence(lane)?,
+        })
+    }
+
+    /// A queue over any store and fence, for tests and for hosts that hold
+    /// their own.
+    pub fn at(
+        root: PathBuf,
+        store: ds_sync_runtime::SharedStore,
+        fence: ds_command_kernel::sync_store::Fence,
+    ) -> Self {
+        Self { root, store, fence }
+    }
+}
+
+/// What sealing one run into the queue established.
+#[derive(Debug)]
+pub enum SealedRun {
+    Queued(Box<ds_sync_runtime::reports::Sealed>),
+    /// The store already holds this exact publication for the room.
+    AlreadyRecorded {
+        replay_key: String,
+        state: ds_command_kernel::sync_store::ArtifactState,
+    },
+}
+
+/// Seal one verified run through the producer's seal: bytes, integrity
+/// receipts and the store row in one acknowledged step. The guard is
+/// re-checked at the durable visibility boundary; its refusal comes back
+/// as itself.
 fn seal_run_for_server(
     run: &ds_report_host::RunOutcome,
     owner_uid: &str,
     project_id: &str,
-    root: &Path,
+    queue: &PublicationQueue,
     guard: &dyn Fn() -> Result<(), Failure>,
-) -> Result<CommittedAuthorizedPublication, Failure> {
+) -> Result<SealedRun, Failure> {
     if run
         .engine
         .publication_state()
@@ -668,28 +718,42 @@ fn seal_run_for_server(
         });
     }
     let deadline = Instant::now() + Duration::from_secs(30);
-    let pending = ds_report_artifacts::promote_local_artifacts(
-        root,
-        &held,
+    // The guard's own refusal travels back through the seal's string error:
+    // the seal re-checks it at the one durable visibility boundary, and a
+    // refusal there must come back as the code the guard raised.
+    let refused: std::cell::RefCell<Option<Failure>> = std::cell::RefCell::new(None);
+    let scope_guard = || match guard() {
+        Ok(()) => Ok(()),
+        Err(failure) => {
+            let message = failure.message().to_owned();
+            *refused.borrow_mut() = Some(failure);
+            Err(message)
+        }
+    };
+    let request = SealRequest {
         owner_uid,
         project_id,
-        &run.engine.engine_version,
-        &run.engine.build_manifest_sha256,
-        &run.transformer,
-        receipt_revision(&run.receipt)?,
-        receipt_text(&run.receipt, "input_base_fingerprint")?,
-        receipt_text(&run.receipt, "room_content_sha256")?,
-        &run.client_run_id,
-        &formats,
+        engine_version: &run.engine.engine_version,
+        engine_build_manifest_sha256: &run.engine.build_manifest_sha256,
+        transformer: &run.transformer,
+        transformer_revision: receipt_revision(&run.receipt)?,
+        input_base_fingerprint: receipt_text(&run.receipt, "input_base_fingerprint")?,
+        room_content_sha256: receipt_text(&run.receipt, "room_content_sha256")?,
+        client_run_id: &run.client_run_id,
+        artifacts: &held,
+        expected_formats: &formats,
         deadline,
-    )
-    .map_err(|error| Failure::failed(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy))?;
-    // The pending batch retains rollback through all copy/rename/fsync work.
-    // Recheck the captured scope at the only durable visibility boundary.
-    guard()?;
-    pending
-        .commit(deadline)
-        .map_err(|error| Failure::failed(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy))
+        guard: &scope_guard,
+    };
+    match ds_sync_runtime::reports::seal(&queue.store, &queue.fence, &queue.root, &request) {
+        Ok(SealOutcome::Sealed(sealed)) => Ok(SealedRun::Queued(Box::new(sealed))),
+        Ok(SealOutcome::AlreadyRecorded { replay_key, state }) => {
+            Ok(SealedRun::AlreadyRecorded { replay_key, state })
+        }
+        Err(error) => Err(refused.borrow_mut().take().unwrap_or_else(|| {
+            Failure::failed(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy)
+        })),
+    }
 }
 
 /// Why a run published nothing, in one token. There are only three ways to
@@ -804,8 +868,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let publish_scope = publish
         .then(|| ds_cli_auth::capture_layer_scope_fence(lane))
         .transpose()?;
-    let publish_root = if publish {
-        Some(server_report_artifacts_root(
+    let publish_queue = if publish {
+        Some(PublicationQueue::open(
             lane,
             inputs.value("server-state-dir").map(Path::new),
         )?)
@@ -1244,39 +1308,56 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         outcome.engine.publication_state().ok()
     };
-    let sealed_publications =
-        if let (Some(fence), Some(root)) = (publish_scope.as_ref(), publish_root.as_ref()) {
-            let mut publications = Vec::with_capacity(outcome.runs.len());
-            for run in &outcome.runs {
-                // The publication marker is the durable effect. Re-probe the
-                // native UID/audience/project/credential binding immediately
-                // before each marker can become visible to the Server pump.
-                verify_publish_scope(lane, fence, fence.uid(), &project_id)?;
-                let committed = seal_run_for_server(run, fence.uid(), &project_id, root, &|| {
-                    verify_publish_scope(lane, fence, fence.uid(), &project_id)
-                })?;
-                publications.push(json!({
-                    "batch_id": committed.receipt.batch_id,
-                    "client_publish_id": committed.receipt.client_publish_id,
-                    "transformer": committed.receipt.transformer,
-                    "outputs": committed.artifacts.len(),
-                }));
-            }
-            Some(publications)
-        } else {
-            None
-        };
+    let sealed_publications = if let (Some(fence), Some(queue)) =
+        (publish_scope.as_ref(), publish_queue.as_ref())
+    {
+        let mut publications = Vec::with_capacity(outcome.runs.len());
+        for run in &outcome.runs {
+            // The seal is the durable effect: bytes and the store row in
+            // one step. Re-probe the native UID/audience/project/
+            // credential binding immediately before it, and again at its
+            // visibility boundary through the guard.
+            verify_publish_scope(lane, fence, fence.uid(), &project_id)?;
+            let sealed = seal_run_for_server(run, fence.uid(), &project_id, queue, &|| {
+                verify_publish_scope(lane, fence, fence.uid(), &project_id)
+            })?;
+            publications.push(match sealed {
+                    SealedRun::Queued(sealed) => json!({
+                        "state": "queued",
+                        "batch_id": sealed.receipt.batch_id,
+                        "client_publish_id": sealed.receipt.client_publish_id,
+                        "transformer": sealed.receipt.transformer,
+                        "outputs": sealed.artifacts.len(),
+                        "bytes_locator": sealed.row.bytes_locator,
+                        "superseded": sealed.superseded.as_ref().map(|(publish_id, bytes)| json!({
+                            "client_publish_id": publish_id,
+                            "bytes_freed": bytes,
+                        })),
+                    }),
+                    SealedRun::AlreadyRecorded { replay_key, state } => json!({
+                        "state": "already_recorded",
+                        "client_publish_id": replay_key,
+                        "store_state": state.as_str(),
+                        "transformer": run.transformer,
+                        "note": "the store already holds this exact publication for the room; nothing was sealed again",
+                    }),
+                });
+        }
+        Some(publications)
+    } else {
+        None
+    };
     output["out_dir"] = json!(out_dir.display().to_string());
     output["scope"] = scope;
     output["publication_enqueued"] = json!(publish);
-    output["publication"] = match (publish_root, sealed_publications) {
-        (Some(root), Some(publications)) => json!({
+    output["publication"] = match (publish_queue, sealed_publications) {
+        (Some(queue), Some(publications)) => json!({
             "stage": ds_command_kernel::report::PublicationStage::Queued.as_str(),
             "published_nothing": false,
             "state": "queued_for_server_sync",
-            "root": root.display().to_string(),
+            "root": queue.root.display().to_string(),
             "batches": publications,
-            "note": "Sealed and queued; the one publication queue drains it. `ds report outbox status` says where it is.",
+            "note": "Sealed into the sync store and queued; the one publication queue drains it. `ds report outbox status` says where it is.",
         }),
         // Acceptance B, literally. A dry run's receipt has to say it published
         // nothing IN THOSE WORDS, because the failure being closed here is a
@@ -2102,28 +2183,72 @@ mod tests {
                 profile: "release".into(),
             },
         };
-        let queue = root.path().join("report-artifacts");
-        let committed =
-            seal_run_for_server(&run, "owner-a", "project-a", &queue, &|| Ok(())).unwrap();
-        assert_eq!(committed.receipt.project_id, "project-a");
-        assert_eq!(committed.receipt.transformer, "tx-a");
-        let rows =
-            ds_report_artifacts::list_project_publication_batches_from_root(&queue, "project-a")
-                .unwrap();
-        assert_eq!(rows.len(), 1);
-        assert!(ds_report_artifacts::open_batch_output(&queue, &rows[0], "xlsx").is_ok());
+        let fence = ds_command_kernel::sync_store::Fence {
+            account: "owner-a".into(),
+            deployment: "https://gateway.example".into(),
+            install_id: "install-1".into(),
+        };
+        let queue_at = |name: &str| {
+            PublicationQueue::at(
+                root.path().join(name).join("report-artifacts"),
+                ds_sync_runtime::open_store(&root.path().join(name).join("store.sqlite")).unwrap(),
+                fence.clone(),
+            )
+        };
+        let queue = queue_at("queue");
+        let SealedRun::Queued(sealed) =
+            seal_run_for_server(&run, "owner-a", "project-a", &queue, &|| Ok(())).unwrap()
+        else {
+            panic!("a first seal is queued")
+        };
+        assert_eq!(sealed.receipt.project_id, "project-a");
+        assert_eq!(sealed.receipt.transformer, "tx-a");
+        assert_eq!(
+            sealed.row.state,
+            ds_command_kernel::sync_store::ArtifactState::Held
+        );
+        // The store is the queue: the row is there, and the bytes it names
+        // are the committed batch.
+        let status = queue
+            .store
+            .lock()
+            .unwrap()
+            .queue(&fence, Some("project-a"), ds_sync_runtime::now_ms())
+            .unwrap();
+        assert_eq!(status.queued_batches, 1);
+        assert_eq!(status.projects[0].transformers, vec!["tx-a".to_string()]);
+        let batch = ds_report_artifacts::committed_batch(&queue.root, &sealed.receipt.batch_id)
+            .unwrap()
+            .expect("the batch the row names is committed");
+        assert!(ds_report_artifacts::open_batch_output(&queue.root, &batch, "xlsx").is_ok());
         // Only what completed is queued; the format that failed is not
         // invented into the publication.
         assert!(
             ds_report_artifacts::open_batch_output(
-                &queue,
-                &rows[0],
+                &queue.root,
+                &batch,
                 "pdf__a0-landscape-gisagara-cjic"
             )
             .is_err()
         );
+        // The same run sealed again is the same row, and no second batch.
+        let SealedRun::AlreadyRecorded { replay_key, .. } =
+            seal_run_for_server(&run, "owner-a", "project-a", &queue, &|| Ok(())).unwrap()
+        else {
+            panic!("the same bytes are already recorded")
+        };
+        assert_eq!(replay_key, sealed.receipt.client_publish_id);
+        assert_eq!(
+            ds_report_artifacts::list_project_publication_batches_from_root(
+                &queue.root,
+                "project-a"
+            )
+            .unwrap()
+            .len(),
+            1
+        );
 
-        let rollback_queue = root.path().join("rollback");
+        let rollback_queue = queue_at("rollback");
         let error = seal_run_for_server(&run, "owner-a", "project-a", &rollback_queue, &|| {
             Err(Failure::conflict(
                 PUBLISH_SCOPE_CHANGED.code,
@@ -2134,15 +2259,26 @@ mod tests {
         assert_eq!(error.code(), PUBLISH_SCOPE_CHANGED.code);
         assert!(
             ds_report_artifacts::list_project_publication_batches_from_root(
-                &rollback_queue,
+                &rollback_queue.root,
                 "project-a",
             )
             .unwrap()
             .is_empty()
         );
+        assert_eq!(
+            rollback_queue
+                .store
+                .lock()
+                .unwrap()
+                .queue(&fence, None, ds_sync_runtime::now_ms())
+                .unwrap()
+                .queued_batches,
+            0,
+            "a refused seal records no row"
+        );
 
         std::fs::write(root.path().join("report/report.xlsx"), b"corrupt").unwrap();
-        let corrupt_queue = root.path().join("corrupt");
+        let corrupt_queue = queue_at("corrupt");
         assert_eq!(
             seal_run_for_server(&run, "owner-a", "project-a", &corrupt_queue, &|| Ok(()))
                 .unwrap_err()
@@ -2151,7 +2287,7 @@ mod tests {
         );
         assert!(
             ds_report_artifacts::list_project_publication_batches_from_root(
-                &corrupt_queue,
+                &corrupt_queue.root,
                 "project-a",
             )
             .unwrap()
@@ -2160,15 +2296,9 @@ mod tests {
 
         run.engine.engine_version = ds_command_kernel::report::DEVELOPMENT_ENGINE.into();
         assert_eq!(
-            seal_run_for_server(
-                &run,
-                "owner-a",
-                "project-a",
-                &root.path().join("local"),
-                &|| Ok(())
-            )
-            .unwrap_err()
-            .code(),
+            seal_run_for_server(&run, "owner-a", "project-a", &queue_at("local"), &|| Ok(()))
+                .unwrap_err()
+                .code(),
             PUBLISH_LOCAL_ONLY.code,
         );
     }

@@ -2,9 +2,11 @@
 //!
 //! These run the real binary against a temporary Server state root, because
 //! the property under test is precisely that this reading needs nothing else:
-//! no session, no project selection, no running Server. The machine that
-//! quietly accumulated 593 unpublished artifacts had none of those, and the
-//! operator had no command to ask.
+//! no session, no native identity, no project selection, no running Server.
+//! The machine that quietly accumulated 593 unpublished artifacts had none of
+//! those, and the operator had no command to ask. The queue is the sync
+//! store's rows; the artifact directory's lock is reported as a fact about
+//! the bytes.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -57,7 +59,9 @@ fn an_empty_queue_answers_instead_of_refusing() {
     assert_eq!(code, 0, "an empty queue is a normal answer: {value}");
     assert_eq!(value["data"]["queued_batches"], 0);
     assert_eq!(value["data"]["stuck"], false);
-    assert_eq!(value["data"]["lock"]["held"], false);
+    assert_eq!(value["data"]["held_batches"], 0);
+    assert_eq!(value["data"]["reclaimable_batches"], 0);
+    assert_eq!(value["data"]["bytes_lock"]["held"], false);
     assert!(
         value["data"]["next"]
             .as_str()
@@ -73,7 +77,9 @@ fn a_dead_holder_is_named_and_reported_releasable_without_any_credential() {
     // was a lock held by a pid that no longer existed, with nothing to read
     // and nothing to run. This is that exact marker — the bare pid an earlier
     // release wrote — and the command must name the holder, say the holder is
-    // gone, and say the next run releases it, all with no session at all.
+    // gone, and say the next seal or discard releases it, all with no
+    // session at all. It is the bytes directory's lock; the queue's own
+    // liveness is the store's lease.
     let root = state_root("dead-holder");
     // A pid far above this system's range: certainly not a running process.
     fs::write(root.join("report-artifacts/.publication.lock"), "4000000\n")
@@ -92,7 +98,7 @@ fn a_dead_holder_is_named_and_reported_releasable_without_any_credential() {
         code, 0,
         "diagnosing a wedge must not itself refuse: {value}"
     );
-    let lock = &value["data"]["lock"];
+    let lock = &value["data"]["bytes_lock"];
     assert_eq!(lock["present"], true);
     assert_eq!(lock["holder"], "gone");
     assert_eq!(lock["owner"]["pid"], 4_000_000);

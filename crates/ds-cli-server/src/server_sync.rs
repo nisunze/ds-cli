@@ -99,6 +99,30 @@ impl ServerSyncSession {
         &self.project
     }
 
+    /// The store this session writes through, shared with every host over
+    /// this project: the seal records its row here, the pump drains from
+    /// here. One store per execution context.
+    pub fn store(&self) -> &SharedStore {
+        &self.store
+    }
+
+    /// This project's artifact rows as the store holds them under this
+    /// session's fence. The store is the queue; this is its reading for one
+    /// project, decided nowhere else.
+    pub fn rows(&self) -> Result<Vec<ds_sync_runtime::store::ArtifactRow>, String> {
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| "The sync gate is unavailable".to_string())?;
+        store
+            .snapshot(
+                &self.fence,
+                &ds_sync_runtime::rows::store_scope(&self.project),
+            )
+            .map(|snapshot| snapshot.artifacts)
+            .map_err(|error| error.to_string())
+    }
+
     /// Bind this host to the exact Solar engine release that will produce its
     /// rows. The signed install heartbeat happens here and is renewed before
     /// every gateway request; a connection secret never names an install.
@@ -178,6 +202,16 @@ fn require_sync_identity(
         return Err("server identity changed; Sync Center access is fenced".into());
     }
     Ok(())
+}
+
+/// The sync fence of this host's identity, as every session of it derives
+/// it: account, deployment, registered install — no project.
+pub fn fence_of(identity: &ds_compute_runtime::HostIdentity) -> Fence {
+    fence_for(
+        &identity.principal.uid,
+        &identity.principal.deployment,
+        &identity.principal.install_id,
+    )
 }
 
 fn fence_for(account_uid: &str, deployment: &str, install_id: &str) -> Fence {

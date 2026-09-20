@@ -1,35 +1,42 @@
 //! The Server adapter for the shared report publication producer.
-//! The exporter commits bytes through ds-report-artifacts. This adapter only
-//! connects that store to the authenticated runtime used by Desktop as well.
+//! The exporter seals bytes and their row through `ds_sync_runtime::reports`.
+//! This adapter only connects that store to the authenticated runtime used by
+//! Desktop as well. The sync store is the queue: every reading here is of the
+//! store's rows, never of the artifact directory.
 use crate::server_sync::ServerSyncSession;
 use ds_sync_runtime::{
-    Reads, Receipt, SyncHost, SyncRun, Trigger,
-    kernel_sync::{Action, Wake},
+    Reads, Receipt, Reclaimed, SyncHost, SyncRun, Trigger,
+    kernel_sync::{Action, Summary, Wake},
+    store::{ArtifactRow, Fence},
 };
 use std::path::Path;
 
-/// A local observation of the sealed publication inventory. The fingerprint is
-/// derived from the shared producer rows, never by interpreting queue files in
-/// this adapter; `ds-report-artifacts` remains their visibility authority.
+/// A local observation of one project's queue: a digest over the store's
+/// rows for it, so the pump can tell "something was sealed or settled" from
+/// "nothing changed" without a second index and without a filesystem
+/// timestamp.
 pub struct Inventory {
     pub fingerprint: String,
-    /// What this machine holds, counted: committed batches, how many of them
-    /// are queue rows, and the batches a later computation displaced.
-    ///
-    /// Carried beside the fingerprint because "is anything waiting here?" had
-    /// no answer at all — a sealed batch with no queue row was reachable by no
-    /// pump and no command, and 593 of them read as work that never ran.
-    pub census: ds_sync_runtime::reports::SealedCensus,
 }
 
-/// What the shared kernel says this report pass requires next. Scheduler state
-/// comes only from the re-planned kernel result, not receipt prose or a native
-/// retry policy.
+/// What one pass did and what the shared kernel says it requires next.
+/// Scheduler state comes only from the re-planned kernel result, not receipt
+/// prose or a native retry policy. A pass never says nothing: `reclaimed`,
+/// `idle` and `summary` say what moved, what was freed, and why nothing
+/// moved when nothing did.
 pub struct Pass {
     pub inventory: Inventory,
     pub retry_eligible: bool,
     pub offline: bool,
     pub wake_at_ms: Option<u64>,
+    /// What this pass freed on this machine.
+    pub reclaimed: Reclaimed,
+    /// Why this pass moved no bytes, when it moved none (`SyncRun::idle`).
+    pub idle: Option<String>,
+    /// The plan as it stands after the pass.
+    pub summary: Summary,
+    /// Every receipt of the pass, in order.
+    pub receipts: Vec<Receipt>,
 }
 
 fn root(database: &Path) -> Result<std::path::PathBuf, String> {
@@ -39,50 +46,41 @@ fn root(database: &Path) -> Result<std::path::PathBuf, String> {
         .join("report-artifacts"))
 }
 
-/// Which projects hold committed report publications on this host, read from
-/// the receipts themselves. A Server that serves several projects must be
-/// able to find their pending work without being told which project it is
-/// "on", and a selection is no longer such a thing.
+/// Which projects hold report publications on this host: the store's rows
+/// under this fence, plus any project whose batches are on disk with no
+/// row yet — sealed before the seal wrote its row — so a pass visits and
+/// adopts them. A Server that serves several projects must be able to find
+/// its pending work without being told which project it is "on".
 pub fn projects_with_publications(
     database: &Path,
+    fence: &Fence,
 ) -> Result<std::collections::BTreeSet<String>, String> {
-    ds_sync_runtime::reports::projects(&root(database)?, None)
+    let store = ds_sync_runtime::open_store(database)?;
+    let mut projects: std::collections::BTreeSet<String> =
+        ds_sync_runtime::projects_of_fence(&store, fence)?
+            .into_iter()
+            .collect();
+    projects.extend(ds_sync_runtime::reports::projects(&root(database)?, None)?);
+    Ok(projects)
 }
 
-fn rows(
-    database: &Path,
-    session: &ServerSyncSession,
-) -> Result<Vec<ds_sync_runtime::LocalRow>, String> {
-    ds_sync_runtime::reports::inventory(&root(database)?, session.project())
-}
-
-fn fingerprint(rows: &[ds_sync_runtime::LocalRow]) -> Result<String, String> {
-    // LocalRow deliberately does not serialize: it is a runtime seam. Build a
-    // complete canonical observation here instead of making a second artifact
-    // parser or basing wake-up detection on one mutable filesystem timestamp.
+fn fingerprint(rows: &[ArtifactRow]) -> Result<String, String> {
+    // A complete canonical observation of the store's rows for the project:
+    // identity, replay key, state, digest and when the row last moved. Any
+    // seal, receipt or reclaim changes it; nothing on disk does.
     let rows = rows
         .iter()
+        .filter(|row| row.identity.engine == ds_sync_runtime::reports::ENGINE)
         .map(|row| {
             serde_json::json!({
                 "engine": row.identity.engine,
                 "operation": row.identity.operation,
                 "variant": row.identity.variant,
+                "replayKey": row.replay_key,
+                "state": row.state.as_str(),
                 "sha256": row.sha256,
-                "sizeBytes": row.size_bytes,
-                "baseRevision": row.base_revision,
                 "readable": row.readable,
-                "engineRelease": row.engine_release,
-                "engineBuildManifestSha256": row.engine_build_manifest_sha256,
-                "grantEngine": row.grant_engine,
-                "resource": row.resource,
-                "clientPublishId": row.client_publish_id,
-                "outputs": row.outputs.iter().map(|output| serde_json::json!({
-                    "outputId": output.output_id,
-                    "format": output.format,
-                    "contentType": output.content_type,
-                    "sha256": output.sha256,
-                    "sizeBytes": output.size_bytes,
-                })).collect::<Vec<_>>(),
+                "updatedAtMs": row.updated_at_ms,
             })
         })
         .collect::<Vec<_>>();
@@ -91,11 +89,9 @@ fn fingerprint(rows: &[ds_sync_runtime::LocalRow]) -> Result<String, String> {
         .map_err(|error| error.to_string())
 }
 
-pub fn inventory(database: &Path, session: &ServerSyncSession) -> Result<Inventory, String> {
-    let rows = rows(database, session)?;
+pub fn inventory(session: &ServerSyncSession) -> Result<Inventory, String> {
     Ok(Inventory {
-        fingerprint: fingerprint(&rows)?,
-        census: ds_sync_runtime::reports::census(&root(database)?, session.project())?,
+        fingerprint: fingerprint(&session.rows()?)?,
     })
 }
 
@@ -106,11 +102,6 @@ pub fn drain(
     trigger: Trigger,
 ) -> Result<Pass, String> {
     let root = root(database)?;
-    let rows = ds_sync_runtime::reports::inventory(&root, session.project())?;
-    let inventory = Inventory {
-        fingerprint: fingerprint(&rows)?,
-        census: ds_sync_runtime::reports::census(&root, session.project())?,
-    };
     let upload =
         |handle: ds_report_artifacts::SealedArtifactHandle, output_id: &str, session_uri: &str| {
             ds_sync_runtime::transfer_verified_output(
@@ -129,13 +120,17 @@ pub fn drain(
     session.with_host_for_project(session.project(), &producer, reads, |host| {
         let result = ds_sync_runtime::run::run_reports(host, session.project(), trigger);
         match result {
-            Ok(run) => Ok(pass(inventory, run)),
+            Ok(run) => Ok(pass(inventory(session)?, run)),
             Err(error) => {
                 // A failed heartbeat/head read happens before a planned action.
-                // Keep that failure beside each pending row in the existing store,
-                // with the same held/retry semantics as Desktop work-grant errors.
+                // Keep that failure beside each queued row in the existing
+                // store, with the same held/retry semantics as Desktop
+                // work-grant errors.
                 host.local(session.project())?;
-                for row in &rows {
+                for row in session.rows()?.iter().filter(|row| {
+                    row.identity.engine == ds_sync_runtime::reports::ENGINE
+                        && matches!(row.state.as_str(), "held" | "uploading")
+                }) {
                     host.record_receipt(
                         session.project(),
                         &Receipt::new("open_grant", "failed")
@@ -150,7 +145,13 @@ pub fn drain(
 }
 
 fn pass(inventory: Inventory, run: SyncRun) -> Pass {
-    let plan = run.replanned;
+    let idle = run.idle();
+    let SyncRun {
+        replanned: plan,
+        receipts,
+        reclaimed,
+        ..
+    } = run;
     Pass {
         inventory,
         retry_eligible: plan.summary.uploads != 0,
@@ -162,18 +163,21 @@ fn pass(inventory: Inventory, run: SyncRun) -> Pass {
             Wake::Event => None,
             Wake::At { at_ms, .. } => Some(at_ms),
         },
+        reclaimed,
+        idle,
+        summary: plan.summary,
+        receipts,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ds_sync_runtime::kernel_sync::{Plan, RefreshRemote, Summary};
+    use ds_sync_runtime::kernel_sync::{Plan, RefreshRemote};
 
     fn inventory() -> Inventory {
         Inventory {
             fingerprint: "a".repeat(64),
-            census: ds_sync_runtime::reports::SealedCensus::default(),
         }
     }
 
@@ -195,7 +199,7 @@ mod tests {
                 grant_valid: false,
                 summary: Summary::default(),
             },
-            receipts: Vec::new(),
+            receipts: vec![Receipt::new("nothing", "in_sync")],
             replanned: Plan {
                 schema: "ds.sync-plan/v1",
                 project: "project-a".into(),
@@ -211,6 +215,10 @@ mod tests {
                     uploads,
                     ..Summary::default()
                 },
+            },
+            reclaimed: Reclaimed {
+                batches: 1,
+                bytes: 42,
             },
         }
     }
@@ -237,10 +245,14 @@ mod tests {
         assert!(pass.retry_eligible);
         assert!(!pass.offline);
         assert_eq!(pass.wake_at_ms, None);
+        assert_eq!(pass.summary.uploads, 1);
+        assert_eq!(pass.reclaimed.batches, 1);
+        assert_eq!(pass.receipts.len(), 1);
     }
 
     #[test]
-    fn scheduler_state_preserves_offline_and_kernel_deadline() {
+    fn scheduler_state_preserves_offline_and_kernel_deadline_and_a_pass_says_why_it_moved_nothing()
+    {
         let pass = pass(
             inventory(),
             run(
@@ -255,5 +267,47 @@ mod tests {
         assert!(!pass.retry_eligible);
         assert!(pass.offline);
         assert_eq!(pass.wake_at_ms, Some(42));
+        let idle = pass.idle.expect("nothing moved, so the pass says why");
+        assert!(idle.contains("1 batch reclaimed"), "{idle}");
+    }
+
+    #[test]
+    fn the_fingerprint_follows_the_rows_not_the_disk() {
+        use ds_sync_runtime::store::{ArtifactState, Scope};
+        let row = |state: ArtifactState, updated: u64| ArtifactRow {
+            scope: Scope::Project {
+                project: "p".into(),
+            },
+            identity: ds_sync_runtime::kernel_sync::Identity {
+                engine: "network_reporter".into(),
+                operation: "export-tx".into(),
+                variant: "default".into(),
+            },
+            sha256: "a".repeat(64),
+            size_bytes: 1,
+            produced_at_ms: 1,
+            base_revision: None,
+            input_base_fingerprint: None,
+            engine_release: "r".into(),
+            engine_build_manifest_sha256: None,
+            grant_engine: None,
+            resource: None,
+            client_publish_id: "k".into(),
+            outputs: Vec::new(),
+            bytes_locator: "l".into(),
+            readable: true,
+            state,
+            state_reason: None,
+            replay_key: "k".into(),
+            updated_at_ms: updated,
+            transfer_state: None,
+        };
+        let held = fingerprint(&[row(ArtifactState::Held, 1)]).unwrap();
+        assert_eq!(held, fingerprint(&[row(ArtifactState::Held, 1)]).unwrap());
+        assert_ne!(
+            held,
+            fingerprint(&[row(ArtifactState::Published, 2)]).unwrap()
+        );
+        assert_ne!(held, fingerprint(&[]).unwrap());
     }
 }

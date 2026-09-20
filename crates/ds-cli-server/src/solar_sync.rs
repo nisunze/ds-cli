@@ -225,6 +225,7 @@ impl SolarActivity {
         }
         projects.extend(crate::server_reports::projects_with_publications(
             &self.database,
+            &crate::server_sync::fence_of(self.sessions.identity()),
         )?);
         Ok(projects.into_iter().collect())
     }
@@ -287,17 +288,22 @@ impl SolarActivity {
         runtime::solar_publication(job, &input, &result)
     }
 
-    fn publication_metadata(&self, job: &Job) -> Result<SolarPublicationMetadata, String> {
+    /// The publication one completed job stands for, or `None` when its
+    /// result bytes have been reclaimed: the job row stays as evidence of
+    /// the computation, but there is nothing here to publish or to read.
+    fn publication_metadata(&self, job: &Job) -> Result<Option<SolarPublicationMetadata>, String> {
         let store = runtime::open(&self.database)?;
         let input = store
             .job_input(&self.caller(), &job.id)
             .map_err(|error| error.to_string())?
             .ok_or("completed Solar job lost its durable prepared input")?;
-        let result = store
+        let Some(result) = store
             .job_result(&self.caller(), &job.id)
             .map_err(|error| error.to_string())?
-            .ok_or("completed Solar job lost its durable result")?;
-        runtime::solar_publication_metadata(job, &input, &result)
+        else {
+            return Ok(None);
+        };
+        runtime::solar_publication_metadata(job, &input, &result).map(Some)
     }
 
     /// One project's Sync Center projection. The caller names the project;
@@ -429,8 +435,7 @@ impl SolarActivity {
                     }
                     observed = true;
                     let pass = activity.sessions.session(&project).and_then(|session| {
-                        let inventory =
-                            crate::server_reports::inventory(&activity.database, &session)?;
+                        let inventory = crate::server_reports::inventory(&session)?;
                         let Some(trigger) = wake.trigger(&inventory, now, report_recovery_due)
                         else {
                             return Ok(None);
@@ -565,7 +570,10 @@ impl SolarProducer<'_> {
             job.phase == ds_command_kernel::compute_jobs::Phase::Completed
                 && job.engine == EngineKind::SolarPrepared
         }) {
-            let publication = self.activity.publication_metadata(&job)?;
+            let Some(publication) = self.activity.publication_metadata(&job)? else {
+                // Reclaimed: the bytes left with the verdict, the row stays.
+                continue;
+            };
             if publication.project_id != project {
                 continue;
             }
@@ -624,6 +632,7 @@ impl SolarProducer<'_> {
                 resource: publication.city_id.clone(),
                 client_publish_id: job.id.clone(),
                 outputs,
+                bytes_locator: format!("solar:prepared:job:{}", job.id),
             });
         }
         Ok(rows)
@@ -633,10 +642,6 @@ impl SolarProducer<'_> {
 impl Producer for SolarProducer<'_> {
     fn inventory(&self, project: &str) -> Result<Vec<LocalRow>, String> {
         self.rows(project)
-    }
-
-    fn locator(&self, row: &LocalRow) -> String {
-        format!("solar:prepared:job:{}", row.client_publish_id)
     }
 
     fn transfer(
@@ -675,6 +680,29 @@ impl Producer for SolarProducer<'_> {
             &output.sha256,
             &mut reader,
         )
+    }
+
+    /// Free the bytes of a Solar publication that lost. Solar's bytes are
+    /// the completed job's `result` column in this host's own SQLite — the
+    /// sealed response with its `report_input.json` body — so the reclaim
+    /// is `Store::retire_job_result`: that column becomes NULL, and the job
+    /// row (phase, `result_sha256`, context) stays as evidence, exactly as a
+    /// report batch's directory leaves and its store row stays. Fenced by
+    /// this pass's project; a result already gone answers 0. The same
+    /// pattern on both sides — no `Ok(0)` because the bytes live elsewhere.
+    fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
+        if project != self.project {
+            return Err("the Solar producer was opened for another project".into());
+        }
+        if row.client_publish_id.is_empty() {
+            // A replica of the head, not a publication of this producer.
+            return Ok(0);
+        }
+        let mut store = runtime::open(&self.activity.database)?;
+        let caller = self.activity.sessions.identity().caller(Some(project));
+        store
+            .retire_job_result(&caller, &row.client_publish_id)
+            .map_err(|error| error.to_string())
     }
 
     fn activity(&self, project: &str) -> Result<Vec<ActivityRow>, String> {
@@ -844,7 +872,6 @@ mod report_wake_tests {
     fn inventory(value: &str) -> crate::server_reports::Inventory {
         crate::server_reports::Inventory {
             fingerprint: value.into(),
-            census: ds_sync_runtime::reports::SealedCensus::default(),
         }
     }
 
@@ -911,6 +938,10 @@ mod report_wake_tests {
             retry_eligible: false,
             offline: false,
             wake_at_ms: None,
+            reclaimed: ds_sync_runtime::Reclaimed::default(),
+            idle: None,
+            summary: ds_sync_runtime::kernel_sync::Summary::default(),
+            receipts: Vec::new(),
         });
         assert_eq!(
             wake.trigger(&inventory("same"), 10, false),
