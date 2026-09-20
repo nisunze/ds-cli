@@ -133,6 +133,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "artifact_write",
         "headless_project",
     ),
+    // The cloud-resident foundation reads: one bounded BigQuery question
+    // each, answered as a receipt; `--geometry-out` is their only write.
+    ("data.upi.lookup", "local_file_write", "headless_project"),
+    ("data.customers.query", "local_file_write", "headless_project"),
+    ("data.parcels.query", "local_file_write", "headless_project"),
     (
         "data.elevation.extract",
         "local_file_write",

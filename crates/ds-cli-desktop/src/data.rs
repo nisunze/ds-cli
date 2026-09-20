@@ -85,6 +85,14 @@ const REFUSALS: &[ds_cli_contract::spec::Refusal] = &[
         when: "--max-size is outside 1-102400 MiB",
         remedy: "pass a whole number of MiB within that range, or omit it",
     },
+    // Named by the application (`data.rwanda.install` refuses a cloud-resident
+    // catalogue row before any transfer) and carried through as its own code:
+    // a national table is never installed (docs/contracts/foundation-datasets.md R2).
+    Refusal {
+        code: "dataset_cloud_only",
+        when: "a named dataset is cloud-resident (rwanda_upi_parcels, edcl_customers): it is never installed nationally",
+        remedy: "read it bounded (`ds data parcels query`, `ds data customers query`) or seed one project's extents with `ds data project-cache seed`",
+    },
     Refusal {
         code: "invalid_storage_path",
         when: "the storage root is not an absolute path this computer can use",
@@ -299,6 +307,25 @@ pub fn install(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         Duration::from_secs(7200),
     )
     .map_err(ops::classify_signed_out)
+    .map_err(classify_cloud_only)
+}
+
+/// The application's own `dataset_cloud_only` refusal, re-coded so a script
+/// branches on the name rather than on a sentence inside `desktop_refused`.
+fn classify_cloud_only(failure: Failure) -> Failure {
+    if failure.code() != "desktop_refused" {
+        return failure;
+    }
+    let detail = failure
+        .detail_value()
+        .and_then(|detail| detail["detail"].as_str())
+        .unwrap_or_default()
+        .to_owned();
+    if !detail.starts_with("dataset_cloud_only") {
+        return failure;
+    }
+    Failure::conflict("dataset_cloud_only", detail)
+        .remedy("read it bounded (`ds data parcels query`, `ds data customers query`) or seed one project's extents with `ds data project-cache seed`")
 }
 pub fn storage(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let mut arguments = Map::new();

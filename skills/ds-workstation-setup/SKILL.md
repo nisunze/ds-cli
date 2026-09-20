@@ -80,6 +80,11 @@ provenance/version/license/SHA-256 receipt:
 ds workstation install --component rwanda-reference --yes --output json
 ```
 
+Rwanda land parcels (UPI) and EDCL customers are cloud-resident: no component
+or bundle installs them, `desktop data rwanda install` refuses them by name
+(`dataset_cloud_only`), and `data.upi.lookup` / `data.customers.query` read
+them where they live.
+
 To select an already-defined suitable Git Bash profile in VS Code:
 
 ```text

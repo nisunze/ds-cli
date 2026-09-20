@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Cloud Datasets"
+  short_description: "Bounded parcel and customer reads; seed a project's extents"
+  default_prompt: "Use $ds-cloud-datasets to find the parcels a DS Grid corridor crosses or the customers inside a boundary through ds, and seed them into the project when they will be reused."
