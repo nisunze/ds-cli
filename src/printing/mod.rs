@@ -23,6 +23,7 @@ pub mod style_overrides;
 pub mod table_columns;
 pub mod table_headings;
 pub mod table_rows;
+pub mod table_values;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -332,6 +333,11 @@ pub struct TableBinding {
         skip_serializing_if = "table_headings::HeadingMode::is_default"
     )]
     pub heading_mode: table_headings::HeadingMode,
+    /// Print few-category column values as number indexes with a legend under
+    /// every panel. Absent, the table's own default applies: `auto` for the
+    /// customers (house connection) schedule, `off` for every other table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_key: Option<table_values::ValueKey>,
     /// Explicitly allow a visibly warned incomplete table for an outlier.
     #[serde(default)]
     pub overflow: TableOverflow,
@@ -369,6 +375,7 @@ impl Default for TableBinding {
             min_widths_mm: vec![],
             measure_headings: true,
             heading_mode: table_headings::HeadingMode::AutoIndex,
+            value_key: None,
             overflow: TableOverflow::TruncateWarn,
             panels: 1,
             panel_rows: Vec::new(),
@@ -378,6 +385,15 @@ impl Default for TableBinding {
             row_mm: None,
             align: TableAlignment::Right,
         }
+    }
+}
+impl TableBinding {
+    /// The value key this table prints with: its explicit choice, else the
+    /// table's own default ([`table_values::ValueKey::table_default`]).
+    pub fn value_key(&self) -> table_values::ValueKey {
+        self.value_key
+            .clone()
+            .unwrap_or_else(|| table_values::ValueKey::table_default(self))
     }
 }
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -962,6 +978,9 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         if element.kind == ElementKind::Table {
             let table = element.table.as_ref().ok_or("table needs a data binding")?;
             table_columns::validate_phase(table)?;
+            if let Some(key) = &table.value_key {
+                key.validate(table.workbook.is_none().then_some(table.columns.as_slice()))?;
+            }
             if (!identifier(&table.layer) && table.workbook.is_none())
                 || table.additional_layers.len() > 16
                 || table.additional_layers.iter().enumerate().any(|(i, id)| {

@@ -173,6 +173,14 @@ fn replace_columns(binding: &mut TableBinding, columns: &[String]) {
         .map(|key| previous.columns.iter().position(|c| c == key))
         .collect();
     binding.columns = columns.to_vec();
+    if let Some(key) = binding.value_key.as_mut() {
+        key.retain_bound(columns);
+        // A chosen column list that the selection emptied is no choice any
+        // more: the table's own default applies again.
+        if key.mode == super::table_values::ValueKeyMode::Columns && key.columns.is_empty() {
+            binding.value_key = None;
+        }
+    }
     binding.headings = columns
         .iter()
         .zip(&indices)

@@ -13,6 +13,9 @@ pub struct TableOverride {
     pub overflow: Option<TableOverflow>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub heading_mode: Option<super::table_headings::HeadingMode>,
+    /// One transformer's value key where the project layout carries the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_key: Option<super::table_values::ValueKey>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -93,6 +96,9 @@ pub fn apply(layout: &Layout, patch: &PrintOverride) -> Result<Layout, String> {
             }
             if let Some(mode) = table.heading_mode {
                 binding.heading_mode = mode;
+            }
+            if let Some(key) = &table.value_key {
+                binding.value_key = Some(key.clone());
             }
             if let Some(overflow) = table.overflow {
                 binding.overflow = overflow;

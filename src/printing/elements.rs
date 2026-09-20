@@ -61,6 +61,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
             min_widths_mm: Vec::new(),
             measure_headings: super::table_measure_headings_default(),
             heading_mode: Default::default(),
+            value_key: None,
             overflow: TableOverflow::TruncateWarn,
             panels: super::one_panel(),
             panel_rows: Vec::new(),
