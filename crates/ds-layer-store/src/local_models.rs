@@ -263,6 +263,14 @@ pub fn execute_at(
             project,
             activate,
         },
+        // A link records the host's clock the same way, and for the same
+        // reason: the kernel refuses a link that carries none.
+        Op::Link { id, mut pls_source } => {
+            if pls_source.linked_at.is_empty() {
+                pls_source.linked_at = now_rfc3339();
+            }
+            Op::Link { id, pls_source }
+        }
         other => other,
     };
     let registering = matches!(op, Op::Register { .. });
@@ -475,6 +483,48 @@ mod tests {
         assert!(
             stamp.starts_with("20"),
             "{stamp} is not a plausible instant"
+        );
+    }
+
+    #[test]
+    fn a_link_is_persisted_on_the_row_and_stamped_by_the_hosts_clock() {
+        use ds_command_kernel::local_models::PlsSourceLink;
+        let root = tempfile::tempdir().expect("temp root");
+        execute_at(root.path(), &scope(), register("m-1", "A"), Some(b"pkg")).unwrap();
+        let outcome = execute_at(
+            root.path(),
+            &scope(),
+            Op::Link {
+                id: "m-1".into(),
+                pls_source: PlsSourceLink {
+                    path: "/srv/pls/Nyamagabe".into(),
+                    digest: format!("sha256:{}", "7".repeat(64)),
+                    pls_version: "16.81".into(),
+                    member_versions: Default::default(),
+                    member_count: 42,
+                    linked_at: String::new(),
+                },
+            },
+            None,
+        )
+        .expect("links");
+        let link = outcome.model.unwrap().pls_source.expect("link");
+        assert_eq!(
+            link.linked_at.len(),
+            20,
+            "{} is not one RFC3339 second",
+            link.linked_at
+        );
+        let reopened = read_at(root.path(), &scope()).unwrap();
+        assert_eq!(
+            reopened.models[0].pls_source.as_ref().unwrap().digest,
+            link.digest
+        );
+        // The package is untouched by a link.
+        let dir = scope_dir(root.path(), &scope()).unwrap();
+        assert_eq!(
+            std::fs::read(package_path(&dir, "m-1").unwrap()).unwrap(),
+            b"pkg"
         );
     }
 
