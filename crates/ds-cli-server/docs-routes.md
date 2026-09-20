@@ -128,14 +128,18 @@ this host's local fence — no session, no gateway — so `ds report outbox
 status` counts it as queued at once and the pump drains it from the store.
 The city's previous result on this machine is freed (`Store::retire_job_result`,
 `reclaimed:superseded_locally` receipt): an artefact never accumulates on the
-edge. A job completed before this rule, or whose seal the store could not
-record, is adopted by the pump's next observation (`adopted:from_producer`),
-exactly once. A restart replays every completed job through the seal newest
-first, so a city's older completion is sealed behind its newer one: the
-newest stays the row and the older's result is freed (the same receipt). A
-second job of the same city with the SAME bytes is
-`already_recorded`: the standing row stands and the duplicate result stays
-readable by id — its retention is the ruling §6 owes, not the seal's.
+edge. That seal is the ONLY way a Solar row is born (owner, 2026-09-20: "the
+legacy jobs in solar are not good — we should remove them"). A job completed
+before this rule, or whose seal the store could not record, is NOT a
+publication: nothing adopts it, a restart replays no completion through the
+seal, and the pump's next observation retires its result bytes
+(`Store::retire_job_result`; the job row stays as evidence, readable by id
+with `result: null`) — run it again to publish it. Two workers can complete
+two jobs of one city out of order: the newest completion stays the row and
+the older's result is freed (the same receipt). A second job of the same city
+with the SAME bytes is `already_recorded`: the standing row stands and the
+duplicate result stays readable by id — its retention is the ruling §6 owes,
+not the seal's.
 
 ### `GET /v1/jobs?project=<id>`
 `project` — OPTIONAL narrowing. Without it: every job visible to this
@@ -454,14 +458,13 @@ already in that lock through `ds-sync-store`, so nothing new is compiled.
    server input`) however far past the bound it falls, and a project's older
    Solar work is out of its Sync Center projection, not out of its record.
 
-   One consequence of that assumption is owed a ruling with it, because the
-   producer draws from the same projection: a project whose backlog of
-   COMPLETED but UNPUBLISHED Solar work ever passes 512 rows keeps only its
-   newest 512 in reach of a Sync Center pass, and the older ones are readable
-   forever but never published. A pass that keeps up never meets the bound, so
-   this is the pathological case, not the ordinary one — but the honest fix if
-   the owner wants none of it is ordering, not a bigger number: publish the
-   oldest unpublished first, or bound how much unpublished work may wait.
+   One consequence of that assumption stands with it, because the producer's
+   observation draws from the same projection: a completed job the store
+   holds no row for is not a publication and its result is retired on the
+   next observation (2026-09-20), newest first, at most 512 per observation
+   — so a backlog beyond the bound is retired over successive passes, never
+   published. A job sealed at completion is the store's row and is drained
+   from the store, outside this bound.
 
 ## Prepared native tiling
 

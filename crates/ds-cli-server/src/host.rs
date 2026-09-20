@@ -2501,12 +2501,22 @@ pub(crate) mod tests {
             .receipts(&fence, &scope, 10)
             .unwrap();
         assert!(receipts.is_empty(), "{receipts:?}");
-        // The producer's adoption inventory reads the store's rows first and
-        // offers nothing for a job the store already knows — without
-        // reading the job's input or result.
-        assert!(activity.adoption_inventory_for_test(A).unwrap().is_empty());
-        // The completion projected again (a replayed observer) changes
-        // nothing: already recorded, one row.
+        // The producer's observation offers nothing (the seal is the only
+        // way a row is born) and retires nothing: the sealed job's result
+        // stays, because its row is in the store.
+        let (retired, offered) = activity.observe_for_test(A).unwrap();
+        assert!(retired.is_empty(), "{retired:?}");
+        assert!(offered.is_empty());
+        assert!(
+            runtime::open(&app.database)
+                .unwrap()
+                .job_result(&identity.caller(Some(A)), &job.id)
+                .unwrap()
+                .is_some(),
+            "a sealed job keeps its result"
+        );
+        // The completion projected again (the same worker step, replayed)
+        // changes nothing: already recorded, one row.
         let completed = runtime::open(&app.database)
             .unwrap()
             .job(&identity.caller(None), &job.id)
@@ -2517,11 +2527,15 @@ pub(crate) mod tests {
         assert_eq!(rows(&app.database).len(), 1);
     }
 
-    /// A row the store does not know — a job completed before the seal
-    /// existed — is what the producer's inventory still offers, exactly
-    /// once: the adoption path the shared host keeps for legacy rows.
+    /// A completed job the store holds no row for — completed before the
+    /// seal existed, or one whose seal the store could not record — is NOT
+    /// a publication (owner, 2026-09-20: pre-seal Solar jobs are not
+    /// migrated). The producer offers nothing for it; its next observation
+    /// retires the job's result (the job row stays as evidence), the store
+    /// holds no row and the queue counts nothing, and a second observation
+    /// has nothing left to retire. The job can be run again.
     #[test]
-    fn a_solar_job_completed_before_the_seal_is_offered_for_adoption_and_a_sealed_one_is_not() {
+    fn a_solar_job_completed_with_no_row_is_not_adopted_and_its_result_is_retired_on_observation() {
         let dir = tempfile::tempdir().unwrap();
         let app = app(dir.path(), true);
         let identity = app.sessions.identity().clone();
@@ -2531,7 +2545,7 @@ pub(crate) mod tests {
             &Admission {
                 identity: &identity,
                 client: "test:1",
-                key: "solar-legacy",
+                key: "solar-unsealed",
                 requested_project: None,
                 saved_project: None,
                 limits: limits(),
@@ -2540,7 +2554,7 @@ pub(crate) mod tests {
             &bytes,
         )
         .expect("admitted");
-        // Completed with no observer: the way every release before today
+        // Completed with no observer: the way every release before the seal
         // completed a Solar job — the result is durable, the row is not.
         let context = runtime::WorkerContext {
             path: app.database.clone(),
@@ -2550,44 +2564,79 @@ pub(crate) mod tests {
             observer: None,
         };
         assert!(runtime::run_one(&context, "worker").expect("the real engine runs"));
+        let result = |id: &str| {
+            runtime::open(&app.database)
+                .unwrap()
+                .job_result(&identity.caller(Some(A)), id)
+                .unwrap()
+        };
+        let result_bytes = result(&job.id).expect("the result is durable").len() as u64;
+
         let activity =
             crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
                 .expect("the activity host needs no gateway to exist");
-        let offered = activity.adoption_inventory_for_test(A).unwrap();
-        assert_eq!(offered.len(), 1);
-        assert_eq!(offered[0].client_publish_id, job.id);
-        assert_eq!(
-            offered[0].bytes_locator,
-            format!("solar:prepared:job:{}", job.id)
-        );
-        // Sealed now (the pump's adoption applies exactly this row): the
-        // producer offers it no more.
+        let (retired, offered) = activity.observe_for_test(A).unwrap();
+        assert!(offered.is_empty(), "nothing is adopted: {offered:?}");
+        assert_eq!(retired, vec![(job.id.clone(), result_bytes)]);
+        assert!(result(&job.id).is_none(), "the unsealed result left");
         let completed = runtime::open(&app.database)
             .unwrap()
             .job(&identity.caller(None), &job.id)
             .unwrap()
+            .expect("the job row stays as evidence");
+        assert_eq!(
+            completed.phase,
+            ds_command_kernel::compute_jobs::Phase::Completed
+        );
+        assert!(completed.result_sha256.is_some());
+
+        let fence = crate::server_sync::fence_of(&identity);
+        let scope = ds_sync_runtime::rows::store_scope(A);
+        let store = ds_sync_store::Store::open(&app.database).unwrap();
+        assert!(
+            store.snapshot(&fence, &scope).unwrap().artifacts.is_empty(),
+            "no row was born for it"
+        );
+        assert!(store.receipts(&fence, &scope, 10).unwrap().is_empty());
+        let queue = ds_sync_store::Store::open_read_only(&app.database)
+            .unwrap()
+            .expect("the store exists")
+            .queue_all(Some(A), runtime::now_ms())
             .unwrap();
-        ds_compute_runtime::CompletionObserver::completed(&*activity, &completed).unwrap();
-        assert!(activity.adoption_inventory_for_test(A).unwrap().is_empty());
+        assert_eq!(queue.queued_batches, 0);
+
+        // Observed again: nothing left to retire, nothing offered.
+        let (retired, offered) = activity.observe_for_test(A).unwrap();
+        assert!(retired.is_empty() && offered.is_empty());
+
+        // The completion observed now — the seal on a job whose result is
+        // gone — seals nothing and errs nothing: there is nothing to seal.
+        ds_compute_runtime::CompletionObserver::completed(&*activity, &completed)
+            .expect("a result already gone has nothing to seal");
+        assert!(
+            ds_sync_store::Store::open(&app.database)
+                .unwrap()
+                .snapshot(&fence, &scope)
+                .unwrap()
+                .artifacts
+                .is_empty()
+        );
     }
 
-    /// A restart replays every completed job through the observer NEWEST
-    /// FIRST (`ds-compute-runtime` reopens the queue, `jobs()` orders by
-    /// `created DESC`). Two legacy completions of one city — both before
-    /// the seal existed — end with the newest as the city's row and the
-    /// older's result freed, exactly as if they had been sealed in order;
-    /// the older never takes the city and never frees the newer's bytes.
-    /// A second restart changes nothing: the older has no result to seal,
-    /// so it seals nothing and leaves no second receipt.
+    /// A restart replays NO completion: two jobs of one city completed with
+    /// no row (before the seal existed) are two results the next
+    /// observation retires, and neither becomes the city's row. The seal's
+    /// own order-independence for two live completions of one city is the
+    /// kernel harness's proof
+    /// (`a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_newer_row_stands`).
     #[test]
-    fn a_restart_replays_completions_newest_first_and_the_newest_result_is_the_citys_row() {
-        use ds_command_kernel::sync_store::ArtifactState;
+    fn a_restart_replays_no_completion_and_unsealed_results_of_one_city_are_all_retired() {
         let dir = tempfile::tempdir().unwrap();
         let app = app(dir.path(), true);
         let identity = app.sessions.identity().clone();
         let submitted_at = runtime::now_ms();
-        let mut legacy = Vec::new();
-        for (index, run_id) in ["legacy-older", "legacy-newer"].into_iter().enumerate() {
+        let mut unsealed = Vec::new();
+        for (index, run_id) in ["unsealed-older", "unsealed-newer"].into_iter().enumerate() {
             let bytes = prepared_solar_request(A, run_id);
             let job = runtime::submit_solar(
                 &app.database,
@@ -2598,9 +2647,6 @@ pub(crate) mod tests {
                     requested_project: None,
                     saved_project: None,
                     limits: limits(),
-                    // Distinct creation instants: the replay order is the
-                    // queue's, newest first, and the test must not depend
-                    // on two submissions sharing a millisecond.
                     now_ms: submitted_at + index as u64 * 10,
                 },
                 &bytes,
@@ -2614,118 +2660,56 @@ pub(crate) mod tests {
                 observer: None,
             };
             assert!(runtime::run_one(&context, "worker").expect("the real engine runs"));
-            legacy.push(job.id);
+            unsealed.push(job.id);
         }
-        let (older, newer) = (&legacy[0], &legacy[1]);
-        let caller = identity.caller(None);
-        let completed = |id: &str| {
-            runtime::open(&app.database)
-                .unwrap()
-                .job(&caller, id)
-                .unwrap()
-                .expect("the job is durable")
-        };
-        let (older_job, newer_job) = (completed(older), completed(newer));
-        assert!(
-            newer_job.updated_at_ms >= older_job.updated_at_ms,
-            "the newer completed after the older"
-        );
-        let result_digest = |id: &str| completed(id).result_sha256.clone().unwrap();
-        assert_ne!(
-            result_digest(older),
-            result_digest(newer),
-            "two runs are two results"
-        );
-
-        // The restart: what ds-compute-runtime does before any worker claims.
         let activity =
             crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
                 .expect("the activity host needs no gateway to exist");
-        let replay = || {
-            let jobs = runtime::open(&app.database)
-                .unwrap()
-                .jobs(&caller, 1000)
-                .unwrap()
-                .into_iter()
-                .filter(|job| job.phase == ds_command_kernel::compute_jobs::Phase::Completed)
-                .collect::<Vec<_>>();
-            assert_eq!(jobs[0].id, *newer, "the queue replays newest first");
-            assert_eq!(jobs[1].id, *older);
-            for job in &jobs {
-                ds_compute_runtime::CompletionObserver::completed(&*activity, job)
-                    .expect("a replayed completion is sealed or already settled");
-            }
-        };
-        replay();
-
+        // The restart: `recover` wakes the pump and replays nothing.
+        ds_compute_runtime::CompletionObserver::recover(&*activity).unwrap();
         let fence = crate::server_sync::fence_of(&identity);
         let scope = ds_sync_runtime::rows::store_scope(A);
-        let rows = ds_sync_store::Store::open(&app.database)
-            .unwrap()
-            .snapshot(&fence, &scope)
-            .unwrap()
-            .artifacts;
-        assert_eq!(rows.len(), 1, "{rows:?}");
-        assert_eq!(
-            rows[0].replay_key, *newer,
-            "the newest completion is the row"
-        );
-        assert_eq!(rows[0].state, ArtifactState::Held);
-        assert!(rows[0].readable, "the newer's bytes were not freed");
-        assert_eq!(rows[0].bytes_locator, format!("solar:prepared:job:{newer}"));
-        let result = |id: &str| {
-            runtime::open(&app.database)
-                .unwrap()
-                .job_result(&identity.caller(Some(A)), id)
-                .unwrap()
-        };
-        assert!(result(newer).is_some(), "the row's bytes are here");
-        assert!(result(older).is_none(), "the older result was freed");
         assert!(
-            completed(older).result_sha256.is_some(),
-            "the older job stays as evidence"
-        );
-        let receipts = ds_sync_store::Store::open(&app.database)
-            .unwrap()
-            .receipts(&fence, &scope, 10)
-            .unwrap();
-        assert_eq!(receipts.len(), 1, "{receipts:?}");
-        assert_eq!(receipts[0].action, "reclaimed");
-        assert_eq!(receipts[0].outcome, "superseded_locally");
-        assert!(receipts[0].committed_bytes.unwrap() > 0);
-        assert!(
-            receipts[0].identity.is_none(),
-            "the row was not transitioned"
-        );
-        let detail = receipts[0].detail.as_deref().unwrap();
-        assert!(detail.starts_with(&format!("{older} lost to")), "{detail}");
-        assert!(detail.ends_with(&format!("({newer})")), "{detail}");
-        assert!(activity.adoption_inventory_for_test(A).unwrap().is_empty());
-        let queue = ds_sync_store::Store::open_read_only(&app.database)
-            .unwrap()
-            .expect("the store exists")
-            .queue_all(Some(A), runtime::now_ms())
-            .unwrap();
-        assert_eq!(queue.queued_batches, 1);
-
-        // A second restart: the same replay, nothing new.
-        replay();
-        let rows = ds_sync_store::Store::open(&app.database)
-            .unwrap()
-            .snapshot(&fence, &scope)
-            .unwrap()
-            .artifacts;
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].replay_key, *newer);
-        assert!(rows[0].readable);
-        assert_eq!(
             ds_sync_store::Store::open(&app.database)
                 .unwrap()
-                .receipts(&fence, &scope, 10)
+                .snapshot(&fence, &scope)
                 .unwrap()
-                .len(),
-            1,
-            "a freed result is not receipted again"
+                .artifacts
+                .is_empty(),
+            "a restart seals nothing"
+        );
+        // The pump's observation: both results retired, newest first, no row.
+        let (retired, offered) = activity.observe_for_test(A).unwrap();
+        assert!(offered.is_empty());
+        assert_eq!(
+            retired
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
+            vec![unsealed[1].as_str(), unsealed[0].as_str()]
+        );
+        assert!(retired.iter().all(|(_, bytes)| *bytes > 0));
+        for id in &unsealed {
+            assert!(
+                runtime::open(&app.database)
+                    .unwrap()
+                    .job_result(&identity.caller(Some(A)), id)
+                    .unwrap()
+                    .is_none(),
+                "{id}: retired"
+            );
+        }
+        let store = ds_sync_store::Store::open(&app.database).unwrap();
+        assert!(store.snapshot(&fence, &scope).unwrap().artifacts.is_empty());
+        assert!(store.receipts(&fence, &scope, 10).unwrap().is_empty());
+        assert_eq!(
+            ds_sync_store::Store::open_read_only(&app.database)
+                .unwrap()
+                .unwrap()
+                .queue_all(Some(A), runtime::now_ms())
+                .unwrap()
+                .queued_batches,
+            0
         );
     }
 
