@@ -125,6 +125,54 @@ platform account that can read every project is not thereby a member of any,
 and the engine refuses the request by name (`pm_refused`, "every task assignee
 must be an active project member").
 
+## Where the work is: task geometry from DS objects
+
+A task carries one optional top-level WGS84 geometry (Point, LineString or
+Polygon) and typed links. Nobody draws it from the CLI: the person or agent
+that read a comment naming DS Grid structures supplies **typed references**,
+the kernel resolves them deterministically against the model and shapes the
+geometry, `--dry-run` shows the proposal, `--yes` writes it. Nothing parses
+prose anywhere in the stack. The contract is
+`ds-command-kernel/docs/contracts/task-geometry-from-objects.md`.
+
+```bash
+ds pm task create --title "Swamp crossing at 74/76/77" --kind inbox \
+   --geometry-from dsgrid:local-<id>:structure:74,76,77 --dry-run --output json   # proposal, nothing written
+ds pm task create --title "Swamp crossing at 74/76/77" --kind inbox \
+   --geometry-from dsgrid:local-<id>:structure:74,76,77 --yes                     # task + geometry + 3 links, one revision
+ds pm task geometry read  --task T4 --output json                                 # geometry, objectLinks[], subject_state
+ds pm task geometry set   --task T4 --from dsgrid:local-<id>:alignment:aln-1:74..77 --dry-run
+ds pm task geometry clear --task T4 --yes
+```
+
+| Reference | Resolves to |
+|---|---|
+| `dsgrid:local-<id>:structure:74,76,77` | structures by engineering number (then by id) of the working copy `<id>` in this machine's catalogue (`ds dsgrid model list`, the session's lane and account) |
+| `dsgrid:package:structure:74` with `--package <path>` | the same, from a `.dsgrid` file — e.g. a head taken with `ds dsgrid project download` |
+| `dsgrid:<src>:alignment:<id-or-label>` | the alignment's whole route |
+| `dsgrid:<src>:alignment:<aln>:74..77` | the route between the two structures, by station |
+
+| Resolved | Shape |
+|---|---|
+| one structure | `Point` |
+| several structures | `Polygon` — their convex hull buffered by `--buffer-m` (default 25, 1..500) |
+| an alignment / a range | `LineString` |
+
+Every resolved object becomes one `ds_object` link (`object_type`
+`dsgrid_structure` / `dsgrid_alignment`, `entity_id` `<model id>:<object id>`,
+`object_revision` the package revision and fingerprint it was read from), so
+the plan says which structures the area came from. `set` keeps the task's
+other links; `clear` removes the geometry and only the DS Grid object links.
+
+A transformer is linked as a typed subject through the work-template flow and
+a survey entry through a `survey_entry` link; neither is shaped into the
+task's geometry, by the links contract — a `transformer:` or `survey:`
+reference is refused as `reference_invalid` and says so.
+
+The write is the ordinary `create_task` / `update_task_fields` command every
+other `ds pm` write sends, against the revision it read, through the same
+headless door.
+
 ## What is deliberately absent
 
 **A messaging door.** Assigning work, answering a request and changing a
@@ -158,6 +206,11 @@ lands beside these two.
 | `invalid_assignment` | `--request`, `--owner` and `--withdraw` are three different intents |
 | `invalid_date` | a schedule flag that is not `YYYY-MM-DD` |
 | `invalid_task_shape` | a child/root/milestone was given contradictory parent or date flags |
+| `reference_invalid` | a `--from` / `--geometry-from` is not `dsgrid:<local-<id>\|package>:structure:…` or `:alignment:…`; `detail.part` names the piece |
+| `model_unknown` | the working copy is not in this machine's catalogue, or `package` was referenced without `--package` |
+| `object_unresolved` / `object_ambiguous` | a number, id or label is not in the model, or names two objects (`detail` lists them) |
+| `references_incompatible` | structures and an alignment, or two alignments, in one proposal |
+| `too_many_objects` / `geometry_too_large` / `links_bound_exceeded` / `buffer_out_of_range` | a bound, with its number |
 
 `--start 01-09-2026` is refused here rather than at the engine on purpose: a
 transposed day and month is the commonest scheduling mistake there is, and

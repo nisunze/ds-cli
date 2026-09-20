@@ -203,3 +203,13 @@ source classification, browser-local session state, or project publication in
 this repository, and there must not be one: two owners with two tolerances or
 two notions of "active" disagree silently, and the caller receives a different
 answer rather than a disagreement.
+
+## A model's structures as a task's geometry
+
+`ds pm task create --geometry-from dsgrid:local-<id>:structure:74,76,77` and
+`ds pm task geometry set --from …` read a working copy from this machine's
+catalogue (or a `.dsgrid` named with `--package`) and give a Project Work
+task the geometry of the named structures or alignment, with one `ds_object`
+link per object. The engine's own projection supplies every position; the
+kernel resolves and shapes; nothing in this domain is computed twice.
+`docs/reference/pm.md` has the grammar and the shaping rules.

@@ -1534,6 +1534,23 @@ static WORK_ENTRIES: &[Entry] = &[
         handler: ds_cli_pm::task::respond::run,
         render: ds_cli_pm::task::respond::render,
     },
+    // Where the work is: read it, set it from the DS Grid objects a comment
+    // names, clear it (task-geometry-from-objects.md).
+    Entry {
+        command: &ds_cli_pm::geometry::read::COMMAND,
+        handler: ds_cli_pm::geometry::read::run,
+        render: ds_cli_pm::geometry::read::render,
+    },
+    Entry {
+        command: &ds_cli_pm::geometry::set::COMMAND,
+        handler: ds_cli_pm::geometry::set::run,
+        render: ds_cli_pm::geometry::set::render,
+    },
+    Entry {
+        command: &ds_cli_pm::geometry::clear::COMMAND,
+        handler: ds_cli_pm::geometry::clear::run,
+        render: ds_cli_pm::geometry::clear::render,
+    },
     Entry {
         command: &ds_cli_pm::record::list::COMMAND,
         handler: ds_cli_pm::record::list::run,

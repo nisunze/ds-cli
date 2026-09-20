@@ -315,6 +315,12 @@ fn command_json_with_availability(
     if let Some(trigger) = command.confirmation_trigger() {
         descriptor["confirmation_trigger"] = json!(trigger);
     }
+    // The previewing path of a write: with this switch nothing is written
+    // and `--yes` is not required, which is how an agent reads a proposal
+    // before a person confirms it.
+    if let Some(preview) = command.preview_switch() {
+        descriptor["preview_switch"] = json!(preview);
+    }
 
     if let Some(crate::spec::Availability::Unavailable {
         code,
@@ -398,7 +404,7 @@ fn confirmation_usage(command: &Command) -> &'static str {
     if !command.effect.needs_confirmation() {
         return "";
     }
-    if command.confirmation_trigger().is_some() {
+    if command.confirmation_trigger().is_some() || command.preview_switch().is_some() {
         return " [--yes]";
     }
     " --yes"
@@ -413,6 +419,9 @@ fn confirmation_usage(command: &Command) -> &'static str {
 fn confirmation_contract_line(command: &Command) -> &'static str {
     if command.confirmation_trigger().is_some() {
         return "  confirm    --yes  (required with --write)\n";
+    }
+    if command.preview_switch().is_some() && command.effect.needs_confirmation() {
+        return "  confirm    --yes  (not needed with --dry-run)\n";
     }
     ""
 }

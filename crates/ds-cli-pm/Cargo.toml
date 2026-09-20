@@ -18,5 +18,11 @@ ds-cli-contract = { workspace = true }
 ds-cli-auth = { workspace = true }
 ds-client-core = { workspace = true }
 ds-command-kernel = { workspace = true }
+# A task's geometry comes from DS Grid objects, and the kernel never opens a
+# .dsgrid: `ds-cli-dsgrid` reads the working copy and reprojects the engine's
+# projection into the object index the kernel resolves references against.
+# Linking the domain is linking the engine crates it already links; nothing
+# here probes it.
+ds-cli-dsgrid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

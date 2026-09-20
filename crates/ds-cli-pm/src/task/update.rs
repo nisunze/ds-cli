@@ -152,6 +152,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         progress,
         start_date,
         finish_date,
+        // Geometry and links have their own family, `ds pm task geometry`,
+        // because they are resolved from DS objects rather than typed.
+        geometry: None,
+        clear_geometry: false,
+        links: None,
     };
     // `task` alone is a read wearing a write's confirmation gate. Refusing it
     // here means an empty invocation never spends a project round trip, and

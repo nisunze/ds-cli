@@ -250,6 +250,14 @@ impl Profile {
             // individual report produced in the cloud, which is how edge and
             // cloud production are proven to meet in one project.
             Self::ProjectOperations => 18,
+            // Seventeen leaves plus both bootstrap tools. Raised from the
+            // default on 2026-09-20 by the three task-geometry leaves (`pm task
+            // geometry read|set|clear`): an agent that reads a comment naming
+            // structures 74, 76, 77 in a swamp and can create the task, but
+            // cannot say WHERE it is, leaves the plan and the map without the
+            // one thing the comment was about. The proposal is what the person
+            // confirms; the read is what the map paints from.
+            Self::Project => 19,
             _ => 16,
         }
     }

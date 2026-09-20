@@ -1407,6 +1407,11 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // report produced in the cloud, which is how edge and cloud
             // production are proven to meet in one project.
             "project-operations" => 18,
+            // Seventeen leaves plus bootstrap: the three task-geometry leaves
+            // (2026-09-20) let an agent that read a comment naming structures
+            // say WHERE the task is — the proposal a person confirms and the
+            // read the map paints from.
+            "project" => 19,
             _ => 16,
         };
         assert!(

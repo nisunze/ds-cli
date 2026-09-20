@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Task Geometry"
+  short_description: "Put a Project Work task where the DS Grid structures a comment names are"
+  default_prompt: "Use $ds-task-geometry to give a task the geometry of the structures or alignment a comment names, through ds pm task create --geometry-from or ds pm task geometry set: dry-run first, --yes on the person's word."

@@ -662,9 +662,24 @@ impl Command {
         .then_some("--write")
     }
 
+    /// The declared previewing path of a writing command: a boolean
+    /// `--dry-run` switch. With it set the command writes nothing, so it
+    /// needs no confirmation — that is what makes "propose, read the
+    /// proposal, confirm with `--yes`" one command rather than two. A
+    /// command that only names an input `dry-run` as a value has no such
+    /// path.
+    pub fn preview_switch(&self) -> Option<&'static str> {
+        self.arg("dry-run")
+            .is_some_and(|arg| arg.kind == ArgKind::Switch)
+            .then_some("--dry-run")
+    }
+
     pub fn confirmation_required_for(&self, inputs: &crate::args::Inputs) -> bool {
         if self.confirmation_trigger().is_some() {
             return inputs.switch("write");
+        }
+        if self.preview_switch().is_some() && inputs.switch("dry-run") {
+            return false;
         }
         self.effect.needs_confirmation()
     }
@@ -822,5 +837,72 @@ mod tests {
             let absent = crate::parse(&command, &[]).unwrap();
             assert!(command.confirmation_required_for(&absent));
         }
+    }
+
+    /// A writing command that declares a `--dry-run` switch has a previewing
+    /// path: with the switch set nothing is written, so the confirmation gate
+    /// stands aside; without it the gate is exactly what it always was. A
+    /// `dry-run` VALUE is not a switch and opens no such path.
+    #[test]
+    fn a_declared_dry_run_switch_is_the_one_confirmation_free_path_of_a_write() {
+        static PREVIEW: Command = Command {
+            id: "fixture.propose",
+            path: &["fixture", "propose"],
+            contract: 1,
+            summary: "fixture",
+            purpose: "fixture",
+            chapter: Chapter::Project,
+            effect: Effect::GlobalWrite,
+            authority: Authority::None,
+            execution: Execution::Sync,
+            args: &[Arg::switch(
+                "dry-run",
+                "Answer the proposal; write nothing.",
+            )],
+            output: "",
+            examples: &[],
+            refusals: &[],
+            reference: None,
+            search: &[],
+            requires: Requires::Server,
+            availability: available,
+        };
+        assert_eq!(PREVIEW.preview_switch(), Some("--dry-run"));
+        assert_eq!(
+            crate::help::command_json(&PREVIEW)["preview_switch"],
+            "--dry-run"
+        );
+        let proposal = crate::parse(&PREVIEW, &["--dry-run".to_string()]).unwrap();
+        assert!(!PREVIEW.confirmation_required_for(&proposal));
+        let write = crate::parse(&PREVIEW, &[]).unwrap();
+        assert!(PREVIEW.confirmation_required_for(&write));
+
+        static VALUE: Command = Command {
+            id: "fixture.value",
+            path: &["fixture", "value"],
+            contract: 1,
+            summary: "fixture",
+            purpose: "fixture",
+            chapter: Chapter::Project,
+            effect: Effect::GlobalWrite,
+            authority: Authority::None,
+            execution: Execution::Sync,
+            args: &[Arg::value("dry-run", "<x>", "not a switch")],
+            output: "",
+            examples: &[],
+            refusals: &[],
+            reference: None,
+            search: &[],
+            requires: Requires::Server,
+            availability: available,
+        };
+        assert_eq!(VALUE.preview_switch(), None);
+        assert!(
+            crate::help::command_json(&VALUE)
+                .get("preview_switch")
+                .is_none()
+        );
+        let gated = crate::parse(&VALUE, &["--dry-run".to_string(), "x".to_string()]).unwrap();
+        assert!(VALUE.confirmation_required_for(&gated));
     }
 }

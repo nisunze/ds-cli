@@ -31,6 +31,12 @@ mod common;
 /// Codes a caller cannot reach, with why.
 const NOT_A_REFUSAL: &[(&str, &str)] = &[
     (
+        "task_geometry_unmapped",
+        "raised only if the kernel's closed task-geometry refusal vocabulary \
+         gained a code this build does not map — a defect in ds, held to the \
+         vocabulary by ds-cli-pm's own unit test",
+    ),
+    (
         "clean_store_unhandled",
         "raised only if the kernel's local-data clean plan names a cleanable \
          store this host has no remover for — the roster and the removers are \
@@ -710,7 +716,11 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-data", &["data"]),
         ("ds-cli-design", &["design"]),
         ("ds-cli-map", &["map"]),
-        ("ds-cli-dsgrid", &["dsgrid"]),
+        // The DS Grid domain also builds the object index `ds pm task …
+        // --geometry-from` resolves against (task-geometry-from-objects.md);
+        // the reprojection refusal that read can raise is declared by the pm
+        // commands that reach it.
+        ("ds-cli-dsgrid", &["dsgrid", "pm"]),
         ("ds-cli-dsgrid-exchange", &["dsgrid-exchange"]),
         ("ds-cli-library", &["library"]),
         ("ds-cli-pls", &["pls"]),

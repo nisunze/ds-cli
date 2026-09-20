@@ -966,6 +966,7 @@ dependencies = [
  "ds-cli-desktop",
  "ds-command-kernel",
  "ds-design-workspace",
+ "ds-geo",
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",
@@ -1077,6 +1078,7 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
+ "ds-cli-dsgrid",
  "ds-client-core",
  "ds-command-kernel",
  "serde",

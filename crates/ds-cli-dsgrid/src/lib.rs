@@ -29,6 +29,7 @@ pub mod create;
 pub mod describe;
 pub mod inspect;
 pub mod model;
+pub mod objects;
 pub mod package;
 pub mod project;
 pub mod run;

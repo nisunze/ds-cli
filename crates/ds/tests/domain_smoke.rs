@@ -8293,6 +8293,9 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.task.update",
         "pm.task.assign",
         "pm.task.respond",
+        "pm.task.geometry.read",
+        "pm.task.geometry.set",
+        "pm.task.geometry.clear",
         "pm.record.list",
         "pm.record.read",
     ]
@@ -8321,12 +8324,176 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         let id = command["id"].as_str().expect("id");
         let write = matches!(
             id,
-            "pm.task.create" | "pm.task.update" | "pm.task.assign" | "pm.task.respond"
+            "pm.task.create"
+                | "pm.task.update"
+                | "pm.task.assign"
+                | "pm.task.respond"
+                | "pm.task.geometry.set"
+                | "pm.task.geometry.clear"
         );
         assert_eq!(
             effect,
             if write { "global_write" } else { "read_only" },
             "`{id}` declares the wrong effect class for its blast radius"
+        );
+    }
+}
+
+#[test]
+fn task_geometry_resolves_typed_references_and_previews_without_confirmation() {
+    // The owner's T4: a comment names structures 74, 76, 77; the task must
+    // carry WHERE. The grammar is closed and checked locally, so a mistyped
+    // reference is refused by name on any machine — before the credential is
+    // even looked for — and a transformer or survey reference learns the
+    // boundary from the refusal rather than from a round trip.
+    for (reference, part) in [
+        ("transformer:TX-104", "head"),
+        ("survey:form:entry-9", "head"),
+        ("dsgrid:remote-x:structure:74", "source"),
+        ("dsgrid:local-abc:structure:74,,77", "structure"),
+        ("dsgrid:local-abc:alignment:aln:74..74", "range"),
+    ] {
+        for args in [
+            vec![
+                "pm",
+                "task",
+                "geometry",
+                "set",
+                "--task",
+                "T4",
+                "--from",
+                reference,
+                "--dry-run",
+            ],
+            vec![
+                "pm",
+                "task",
+                "create",
+                "--title",
+                "Swamp crossing",
+                "--kind",
+                "inbox",
+                "--geometry-from",
+                reference,
+                "--dry-run",
+            ],
+        ] {
+            let mut argv = args.clone();
+            argv.extend(["--output", "json"]);
+            let run = native_ds(&argv);
+            assert_eq!(
+                run.envelope["error"]["code"],
+                "reference_invalid",
+                "`ds {}` did not refuse the reference by name",
+                args.join(" ")
+            );
+            assert_eq!(
+                run.envelope["error"]["detail"]["part"],
+                part,
+                "`ds {}` named the wrong part",
+                args.join(" ")
+            );
+        }
+    }
+    // A buffer outside 1..500 m is refused locally under the kernel's name.
+    assert_eq!(
+        native_refusal(&[
+            "pm",
+            "task",
+            "geometry",
+            "set",
+            "--task",
+            "T4",
+            "--from",
+            "dsgrid:local-abc:structure:74,76",
+            "--buffer-m",
+            "9000",
+            "--dry-run",
+            "--output",
+            "json",
+        ]),
+        "buffer_out_of_range"
+    );
+
+    // `--dry-run` is the declared previewing path: it needs no `--yes`, so a
+    // well-formed proposal reaches the credential — and on a machine with no
+    // native identity ends in a native auth outcome, never the confirmation
+    // gate. Without `--dry-run` the gate is exactly what it always was.
+    let proposal = [
+        "pm",
+        "task",
+        "geometry",
+        "set",
+        "--task",
+        "T4",
+        "--from",
+        "dsgrid:local-abc:structure:74,76,77",
+        "--dry-run",
+        "--output",
+        "json",
+    ];
+    let code = native_refusal(&proposal);
+    assert!(
+        NATIVE_AUTH_CODES.contains(&code.as_str()),
+        "a dry run ended in `{code}`, not a native authentication outcome"
+    );
+    for args in [
+        vec![
+            "pm",
+            "task",
+            "geometry",
+            "set",
+            "--task",
+            "T4",
+            "--from",
+            "dsgrid:local-abc:structure:74,76,77",
+        ],
+        vec!["pm", "task", "geometry", "clear", "--task", "T4"],
+        vec![
+            "pm",
+            "task",
+            "create",
+            "--title",
+            "Swamp crossing",
+            "--kind",
+            "inbox",
+            "--geometry-from",
+            "dsgrid:local-abc:structure:74,76,77",
+        ],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        assert_eq!(
+            refusal(&argv),
+            "confirmation_required",
+            "`ds {}` reached past the confirmation gate",
+            args.join(" ")
+        );
+    }
+
+    // The descriptors say so: the preview switch is published, and every
+    // command in the family is found by the words a person would use.
+    for id in ["pm.task.create", "pm.task.geometry.set"] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        assert_eq!(descriptor["command"]["preview_switch"], "--dry-run", "{id}");
+        assert_eq!(descriptor["command"]["requires"], "server", "{id}");
+    }
+    for (query, id) in [
+        ("task geometry", "pm.task.geometry.set"),
+        ("where is the task", "pm.task.geometry.read"),
+        ("attach structures to task", "pm.task.geometry.set"),
+        ("polygon", "pm.task.geometry.set"),
+    ] {
+        let result = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let ids: Vec<&str> = result["results"]
+            .as_array()
+            .expect("results")
+            .iter()
+            .filter_map(|command| command["id"].as_str())
+            .collect();
+        assert!(
+            ids.contains(&id),
+            "`ds capabilities --search {query:?}` did not find {id}: {ids:?}"
         );
     }
 }

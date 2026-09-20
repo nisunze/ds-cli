@@ -46,6 +46,7 @@
 //! command; a caller that still passes it is told `requires_window_retired`
 //! by the parser, with the remedy of dropping the flag.
 
+pub mod geometry;
 pub mod plan;
 pub mod record;
 pub mod task;
@@ -70,6 +71,9 @@ pub static DOMAIN: Domain = Domain {
         &task::update::COMMAND,
         &task::assign::COMMAND,
         &task::respond::COMMAND,
+        &geometry::read::COMMAND,
+        &geometry::set::COMMAND,
+        &geometry::clear::COMMAND,
         &record::list::COMMAND,
         &record::read::COMMAND,
     ],
@@ -244,8 +248,14 @@ pub struct Graph {
     pub lane: &'static str,
     pub project_id: String,
     pub project_name: String,
+    /// The signed-in account that read it — the DS Grid catalogue on this
+    /// machine is scoped by lane and account, so a `dsgrid:local-…`
+    /// reference resolves under the same identity that will write the task.
+    pub uid: String,
     pub graph: CanonicalProjectGraph,
-    /// The graph as the server published it, for the folds that take it raw.
+    /// The graph as the server published it, for the folds that take it raw
+    /// — and for the two task members the fold deliberately leaves out,
+    /// `geometry` and `links` (wire.rs), which `ds pm task geometry` reads.
     pub raw: Value,
 }
 
@@ -256,15 +266,29 @@ pub fn graph(lane: &str) -> Result<Graph, Failure> {
     let project_id = report.project_id().to_owned();
     let project_name = report.project_name().to_owned();
     let lane = report.lane();
+    let uid = report.identity().uid().to_owned();
     let raw = report.into_result();
     let graph = ds_command_kernel::project_management::decode_project_graph(&raw, &project_id);
     Ok(Graph {
         lane,
         project_id,
         project_name,
+        uid,
         graph,
         raw,
     })
+}
+
+impl Graph {
+    /// One live task row exactly as the server published it — with the
+    /// `geometry` and `links` the decoded graph does not carry.
+    pub fn raw_task(&self, task_id: &str) -> Option<&Value> {
+        self.raw["tasks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|task| task["id"].as_str() == Some(task_id) && task["is_deleted"] != true)
+    }
 }
 
 /// The selected project's context records — every readable record, up to the
