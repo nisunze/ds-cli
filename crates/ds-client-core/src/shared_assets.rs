@@ -36,7 +36,10 @@ pub struct DownloadCall<'a> {
     url: &'a str,
     size: usize,
 }
-impl DownloadCall<'_> {
+impl<'a> DownloadCall<'a> {
+    pub(crate) fn new(url: &'a str, size: usize) -> Self {
+        Self { url, size }
+    }
     pub fn url(&self) -> &str {
         self.url
     }
@@ -89,7 +92,7 @@ fn link_valid(link: &Link) -> bool {
             object_type,
             entity_id,
         } => object_type == "transformer" && token(entity_id),
-        Link::PmTask { id } => token(id),
+        Link::PmTask { id } | Link::PmRecord { id } => token(id),
     }
 }
 impl Command {

@@ -8,6 +8,7 @@
 mod authorized;
 mod project_feeders;
 pub use project_feeders::{FeederConfiguration, ProjectConfigurationChange};
+pub use transport::KnownColumnsCall;
 pub use transport::ProjectConfigurationCall;
 mod device;
 mod device_approval;
@@ -236,6 +237,14 @@ pub mod design_tags;
 pub use transport::DesignMigrationCall;
 pub use transport::DesignTagsCall;
 
+/// Tags, groups, consumer groupings, enrichment and comment threads on the
+/// design annotations route — reachable without a window.
+pub mod design_annotations;
+/// The project's known-column visibility on the config route.
+pub mod known_columns;
+/// The project's document catalogue — folders, rows, bytes, classification,
+/// links and ingest — reachable without a window.
+pub mod project_assets;
 pub mod shared_assets;
 mod shared_map_publish;
 pub use transport::ProjectManagementCall;
