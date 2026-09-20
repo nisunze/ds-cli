@@ -51,6 +51,17 @@ impl Harness {
         }
     }
 
+    /// The restart a kill gets: a fresh connection to the same file, with
+    /// the previous one never closed — no checkpoint, no clean shutdown —
+    /// so what the new process sees is exactly what reached the disk (WAL,
+    /// `synchronous=FULL`) before the kill. The old connection is leaked on
+    /// purpose; dropping it would be the orderly close a crash never has.
+    fn reopen_after_kill(&mut self) {
+        let path = self._dir.path().join("sync").join("store.sqlite");
+        let killed = std::mem::replace(&mut self.store, open_store(&path).expect("reopen store"));
+        std::mem::forget(killed);
+    }
+
     /// Seal `rows` the way a producer's seal does: bytes (the fake's
     /// scripted rows) and the store row in one step. The store is the
     /// queue; a row that is only on disk is a legacy batch and is adopted
@@ -2047,6 +2058,321 @@ fn invariant_7_transfer_success_without_a_commit_receipt_leaves_the_row_held() {
         .heads
         .is_empty());
     assert_eq!(result.replanned.summary.uploads, 1, "still queued");
+}
+
+/// Invariant (1), the restart itself: the process is killed — the store is
+/// never closed — between the acknowledged seal and the acknowledgement of
+/// the publication, and a new process opens the same file. The row the seal
+/// acknowledged is there (WAL, `synchronous=FULL`), the pass converges to
+/// one publication, and a further restart finds it in sync. This is the
+/// reopen `invariant_1_..._resumes_without_duplicating` drives through one
+/// connection, driven through the file.
+#[test]
+fn invariant_1_killed_between_seal_and_acknowledgement_the_reopened_store_holds_the_seal_and_converges(
+) {
+    use ds_sync_runtime::store::ArtifactState;
+    // (a) Killed right after the seal was acknowledged: the new process
+    // finds the row held on disk and publishes it once.
+    let mut h = Harness::new();
+    let row = local_row(b"sealed, then the power went");
+    h.seal(std::slice::from_ref(&row));
+    h.reopen_after_kill();
+    let rows = stored_rows(&h, PROJECT);
+    assert_eq!(rows.len(), 1, "the acknowledged seal reached the disk");
+    assert_eq!(rows[0].state, ArtifactState::Held);
+    assert_eq!(
+        projects_of_fence(&h.store, &fence()).expect("projects"),
+        vec![PROJECT.to_string()],
+        "the new process learns the project to resume from the file"
+    );
+    let resumed = h.run(vec![row.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&resumed),
+        vec!["open_grant:granted", "upload:published"]
+    );
+    assert_eq!(fakes::lock(&h.world).commits, 1);
+
+    // (b) Killed after the bytes went up, before the record acknowledged:
+    // the new process resumes from the held row, restates once, and the
+    // bytes do not go up twice.
+    let mut h = Harness::new();
+    fakes::lock(&h.world).refuse_publish_from = Some(1);
+    let row = local_row(b"transferred, then the power went");
+    let first = h.run(vec![row.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&first),
+        vec!["open_grant:granted", "upload:failed"]
+    );
+    h.reopen_after_kill();
+    let rows = stored_rows(&h, PROJECT);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].state,
+        ArtifactState::Held,
+        "held on disk, never published by a send"
+    );
+    assert!(
+        h.store
+            .lock()
+            .unwrap()
+            .snapshot(&fence(), &ds_sync_runtime::rows::store_scope(PROJECT))
+            .unwrap()
+            .lease
+            .is_none(),
+        "the killed pass's lease was released with its host; a lease that outlived it would expire"
+    );
+    fakes::lock(&h.world).refuse_publish_from = None;
+    let second = h.run(vec![row.clone()], sync::Trigger::Startup);
+    assert!(
+        outcomes(&second).contains(&"upload:published".to_string()),
+        "{:?}",
+        outcomes(&second)
+    );
+    {
+        let world = fakes::lock(&h.world);
+        assert_eq!(world.commits, 1, "one commit across the kill");
+        assert_eq!(world.transfers.len(), 1, "the bytes went up once");
+    }
+    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Published);
+
+    // (c) Killed after the acknowledgement: the new process finds the
+    // publication and repeats nothing.
+    h.reopen_after_kill();
+    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Published);
+    let third = h.run(vec![row], sync::Trigger::Startup);
+    assert_eq!(outcomes(&third), vec!["nothing:in_sync"]);
+    assert_eq!(fakes::lock(&h.world).commits, 1);
+}
+
+/// Invariant (5), at the runtime: a host under another fence — another
+/// install of the same account, or another account — over the same file
+/// sees none of this fence's rows, drains none of them, and its pass leaves
+/// them held. The store-level fence is proved in `ds-sync-store`; this is
+/// the pump honouring it.
+#[test]
+fn invariant_5_a_host_under_another_fence_drains_nothing_and_leaves_this_fences_rows_held() {
+    use ds_sync_runtime::store::ArtifactState;
+    let h = Harness::new();
+    let row = local_row(b"this fence's queued report");
+    h.seal(std::slice::from_ref(&row));
+    let other_install = Fence {
+        install_id: "install-2".into(),
+        ..fence()
+    };
+    let other_account = Fence {
+        account: "account-2".into(),
+        ..fence()
+    };
+    for foreign in [other_install, other_account] {
+        // Another install of the same owner, or another owner: its own
+        // producer holds nothing for this project on this machine.
+        let world = fakes::world();
+        let gateway = FakeGateway {
+            world: world.clone(),
+        };
+        let producer = FakeProducer::new(world.clone(), Vec::new());
+        let reads = FakeReads {
+            world: world.clone(),
+            root: h.reads_root.clone(),
+        };
+        let online = || true;
+        let host = StoreHost::new(
+            h.store.clone(),
+            foreign.clone(),
+            "install-2#100".into(),
+            PROJECT,
+            &gateway,
+            &producer,
+            &reads,
+            &online,
+        )
+        .unwrap();
+        assert!(
+            host.snapshot().unwrap().artifacts.is_empty(),
+            "{foreign:?} sees no row of this fence"
+        );
+        assert_eq!(
+            h.store
+                .lock()
+                .unwrap()
+                .queue(&foreign, None, 2_000)
+                .unwrap()
+                .queued_batches,
+            0,
+            "{foreign:?} has an empty queue"
+        );
+        let pass = run(&host, PROJECT, sync::Trigger::Startup).unwrap();
+        assert!(
+            pass.receipts.is_empty(),
+            "{foreign:?} has nothing to do: {:?}",
+            outcomes(&pass)
+        );
+        assert_eq!(pass.plan.summary.uploads, 0, "{foreign:?} plans no upload");
+        let world = fakes::lock(&world);
+        assert_eq!(world.commits, 0, "{foreign:?} published nothing");
+        assert_eq!(world.grants_minted, 0);
+        assert!(world.transfers.is_empty());
+    }
+    // This fence's row is still queued, untouched, and the file's whole
+    // queue — what a status with no identity reads — still counts it once.
+    let rows = stored_rows(&h, PROJECT);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].state, ArtifactState::Held);
+    let store = h.store.lock().unwrap();
+    assert_eq!(
+        store.queue(&fence(), None, 2_000).unwrap().queued_batches,
+        1
+    );
+    assert_eq!(store.queue_all(None, 2_000).unwrap().queued_batches, 1);
+    drop(store);
+    // And this fence's own pass drains it once.
+    let mine = h.run(vec![row], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&mine),
+        vec!["open_grant:granted", "upload:published"]
+    );
+    assert_eq!(fakes::lock(&h.world).commits, 1);
+}
+
+/// Invariant (6), the cancellation and the logout: a cancel retires queued
+/// work — the row is `refused:cancelled`, the next pass frees its bytes and
+/// never sends them — and never undoes work the record acknowledged; a pass
+/// with no authority (logged out, offline) moves nothing and loses nothing.
+/// `invariant_6_a_run_aborted_between_receipts_...` is the abort mid-pass.
+#[test]
+fn invariant_6_cancel_retires_queued_work_frees_its_bytes_and_never_undoes_published_work() {
+    use ds_sync_runtime::store::ArtifactState;
+    let h = Harness::new();
+    // Y: published and acknowledged. X: sealed after it, still queued.
+    let published = local_row(b"published and acknowledged");
+    let mut queued = local_row(b"queued, then cancelled");
+    queued.identity.operation = "export-tx_2".into();
+    queued.resource = "tx_2".into();
+    queued.input_base_fingerprint = Some("source-2".into());
+    queued.client_publish_id = "publish-22222222-2222-4222-8222-222222222222".into();
+    queued.bytes_locator = "fake:batch:publish-22222222-2222-4222-8222-222222222222".into();
+    fakes::lock(&h.world)
+        .snapshot_base
+        .insert("export-tx_2".into(), "source-2".into());
+    let first = h.run(vec![published.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&first),
+        vec!["open_grant:granted", "upload:published"]
+    );
+    h.seal(std::slice::from_ref(&queued));
+    assert_eq!(
+        h.store
+            .lock()
+            .unwrap()
+            .queue(&fence(), None, 2_000)
+            .unwrap()
+            .queued_batches,
+        1
+    );
+
+    let gateway = FakeGateway {
+        world: h.world.clone(),
+    };
+    let producer = FakeProducer::new(h.world.clone(), vec![published.clone(), queued.clone()]);
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = host_over(&h, &gateway, &producer, &reads, &online);
+
+    // The logout: no authority, nothing moves, nothing is lost.
+    let logged_out = || false;
+    let signed_out = host_over(&h, &gateway, &producer, &reads, &logged_out);
+    let offline = run(&signed_out, PROJECT, sync::Trigger::Manual).unwrap();
+    assert_eq!(outcomes(&offline), vec!["offline:noted"]);
+    drop(signed_out);
+    assert_eq!(stored_rows(&h, PROJECT).len(), 2);
+    assert!(stored_rows(&h, PROJECT)
+        .iter()
+        .any(|row| row.state == ArtifactState::Held));
+    assert_eq!(
+        fakes::lock(&h.world).transfers.len(),
+        1,
+        "nothing moved while signed out"
+    );
+
+    // The cancel retires the queued row, with a receipt.
+    let cancelled = host.cancel(&queued.identity).unwrap();
+    assert!(cancelled.refusals.is_empty(), "{:?}", cancelled.refusals);
+    let retired = stored_rows(&h, PROJECT)
+        .into_iter()
+        .find(|row| row.identity == queued.identity)
+        .unwrap();
+    assert_eq!(retired.state, ArtifactState::Refused);
+    assert_eq!(retired.state_reason.as_deref(), Some("cancelled"));
+    assert!(
+        host.receipts(10)
+            .unwrap()
+            .iter()
+            .any(|row| row.action == "cancel" && row.outcome == "cancelled"),
+        "the cancellation is kept as evidence"
+    );
+    // The acknowledged publication is never undone.
+    let refused = host.cancel(&published.identity).unwrap();
+    assert_eq!(refused.refusals[0].code, "not_cancellable");
+    assert!(refused.changes.is_empty());
+    assert_eq!(
+        stored_rows(&h, PROJECT)
+            .into_iter()
+            .find(|row| row.identity == published.identity)
+            .unwrap()
+            .state,
+        ArtifactState::Published
+    );
+
+    // The next pass: the cancelled bytes are freed through the producer,
+    // never sent; the published copy stays this machine's copy of the head.
+    let pass = run(&host, PROJECT, sync::Trigger::Manual).unwrap();
+    assert_eq!(
+        outcomes(&pass),
+        vec!["reclaimed:refused", "nothing:in_sync"]
+    );
+    assert_eq!(pass.reclaimed.batches, 1);
+    assert_eq!(pass.reclaimed.bytes, queued.size_bytes);
+    {
+        let world = fakes::lock(&h.world);
+        assert_eq!(
+            world.commits, 1,
+            "only the acknowledged publication ever committed"
+        );
+        assert_eq!(
+            world.transfers.len(),
+            1,
+            "the cancelled bytes never went up"
+        );
+        assert_eq!(
+            world.reclaims,
+            vec![(queued.client_publish_id.clone(), queued.size_bytes)]
+        );
+    }
+    let inventory = producer.inventory(PROJECT).unwrap();
+    assert_eq!(inventory.len(), 1);
+    assert_eq!(inventory[0].client_publish_id, published.client_publish_id);
+    let retired = stored_rows(&h, PROJECT)
+        .into_iter()
+        .find(|row| row.identity == queued.identity)
+        .unwrap();
+    assert_eq!(retired.state, ArtifactState::Refused, "the verdict is kept");
+    assert!(!retired.readable, "the bytes are gone");
+    let queue = h
+        .store
+        .lock()
+        .unwrap()
+        .queue(&fence(), None, 3_000)
+        .unwrap();
+    assert_eq!(queue.queued_batches, 0);
+    assert_eq!(queue.held_batches, 1, "the published copy");
+    assert_eq!(queue.reclaimable_batches, 0, "nothing left to free");
+    // Once more: nothing repeats.
+    let again = run(&host, PROJECT, sync::Trigger::Manual).unwrap();
+    assert_eq!(outcomes(&again), vec!["nothing:in_sync"]);
+    assert_eq!(fakes::lock(&h.world).commits, 1);
 }
 
 /// A batch on disk with no row — sealed before the seal wrote its row — is
