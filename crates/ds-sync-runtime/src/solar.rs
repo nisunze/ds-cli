@@ -123,16 +123,32 @@ pub enum SealOutcome {
         replay_key: String,
         state: store::ArtifactState,
     },
+    /// The city's standing row is a LATER completion than this one: this
+    /// job lost before it was observed — a completion replayed behind a
+    /// newer one, as a restart replays every completed job newest first —
+    /// so it does not take the identity. Its result is freed through the
+    /// producer and told so (`reclaimed:superseded_locally`), exactly as
+    /// the row it would have superseded is freed by a seal in order: the
+    /// city's row is its newest completion whatever order completions are
+    /// observed in, and an artefact never accumulates on the edge.
+    Superseded {
+        /// The job whose row stands.
+        by: String,
+        /// This job's bytes freed, when the producer could free them.
+        freed: Option<u64>,
+    },
 }
 
 /// Seal one completed prepared calculation: record its `held` row in the
 /// sync store under `fence`. A city that already held another result on
 /// this machine has it freed through `free` — the producer's reclaim of
 /// that job's result bytes — with a receipt, before the new row takes the
-/// identity. If the store refuses or cannot be written, nothing is undone:
-/// the job's result is durable and its own, and the pump adopts the row on
-/// its next observation, exactly as it adopts a job completed before the
-/// seal existed.
+/// identity; a city whose standing row completed LATER than this job keeps
+/// it, and this job's result is freed instead ([`SealOutcome::Superseded`]).
+/// If the store refuses or cannot be written, nothing is undone: the job's
+/// result is durable and its own, and the pump adopts the row on its next
+/// observation, exactly as it adopts a job completed before the seal
+/// existed.
 pub fn seal(
     store: &SharedStore,
     fence: &store::Fence,
@@ -149,6 +165,22 @@ pub fn seal(
             return Ok(SealOutcome::AlreadyRecorded {
                 replay_key: previous.replay_key.clone(),
                 state: previous.state,
+            });
+        }
+        if previous.produced_at_ms > row.produced_at_ms {
+            let freed = crate::seal::free_superseded(
+                store,
+                fence,
+                request.project_id,
+                &row.identity,
+                false,
+                &row.client_publish_id,
+                &previous.client_publish_id,
+                &|| free(request.job_id),
+            )?;
+            return Ok(SealOutcome::Superseded {
+                by: previous.client_publish_id.clone(),
+                freed,
             });
         }
     }

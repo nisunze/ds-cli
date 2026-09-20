@@ -59,6 +59,68 @@ pub fn standing(
         .find(|row| &row.identity == identity))
 }
 
+/// Free one publication's bytes through the producer and tell the store
+/// so: a `reclaimed:superseded_locally` receipt naming the publication
+/// that lost (`loser`) and the one it lost to (`winner`), with the bytes
+/// freed; a `free` that fails is a `reclaim_failed` receipt and the bytes
+/// are freed in the open on the next observation. What it answers is the
+/// bytes freed, when they were.
+///
+/// The kernel keys the `reclaimed` transition — bytes gone, locator
+/// cleared — by the receipt's identity, so the receipt carries `identity`
+/// only when the loser IS the identity's standing row (`loser_is_the_row`:
+/// [`record`] freeing the previous row before the new one takes the
+/// identity). A loser that never held the row — a completion a producer
+/// observes AFTER a later one of the same identity, replayed after a
+/// restart — is freed with a receipt that names no identity, so the
+/// standing row keeps its bytes; the detail still names the operation.
+#[allow(clippy::too_many_arguments)]
+pub fn free_superseded(
+    store: &SharedStore,
+    fence: &store::Fence,
+    project: &str,
+    identity: &sync::Identity,
+    loser_is_the_row: bool,
+    loser: &str,
+    winner: &str,
+    free: &dyn Fn() -> Result<u64, String>,
+) -> Result<Option<u64>, String> {
+    let now = crate::now_ms();
+    let (action, outcome, bytes) = match free() {
+        Ok(bytes) => ("reclaimed", "superseded_locally".to_string(), Some(bytes)),
+        Err(error) => (
+            "reclaim_failed",
+            format!("superseded_locally: {error}"),
+            None,
+        ),
+    };
+    let receipt = store::ReceiptRow {
+        receipt_id: format!("{action}:{now}:{}", uuid::Uuid::new_v4().simple()),
+        scope: store_scope(project),
+        action: action.to_string(),
+        identity: loser_is_the_row.then(|| identity.clone()),
+        outcome,
+        detail: Some(format!(
+            "{loser} lost to a later computation of {} sealed on this machine ({winner})",
+            identity.operation
+        )),
+        grant_id: None,
+        work_id: None,
+        head_revision: None,
+        head_sha256: None,
+        head_counter: None,
+        committed_bytes: bytes,
+        at_ms: now,
+    };
+    let mut store = store
+        .lock()
+        .map_err(|_| "The sync gate is unavailable".to_string())?;
+    store
+        .apply(fence, now, store::Event::ActionReceipt { receipt })
+        .map_err(|error| error.to_string())?;
+    Ok(bytes)
+}
+
 /// Record `row` as `held` for `project`. `previous` is the identity's
 /// standing row as [`standing`] read it before the producer wrote its
 /// bytes; when it still names bytes on this machine they are freed through
@@ -74,7 +136,6 @@ pub fn record(
     previous: Option<&store::ArtifactRow>,
     free: &dyn Fn(&store::ArtifactRow) -> Result<u64, String>,
 ) -> Result<Recorded, String> {
-    let scope = store_scope(project);
     let now = crate::now_ms();
     let with_store = |event: store::Event| -> Result<store::Transition, String> {
         let mut store = store
@@ -87,33 +148,16 @@ pub fn record(
     let mut superseded = None;
     if let Some(previous) = previous {
         if previous.readable && !previous.bytes_locator.is_empty() {
-            let (action, outcome, bytes) = match free(previous) {
-                Ok(bytes) => ("reclaimed", "superseded_locally".to_string(), Some(bytes)),
-                Err(error) => (
-                    "reclaim_failed",
-                    format!("superseded_locally: {error}"),
-                    None,
-                ),
-            };
-            let receipt = store::ReceiptRow {
-                receipt_id: format!("{action}:{now}:{}", uuid::Uuid::new_v4().simple()),
-                scope: scope.clone(),
-                action: action.to_string(),
-                identity: Some(row.identity.clone()),
-                outcome,
-                detail: Some(format!(
-                    "{} lost to a later computation of {} sealed on this machine ({})",
-                    previous.client_publish_id, row.identity.operation, row.client_publish_id
-                )),
-                grant_id: None,
-                work_id: None,
-                head_revision: None,
-                head_sha256: None,
-                head_counter: None,
-                committed_bytes: bytes,
-                at_ms: now,
-            };
-            with_store(store::Event::ActionReceipt { receipt })?;
+            let bytes = free_superseded(
+                store,
+                fence,
+                project,
+                &row.identity,
+                true,
+                &previous.client_publish_id,
+                &row.client_publish_id,
+                &|| free(previous),
+            )?;
             if let Some(bytes) = bytes {
                 superseded = Some((previous.client_publish_id.clone(), bytes));
             }

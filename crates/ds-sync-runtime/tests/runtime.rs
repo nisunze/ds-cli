@@ -2456,11 +2456,25 @@ fn solar_seal_under(
     bytes: &[u8],
     freed: &Freed,
 ) -> SolarSeal {
+    solar_seal_completed_at(h, fence, project, city, job, 1_000, bytes, freed)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn solar_seal_completed_at(
+    h: &Harness,
+    fence: &Fence,
+    project: &str,
+    city: &str,
+    job: &str,
+    completed_at_ms: u64,
+    bytes: &[u8],
+    freed: &Freed,
+) -> SolarSeal {
     let request = solar::SealRequest {
         project_id: project,
         city_id: city,
         job_id: job,
-        completed_at_ms: 1_000,
+        completed_at_ms,
         engine_release: "ds-solar-engine@1.2.3",
         engine_build_manifest_sha256: &"a".repeat(64),
         input_base_fingerprint: Some(fakes::FINGERPRINT),
@@ -2619,6 +2633,94 @@ fn a_new_solar_seal_of_a_city_frees_the_job_it_supersedes_and_says_so() {
     ));
     assert_eq!(freed.lock().unwrap().len(), 1);
     assert_eq!(stored_rows(&h, PROJECT).len(), 1);
+}
+
+/// A restart replays every completed job newest first, so a city's older
+/// completion is observed AFTER its newer one. The older does not take the
+/// city and does not free the newer's bytes: the newest completion is the
+/// row whatever order completions are sealed in, and the older's result is
+/// freed with the same receipt a seal in order leaves for the row it
+/// supersedes. Observed again (a second restart), the older frees again —
+/// the producer answers 0 once its bytes are gone — and the row is
+/// untouched.
+#[test]
+fn a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_newer_row_stands() {
+    use ds_sync_runtime::store::ArtifactState;
+    let h = Harness::new();
+    let freed: Freed = Arc::new(Mutex::new(Vec::new()));
+    let SolarSeal::Sealed(newest) =
+        solar_seal_completed_at(&h, &fence(), PROJECT, "city-1", "job-2", 2_000, b"second!", &freed)
+    else {
+        panic!("the newest completion seals")
+    };
+    assert!(newest.superseded.is_none());
+    let older =
+        solar_seal_completed_at(&h, &fence(), PROJECT, "city-1", "job-1", 1_000, b"first", &freed);
+    assert!(
+        matches!(
+            older,
+            SolarSeal::Superseded { ref by, freed: Some(5) } if by == "job-2"
+        ),
+        "{older:?}"
+    );
+    assert_eq!(*freed.lock().unwrap(), vec!["job-1".to_string()]);
+    let rows = stored_rows(&h, PROJECT);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].replay_key, "job-2");
+    assert_eq!(rows[0].state, ArtifactState::Held);
+    assert_eq!(rows[0].produced_at_ms, 2_000);
+    assert!(rows[0].readable, "the newer row's bytes were not freed");
+    let receipts = h
+        .store
+        .lock()
+        .unwrap()
+        .receipts(
+            &fence(),
+            &ds_sync_runtime::store::Scope::Project {
+                project: PROJECT.into(),
+            },
+            50,
+        )
+        .unwrap();
+    assert_eq!(receipts.len(), 1, "{receipts:?}");
+    assert_eq!(receipts[0].action, "reclaimed");
+    assert_eq!(receipts[0].outcome, "superseded_locally");
+    assert_eq!(receipts[0].committed_bytes, Some(5));
+    assert!(
+        receipts[0].identity.is_none(),
+        "a loser that never held the row is freed without transitioning it"
+    );
+    let detail = receipts[0].detail.as_deref().unwrap();
+    assert!(detail.contains("calculate-city-1"), "{detail}");
+    assert!(detail.starts_with("job-1 lost to"), "{detail}");
+    assert!(detail.ends_with("(job-2)"), "{detail}");
+    // The same order the other way round ends in the same state: the
+    // newer row, the older's bytes freed, one receipt each.
+    let h2 = Harness::new();
+    let freed2: Freed = Arc::new(Mutex::new(Vec::new()));
+    assert!(matches!(
+        solar_seal_completed_at(&h2, &fence(), PROJECT, "city-1", "job-1", 1_000, b"first", &freed2),
+        SolarSeal::Sealed(_)
+    ));
+    assert!(matches!(
+        solar_seal_completed_at(&h2, &fence(), PROJECT, "city-1", "job-2", 2_000, b"second!", &freed2),
+        SolarSeal::Sealed(_)
+    ));
+    assert_eq!(*freed2.lock().unwrap(), vec!["job-1".to_string()]);
+    let rows2 = stored_rows(&h2, PROJECT);
+    assert_eq!(rows2.len(), 1);
+    assert_eq!(rows2[0].replay_key, "job-2");
+    // The queue counts the one row, in both.
+    for harness in [&h, &h2] {
+        let queue = harness
+            .store
+            .lock()
+            .unwrap()
+            .queue(&fence(), Some(PROJECT), 3_000)
+            .unwrap();
+        assert_eq!(queue.queued_batches, 1);
+        assert_eq!(queue.queued_bytes, b"second!".len() as u64);
+    }
 }
 
 /// Invariant (1), Solar: a pump killed after the seal, after the transfer,

@@ -82,7 +82,13 @@ through the producer first (`reclaimed:superseded_locally`; for Solar,
 `Store::retire_job_result`), then the new row takes the identity. A second
 job of the same city with the SAME bytes is `already_recorded`: the standing
 row stands and the duplicate result's retention is the owner's ruling
-(`ds-cli-server/docs-routes.md` §6), not the seal's.
+(`ds-cli-server/docs-routes.md` §6), not the seal's. The city's row is its
+NEWEST completion whatever order completions are observed in: a restart
+replays every completed job through the seal newest first, and a completion
+sealed behind a later one of its city does not take the identity — its own
+result is freed (`Superseded`, `reclaimed:superseded_locally` with no
+identity on the receipt, so the standing row keeps its bytes). A completion
+whose result is already gone seals nothing.
 
 `sync_store::queue_status(rows, leases, project?, now_ms)` is the queue's
 reading, pure over one fence's rows and leases: queued = `held | uploading`
