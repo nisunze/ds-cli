@@ -123,7 +123,88 @@ pub fn read(inputs: &Inputs) -> Result<Catalogue, Failure> {
 }
 
 pub fn execute(inputs: &Inputs, op: Op, package: Option<&[u8]>) -> Result<Outcome, Failure> {
-    ds_layer_store::local_models::execute_at(&root()?, &scope(inputs)?, op, package).map_err(refuse)
+    execute_in(&scope(inputs)?, op, package)
+}
+
+/// Apply one operation to a catalogue already located by [`locate`].
+pub fn execute_in(scope: &Scope, op: Op, package: Option<&[u8]>) -> Result<Outcome, Failure> {
+    ds_layer_store::local_models::execute_at(&root()?, scope, op, package).map_err(refuse)
+}
+
+/// One working copy found on this machine: its catalogue, its row and the
+/// package file beside it.
+pub struct Located {
+    pub scope: Scope,
+    pub row: LocalModel,
+    pub path: std::path::PathBuf,
+}
+
+/// Find a working copy by id.
+///
+/// With `--account` the catalogue is named and the lookup is exact. Without
+/// it every catalogue of the lane on this machine is read: a local id is
+/// minted random and unique, so it is found in one catalogue or none — and
+/// the one case where two accounts on one machine hold the same id is a
+/// refusal that names the remedy rather than a guess. This is what lets the
+/// contract's script name a working copy by id alone.
+pub fn locate(inputs: &Inputs, id: &str) -> Result<Located, Failure> {
+    let root = root()?;
+    let lane = inputs.value("lane").unwrap_or("stable").trim().to_owned();
+    let account = inputs
+        .value("account")
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let scopes: Vec<Scope> = match account {
+        Some(uid) => vec![Scope {
+            lane,
+            uid: uid.to_owned(),
+        }],
+        None => {
+            let lane_dir = root.join("models").join(&lane);
+            let mut scopes = Vec::new();
+            if let Ok(entries) = std::fs::read_dir(&lane_dir) {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir() {
+                        scopes.push(Scope {
+                            lane: lane.clone(),
+                            uid: entry.file_name().to_string_lossy().into_owned(),
+                        });
+                    }
+                }
+            }
+            scopes.sort_by(|a, b| a.uid.cmp(&b.uid));
+            scopes
+        }
+    };
+    let mut found: Vec<(Scope, LocalModel)> = Vec::new();
+    for scope in scopes {
+        let catalogue = ds_layer_store::local_models::read_at(&root, &scope).map_err(refuse)?;
+        if let Some(row) = catalogue.models.iter().find(|row| row.id == id) {
+            found.push((scope, row.clone()));
+        }
+    }
+    match found.len() {
+        0 => Err(Failure::invalid(
+            "local_model_not_found",
+            format!("no working copy `{id}` on this machine"),
+        )
+        .remedy(UNKNOWN_MODEL.remedy)
+        .next("ds dsgrid model list")),
+        1 => {
+            let (scope, row) = found.remove(0);
+            let dir = ds_layer_store::local_models::scope_dir(&root, &scope).map_err(refuse)?;
+            let path = ds_layer_store::local_models::package_path(&dir, &row.id).map_err(refuse)?;
+            Ok(Located { scope, row, path })
+        }
+        _ => Err(Failure::invalid(
+            "local_model_ambiguous",
+            format!("`{id}` is held by {} accounts on this machine", found.len()),
+        )
+        .remedy("pass --account <uid> to say whose working copy you mean")
+        .detail(json!({
+            "accounts": found.iter().map(|(scope, _)| scope.uid.clone()).collect::<Vec<_>>(),
+        }))),
+    }
 }
 
 /// The identity a package declares, read by the engine that understands one.
@@ -132,6 +213,8 @@ pub struct PackageIdentity {
     pub model_revision: u64,
     pub sha256: String,
     pub bytes: u64,
+    /// The authored head the engine derives from the content (`rev:…`).
+    pub authored_revision: String,
 }
 
 /// Read a package's own identity, refusing anything that is not one.
@@ -141,14 +224,26 @@ pub struct PackageIdentity {
 /// catalogue row that lies about the file beside it.
 pub fn identity(bytes: &[u8]) -> Result<PackageIdentity, Failure> {
     let package = ds_grid_exchange::package::unpack(bytes).map_err(|error| {
-        Failure::invalid("not_a_dsgrid_package", error.to_string())
-            .remedy("pass a .dsgrid this build's engine can open")
+        let message = error.to_string();
+        // A package this build's schema has moved past is a different
+        // situation from bytes that were never a package: the remedy is to
+        // re-convert from the PLS-CADD source, not to look for another file.
+        if message.contains("schema") {
+            Failure::invalid("package_decode_failed", message)
+                .remedy("this package predates the current canonical schema; re-convert it from its PLS-CADD workspace with `ds dsgrid-exchange convert`")
+                .next("ds dsgrid-exchange convert --source <workspace> --target dsgrid --crs <crs> --out <dir>")
+        } else {
+            Failure::invalid("not_a_dsgrid_package", message)
+                .remedy("pass a .dsgrid this build's engine can open")
+        }
     })?;
+    let session = ds_grid_engine::GridSession::open(package.snapshot);
     Ok(PackageIdentity {
         crs: package.manifest.model.coordinate_system.to_string(),
         model_revision: package.manifest.model.model_revision,
         sha256: format!("{:x}", Sha256::digest(bytes)),
         bytes: bytes.len() as u64,
+        authored_revision: session.current_revision().revision_id.as_str().to_string(),
     })
 }
 
@@ -174,6 +269,11 @@ pub fn row(model: &LocalModel, active: Option<&str>) -> Value {
         "size_bytes": model.bytes,
         "content_digest": model.sha256,
         "created_at": model.created_at,
+        "head_revision": model.head_revision,
+        "revised_at": model.revised_at,
+        // The link to a live PLS-CADD workspace (contract 02); null until
+        // `ds dsgrid model link` records one.
+        "pls_source": model.pls_source.as_ref().and_then(|link| serde_json::to_value(link).ok()),
         "project_binding": model.project.as_ref().map(|pin| json!({
             "project": pin.project_id,
             "model": pin.model_id,

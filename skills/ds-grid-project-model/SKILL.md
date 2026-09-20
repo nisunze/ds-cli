@@ -1,6 +1,6 @@
 ---
 name: ds-grid-project-model
-description: Create, import, select, and publish DS Grid project models through the governed local-model lifecycle. Use for local `.dsgrid` working copies and immutable project versions, not PLS-CADD conversion.
+description: Create, import, select, edit and publish DS Grid project models through the governed local-model lifecycle. Use for local `.dsgrid` working copies (including typed structure edits — describe, retype single poles to H-poles — and the structure list / staking table with REG rule findings) and immutable project versions, not PLS-CADD conversion.
 metadata:
   ds-chapters: grid-model
   ds-mcp-profile: grid-local-model
@@ -36,6 +36,50 @@ Local list, create, import, and set-active require a paired application but no p
 Publish separately with `ds dsgrid publish-version`. For a new project model, name the local model plus the authored display name and declared kind. For an existing project model, name its generated id and the expected head when known; do not pass a new name. Add `--yes` only after the operator authorizes this exact project write. Require the receipt to report `status: published`, its immutable revision and digest, and `active_model_changed: false`. A failed local binding after publication does not undo the committed version.
 
 Do not retry a moved-head conflict or change projects to force publication. Re-read the project model, review the new head, and ask for a fresh publication decision.
+
+## Typed edits of a working copy (structure list, descriptions, H-poles)
+
+A working copy is edited in place through typed commands, never by hand-built
+envelopes. Discover them first:
+
+```text
+ds capabilities dsgrid.model.show --output json
+ds capabilities dsgrid.structure.describe --output json
+ds capabilities dsgrid.structure.retype --output json
+ds capabilities dsgrid.report.structures --output json
+```
+
+Procedure, in this order:
+
+1. `ds dsgrid model show --model <local-id> --output json` — read
+   `head.authored_revision`; every edit below pins against it (`--revision`)
+   or, omitted, against the current head; a moved head refuses
+   `revision_conflict` and you re-read, never retry blindly.
+2. `ds dsgrid report structures --model <local-id> --out <file.csv|.xlsx>` —
+   the structure list: one row per placed structure with description, station,
+   line angle (right turn positive, as PLS-CADD prints it), pole family /
+   material / height / class / stays, drawing number, Table 14 foundation and
+   the findings. Read `counts.findings` and `assumptions[]` (`assumed: true`
+   means the engine evaluated a rule the issued standard does not carry — say
+   so in your report). `--only-findings` narrows the printed rows.
+3. `ds dsgrid structure describe --model <local-id> --structure <id|number> --text "<drawing no.> <assembly>, <12/14> m <material>, <angle band>, <n> stays" --dry-run`,
+   then the same with `--yes`. One structure per call; the text is the
+   structure's own line in the list, never parsed for values.
+4. `ds dsgrid structure retype --model <local-id> --from-finding structure_type_not_allowed --type <h-pole library name> --dry-run`
+   — every single pole carrying 10° ≤ |line angle| < 60°, as ONE revision.
+   Read `structures[]` and `findings {cleared, remaining, created}`; a
+   `command_invalid` naming a strung set the new type lacks (a T-off) means
+   `--skip <id|number>` that structure and choose its type separately. Repeat
+   with `--yes` only when the dry run is clean; a write that would leave or
+   create the finding is refused `structure_type_not_allowed`.
+5. `ds dsgrid report structures …` again — the receipt is the evidence
+   (`resulting_revision`, counts, the file digest).
+
+Never pass `--yes` and `--dry-run` together; never edit the package file
+beside the catalogue by hand; a package refused `package_decode_failed`
+predates the current schema and is re-converted from its PLS-CADD source, not
+repaired. These are proposals (`verification_level: proposal`): PLS-CADD
+confirms after `ds dsgrid-exchange sync` (contract 02).
 
 ## PLS-CADD sources
 

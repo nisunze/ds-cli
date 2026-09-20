@@ -21,6 +21,9 @@ ds-cli-desktop = { workspace = true }
 ds-grid-model = { workspace = true }
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
+# The shared workbook writer every tabular export in the stack uses; the
+# structure list reaches .xlsx through it and through nothing else.
+ds-io = { workspace = true }
 serde = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 serde_json = { workspace = true }

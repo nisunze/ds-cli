@@ -43,12 +43,18 @@ const NOT_A_PACKAGE: Refusal = Refusal {
     when: "the named file is not a .dsgrid package this build's engine can open",
     remedy: "convert a PLS-CADD source with `ds dsgrid-exchange`, or pass a package this build accepts",
 };
-const IMPORT_OWN: [Refusal; 5] = [
+const SCHEMA_MOVED: Refusal = Refusal {
+    code: "package_decode_failed",
+    when: "the package predates this build's canonical schema or does not verify",
+    remedy: "re-convert it from its PLS-CADD workspace with `ds dsgrid-exchange convert`",
+};
+const IMPORT_OWN: [Refusal; 6] = [
     ABSOLUTE_PATH_REQUIRED,
     UNSUPPORTED_MODEL_SOURCE,
     MODEL_TOO_LARGE,
     NOT_FOUND,
     NOT_A_PACKAGE,
+    SCHEMA_MOVED,
 ];
 const IMPORT_REFUSALS: &[Refusal; IMPORT_OWN.len() + workspace::REFUSALS.len()] =
     &import_refusals();
@@ -163,6 +169,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             sha256: identity.sha256,
             created_at: None,
             project: None,
+            head_revision: Some(identity.authored_revision),
             // Acquisition is not a decision to work in it.
             activate: false,
         },

@@ -166,6 +166,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::model::list::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::model::show::COMMAND,
+        handler: ds_cli_dsgrid::model::show::run,
+        render: ds_cli_dsgrid::model::show::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::model::create_local::COMMAND,
         handler: ds_cli_dsgrid::model::create_local::run,
         render: ds_cli_dsgrid::model::create_local::render,
@@ -189,6 +194,23 @@ static DSGRID_ENTRIES: &[Entry] = &[
         command: &ds_cli_dsgrid::model::publish_version::COMMAND,
         handler: ds_cli_dsgrid::model::publish_version::run,
         render: ds_cli_dsgrid::model::publish_version::render,
+    },
+    // The typed command family over the engine (program contract 01 §2):
+    // one entry per verb, all on `ds_cli_dsgrid::mutation`'s plumbing.
+    Entry {
+        command: &ds_cli_dsgrid::structure::describe::COMMAND,
+        handler: ds_cli_dsgrid::structure::describe::run,
+        render: ds_cli_dsgrid::structure::describe::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::structure::retype::COMMAND,
+        handler: ds_cli_dsgrid::structure::retype::run,
+        render: ds_cli_dsgrid::structure::retype::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::report::structures::COMMAND,
+        handler: ds_cli_dsgrid::report::structures::run,
+        render: ds_cli_dsgrid::report::structures::render,
     },
 ];
 

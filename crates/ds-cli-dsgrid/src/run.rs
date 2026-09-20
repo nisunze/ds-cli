@@ -464,6 +464,14 @@ fn dispatch(operation_id: &str, params: &Value, session: &GridSession) -> Result
             serialize(operation_id, artifact)
         }
         "feature_code_report" => serialize(operation_id, session.feature_code_report()),
+        // The structure list with REG rule findings (contract 04 §5). The
+        // typed `ds dsgrid report structures` adds the retained native line
+        // angles beside it; through `run` the model's own geometry answers.
+        "report_structures" => serialize(
+            operation_id,
+            ds_grid_engine::report_structures(session.snapshot(), None)
+                .map_err(|error| engine_error(operation_id, error))?,
+        ),
         "terrain_anomaly_analysis" => {
             let options: TerrainAnomalyOptions = parse(operation_id, params)?;
             serialize(
