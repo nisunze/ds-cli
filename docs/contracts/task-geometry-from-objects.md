@@ -92,8 +92,8 @@ Server-native (`Requires::Server`, `Authority::HeadlessProject`, `--lane`), thro
 
 | Command | Inputs | Notes |
 |---|---|---|
-| `pm.task.create` | existing + `--geometry-from <ref>`* `[--package <path>] [--buffer-m N] [--dry-run]` | native on this delivery (`commit_command` / `create_task`); with `--geometry-from` the task is created carrying `geometry` + one `ds_object` link per object, in ONE revision; `--dry-run` answers the proposal and creates nothing |
-| `pm.task.geometry.set` | `--task <id> --from <ref>* [--package <path>] [--buffer-m N] [--dry-run] --yes` | `update_task_fields` with `geometry` and the merged `links`, in ONE revision; an existing task made any other way (`--from-record`, the map, the Plan sheet) takes its geometry here |
+| `pm.task.create` | existing + `--geometry-from <ref>`* `[--package <path>] [--buffer-m N] [--dry-run]` | the existing native create (`writes::create_task`, program/01a) with the existing `geometry` and `links` members of the engine's `create_task`; with `--geometry-from` the task is created carrying `geometry` + one `ds_object` link per object, in ONE revision; `--dry-run` answers the proposal (and the prepared command) and creates nothing |
+| `pm.task.geometry.set` | `--task <id> --from <ref>* [--package <path>] [--buffer-m N] [--dry-run] --yes` | the existing `writes::update_task` with its `geometry` and `links` members → `update_task_fields`, in ONE revision; an existing task made any other way (`--from-record`, the map, the Plan sheet) takes its geometry here |
 | `pm.task.geometry.clear` | `--task <id> --yes` | `clear_geometry` and drops the task's `dsgrid_structure` / `dsgrid_alignment` links (the trace of a geometry that no longer exists); every other link stays |
 | `pm.task.geometry.read` | `--task <id>` | `read_only`; the task's `geometry`, its links, and ds-brain's reconciled `subject_states` for them — the read `ds pm plan` and the map's tasks layer paint from |
 
@@ -124,7 +124,7 @@ Refusals (kernel, adopted by the CLI under the same names): `reference_invalid`,
 
 - `ds capabilities --search "task geometry"`, `"where is the task"`, `"attach structures to task"`, `"polygon"`, `"swamp"` find the family; help stays inside the context budget; `docs/reference/pm.md` and `docs/reference/dsgrid.md` cross-reference.
 - MCP reaches the same descriptors: an agent that reads a record's text supplies the structure numbers it read and calls `pm.task.create --geometry-from … --dry-run`, then the same with `--yes` once the person confirms. That is the whole "semantic" step, and it is governed by `--yes`.
-- No `CLIENT_PROFILE_SCHEMA` bump (the PM door is the one `ds pm plan` already uses); the WINDOW ratchet of `ds-cli-pm` falls by one (`pm.task.create` leaves the paired route), never rises.
+- No `CLIENT_PROFILE_SCHEMA` bump (the PM door is the one every `ds pm` command uses since program/01a landed on 2026-09-20); the WINDOW ratchet of `ds-cli-pm` is 0 and stays 0.
 - The skill `ds-task-geometry` says: a comment names structures → `ds pm task create --title … --geometry-from dsgrid:local-<id>:structure:74,76,77 --dry-run`, read the proposal, re-run with `--yes`.
 
 ## Acceptance — T4 from the CLI
@@ -150,4 +150,4 @@ ds pm task geometry clear --task <id> --lane canary --yes --output json
 
 ## Steer for implementation
 
-ds-command-kernel (`task_geometry`: grammar, resolution, shaping, bounds, tests on a synthetic index) → ds-client-core (`project_management::Command::Commit`, the write door beside the read door) → ds-cli (`ds-cli-dsgrid::objects` index builder over the engine crates; `ds-cli-pm` geometry family + native `create`; contract crate `--dry-run` rule; reference docs; skill) → pins re-pointed → acceptance script green → merged to run.
+The sequence is ds-command-kernel (`task_geometry`: grammar, resolution, shaping, bounds, tests on a synthetic index; `project_management::writes` — `CreateTask`/`UpdateTask` gain the existing `geometry`/`links` members) → ds-cli (`ds-cli-dsgrid::objects` index builder over the engine crates; `ds-cli-pm` geometry family on the one headless door program/01a landed, `create` gains the flags; contract crate `--dry-run` rule; reference docs; skill) → pins re-pointed → acceptance script green → merged to run. Nothing new in ds-client-core: `Command::Commit`/`CommitBatch` already exist.
