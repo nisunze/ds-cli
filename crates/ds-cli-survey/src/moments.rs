@@ -35,7 +35,11 @@ pub const SERVER_STATE_DIR_ARG: Arg = Arg::value(
     "<absolute-path>",
     "Matching `ds server serve --state-dir` when the Server uses a custom state root.",
 );
-const FORM_ARG: Arg = Arg::value("form", "<form-slug>", "Only photos of this form.");
+const FORM_ARG: Arg = Arg::repeated(
+    "form",
+    "<form-slug>",
+    "Only photos of this form; repeat for any of several.",
+);
 const SINCE_ARG: Arg = Arg::value(
     "since",
     "<YYYY-MM-DD|RFC3339>",
@@ -232,7 +236,8 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .map(MediaRecord::moment_row)
         .collect();
     let filter = Filter {
-        form: inputs.value("form").map(str::to_string),
+        form: None,
+        forms: inputs.repeated("form").to_vec(),
         since: inputs.value("since").map(str::to_string),
         until: inputs.value("until").map(str::to_string),
         sync: match inputs.value("sync") {

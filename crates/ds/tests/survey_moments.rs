@@ -183,7 +183,26 @@ fn moments_are_listed_filtered_and_read_off_the_store_without_a_session() {
         "the total is the machine's holdings"
     );
     assert_eq!(filtered["data"]["moments"][0]["file"], "IMG_0003.jpg");
-    assert_eq!(filtered["data"]["filter"]["form"], "poles");
+    assert_eq!(
+        filtered["data"]["filter"]["forms"],
+        serde_json::json!(["poles"])
+    );
+    // `--form` repeats: any of the forms named.
+    let any_of = ds(
+        &state,
+        &[
+            "survey",
+            "moments",
+            "list",
+            "--project",
+            PROJECT,
+            "--form",
+            "poles",
+            "--form",
+            "lines",
+        ],
+    );
+    assert_eq!(any_of["data"]["matched"], 3);
 
     let bad = ds(
         &state,

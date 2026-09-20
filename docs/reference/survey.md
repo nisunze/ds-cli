@@ -462,7 +462,7 @@ Server runs on a custom state root.
 `ds survey moments list --project <id> --lane canary --output json` answers
 the kernel's gallery: newest first, N of M (`count`, `matched`, `total`,
 `more`), `waiting`/`synced` counts and the `forms[]` present. Filters compose
-with AND: `--form <slug>`, `--since`/`--until` (a bare `YYYY-MM-DD` is a whole
+with AND: `--form <slug>` (repeat for any of several), `--since`/`--until` (a bare `YYYY-MM-DD` is a whole
 UTC day, inclusive; an RFC 3339 instant is honoured as an instant), `--sync
 waiting|synced`, `--text <file-name substring>`, `--limit 1..500`. A malformed
 criterion is one `invalid_filter` refusal, never an empty grid. Each moment
