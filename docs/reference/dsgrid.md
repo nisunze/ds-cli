@@ -10,42 +10,24 @@ with a clean boundary — no ambient state, no process contract, no documented
 reason to stay separate. `ds-web/src-tauri` links them; so does `ds` for the
 file commands (`create`, `inspect`, `validate`, `describe`, `run`, and `apply`).
 
-The local-model commands have a different owner. A browser-local DS Grid model
-is a live worker session and durable application store, not a file the CLI can
-open. `model list`, `model create-local`, `model import-external`, and `model
-set-active` therefore ask the paired Desktop through one named operation each.
-They are project-independent; a projectless paired session is valid.
-`model prepare-project` and `publish-version` need project authority: the first
-resolves and caches exact project MV heads, while the second registers one
-immutable revision in the paired session's selected project.
+The working-copy commands answer from THIS machine. A working copy is a fact
+about a machine — a lane, a DS account and a directory beside the local-layer
+catalogue — decided by `ds_command_kernel::local_models` and persisted by
+`ds-layer-store`: `model list`, `model show`, `model create-local`, `model
+import-external` and `model set-active` need no application, project or
+window (since 2026-09-18). `model prepare-project` (since 2026-09-20) reads the
+CLI-selected project's governed MV heads under the native credential and
+answers which of them this machine holds as exact working copies; with
+`--download-missing` it fills the rest, one verified download at a time, each
+registered as a project-pinned copy and never activated. `publish-version`
+with `--path` publishes exact bytes through the native owner; without it, it
+still publishes the paired Desktop's own browser-held working copy through
+the bridge — the one door left in this domain.
 
-This split is visible in availability. The native file commands remain available
-without a Desktop, sidecar, or populated `PATH`. The local-model family needs a
-paired Desktop, and publication additionally needs its signed-in project. No
-command in this domain calls a sidecar process.
-
-## Create and manipulate a model without TypeScript
-
-`create` writes a canonical `.dsgrid` through `ds-grid-exchange::blank_model`,
-the same authority used by the WASM host. It needs no application, project,
-credentials, Node, or browser storage. Optional `--standards` names a verified
-`.dsgrid-template`; its engineering definitions and exact resources initialize
-the model. Foreign files must first pass the exchange/template compiler.
-CRS support and omitted-value defaults belong to the engine.
-
-```bash
-ds dsgrid create --model-id mv-line --crs EPSG:32735 --out new.dsgrid --output json
-ds dsgrid describe --kind commands --id create_alignment --output json
-ds dsgrid apply --model new.dsgrid --envelope alignment.json --dry-run --output json
-ds dsgrid apply --model new.dsgrid --envelope alignment.json --out revised.dsgrid --output json
-ds dsgrid validate --model revised.dsgrid --output json
-```
-
-Build the typed envelope against `create`'s `authored_revision`, not its package
-revision number. Each apply returns the next authored revision. Source packages
-and existing output paths are preserved, including when an output name races
-another writer. A refused create leaves no model file. There is no implicit
-desktop fallback or project registration.
+This split is visible in availability. The native file commands remain
+available without a Desktop, sidecar, or populated `PATH`; the working-copy
+and project commands are honestly unavailable in a build with no digest-pinned
+release catalog. No command in this domain calls a sidecar process.
 
 These file commands provide native model creation, engineering reads/solves,
 revision-gated mutation and persistence. They do not make the paired model
@@ -58,16 +40,34 @@ These words are deliberately not interchangeable:
 
 | Command | Meaning | Authority |
 |---|---|---|
-| `ds dsgrid model list` | List bounded browser-local model identities and the active one. | paired Desktop |
-| `ds dsgrid model create-local` | Create one empty local model; the application opens it as active. | paired Desktop |
-| `ds dsgrid model import-external` | Acquire one external `.dsgrid`; it does not become active. | paired Desktop |
-| `ds dsgrid model set-active` | Open one existing local model in Profile; idempotent when already active. | paired Desktop |
-| `ds dsgrid model prepare-project` | Show exact governed MV heads and, with `--download-missing`, fill their shared verified cache sequentially for Design and printing. | project |
-| `ds dsgrid publish-version` | Register one immutable revision in the selected project's catalogue; never changes local activity. | project + `--yes` |
+| `ds dsgrid model list` | List this machine's working copies and the active one. | none (`--lane`, `--account`) |
+| `ds dsgrid model create-local` | Create one empty working copy and open it as active. | none |
+| `ds dsgrid model import-external` | Acquire one external `.dsgrid`; it does not become active. | none |
+| `ds dsgrid model set-active` | Open one existing working copy as the active one; idempotent when already active. | none |
+| `ds dsgrid model prepare-project` | Show which exact governed MV heads of the selected project this machine holds and, with `--download-missing`, fill the rest as project-pinned working copies. | headless_project |
+| `ds dsgrid publish-version` | Register one immutable revision in a project's catalogue; never changes local activity. | project + `--yes` |
 
 The local commands never accept a project. Publication never accepts arbitrary
-model bytes or a project id: it names an opaque local model or an absolute
-`.dsgrid` path, and the paired Desktop supplies its own selected project.
+model bytes: it names an absolute `.dsgrid` path with an explicit `--project`,
+or an opaque local model of the paired Desktop, which supplies its own selected
+project.
+
+`prepare-project` is the headless form of the desktop's project MV cache:
+a head is *held* when a working copy pinned to exactly that project, model,
+revision and digest exists, or when any copy's bytes are that digest; a copy
+edited since it was pinned is not the head. The receipt names each head's
+`local_id` and `bytes` when held, `downloaded` ids for this run, and
+`complete`. Over 1000 heads it refuses `grid_project_inventory_unbounded`
+rather than fold a partial listing as complete; a head whose bytes do not
+match its declared digest is `grid_project_head_unverified` and nothing is
+registered for it.
+
+```bash
+ds auth project use --lane canary --project <exact-id>
+ds dsgrid model prepare-project --lane canary --output json
+ds dsgrid model prepare-project --lane canary --download-missing --output json
+ds dsgrid model list --lane canary --account <uid>       # the copies, origin "project"
+```
 PLS-CADD workspaces and `.bak` files remain under `ds dsgrid-exchange inspect`,
 `plan`, and `convert`; there is no second conversion verb here.
 

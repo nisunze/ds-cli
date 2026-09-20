@@ -76,9 +76,10 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds", Layer::Host, 1),
     ("ds-cli-map", Layer::Lens, 4),
     // ── core, pending a headless form ───────────────────────────────────────
-    // Project documents: preview, read, classify and ingest still ask the
-    // paired application for bytes.
-    ("ds-cli-assets", Layer::CorePending, 10),
+    // `ds-cli-assets` left on 2026-09-20: the catalogue answers on
+    // `POST /api/v1/assets` under the native credential, the kernel decides
+    // what the bytes are, and a promoted layer lands in the prepared local
+    // layer store. Nothing of it needed a window.
     // The paired Desktop is the approval fallback for a lane with no native
     // session; the one file that names it is that fallback.
     ("ds-cli-auth", Layer::CorePending, 1),
@@ -88,9 +89,14 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     // boundary READS left on 2026-09-18 — they are gateway reads with no
     // project and nothing to render.
     ("ds-cli-data", Layer::CorePending, 4),
-    // Immutable attachments on design objects are paired-only (audit item 5).
-    ("ds-cli-design", Layer::CorePending, 1),
-    // Model preparation reads the application's active project cache.
+    // `ds-cli-design` left on 2026-09-20: its 24 collaboration commands run
+    // on the kernel's design doors under the native credential, and the four
+    // that only ever controlled a window's private browser stores
+    // (`design.sync.*`, `design.transformer.download`) were retired rather
+    // than given a second store to control (contract 01, decision 14).
+    // `dsgrid.publish-version` may publish from the application's own open
+    // working copy — the one door left; `prepare-project` left on 2026-09-20
+    // (readiness is this machine's catalogue against the governed heads).
     ("ds-cli-dsgrid", Layer::CorePending, 1),
     // Solar runs read the workspace the application holds open.
     ("ds-cli-solar", Layer::CorePending, 2),
@@ -257,10 +263,7 @@ fn the_target_layers_are_exactly_the_window_and_the_binary() {
 /// measured the same way, by reading the source rather than the registry,
 /// because a crate is a directory and the registry does not know which one a
 /// command came from. What is counted is a *declaration site*: a `Command`
-/// value carrying `requires: Requires::Window`. `ds-cli-design` builds three
-/// of its paired commands from one shared constructor, so its twenty-eight
-/// registered window commands are twenty-six declarations here. Lowering a
-/// number is the entire point of the host-transparency backlog; raising one
+/// value carrying `requires: Requires::Window`. Lowering a number is the entire point of the host-transparency backlog; raising one
 /// is a new desktop-bound command, which is the thing this suite exists to
 /// refuse.
 ///
@@ -276,13 +279,22 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // (the machine-local layer catalogue) are not counted here.
     ("ds-cli-map", 39),
     // ── core, pending a headless form ───────────────────────────────────────
-    ("ds-cli-assets", 9),
+    // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
+    // command headless (contract 01 of the dsgrid-authority program).
     // 1 → 0 on 2026-09-19: `auth link approve` approves under the native
     // user; it was the last governance write bound to a window.
     ("ds-cli-auth", 0),
     ("ds-cli-data", 4),
-    ("ds-cli-design", 26),
-    ("ds-cli-dsgrid", 1),
+    // `ds-cli-design` left this ledger on 2026-09-20: 26 → 0, twenty-four
+    // collaboration commands headless and four window-cache controls retired
+    // (contract 01 of the dsgrid-authority program).
+    // 1 → 0 on 2026-09-20: `model prepare-project` answers from this
+    // machine's catalogue and the governed heads. The crate stays on the
+    // ledger at zero because `dsgrid publish-version` without `--path` still
+    // publishes the application's own browser-held working copy through the
+    // bridge — a `requires: server` command with a paired fallback, not a
+    // window command (see its descriptor comment).
+    ("ds-cli-dsgrid", 0),
     ("ds-cli-solar", 16),
     // `ds-cli-pm` left this ledger on 2026-09-20: 9 → 8 on 2026-09-19 when
     // `pm plan` took the native headless route, 8 → 0 when the other eight
@@ -480,27 +492,33 @@ fn the_window_ledger_and_the_bridge_inventory_name_the_same_crates() {
 /// them.
 ///
 /// [`WINDOW_COMMANDS`] above counts declaration sites, which is all a file
-/// scan can see, and a shared constructor is the gap in that: `ds-cli-design`
-/// builds three of its paired commands from one `command(...)` function, so
-/// twenty-eight registered commands are twenty-six lines there. Registering a
-/// fourth would add a window command an operator cannot run on a server while
-/// every line count stayed still. So the backlog is pinned a second time, at
-/// the other end — by the number `ds capabilities --requires window` gives the
-/// caller who asks.
+/// scan can see, and a shared constructor is the gap in that: a crate that
+/// builds several paired commands from one `command(...)` function (as
+/// `ds-cli-design` did until 2026-09-20) registers more window commands than
+/// it declares lines. Registering one more would add a window command an
+/// operator cannot run on a server while every line count stayed still. So
+/// the backlog is pinned a second time, at the other end — by the number
+/// `ds capabilities --requires window` gives the caller who asks.
 ///
 /// Two ledgers because a crate is not a domain and a line is not a command;
 /// the same rule governs both, and the same rule governs the totals:
-/// 122 declaration sites, 123 registered commands, and both may only fall.
+/// 85 declaration sites, 85 registered commands, and both may only fall.
 ///
 /// Measured 2026-09-18 against the run tip.
 const WINDOW_BACKLOG: &[(&str, u64)] = &[
-    ("assets", 9),
+    // 9 → 0 on 2026-09-20: list/tree/read/preview/classify/promote/attach/
+    // ingest/folder run headless through `POST /api/v1/assets`.
+    ("assets", 0),
     // 1 → 0: `auth.link.approve` is the native user's write now.
     ("auth", 0),
     ("data", 4),
-    ("design", 28),
+    // 28 → 0 on 2026-09-20: tag/group/consumer-grouping/comment/
+    // known-columns/materials run headless on the kernel's design doors;
+    // `design.sync.*` and `design.transformer.download` were retired.
+    ("design", 0),
     ("desktop", 26),
-    ("dsgrid", 1),
+    // 1 → 0 on 2026-09-20: `dsgrid.model.prepare-project` is headless.
+    ("dsgrid", 0),
     ("map", 39),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
@@ -511,8 +529,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 
 /// What the filter answers for the whole surface. Pinned beside the rows so a
 /// domain cannot be quietly dropped from the ledger to hide its commands.
-/// 131 → 123 on 2026-09-20 (`pm`).
-const WINDOW_BACKLOG_TOTAL: u64 = 123;
+/// 131 → 123 on 2026-09-20 (`pm`), 123 → 114 the same day (`assets`),
+/// 114 → 86 the same day (`design`), 86 → 85 the same day (`dsgrid`).
+const WINDOW_BACKLOG_TOTAL: u64 = 85;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {
@@ -586,4 +605,145 @@ fn the_registered_window_backlog_never_grows() {
         "the backlog fell to {total} — lower WINDOW_BACKLOG_TOTAL so the fence \
          keeps the ground gained"
     );
+}
+
+// ── the lens: every room operation names the headless command that owns it ──
+
+/// The `map.design.*` room operations and the headless commands that carry
+/// the same governed effect with no window (contract
+/// `dsgrid-authority/01-server-required.md`, decision 18, 2026-09-20).
+///
+/// A room is the desktop's rendered edit context; the lens commands drive it
+/// and stay `requires: window` because their effect IS the rendered room. What
+/// this ledger pins is the other half of the ruling: nothing a room does to
+/// governed project data is reachable ONLY through a window. Each owner here
+/// is a registered `requires: server` command; a room operation added without
+/// one, or an owner that later leaves the surface, fails this test. Owners
+/// are listed by the effect they carry, not by argument parity — the room
+/// stages and the owner commits, so the shapes differ on purpose.
+const ROOM_HEADLESS_OWNERS: &[(&str, &[&str])] = &[
+    // Enter a transformer's context ↔ fetch its governed snapshot to disk.
+    (
+        "map.design.open",
+        &["design.lv.project-export", "design.project.write"],
+    ),
+    ("map.design.read", &["design.project.read", "design.status"]),
+    // A lasso on the rendered map ↔ a selector over the governed snapshot.
+    ("map.design.select", &["design.features.select"]),
+    // Staged property, feature and geometry edits ↔ one atomic edit batch on
+    // the local workspace's version-fenced snapshot.
+    ("map.design.set", &["design.project.edit"]),
+    ("map.design.create", &["design.project.edit"]),
+    ("map.design.delete", &["design.project.edit"]),
+    ("map.design.geometry", &["design.project.edit"]),
+    // Discarding an unsaved room ↔ restoring the exact retained revision.
+    ("map.design.discard", &["design.project.restore"]),
+    // The project-scoped Fast LV setup the window stores ↔ the settings a
+    // lane and preset resolve to in the kernel, and the governed project
+    // configuration reads/sets.
+    (
+        "map.design.setup",
+        &[
+            "design.process.settings",
+            "design.config.read",
+            "design.config.set",
+        ],
+    ),
+    // A room's process run ↔ the native workers over the local workspace.
+    (
+        "map.design.process",
+        &["design.project.process", "design.lv.process"],
+    ),
+    (
+        "map.design.batch.process",
+        &["design.project.process", "design.lv.process"],
+    ),
+    // Save ↔ publish the processed transformer with its version fence.
+    (
+        "map.design.save",
+        &["design.lv.project-save", "design.version.begin"],
+    ),
+    ("map.design.batch.save", &["design.lv.project-save"]),
+    // Report ↔ the offline report over a captured run, or the project export.
+    (
+        "map.design.report",
+        &["design.project.report", "report.project.export"],
+    ),
+    ("map.design.batch.report", &["report.project.export"]),
+    ("map.design.attach-print", &["design.attachment.publish"]),
+    (
+        "map.design.list",
+        &["design.transformer.inventory", "design.status"],
+    ),
+    // The Working set is window state; its read-only headless fold is pinned.
+    ("map.design.pin", &["design.pinned.preview"]),
+    // Retained versions on the map ↔ their headless list and compare.
+    (
+        "map.design.version.play",
+        &["design.version.list", "design.version.restore"],
+    ),
+    ("map.design.version.compare", &["design.version.compare"]),
+    // Native uploads ↔ the headless intake, which cleans, stages and saves.
+    ("map.design.upload.inspect", &["design.intake.upload"]),
+    ("map.design.upload.stage", &["design.intake.upload"]),
+    // Copying a layer into a local map layer ↔ the machine-local registry.
+    (
+        "map.design.layer-to-local",
+        &["design.project.read", "map.local.register"],
+    ),
+    ("map.design.upload-to-local", &["map.local.register"]),
+];
+
+#[test]
+fn every_room_operation_names_a_registered_headless_owner() {
+    let descriptor = |id: &str| -> serde_json::Value {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(["capabilities", id, "--output", "json"])
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("ds binary runs");
+        let answer: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("`ds capabilities <id>` is JSON");
+        answer["data"]["command"].clone()
+    };
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(["capabilities", "map", "--output", "json", "--limit", "200"])
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("ds binary runs");
+    let answer: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("`ds capabilities map` is JSON");
+    let rooms: BTreeSet<String> = answer["data"]["commands"]
+        .as_array()
+        .expect("map commands")
+        .iter()
+        .filter(|row| row["availability"] == "requires_window")
+        .filter_map(|row| row["id"].as_str())
+        .filter(|id| id.starts_with("map.design."))
+        .map(str::to_owned)
+        .collect();
+    let ledgered: BTreeSet<String> = ROOM_HEADLESS_OWNERS
+        .iter()
+        .map(|(room, _)| (*room).to_owned())
+        .collect();
+    assert_eq!(
+        rooms, ledgered,
+        "every `map.design.*` window command names its headless owner in \
+         ROOM_HEADLESS_OWNERS, and nothing is ledgered that the surface no longer \
+         registers"
+    );
+    for (room, owners) in ROOM_HEADLESS_OWNERS {
+        assert!(!owners.is_empty(), "`{room}` names no headless owner");
+        for owner in *owners {
+            let command = descriptor(owner);
+            assert_eq!(
+                command["id"], *owner,
+                "`{room}` names `{owner}` as its headless owner, which is not registered"
+            );
+            assert_ne!(
+                command["availability"], "requires_window",
+                "`{room}` names `{owner}` as its headless owner, but that needs a window too"
+            );
+        }
+    }
 }

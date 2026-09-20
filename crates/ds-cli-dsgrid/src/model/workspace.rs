@@ -119,7 +119,13 @@ pub fn refuse(error: StoreError) -> Failure {
 }
 
 pub fn read(inputs: &Inputs) -> Result<Catalogue, Failure> {
-    ds_layer_store::local_models::read_at(&root()?, &scope(inputs)?).map_err(refuse)
+    read_in(&scope(inputs)?)
+}
+
+/// Read one catalogue already scoped — by the flags, or by the restored
+/// native credential's own lane and uid.
+pub fn read_in(scope: &Scope) -> Result<Catalogue, Failure> {
+    ds_layer_store::local_models::read_at(&root()?, scope).map_err(refuse)
 }
 
 pub fn execute(inputs: &Inputs, op: Op, package: Option<&[u8]>) -> Result<Outcome, Failure> {

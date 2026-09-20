@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 
 use ds_cli_contract::spec::{Arg, ArgKind};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 use crate::group::{DIGEST_ARG, GROUP_ARG, TRANSFORMERS_ARG};
 
 /// Assigning REQUIRES a value. It is declared required here rather than shared
@@ -41,31 +41,16 @@ If the returned plan carries explicit model evidence, report its state and \
 outstanding worklist exactly. Never infer model behavior from the definition id.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
-        GROUP_ARG,
-        TRANSFORMERS_ARG,
-        VALUE_ARG,
-        DIGEST_ARG,
-        DESCRIPTOR_ARG,
-    ],
+    args: &[GROUP_ARG, TRANSFORMERS_ARG, VALUE_ARG, DIGEST_ARG, LANE_ARG],
     output: "The same plan shape `preview` returns, with the committed `state` and per-entry outcomes.",
     examples: &[Example {
         command: "ds design group apply --group city --transformers kigali_a,kigali_b --value kigali --digest <plan-digest> --yes",
         note: "The digest comes from `ds design group preview`; without --yes dispatch refuses first.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::READ_ONLY,
         crate::CONFLICT,
@@ -74,11 +59,11 @@ outstanding worklist exactly. Never infer model behavior from the definition id.
         crate::INVALID_VALUE_LIST,
         crate::TOO_MANY,
         crate::CONFIRMATION_REQUIRED,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -92,14 +77,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // so no omission can quietly turn an assign into a clear.
     arguments.insert("value".into(), json!(inputs.require("value")?));
     arguments.insert("digest".into(), json!(inputs.require("digest")?));
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::GROUP_APPLY,
+    crate::headless::perform(
+        "design.group.apply",
         Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

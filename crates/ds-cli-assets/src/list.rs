@@ -11,7 +11,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{CURSOR_ARG, DESCRIPTOR_ARG, FOLDER_ARG, LIMIT_ARG};
+use crate::{CURSOR_ARG, CatalogueCommand, FOLDER_ARG, LANE_ARG, LIMIT_ARG};
 
 const KIND_ARG: Arg =
     Arg::value("kind", "<kind>", "Only this kind of asset.").choices(crate::KINDS);
@@ -48,17 +48,17 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "List the project's assets, one bounded page at a time.",
     purpose: "\
-Names the assets the signed-in user may see in the paired application's open \
-project, newest first, with each one's folder, kind, format, size, status and \
-sensitivity. This is where an assets session starts: every other `ds assets` \
-command needs an asset_id from here or from `ds assets tree`. A restricted or \
-confidential asset the caller cannot read has no row, no name and no count — \
-absence is the answer, never a placeholder. Reads the same catalogue the Assets \
-tab renders and changes nothing; offline it serves the cached catalogue, \
-labelled with its age.",
+Names the assets the signed-in user may see in the selected project, newest \
+first, with each one's folder, kind, format, size, status and sensitivity. \
+This is where an assets session starts: every other `ds assets` command needs \
+an asset_id from here or from `ds assets tree`. A restricted or confidential \
+asset the caller cannot read has no row, no name and no count — absence is \
+the answer, never a placeholder. Reads the same catalogue the Assets tab \
+renders and changes nothing. Headless: the selected project of the signed-in \
+native credential, no window.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         FOLDER_ARG,
@@ -68,7 +68,7 @@ labelled with its age.",
         SINCE_ARG,
         LIMIT_ARG,
         CURSOR_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "\
 `assets` rows of `asset_id`, `folder`, `name`, `kind`, `format`, `bytes`, \
@@ -80,33 +80,17 @@ rows the read considered, and `truncated` when a scan bound stopped it early.",
         note: "Read .data.assets[].asset_id to feed read, preview, classify, promote or attach.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::refusals::<27>(&[
         crate::INVALID_NUMBER,
-        crate::INVALID_DATE,
         crate::INVALID_FOLDER_PATH,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
+        crate::INVALID_DATE,
         crate::UNKNOWN_FOLDER,
-    ],
+        crate::ASSETS_UNREADABLE,
+    ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 /// The page request, validated locally, in the exact keys the operation
@@ -149,14 +133,44 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ASSETS_LIST,
-        arguments,
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_assets_failure)
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let text = |key: &str| arguments[key].as_str().map(str::to_owned);
+    let folder_id = match text("folder") {
+        Some(path) => Some(
+            crate::folder_at(lane, &path)?["folder_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+        ),
+        None => None,
+    };
+    let page = crate::catalogue(
+        lane,
+        &CatalogueCommand::List {
+            folder_id,
+            kind: text("kind"),
+            status: text("status"),
+            sensitivity: text("sensitivity"),
+            since: text("since"),
+            limit: arguments["limit"]
+                .as_u64()
+                .map_or(crate::DEFAULT_PAGE_SIZE as u16, |limit| limit as u16),
+            cursor: text("cursor"),
+        },
+    )?;
+    let mut answer = json!({
+        "assets": page["assets"],
+        "more": page["has_more"] == Value::Bool(true),
+        "scanned": page["scanned"],
+        "truncated": page["truncated"] == Value::Bool(true),
+    });
+    if let Some(cursor) = page["next_cursor"]
+        .as_str()
+        .filter(|cursor| !cursor.is_empty())
+    {
+        answer["next_cursor"] = json!(cursor);
+    }
+    Ok(answer)
 }
 
 pub fn render(data: &Value) -> String {
@@ -197,7 +211,6 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use ds_cli_contract::args::parse;
-    use ds_cli_desktop::ops::undeclared_key;
 
     use super::*;
 
@@ -228,7 +241,6 @@ mod tests {
             " c_9 ",
         ]))
         .expect("valid");
-        assert_eq!(undeclared_key(&crate::ASSETS_LIST, &payload), None);
         let mut keys: Vec<&str> = payload
             .as_object()
             .expect("object")

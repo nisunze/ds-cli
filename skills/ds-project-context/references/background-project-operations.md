@@ -1,27 +1,20 @@
 # Background project operations
 
 Use this workflow when the user wants project-wide work done without opening a
-map or entering a transformer room: preparing the paired application's local
-room cache, the compounded report deliverable, or reversible transformer
-retirement. Cache preparation declares `authority: project` because IndexedDB
-belongs to the paired application's visible project. The other commands
-declare `authority: headless_project` and use the CLI-selected project. Never
-switch either context merely to make a refusal disappear.
+map or entering a transformer room: the compounded report deliverable, or
+reversible transformer retirement. Every command here declares
+`authority: headless_project` and uses the CLI-selected project. Never switch
+that context merely to make a refusal disappear. (There is no cache to
+prepare: the native report path reads rooms from the service, and the former
+`ds design transformer download` was retired on 2026-09-20.)
 
-1. Read the chosen command's descriptor, then establish its matching context.
-   For `design.transformer.download`, run `ds desktop status --output json` and
-   require the intended visible project. For headless commands, run
+1. Read the chosen command's descriptor, then establish its context with
    `ds auth project status --output json`.
    If it is not the project the user named, list with `ds auth project list`
    and select the exact id with `ds auth project use --project <id>`; then
    read status again and require the exact resulting id. A project id alone
    is never authority.
-2. To prepare local background reporting, run
-   `ds design transformer download --transformer <name> … --output json`, or
-   omit all names for every active ordinary transformer. Read the receipt's
-   downloaded, already-local, dirty-preserved, failed and cancelled sets.
-   `--force` may refresh clean rooms but never overwrites a dirty room. This
-   operation does not navigate, process, stage, save or publish.
+2. Nothing here navigates, processes, stages, saves or publishes a room.
 3. Inspect before you write. `ds design transformer inventory --output json`
    lists every transformer document with `state` (`active`, `retired`,
    `deleted`, `missing`) and the retirement record. With `--transformer`

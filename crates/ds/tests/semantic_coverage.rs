@@ -304,11 +304,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "global_write",
         "headless_project",
     ),
-    ("design.comment.list", "read_only", "project"),
-    ("design.comment.post", "global_write", "project"),
-    ("design.comment.promote", "global_write", "project"),
-    ("design.comment.read", "read_only", "project"),
-    ("design.comment.resolve", "global_write", "project"),
+    ("design.comment.list", "read_only", "headless_project"),
+    ("design.comment.post", "global_write", "headless_project"),
+    ("design.comment.promote", "global_write", "headless_project"),
+    ("design.comment.read", "read_only", "headless_project"),
+    ("design.comment.resolve", "global_write", "headless_project"),
     (
         "report.project.map-inputs",
         "local_file_write",
@@ -336,9 +336,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.project.cancel", "local_file_write", "none"),
     ("design.project.result", "local_file_write", "none"),
     ("design.project.outbox", "read_only", "none"),
-    ("design.sync.status", "read_only", "project"),
-    ("design.sync.cancel", "global_write", "project"),
-    ("design.sync.resume", "global_write", "project"),
     ("design.project.report", "local_file_write", "none"),
     ("design.project.resolve-sources", "local_file_write", "none"),
     (
@@ -346,20 +343,40 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "headless_project",
     ),
-    ("design.consumer-grouping.apply", "global_write", "project"),
-    ("design.consumer-grouping.preview", "read_only", "project"),
-    ("design.consumer-grouping.read", "read_only", "project"),
+    (
+        "design.consumer-grouping.apply",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.consumer-grouping.preview",
+        "read_only",
+        "headless_project",
+    ),
+    (
+        "design.consumer-grouping.read",
+        "read_only",
+        "headless_project",
+    ),
     (
         "design.consumer-grouping.archive",
         "global_write",
-        "project",
+        "headless_project",
     ),
-    ("design.tag.enrich-preview", "read_only", "project"),
-    ("design.tag.enrich-apply", "global_write", "project"),
-    ("design.materials.preview", "read_only", "project"),
-    ("design.materials.apply", "global_write", "project"),
-    ("design.known-columns.list", "read_only", "project"),
-    ("design.known-columns.set", "global_write", "project"),
+    ("design.tag.enrich-preview", "read_only", "headless_project"),
+    (
+        "design.tag.enrich-apply",
+        "global_write",
+        "headless_project",
+    ),
+    ("design.materials.preview", "read_only", "headless_project"),
+    ("design.materials.apply", "global_write", "headless_project"),
+    ("design.known-columns.list", "read_only", "headless_project"),
+    (
+        "design.known-columns.set",
+        "global_write",
+        "headless_project",
+    ),
     // Saved Transformer Status selections are NATIVE from Slice 14b. The
     // decision did not move — ds-brain still evaluates membership — only
     // residency did, so the authority is `headless_project`: the selected
@@ -384,15 +401,15 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // so both stay `read_only` and usable on a project the caller cannot edit.
     // Every row is `project` authority: a group is assigned to transformers in
     // the paired session's selected project, never to a named one.
-    ("design.group.apply", "global_write", "project"),
-    ("design.group.export", "read_only", "project"),
-    ("design.group.list", "read_only", "project"),
-    ("design.group.preview", "read_only", "project"),
-    ("design.group.unassign", "global_write", "project"),
-    ("design.tag.define", "global_write", "project"),
-    ("design.tag.list", "read_only", "project"),
-    ("design.tag.query", "read_only", "project"),
-    ("design.tag.set", "global_write", "project"),
+    ("design.group.apply", "global_write", "headless_project"),
+    ("design.group.export", "read_only", "headless_project"),
+    ("design.group.list", "read_only", "headless_project"),
+    ("design.group.preview", "read_only", "headless_project"),
+    ("design.group.unassign", "global_write", "headless_project"),
+    ("design.tag.define", "global_write", "headless_project"),
+    ("design.tag.list", "read_only", "headless_project"),
+    ("design.tag.query", "read_only", "headless_project"),
+    ("design.tag.set", "global_write", "headless_project"),
     // The headless Design read spine: the status rows every other Design
     // answer is built from, on the same native credential class as the
     // inventory because restoring the native session may rotate it.
@@ -442,7 +459,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.activities.sweep", "artifact_write", "headless_user"),
     ("design.activities.read", "read_only", "headless_user"),
     ("design.intake.upload", "global_write", "headless_project"),
-    ("design.transformer.download", "local_ui", "project"),
     (
         "design.transformer.inventory",
         "local_auth_state",
@@ -480,7 +496,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.model.import-external", "local_file_write", "none"),
     ("dsgrid.model.list", "read_only", "none"),
     ("dsgrid.model.show", "read_only", "none"),
-    ("dsgrid.model.prepare-project", "local_ui", "project"),
+    (
+        "dsgrid.model.prepare-project",
+        "local_file_write",
+        "headless_project",
+    ),
     ("dsgrid.model.set-active", "local_file_write", "none"),
     // The typed command family over the engine (program contract 01 §2):
     // authority none on a working copy or a package file, `local_file_write`
@@ -929,7 +949,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // application's catalogue; `read` writes one new local file through the
     // desktop; `promote` changes the desktop's local layers and nothing
     // governed; classify/attach/ingest/folder are ds-brain writes.
-    ("assets.attach", "global_write", "project"),
+    ("assets.attach", "global_write", "headless_project"),
     ("assets.reference", "global_write", "headless_project"),
     ("assets.map.publish", "global_write", "headless_project"),
     // Backup planning reads only supplied deletion metadata. Archive fetch
@@ -940,14 +960,14 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.network.resolve", "global_write", "headless_project"),
     ("solar.network.save", "local_file_write", "none"),
     ("solar.network.map", "global_write", "headless_project"),
-    ("assets.classify", "global_write", "project"),
-    ("assets.folder", "global_write", "project"),
-    ("assets.ingest", "global_write", "project"),
-    ("assets.list", "read_only", "project"),
-    ("assets.preview", "read_only", "project"),
-    ("assets.promote", "local_ui", "project"),
-    ("assets.read", "local_file_write", "project"),
-    ("assets.tree", "read_only", "project"),
+    ("assets.classify", "global_write", "headless_project"),
+    ("assets.folder", "global_write", "headless_project"),
+    ("assets.ingest", "global_write", "headless_project"),
+    ("assets.list", "read_only", "headless_project"),
+    ("assets.preview", "read_only", "headless_project"),
+    ("assets.promote", "local_file_write", "headless_project"),
+    ("assets.read", "local_file_write", "headless_project"),
+    ("assets.tree", "read_only", "headless_project"),
     // Every `pm` command is a headless project command since 2026-09-20:
     // `POST /api/v1/pm` under the native credential, folded by the kernel.
     ("pm.plan", "read_only", "headless_project"),

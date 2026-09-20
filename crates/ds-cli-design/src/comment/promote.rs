@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 use crate::comment::read::THREAD_ARG;
 
 const TITLE_ARG: Arg = Arg {
@@ -33,34 +33,25 @@ refused rather than linked twice, so a conversation cannot end up forked across 
 two work items.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[THREAD_ARG, TITLE_ARG, DESCRIPTOR_ARG],
+    args: &[THREAD_ARG, TITLE_ARG, LANE_ARG],
     output: "The project, the `thread`, the linked `task` id and the thread's committed `version`.",
     examples: &[Example {
         command: "ds design comment promote --thread thread-clearance --yes",
         note: "Pass --title to give the task a different name from the thread.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::READ_ONLY,
         crate::CONFLICT,
         crate::CONFIRMATION_REQUIRED,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -69,14 +60,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(title) = inputs.value("title") {
         arguments.insert("title".into(), json!(title));
     }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::COMMENT_PROMOTE,
+    crate::headless::perform(
+        "design.comment.promote",
         Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

@@ -382,27 +382,16 @@ photographs said.
 
 ## Local transformer rooms for background work
 
-`ds design transformer download` materializes saved transformer rooms into the
-paired application's local cache without opening a map or entering any
-transformer edit context. It is the preparation step for a local report when
-the room is not already on this device. Omit `--transformer` for every active
-ordinary transformer, or repeat the flag for an exact subset:
-
-```bash
-ds desktop status --output json
-ds design transformer download --transformer TX-1 --transformer TX-2 --output json
-ds design transformer download --output json
-```
-
-The paired application's visible project is authoritative because that
-application owns the destination cache. This differs deliberately from the
-CLI-selected headless project used by retirement and project-wide cloud
-reports. The operation does not navigate, process, renumber, stage, save,
-publish or version anything. A clean room already at the saved server version
-is reused. `--force` refreshes clean rooms, but never overwrites a dirty local
-room. The bounded receipt distinguishes downloaded, already-local,
-dirty-preserved, failed and cancelled names and states `staged: false`,
-`persisted: false`, and `context_changed: false`.
+`ds design transformer download` was retired on 2026-09-20. It warmed the
+paired application's private room cache (its browser store) for a report that
+the native report path no longer needs: `ds report project …` reads rooms
+from the service under the native credential and publishes the result as a
+project artefact. Nothing headless has a window cache to warm, and a second
+cache the CLI would own was refused deliberately (contract
+`dsgrid-authority/01-server-required.md`, decision 14). The same decision
+retired `ds design sync status|cancel|resume`, which inspected the window's
+own reconciliation queue; the kernel sync store the Server and the desktop
+share is the only queue, and `ds report outbox status|drain` is its surface.
 
 ## Reversible transformer retirement
 
@@ -458,29 +447,40 @@ decides who may write, it arbitrates two people editing the same record in the
 same second, and it refuses a write authored against a version that has since
 moved. Attachment commands run headlessly under native authorization for the explicit
 `--project`. LV revision bindings use governance `vN`; MV bindings use the exact
-content `source_revision`, never the governance ordinal. Tag and comment commands
-remain named semantic operations the paired application performs under its session.
-`ds` sends a request and receives an outcome. It never receives a credential,
-and it never runs code inside the application — `docs/reference/desktop.status.md`
-has the pairing argument in full.
+content `source_revision`, never the governance ordinal.
 
-**Saved selections are the exception, and only in where they run from.**
-`ds design selection list|read|save|archive|assign` reach ds-brain directly on
-this machine's own signed-in session. Nothing about the authority changed:
-ds-brain still evaluates membership, still owns the version, and still refuses a
-write authored against a version that has moved. What changed is that reading a
-server-owned answer no longer needs a browser open to hold the credential. Two
-rules follow, and both are enforced rather than documented: a version is READ by
-a read this process performed, never asserted from a flag; and the member digest
-`assign` echoes is the one `read` returned, never recomputed here. A selection
-drawn by lasso on a rendered map is a different thing and stays with the paired
-application as `ds map design select`.
+Since 2026-09-20 tags, groups, consumer grouping, comments, known columns and
+material propagation run headless too: each command is one closed kernel door
+(`ds_client_core::design_annotations`, `known_columns`, and the
+material-propagation report action) that `ds auth` runs under the restored
+native user and its audience-fenced selected project for `--lane
+stable|canary`. `ds` sends a request and receives an outcome. It never holds
+a window, never receives a credential it did not mint, and answers the same
+on the Server and on the desktop. A caller who learned `--desktop-descriptor`
+from an older release is refused by name, `requires_window_retired`, before
+any credential is consulted.
+
+**Saved selections** `ds design selection list|read|save|archive|assign`
+reach ds-brain the same way. Nothing about the authority changed: ds-brain
+still evaluates membership, still owns the version, and still refuses a write
+authored against a version that has moved. Two rules follow, and both are
+enforced rather than documented: a version is READ by a read this process
+performed, never asserted from a flag; and the member digest `assign` echoes
+is the one `read` returned, never recomputed here. A selection drawn by lasso
+on a rendered map is a different thing and stays with the paired application
+as `ds map design select`.
 
 Version and attachment commands require explicit `--project` and native
 authorization independently of Desktop and the Web active project; since
-2026-09-18 `ds design status` and `ds design dashboard` do too. Tag and
-comment commands still use the paired application project; saved selections,
-the headless feature reads and LV export use the audience-fenced selected context.
+2026-09-18 `ds design status` and `ds design dashboard` do too. Tag, group,
+comment, known-columns and materials commands, saved selections, the headless
+feature reads and LV export use the audience-fenced selected context
+(`ds auth project use`).
+
+Idempotency keys for the writes that carry one (a comment post, a thread
+promotion, a group or consumer-grouping apply) are minted here from the
+device's own random source, never from a window, so a retried write is the
+same write to the service.
 
 ## Why this is not `ds map`
 
@@ -665,10 +665,18 @@ layer/field pair at a time; it does not edit or clear any feature value.
 
 `published` allows that property on later report, GIS and design-tile
 materializations. `hidden` removes the permission. An unlisted tag remains
-internal by default. The paired application reads the policy revision before
-writing, and ds-brain commits the one-field change, derived-output
-invalidation and audit row together. If another editor moves the revision,
-the write is refused and must be retried from a fresh `known-columns list`.
+internal by default. `set` reads the policy revision first, and ds-brain
+commits the one-field change, derived-output invalidation and audit row
+together. If another editor moves the revision, the write is refused and must
+be retried from a fresh `known-columns list`.
+
+The route is `GET|PATCH /config/{project}/known-columns` on ds-brain. On
+2026-09-20 neither lane's API Gateway publishes it (`ds-apis-tf`
+`api_ds_system.tf` publishes `/config/{eds_project_id}` GET only), so both
+commands answer `design_route_unavailable` there, with the publication as the
+remedy; the browser's known-columns feature is equally unreachable through
+the gateway and only works on a local dev stack. This is a finding, not a
+CLI defect.
 
 ## Typed tag definitions and Transformer Status queries
 
@@ -841,7 +849,9 @@ belongs to the governance surface, not to a headless command.
 | `design_service_failed` | the design collaboration service faulted; the request itself is sound |
 | `backend_unreachable` | the Data Solutions API did not answer the request the command needs |
 | `invalid_design_anchor` | the anchor names a reserved document or a kind that does not exist |
-| `attachment_too_large` | the file exceeds the desktop's bounded path reader |
+| `attachment_too_large` | the file exceeds the bounded path reader |
+| `design_route_unavailable` | this lane's API Gateway does not publish the known-columns route |
+| `requires_window_retired` | `--desktop-descriptor` was given to a command that runs headless now |
 | `invalid_value_list` | a comma-separated flag was given but carries no values |
 | `too_many_values` | a list flag carries more entries than the record accepts |
 | `missing_comment_target` | neither `--thread` nor a complete `--kind`/`--object`/`--title` |
@@ -851,8 +861,8 @@ belongs to the governance surface, not to a headless command.
 | `invalid_reason` | `--reason` is blank, untrimmed or over 512 characters |
 | `design_plan_invalid` | the shared kernel refused the assembled preview: an unknown verb or format, or more rows than the register holds |
 
-Those four replace what `desktop_refused` used to carry for the collaboration
-surfaces, and the class is what a caller acts on: an exceeded bound and an
+Those four are what `ds auth` types from the route's HTTP status, and the
+class is what a caller acts on: an exceeded bound and an
 unknown record are `invalid_input`, so the identical call can never succeed,
 while a service fault and an unreachable API are `unavailable` and the same
 call works once the service answers. A write that never answered may still
@@ -863,9 +873,10 @@ The headless `transformer` family adds the native-profile, headless-session
 and `auth_*` codes `ds tile --help` documents once; `auth_rejected` there also
 covers an archived or expired project and a missing capability.
 
-The pairing refusals (`desktop_not_paired`, `desktop_ambiguous`,
-`desktop_unreachable`, `pairing_rejected`, `desktop_signed_out`) are the shared
-set every bridge domain uses; `ds map --help` documents them once.
+No command in this domain pairs with a window any more, so none of the
+pairing refusals (`desktop_not_paired`, `desktop_unreachable`, …) can be
+answered here; `ds map --help` documents them for the commands that still
+need a rendered map.
 
 ## Status row truth
 

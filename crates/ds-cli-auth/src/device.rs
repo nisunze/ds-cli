@@ -782,6 +782,42 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, shared_assets, project, command)
     }
+    pub fn project_assets(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::project_assets::Command,
+        reader: Option<&mut dyn std::io::Read>,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, project_assets, project, command, reader)
+    }
+    pub fn design_annotations(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::design_annotations::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, design_annotations, project, command)
+    }
+    pub fn known_columns(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::known_columns::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, known_columns, project, command)
+    }
+    pub fn material_propagation(
+        &mut self,
+        project: &str,
+        request: &Value,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, material_propagation, project, request)
+    }
+    pub fn read_asset_bytes(
+        &mut self,
+        project: &str,
+        asset_id: &str,
+    ) -> Result<(Value, Vec<u8>), ClientError> {
+        fixed_device_call!(self, read_asset_bytes, project, asset_id)
+    }
     pub fn design_versions(
         &mut self,
         project: &str,

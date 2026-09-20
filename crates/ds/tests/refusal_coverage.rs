@@ -31,6 +31,12 @@ mod common;
 /// Codes a caller cannot reach, with why.
 const NOT_A_REFUSAL: &[(&str, &str)] = &[
     (
+        "design_operation_unowned",
+        "raised only if `ds design`'s headless dispatcher is handed a command id \
+         its match does not own — every registered design command is an arm, \
+         held there by ds-cli-design's own unit test",
+    ),
+    (
         "task_geometry_unmapped",
         "raised only if the kernel's closed task-geometry refusal vocabulary \
          gained a code this build does not map — a defect in ds, held to the \
@@ -1378,6 +1384,35 @@ export const settings = { code: 'metric', label: 'Settings' };
 /// nothing belongs here that mints a code of its own.
 const APPLICATION_CODE_NOT_A_LITERAL: &[(&str, &str)] = &[];
 
+/// Codes the application still mints for a bridge domain `ds` no longer
+/// sends to, with why.
+///
+/// `ds assets` left the paired bridge on 2026-09-20 (contract 01 of the
+/// dsgrid-authority program): every catalogue command answers headless, so
+/// these refusals of the application's own Assets adapter can no longer
+/// reach a `ds` caller and no command documents them. TypeScript is read-only
+/// (its removal is ledgered separately), so the adapter keeps minting them
+/// for the tab; each entry here is checked to still be minted, so the list
+/// cannot outlive its reason.
+const RETIRED_BRIDGE_CODES: &[(&str, &str)] = &[
+    (
+        "asset_is_not_a_file",
+        "the Assets tab's read of a projected summary row; headless, a projected `sys:` row is `origin_read_unavailable`",
+    ),
+    (
+        "assets_offline_write",
+        "the application's offline mode; a headless catalogue write has no offline mode to be in",
+    ),
+    (
+        "origin_unreachable",
+        "the application's connectivity check before a source read; headless, a failed fetch is the transport's own refusal",
+    ),
+    (
+        "backend_unreachable",
+        "the browser's design-collab adapter naming a fetch that never answered; headless (2026-09-20) the same condition is `ds auth`'s `auth_transient` / `device_auth_transient`, declared by every design command",
+    ),
+];
+
 /// Every way the desktop-instance owner can refuse is a code some command
 /// publishes.
 ///
@@ -1486,9 +1521,22 @@ fn every_application_refusal_code_is_documented() {
     );
 
     let (_, all_declared) = declared_codes();
+    for (code, _) in RETIRED_BRIDGE_CODES {
+        assert!(
+            codes.contains(*code),
+            "`{code}` is listed as a retired bridge code the application still \
+             mints, and it no longer does. Remove the entry: an accounting list \
+             that outlives its reason hides the next one."
+        );
+        assert!(
+            !all_declared.contains(*code),
+            "`{code}` is listed as unreachable from `ds`, yet a command declares it"
+        );
+    }
+    let retired: BTreeSet<&str> = RETIRED_BRIDGE_CODES.iter().map(|(code, _)| *code).collect();
     let undocumented: Vec<String> = codes
         .iter()
-        .filter(|code| !all_declared.contains(*code))
+        .filter(|code| !all_declared.contains(*code) && !retired.contains(code.as_str()))
         .map(|code| format!("  `{code}`"))
         .collect();
 

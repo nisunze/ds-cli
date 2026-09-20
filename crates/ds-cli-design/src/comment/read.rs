@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 
 pub const THREAD_ARG: Arg = Arg {
     name: "thread",
@@ -32,9 +32,9 @@ author, its place in the sequence and its time, and is reported as redacted \
 with a null body rather than shown as an empty message.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[THREAD_ARG, DESCRIPTOR_ARG],
+    args: &[THREAD_ARG, LANE_ARG],
     output: "\
 The project, the `thread`, its `title`, `state`, `version` and linked `task`, \
 whether there is `more` than one page of comments, and rows of `comment`, \
@@ -44,33 +44,19 @@ whether there is `more` than one page of comments, and rows of `comment`, \
         note: "Read .data.version before resolving or promoting; both are version-checked.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-    ],
+    refusals: &crate::headless_refusals!(crate::NOT_PERMITTED,),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::COMMENT_READ,
+    crate::headless::perform(
+        "design.comment.read",
         json!({ "thread": inputs.require("thread")? }),
-        crate::READ_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

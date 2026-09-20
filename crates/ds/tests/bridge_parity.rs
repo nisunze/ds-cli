@@ -50,7 +50,6 @@ struct App {
     cli_errors: String,
     materialize: String,
     analysis: String,
-    assets: String,
     dsgrid: String,
     dsgrid_contract: String,
     style_fill_pattern: String,
@@ -83,7 +82,6 @@ fn app() -> Option<App> {
         cli_errors: read("src/lib/desktop/cli-errors.ts")?,
         materialize: read("src/lib/search-place/materialize.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
-        assets: read("src/lib/desktop/cli-assets.ts")?,
         dsgrid: read("src/lib/desktop/cli-dsgrid.ts")?,
         dsgrid_contract: read("docs/dsgrid-local-model-and-project-publication-contract.md")?,
         style_fill_pattern: read("src/lib/styles/fill-pattern.ts")?,
@@ -1013,117 +1011,6 @@ fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt(
 // silently ignores: `invoke` refuses an undeclared key before it is sent, but
 // nothing refuses a declared key the adapter never reads.
 
-#[test]
-fn every_assets_command_has_one_closed_operation_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-
-    let mut seen = BTreeSet::new();
-    let allowlist = between(
-        &app.transport,
-        "pub const CLI_OPERATIONS: &[&str] = &[",
-        "];",
-    );
-    assert!(
-        !allowlist.is_empty(),
-        "the desktop CLI operation allowlist is absent"
-    );
-    for operation in ds_cli_assets::BRIDGE_OPS {
-        assert!(
-            seen.insert(operation.operation),
-            "`{}` is declared twice by ds assets; one semantic operation has one owner",
-            operation.operation
-        );
-        assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "`{}` must appear exactly once in the desktop allowlist",
-            operation.operation
-        );
-        assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
-            1,
-            "`{}` must have exactly one frontend handler",
-            operation.operation
-        );
-
-        let contract = operation_contract(&app.assets, operation.operation);
-        assert!(
-            !contract.is_empty(),
-            "`{}` has no typed Project Assets adapter argument contract",
-            operation.operation
-        );
-        let accepted = quoted_contract_items(contract);
-        for argument in operation.arguments {
-            let mut parts = argument.split('.');
-            let top = parts.next().expect("declared argument is non-empty");
-            assert!(
-                accepted.contains(top),
-                "ds assets sends `{argument}` to `{}`, but its typed adapter does not accept `{top}`",
-                operation.operation
-            );
-            for nested in parts {
-                assert!(
-                    app.assets.contains(&format!("'{nested}'")),
-                    "ds assets sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
-                    operation.operation
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn assets_bounds_and_refusals_match_the_desktop_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-
-    // A bound enforced in two places must be the SAME bound. A `--limit` this
-    // CLI accepts and the application refuses is a round trip spent to learn
-    // a number both sides already knew; a `--depth` this CLI accepts and the
-    // kernel quietly cuts is worse, because the answer still looks complete.
-    for (constant, value) in [
-        ("MAX_PAGE_SIZE", ds_cli_assets::MAX_PAGE_SIZE),
-        ("MAX_TREE_DEPTH", ds_cli_assets::MAX_TREE_DEPTH),
-        ("MAX_QUERY_CHARS", ds_cli_assets::MAX_QUERY_CHARS as i64),
-        (
-            "MAX_CONTAINER_MEMBERS",
-            ds_cli_assets::MAX_CONTAINER_MEMBERS as i64,
-        ),
-        (
-            "MAX_LAYER_NAME_CHARS",
-            ds_cli_assets::MAX_LAYER_NAME_CHARS as i64,
-        ),
-        (
-            "MAX_FOLDER_SEGMENTS",
-            ds_cli_assets::MAX_FOLDER_SEGMENTS as i64,
-        ),
-        ("MAX_SEGMENT_CHARS", ds_cli_assets::MAX_SEGMENT_CHARS as i64),
-    ] {
-        assert!(
-            app.assets.contains(&format!("const {constant} = {value}")),
-            "the desktop must bound Project Assets `{constant}` at {value}, exactly as ds assets does"
-        );
-    }
-
-    // `classify`, `attach` and `folder` refuse a projected `sys:` row by name.
-    // Only the application knows which rows are projections, so it is the side
-    // that constructs the refusal; `ds assets` declares the code and the
-    // remedy. If the marker leaves the adapter, a write to a system row comes
-    // back as `desktop_refused` with nothing to do about it.
-    assert!(
-        app.assets
-            .contains(ds_cli_assets::PROJECTED_ASSET_READ_ONLY.code),
-        "no `{}` marker remains in the desktop Project Assets adapter; a write to a \
-         projected row would report desktop_refused instead of its named refusal",
-        ds_cli_assets::PROJECTED_ASSET_READ_ONLY.code
-    );
-}
-
 // ---------------------------------------------------------------------------
 // DS Grid local model lifecycle and project publication
 // ---------------------------------------------------------------------------
@@ -1146,8 +1033,11 @@ const DSGRID_RETIRED_OPERATIONS: &[&str] = &[
     "dsgrid.model.import",
     "dsgrid.model.set_active",
 ];
-const DSGRID_PROJECT_OPERATIONS: &[&str] =
-    &["dsgrid.model.prepare_project", "dsgrid.model.publish"];
+/// `dsgrid.model.prepare_project` left this door on 2026-09-20: readiness
+/// is a fact about this machine's catalogue against the project's governed
+/// heads, and a missing head is downloaded through `ds dsgrid project
+/// download`'s door (contract dsgrid-authority/01, decision 19).
+const DSGRID_PROJECT_OPERATIONS: &[&str] = &["dsgrid.model.publish"];
 
 #[test]
 fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments() {
@@ -1203,8 +1093,8 @@ fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments
     assert_eq!(
         seen.len(),
         DSGRID_PROJECT_OPERATIONS.len(),
-        "the family sends exactly the two operations that are about the application's own \
-         working copy and project cache"
+        "the family sends exactly the one operation that is about the application's own \
+         working copy"
     );
     let allowlist = between(
         &app.transport,
@@ -1226,9 +1116,9 @@ fn the_dsgrid_project_operations_still_name_the_applications_own_project() {
     // ds-web used to publish a project-independent operation list on each side
     // because the four local operations had to work in a projectless session.
     // They no longer cross a wire, so that list is empty and this suite holds
-    // what is left: the two operations that DO read the application's project
-    // are the only ones the door admits, and neither carries a project of its
-    // own — the application's selected project is the destination.
+    // what is left: the one operation that DOES read the application's project
+    // is the only one the door admits, and it carries no project of its own —
+    // the application's selected project is the destination.
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
@@ -1515,114 +1405,6 @@ fn the_data_domain_sends_only_operations_the_desktop_owns() {
     assert!(app.cli_errors.contains("CliStructuredRefusal"));
     assert!(app.transport.contains("StructuredInvocationError"));
     assert!(app.transport.contains("auth_context_mismatch"));
-}
-
-#[test]
-fn every_design_collaboration_command_has_one_closed_operation_owner_and_exact_arguments() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-    let allowlist = between(
-        &app.transport,
-        "pub const CLI_OPERATIONS: &[&str] = &[",
-        "];",
-    );
-    let mut seen = BTreeSet::new();
-    for operation in ds_cli_design::BRIDGE_OPS {
-        assert!(
-            seen.insert(operation.operation),
-            "`{}` is declared twice by ds design; one semantic operation has one owner",
-            operation.operation
-        );
-        assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "`{}` must appear exactly once in the native allowlist",
-            operation.operation
-        );
-        assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
-            1,
-            "`{}` must have exactly one frontend handler",
-            operation.operation
-        );
-        // Presence, not non-emptiness: `design.known-columns.list` takes no
-        // arguments and its contract is legitimately `[]`. Asserting the
-        // extracted text was non-empty made a zero-argument operation
-        // indistinguishable from a missing one.
-        assert!(
-            has_operation_contract(&app.design_collaboration, operation.operation),
-            "`{}` has no typed design-collaboration adapter contract",
-            operation.operation
-        );
-        let contract = operation_contract(&app.design_collaboration, operation.operation);
-        // Exact, not a subset: an argument the adapter accepts but `ds design`
-        // never sends is a key nothing validates, and one `ds design` sends
-        // that the adapter rejects is a command that cannot work.
-        let accepted = quoted_contract_items(contract);
-        let declared: BTreeSet<String> = operation
-            .arguments
-            .iter()
-            .map(|argument| (*argument).to_string())
-            .collect();
-        assert_eq!(
-            accepted, declared,
-            "`{}` must accept exactly the keys ds design declares",
-            operation.operation
-        );
-    }
-}
-
-#[test]
-fn design_collaboration_stays_metadata_only_and_owns_no_map_state() {
-    // The roadmap requires metadata workflows to be headless. `ds design` lives
-    // beside `ds work` rather than under `ds map` precisely because none of its
-    // operations needs a map instance, an edit session or a design room — and
-    // the adapter that serves them must not acquire one.
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-    for map_owned in [
-        "$lib/stores/map",
-        "maplibre-gl",
-        "$lib/design/edit-context",
-        "mapInstance",
-        "editSession",
-    ] {
-        assert!(
-            !app.design_collaboration.contains(map_owned),
-            "the design-collaboration adapter reaches map-owned state (`{map_owned}`); \
-             these operations must work with no map open"
-        );
-    }
-    // One client, shared with the dialogs, so the CLI and the UI exercise the
-    // same server contract and the same refusal vocabulary.
-    assert!(
-        app.design_collaboration
-            .contains("from '$lib/api/design-collab'"),
-        "the design-collaboration adapter must reach ds-brain through the same \
-         client the dialogs use, not a second one"
-    );
-}
-
-#[test]
-fn design_collaboration_bounds_match_the_desktop_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-    // `ds design` refuses an over-large --limit locally so it is refused once,
-    // not twice. That is only true while both sides agree on the number.
-    assert!(
-        app.design_collaboration.contains(&format!(
-            "const MAX_PAGE = {};",
-            ds_cli_design::MAX_PAGE_SIZE
-        )),
-        "ds design bounds a page at {} but the desktop adapter does not",
-        ds_cli_design::MAX_PAGE_SIZE
-    );
 }
 
 #[test]

@@ -869,11 +869,15 @@ dependencies = [
 name = "ds-cli-assets"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "ds-cli-auth",
  "ds-cli-contract",
- "ds-cli-desktop",
+ "ds-client-core",
  "ds-command-kernel",
+ "ds-layer-store",
+ "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -932,7 +936,6 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
- "ds-cli-desktop",
  "ds-cli-exec",
  "ds-cli-report",
  "ds-client-core",

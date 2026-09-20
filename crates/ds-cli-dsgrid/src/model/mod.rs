@@ -80,10 +80,6 @@ pub use ds_cli_desktop::ops::{
 // The declared wire contract
 // ---------------------------------------------------------------------------
 
-pub const MODEL_PREPARE_PROJECT: BridgeOp = BridgeOp {
-    operation: "dsgrid.model.prepare_project",
-    arguments: &["downloadMissing"],
-};
 pub const MODEL_PUBLISH: BridgeOp = BridgeOp {
     operation: "dsgrid.model.publish",
     arguments: &[
@@ -101,11 +97,14 @@ pub const MODEL_PUBLISH: BridgeOp = BridgeOp {
 /// An operation absent from this list is one the parity test never proves
 /// against the application.
 /// What this domain can still send to the paired application: the working
-/// copy the application itself holds open, and the project cache it keeps.
-/// Model management left this door on 2026-09-18 — a working copy is a fact
-/// about a machine, so `ds dsgrid model list|create-local|import-external|
-/// set-active` answer from this machine's own catalogue.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[&MODEL_PREPARE_PROJECT, &MODEL_PUBLISH];
+/// copy the application itself holds open. Model management left this door
+/// on 2026-09-18 — a working copy is a fact about a machine, so `ds dsgrid
+/// model list|create-local|import-external|set-active` answer from this
+/// machine's own catalogue — and `prepare-project` left it on 2026-09-20:
+/// readiness is a fact about this machine's catalogue against the project's
+/// governed heads, and a missing head is downloaded through the same door
+/// `ds dsgrid project download` uses.
+pub const BRIDGE_OPS: &[&BridgeOp] = &[&MODEL_PUBLISH];
 
 /// The largest page of local models one read returns. A hand copy of the
 /// adapter's own `MAX_LIST_LIMIT`, held to it by `tests/bridge_parity.rs`; the
@@ -328,12 +327,11 @@ mod tests {
         let mut unique = names.clone();
         unique.dedup();
         assert_eq!(names, unique, "an operation is declared twice");
-        // Two since model management left this door on 2026-09-18: what is
-        // left is the working copy the application itself holds open and the
-        // project cache it keeps.
+        // One since 2026-09-20: what is left is the working copy the
+        // application itself holds open, published from the window.
         assert_eq!(
             names.len(),
-            2,
+            1,
             "the family sends exactly one operation per command"
         );
         assert!(
@@ -390,13 +388,6 @@ mod tests {
         // import-external|set-active` answer from this machine's own
         // catalogue, so their project-independence is now a fact about a
         // store that has no project field (`ds_command_kernel::local_models`).
-        assert!(
-            !MODEL_PREPARE_PROJECT
-                .arguments
-                .iter()
-                .any(|argument| argument.contains("project")),
-            "the project cache read names the application's own project, never one of its own"
-        );
         assert!(
             !MODEL_PUBLISH.arguments.contains(&"project"),
             "publication targets the paired session's own selected project; \

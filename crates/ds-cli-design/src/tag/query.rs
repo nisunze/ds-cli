@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, MAX_TAG_QUERY_FILTERS, MAX_TAG_QUERY_ROWS};
+use crate::{LANE_ARG, MAX_TAG_QUERY_FILTERS, MAX_TAG_QUERY_ROWS};
 
 const KIND_ARG: Arg = Arg {
     name: "kind",
@@ -105,7 +105,7 @@ A choice predicate is matched against the stored vocabulary byte for byte and \
 refuses, never returning an empty set for a value the project never authored.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         KIND_ARG,
@@ -116,7 +116,7 @@ refuses, never returning an empty set for a value the project never authored.",
         INTEGER_ARG,
         NUMBER_ARG,
         LIMIT_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "The complete matched object rows plus scanned object, assignment and read counts; never a silently truncated selection.",
     examples: &[
@@ -136,16 +136,7 @@ refuses, never returning an empty set for a value the project never authored.",
             runnable: false,
         },
     ],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::INVALID_TAG_INPUT,
         crate::INVALID_VALUE_LIST,
         crate::TOO_MANY,
@@ -153,15 +144,11 @@ refuses, never returning an empty set for a value the project never authored.",
         crate::INVALID_NUMBER,
         crate::TAG_VALUE_CASE_MISMATCH,
         crate::TAG_VALUE_NOT_IN_VOCABULARY,
-        crate::INVALID_DESIGN_REQUEST,
-        crate::DESIGN_RECORD_NOT_FOUND,
-        crate::DESIGN_SERVICE_FAILED,
-        crate::BACKEND_UNREACHABLE,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -211,14 +198,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             MAX_TAG_QUERY_ROWS,
         )?),
     );
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TAG_QUERY,
+    crate::headless::perform(
+        "design.tag.query",
         Value::Object(arguments),
-        crate::READ_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 fn presence_filter(raw: &str) -> Result<Value, Failure> {

@@ -63,6 +63,40 @@ Map rendering, session sketches and interactive design commands still use the
 paired desktop bridge. The following sections describe those presentation and
 editing commands; native layer and GIS commands are described separately below.
 
+### Rooms are the window's; what a room does is not
+
+A `map.design.*` command drives the desktop's rendered edit context — a room —
+and stays `requires: window` because its effect *is* that room. Nothing a room
+does to governed project data is reachable only through a window, though:
+every room operation has a headless owner that carries the same effect with
+no desktop, on the Server or on a closed laptop, under the native credential
+(`dsgrid-authority/01-server-required.md`, decision 18). The room stages and
+the owner commits, so the argument shapes differ on purpose. The ledger is
+executable: `crates/ds/tests/lens_core_boundary.rs` `ROOM_HEADLESS_OWNERS`
+refuses a room operation without a registered headless owner.
+
+| room operation | headless owner |
+|---|---|
+| `map design open` / `read` | `design lv project-export` (governed snapshot to disk), `design project write` / `read`, `design status` |
+| `map design select` | `design features select` |
+| `map design set` / `create` / `delete` / `geometry` | `design project edit` (one atomic, version-fenced batch) |
+| `map design discard` | `design project restore` |
+| `map design setup` | `design process settings`, `design config read` / `set` |
+| `map design process` / `batch process` | `design project process`, `design lv process` |
+| `map design save` / `batch save` | `design lv project-save` (version-verified), `design version begin` |
+| `map design report` / `batch report` | `design project report`, `report project export` |
+| `map design attach-print` | `design attachment publish` |
+| `map design list` | `design transformer inventory`, `design status` |
+| `map design pin` | `design pinned preview` (the Working set itself is window state) |
+| `map design version play` / `compare` | `design version list` / `restore`, `design version compare` |
+| `map design upload inspect` / `stage` | `design intake upload` |
+| `map design layer-to-local` / `upload-to-local` | `design project read` + `map local register` |
+
+`map survey download` warms the window's survey cache (`survey entries select`
+is the headless read). `map survey migrate plan|apply` is the one governed
+operation here with no headless owner yet: a cloud-to-cloud survey migration
+that only the window's session calls today — deferred whole, see decision 18.
+
 ## Two tiers, and why they are not one
 
 | | Local layers | Design layers |

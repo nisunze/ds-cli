@@ -32,7 +32,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 
 /// ds-brain's own bound: one apply is one Firestore transaction, and 50
 /// transformers × six administrative levels leaves room for the definition
@@ -99,9 +99,9 @@ explicit — assign, reassign, unchanged, unassign, not_located, \
 unsupported_jurisdiction or refused — and the plan digest fences the apply.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMERS_ARG, REFERENCE_REVISION_ARG, DESCRIPTOR_ARG],
+    args: &[TRANSFORMERS_ARG, REFERENCE_REVISION_ARG, LANE_ARG],
     output: "\
 The project, resolved jurisdiction and country, the reference revision (or \
 `unpinned`), the governed definitions the plan touches, one ordered outcome per \
@@ -111,22 +111,11 @@ transformer and level, per-action counts, and the plan digest.",
         note: "Read counts and outcomes before applying; `unsupported_jurisdiction` is a valid answer.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-    ],
+    refusals: &crate::headless_refusals!(crate::NOT_PERMITTED,),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static APPLY_COMMAND: Command = Command {
@@ -143,13 +132,13 @@ re-running this is the repair path. Source evidence — the raw administrative \
 fields, their codes and the geometry behind them — is never touched.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         TRANSFORMERS_ARG,
         DIGEST_ARG,
         REFERENCE_REVISION_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "The same plan, with `applied` true and the counts that landed.",
     examples: &[Example {
@@ -157,23 +146,11 @@ fields, their codes and the geometry behind them — is never touched.",
         note: "The digest comes from preview; ds carries it and never mints one.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::group::PLAN_STALE,
-    ],
+    refusals: &crate::headless_refusals!(crate::NOT_PERMITTED, crate::group::PLAN_STALE,),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 // The arguments are built BEFORE the descriptor is resolved, in both doors.
@@ -183,27 +160,21 @@ fields, their codes and the geometry behind them — is never touched.",
 
 pub fn run_preview(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TAG_ENRICH_PREVIEW,
+    crate::headless::perform(
+        "design.tag.enrich-preview",
         arguments,
-        crate::READ_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn run_apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut arguments = arguments(inputs)?;
     arguments["digest"] = Value::String(inputs.require("digest")?.to_string());
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TAG_ENRICH_APPLY,
+    crate::headless::perform(
+        "design.tag.enrich-apply",
         arguments,
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

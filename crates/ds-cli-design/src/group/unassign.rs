@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 use crate::group::{DIGEST_ARG, GROUP_ARG, TRANSFORMERS_ARG};
 
 pub static COMMAND: Command = Command {
@@ -22,25 +22,16 @@ nothing. This is a separate command from `apply` for one reason: an unassign \
 must never be reachable by forgetting a flag.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[GROUP_ARG, TRANSFORMERS_ARG, DIGEST_ARG, DESCRIPTOR_ARG],
+    args: &[GROUP_ARG, TRANSFORMERS_ARG, DIGEST_ARG, LANE_ARG],
     output: "The same plan shape `preview` returns, with the committed `state` and per-entry outcomes.",
     examples: &[Example {
         command: "ds design group unassign --group city --transformers kigali_a --digest <plan-digest> --yes",
         note: "Preview the same set with no --value to obtain the digest this expects.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::READ_ONLY,
         crate::CONFLICT,
@@ -49,11 +40,11 @@ must never be reachable by forgetting a flag.",
         crate::INVALID_VALUE_LIST,
         crate::TOO_MANY,
         crate::CONFIRMATION_REQUIRED,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -64,14 +55,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         json!(crate::group::transformers(inputs)?),
     );
     arguments.insert("digest".into(), json!(inputs.require("digest")?));
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::GROUP_UNASSIGN,
+    crate::headless::perform(
+        "design.group.unassign",
         Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

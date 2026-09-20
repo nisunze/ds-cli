@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, VERSION_ARG};
+use crate::{LANE_ARG, VERSION_ARG};
 
 // The anchor is CONDITIONAL here, and only here: it is required to open a
 // thread and meaningless when appending to one. Reusing the domain's required
@@ -79,7 +79,7 @@ The author and their project role at the time are recorded server-side from the 
 signed-in session; `ds` cannot claim to be somebody else.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         BODY_ARG,
@@ -88,7 +88,7 @@ signed-in session; `ds` cannot claim to be somebody else.",
         OBJECT_ARG,
         TITLE_ARG,
         VERSION_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "The project, the `thread`, its `title` when newly opened, the resulting `comments` count and the thread's committed `version`.",
     examples: &[Example {
@@ -96,26 +96,17 @@ signed-in session; `ds` cannot claim to be somebody else.",
         note: "Pass --thread instead of --kind/--object/--title to append to an existing thread.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::headless_refusals!(
         crate::NOT_PERMITTED,
         crate::READ_ONLY,
         crate::INVALID_ANCHOR,
         MISSING_TARGET,
         crate::CONFIRMATION_REQUIRED,
-    ],
+    ),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 const MISSING_TARGET: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
@@ -155,14 +146,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
         }
     }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::COMMENT_POST,
+    crate::headless::perform(
+        "design.comment.post",
         Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

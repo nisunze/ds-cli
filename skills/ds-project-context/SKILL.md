@@ -23,13 +23,11 @@ sequence, cache, IndexedDB, Svelte, WASM, or backend implementation.
 
 Two project contexts exist and they are not the same thing. The paired
 application's visible project (`ds desktop status`) governs every `map.*`
-command and paired local-cache write. The CLI-selected project (`ds auth project use`,
+command that needs a rendered map. The CLI-selected project (`ds auth project use`,
 `ds auth project status`) governs selected-project `headless_project` commands — tiling,
-background reports, transformer inventory and retirement — with no map, room
-or Desktop. `design.transformer.download` is the deliberate bridge between
-those ideas: it prepares the paired application's local cache in the
-background without opening a map or room, and therefore uses the visible
-Desktop project. Switching one context never switches the other; read the descriptor's
+background reports, transformer inventory and retirement, tags, groups,
+comments, assets and project management — with no map, room or Desktop.
+Switching one context never switches the other; read the descriptor's
 `authority` and check the matching context before a durable operation. For the
 background family, read
 [references/background-project-operations.md](references/background-project-operations.md).

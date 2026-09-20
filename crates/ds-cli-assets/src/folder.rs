@@ -17,7 +17,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{CatalogueCommand, LANE_ARG};
 
 const PATH_ARG: Arg = Arg::value(
     "path",
@@ -102,17 +102,18 @@ when it does: a default sensitivity and status its new children inherit, or a \
 new name. A folder is a document, not a path derived from its children, so it \
 can be empty and can be renamed without touching them. Loosening a folder \
 default needs the same capability as loosening an asset. System folders are \
-projected, not declared, and are refused by name.",
+projected, not declared, and are refused by name. Headless: writes the \
+selected project's catalogue under the signed-in native credential, no window.",
     chapter: Chapter::Assets,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         PATH_ARG,
         SENSITIVITY_ARG,
         STATUS_ARG,
         RENAME_TO_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "\
 `folder` — the declared folder with `folder_id`, `path`, `name`, `parent`, \
@@ -122,35 +123,16 @@ projected, not declared, and are refused by name.",
         note: "Every asset ingested into it afterwards is confidential unless a stricter class is named.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
+    refusals: &crate::refusals::<26>(&[
         crate::INVALID_FOLDER_PATH,
         crate::PROJECTED_ASSET_READ_ONLY,
         crate::CONFIRMATION_REQUIRED,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_VERSION_CONFLICT,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
-        crate::ASSETS_OFFLINE_WRITE,
         crate::UNKNOWN_FOLDER,
-    ],
+    ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 /// The declaration, validated locally, in the exact keys the operation
@@ -203,14 +185,33 @@ fn new_name(raw: &str) -> Result<String, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ASSETS_FOLDER,
-        arguments,
-        crate::WRITE_TIMEOUT,
-    )
-    .map_err(crate::classify_assets_failure)
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let path = arguments["path"].as_str().unwrap_or_default().to_owned();
+    let text = |key: &str| arguments[key].as_str().map(str::to_owned);
+    // A rename or a default change is an update of the folder that exists;
+    // anything else is a create — and a create of a folder that exists is
+    // what the catalogue answers with `CONFLICT`, by name.
+    let command = match text("rename_to") {
+        None => CatalogueCommand::FolderCreate {
+            path,
+            default_sensitivity: text("sensitivity"),
+            default_status: text("status"),
+        },
+        Some(rename_to) => {
+            let existing = crate::folder_at(lane, &path)?;
+            CatalogueCommand::FolderUpdate {
+                folder_id: existing["folder_id"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                rename_to: Some(rename_to),
+                default_sensitivity: text("sensitivity"),
+                default_status: text("status"),
+                expected_version: existing["version"].as_u64().unwrap_or(1),
+            }
+        }
+    };
+    crate::catalogue(lane, &command)
 }
 
 pub fn render(data: &Value) -> String {
@@ -235,7 +236,6 @@ pub fn render(data: &Value) -> String {
 mod tests {
     use super::*;
     use ds_cli_contract::spec::ArgKind;
-    use ds_cli_desktop::ops::undeclared_key;
 
     fn parse(tokens: &[&str]) -> Inputs {
         let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn every_projected_root_is_refused_by_name_before_the_bridge() {
+    fn every_projected_root_is_refused_by_name_before_any_round_trip() {
         for root in SYSTEM_FOLDER_ROOTS {
             let failure = refused(&["--path", root]);
             assert_eq!(
@@ -311,7 +311,6 @@ mod tests {
             "epc-2026",
         ]))
         .expect("valid");
-        assert_eq!(undeclared_key(&crate::ASSETS_FOLDER, &payload), None);
         let mut keys: Vec<&str> = payload
             .as_object()
             .expect("object")

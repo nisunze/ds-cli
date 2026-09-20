@@ -12,10 +12,10 @@ publish.workspace = true
 ds-client-core = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-auth = { workspace = true }
-# Collaboration commands route through the paired application's project
-# session. Offline Fast LV compute links the same pure ds-network kernel the
-# browser's WASM adapter calls; the CLI adds no engineering logic.
-ds-cli-desktop = { workspace = true }
+# Collaboration commands are governed routes on ds-brain under the native
+# credential (`ds-cli-auth`); nothing here pairs with a window. Offline Fast LV
+# compute links the same pure ds-network kernel the browser's WASM adapter
+# calls; the CLI adds no engineering logic.
 ds-geo = { workspace = true }
 ds-network = { workspace = true }
 serde_json = { workspace = true }

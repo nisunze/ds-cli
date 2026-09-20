@@ -10,7 +10,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, DESCRIPTOR_ARG, MEMBER_ARG, PAGES_ARG, ROWS_ARG, SHEET_ARG};
+use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG, PAGES_ARG, ROWS_ARG, SHEET_ARG};
 
 /// Rows of one grid a human projection prints. The document carries what the
 /// §4 bounds allowed; this is the terminal's own bound on top of it, and it
@@ -28,23 +28,19 @@ pub static COMMAND: Command = Command {
     summary: "Preview one asset, or one pack member, as a bounded document.",
     purpose: "\
 Returns a preview document — text blocks, a bounded grid, mail headers, a \
-metadata card or feature geometry — decoded by the kernel inside the paired \
-application from cached or freshly fetched bytes. Never rendered pixels: the \
-caller gets text and the client does the drawing. A PDF answers a \
+metadata card or feature geometry — decoded by the kernel on the host running \
+`ds` from bytes fetched through the catalogue's signed read. Never rendered \
+pixels: the caller gets text and the client does the drawing. A PDF answers a \
 metadata-only document that names pdf.js as its renderer. Anything over a \
 bound is refused with the bound and the actual number, never silently cut, \
-and no preview ever fetches remote content.",
+and no preview ever fetches remote content. A projected sys: row is refused \
+by name. Headless: no window.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
-        ASSET_ARG,
-        MEMBER_ARG,
-        SHEET_ARG,
-        PAGES_ARG,
-        ROWS_ARG,
-        DESCRIPTOR_ARG,
+        ASSET_ARG, MEMBER_ARG, SHEET_ARG, PAGES_ARG, ROWS_ARG, LANE_ARG,
     ],
     output: "\
 `ds.assets.preview_doc/v1`: `asset_id`, `member`, `kind`, `format`, a `note`, \
@@ -55,37 +51,19 @@ each with its own `truncated` count.",
         note: "A geo member answers features; `ds assets promote` turns them into a local layer.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::INVALID_ASSET_ID,
+    refusals: &crate::refusals::<29>(&[
         crate::INVALID_NUMBER,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
-        crate::ASSET_IS_NOT_A_FILE,
+        crate::INVALID_ASSET_ID,
+        crate::INVALID_MEMBER,
         crate::ASSET_TOO_LARGE,
         crate::ORIGIN_READ_FAILED,
-        crate::ORIGIN_UNREACHABLE,
         crate::ORIGIN_READ_UNAVAILABLE,
-        crate::INVALID_MEMBER,
-    ],
+        crate::ASSETS_UNREADABLE,
+    ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 /// The preview request, validated locally, in the exact keys the operation
@@ -131,14 +109,54 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ASSETS_PREVIEW,
-        arguments,
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_assets_failure)
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let asset_id = arguments["asset"].as_str().unwrap_or_default().to_owned();
+    let (row, bytes) = crate::bytes(lane, &asset_id)?;
+    // The kernel previews a member in the MEMBER's format: it is read off the
+    // container's own directory walk (one more kernel call over the same
+    // bytes, no round trip), never guessed from the pack.
+    let format = match arguments["member"].as_str() {
+        None => row["format"].clone(),
+        Some(member) => {
+            let container = crate::with_bytes(
+                &bytes,
+                &json!({
+                    "schema": crate::REQUEST_SCHEMA,
+                    "action": "container_walk",
+                    "format": row["format"],
+                }),
+            )?;
+            container["members"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|entry| entry["path"].as_str() == Some(member))
+                .map(|entry| entry["format"].clone())
+                .ok_or_else(|| {
+                    Failure::invalid(
+                        "invalid_member",
+                        format!("`{member}` is not a member of {asset_id}"),
+                    )
+                    .remedy(crate::INVALID_MEMBER.remedy)
+                    .next(format!("ds assets tree --into {asset_id} --output json"))
+                })?
+        }
+    };
+    let mut request = json!({
+        "schema": crate::REQUEST_SCHEMA,
+        "action": "preview",
+        "format": format,
+        "name": row["name"],
+    });
+    for key in ["member", "sheet", "pages", "rows"] {
+        if let Some(value) = arguments.get(key) {
+            request[key] = value.clone();
+        }
+    }
+    let mut document = crate::with_bytes(&bytes, &request)?;
+    document["asset_id"] = json!(asset_id);
+    document["member"] = arguments.get("member").cloned().unwrap_or(Value::Null);
+    Ok(document)
 }
 
 pub fn render(data: &Value) -> String {
@@ -417,7 +435,6 @@ fn text_of(value: &Value) -> &str {
 mod tests {
     use ds_cli_contract::args::parse;
     use ds_cli_contract::output::{Format, Output};
-    use ds_cli_desktop::ops::undeclared_key;
 
     use super::*;
 
@@ -428,19 +445,10 @@ mod tests {
         }
     }
 
-    /// A descriptor path that cannot exist, so nothing pairs and every local
-    /// refusal below is proved to happen before the bridge is reached.
-    fn unpaired() -> [String; 2] {
-        [
-            "--desktop-descriptor".to_string(),
-            std::env::temp_dir()
-                .join(format!(
-                    "ds-cli-assets-preview-{}-absent.json",
-                    std::process::id()
-                ))
-                .display()
-                .to_string(),
-        ]
+    /// Every local refusal below is proved on the arguments alone: nothing
+    /// is fetched before a flag is checked.
+    fn unpaired() -> [String; 0] {
+        []
     }
 
     fn inputs(flags: &[&str]) -> Inputs {
@@ -450,14 +458,14 @@ mod tests {
     }
 
     fn refusal(flags: &[&str]) -> String {
-        run(&inputs(flags), &context())
-            .expect_err("an unpaired preview cannot succeed")
+        arguments(&inputs(flags))
+            .expect_err("a malformed request is refused before any round trip")
             .code()
             .to_string()
     }
 
     #[test]
-    fn the_asset_and_both_bounds_are_refused_by_name_before_the_bridge() {
+    fn the_asset_and_both_bounds_are_refused_by_name_before_any_round_trip() {
         assert_eq!(
             refusal(&["--asset", "a_7Kq3nR2v"]),
             "invalid_asset_id",
@@ -475,11 +483,8 @@ mod tests {
 
     #[test]
     fn a_number_refusal_carries_the_bound_and_the_number_given() {
-        let failure = run(
-            &inputs(&["--asset", "a_7kq3nr2v0b1c", "--rows", "201"]),
-            &context(),
-        )
-        .expect_err("201 rows is over the bound");
+        let failure = arguments(&inputs(&["--asset", "a_7kq3nr2v0b1c", "--rows", "201"]))
+            .expect_err("201 rows is over the bound");
         let detail = failure.detail_value().cloned().unwrap_or(Value::Null);
         assert_eq!(detail["given"], json!(201), "the number given must be said");
         assert_eq!(
@@ -496,8 +501,8 @@ mod tests {
     }
 
     #[test]
-    fn a_well_formed_preview_reaches_the_pairing_boundary() {
-        let code = refusal(&[
+    fn a_well_formed_preview_passes_every_local_check() {
+        let payload = arguments(&inputs(&[
             "--asset",
             "sys:design_attachment:att_1:rev_2",
             "--member",
@@ -506,18 +511,16 @@ mod tests {
             "5",
             "--rows",
             "200",
-        ]);
-        assert!(
-            !code.starts_with("invalid_"),
-            "a well-formed preview was refused locally as `{code}`"
-        );
+        ]))
+        .expect("a well-formed preview passes every local check");
+        assert_eq!(payload["pages"], json!(5));
+        let _ = context();
     }
 
     #[test]
     fn the_payload_carries_exactly_the_keys_the_operation_declares() {
-        // `invoke` refuses an undeclared key, but only once a desktop has
-        // paired — which no CI machine has. This is the one place the
-        // handler is held against its own declaration, with every flag set.
+        // The handler is held against its own declaration, with every flag
+        // set.
         let payload = arguments(&inputs(&[
             "--asset",
             "a_7kq3nr2v0b1c",
@@ -529,7 +532,6 @@ mod tests {
             "50",
         ]))
         .expect("valid");
-        assert_eq!(undeclared_key(&crate::ASSETS_PREVIEW, &payload), None);
         let mut keys: Vec<&str> = payload
             .as_object()
             .expect("object")

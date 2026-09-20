@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
-use crate::{DESCRIPTOR_ARG, KIND_ARG, OBJECT_ARG, VERSION_ARG};
+use crate::{KIND_ARG, LANE_ARG, OBJECT_ARG, VERSION_ARG};
 
 pub static COMMAND: Command = Command {
     id: "design.tag.list",
@@ -24,9 +24,9 @@ later edit. This is where a reporting run learns the vocabulary instead of \
 scraping it out of a UI.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[KIND_ARG, OBJECT_ARG, VERSION_ARG, DESCRIPTOR_ARG],
+    args: &[KIND_ARG, OBJECT_ARG, VERSION_ARG, LANE_ARG],
     output: "\
 The project, anchored object, and rows of definition, value_type, input_control, \
 constraints, cardinality, state, allowed choice vocabulary, values, typed_values \
@@ -36,35 +36,20 @@ and template origin.",
         note: "Read value_type and allowed before choosing --values, --text, --integer or --number.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::INVALID_ANCHOR,
-    ],
+    refusals: &crate::headless_refusals!(crate::NOT_PERMITTED, crate::INVALID_ANCHOR,),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = crate::anchor(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TAG_LIST,
+    crate::headless::perform(
+        "design.tag.list",
         Value::Object(arguments),
-        crate::READ_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {

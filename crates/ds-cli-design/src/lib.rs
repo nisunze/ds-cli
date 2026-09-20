@@ -13,22 +13,23 @@
 //! its audience-fenced project, fetches one fixed context projection, and
 //! delegates deterministic selection to `ds-geo`.
 //!
-//! ## Why collaboration uses the bridge
+//! ## How collaboration reaches ds-brain
 //!
 //! Selections, attachments, tags, groups, and comments are governed shared
-//! state behind ds-brain, which is the
-//! only gateway and the only authority: it decides who may write, arbitrates
-//! two people editing the same record in the same second, and refuses a write
-//! authored against a version that has moved. None of that is reachable from a
-//! file, and none of it may be reached with an ambient credential — so every
-//! collaboration command is one named semantic operation the *paired
-//! application* performs under the session it already holds.
+//! state behind ds-brain, which is the only gateway and the only authority: it
+//! decides who may write, arbitrates two people editing the same record in
+//! the same second, and refuses a write authored against a version that has
+//! moved. None of that is reachable from a file, and none of it may be
+//! reached with an ambient credential — so every collaboration command is one
+//! closed kernel door (`ds_client_core::design_annotations`,
+//! `known_columns`, the material-propagation report action) run under the
+//! restored native user and its audience-fenced project by `ds auth`. Since
+//! 2026-09-20 no command here needs a window: the Server and the desktop
+//! answer the same (contract `dsgrid-authority/01-server-required.md`).
 //!
-//! Collaboration commands ask the paired application for an outcome. The
-//! separate `design features select` read restores the governed native user
-//! and its audience-fenced project, fetches one closed context projection, and
-//! delegates selection to `ds-geo`; it accepts no Desktop descriptor or
-//! project override.
+//! The separate `design features select` read restores the same governed
+//! native user, fetches one closed context projection, and delegates
+//! selection to `ds-geo`; it accepts no project override.
 //!
 //! ## Why this is not `ds map`
 //!
@@ -43,7 +44,7 @@
 //! ```text
 //!   status     the project's transformer status rows (headless, unreshaped)
 //!   lv         project-export → process
-//!   transformer download local rooms (paired, no map) | inventory → retire | restore
+//!   transformer inventory → retire | restore; status; dashboard
 //!   selection  list → read → save | archive | assign
 //!   attachment list → publish | download | retire
 //!   tag        list | query → define | set; enrich-preview → enrich-apply
@@ -73,6 +74,7 @@ pub mod feeder_limits;
 pub mod force_gate;
 pub mod group;
 pub mod grouping;
+pub mod headless;
 pub mod intake_upload;
 pub mod known_columns;
 pub mod lv;
@@ -84,29 +86,17 @@ pub mod preview;
 pub mod process_settings;
 pub mod project;
 pub mod selection;
-pub mod sync;
 pub mod tag;
 pub mod transformer;
 pub mod versions;
-
-use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
 use serde_json::{Map, Value, json};
 
-// The paired-application primitives every bridge domain shares. They are
-// declared once in `ds-cli-desktop` — the authority surface — so a caller who
-// learned `--desktop-descriptor` and the pairing refusals from `ds map` has
-// learned them here too.
 // Neutral argument helpers: a numeric bound and an English count say
 // nothing about a paired window, so they come from the contract crate.
 pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
-pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BACKEND_UNREACHABLE, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED,
-    PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED,
-    classify_signed_out, invoke, paired, paired_availability,
-};
 
 pub static DOMAIN: Domain = Domain {
     id: "design",
@@ -122,9 +112,6 @@ pub static DOMAIN: Domain = Domain {
         &config::SET,
         &config::SAVE,
         &config::DUPLICATE,
-        &sync::STATUS,
-        &sync::CANCEL,
-        &sync::RESUME,
         &project::SOURCES,
         &project::INIT,
         &project::WRITE,
@@ -208,173 +195,11 @@ pub static DOMAIN: Domain = Domain {
         &preview::CONFLICT_CHECK,
         &preview::PRESENCE_STATUS,
         &transformer::dashboard::COMMAND,
-        &transformer::download::COMMAND,
         &transformer::inventory::COMMAND,
         &transformer::retire::COMMAND,
         &transformer::restore::COMMAND,
     ],
 };
-
-// ---------------------------------------------------------------------------
-// The declared wire contract
-// ---------------------------------------------------------------------------
-
-pub const TAG_LIST: BridgeOp = BridgeOp {
-    operation: "design.tag.list",
-    arguments: &["kind", "object", "version"],
-};
-pub const TAG_DEFINE: BridgeOp = BridgeOp {
-    operation: "design.tag.define",
-    arguments: &[
-        "definition",
-        "name",
-        "cardinality",
-        "values",
-        "description",
-        "value_type",
-        "input_control",
-        "constraints",
-        // A project's OWN hierarchy. `management` is deliberately absent: only
-        // a governed authority creates a system definition, through its own
-        // action, so this door can only ever author `project` management.
-        "parent-definition",
-        "semantic-namespace",
-        "semantic-key",
-        "jurisdiction",
-    ],
-};
-pub const TAG_SET: BridgeOp = BridgeOp {
-    operation: "design.tag.set",
-    arguments: &[
-        "kind",
-        "object",
-        "version",
-        "definition",
-        "values",
-        "typed_values",
-    ],
-};
-pub const TAG_ENRICH_PREVIEW: BridgeOp = BridgeOp {
-    operation: "design.tag.enrich-preview",
-    arguments: &["transformers", "reference-revision"],
-};
-pub const TAG_ENRICH_APPLY: BridgeOp = BridgeOp {
-    operation: "design.tag.enrich-apply",
-    arguments: &["transformers", "reference-revision", "digest"],
-};
-pub const TAG_QUERY: BridgeOp = BridgeOp {
-    operation: "design.tag.query",
-    arguments: &["kind", "match", "filters", "limit"],
-};
-pub const KNOWN_COLUMNS_LIST: BridgeOp = BridgeOp {
-    operation: "design.known-columns.list",
-    arguments: &[],
-};
-pub const KNOWN_COLUMNS_SET: BridgeOp = BridgeOp {
-    operation: "design.known-columns.set",
-    arguments: &["layer", "field", "visible"],
-};
-pub const GROUP_LIST: BridgeOp = BridgeOp {
-    operation: "design.group.list",
-    arguments: &["transformers"],
-};
-pub const GROUP_PREVIEW: BridgeOp = BridgeOp {
-    operation: "design.group.preview",
-    arguments: &["group", "transformers", "value"],
-};
-pub const GROUP_APPLY: BridgeOp = BridgeOp {
-    operation: "design.group.apply",
-    arguments: &["group", "transformers", "value", "digest"],
-};
-pub const GROUP_UNASSIGN: BridgeOp = BridgeOp {
-    operation: "design.group.unassign",
-    arguments: &["group", "transformers", "digest"],
-};
-pub const GROUP_EXPORT: BridgeOp = BridgeOp {
-    operation: "design.group.export",
-    arguments: &["transformers", "definition-ids"],
-};
-pub const CONSUMER_GROUPING_PREVIEW: BridgeOp = BridgeOp {
-    operation: "design.consumer-grouping.preview",
-    arguments: &["purpose", "transformers", "definition-ids", "bindings"],
-};
-pub const CONSUMER_GROUPING_APPLY: BridgeOp = BridgeOp {
-    operation: "design.consumer-grouping.apply",
-    arguments: &[
-        "purpose",
-        "transformers",
-        "definition-ids",
-        "bindings",
-        "digest",
-    ],
-};
-pub const CONSUMER_GROUPING_READ: BridgeOp = BridgeOp {
-    operation: "design.consumer-grouping.read",
-    arguments: &["purpose"],
-};
-pub const CONSUMER_GROUPING_ARCHIVE: BridgeOp = BridgeOp {
-    operation: "design.consumer-grouping.archive",
-    arguments: &["purpose"],
-};
-pub const COMMENT_LIST: BridgeOp = BridgeOp {
-    operation: "design.comment.list",
-    arguments: &["kind", "object", "version", "resolved"],
-};
-pub const COMMENT_READ: BridgeOp = BridgeOp {
-    operation: "design.comment.read",
-    arguments: &["thread"],
-};
-pub const COMMENT_POST: BridgeOp = BridgeOp {
-    operation: "design.comment.post",
-    arguments: &["kind", "object", "version", "thread", "title", "body"],
-};
-pub const COMMENT_RESOLVE: BridgeOp = BridgeOp {
-    operation: "design.comment.resolve",
-    arguments: &["thread", "reopen"],
-};
-pub const COMMENT_PROMOTE: BridgeOp = BridgeOp {
-    operation: "design.comment.promote",
-    arguments: &["thread", "title"],
-};
-pub const TRANSFORMER_DOWNLOAD: BridgeOp = BridgeOp {
-    operation: "design.transformer.download",
-    arguments: &["transformers", "force"],
-};
-
-/// Every operation this domain can send, for the parity test to walk. A new
-/// operation absent from this list cannot be sent: [`invoke`] takes a
-/// [`BridgeOp`], and the test requires each one to be an operation the
-/// application actually implements.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[
-    &sync::STATUS_OP,
-    &sync::CANCEL_OP,
-    &sync::RESUME_OP,
-    &TAG_LIST,
-    &TAG_QUERY,
-    &TAG_DEFINE,
-    &TAG_SET,
-    &TAG_ENRICH_PREVIEW,
-    &TAG_ENRICH_APPLY,
-    &materials::PREVIEW_OP,
-    &materials::APPLY_OP,
-    &KNOWN_COLUMNS_LIST,
-    &KNOWN_COLUMNS_SET,
-    &GROUP_LIST,
-    &GROUP_PREVIEW,
-    &GROUP_APPLY,
-    &GROUP_UNASSIGN,
-    &GROUP_EXPORT,
-    &CONSUMER_GROUPING_PREVIEW,
-    &CONSUMER_GROUPING_APPLY,
-    &CONSUMER_GROUPING_READ,
-    &CONSUMER_GROUPING_ARCHIVE,
-    &COMMENT_LIST,
-    &COMMENT_READ,
-    &COMMENT_POST,
-    &COMMENT_RESOLVE,
-    &COMMENT_PROMOTE,
-    &TRANSFORMER_DOWNLOAD,
-];
 
 /// The largest page any design projection returns. The application bounds its
 /// own projections to the same number; the total is always reported, so a
@@ -395,22 +220,6 @@ pub const MAX_TAG_QUERY_FILTERS: usize = 20;
 /// The backend deliberately refuses projects and result sets beyond this
 /// bound instead of silently truncating Transformer Status membership.
 pub const MAX_TAG_QUERY_ROWS: i64 = 2_000;
-
-// ---------------------------------------------------------------------------
-// Timeouts
-// ---------------------------------------------------------------------------
-
-/// A read is one governed round trip to ds-brain through the application.
-pub const READ_TIMEOUT: Duration = Duration::from_secs(2 * 60);
-/// A write is the same round trip; publishing an attachment additionally
-/// streams bytes and waits for the server to hash and verify them.
-pub const WRITE_TIMEOUT: Duration = Duration::from_secs(3 * 60);
-/// Publishing carries the file. A native workspace over a field connection is
-/// the slow case this budget exists for.
-pub const PUBLISH_TIMEOUT: Duration = Duration::from_secs(20 * 60);
-/// A whole-project local-room materialization is bounded but may transfer
-/// hundreds of saved rooms over a field connection.
-pub const LOCAL_ROOM_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 // ---------------------------------------------------------------------------
 // Shared inputs
@@ -456,6 +265,58 @@ pub const LIMIT_ARG: Arg = Arg {
     summary: "Rows in one page (1-200). The total is always reported.",
 };
 
+/// Which native credential lane a headless design command authenticates on.
+pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
+    .choices(&["stable", "canary"])
+    .default("stable");
+
+/// The refusals the headless project client can answer with, for every
+/// headless command of this domain. Declared once in `ds auth`.
+pub const HEADLESS_REFUSALS: &[Refusal] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
+/// The route's own three: a malformed request, a missing record, a fault.
+const ROUTE_REFUSALS: [Refusal; 3] = [
+    INVALID_DESIGN_REQUEST,
+    DESIGN_RECORD_NOT_FOUND,
+    DESIGN_SERVICE_FAILED,
+];
+/// The base every headless collaboration command declares.
+pub const HEADLESS_BASE: usize = 15 + 3;
+const _: () = assert!(HEADLESS_REFUSALS.len() + ROUTE_REFUSALS.len() == HEADLESS_BASE);
+
+/// The headless set, the route's own, then the command's own. `TOTAL` is
+/// `HEADLESS_BASE + own.len()`, checked at compile time; the
+/// [`headless_refusals!`] macro states it from the list.
+pub const fn headless_refusal_table<const TOTAL: usize>(own: &[Refusal]) -> [Refusal; TOTAL] {
+    assert!(TOTAL == HEADLESS_BASE + own.len());
+    let mut out = [INVALID_DESIGN_REQUEST; TOTAL];
+    let mut i = 0;
+    while i < HEADLESS_REFUSALS.len() {
+        out[i] = HEADLESS_REFUSALS[i];
+        i += 1;
+    }
+    let mut k = 0;
+    while k < ROUTE_REFUSALS.len() {
+        out[i + k] = ROUTE_REFUSALS[k];
+        k += 1;
+    }
+    i += ROUTE_REFUSALS.len();
+    let mut j = 0;
+    while j < own.len() {
+        out[i + j] = own[j];
+        j += 1;
+    }
+    out
+}
+
+/// `headless_refusals!(A, B, C)` — the table above with `TOTAL` counted
+/// from the list, so a command adds a refusal without restating a number.
+#[macro_export]
+macro_rules! headless_refusals {
+    ($($refusal:expr),* $(,)?) => {
+        $crate::headless_refusal_table::<{ $crate::HEADLESS_BASE + [$(stringify!($refusal)),*].len() }>(&[$($refusal),*])
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Refusals this domain adds to the shared pairing set
 // ---------------------------------------------------------------------------
@@ -473,31 +334,11 @@ pub const DESIGN_REFUSED: Refusal = Refusal {
 /// The class is the point of separating them: the first two are
 /// `invalid_input` and want a different request, the third is `unavailable`
 /// and wants the same one later.
-pub const INVALID_DESIGN_REQUEST: Refusal = Refusal {
-    code: "design_request_invalid",
-    when: "ds-brain refused the request's own shape, or a bound it exceeded",
-    remedy: "the message names the bound or the field; change the request rather than repeating it",
-};
-pub const DESIGN_RECORD_NOT_FOUND: Refusal = Refusal {
-    code: "design_record_not_found",
-    when: "the named design record — a definition, selection, attachment or thread — does not exist",
-    remedy: "read the available ids with the matching `list` command",
-};
-pub const DESIGN_SERVICE_FAILED: Refusal = Refusal {
-    code: "design_service_failed",
-    when: "the design service faulted; the request itself is sound",
-    remedy: "retry unchanged once; changing the request cannot help a service fault",
-};
-pub const NOT_PERMITTED: Refusal = Refusal {
-    code: "design_not_permitted",
-    when: "the signed-in user may read this project's design records but not change them",
-    remedy: "ask a project admin for the matching design capability",
-};
-pub const CONFLICT: Refusal = Refusal {
-    code: "design_version_conflict",
-    when: "the record moved while the command was in flight",
-    remedy: "re-read with the matching `read` or `list` command and issue the command again",
-};
+pub const INVALID_DESIGN_REQUEST: Refusal = ds_cli_auth::DESIGN_REQUEST_INVALID_REFUSAL;
+pub const DESIGN_RECORD_NOT_FOUND: Refusal = ds_cli_auth::DESIGN_RECORD_NOT_FOUND_REFUSAL;
+pub const DESIGN_SERVICE_FAILED: Refusal = ds_cli_auth::DESIGN_SERVICE_FAILED_REFUSAL;
+pub const NOT_PERMITTED: Refusal = ds_cli_auth::DESIGN_NOT_PERMITTED_REFUSAL;
+pub const CONFLICT: Refusal = ds_cli_auth::DESIGN_VERSION_CONFLICT_REFUSAL;
 pub const READ_ONLY: Refusal = Refusal {
     code: "design_project_read_only",
     when: "the project is archived or expired, so it accepts no design changes",
@@ -554,34 +395,32 @@ pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     remedy: "re-run with --yes once you intend the change",
 };
 
-/// What the application says when the signed-in user may read but not write.
-/// Hand copies of its prose, held to the application's source by
-/// `tests/bridge_parity.rs`.
+/// What ds-brain says when the signed-in user may read but not write. Hand
+/// copies of the route's prose (`ds-brain/app/routes/design_annotations.py`
+/// and its neighbours), read case-insensitively off the refusal message.
 pub const NOT_PERMITTED_MARKERS: &[&str] = &["capability", "permission denied"];
 
-/// What the application says when a record moved under a command in flight.
+/// What ds-brain says when a record moved under a command in flight.
 pub const CONFLICT_MARKERS: &[&str] = &["not ", "changed since", "already exists"];
 
-/// What the application says when the project accepts no changes at all.
+/// What ds-brain says when the project accepts no changes at all.
 pub const READ_ONLY_MARKERS: &[&str] = &["archived", "expired", "read-only"];
 pub const TAG_VALUE_CASE_MISMATCH_MARKERS: &[&str] =
     &["authored spelling exactly", "differ only by case"];
 
 /// The identities still open to refinement by [`classify_design_failure`].
 ///
-/// `desktop_refused` is the untyped one. The rest are what the paired
-/// application now mints from an HTTP status alone, and a status is a starting
-/// point rather than an answer: an archived project and a missing capability
-/// are the same 403, and a case-mismatched tag value and an exceeded bound are
-/// the same 400. So the branches below refine those exactly as they have
-/// always refined `desktop_refused` — the narrower code, its remedy and its
-/// next step are what an unattended caller acts on.
+/// These are what `ds auth` mints from an HTTP status alone, and a status is
+/// a starting point rather than an answer: an archived project and a missing
+/// capability are the same 403, and a case-mismatched tag value and an
+/// exceeded bound are the same 400. So the branches below refine those — the
+/// narrower code, its remedy and its next step are what an unattended caller
+/// acts on.
 ///
 /// Nothing else is touched. An `unavailable` identity in particular is never
 /// refined into an authority answer: the service did not speak, so its message
 /// carries no condition to read.
 const REFINABLE_CODES: &[&str] = &[
-    "desktop_refused",
     "design_request_invalid",
     "design_record_not_found",
     "design_not_permitted",
@@ -590,24 +429,23 @@ const REFINABLE_CODES: &[&str] = &[
 
 /// Give this domain's named conditions their own codes.
 ///
-/// They arrive as ordinary operation refusals — the application answered, and
-/// what it answered was "you may not", "you were too late", or "this project is
+/// They arrive as ordinary route refusals — ds-brain answered, and what it
+/// answered was "you may not", "you were too late", or "this project is
 /// closed". Letting them through as the coarse code they arrive with would send
 /// a caller to read a message for conditions that have a name, a remedy and a
 /// *different next step*: one needs an admin, one needs a re-read and retry, and
 /// one is not going to succeed today at all. Telling them apart is the whole
 /// reason an unattended caller can act on a refusal.
 pub fn classify_design_failure(failure: Failure) -> Failure {
-    let failure = classify_signed_out(failure);
     if !REFINABLE_CODES.contains(&failure.code()) {
         return failure;
     }
-    // `desktop_refused` carries the application's own message in
-    // `detail.detail`; a structured refusal carries `http_status` there and
-    // that same message in `message`. Read whichever is present, because an
-    // unmatched branch below is indistinguishable from "no condition applies"
-    // — and reading an empty string would silently retire every named code
-    // this domain declares.
+    // A structured refusal carries `http_status` in `detail` and the route's
+    // own sentence in `message`; an older shape carried that sentence in
+    // `detail.detail`. Read whichever is present, because an unmatched branch
+    // below is indistinguishable from "no condition applies" — and reading an
+    // empty string would silently retire every named code this domain
+    // declares.
     let detail = failure
         .detail_value()
         .and_then(|detail| detail["detail"].as_str())
@@ -712,10 +550,11 @@ mod tag_value_case_tests {
 
     #[test]
     fn case_only_tag_refusal_has_one_actionable_public_code() {
-        let failure = Failure::failed("desktop_refused", "the paired session refused the write")
-            .detail(json!({
-                "detail": "phase allows \"Phase II\", not \"phase ii\"; use the authored spelling exactly"
-            }));
+        let failure = Failure::invalid(
+            "design_request_invalid",
+            "phase allows \"Phase II\", not \"phase ii\"; use the authored spelling exactly",
+        )
+        .detail(json!({ "http_status": 400 }));
 
         let classified = classify_design_failure(failure);
         assert_eq!(classified.code(), "tag_value_case_mismatch");
@@ -727,18 +566,33 @@ mod tag_value_case_tests {
 
     #[test]
     fn unrelated_design_refusal_stays_generic() {
-        let failure = Failure::failed("desktop_refused", "the paired session refused the write")
-            .detail(json!({ "detail": "the transformer does not exist" }));
+        let failure = Failure::invalid("design_request_invalid", "the transformer does not exist")
+            .detail(json!({ "http_status": 400 }));
 
-        assert_eq!(classify_design_failure(failure).code(), "desktop_refused");
+        assert_eq!(
+            classify_design_failure(failure).code(),
+            "design_request_invalid"
+        );
     }
 
-    /// The paired application now types a refused envelope from its HTTP
-    /// status before the bridge sees it, so this domain's conditions no longer
-    /// arrive as `desktop_refused` carrying their prose in `detail.detail` —
-    /// they arrive with a coarse code and the same prose in `message`. They are
-    /// still the same conditions, and their remedies are not interchangeable:
-    /// no admin can grant a capability on an archived project.
+    /// A signed-out or paired-window identity is not this domain's to refine:
+    /// the headless client answers `headless_signed_out` itself, and nothing
+    /// here renames a code it does not own.
+    #[test]
+    fn foreign_identities_pass_through_untouched() {
+        let failure = Failure::unauthorized("headless_signed_out", "no native user is signed in")
+            .detail(json!({ "detail": "permission denied" }));
+        assert_eq!(
+            classify_design_failure(failure).code(),
+            "headless_signed_out"
+        );
+    }
+
+    /// `ds auth` types a refused envelope from its HTTP status before this
+    /// domain sees it, so its conditions arrive with a coarse code and the
+    /// route's prose in `message`. They are still the same conditions, and
+    /// their remedies are not interchangeable: no admin can grant a capability
+    /// on an archived project.
     #[test]
     fn a_status_typed_refusal_is_still_refined_to_its_own_condition() {
         let archived = Failure::unauthorized(
@@ -766,12 +620,12 @@ mod tag_value_case_tests {
         // never refined into one — even when its message happens to carry a
         // word one of the branches reads.
         let unreachable = Failure::unavailable(
-            "backend_unreachable",
+            "auth_transient",
             "the Data Solutions API did not answer; the project may be archived",
         );
         assert_eq!(
             classify_design_failure(unreachable).code(),
-            "backend_unreachable"
+            "auth_transient"
         );
 
         // A status-typed refusal with no condition in it keeps the identity the

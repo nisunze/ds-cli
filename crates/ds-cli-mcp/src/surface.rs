@@ -285,7 +285,8 @@ impl Profile {
                     && !PRINTING_COMMANDS.contains(&tool.id.as_str())
                     && !tool.id.starts_with("desktop.printing.")
                     && !tool.id.starts_with("report.layout.")
-                    // Project cache preparation belongs to the focused model
+                    // Project head preparation (this machine's working copies
+                    // against the governed heads) belongs to the focused model
                     // lifecycle surface. Keeping it out of this broad router
                     // preserves the profile's bounded tool budget.
                     && tool.id != "dsgrid.model.prepare-project"
@@ -643,16 +644,15 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "map.design.upload.stage",
 ];
 
-// Background project operations: no map or room activation. Local-room
-// download reaches the paired application's cache and uses its visible
-// project; retirement and reports use the CLI-selected headless project.
-// Kept
-// out of `design-edit` (already at its bound) and out of the `grid` chapter
-// router so neither grows; an agent doing background delivery work gets this
-// narrow profile.
+// Background project operations: no map or room activation. Retirement and
+// reports use the CLI-selected headless project. (`design.transformer.download`
+// left on 2026-09-20: it only ever warmed a window's private room cache, and
+// the native report path reads rooms from the service.) Kept out of
+// `design-edit` (already at its bound) and out of the `grid` chapter router
+// so neither grows; an agent doing background delivery work gets this narrow
+// profile.
 const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "design.status",
-    "design.transformer.download",
     "design.transformer.inventory",
     "design.transformer.retire",
     "design.transformer.restore",

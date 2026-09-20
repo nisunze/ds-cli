@@ -318,12 +318,12 @@ pub fn rotate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .parse()
         .map_err(|_| invalid("Choose 90, 180 or 270 degrees"))?;
     let out = inputs.value("out").map(PathBuf::from);
-    if let Some(root) = &out {
-        if root.exists() {
-            return Err(invalid(
-                "Choose a new output directory; existing bundles are never overwritten",
-            ));
-        }
+    if let Some(root) = &out
+        && root.exists()
+    {
+        return Err(invalid(
+            "Choose a new output directory; existing bundles are never overwritten",
+        ));
     }
     // The store mode consults the held record; the private-bundle mode never
     // touches the store.

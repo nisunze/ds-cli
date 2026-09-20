@@ -17,29 +17,26 @@ is not a display rule this CLI could turn off — the row never arrives.
 **System folders are not stored anywhere.** `Transformers/…`, `MV models/…`,
 `Survey/…`, `Project work/…`, `Reports/…`, `Solar/…`, `Project data/…`,
 `My data/…`, `Local data/…`, `Prints/…` and `Unclassified/…` are projected at
-read time from the inventories the project already holds, through the same
-reads the application's own pages use — one read per source, never polled,
-never fanned out per transformer. Nothing a source returns is dropped: a row
-the projection cannot place lands under `Unclassified/` rather than vanishing.
-Their rows carry a `sys:` id instead of a minted `a_` one. They can be walked,
-previewed, read and promoted; they cannot be classified, attached or filed,
-because a projection is a view of something that already has an owner. Act on
-that owner instead.
-
-Device dataset rooms are reproducible input caches, and local print inventories
-are files retained on that device. A web host has no Desktop inventory door;
-these sources remain absent and appear in `sources_unavailable`, separately
-from failed project reads in `sources_omitted`. Their absence does not make a
-web project preview incomplete. Uploaded project data, published compute heads
-and saved print setups retain their normal project reads and refusals.
+read time from the inventories the project already holds — in the application,
+through the same reads its own pages use. Their rows carry a `sys:` id instead
+of a minted `a_` one. **Headless, those inventories are not loaded**: `ds
+assets tree` renders every system root `not loaded` and names them in
+`sources_omitted`, and a `sys:` id given to `read`, `preview`, `promote` or
+`tree --into` is refused by name (`origin_read_unavailable`) — a projected row
+is read from the surface that owns it. The declared folders and every
+catalogued `a_` asset are the headless tree, computed by the same kernel the
+Assets tab uses.
 
 The bytes are somewhere else again — project storage, behind a fresh
 short-lived signed read minted per access after an authority check. Nothing
 here hands out a durable link to anything above `open`.
 
-Commands declare their host through live discovery. Extracted operations use
-the native signed-in user's selected project; remaining operations use the
-paired application's project. Neither accepts a project ID as authority.
+Every command runs headless, under the restored native user or device
+credential, against the project `ds auth project use` selected, on `--lane`.
+No command accepts a project ID as authority, and none needs a window: until
+2026-09-20 nine of them relayed through the paired desktop (`requires:
+window`); that path is retired, `--desktop-descriptor` is no longer an input,
+and a caller that still passes it is told `requires_window_retired`.
 
 City maps are members of the general **tag-group-map** representation class.
 The map index groups existing producer asset identities by exact tag definition
@@ -121,9 +118,9 @@ not give.
 
 ## Reads cost one page
 
-A read paints the same catalogue the application's Assets tab renders: cached
-first, reconciled once, never polled. A CLI session therefore adds no project
-reads to a catalogue the application already has open.
+A read is one catalogue round trip — `list` one page, `tree` the declared
+folders plus the first page of the catalogue — folded by the kernel on this
+host; never polled.
 
 `--limit` is a page, bounded at 200 and defaulted to 50. When a page is short
 of the whole answer, `more` says so and `next_cursor` continues it — page with
@@ -139,21 +136,25 @@ pm_task:<id>` or `--link ds_object:<type>:<id>` narrows a tree to the assets
 linked to one task or DS object; a read takes exactly one link filter, and a
 second is refused rather than quietly dropped.
 
-Offline, `list` and `tree` serve the local catalogue labelled with its age,
-and a preview of bytes this device does not hold is refused by name rather
-than answered thinly.
+A `--folder` filter on `list` is answered by the catalogue's own folder query.
+On 2026-09-20 the canary catalogue answered that query with a 500
+(`assets_service_failed`): a Firestore composite index for
+`folder_id`+`created_at` is missing on that lane. `tree --folder <path>` lists
+the same rows from the kernel projection and is the workaround until the
+index lands.
 
 ## Writes are explicit, confirmed and audited
 
 There are four of them — `classify`, `attach`, `ingest` and `folder` — every
-one `global_write`, so dispatch requires `--yes` before the bridge opens.
+one `global_write`, so dispatch requires `--yes` before any credential is
+restored.
 
 | | |
 |---|---|
-| `classify` | one patch of `--kind`, `--status`, `--owner`, `--folder`, `--sensitivity`; a change with no flags is refused before the round trip |
-| `attach` | one link, `--task` **or** `--object-type` with `--entity-id`, and `--detach` to remove it; the link is recorded on the asset, never on the object |
-| `ingest` | one named local file, with the folder and class you intend; there is no drag-to-upload and nothing is ever sent implicitly |
-| `folder` | declares a folder, or changes its defaults or its last name segment |
+| `classify` | one patch of `--kind`, `--status`, `--owner`, `--folder`, `--sensitivity`, pinned to the row's current version; a change with no flags is refused before the round trip |
+| `attach` | one link, `--task`, `--record` **or** `--object-type` with `--entity-id`, and `--detach` to remove it; the link is recorded on the asset, never on the object |
+| `ingest` | one named local file, with the folder and class you intend: the head is recognised by the kernel, the file is digested in one streaming pass, the upload target is minted, the bytes stream to it, the row is finalised against that digest; files up to 256 MiB |
+| `folder` | declares a folder (its parent must already be declared — the catalogue says so by name), or changes its defaults or its last name segment |
 
 Two rules are worth stating because they are not obvious from any one command:
 
@@ -164,24 +165,25 @@ the capability to classify and the capability to read the class being left,
 and it is audited. An asset nothing could classify is `internal`, not open.
 
 **Reading a file changes nothing shared.** `ds assets read` writes exactly one
-new local file — the desktop writes it through one closed native command that
-refuses an existing path, writes a temporary sibling, verifies the digest and
-renames — so bytes never cross the bridge and an existing file is never
-overwritten. `ds assets promote` adds a layer to the running map. Neither is
-behind the confirmation gate, because neither is visible to anybody else.
+new local file on the host running `ds`: the bytes are verified against the
+row's digest, written to a temporary sibling and renamed, and an existing file
+is never overwritten. `ds assets promote` adds a layer to this machine's
+prepared local layer store. Neither is behind the confirmation gate, because
+neither is visible to anybody else.
 
 ## Promotion is local, and it is not cleaning
 
-A previewed geometry is a session drawing: it lives in the open map, it is not
-in the layer store, and it is gone on reload. `ds assets promote` hands the
-same geometry to the governed local-overlay path, where it gains a durable
-local identity, the owning path's validation, and the ability to be ordered,
-styled and printed. It never uploads, and it never widens the source asset's
-sensitivity.
+`ds assets promote` hands a geo asset's bytes to this machine's prepared local
+layer store — the one `ds map local register` writes and `ds map local list`
+reads, kept per lane and DS account — where it gains a durable local identity,
+the store's validation, and the ability to be ordered, styled and printed. It
+never uploads, and it never widens the source asset's sensitivity. The store
+admits a GeoJSON feature collection of one geometry type, read from its
+features; another geo format (`shp`, `kml`, `gpkg`) is refused
+`invalid_payload` — convert it first, or read it out with `ds assets read`.
 
-A preview drawing is not a promise of promotion: the overlay path may refuse
-what the preview happily drew. Cleaning, canonical column mapping and design
-admission are still `ds map design upload inspect` and `stage`.
+Cleaning, canonical column mapping and design admission are still
+`ds map design upload inspect` and `stage`.
 
 ## What is deliberately absent
 
@@ -200,44 +202,43 @@ identically. It does not read inside documents, and there is no search
 endpoint behind it.
 
 **A second catalogue, uploader, digest or folder authority.** This surface
-composes the paths the project already has. Where you see a system folder, you
-are looking at an existing inventory through a different window.
+composes the paths the project already has.
+
+**A window path.** See above: the paired-desktop transport is retired for
+every command here.
 
 ## Refusals worth planning for
 
 | Code | Means |
 |---|---|
-| `desktop_not_paired` | no DS GridDesign session on this machine |
-| `desktop_signed_out` | running, but signed out or with no project open |
-| `desktop_refused` | no such asset or folder, or the application declined; `detail.detail` carries its message |
+| `headless_signed_out` | no restored native credential on this lane — `ds auth login` or `ds auth link begin` |
+| `headless_project_not_selected` | no project selected for this credential and lane — `ds auth project use --project <id>` |
 | `projected_asset_read_only` | a `sys:` row or a system folder was named by `classify`, `attach` or `folder` |
 | `nothing_to_update` | a `classify` with no change flag — refused before a round trip |
 | `invalid_asset_id` | not a minted `a_…` id and not a projected `sys:…` one; usually a truncated paste |
-| `invalid_attachment` | `--task` and `--object-type` are two different links; name exactly one |
+| `invalid_attachment` | `--task`, `--record` and `--object-type` are three different links; name exactly one |
 | `invalid_folder_path` | absolute, empty, or carrying a `.`/`..` segment |
 | `invalid_out_path` | `--out` is not a new absolute path under an existing directory |
-| `invalid_source_path` | `--path` is not an absolute path to an existing readable file |
+| `invalid_source_path` | `--path` is not an absolute path to an existing readable file of at most 256 MiB |
 | `invalid_number` | a bound with its number: `--limit` 1-200, `--depth` 1-8, `--pages` 1-5, `--rows` 1-200 |
-| `invalid_layer_name` | `--as-layer` is empty, longer than 80 characters, or holds a control character — the same bound the application holds it to |
+| `invalid_layer_name` | `--as-layer` is empty, longer than 80 characters, or holds a control character |
 | `invalid_date` | a `--since` that is not `YYYY-MM-DD` or RFC 3339 |
-| `invalid_link` | a `--link` that is not `pm_task:<id>` or `ds_object:<type>:<id>`, or a second one — a tree read filters on one link |
-| `asset_not_found` | no asset or folder has this id or path; a `confidential` row the caller may not read answers this too, by design |
+| `invalid_link` | a `--link` that is not `pm_task:<id>`, `pm_record:<id>` or `ds_object:<type>:<id>`, or a second one — a tree read filters on one link |
+| `asset_not_found` | no asset or folder has this id or path, an undeclared parent folder, a task or object the link names that does not exist; a `confidential` row the caller may not read answers this too, by design |
 | `asset_class_forbidden` | the signed-in user lacks the assets capability this class or this write requires |
-| `asset_version_conflict` | the row or folder moved while a write was in flight; re-read and issue the command again |
-| `asset_refused` / `asset_request_invalid` | the catalogue's own rule or bound, named in the message with the number |
-| `assets_not_implemented` | the installed application or its catalogue does not serve this action yet |
-| `assets_service_failed` | the catalogue service faulted; retry once |
-| `offline_mode_enabled` | offline mode is on and the command needed the catalogue service; `list` and `tree` answer from the local catalogue when they can |
-| `backend_unreachable` | the Data Solutions API did not answer; re-read before repeating a write, because an unanswered write may already have been applied |
-| `asset_is_not_a_file` | `read`, `preview`, `promote` or `tree --into` named a `sys:` row that is a summary, not bytes — a dataset room, a report room, a print setup, a transformer version; `preview` is the whole of it |
-| `asset_too_large` | the bytes are above the read bound the message names; open the asset from its own surface |
-| `origin_read_failed` | the source's own read action returned nothing usable — a row naming no source object, or a signed read that expired; re-read the row and retry once |
-| `origin_unreachable` | the source's bytes could not be fetched from this device |
-| `origin_read_unavailable` | rows projected from this source carry no read action on this surface yet, DS Grid export outputs among them |
+| `asset_version_conflict` | the row or folder moved while a write was in flight, or a folder is already declared at that path; re-read and issue the command again |
+| `asset_refused` / `asset_request_invalid` | the catalogue's own rule or bound, named in the message (the rule in brackets) with the number |
+| `assets_not_implemented` | this lane's ds-brain does not serve this action yet |
+| `assets_service_failed` | the catalogue service faulted (HTTP 5xx, `detail.http_status`); retry once |
+| `asset_too_large` | the bytes are above the 32 MiB read bound; open the asset from its own surface |
+| `origin_read_failed` | the signed read expired, the bytes did not match the row's digest, or the destination could not be written; retry once |
+| `origin_read_unavailable` | a projected `sys:` row was named; its bytes are served by the surface that owns it, not by the catalogue |
 | `unknown_folder` | a `--folder` names a path no declared folder has; declare it with `folder`, or read the declared folders with `tree` |
-| `assets_offline_write` | this device is offline and `classify`, `attach`, `ingest` or `folder` is a catalogue write; reconnect, or turn offline mode off |
-| `invalid_member` | `--member` is absolute or has a `..` segment; copy the exact path from `tree --into <asset>` |
+| `invalid_member` | `--member` is absolute, has a `..` segment, or is not a member of the container; copy the exact path from `tree --into <asset>` |
 | `asset_not_geographic` | `promote` named an asset that is not `geo` and no geo member; only a geographic asset or member promotes |
+| `invalid_payload` / `malformed_descriptor` / `local_layer_refused` | the prepared local layer store's own refusals on `promote`, in the words `ds map local` uses |
+| `assets_unreadable` | the catalogue answered a shape this build cannot fold; report it with the project id |
+| `requires_window_retired` | `--desktop-descriptor` was passed; drop it |
 
 `--since 01-09-2026` is refused here rather than at the catalogue on purpose: a
 transposed day and month is the commonest filter mistake there is, and

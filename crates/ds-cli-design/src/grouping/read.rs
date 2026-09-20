@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 use crate::grouping::PURPOSE_ARG;
 
 pub static READ_COMMAND: Command = Command {
@@ -22,31 +22,20 @@ consumer about to publish reaches the plan through its own producer, which \
 does.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PURPOSE_ARG, DESCRIPTOR_ARG],
+    args: &[PURPOSE_ARG, LANE_ARG],
     output: "The stored plan: purpose, definition_ids, groups, counts, plan_digest, revision, lifecycle.",
     examples: &[Example {
         command: "ds design consumer-grouping read --purpose report_archive --output json",
         note: "This is the grouping a compounded archive files its folders by.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-    ],
+    refusals: &crate::headless_refusals!(crate::NOT_PERMITTED,),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static ARCHIVE_COMMAND: Command = Command {
@@ -61,53 +50,36 @@ current authority. A consumer that loads an archived plan refuses and asks for a
 new one to be applied.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PURPOSE_ARG, DESCRIPTOR_ARG],
+    args: &[PURPOSE_ARG, LANE_ARG],
     output: "The archived plan, with its lifecycle now `archived`.",
     examples: &[Example {
         command: "ds design consumer-grouping archive --purpose report_archive",
         note: "Archiving stops the plan being used; it never removes the record.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-    ],
+    refusals: &crate::headless_refusals!(crate::NOT_PERMITTED,),
     reference: Some("docs/reference/design.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run_read(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::CONSUMER_GROUPING_READ,
+    crate::headless::perform(
+        "design.consumer-grouping.read",
         json!({"purpose": crate::grouping::purpose(inputs)?}),
-        crate::READ_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn run_archive(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::CONSUMER_GROUPING_ARCHIVE,
+    crate::headless::perform(
+        "design.consumer-grouping.archive",
         json!({"purpose": crate::grouping::purpose(inputs)?}),
-        crate::WRITE_TIMEOUT,
+        inputs.value("lane").unwrap_or("stable"),
     )
-    .map_err(crate::classify_design_failure)
 }
 
 pub fn render(data: &Value) -> String {
