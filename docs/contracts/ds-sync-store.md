@@ -90,6 +90,17 @@ result is freed (`Superseded`, `reclaimed:superseded_locally` with no
 identity on the receipt, so the standing row keeps its bytes). A completion
 whose result is already gone seals nothing.
 
+A host runs ONE producer set over every engine it runs
+(`ds-sync-runtime::Producers`, keyed by the engine a row's identity names):
+the producer asked to adopt, move or free a row is always the one whose
+engine produced it. Before this rule the Server's report pass freed a lost
+Solar row through the report producer, which answered 0 for a batch it never
+held, and the store cleared the row's locator while the result stayed in the
+compute store — the desktop, built with a report producer only, did the same
+to every Solar row. A lost row of an engine this host has no producer for is
+`reclaim_failed` with the engine named, and keeps naming its bytes: no
+reclaim is silent, and no producer says another engine's bytes are gone.
+
 `sync_store::queue_status(rows, leases, project?, now_ms)` is the queue's
 reading, pure over one fence's rows and leases: queued = `held | uploading`
 (count, bytes, oldest `produced_at_ms`, rooms, distinct hold reasons),

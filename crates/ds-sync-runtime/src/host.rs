@@ -961,6 +961,117 @@ impl SyncHost for StoreHost<'_> {
     }
 }
 
+/// One producer set over every engine a host runs, keyed by the engine a
+/// row's identity names — the host's whole answer to "where do this
+/// machine's bytes live", so a row of ANY engine is adopted, moved and freed
+/// through the producer that owns its bytes.
+///
+/// WHY (2026-09-20): [`StoreHost::local`] frees every row the store holds
+/// as lost through the ONE producer the host was built with. The Server ran
+/// its report pass over the report producer and its Solar pass over the
+/// Solar producer, so a lost Solar row observed by the report pass was
+/// "reclaimed" with 0 bytes — the report producer holds no batch by that
+/// id — and the kernel cleared the row's locator while the result stayed in
+/// the compute store; the desktop, built with the report producer only, did
+/// the same to every Solar row. That is the gap the two-sided-engines rule
+/// names: a producer that answers `Ok(0)` because "its bytes live
+/// elsewhere". One set, keyed by engine, closes it on both hosts: the
+/// producer asked is always the one whose engine produced the row, and a
+/// row of an engine this host has no producer for is a `reclaim_failed`
+/// that says so — never a silent 0 that tells the store the bytes are gone.
+pub struct Producers<'a> {
+    engines: Vec<(&'a str, &'a dyn Producer)>,
+}
+
+impl<'a> Producers<'a> {
+    /// The set, one producer per engine. Two producers for one engine would
+    /// make "the producer that owns the bytes" ambiguous, so the set refuses
+    /// them; an empty set is [`StoreOnlyProducer`]'s job, not this one's.
+    pub fn new(engines: Vec<(&'a str, &'a dyn Producer)>) -> Result<Self, String> {
+        if engines.is_empty() {
+            return Err("a producer set names at least one engine".into());
+        }
+        for (index, (engine, _)) in engines.iter().enumerate() {
+            if engine.trim().is_empty() {
+                return Err("a producer set names its engines".into());
+            }
+            if engines[..index].iter().any(|(held, _)| held == engine) {
+                return Err(format!("the producer set names {engine} twice"));
+            }
+        }
+        Ok(Producers { engines })
+    }
+
+    /// The producer whose engine produced `row`.
+    fn of(&self, row: &LocalRow) -> Result<&'a dyn Producer, String> {
+        let engine = row.identity.engine.as_str();
+        self.engines
+            .iter()
+            .find(|(held, _)| *held == engine)
+            .map(|(_, producer)| *producer)
+            .ok_or_else(|| {
+                format!(
+                    "no {engine} producer on this host holds the bytes of {}",
+                    if row.client_publish_id.is_empty() {
+                        "a replica of the head".to_string()
+                    } else {
+                        format!("batch {}", row.client_publish_id)
+                    }
+                )
+            })
+    }
+}
+
+impl Producer for Producers<'_> {
+    /// Every producer's inventory, in the order the set names them. A
+    /// producer that offers a row of another engine is a host bug — its rows
+    /// would be moved and freed by a producer that never held them — and is
+    /// refused rather than adopted.
+    fn inventory(&self, project: &str) -> Result<Vec<LocalRow>, String> {
+        let mut rows = Vec::new();
+        for (engine, producer) in &self.engines {
+            for row in producer.inventory(project)? {
+                if row.identity.engine != *engine {
+                    return Err(format!(
+                        "the {engine} producer offered batch {} of engine {}",
+                        row.client_publish_id, row.identity.engine
+                    ));
+                }
+                rows.push(row);
+            }
+        }
+        Ok(rows)
+    }
+
+    fn transfer(
+        &self,
+        row: &LocalRow,
+        output_id: &str,
+        session_uri: &str,
+    ) -> Result<TransferReceipt, String> {
+        self.of(row)?.transfer(row, output_id, session_uri)
+    }
+
+    /// Freed through the producer whose engine produced the row. A replica
+    /// of the head is nobody's publication and frees 0; a row of an engine
+    /// with no producer here is an error, so the receipt is `reclaim_failed`
+    /// and the row keeps naming its bytes until a producer can free them.
+    fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
+        if row.client_publish_id.is_empty() {
+            return Ok(0);
+        }
+        self.of(row)?.reclaim(project, row)
+    }
+
+    fn activity(&self, project: &str) -> Result<Vec<ActivityRow>, String> {
+        let mut rows = Vec::new();
+        for (_, producer) in &self.engines {
+            rows.extend(producer.activity(project)?);
+        }
+        Ok(rows)
+    }
+}
+
 /// A producer for a host that holds no local byte source of its own yet.
 ///
 /// Its inventory is empty, so [`StoreHost::local`] returns exactly the rows the

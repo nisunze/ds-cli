@@ -37,6 +37,12 @@ whose seal the store could not record) and to free a result the store has
 settled as lost (`Store::retire_job_result`). `run_solar_publications`
 drains the rows the store holds.
 
+A host that runs several engines supplies ONE `Producers` set keyed by engine
+— report + Solar on the Server and on the desktop — so a lost row is freed by
+the producer that owns its bytes whichever pass observes it, and a row of an
+engine the host has no producer for is `reclaim_failed` with the engine named,
+never `reclaimed` with 0.
+
 `StoreOnlyProducer` and `UnavailableGateway` explicitly refuse missing effects;
 other producers require their own real adapters before their effects are enabled.
 
