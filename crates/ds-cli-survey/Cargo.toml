@@ -12,6 +12,11 @@ publish.workspace = true
 ds-cli-contract = { workspace = true }
 ds-cli-auth = { workspace = true }
 ds-client-core = { workspace = true }
+# The working-area form choice is one operation whichever host runs it: the
+# owner is `ds-layer-ops`, and `--target server` is `ds-cli-server`'s own
+# transport. No cycle: nothing in either knows `ds survey`.
+ds-layer-ops = { workspace = true }
+ds-cli-server = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

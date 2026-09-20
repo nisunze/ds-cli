@@ -214,11 +214,11 @@ pub fn refusal(failure: &Failure) -> Response {
     (status, Json(body)).into_response()
 }
 
-fn invalid(message: impl Into<String>) -> Response {
+pub(crate) fn invalid(message: impl Into<String>) -> Response {
     refusal(&Failure::invalid("invalid_input", message).remedy("send the documented request body"))
 }
 
-async fn run<T: Send + 'static>(
+pub(crate) async fn run<T: Send + 'static>(
     app: App,
     operation_id: &'static str,
     project: Option<String>,
@@ -272,7 +272,7 @@ pub struct ListQuery {
 #[derive(Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct ScopeQuery {
-    project: Option<String>,
+    pub(crate) project: Option<String>,
 }
 
 /// `GET /v1/layers?project=&refresh=&limit=&zoom=` — the canonical catalogue.
@@ -389,7 +389,7 @@ pub async fn default_visibility(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #[test]
     fn captured_account_cannot_pass_after_current_account_switches_back() {
         struct Accept;
@@ -446,11 +446,11 @@ mod tests {
     /// this account cannot read is the source's own refusal, which is what
     /// comes back from the gateway — not something the Server decides from a
     /// directory it does not hold.
-    struct Upstream {
+    pub(crate) struct Upstream {
         uid: String,
         documents: BTreeMap<String, Value>,
         reorders: Mutex<Vec<(String, Vec<Order>)>>,
-        switch_project_on_read: AtomicBool,
+        pub(crate) switch_project_on_read: AtomicBool,
     }
     struct FixtureDocuments {
         upstream: Arc<Upstream>,
@@ -538,13 +538,25 @@ mod tests {
                 {"id": "ds-poles", "type": "circle", "source": "survey_geo", "style_ref": "poles", "metadata": {"config_layer_id": "survey/poles", "label": "Poles", "layer_class": "survey", "geometry_type": "Point", "order": 10}},
                 {"id": "ds-poles__label", "type": "symbol", "source": "survey_geo", "style_ref": "poles__label", "metadata": {"config_layer_id": "survey/poles", "parent_layer": "ds-poles"}},
                 {"id": "ds-lines", "type": "line", "source": "design_vt", "source-layer": "lv", "style_ref": "lines", "minzoom": 12, "metadata": {"config_layer_id": lines, "label": "LV Lines", "layer_class": "design_tile", "geometry_type": "LineString", "order": 20}}
-            ]
+            ],
+            // The survey form catalogue the working-area routes read; the
+            // second project deliberately has a different one.
+            "survey_layers": if lines == "design/lines" {
+                json!([
+                    {"key": "poles", "label": "Poles", "geometry_type": "Point", "layer_ids": ["ds-poles", "ds-poles__label"], "style_ref": "poles"},
+                    {"key": "customers", "label": "Customers", "geometry_type": "Point", "layer_ids": ["ds-customers"], "style_ref": "customers"}
+                ])
+            } else {
+                json!([
+                    {"key": "mv_poles", "label": "MV poles", "geometry_type": "Point", "layer_ids": ["ds-mv-poles"], "style_ref": "mv_poles"}
+                ])
+            }
         })
     }
     /// The two projects this account can read. `proj-lome`'s catalogue is
     /// deliberately not `proj-kigali`'s, so a test cannot pass by serving the
     /// wrong one.
-    fn fixture_upstream(uid: &str) -> Arc<Upstream> {
+    pub(crate) fn fixture_upstream(uid: &str) -> Arc<Upstream> {
         Arc::new(Upstream {
             uid: uid.into(),
             documents: [
@@ -563,14 +575,15 @@ mod tests {
             switch_project_on_read: AtomicBool::new(false),
         })
     }
-    const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    pub(crate) const TOKEN: &str =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     /// One running Server: a real TCP listener on a free loopback port.
-    struct Running {
-        address: std::net::SocketAddr,
-        handle: tokio::task::JoinHandle<()>,
+    pub(crate) struct Running {
+        pub(crate) address: std::net::SocketAddr,
+        pub(crate) handle: tokio::task::JoinHandle<()>,
     }
-    async fn start(
+    pub(crate) async fn start(
         dir: &std::path::Path,
         upstream: Arc<Upstream>,
         allowed: Arc<AtomicBool>,
@@ -650,7 +663,7 @@ mod tests {
         let text = response.body_mut().read_to_string().unwrap();
         (status, serde_json::from_str(&text).unwrap_or(Value::Null))
     }
-    async fn wire(
+    pub(crate) async fn wire(
         address: std::net::SocketAddr,
         method: &'static str,
         path: &'static str,

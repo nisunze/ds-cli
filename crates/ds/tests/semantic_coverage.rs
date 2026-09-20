@@ -853,6 +853,25 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("survey.template.lifecycle", "global_write", "headless_user"),
     ("survey.template.read", "local_auth_state", "headless_user"),
     ("survey.templates.list", "local_auth_state", "headless_user"),
+    // Which forms the working area loads: a machine-local choice per lane,
+    // account and project, read from the layer catalogue (no new backend
+    // read) and persisted beside the drawer's visibility. Never chosen loads
+    // nothing; only `select` and `clear` write, and only locally.
+    (
+        "survey.working-area.forms",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "survey.working-area.select",
+        "local_file_write",
+        "headless_project",
+    ),
+    (
+        "survey.working-area.clear",
+        "local_file_write",
+        "headless_project",
+    ),
     (
         "style.appearance.plan",
         "local_auth_state",

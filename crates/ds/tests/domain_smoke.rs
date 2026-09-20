@@ -10691,6 +10691,9 @@ fn no_survey_example_names_a_deployment_form_slug() {
                 "survey.query" | "survey.entries.select" | "survey.entries.changes" => {
                     "ds survey project-forms list"
                 }
+                // The working-area choice is over the project's own catalogue,
+                // which its read answers with the exact slugs.
+                "survey.working-area.select" => "ds survey working-area forms",
                 _ => "ds survey forms list",
             };
             assert!(

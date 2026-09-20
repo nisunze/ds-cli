@@ -16,6 +16,7 @@ asset inventory.
 | Changes since a prior delivery | `survey.entries.changes` | Last completed replication checkpoint, retained cursors and tombstones; a partial page does not advance the checkpoint. |
 | Work without connectivity | Browser Survey capture | Cached project/forms, local media and durable IndexedDB entry/outbox commits; there is no separate native CLI capture workspace. |
 | Standardize or reuse collection forms | Project-form and template commands below | Current settings and versions; configuration reuse does not copy observations. |
+| The map's working area loads too much, or nothing | `survey.working-area.forms`, then `survey.working-area.select` | The forms the operator is working on. The working area loads only the selected forms and, until a choice is made, nothing. |
 
 ## Reuse existing discovery
 
@@ -335,6 +336,33 @@ Four related objects have separate lifecycles:
 4. A **project created from a template** is a new, independent project. Use
    `survey project create-from-template`. Applying a template instead modifies
    an existing project.
+
+## Which forms the working area loads
+
+The map's working area loads survey entries for exactly the forms selected on
+this host for the project — never every active form by default. The choice is
+per lane, DS account and project, persisted beside the layer drawer's
+remembered visibility (`ds-layer-store`, `working-area-forms.json`), and read
+from the same layer catalogue the map already holds, so reading it costs no
+backend query.
+
+| Command | Effect | Answer |
+| --- | --- | --- |
+| `survey working-area forms` | none (read) | `forms[]` (slug, label, `selected`, `layer_ids`, `count` when already known), `loads` (the slugs that load, catalogue order), `chosen`, `stale`, `remedy` when nothing loads |
+| `survey working-area select --form <slug>… \| --all \| --none` | local write | the same projection after the change, `changed`, `next_selection`, `revision` |
+| `survey working-area clear` | local write | back to never chosen (`chosen: false`) |
+
+Rules the answer follows: never chosen (`chosen: false`) loads nothing and
+carries the remedy; `--none` is an explicit empty choice, `clear` forgets the
+choice; `select` replaces the whole selection (duplicates fold, order is the
+catalogue's) and is idempotent (`changed: false` writes nothing); a `--form`
+slug that is not a form of the project is `unknown_form`, naming it, and nothing
+is written; a chosen slug the project no longer has is reported in `stale` and
+never loaded. `--target server --project <id>` runs the same operation on the
+running Server for the project named; the desktop target reads the saved
+selection when `--project` is omitted. Every host — `ds`, the Server, the
+browser — asks the same kernel question (`survey_working_area_forms`), so the
+map cannot load a form the CLI would not report in `loads`.
 
 ## Safe discovery order
 

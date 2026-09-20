@@ -198,7 +198,9 @@ impl Profile {
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
             // Three image leaves add offline rotation and pinned publication.
-            Self::SurveyProjects => 21,
+            // Three working-area leaves read, choose and forget which forms
+            // the map loads for the project — a local choice, no fetch.
+            Self::SurveyProjects => 24,
             // Twenty-one governed design-edit leaves plus the two bootstrap
             // tools. Version history and the pinned Working set project the
             // same bounded desktop-owned workflow without transporting
@@ -559,6 +561,9 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.project-form.editor",
     "survey.project-forms.plan",
     "survey.project-forms.apply",
+    "survey.working-area.forms",
+    "survey.working-area.select",
+    "survey.working-area.clear",
     "survey.templates.list",
     "survey.template.read",
     "survey.template.create",

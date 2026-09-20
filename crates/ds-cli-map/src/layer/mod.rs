@@ -8,7 +8,9 @@ pub mod project_visibility;
 pub mod remote_list;
 pub mod remove;
 pub mod reorder;
-pub mod target;
+/// The host a layer operation runs on: the Server transport's own routing
+/// decision, shared with every domain that takes `--target`.
+pub use ds_cli_server::target;
 pub mod visibility;
 
 use ds_cli_contract::outcome::Failure;

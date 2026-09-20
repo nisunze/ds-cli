@@ -8,6 +8,8 @@ mod auth;
 pub mod host;
 #[doc(hidden)]
 pub mod layers;
+pub mod target;
+pub mod working_area_forms;
 // The shared report publication pass. `ds report outbox drain` calls exactly
 // this, so a hand-driven drain and the background pump are one runner.
 #[doc(hidden)]
@@ -626,6 +628,14 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("local_layer_refused") => Failure::new(class, "local_layer_refused", message),
         Some("layer_state_refused") => Failure::new(class, "layer_state_refused", message),
         Some("project_context_changed") => Failure::new(class, "project_context_changed", message),
+        // The working-area form owner's, re-raised for
+        // `ds survey working-area … --target server`.
+        Some("unknown_form") => Failure::new(class, "unknown_form", message),
+        Some("no_forms_named") => Failure::new(class, "no_forms_named", message),
+        Some("ambiguous_selection") => Failure::new(class, "ambiguous_selection", message),
+        Some("working_area_forms_refused") => {
+            Failure::new(class, "working_area_forms_refused", message)
+        }
         Some("auth_identity_mismatch") => Failure::new(class, "auth_identity_mismatch", message),
         Some("headless_signed_out") => Failure::new(class, "headless_signed_out", message),
         Some("headless_project_not_selected") => {
@@ -791,6 +801,41 @@ pub fn layers_default_visibility(inputs: &Inputs, _: &Context) -> Result<Value, 
     let path = with_project("/v1/layers/default-visibility", &project(inputs)?);
     let body = serde_json::to_vec(&json!({"defaults": defaults})).expect("closed request");
     layers_answer(request(inputs, "POST", &path, Some(&body), 1024 * 1024)?)
+}
+/// `survey.working-area.forms` executed on a Server: the project is explicit.
+pub fn working_area_forms_read(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let path = with_project("/v1/survey/working-area-forms", &project(inputs)?);
+    layers_answer(request(inputs, "GET", &path, None, 32 * 1024 * 1024)?)
+}
+/// `survey.working-area.select` executed on a Server. The body is exactly the
+/// owner's `SelectRequest`, so nothing about the command's shape changes with
+/// the host.
+pub fn working_area_forms_select(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let path = with_project("/v1/survey/working-area-forms/select", &project(inputs)?);
+    let body = serde_json::to_vec(&ds_layer_ops::working_area_forms::SelectRequest {
+        forms: inputs.repeated("form").to_vec(),
+        all: inputs.switch("all"),
+        none: inputs.switch("none"),
+    })
+    .expect("closed request");
+    layers_answer(request(
+        inputs,
+        "POST",
+        &path,
+        Some(&body),
+        32 * 1024 * 1024,
+    )?)
+}
+/// `survey.working-area.clear` executed on a Server.
+pub fn working_area_forms_clear(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let path = with_project("/v1/survey/working-area-forms/clear", &project(inputs)?);
+    layers_answer(request(
+        inputs,
+        "POST",
+        &path,
+        Some(b"{}"),
+        32 * 1024 * 1024,
+    )?)
 }
 pub fn render_layers_list(value: &Value) -> String {
     ds_layer_ops::render_list(value)

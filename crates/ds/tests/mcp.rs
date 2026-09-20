@@ -1343,8 +1343,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
-            // Headless photo rotation, offline file rotation and verified publication.
-            "survey-projects" => 21,
+            // Headless photo rotation, offline file rotation and verified
+            // publication; then the three working-area form leaves (read,
+            // choose, forget which forms the map loads).
+            "survey-projects" => 24,
             "design-edit" => 23,
             // Twenty-six printing leaves plus bootstrap: city-vector input,
             // local rendering and standalone map delivery complete the headless

@@ -232,6 +232,17 @@ Server's document is on another project than the one named),
 above. Nothing here pretends a renderer mounted anything: `writes` name the
 layout word a renderer would apply to each runtime layer.
 
+The same transport carries the working-area form choice — `ds survey
+working-area forms|select|clear --target server --project <id>` over
+`GET /v1/survey/working-area-forms?project=`,
+`POST /v1/survey/working-area-forms/select?project=` (`{"forms": [slugs]}`,
+`{"all": true}` or `{"none": true}`) and
+`POST /v1/survey/working-area-forms/clear?project=`. It is the same owner
+shape (`ds-layer-ops` over the kernel's `survey_working_area_forms`), read from
+the same layer catalogue and remembered beside the visibility preferences, with
+`unknown_form`, `no_forms_named` and `ambiguous_selection` re-raised under their
+own codes. See `docs/reference/survey.md` for what the choice means.
+
 **Any project this account can read, on one running host.** The project is
 required, and the document source is opened *for that project*
 (`ds-cli-auth`'s explicit-project layer fence): the saved selection is not read

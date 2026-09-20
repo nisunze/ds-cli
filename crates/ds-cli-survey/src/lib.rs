@@ -15,6 +15,7 @@ pub mod photo;
 pub mod project_forms;
 pub mod query;
 pub mod templates;
+pub mod working_area;
 
 use std::io::Read;
 
@@ -53,6 +54,9 @@ pub static DOMAIN: Domain = Domain {
         &templates::APPLY_COMMAND,
         &templates::LIFECYCLE_COMMAND,
         &templates::CREATE_PROJECT_COMMAND,
+        &working_area::FORMS_COMMAND,
+        &working_area::SELECT_COMMAND,
+        &working_area::CLEAR_COMMAND,
     ],
 };
 

@@ -224,6 +224,23 @@ so this machine's saved selection is never read and two of the owner's projects
 are served side by side through one running host. A refused layer request
 writes nothing, under any project.
 
+### `GET /v1/survey/working-area-forms?project=<id>`
+### `POST /v1/survey/working-area-forms/select?project=<id>`  body: `{"forms":[…]}` | `{"all":true}` | `{"none":true}`
+### `POST /v1/survey/working-area-forms/clear?project=<id>`  body: `{}`
+
+Which survey forms the map's working area loads for the named project — the
+`ds survey working-area forms|select|clear` operations with `--target server`.
+Same owner as the layer routes (`ds_layer_ops::working_area_forms` over
+`ds-command-kernel::survey_working_area_forms`), same project rules as the table
+above (`project_required`, `context_corrupt`, `project_context_changed`), same
+document source (the project's layer catalogue; no other read is spent) and a
+sibling of the visibility store (`working-area-forms.json`, keyed lane/uid/
+project). Never chosen answers `chosen: false`, `loads: []` and the remedy;
+`select` refuses `unknown_form` (naming the slug), `no_forms_named` and
+`ambiguous_selection` and writes nothing; `clear` removes the entry. Proven
+through the real listener: never chosen → select → restart → retained → second
+project on its own terms → clear.
+
 ### Anything this host does not serve
 A request under `/v1/map/…` or `/v1/invoke` answers the standing ruling's
 typed refusal:

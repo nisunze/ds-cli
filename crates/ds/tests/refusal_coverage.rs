@@ -715,7 +715,9 @@ fn every_constructible_refusal_code_is_documented() {
         // its bearer and the lane fence live here and nowhere else. So the
         // Server's own codes are declared by `ds server` commands and the
         // layer owner's, re-raised across that transport, by `ds map layer …`.
-        ("ds-cli-server", &["server", "map"]),
+        // The working-area form owner's travel the same transport for
+        // `ds survey working-area … --target server`, declared there.
+        ("ds-cli-server", &["server", "map", "survey"]),
         ("ds-cli-solar", &["solar"]),
         ("ds-cli-pm", &["pm"]),
         ("ds-cli-assets", &["assets"]),

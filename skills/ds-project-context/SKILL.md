@@ -48,6 +48,14 @@ If multiple desktops are paired, require the intended descriptor rather than
 choosing one. Where `ds` lives, how to read its envelope, and what to do when
 it has no matching contract are the `ds` skill's rules; follow them here.
 
+Some per-project operator state is kept on the host, per lane, DS account and
+project, and is neither of those contexts: the layer drawer's remembered
+visibility (`map.layer.list|show|hide`) and the working area's form selection
+(`survey.working-area.forms|select|clear`). Both take `--project` for one call
+(the saved CLI selection when omitted) and `--target server` for the running
+Server; selecting a project never changes them, and they never change a
+selection.
+
 Touched version and attachment boundaries instead require explicit `--project`:
 `design.version.*` and `design.attachment.*` capture that project for native
 authorization and never consult the Web active project or require Desktop.

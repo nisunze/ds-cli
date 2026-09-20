@@ -242,6 +242,18 @@ pub fn router(app: App) -> Router {
             "/v1/layers/default-visibility",
             post(crate::layers::default_visibility),
         )
+        .route(
+            "/v1/survey/working-area-forms",
+            get(crate::working_area_forms::read),
+        )
+        .route(
+            "/v1/survey/working-area-forms/select",
+            post(crate::working_area_forms::select),
+        )
+        .route(
+            "/v1/survey/working-area-forms/clear",
+            post(crate::working_area_forms::clear),
+        )
         .route("/v1/transformer-processing/:key", post(submit))
         .route("/v1/solar-processing/:key", post(submit_solar))
         .route(
@@ -2654,13 +2666,13 @@ pub(crate) mod tests {
             .unwrap()
             .artifacts;
         assert_eq!(rows.len(), 1, "{rows:?}");
-        assert_eq!(rows[0].replay_key, *newer, "the newest completion is the row");
+        assert_eq!(
+            rows[0].replay_key, *newer,
+            "the newest completion is the row"
+        );
         assert_eq!(rows[0].state, ArtifactState::Held);
         assert!(rows[0].readable, "the newer's bytes were not freed");
-        assert_eq!(
-            rows[0].bytes_locator,
-            format!("solar:prepared:job:{newer}")
-        );
+        assert_eq!(rows[0].bytes_locator, format!("solar:prepared:job:{newer}"));
         let result = |id: &str| {
             runtime::open(&app.database)
                 .unwrap()
@@ -2681,7 +2693,10 @@ pub(crate) mod tests {
         assert_eq!(receipts[0].action, "reclaimed");
         assert_eq!(receipts[0].outcome, "superseded_locally");
         assert!(receipts[0].committed_bytes.unwrap() > 0);
-        assert!(receipts[0].identity.is_none(), "the row was not transitioned");
+        assert!(
+            receipts[0].identity.is_none(),
+            "the row was not transitioned"
+        );
         let detail = receipts[0].detail.as_deref().unwrap();
         assert!(detail.starts_with(&format!("{older} lost to")), "{detail}");
         assert!(detail.ends_with(&format!("({newer})")), "{detail}");

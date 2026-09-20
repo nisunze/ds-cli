@@ -28,6 +28,9 @@ use std::path::PathBuf;
 
 pub use ds_command_kernel::layer_document::{Order, VisibilityDefault};
 
+/// Which survey forms the working area loads: `ds survey working-area …`.
+pub mod working_area_forms;
+
 pub const LOCAL_STORE_REMEDY: &str =
     "check the local data directory; DS_LAYER_HOME may name an absolute shared directory";
 pub const ID_REMEDY: &str = "copy ids from `ds map layer list --output json`";

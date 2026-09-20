@@ -1,11 +1,14 @@
-//! Which host executes a layer operation — and nothing else.
+//! Which host executes a layer-family operation — and nothing else.
 //!
 //! The standing ruling (2026-09-11) is that CLI/MCP → Desktop or Server is no
 //! difference at all: one command id, the same arguments, the same answer,
-//! whichever host runs it. So `ds map layer list|show|hide|reorder` are the
-//! layer drawer's four operations, and `--target` is the one routing decision
-//! on top of them. There is deliberately no `ds server layers …`: a second id
-//! that differed only by who answered is exactly what that ruling ended.
+//! whichever host runs it. So `ds map layer list|show|hide|reorder` and
+//! `ds survey working-area forms|select|clear` are one operation each, and
+//! `--target` is the one routing decision on top of them. There is
+//! deliberately no `ds server layers …`: a second id that differed only by
+//! who answered is exactly what that ruling ended. The decision lives in this
+//! crate because the `server` half of it is this crate's transport; every
+//! domain that takes a host uses it from here.
 //!
 //! What each target means:
 //!
@@ -35,10 +38,10 @@ pub const TARGET_ARG: Arg = Arg::value(
 .default("desktop");
 
 /// The protected state directory of the `--target server` host, and the
-/// project every request to it names. Both are `ds-cli-server`'s own
+/// project every request to it names. Both are this crate's own
 /// declarations, so the two halves of one operation cannot drift apart.
-pub const STATE_DIR_ARG: Arg = ds_cli_server::STATE_DIR_ARG;
-pub const PROJECT_ARG: Arg = ds_cli_server::PROJECT_ARG;
+pub const STATE_DIR_ARG: Arg = crate::STATE_DIR_ARG;
+pub const PROJECT_ARG: Arg = crate::PROJECT_ARG;
 
 pub const TARGET_INSTANCE_UNSUPPORTED: Refusal = Refusal {
     code: "target_instance_unsupported",
@@ -133,14 +136,35 @@ pub fn resolve(inputs: &Inputs) -> Result<Target, Failure> {
 mod tests {
     use super::*;
 
-    /// Parsed the way `ds` parses it, against the real declaration, so the
-    /// default this reads is the declared one and never a second copy of it.
+    /// Parsed the way `ds` parses it, against a command that declares the
+    /// real `TARGET_ARG`, so the default this reads is the declared one and
+    /// never a second copy of it.
     fn inputs(target: Option<&str>) -> Inputs {
+        use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Execution, Requires};
+        static HOSTED: Command = Command {
+            id: "test.hosted",
+            path: &["test", "hosted"],
+            contract: 1,
+            chapter: Chapter::Survey,
+            summary: "Fixture.",
+            purpose: "A command that takes a host.",
+            effect: Effect::ReadOnly,
+            authority: Authority::None,
+            execution: Execution::Sync,
+            args: &[TARGET_ARG, PROJECT_ARG, STATE_DIR_ARG],
+            output: "Nothing.",
+            examples: &[],
+            refusals: &[],
+            reference: None,
+            search: &[],
+            requires: Requires::Server,
+            availability: || ds_cli_contract::spec::Availability::Available,
+        };
         let tokens: Vec<String> = match target {
             Some(target) => vec!["--target".to_owned(), target.to_owned()],
             None => vec![],
         };
-        ds_cli_contract::parse(&crate::layer::list::COMMAND, &tokens).expect("declared arguments")
+        ds_cli_contract::parse(&HOSTED, &tokens).expect("declared arguments")
     }
 
     #[test]

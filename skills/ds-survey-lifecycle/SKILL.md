@@ -27,6 +27,7 @@ form slugs, field keys, command names or internal storage.
 | “What changed since the last delivery?” | Refresh a downstream copy without rereading everything. | `survey.entries.changes`; retain the completed checkpoint. |
 | “Our team will work without connectivity.” | Prepare browser forms and retain captures until publication succeeds. | [Field capture](references/field-capture.md). |
 | “Set up or reuse our collection forms.” | Define observations consistently for one project or future projects. | [Configuration](references/configuration.md). |
+| “The map loads every form / shows no survey entries.” | The working area loads only the forms chosen on this host; never chosen loads nothing. | `survey.working-area.forms` to read, `survey.working-area.select --form <slug>…` (or `--all`, `--none`) to choose, `survey.working-area.clear` to forget. |
 
 ## Use the shortest supported route
 

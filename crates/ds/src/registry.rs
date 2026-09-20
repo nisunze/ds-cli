@@ -1230,6 +1230,21 @@ static SURVEY_ENTRIES: &[Entry] = &[
         handler: ds_cli_survey::templates::create_project,
         render: ds_cli_survey::templates::render_project,
     },
+    Entry {
+        command: &ds_cli_survey::working_area::FORMS_COMMAND,
+        handler: ds_cli_survey::working_area::forms,
+        render: ds_cli_survey::working_area::render,
+    },
+    Entry {
+        command: &ds_cli_survey::working_area::SELECT_COMMAND,
+        handler: ds_cli_survey::working_area::select,
+        render: ds_cli_survey::working_area::render,
+    },
+    Entry {
+        command: &ds_cli_survey::working_area::CLEAR_COMMAND,
+        handler: ds_cli_survey::working_area::clear,
+        render: ds_cli_survey::working_area::render,
+    },
 ];
 
 /// Map styling. Ordered as a session uses it: list the refs, read one, author
