@@ -427,6 +427,46 @@ impl Store {
             .optional()?
             .flatten())
     }
+    /// Free the result bytes of one completed job this caller may see — the
+    /// producer's reclaim for a Solar publication that lost. The row stays
+    /// exactly as it is (phase, `result_sha256`, context, timings in the
+    /// row itself): it is the evidence that the work ran and what it
+    /// produced. Only the `result` column — the sealed response with its
+    /// output bodies — is set to NULL. Answers the bytes freed; a job whose
+    /// result is already gone, or that never completed, answers 0 and
+    /// writes nothing. Idempotent by construction.
+    ///
+    /// Owner, 2026-09-20: an artefact belongs to the project, never to the
+    /// machine; when there is a conflict, online overwrites local. A Solar
+    /// result's bytes live in this table, so this is where they leave.
+    pub fn retire_job_result(&mut self, caller: &JobCaller<'_>, id: &str) -> Result<u64> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let found: Option<(String, Option<i64>)> = transaction
+            .query_row(
+                "SELECT row, LENGTH(result) FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3 AND phase='completed'",
+                params![id, caller.owner, caller.lane],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((row, length)) = found else {
+            return Ok(0);
+        };
+        let job: Job = serde_json::from_str(&row)?;
+        if !caller.sees(&job) {
+            return Ok(0);
+        }
+        let Some(length) = length else {
+            return Ok(0);
+        };
+        transaction.execute(
+            "UPDATE compute_jobs SET result=NULL WHERE id=?1 AND owner=?2 AND lane=?3",
+            params![id, caller.owner, caller.lane],
+        )?;
+        transaction.commit()?;
+        Ok(length.max(0) as u64)
+    }
     /// The sealed request retained with a job, visible only to a caller the
     /// job's context admits. Hosts use it to reconstruct a publication after
     /// restart; it is never a caller-supplied file reference.

@@ -2,6 +2,7 @@
 //! worker, another account, an incompatible upgrade, and the handoff.
 
 use ds_command_kernel::sync::Identity;
+use ds_command_kernel::sync_store::ABANDONED_AFTER_MS;
 use ds_command_kernel::sync_store::{
     ArtifactOutput, ArtifactRow, ArtifactState, BytesEvidence, Event, Fence, LegacyHandoff,
     ReceiptRow, Scope,
@@ -304,4 +305,193 @@ fn the_handoff_imports_across_scopes_once() {
         )
         .unwrap();
     assert_eq!(recorded.refusals[0].code, "already_recorded");
+}
+
+#[test]
+fn an_acknowledged_write_is_synced_to_disk_before_it_is_acknowledged() {
+    // WHY: the owner lost power on 2026-09-20. Under WAL, `synchronous=NORMAL`
+    // acknowledges a commit before the log reaches the platter; an
+    // acknowledged seal could vanish with the cut. `FULL` is the decision,
+    // and this pins it so a later "performance" edit cannot quietly undo it.
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("store.sqlite")).unwrap();
+    let synchronous: i64 = store
+        .connection_for_test()
+        .query_row("PRAGMA synchronous", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(synchronous, 2, "2 is FULL; 1 would be NORMAL");
+    let journal: String = store
+        .connection_for_test()
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(journal, "wal");
+}
+
+#[test]
+fn the_queue_is_read_from_the_rows_and_a_read_only_open_leaves_nothing_behind() {
+    // WHY: `ds report outbox status` must answer with no session, no gateway
+    // and no running host — on exactly the machines where a stopped queue
+    // goes unnoticed — and it must not create a store where none was.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sync").join("store.sqlite");
+    assert!(
+        Store::open_read_only(&path).unwrap().is_none(),
+        "no store is an empty queue, not an error"
+    );
+    assert!(!path.exists(), "a read-only open creates nothing");
+    let now = 10 * ABANDONED_AFTER_MS;
+    {
+        let mut store = Store::open(&path).unwrap();
+        let mut waiting = row("a", "k1");
+        waiting.produced_at_ms = now - 5_000;
+        store
+            .apply(&fence("alice"), now, Event::LocalProduced { row: waiting })
+            .unwrap();
+        let mut other = row("b", "k2");
+        other.scope = Scope::Project {
+            project: "q".into(),
+        };
+        other.produced_at_ms = now - ABANDONED_AFTER_MS - 1_000;
+        store
+            .apply(&fence("alice"), now, Event::LocalProduced { row: other })
+            .unwrap();
+        store
+            .apply(
+                &fence("alice"),
+                now,
+                Event::LeaseTake {
+                    scope: scope(),
+                    worker_id: "pump".into(),
+                    ttl_ms: 60_000,
+                },
+            )
+            .unwrap();
+    }
+    let reader = Store::open_read_only(&path)
+        .unwrap()
+        .expect("the store exists");
+    let status = reader.queue(&fence("alice"), None, now).unwrap();
+    assert_eq!(status.queued_batches, 2);
+    assert_eq!(status.projects.len(), 2);
+    assert_eq!(status.leases.len(), 1, "the live lease on p is the pump");
+    assert!(
+        status
+            .projects
+            .iter()
+            .any(|p| p.project_id == "p" && p.pumped),
+        "p is pumped"
+    );
+    assert!(
+        status.stuck,
+        "q has waited over an hour with no lease on it: stuck"
+    );
+    let narrowed = reader.queue(&fence("alice"), Some("p"), now).unwrap();
+    assert_eq!(narrowed.queued_batches, 1);
+    assert!(!narrowed.stuck);
+    assert_eq!(
+        reader
+            .queue(&fence("bob"), None, now)
+            .unwrap()
+            .queued_batches,
+        0,
+        "another account's queue is empty"
+    );
+}
+
+#[test]
+fn invariant_5_a_store_fenced_by_account_deployment_and_install_shows_another_fence_nothing() {
+    // WHY: invariant (5) of "reliably synced". `rows_survive_a_restart_and_
+    // stay_fenced_by_account` proves the account fence; this proves the two
+    // others the fence carries, for rows, heads, receipts, leases and the
+    // queue reading alike.
+    let mut store = Store::in_memory().unwrap();
+    let mine = fence("alice");
+    store
+        .apply(
+            &mine,
+            10,
+            Event::LocalProduced {
+                row: row("a", "k1"),
+            },
+        )
+        .unwrap();
+    store
+        .apply(
+            &mine,
+            11,
+            Event::ActionReceipt {
+                receipt: ReceiptRow {
+                    receipt_id: "r1".into(),
+                    scope: scope(),
+                    action: "upload".into(),
+                    identity: Some(ident("a")),
+                    outcome: "committed".into(),
+                    detail: None,
+                    grant_id: None,
+                    work_id: None,
+                    head_revision: Some("rev-1".into()),
+                    head_sha256: None,
+                    head_counter: Some(1),
+                    committed_bytes: Some(10),
+                    at_ms: 11,
+                },
+            },
+        )
+        .unwrap();
+    store
+        .apply(
+            &mine,
+            12,
+            Event::LeaseTake {
+                scope: scope(),
+                worker_id: "w".into(),
+                ttl_ms: 1_000,
+            },
+        )
+        .unwrap();
+    let other_deployment = Fence {
+        deployment: "https://other.example".into(),
+        ..fence("alice")
+    };
+    let other_install = Fence {
+        install_id: "install-2".into(),
+        ..fence("alice")
+    };
+    for foreign in [other_deployment, other_install] {
+        let snapshot = store.snapshot(&foreign, &scope()).unwrap();
+        assert!(snapshot.artifacts.is_empty() && snapshot.heads.is_empty());
+        assert!(snapshot.lease.is_none(), "a lease is fenced too");
+        assert!(store.receipts(&foreign, &scope(), 10).unwrap().is_empty());
+        assert_eq!(store.queue(&foreign, None, 13).unwrap().queued_batches, 0);
+        // The same replay key under another fence is a different row, and
+        // the same receipt id another receipt: neither is refused as a
+        // duplicate of the fenced one.
+        let recorded = store
+            .apply(
+                &foreign,
+                14,
+                Event::LocalProduced {
+                    row: row("a", "k1"),
+                },
+            )
+            .unwrap();
+        assert!(recorded.refusals.is_empty(), "{:?}", recorded.refusals);
+        // And the lease of one fence never blocks a worker under another.
+        let taken = store
+            .apply(
+                &foreign,
+                15,
+                Event::LeaseTake {
+                    scope: scope(),
+                    worker_id: "w2".into(),
+                    ttl_ms: 1_000,
+                },
+            )
+            .unwrap();
+        assert!(taken.refusals.is_empty());
+    }
+    let mine_again = store.snapshot(&mine, &scope()).unwrap();
+    assert_eq!(mine_again.artifacts.len(), 1);
+    assert_eq!(mine_again.artifacts[0].state, ArtifactState::Published);
+    assert_eq!(mine_again.lease.unwrap().worker_id, "w");
 }

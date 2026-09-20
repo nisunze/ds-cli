@@ -1055,3 +1055,65 @@ fn concurrent_claims_keep_the_share_because_the_census_is_read_in_the_claim() {
     assert_eq!(census.running.len(), 4);
     assert_eq!(census.queued.len(), 2);
 }
+
+#[test]
+fn a_retired_result_frees_only_the_bytes_and_keeps_the_row_as_evidence() {
+    // WHY: a Solar publication that lost is freed the way a report batch is —
+    // its bytes leave, the job row stays — and asking again frees nothing.
+    let directory = tempfile::tempdir().expect("temp");
+    let mut store = store(directory.path());
+    store
+        .submit_job(&job(Some(context())), b"input", roomy())
+        .expect("submit");
+    store.submit_job(&job_b(), b"input-b", roomy()).expect("b");
+    for (id, worker) in [(ID, "worker-1"), (ID_B, "worker-2")] {
+        store
+            .update_job(
+                &caller(),
+                id,
+                Event::Claim {
+                    worker,
+                    lease_ms: 30_000,
+                },
+                1_700_000_001_000,
+                None,
+            )
+            .expect("claim");
+        store
+            .update_job(
+                &caller(),
+                id,
+                Event::Complete {
+                    worker,
+                    result_sha256: RESULT,
+                },
+                1_700_000_002_000,
+                Some(b"result bytes"),
+            )
+            .expect("complete");
+    }
+    // Another project's caller frees nothing and sees nothing.
+    let b = caller().about(Some("project-b"));
+    assert_eq!(store.retire_job_result(&b, ID).expect("fenced"), 0);
+    assert_eq!(
+        store.job_result(&caller(), ID).expect("result").unwrap(),
+        b"result bytes"
+    );
+    let freed = store.retire_job_result(&caller(), ID).expect("retire");
+    assert_eq!(freed, b"result bytes".len() as u64);
+    assert!(store.job_result(&caller(), ID).expect("result").is_none());
+    let evidence = store.job(&caller(), ID).expect("row").expect("still there");
+    assert_eq!(evidence.phase, Phase::Completed);
+    assert_eq!(evidence.result_sha256.as_deref(), Some(RESULT));
+    assert!(store.job_input(&caller(), ID).expect("input").is_some());
+    assert_eq!(
+        store.retire_job_result(&caller(), ID).expect("again"),
+        0,
+        "a result already gone is not an error"
+    );
+    assert_eq!(
+        store.job_result(&caller(), ID_B).expect("b").unwrap(),
+        b"result bytes",
+        "only the named job's bytes left"
+    );
+}

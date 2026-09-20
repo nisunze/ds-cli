@@ -40,7 +40,7 @@ transition returns and nothing else; no host re-decides a state.
 - `LocalProduced { artifact }` → upsert `artifact` (`held`); the next plan is a `local_change` trigger (uploads never wait).
 - `HeadsRead { heads, read_at_ms }` → replace the scope's `head` rows; `read_at_ms` becomes the plan's `remote_read_at_ms`.
 - `GrantOpened { grant }` → upsert `grant`; superseded grants of the same scope are dropped.
-- `ActionReceipt { receipt }` → `upload` committed ⇒ `artifact.state = published` and a `head` row from the receipt (the head is carried, never re-read); `conflict` ⇒ `artifact.state = conflict` with `state_reason`; `refused` ⇒ `refused` with the reason; `download` committed ⇒ `artifact` row for the downloaded head (`held`, readable); every receipt appended.
+- `ActionReceipt { receipt }` → `upload` committed ⇒ `artifact.state = published` and a `head` row from the receipt (the head is carried, never re-read); `conflict` ⇒ `artifact.state = conflict` with `state_reason`; `refused` ⇒ `refused` with the reason; `download` committed ⇒ `artifact` row for the downloaded head (`held`, readable); `reclaimed` ⇒ the row's bytes are gone (`readable = false`, `bytes_locator` cleared) and its verdict stays as evidence; `reclaim_failed` changes no row; every receipt appended.
 - `LeaseTake { worker_id, now_ms, ttl_ms }` → granted iff no live lease for the scope, else `refused: lease_held{worker_id, expires_at_ms}`. `LeaseRenew`, `LeaseRelease`. A lease is the ONLY thing that lets a worker drain: two workers never execute the same work.
 - `Logout` / `AccountSwitch { account }` → rows of another account are not visible; nothing is deleted (held bytes belong to the project); drains stop.
 - `Cancel { identity }` → `held`/`uploading` ⇒ `refused: cancelled` with the receipt; committed work is never undone.
@@ -60,3 +60,35 @@ plan with trigger `startup`. Transfers resume from the transport's own
 persisted `TransferState`, kept beside the artifact row (`bytes_locator` +
 `transfer_state`), so completed work is never restarted and never falsely
 reported.
+
+## 6. The store is the queue (2026-09-20)
+
+`Held` is QUEUED. A producer seals a publication — bytes on disk, integrity
+receipt — and records `LocalProduced` in the SAME acknowledged step
+(`ds-sync-runtime::reports::seal`); if the store refuses or cannot be written,
+the bytes are removed and the seal is not acknowledged. No file index is
+enumerated to decide what is queued. `StoreHost::local` adopts a batch that
+is on disk with no row exactly once (`adopted` receipt, legacy batches sealed
+before this rule) and is otherwise a no-op over the producer.
+
+`sync_store::queue_status(rows, leases, project?, now_ms)` is the queue's
+reading, pure over one fence's rows and leases: queued = `held | uploading`
+(count, bytes, oldest `produced_at_ms`, rooms, distinct hold reasons),
+published copies = `published`, reclaimable = `conflict | refused` whose bytes
+are still here (`readable` and a `bytes_locator`), per project. Liveness is
+the store's lease: a live lease on a project is its pump. `stuck` = queued
+work older than `ABANDONED_AFTER_MS` (60 min) on a project with no live
+lease; `next` names the pump. The bytes directory's file lock
+(`.publication.lock`) serialises writers of that directory and is not a
+liveness signal. `Store::queue(fence, project?, now_ms)` reads it;
+`Store::open_read_only(path)` opens an existing store for that read with no
+session, no schema write and no lease.
+
+## 7. Power loss
+
+The store runs `journal_mode=WAL` with `synchronous=FULL`: every acknowledged
+transition — a seal's row, a commit receipt, a lease — is fsynced before the
+caller is told. The trade is one fsync per transition against the loss of an
+acknowledged seal in a power cut (owner, 2026-09-20). `ds-design-workspace`
+already runs FULL without WAL and is outside this rule; the Solar compute
+table shares this file and this pragma.

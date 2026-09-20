@@ -19,10 +19,10 @@ mod jobs;
 pub use jobs::{Census, JobCaller, JobContext, Recovery};
 
 use ds_command_kernel::sync_store::{
-    self as kernel, ArtifactRow, Event, Fence, GrantRow, HeadRow, LeaseRow, ReceiptRow, RowChange,
-    Scope, Snapshot, Transition,
+    self as kernel, ArtifactRow, Event, Fence, GrantRow, HeadRow, LeaseRow, QueueStatus,
+    ReceiptRow, RowChange, Scope, Snapshot, Transition,
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use std::path::Path;
 
 /// The on-disk schema this build reads and writes.
@@ -85,6 +85,26 @@ CREATE TABLE IF NOT EXISTS leases(
     PRIMARY KEY(account, deployment, install_id, scope));
 ";
 
+fn schema_version(connection: &Connection) -> Result<Option<i64>> {
+    let has_meta: Option<i64> = connection
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if has_meta.is_none() {
+        return Ok(None);
+    }
+    Ok(connection
+        .query_row(
+            "SELECT value FROM meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
 fn scope_key(scope: &Scope) -> String {
     match scope {
         Scope::Project { project } => format!("project:{project}"),
@@ -102,15 +122,17 @@ impl Store {
         let connection = Connection::open(path).map_err(|error| Error::Open(error.to_string()))?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
-        connection.pragma_update(None, "synchronous", "NORMAL")?;
+        // The power-loss guarantee, decided (owner, 2026-09-20, after a
+        // power cut): an acknowledged seal survives a sudden power cut. Under
+        // WAL, `NORMAL` syncs the log only at checkpoints, so a transaction
+        // acknowledged to the caller could be lost with the last few
+        // milliseconds of writes; `FULL` fsyncs the WAL on every commit. The
+        // trade is write latency — one fsync per transition, on a store
+        // that sees a few transitions per pass — against the durability of
+        // every acknowledged row, receipt and lease. Durability wins.
+        connection.pragma_update(None, "synchronous", "FULL")?;
         connection.execute_batch(SCHEMA)?;
-        let found: Option<i64> = connection
-            .query_row(
-                "SELECT value FROM meta WHERE key = 'schema_version'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
+        let found = schema_version(&connection)?;
         match found {
             Some(found) if found > SCHEMA_VERSION => {
                 return Err(Error::Incompatible {
@@ -129,6 +151,46 @@ impl Store {
         Ok(Store { connection })
     }
 
+    /// Open an existing store for reading only: no schema is created, no
+    /// version is written, no lease is taken. `Ok(None)` when there is no
+    /// store at `path` — a machine that never sealed anything holds an
+    /// empty queue, not an error. A newer schema on disk is refused exactly
+    /// as [`Store::open`] refuses it.
+    ///
+    /// This is what a status command uses: it must answer on a machine with
+    /// no session and no running host, and it must not leave state behind.
+    pub fn open_read_only(path: &Path) -> Result<Option<Self>> {
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let connection = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|error| Error::Open(error.to_string()))?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
+        let has_meta: Option<i64> = connection
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if has_meta.is_none() {
+            // A file with none of this store's tables holds no queue.
+            return Ok(None);
+        }
+        if let Some(found) = schema_version(&connection)? {
+            if found > SCHEMA_VERSION {
+                return Err(Error::Incompatible {
+                    found,
+                    supported: SCHEMA_VERSION,
+                });
+            }
+        }
+        Ok(Some(Store { connection }))
+    }
+
     /// Open an in-memory store (tests and dry runs).
     pub fn in_memory() -> Result<Self> {
         let connection =
@@ -139,6 +201,13 @@ impl Store {
             params![SCHEMA_VERSION],
         )?;
         Ok(Store { connection })
+    }
+
+    /// The raw connection, for tests that pin a pragma. Not a door for
+    /// hosts: every write goes through [`Store::apply`].
+    #[doc(hidden)]
+    pub fn connection_for_test(&self) -> &Connection {
+        &self.connection
     }
 
     /// Everything one scope holds under one fence.
@@ -195,6 +264,25 @@ impl Store {
             fence,
             "",
         )
+    }
+
+    /// Every lease under one fence, across scopes, live or not — the
+    /// caller's clock decides which are live.
+    pub fn leases_of_fence(&self, fence: &Fence) -> Result<Vec<LeaseRow>> {
+        self.rows::<LeaseRow>(
+            "SELECT row FROM leases WHERE account=?1 AND deployment=?2 AND install_id=?3 AND ?4 = ?4 ORDER BY scope",
+            fence,
+            "",
+        )
+    }
+
+    /// The queue as this fence holds it: the kernel's reading over every
+    /// artifact row and lease of the fence, narrowed to `project` when one
+    /// is named. Read-only; nothing on disk beyond the store is consulted.
+    pub fn queue(&self, fence: &Fence, project: Option<&str>, now_ms: u64) -> Result<QueueStatus> {
+        let rows = self.artifacts_of_fence(fence)?;
+        let leases = self.leases_of_fence(fence)?;
+        Ok(kernel::queue_status(&rows, &leases, project, now_ms))
     }
 
     /// The most recent receipts of one scope, newest first.

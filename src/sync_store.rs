@@ -664,6 +664,24 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
                 ("download", "committed") => {
                     t.plan_trigger = Some(Trigger::DownloadCompleted);
                 }
+                ("reclaimed", _) => {
+                    // The producer freed the bytes of a row that lost (or
+                    // found them already gone). The verdict and the row
+                    // stay as evidence; what changes is that nothing on this
+                    // machine holds the bytes any more, so the queue stops
+                    // counting them as reclaimable and no pass frees them
+                    // twice. A `reclaim_failed` receipt leaves the row as it
+                    // is: the bytes are still there, and the next pass
+                    // tries again in the open.
+                    if let Some(row) = existing {
+                        let mut next = row.clone();
+                        next.readable = false;
+                        next.bytes_locator = String::new();
+                        next.transfer_state = None;
+                        next.updated_at_ms = now;
+                        t.changes.push(RowChange::UpsertArtifact(next));
+                    }
+                }
                 _ => {}
             }
         }
@@ -899,6 +917,245 @@ fn legacy_row_evidence(legacy: &LegacyOutboxRow) -> String {
         }
     }
     serde_json::to_string(&Value::Object(kept)).unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
+// The queue, read from the rows
+// ---------------------------------------------------------------------------
+
+/// How long queued work may wait with no live lease on its project before
+/// the status calls it stuck. A healthy pump publishes within minutes of a
+/// seal; an hour with nobody holding the project means nothing is pumping —
+/// the desktop and the Server are both closed, or their pump is not running —
+/// and that is something an operator has to do, which is what `stuck` means.
+pub const ABANDONED_AFTER_MS: u64 = 60 * 60 * 1000;
+
+/// How many room names one project's row carries before it is summarised.
+pub const MAX_REPORTED_TRANSFORMERS: usize = 20;
+
+/// How many distinct hold reasons one project's row carries.
+pub const MAX_REPORTED_REASONS: usize = 5;
+
+/// One project's rows, as the queue itself holds them, split by state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedProject {
+    pub project_id: String,
+    /// Rows still waiting to publish (`held` or `uploading`) — the only ones
+    /// a pump will move.
+    pub batches: usize,
+    pub bytes: u64,
+    pub oldest_produced_at_ms: u64,
+    /// How long the oldest QUEUED row has been waiting.
+    pub oldest_age_ms: u64,
+    /// The rooms this project holds queued work for, oldest first, bounded.
+    pub transformers: Vec<String>,
+    /// Why queued rows are still here, when a receipt said: distinct
+    /// `state_reason`s of the queued rows, bounded. Empty means nothing has
+    /// refused them yet — they are simply waiting for a pass.
+    pub reasons: Vec<String>,
+    /// Rows whose bytes ARE the room's head: this machine's readable copy of
+    /// what it published. Not queued, not reclaimable — they stay.
+    pub held_batches: usize,
+    pub held_bytes: u64,
+    /// Rows that lost — a conflict or a refusal the store holds as terminal —
+    /// whose bytes are still on this machine. They will never publish; the
+    /// next pass frees them.
+    pub reclaimable_batches: usize,
+    pub reclaimable_bytes: u64,
+    /// Whether a live lease is held on this project right now: a worker is
+    /// pumping it.
+    pub pumped: bool,
+}
+
+/// What `ds report outbox status` answers, decided here from the store's own
+/// rows and leases. Nothing on disk is enumerated to answer it: the store is
+/// the queue, and the bytes directories are bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueStatus {
+    /// Only what is QUEUED: `held` or `uploading`.
+    pub queued_batches: usize,
+    pub queued_bytes: u64,
+    /// Over queued rows only.
+    pub oldest_age_ms: u64,
+    /// Published copies of the rooms' heads, kept readable on this machine.
+    pub held_batches: usize,
+    pub held_bytes: u64,
+    /// Rows that lost and still hold bytes here: freed by the next pass.
+    pub reclaimable_batches: usize,
+    pub reclaimable_bytes: u64,
+    pub projects: Vec<QueuedProject>,
+    /// The live leases under this fence at `now_ms`: who is pumping what.
+    pub leases: Vec<LeaseRow>,
+    /// Whether an operator has to do something. A non-empty queue is not
+    /// stuck — a queue exists to hold work. Queued work that has waited
+    /// longer than [`ABANDONED_AFTER_MS`] with no live lease on its project
+    /// is.
+    pub stuck: bool,
+    /// The one command to run next, always stated.
+    pub next: &'static str,
+}
+
+/// The room a row is about, for a reader: the grant resource where the
+/// producer named one, else the operation with the engine's `export-` prefix
+/// removed, else the operation itself.
+fn room_of(row: &ArtifactRow) -> String {
+    match row.resource.as_deref().filter(|value| !value.is_empty()) {
+        Some(resource) => resource.to_string(),
+        None => row
+            .identity
+            .operation
+            .strip_prefix("export-")
+            .unwrap_or(&row.identity.operation)
+            .to_string(),
+    }
+}
+
+/// Read the queue: what is sealed and waiting, how old it is, what has
+/// settled and stays or goes, and who is pumping — from the rows and leases
+/// of one fence, at `now_ms`. Pure: the host reads the rows, this counts.
+///
+/// `project` narrows to one project; `None` reads every project the fence
+/// holds rows for.
+pub fn queue_status(
+    rows: &[ArtifactRow],
+    leases: &[LeaseRow],
+    project: Option<&str>,
+    now_ms: u64,
+) -> QueueStatus {
+    let live: Vec<LeaseRow> = leases
+        .iter()
+        .filter(|lease| lease.expires_at_ms > now_ms)
+        .filter(|lease| project.is_none_or(|wanted| lease.scope.project() == wanted))
+        .cloned()
+        .collect();
+    let mut projects: Vec<QueuedProject> = Vec::new();
+    for row in rows {
+        let Scope::Project {
+            project: project_id,
+        } = &row.scope
+        else {
+            continue;
+        };
+        if project.is_some_and(|wanted| wanted != project_id) {
+            continue;
+        }
+        let entry = match projects
+            .iter_mut()
+            .find(|entry| &entry.project_id == project_id)
+        {
+            Some(entry) => entry,
+            None => {
+                projects.push(QueuedProject {
+                    project_id: project_id.clone(),
+                    batches: 0,
+                    bytes: 0,
+                    oldest_produced_at_ms: 0,
+                    oldest_age_ms: 0,
+                    transformers: Vec::new(),
+                    reasons: Vec::new(),
+                    held_batches: 0,
+                    held_bytes: 0,
+                    reclaimable_batches: 0,
+                    reclaimable_bytes: 0,
+                    pumped: live.iter().any(|lease| lease.scope.project() == project_id),
+                });
+                projects.last_mut().expect("just pushed")
+            }
+        };
+        match row.state {
+            ArtifactState::Held | ArtifactState::Uploading => {
+                entry.batches += 1;
+                entry.bytes = entry.bytes.saturating_add(row.size_bytes);
+                if row.produced_at_ms > 0
+                    && (entry.oldest_produced_at_ms == 0
+                        || row.produced_at_ms < entry.oldest_produced_at_ms)
+                {
+                    entry.oldest_produced_at_ms = row.produced_at_ms;
+                }
+                let room = room_of(row);
+                if entry.transformers.len() < MAX_REPORTED_TRANSFORMERS
+                    && !entry.transformers.contains(&room)
+                {
+                    entry.transformers.push(room);
+                }
+                if let Some(reason) = row.state_reason.as_deref().filter(|r| !r.is_empty()) {
+                    if entry.reasons.len() < MAX_REPORTED_REASONS
+                        && !entry.reasons.iter().any(|held| held == reason)
+                    {
+                        entry.reasons.push(reason.to_string());
+                    }
+                }
+            }
+            ArtifactState::Published => {
+                entry.held_batches += 1;
+                entry.held_bytes = entry.held_bytes.saturating_add(row.size_bytes);
+            }
+            ArtifactState::Conflict | ArtifactState::Refused => {
+                // Reclaimable only while the bytes are still here: a
+                // `reclaimed` receipt clears the locator and the readable
+                // flag, and a handoff whose bytes were never verified holds
+                // nothing to free.
+                if row.readable && !row.bytes_locator.is_empty() {
+                    entry.reclaimable_batches += 1;
+                    entry.reclaimable_bytes =
+                        entry.reclaimable_bytes.saturating_add(row.size_bytes);
+                }
+            }
+        }
+    }
+    for entry in &mut projects {
+        if entry.oldest_produced_at_ms > 0 {
+            entry.oldest_age_ms = now_ms.saturating_sub(entry.oldest_produced_at_ms);
+        }
+    }
+    projects.sort_by(|left, right| {
+        right
+            .oldest_age_ms
+            .cmp(&left.oldest_age_ms)
+            .then_with(|| left.project_id.cmp(&right.project_id))
+    });
+    let queued_batches: usize = projects.iter().map(|project| project.batches).sum();
+    let reclaimable_batches: usize = projects
+        .iter()
+        .map(|project| project.reclaimable_batches)
+        .sum();
+    let oldest_age_ms = projects
+        .iter()
+        .map(|project| project.oldest_age_ms)
+        .max()
+        .unwrap_or(0);
+    // Queued work nobody is pumping: no live lease on a project whose
+    // oldest queued row has waited longer than the abandonment bound.
+    let abandoned = projects.iter().any(|project| {
+        project.batches > 0 && !project.pumped && project.oldest_age_ms > ABANDONED_AFTER_MS
+    });
+    QueueStatus {
+        queued_batches,
+        queued_bytes: projects
+            .iter()
+            .fold(0_u64, |total, project| total.saturating_add(project.bytes)),
+        oldest_age_ms,
+        held_batches: projects.iter().map(|project| project.held_batches).sum(),
+        held_bytes: projects.iter().fold(0_u64, |total, project| {
+            total.saturating_add(project.held_bytes)
+        }),
+        reclaimable_batches,
+        reclaimable_bytes: projects.iter().fold(0_u64, |total, project| {
+            total.saturating_add(project.reclaimable_bytes)
+        }),
+        next: if abandoned {
+            "no publisher holds this queue — start DS GridDesign or the DS Server, which pumps it, or run `ds report outbox drain`"
+        } else if queued_batches == 0 && reclaimable_batches == 0 {
+            "nothing is queued on this machine"
+        } else {
+            "ds report outbox drain"
+        },
+        stuck: abandoned,
+        projects,
+        leases: live,
+    }
 }
 
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
@@ -1403,5 +1660,202 @@ mod tests {
         assert!(ok.contains("\"changes\":[]"));
         assert!(evaluate(br#"{"schema":"ds.sync-store/v1","fence":{"account":"","deployment":"d","install_id":"i"},"now_ms":1,"event":{"kind":"lease_release","scope":{"kind":"personal"},"worker_id":"w"}}"#).is_err());
         assert!(evaluate(br#"{"schema":"ds.sync-store/v1","fence":{"account":"a","deployment":"d","install_id":"i"},"now_ms":1,"event":{"kind":"lease_release","scope":{"kind":"personal"},"worker_id":"w"},"extra":1}"#).is_err());
+    }
+
+    #[test]
+    fn a_reclaimed_receipt_marks_the_bytes_gone_and_keeps_the_verdict() {
+        // WHY: the queue counts a lost row as reclaimable only while its
+        // bytes are here. Without this the pass that freed them would meet
+        // the same row on every observation and either free it "again" or
+        // report bytes that are not there.
+        let mut lost = held("a", "k1");
+        lost.state = ArtifactState::Conflict;
+        lost.state_reason = Some("source_base_moved".into());
+        let mut r = receipt("reclaimed", "conflict", "a");
+        r.committed_bytes = Some(10);
+        let t = apply(&request(
+            Snapshot {
+                artifacts: vec![lost.clone()],
+                ..Default::default()
+            },
+            Event::ActionReceipt { receipt: r },
+        ))
+        .unwrap();
+        let rows = artifacts(&t);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].state, ArtifactState::Conflict, "the verdict stays");
+        assert_eq!(
+            rows[0].state_reason.as_deref(),
+            Some("source_base_moved"),
+            "and so does its reason"
+        );
+        assert!(!rows[0].readable);
+        assert!(
+            rows[0].bytes_locator.is_empty(),
+            "nothing here holds the bytes"
+        );
+        // A failed reclaim leaves the row exactly as it was: still
+        // reclaimable, retried next pass.
+        let t = apply(&request(
+            Snapshot {
+                artifacts: vec![lost.clone()],
+                ..Default::default()
+            },
+            Event::ActionReceipt {
+                receipt: receipt("reclaim_failed", "conflict", "a"),
+            },
+        ))
+        .unwrap();
+        assert!(artifacts(&t).is_empty());
+        assert_eq!(receipts(&t).len(), 1);
+    }
+
+    fn lease(project: &str, worker: &str, expires_at_ms: u64) -> LeaseRow {
+        LeaseRow {
+            scope: Scope::Project {
+                project: project.into(),
+            },
+            worker_id: worker.into(),
+            taken_at_ms: 0,
+            expires_at_ms,
+        }
+    }
+
+    fn row_in(
+        project: &str,
+        op: &str,
+        key: &str,
+        state: ArtifactState,
+        produced_at_ms: u64,
+    ) -> ArtifactRow {
+        let mut row = held(op, key);
+        row.scope = Scope::Project {
+            project: project.into(),
+        };
+        row.state = state;
+        row.produced_at_ms = produced_at_ms;
+        row.resource = Some(op.strip_prefix("export-").unwrap_or(op).into());
+        row
+    }
+
+    #[test]
+    fn the_queue_counts_only_what_is_queued_and_names_what_stays_and_what_goes() {
+        // WHY: 350 batches and 2.08 GB were reported queued on a machine
+        // where 172 had published and 86 had lost. The store is the queue
+        // now: held/uploading are queued, published copies stay, and a lost
+        // row is reclaimable only while its bytes are still here.
+        let now = 10 * ABANDONED_AFTER_MS;
+        let mut gone = row_in("p", "export-tx_gone", "k4", ArtifactState::Refused, 1);
+        gone.readable = false;
+        gone.bytes_locator = String::new();
+        let rows = vec![
+            row_in(
+                "p",
+                "export-tx_queued",
+                "k1",
+                ArtifactState::Held,
+                now - 1_000,
+            ),
+            row_in("p", "export-tx_head", "k2", ArtifactState::Published, 1),
+            row_in("p", "export-tx_lost", "k3", ArtifactState::Conflict, 1),
+            gone,
+            row_in(
+                "q",
+                "export-tx_up",
+                "k5",
+                ArtifactState::Uploading,
+                now - 5_000,
+            ),
+        ];
+        let status = queue_status(&rows, &[], None, now);
+        assert_eq!(status.queued_batches, 2);
+        assert_eq!(status.queued_bytes, 20);
+        assert_eq!(status.held_batches, 1);
+        assert_eq!(
+            status.reclaimable_batches, 1,
+            "a row whose bytes are gone is not reclaimable"
+        );
+        assert_eq!(status.reclaimable_bytes, 10);
+        assert_eq!(status.oldest_age_ms, 5_000, "age is over queued rows only");
+        assert_eq!(status.projects.len(), 2);
+        assert_eq!(
+            status.projects[0].project_id, "q",
+            "oldest queued work first"
+        );
+        assert_eq!(
+            status.projects[1].transformers,
+            vec!["tx_queued".to_string()]
+        );
+        assert!(!status.stuck);
+        assert_eq!(status.next, "ds report outbox drain");
+        assert_eq!(serde_json::to_value(&status).unwrap()["queuedBatches"], 2);
+
+        let scoped = queue_status(&rows, &[], Some("q"), now);
+        assert_eq!(scoped.queued_batches, 1);
+        assert_eq!(scoped.projects.len(), 1);
+        let empty = queue_status(&rows, &[], Some("r"), now);
+        assert_eq!(empty.queued_batches, 0);
+        assert_eq!(empty.next, "nothing is queued on this machine");
+    }
+
+    #[test]
+    fn queued_work_nobody_has_pumped_for_an_hour_is_stuck_and_a_live_lease_is_the_pump() {
+        // WHY: the owner's box: a 7-day-old queue, no pump, and a confident
+        // `stuck: false`. Liveness is the store's lease, not a file lock.
+        let now = 10 * ABANDONED_AFTER_MS;
+        let mut waiting = row_in(
+            "p",
+            "export-tx_1",
+            "k1",
+            ArtifactState::Held,
+            now - ABANDONED_AFTER_MS - 60_000,
+        );
+        waiting.state_reason = Some("the gateway answered 503".into());
+        let rows = vec![waiting];
+        let abandoned = queue_status(&rows, &[], None, now);
+        assert!(abandoned.stuck);
+        assert!(abandoned.next.contains("no publisher holds this queue"));
+        assert_eq!(
+            abandoned.projects[0].reasons,
+            vec!["the gateway answered 503".to_string()]
+        );
+        assert!(!abandoned.projects[0].pumped);
+
+        let pumped = queue_status(&rows, &[lease("p", "server#1", now + 1)], None, now);
+        assert!(
+            !pumped.stuck,
+            "a live lease is a pump; old work under it is slow, not abandoned"
+        );
+        assert!(pumped.projects[0].pumped);
+        assert_eq!(pumped.leases.len(), 1);
+        assert_eq!(pumped.next, "ds report outbox drain");
+
+        let dead = queue_status(&rows, &[lease("p", "server#1", now)], None, now);
+        assert!(dead.stuck, "an expired lease is no pump");
+        assert!(dead.leases.is_empty());
+        let elsewhere = queue_status(&rows, &[lease("q", "server#1", now + 1)], None, now);
+        assert!(
+            elsewhere.stuck,
+            "a lease on another project pumps that project"
+        );
+    }
+
+    #[test]
+    fn an_empty_queue_is_never_stuck_however_old_its_settled_rows_are() {
+        let now = 10 * ABANDONED_AFTER_MS;
+        let rows = vec![
+            row_in("p", "export-tx_head", "k2", ArtifactState::Published, 1),
+            row_in("p", "export-tx_lost", "k3", ArtifactState::Conflict, 1),
+        ];
+        let status = queue_status(&rows, &[], None, now);
+        assert_eq!(status.queued_batches, 0);
+        assert_eq!(status.oldest_age_ms, 0);
+        assert!(!status.stuck);
+        assert_eq!(
+            status.next, "ds report outbox drain",
+            "a lost row is freed by the next pass"
+        );
+        let only_head = queue_status(&rows[..1], &[], None, now);
+        assert_eq!(only_head.next, "nothing is queued on this machine");
     }
 }
