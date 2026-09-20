@@ -111,3 +111,36 @@ caller is told. The trade is one fsync per transition against the loss of an
 acknowledged seal in a power cut (owner, 2026-09-20). `ds-design-workspace`
 already runs FULL without WAL and is outside this rule; the Solar compute
 table shares this file and this pragma.
+
+## 8. Survey media records (2026-09-20)
+
+The same file holds the Server's survey photo cache index: one
+`survey_media` row per `(fence, project, object path)`, shaped by
+`ds_command_kernel::survey_moments::MediaRecord`, beside the bytes under
+`<state>/survey-media/<project>/<media_key(path)>/` (`original.bin`,
+`thumbnail.jpeg`, `manifest.json` — exactly a `survey photo rotate`
+bundle, digest-pinned by the record). The table is additive (`CREATE TABLE
+IF NOT EXISTS`); a store written before it holds no media and answers
+empty, never an error; `SCHEMA_VERSION` does not move.
+
+A record is `waiting` when `ds survey photo rotate` prepared it (the
+rotated original and its regenerated thumbnail, pinned to the source
+generation it was derived from) and `synced` once `ds survey photo publish`
+replaced the head with those exact bytes (the published generations are
+recorded). `waiting` is retained — it is this machine's only copy;
+`synced` is cleanable — it equals the head. Reads (`ds survey moments
+list|read`, `ds workstation local-data status`) go through
+`Store::open_read_only` like the report queue: no session, no gateway, no
+running Server, every fence of the one owner's file. Writes go under the
+native fence. The decisions over the records — which are this project's
+originals, filters, order, page, the rotation gate — are
+`survey_moments`'s and `local_data`'s; the store persists.
+
+What is NOT here, said rather than discovered: the Server acquires a
+survey photo only by rotating it (the one headless acquisition that
+existed); the browser's read-through display cache and its capture outbox
+stay in the browser (they are its IO); entry facts (capture clock,
+location) are `None` on a Server record until the Server holds survey
+entries. Whether the Server should pull a project's photos on demand, or
+the window should hand its read-through copies to the Server, is an owner
+ruling this contract does not pre-empt.
