@@ -74,21 +74,30 @@ before this rule) and is otherwise a no-op over the producer.
 Solar is the same rule on the same tables (`ds-sync-runtime::solar::seal`):
 a completed prepared job's row is recorded at completion under the host's
 local fence, with no session and no gateway. Its bytes are the job's `result`
-column in this file, so the seal writes none and undoes none when the store
-refuses — the pump adopts that row on its next observation, as it adopts a
-job completed before the seal existed. Both seals share one choreography
+column in this file, so the seal writes none. That seal is the ONLY way a
+Solar row is born (owner, 2026-09-20: "the legacy jobs in solar are not good
+— we should remove them"): a completed job the store holds no row for — one
+completed before the seal existed, or one whose seal the store could not
+record — is not a publication and is never adopted. A restart replays no
+completion through the observer; the producer retires such a job's result
+on its next observation (`Store::retire_job_result`, the job row stays as
+evidence) and the job can be run again. The report side keeps its adoption
+(`adopted:from_producer`, once) only for batches committed before the report
+seal wrote rows — every Desktop export until 2026-09-20 and every `ds report
+project export` before its seal — and a batch sealed today is never adopted.
+Both seals share one choreography
 (`seal::record`): the identity's previous result on this machine is freed
 through the producer first (`reclaimed:superseded_locally`; for Solar,
 `Store::retire_job_result`), then the new row takes the identity. A second
 job of the same city with the SAME bytes is `already_recorded`: the standing
 row stands and the duplicate result's retention is the owner's ruling
 (`ds-cli-server/docs-routes.md` §6), not the seal's. The city's row is its
-NEWEST completion whatever order completions are observed in: a restart
-replays every completed job through the seal newest first, and a completion
-sealed behind a later one of its city does not take the identity — its own
-result is freed (`Superseded`, `reclaimed:superseded_locally` with no
-identity on the receipt, so the standing row keeps its bytes). A completion
-whose result is already gone seals nothing.
+NEWEST completion whatever order completions reach the seal in: two workers
+can complete two jobs of one city out of order, and a completion sealed
+behind a later one of its city does not take the identity — its own result
+is freed (`Superseded`, `reclaimed:superseded_locally` with no identity on
+the receipt, so the standing row keeps its bytes). A completion whose result
+is already gone seals nothing.
 
 A host runs ONE producer set over every engine it runs
 (`ds-sync-runtime::Producers`, keyed by the engine a row's identity names):

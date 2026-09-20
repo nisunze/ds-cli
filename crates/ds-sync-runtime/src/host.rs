@@ -52,7 +52,9 @@ pub struct ActivityRow {
 /// The sync store is the queue (owner, 2026-09-20). A producer holds BYTES
 /// and names them by the row's `bytes_locator`; it never decides what is
 /// queued. Its inventory is read only to adopt what was sealed before the
-/// seal wrote its row, and to free what the store has settled as lost.
+/// seal wrote its row — report batches only: a Solar completion with no
+/// row is not a publication and is never adopted — and to free what the
+/// store has settled as lost.
 pub trait Producer {
     /// Every publication this producer still holds bytes for in one project,
     /// each carrying the locator its bytes live at. Cheap: it reads the

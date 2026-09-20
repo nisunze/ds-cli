@@ -31,11 +31,14 @@ result it supersedes through the producer (`reclaimed:superseded_locally`) —
 and a completion sealed BEHIND a later one of its city (a restart replays
 completions newest first) frees its own result instead and leaves the newer
 row standing (`SealOutcome::Superseded`). Both seals run one choreography,
-`seal::record` and `seal::free_superseded`; the Solar producer's
-inventory is read only to adopt a job completed before the seal existed (or
-whose seal the store could not record) and to free a result the store has
-settled as lost (`Store::retire_job_result`). `run_solar_publications`
-drains the rows the store holds.
+`seal::record` and `seal::free_superseded`. That seal is the ONLY way a
+Solar row is born: a completed job the store holds no row for (completed
+before the seal existed, or one whose seal the store could not record) is not
+a publication and is never adopted — the Solar producer's inventory offers
+nothing, retires such a job's result on its next observation
+(`Store::retire_job_result`; the job can be run again), and frees a result
+the store has settled as lost the same way. `run_solar_publications` drains
+the rows the store holds.
 
 A host that runs several engines supplies ONE `Producers` set keyed by engine
 — report + Solar on the Server and on the desktop — so a lost row is freed by
