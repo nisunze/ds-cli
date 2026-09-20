@@ -2,10 +2,9 @@
 //!
 //! A record is the correspondence layer of Project Work: instructions,
 //! requests for information, submissions, reviews, decisions, field records.
-//! They are read here and nothing more — a record is authored on the Records
-//! surface, where the person writing it can see what it will be attached to,
-//! and creating one from a terminal would be a governed communication act
-//! that this CLI deliberately has no door for.
+//! They are read here; authoring one from the terminal is the correspondence
+//! contract's door (`pm.record.create|reply`, ds-brain
+//! `docs/contracts/correspondence.md`), which lands beside these two reads.
 
 pub mod list;
 pub mod read;

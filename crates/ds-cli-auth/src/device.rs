@@ -82,7 +82,7 @@ const STATE_EXISTS: Refusal = Refusal {
     when: "the lane holds an active pending link, durable device credential, or unreadable protected state",
     remedy: "complete or revoke the existing device before beginning another link",
 };
-const RNG_UNAVAILABLE: Refusal = Refusal {
+pub const RNG_UNAVAILABLE: Refusal = Refusal {
     code: "device_rng_unavailable",
     when: "the operating-system cryptographic RNG is unavailable",
     remedy: "repair or update the native ds installation before creating device secrets",
@@ -1095,6 +1095,18 @@ fn status_token(status: DeviceAuthorizationStatus) -> &'static str {
         DeviceAuthorizationStatus::Expired => "expired",
         DeviceAuthorizationStatus::Consumed => "consumed",
     }
+}
+
+/// One fresh idempotency key for a governed command: 128 bits of the
+/// operating system's RNG as lower-case hex.
+///
+/// Public because a project command's `command_id` is the key the engine
+/// deduplicates on — a lost answer retried with the same key lands once —
+/// and the kernel, which has no entropy, leaves the minting to the host.
+/// Refuses with [`RNG_UNAVAILABLE`]'s code when the OS RNG is unavailable.
+pub fn mint_command_id() -> Result<String, Failure> {
+    let bytes = random_bytes::<16>()?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn random_token<const N: usize>() -> Result<String, Failure> {

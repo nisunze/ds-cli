@@ -938,15 +938,17 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("assets.promote", "local_ui", "project"),
     ("assets.read", "local_file_write", "project"),
     ("assets.tree", "read_only", "project"),
+    // Every `pm` command is a headless project command since 2026-09-20:
+    // `POST /api/v1/pm` under the native credential, folded by the kernel.
     ("pm.plan", "read_only", "headless_project"),
-    ("pm.record.list", "read_only", "project"),
-    ("pm.record.read", "read_only", "project"),
-    ("pm.task.assign", "global_write", "project"),
-    ("pm.task.create", "global_write", "project"),
-    ("pm.task.list", "read_only", "project"),
-    ("pm.task.read", "read_only", "project"),
-    ("pm.task.respond", "global_write", "project"),
-    ("pm.task.update", "global_write", "project"),
+    ("pm.record.list", "read_only", "headless_project"),
+    ("pm.record.read", "read_only", "headless_project"),
+    ("pm.task.assign", "global_write", "headless_project"),
+    ("pm.task.create", "global_write", "headless_project"),
+    ("pm.task.list", "read_only", "headless_project"),
+    ("pm.task.read", "read_only", "headless_project"),
+    ("pm.task.respond", "global_write", "headless_project"),
+    ("pm.task.update", "global_write", "headless_project"),
     ("workstation.components", "discovery", "none"),
     // What this machine holds for a project, off the Server's state root;
     // the clean removes replicas only and is gated by --yes.

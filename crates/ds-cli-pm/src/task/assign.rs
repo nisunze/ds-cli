@@ -14,9 +14,10 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_command_kernel::project_management::writes::{self, Assignment};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, TASK_ARG};
+use crate::{LANE_ARG, TASK_ARG};
 
 const REQUEST_ARG: Arg = Arg {
     name: "request",
@@ -54,7 +55,7 @@ const INVALID_ASSIGNMENT: Refusal = Refusal {
     remedy: "ask with --request, transfer with --owner, or cancel with --withdraw",
 };
 
-const TOO_MANY_ASSIGNEES: Refusal = Refusal {
+pub const TOO_MANY_ASSIGNEES: Refusal = Refusal {
     code: "too_many_assignees",
     when: "more people were named than one request may carry",
     remedy: "ask fewer people; the refusal names the bound",
@@ -70,18 +71,13 @@ Sends an assignment request to everyone named, leaving the current holder in \
 place until somebody accepts — the engine, not this CLI, decides who wins when \
 two people answer at once. Use --owner instead to transfer accountability \
 directly, or --withdraw to cancel an open request. Every person named must be \
-an active member of the project.",
+an active member of the project. Headless: commits to the selected project \
+of the signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
-        TASK_ARG,
-        REQUEST_ARG,
-        OWNER_ARG,
-        WITHDRAW_ARG,
-        DESCRIPTOR_ARG,
-    ],
+    args: &[TASK_ARG, REQUEST_ARG, OWNER_ARG, WITHDRAW_ARG, LANE_ARG],
     output: "\
 The project, the `taskId`, the `mode` that was applied — `request`, `owner` or \
 `withdraw` — who is `responsible` afterwards, who is still being `requested`, \
@@ -91,27 +87,16 @@ the `committedRevision`, and any `warnings`.",
         note: "Both are asked; the first to run `ds pm task respond --response accept` holds it.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::WORK_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::CONFLICT,
+    refusals: &crate::write_refusals::<26>(&[
         crate::INVALID_EMAIL,
-        crate::CONFIRMATION_REQUIRED,
+        crate::INVALID_VALUE,
         INVALID_ASSIGNMENT,
         TOO_MANY_ASSIGNEES,
-    ],
+    ]),
     reference: Some("docs/reference/pm.md"),
     search: &["assignee", "responsible", "owner", "delegate", "reassign"],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -133,16 +118,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .next("ds pm task assign --help"));
     }
 
-    let mut arguments = Map::new();
-    arguments.insert("task".into(), json!(inputs.require("task")?));
-
-    if let Some(owner) = owner {
-        arguments.insert("owner".into(), json!(crate::email(owner, "owner")?));
+    let assignment = if let Some(owner) = owner {
+        Assignment::Owner(crate::email(owner, "owner")?)
     } else if withdraw {
-        // An empty list IS the withdrawal, and the application reads it that
-        // way. It is sent explicitly rather than as an absent key, because an
-        // absent `request` would mean "change nothing about the request".
-        arguments.insert("request".into(), json!([] as [&str; 0]));
+        // An empty list IS the withdrawal, and the engine reads it that way.
+        Assignment::Request(Vec::new())
     } else {
         let mut people = Vec::with_capacity(requested.len());
         for raw in requested {
@@ -151,28 +131,36 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 people.push(address);
             }
         }
+        // The engine's bound is the field model's; this local copy refuses a
+        // pasted distribution list before a round trip, by the same number
+        // the graph would fall back to.
         if people.len() > crate::MAX_ASSIGNEES {
-            return Err(Failure::invalid(
-                "too_many_assignees",
-                format!(
-                    "one request may name at most {} people",
-                    crate::MAX_ASSIGNEES
-                ),
-            )
-            .remedy(TOO_MANY_ASSIGNEES.remedy)
-            .detail(json!({ "given": people.len(), "max": crate::MAX_ASSIGNEES })));
+            return Err(crate::refused(writes::Refusal::TooManyAssignees {
+                given: people.len(),
+                max: crate::MAX_ASSIGNEES,
+            }));
         }
-        arguments.insert("request".into(), json!(people));
-    }
+        Assignment::Request(people)
+    };
 
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TASK_ASSIGN,
-        Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
-    )
-    .map_err(crate::classify_work_failure)
+    let task_id = inputs.require("task")?.to_owned();
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let read = crate::graph(lane)?;
+    let (prepared, mode) =
+        writes::assign_task(&read.graph, &task_id, &assignment).map_err(crate::refused)?;
+    let before = read.graph.tasks.iter().find(|task| task.id == task_id);
+    let result = crate::commit(lane, &prepared)?;
+    let (responsible, requested) = writes::assignment_after(&result, &task_id, before);
+    let mut extra = Map::new();
+    extra.insert("mode".into(), json!(mode));
+    extra.insert("responsible".into(), json!(responsible));
+    extra.insert("requested".into(), json!(requested));
+    Ok(writes::write_outcome(
+        &read.project_id,
+        &task_id,
+        &result,
+        extra,
+    ))
 }
 
 pub fn render(data: &Value) -> String {

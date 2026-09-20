@@ -1,18 +1,24 @@
-//! `ds work` — Project Work: the plan, its tasks, the assignment loop and the
-//! record of what happened.
+//! `ds pm` — Project Management: the plan, its tasks, the assignment loop and
+//! the record of what happened.
 //!
-//! ## Why this domain is a bridge domain
+//! ## Why this domain is headless
 //!
-//! Project Work is governed shared state. Its graph lives behind ds-brain,
-//! which is the only gateway and the only authority: it decides who may write,
-//! arbitrates two people accepting the same request in the same second, and
-//! refuses a command authored against a revision that has moved. None of that
-//! is reachable from a file, and none of it may be reached with an ambient
-//! credential — so every command here is one named semantic operation the
-//! *paired application* performs under the session it already holds.
+//! Project Management is governed shared state. Its graph lives behind
+//! ds-brain, which is the only gateway and the only authority: it decides who
+//! may write, arbitrates two people accepting the same request in the same
+//! second, and refuses a command authored against a revision that has moved.
+//! `POST /api/v1/pm` is published on both gateway lanes and authenticates from
+//! the bearer alone — no pairing, no device, no window. So every command here
+//! is one governed action the native client sends under the restored user or
+//! device credential, for the audience-fenced project `ds auth project use`
+//! selected. Until 2026-09-20 eight of the nine relayed through the paired
+//! desktop to the page's own adapters instead; on a server with no window the
+//! owner could file nothing. The window was habit, never contract.
 //!
-//! `ds` therefore carries no token, no project id it trusts, and no copy of
-//! the rules. It asks the application for an outcome.
+//! `ds` therefore carries no copy of the rules: what a graph MEANS — the plan,
+//! a task list, one task, which command a flag becomes — is decided once in
+//! `ds_command_kernel::project_management`, for the CLI, MCP, the Server and
+//! the page alike.
 //!
 //! ## What the family is
 //!
@@ -35,29 +41,23 @@
 //! do is send a message: `messages-v1` is human-only, and a domain that could
 //! compose one would be the same mistake as a domain that could run code
 //! inside the application.
+//!
+//! **A window path.** `--desktop-descriptor` is not an input of any `ds pm`
+//! command; a caller that still passes it is told `requires_window_retired`
+//! by the parser, with the remedy of dropping the flag.
 
 pub mod plan;
 pub mod record;
 pub mod task;
 
-use std::time::Duration;
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
-use serde_json::json;
+use ds_command_kernel::project_management::{CanonicalProjectGraph, reads, writes};
+use serde_json::{Value, json};
 
-// The paired-application primitives every bridge domain shares. They are
-// declared once in `ds-cli-desktop` — the authority surface — so a caller who
-// learned `--desktop-descriptor` and the pairing refusals from `ds map` has
-// learned them here too.
 // Neutral argument helpers: a numeric bound and an English count say
-// nothing about a paired window, so they come from the contract crate.
+// nothing about a transport, so they come from the contract crate.
 pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
-pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED,
-    SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out,
-    invoke, paired, paired_availability,
-};
 
 pub static DOMAIN: Domain = Domain {
     id: "pm",
@@ -76,146 +76,46 @@ pub static DOMAIN: Domain = Domain {
 };
 
 // ---------------------------------------------------------------------------
-// The declared wire contract
+// Bounds — the kernel's, republished so help and the parser say one number
 // ---------------------------------------------------------------------------
 
-pub const TASKS_LIST: BridgeOp = BridgeOp {
-    operation: "pm.tasks.list",
-    arguments: &[
-        "query",
-        "state",
-        "assignee",
-        "discipline",
-        "placement",
-        "limit",
-        "page",
-    ],
-};
-pub const TASK_READ: BridgeOp = BridgeOp {
-    operation: "pm.task.read",
-    arguments: &["task"],
-};
-pub const TASK_CREATE: BridgeOp = BridgeOp {
-    operation: "pm.task.create",
-    arguments: &[
-        "id",
-        "title",
-        "description",
-        "kind",
-        "parent",
-        "startDate",
-        "finishDate",
-        "discipline",
-    ],
-};
-pub const TASK_UPDATE: BridgeOp = BridgeOp {
-    operation: "pm.task.update",
-    arguments: &[
-        "task",
-        // The task's own authored fields, sent as one patch because the
-        // application folds them into a single `update_task_fields` command.
-        "fields.title",
-        "fields.description",
-        "fields.discipline",
-        "fields.priority",
-        "fields.type",
-        "fields.placement",
-        "fields.schedulingMode",
-        "delivery",
-        "review",
-        "closeout",
-        "progress",
-        "startDate",
-        "finishDate",
-    ],
-};
-pub const TASK_ASSIGN: BridgeOp = BridgeOp {
-    operation: "pm.task.assign",
-    arguments: &["task", "owner", "request"],
-};
-pub const TASK_RESPOND: BridgeOp = BridgeOp {
-    operation: "pm.task.respond",
-    arguments: &["task", "response"],
-};
-pub const PLAN_READ: BridgeOp = BridgeOp {
-    operation: "pm.plan.read",
-    arguments: &["limit"],
-};
-pub const RECORDS_LIST: BridgeOp = BridgeOp {
-    operation: "pm.records.list",
-    arguments: &["query", "category", "limit", "page"],
-};
-pub const RECORDS_READ: BridgeOp = BridgeOp {
-    operation: "pm.records.read",
-    arguments: &["record"],
-};
+/// The engine's bound on the people one assignment request may name when the
+/// graph predates the field model (`fieldModel.maxAssignees` is the
+/// authority). Republished so `--help` can state it.
+pub const MAX_ASSIGNEES: usize = writes::DEFAULT_MAX_ASSIGNEES;
 
-/// Every operation this domain can send, for the parity test to walk. A new
-/// operation absent from this list cannot be sent: [`invoke`] takes a
-/// [`BridgeOp`], and the test requires each one to be an operation the
-/// application actually implements.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[
-    &PLAN_READ,
-    &TASKS_LIST,
-    &TASK_READ,
-    &TASK_CREATE,
-    &TASK_UPDATE,
-    &TASK_ASSIGN,
-    &TASK_RESPOND,
-    &RECORDS_LIST,
-    &RECORDS_READ,
-];
+/// The largest page of tasks or records one read returns. The total is
+/// always reported, so a truncated page is never silent.
+pub const MAX_PAGE_SIZE: i64 = reads::MAX_PAGE_SIZE;
 
-/// The engine's bound on the people one assignment request may name.
-///
-/// A hand copy of `MaxTaskAssignees` in ds-brain's `projectwork` package,
-/// which the graph also publishes per project as `fieldModel.maxAssignees` —
-/// and the field model is the authority. This copy exists only so a caller who
-/// pasted a distribution list learns the bound from a local refusal instead of
-/// from a rejected write, and `tests/bridge_parity.rs` holds it to the same
-/// number the application falls back to.
-pub const MAX_ASSIGNEES: usize = 20;
+/// The largest related collection returned by a detail read.
+pub const MAX_RELATED_ROWS: usize = reads::MAX_RELATED_ROWS;
 
-/// The largest page of tasks or records one read returns. The application
-/// bounds its own projections to the same number; the total is always
-/// reported, so a truncated page is never silent.
-pub const MAX_PAGE_SIZE: i64 = 250;
-
-/// The largest related collection returned by a detail read. Detail commands
-/// have no paging cursor, so every collection reports its full count and
-/// carries at most this many rows.
-pub const MAX_RELATED_ROWS: usize = 250;
+/// The most context rows per collection one record read fetches — ds-brain's
+/// own bound on `get_context`. A project holding more records than this lists
+/// them with `truncated: true`; the correspondence contract's server-side
+/// `record_list` is the door past it.
+pub const MAX_CONTEXT_ROWS: i64 = ds_client_core::project_management::MAX_CONTEXT_LIMIT;
 
 // ---------------------------------------------------------------------------
-// Timeouts
+// Refusals — the headless project set every `ds pm` command shares, plus
+// this domain's own
 // ---------------------------------------------------------------------------
 
-/// A read paints from the application's cached graph and reconciles once.
-/// On a field connection that reconciliation is the slow part.
-pub const READ_TIMEOUT: Duration = Duration::from_secs(3 * 60);
-/// A write is one governed round trip to ds-brain, which is fast — but it may
-/// be queued behind the same surface's own reconciliation.
-pub const WRITE_TIMEOUT: Duration = Duration::from_secs(3 * 60);
+/// Which native credential lane a `ds pm` command authenticates on.
+pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
+    .choices(&["stable", "canary"])
+    .default("stable");
 
-// ---------------------------------------------------------------------------
-// Refusals this domain adds to the shared pairing set
-// ---------------------------------------------------------------------------
-
-pub const WORK_REFUSED: Refusal = Refusal {
-    code: "desktop_refused",
-    when: "no such task or record, or Project Work declined the command",
-    remedy: "check the id with `ds pm task list`; read detail.detail for its message",
-};
-/// Which native credential lane a server-side PM read authenticates on.
-pub const LANE_ARG: ds_cli_contract::spec::Arg =
-    ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native credential lane.")
-        .choices(&["stable", "canary"])
-        .default("stable");
+/// The refusals the headless project client can answer with, for every
+/// command of this domain: profile, state, session, identity, transport and
+/// project-context conditions. Declared once in `ds auth`.
+pub const HEADLESS_REFUSALS: &[Refusal] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
 
 /// The graph reached this build but the kernel could not fold it.
 ///
-/// Distinct from `desktop_refused`: the server answered, so the project and
-/// the permission were fine. Something in the payload is a shape this build
+/// Distinct from `pm_refused`: the server answered, so the project and the
+/// permission were fine. Something in the payload is a shape this build
 /// does not understand, which is a contract break rather than an operator
 /// mistake.
 pub const PLAN_UNREADABLE: Refusal = Refusal {
@@ -223,6 +123,9 @@ pub const PLAN_UNREADABLE: Refusal = Refusal {
     when: "the project's plan is a shape this build cannot fold",
     remedy: "report this with the project id; the CLI and the server disagree about the graph",
 };
+
+/// ds-brain declined the command by name.
+pub const PM_REFUSED: Refusal = ds_cli_auth::PM_REFUSED_REFUSAL;
 
 pub const NOT_PERMITTED: Refusal = Refusal {
     code: "work_not_permitted",
@@ -233,6 +136,16 @@ pub const CONFLICT: Refusal = Refusal {
     code: "work_revision_conflict",
     when: "the plan moved while the command was in flight",
     remedy: "re-read with `ds pm task read` and issue the command again",
+};
+pub const TASK_NOT_FOUND: Refusal = Refusal {
+    code: "task_not_found",
+    when: "no task or milestone in the selected project's plan carries this id",
+    remedy: "check the id with `ds pm task list`",
+};
+pub const RECORD_NOT_FOUND: Refusal = Refusal {
+    code: "record_not_found",
+    when: "no record in the fetched context carries this id",
+    remedy: "check the id with `ds pm record list`",
 };
 pub const INVALID_DATE: Refusal = Refusal {
     code: "invalid_date",
@@ -249,57 +162,229 @@ pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     when: "--yes was not given for a command that changes the project's plan",
     remedy: "re-run with --yes once you intend the change",
 };
+/// A value the engine's own vocabulary for this project does not hold.
+pub const INVALID_VALUE: Refusal = Refusal {
+    code: "invalid_choice",
+    when: "a state, priority, type, placement or scheduling flag is outside the vocabulary `ds pm plan` publishes for this project, or a text flag is empty or over its bound",
+    remedy: "read .data.vocabulary from `ds pm plan --output json` and pass one of its values",
+};
+/// The host could not mint an idempotency key for the commit.
+pub const RNG_UNAVAILABLE: Refusal = ds_cli_auth::device::RNG_UNAVAILABLE;
 
-/// What the application says when the signed-in user may read this project's
-/// plan but not change it. Hand copies of its prose, held to the application's
-/// source by `tests/bridge_parity.rs`.
-pub const NOT_PERMITTED_MARKERS: &[&str] = &["schedule editor", "contributor access"];
-
-/// What the application says when the plan moved under a command in flight.
-pub const CONFLICT_MARKERS: &[&str] = &["the plan moved", "revision conflict"];
-
-/// Give this domain's two named conditions their own codes.
-///
-/// Both arrive as ordinary operation refusals — the application answered, and
-/// what it answered was "you may not" or "you were too late". Letting them
-/// through as `desktop_refused` would send a caller to read `detail` for two
-/// conditions that have a name, a remedy, and a different next step: one is
-/// permanent until an admin acts, the other is "re-read and try again", which
-/// is the whole reason an unattended caller needs to tell them apart.
-pub fn classify_work_failure(failure: Failure) -> Failure {
-    let failure = classify_signed_out(failure);
-    if failure.code() != "desktop_refused" {
-        return failure;
+/// The refusals every read of this domain declares: the headless set, the
+/// fold's own, then the command's own. `TOTAL` is `16 + own.len()`, checked
+/// at compile time — const generics cannot add, so the caller states it.
+pub const fn read_refusals<const TOTAL: usize>(own: &[Refusal]) -> [Refusal; TOTAL] {
+    assert!(TOTAL == HEADLESS_REFUSALS.len() + 1 + own.len());
+    let mut out = [PLAN_UNREADABLE; TOTAL];
+    let mut i = 0;
+    while i < HEADLESS_REFUSALS.len() {
+        out[i] = HEADLESS_REFUSALS[i];
+        i += 1;
     }
-    let detail = failure
-        .detail_value()
-        .and_then(|detail| detail["detail"].as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
+    out[i] = PLAN_UNREADABLE;
+    i += 1;
+    let mut j = 0;
+    while j < own.len() {
+        out[i + j] = own[j];
+        j += 1;
+    }
+    out
+}
+/// The read set is 15 headless refusals + `plan_unreadable`.
+pub const READ_BASE: usize = 16;
+const _: () = assert!(HEADLESS_REFUSALS.len() + 1 == READ_BASE);
 
-    if NOT_PERMITTED_MARKERS
-        .iter()
-        .any(|marker| detail.contains(marker))
-    {
-        return Failure::unauthorized(
-            "work_not_permitted",
-            "the signed-in user may read this project's plan but not change it",
+/// The refusals every write of this domain shares beyond the read set: the
+/// server's three named conditions, the confirmation gate and the host's
+/// entropy.
+const WRITE_OWN: [Refusal; 6] = [
+    PM_REFUSED,
+    NOT_PERMITTED,
+    CONFLICT,
+    TASK_NOT_FOUND,
+    CONFIRMATION_REQUIRED,
+    RNG_UNAVAILABLE,
+];
+/// The write set is the read set + [`WRITE_OWN`].
+pub const WRITE_BASE: usize = READ_BASE + WRITE_OWN.len();
+
+/// The refusals every write of this domain declares. `TOTAL` is
+/// `22 + own.len()`, checked at compile time.
+pub const fn write_refusals<const TOTAL: usize>(own: &[Refusal]) -> [Refusal; TOTAL] {
+    assert!(TOTAL == WRITE_BASE + own.len());
+    let mut out = [PLAN_UNREADABLE; TOTAL];
+    let mut i = 0;
+    while i < HEADLESS_REFUSALS.len() {
+        out[i] = HEADLESS_REFUSALS[i];
+        i += 1;
+    }
+    out[i] = PLAN_UNREADABLE;
+    i += 1;
+    let mut k = 0;
+    while k < WRITE_OWN.len() {
+        out[i + k] = WRITE_OWN[k];
+        k += 1;
+    }
+    i += WRITE_OWN.len();
+    let mut j = 0;
+    while j < own.len() {
+        out[i + j] = own[j];
+        j += 1;
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// The door and the folds
+// ---------------------------------------------------------------------------
+
+/// The selected project's graph, decoded, with the lane's project id and name.
+pub struct Graph {
+    pub lane: &'static str,
+    pub project_id: String,
+    pub project_name: String,
+    pub graph: CanonicalProjectGraph,
+    /// The graph as the server published it, for the folds that take it raw.
+    pub raw: Value,
+}
+
+/// Read the selected project's canonical graph through the native client.
+pub fn graph(lane: &str) -> Result<Graph, Failure> {
+    let report =
+        ds_cli_auth::project_management(lane, &ds_client_core::project_management::Command::Graph)?;
+    let project_id = report.project_id().to_owned();
+    let project_name = report.project_name().to_owned();
+    let lane = report.lane();
+    let raw = report.into_result();
+    let graph = ds_command_kernel::project_management::decode_project_graph(&raw, &project_id);
+    Ok(Graph {
+        lane,
+        project_id,
+        project_name,
+        graph,
+        raw,
+    })
+}
+
+/// The selected project's context records — every readable record, up to the
+/// server's bound per collection — and whether the server cut the page.
+pub fn records(lane: &str) -> Result<(String, Vec<reads::ContextRecord>, bool), Failure> {
+    let report = ds_cli_auth::project_management(
+        lane,
+        &ds_client_core::project_management::Command::Context {
+            limit: Some(MAX_CONTEXT_ROWS),
+        },
+    )?;
+    let project_id = report.project_id().to_owned();
+    let context = report.into_result();
+    let truncated = context["truncated_by_collection"]["records"] == Value::Bool(true)
+        || context["next_cursors"]["records"].is_string();
+    Ok((
+        project_id,
+        reads::decode_context_records(&context),
+        truncated,
+    ))
+}
+
+/// Commit one prepared command and fold the engine's answer.
+pub fn commit(
+    lane: &str,
+    prepared: &writes::PreparedCommand,
+) -> Result<writes::OperationResult, Failure> {
+    let report = ds_cli_auth::project_management(
+        lane,
+        &ds_client_core::project_management::Command::Commit {
+            command_id: command_id()?,
+            base_revision: prepared.base_revision,
+            command: prepared.command.clone(),
+        },
+    )?;
+    accepted(writes::decode_operation_result(&report.into_result()))
+}
+
+/// Commit one prepared draft and fold the engine's answer.
+pub fn commit_batch(
+    lane: &str,
+    prepared: &writes::PreparedBatch,
+) -> Result<writes::OperationResult, Failure> {
+    let report = ds_cli_auth::project_management(
+        lane,
+        &ds_client_core::project_management::Command::CommitBatch {
+            command_id: command_id()?,
+            base_revision: prepared.base_revision,
+            commands: prepared.commands.clone(),
+        },
+    )?;
+    accepted(writes::decode_operation_result(&report.into_result()))
+}
+
+/// The engine answered 200 — but a 200 with `applied: false` is a refusal
+/// too: the engine evaluated the command and declined it, naming the rule
+/// (`acceptedOrThrow`, cli-pm.ts:262-271). Never report `applied` for a
+/// change that did not land.
+fn accepted(result: writes::OperationResult) -> Result<writes::OperationResult, Failure> {
+    if result.applied && result.violations.is_empty() {
+        return Ok(result);
+    }
+    let first = result.violations.first();
+    Err(Failure::invalid(
+        PM_REFUSED.code,
+        first
+            .map(|issue| issue.message.clone())
+            .filter(|message| !message.is_empty())
+            .unwrap_or_else(|| "Project Management did not apply the change.".into()),
+    )
+    .detail(json!({
+        "service_code": first.map(|issue| issue.code.clone()),
+        "violations": result.violations,
+        "committedRevision": result.committed_revision,
+    }))
+    .remedy(PM_REFUSED.remedy)
+    .next("ds pm task read --task <task-id>"))
+}
+
+/// One idempotency key per commit. The engine deduplicates on it, so a lost
+/// answer retried with the SAME key lands once — which is why it is minted
+/// here, in the host with entropy, and not in the kernel.
+pub fn command_id() -> Result<String, Failure> {
+    ds_cli_auth::device::mint_command_id()
+}
+
+/// The kernel's refusal of a write before it was sent, as the failure
+/// `ds pm` documents for it.
+pub fn refused(refusal: writes::Refusal) -> Failure {
+    let message = refusal.message();
+    match refusal {
+        writes::Refusal::NotPermitted(_) => Failure::unauthorized(NOT_PERMITTED.code, message)
+            .remedy(NOT_PERMITTED.remedy)
+            .next("ds pm plan"),
+        writes::Refusal::TaskNotFound(id) => Failure::invalid(TASK_NOT_FOUND.code, message)
+            .detail(json!({ "task": id }))
+            .remedy(TASK_NOT_FOUND.remedy)
+            .next("ds pm task list"),
+        writes::Refusal::TaskExists(id) => Failure::conflict(PM_REFUSED.code, message)
+            .detail(json!({ "task": id, "service_code": "task_exists" }))
+            .remedy("the id already landed — read it, or mint a new --id for new work")
+            .next(format!("ds pm task read --task {id}")),
+        writes::Refusal::InvalidShape(_) => Failure::invalid("invalid_task_shape", message)
+            .remedy(task::create::INVALID_TASK_SHAPE.remedy)
+            .next("ds pm task create --help"),
+        writes::Refusal::InvalidValue(_) => Failure::invalid(INVALID_VALUE.code, message)
+            .remedy(INVALID_VALUE.remedy)
+            .next("ds pm plan --output json"),
+        writes::Refusal::NothingToChange => Failure::invalid(
+            "nothing_to_update",
+            "no field, state, progress or date flag was given",
         )
-        .remedy(NOT_PERMITTED.remedy)
-        .next("ds pm plan");
+        .remedy("name at least one change, e.g. --delivery in_progress")
+        .next("ds pm task update --help"),
+        writes::Refusal::TooManyAssignees { given, max } => {
+            Failure::invalid("too_many_assignees", message)
+                .detail(json!({ "given": given, "max": max }))
+                .remedy(task::assign::TOO_MANY_ASSIGNEES.remedy)
+        }
     }
-    if CONFLICT_MARKERS
-        .iter()
-        .any(|marker| detail.contains(marker))
-    {
-        return Failure::conflict(
-            "work_revision_conflict",
-            "the plan moved while the command was in flight",
-        )
-        .remedy(CONFLICT.remedy)
-        .next("ds pm task read --task <task-id>");
-    }
-    failure
 }
 
 // ---------------------------------------------------------------------------
@@ -339,7 +424,7 @@ pub const PAGE_ARG: Arg = Arg {
 /// A calendar date flag, held to the shape the project's schedule uses.
 ///
 /// The check is local because a transposed day and month is the commonest
-/// mistake there is, and it is one the application cannot catch: `2026-13-01`
+/// mistake there is, and it is one the engine cannot catch: `2026-13-01`
 /// is refused, but `2026-01-09` for the ninth of September is a valid date
 /// that quietly schedules the wrong week.
 pub fn date(raw: &str, flag: &str) -> Result<String, Failure> {
@@ -375,7 +460,7 @@ pub fn date(raw: &str, flag: &str) -> Result<String, Failure> {
 }
 
 /// An email flag. Held to the one property that makes it an address rather
-/// than a display name; the application normalises and the project's
+/// than a display name; the engine normalises and the project's
 /// membership decides whether the person is real.
 pub fn email(raw: &str, flag: &str) -> Result<String, Failure> {
     let trimmed = raw.trim().to_ascii_lowercase();
@@ -412,6 +497,13 @@ pub fn truncate(text: &str, width: usize) -> String {
     }
     let kept: String = text.chars().take(width.saturating_sub(1)).collect();
     format!("{kept}…")
+}
+
+/// Serialise a kernel reply into the envelope's `data`.
+pub fn data<T: serde::Serialize>(reply: &T) -> Result<Value, Failure> {
+    serde_json::to_value(reply).map_err(|error| {
+        Failure::internal(PLAN_UNREADABLE.code, error.to_string()).remedy(PLAN_UNREADABLE.remedy)
+    })
 }
 
 #[cfg(test)]
@@ -457,112 +549,66 @@ mod tests {
     }
 
     #[test]
-    fn the_two_conditions_an_unattended_caller_must_tell_apart_get_their_own_codes() {
-        // "You may not" is permanent until an admin acts; "you were too late"
-        // means re-read and try again. Both arrive as one refusal from the
-        // application, and a caller that cannot tell them apart either retries
-        // forever or gives up on a command that would have worked.
-        let refused = |detail: &str| {
-            classify_work_failure(
-                Failure::failed("desktop_refused", "refused").detail(json!({ "detail": detail })),
-            )
-        };
+    fn the_kernels_refusals_each_become_the_code_the_command_documents() {
+        let code = |refusal: writes::Refusal| refused(refusal).code().to_owned();
         assert_eq!(
-            refused("Project schedule editor access is required to change this plan.").code(),
+            code(writes::Refusal::NotPermitted("no".into())),
             "work_not_permitted"
         );
         assert_eq!(
-            refused("Project contributor access is required to answer an assignment request.")
-                .code(),
-            "work_not_permitted"
+            code(writes::Refusal::TaskNotFound("t".into())),
+            "task_not_found"
+        );
+        assert_eq!(code(writes::Refusal::TaskExists("t".into())), "pm_refused");
+        assert_eq!(
+            code(writes::Refusal::InvalidShape("x".into())),
+            "invalid_task_shape"
         );
         assert_eq!(
-            refused("The plan moved to revision 9 while this command was authored against 7.")
-                .code(),
-            "work_revision_conflict"
+            code(writes::Refusal::InvalidValue("x".into())),
+            "invalid_choice"
         );
-        // Still classified by the shared signed-out rule.
+        assert_eq!(code(writes::Refusal::NothingToChange), "nothing_to_update");
         assert_eq!(
-            refused("No active project. Open a project first.").code(),
-            "desktop_signed_out"
-        );
-        // And an ordinary engine violation stays what it was.
-        assert_eq!(
-            refused("task \"T-1\" already exists").code(),
-            "desktop_refused"
+            code(writes::Refusal::TooManyAssignees { given: 9, max: 3 }),
+            "too_many_assignees"
         );
     }
 
     #[test]
-    fn every_declared_operation_is_listed_for_the_parity_test_to_walk() {
-        // An operation a handler can send but the list does not carry is one
-        // the parity test never proves against the application. The list is
-        // the only thing standing between a typo and a runtime refusal.
-        let mut names: Vec<&str> = BRIDGE_OPS.iter().map(|op| op.operation).collect();
-        names.sort_unstable();
-        let mut unique = names.clone();
-        unique.dedup();
-        assert_eq!(names, unique, "an operation is declared twice");
-        assert_eq!(
-            names.len(),
-            DOMAIN.commands.len(),
-            "every ds pm command sends exactly one operation, and every \
-             declared operation belongs to a command"
-        );
+    fn an_engine_answer_that_did_not_apply_is_a_named_refusal_not_a_receipt() {
+        let declined = writes::decode_operation_result(&json!({
+            "applied": false, "committed_revision": 4,
+            "violations": [{"code": "TASK_EXISTS", "message": "task \"T-1\" already exists"}],
+        }));
+        let failure = accepted(declined).expect_err("not applied");
+        assert_eq!(failure.code(), "pm_refused");
+        assert!(failure.to_string().contains("already exists"));
+        let landed =
+            writes::decode_operation_result(&json!({"applied": true, "committed_revision": 5}));
+        assert!(accepted(landed).is_ok());
     }
-}
 
-/// Fold the server's canonical graph into the plan the operator reads.
-///
-/// The host supplies the day because the kernel holds no clock: every date in
-/// the answer is compared against this one value, so a plan is reproducible
-/// from the pair (graph, today).
-pub fn fold_plan(
-    project: &str,
-    graph: serde_json::Value,
-    limit: i64,
-) -> Result<serde_json::Value, Failure> {
-    let request = serde_json::json!({
-        "schema": ds_command_kernel::project_management::SCHEMA,
-        "action": "plan",
-        "today": today_utc(),
-        "ds_project": project,
-        "graph": graph,
-        "limit": limit,
-    });
-    let bytes = serde_json::to_vec(&request).map_err(|error| {
-        Failure::internal(PLAN_UNREADABLE.code, error.to_string()).remedy(PLAN_UNREADABLE.remedy)
-    })?;
-    let answer = ds_command_kernel::project_management::evaluate(&bytes).map_err(|error| {
-        Failure::internal(PLAN_UNREADABLE.code, error).remedy(PLAN_UNREADABLE.remedy)
-    })?;
-    serde_json::from_str(&answer).map_err(|error| {
-        Failure::internal(PLAN_UNREADABLE.code, error.to_string()).remedy(PLAN_UNREADABLE.remedy)
-    })
-}
-
-/// The host's day as `YYYY-MM-DD`, UTC.
-fn today_utc() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs() as i64)
-        .unwrap_or_default();
-    let days = seconds.div_euclid(86_400);
-    let (year, month, day) = civil_from_days(days);
-    format!("{year:04}-{month:02}-{day:02}")
-}
-
-/// Howard Hinnant's days-from-civil, inverted. Pure arithmetic: no chrono, no
-/// locale, and no dependency added for four lines.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (if m <= 2 { y + 1 } else { y }, m, d)
+    #[test]
+    fn the_refusal_tables_hold_the_headless_set_first_and_no_duplicates() {
+        let reads = read_refusals::<17>(&[INVALID_NUMBER]);
+        assert_eq!(reads.len(), 17);
+        assert_eq!(reads[0].code, HEADLESS_REFUSALS[0].code);
+        assert_eq!(reads[15].code, "plan_unreadable");
+        assert_eq!(reads[16].code, "invalid_number");
+        let writes = write_refusals::<23>(&[INVALID_DATE]);
+        let codes: std::collections::BTreeSet<&str> = writes.iter().map(|r| r.code).collect();
+        assert_eq!(codes.len(), writes.len(), "a code is declared twice");
+        for expected in [
+            "pm_refused",
+            "work_not_permitted",
+            "work_revision_conflict",
+            "task_not_found",
+            "confirmation_required",
+            "device_rng_unavailable",
+            "invalid_date",
+        ] {
+            assert!(codes.contains(expected), "{expected} missing");
+        }
+    }
 }

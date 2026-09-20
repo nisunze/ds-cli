@@ -1,6 +1,6 @@
 [package]
 name = "ds-cli-pm"
-description = "The `ds work` domain: Project Work — the plan, its tasks, the assignment loop and the record of what happened."
+description = "The `ds pm` domain: Project Management — the plan, its tasks, the assignment loop and the record of what happened."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,13 +10,13 @@ publish.workspace = true
 
 [dependencies]
 ds-cli-contract = { workspace = true }
-# PM answers on a Server. `POST /api/v1/pm` was already published on both
-# gateway lanes and ds-brain already authenticated from the bearer, so the
-# native client reaches it directly; the kernel folds what it returns. The
-# desktop bridge stays linked while the remaining commands still relay
-# through it.
+# PM answers on a Server. `POST /api/v1/pm` is published on both gateway
+# lanes and ds-brain authenticates from the bearer, so the native client
+# reaches it directly; the kernel decides what the graph means and which
+# command a flag becomes. No desktop bridge: since 2026-09-20 no `ds pm`
+# command needs a window.
 ds-cli-auth = { workspace = true }
-ds-cli-desktop = { workspace = true }
 ds-client-core = { workspace = true }
 ds-command-kernel = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }

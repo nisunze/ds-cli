@@ -95,6 +95,22 @@ rather than discovered.
 Errors carry no stack traces. `detail` is bounded structured context, present
 only when a code alone would leave a caller stuck.
 
+### The parser's own codes
+
+A few codes belong to the argument parser rather than to any command, and
+apply to every command equally, so they are documented here once rather than
+repeated in every `REFUSALS` section: `unknown_flag`, `missing_value`,
+`invalid_choice`, `switch_takes_no_value`, `unexpected_operand`,
+`too_many_operands`, `operand_not_a_flag`, and
+
+| Code | When | Remedy |
+|---|---|---|
+| `requires_window_retired` | `--desktop-descriptor` was passed to a command whose `requires` is `server` — the paired-window path an older release offered for it is retired | drop `--desktop-descriptor`; the command runs headless under the signed-in native credential (`ds auth status`) |
+
+`requires: window` remains only on `desktop.*` and on the map commands that
+drive a viewport; every other command answers on a bare Server and on the
+desktop alike.
+
 ## Global flags
 
 Recognized at any position, ahead of command routing:
