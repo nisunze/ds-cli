@@ -607,13 +607,19 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
             continue;
         }
         seen.insert(id.clone());
+        // A seeded cloud room keeps its catalogue identity (label, cloud
+        // residency); the room itself records only the digest.
+        let dataset = match resources.iter().find(|r| &r.id == id && r.is_cloud_resident()) {
+            Some(resource) => cloud_entry(resource),
+            None => room_entry(id, room),
+        };
         rows.push(OverviewRow {
-            dataset: room_entry(id, room),
+            dataset,
             held: room.clone(),
         });
     }
-    // Cloud-resident rows are never held here; they are listed so the answer
-    // says where they live. A named bundle row nobody declared or seeded is
+    // Cloud-resident rows not seeded here are listed so the answer says
+    // where they live. A named bundle row nobody declared or seeded is
     // listed once, unpublished or not seeded, rather than refused.
     for resource in &resources {
         let listed = resource.is_cloud_resident()
@@ -769,16 +775,23 @@ fn design_extents(
     inventory: &ds_cli_auth::HeadlessProjectReport<ds_cli_auth::TransformerInventory>,
 ) -> Result<Vec<policy::Extent>, Failure> {
     use ds_cli_auth::{TransformerKind, TransformerLifecycle};
-    let mut extents = Vec::new();
-    for row in inventory.result().rows() {
-        if row.kind() != TransformerKind::Transformer
-            || row.lifecycle() != TransformerLifecycle::Active
-        {
-            continue;
-        }
-        let context = ds_cli_auth::transformer_context(lane, row.name())?;
+    let names: Vec<String> = inventory
+        .result()
+        .rows()
+        .iter()
+        .filter(|row| {
+            row.kind() == TransformerKind::Transformer
+                && row.lifecycle() == TransformerLifecycle::Active
+        })
+        .map(|row| row.name().to_owned())
+        .collect();
+    // One restored session for the whole inventory: a restore per
+    // transformer is a token refresh per transformer.
+    let contexts = ds_cli_auth::transformer_contexts(lane, &names)?;
+    let mut extents = Vec::with_capacity(names.len());
+    for (name, context) in names.iter().zip(contexts) {
         let layers = serde_json::to_value(context.snapshot().layers()).unwrap_or(Value::Null);
-        extents.push(ds_project_data::extents::extent_of(row.name(), &layers).map_err(refused)?);
+        extents.push(ds_project_data::extents::extent_of(name, &layers).map_err(refused)?);
     }
     Ok(extents)
 }

@@ -1613,6 +1613,62 @@ pub fn transformer_context(
     })
 }
 
+/// The same read as [`transformer_context`], for MANY transformers of the
+/// selected project under ONE restored session. A device session mints one
+/// short-lived access token per restore, so a loop that restores per
+/// transformer pays a refresh round trip each time — a 114-transformer
+/// project's seed spent fourteen minutes there (2026-09-20). The answers keep
+/// the request order; the first refusal ends the read.
+pub fn transformer_contexts(
+    lane_value: &str,
+    transformers: &[String],
+) -> Result<Vec<HeadlessTransformerContext>, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let mut contexts = Vec::with_capacity(transformers.len());
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let identity = ProviderIdentity::new(
+            lane.token(),
+            device.profile().credential_audience_sha256(),
+            device.context().uid(),
+        )?;
+        for transformer in transformers {
+            let snapshot = device
+                .transformer_context(selected.project_id(), transformer)
+                .map_err(map_client)?;
+            contexts.push(HeadlessTransformerContext {
+                identity: identity.clone(),
+                lane: lane.token(),
+                project_name: selected.project_name().to_owned(),
+                project_status: selected.status().to_owned(),
+                snapshot,
+            });
+        }
+        return Ok(contexts);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let identity = ProviderIdentity::new(
+        lane.token(),
+        client.profile().credential_audience_sha256(),
+        user.uid(),
+    )?;
+    for transformer in transformers {
+        let result = client.transformer_context(selected.project_id(), transformer, now());
+        let snapshot = with_released_context_disposition(client.profile(), &selected, result)?;
+        contexts.push(HeadlessTransformerContext {
+            identity: identity.clone(),
+            lane: lane.token(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            snapshot,
+        });
+    }
+    Ok(contexts)
+}
+
 /// Read the current managed tile state for only the saved, audience-fenced
 /// selected project. There is no project, URL, or action override.
 pub fn tile_list(lane_value: &str, include_global: bool) -> Result<HeadlessTileCatalog, Failure> {
