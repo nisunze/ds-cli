@@ -390,6 +390,24 @@ impl Store {
         Ok(out)
     }
 
+    /// How many rows of every kind this file holds for one project, across
+    /// fences: what a local-data status counts as "the sync store's rows".
+    pub fn rows_of_project(&self, project: &str) -> Result<u64> {
+        let scope = scope_key(&Scope::Project {
+            project: project.to_string(),
+        });
+        let mut total: i64 = 0;
+        for table in ["artifacts", "heads", "grants", "receipts", "leases"] {
+            let count: i64 = self.connection.query_row(
+                &format!("SELECT COUNT(*) FROM {table} WHERE scope=?1"),
+                params![scope],
+                |row| row.get(0),
+            )?;
+            total += count;
+        }
+        Ok(total.max(0) as u64)
+    }
+
     /// Whether this file holds the survey-media table: a store written by a
     /// build before the table existed, opened read-only, holds no media.
     fn has_survey_media(&self) -> Result<bool> {

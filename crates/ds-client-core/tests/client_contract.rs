@@ -1085,7 +1085,7 @@ impl Transport for FixtureTransport {
         &mut self,
         call: ds_client_core::SurveyPhotoCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
-        assert_eq!(call.path(), "/media");
+        assert_eq!(call.path(), "/api/v1/media");
         let mut state = self.0.lock().unwrap();
         state
             .photo_bodies
