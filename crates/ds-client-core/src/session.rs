@@ -1303,6 +1303,33 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// Create one project, or edit one project's properties.
+    ///
+    /// Global on create (the project does not exist yet) and named on update:
+    /// the caller passes the project id, and ds-brain rechecks
+    /// `project.properties.edit` on it. No context lease is taken: this
+    /// command edits the project it names, never the selected one.
+    pub fn project_properties(
+        &mut self,
+        command: &crate::project_properties::Command,
+        now: u64,
+    ) -> Result<crate::project_properties::Receipt, ClientError> {
+        command.validate()?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::project_properties::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            command,
+        )
+    }
+
     /// One governed project-management read, for one project.
     ///
     /// Project-scoped, unlike [`Self::installs`]: a plan belongs to a project,

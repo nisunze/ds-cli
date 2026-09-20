@@ -1461,6 +1461,22 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::installs::run(self.profile, transport, self.authority(), command)
     }
+    /// Create a project or edit its properties on a device session.
+    ///
+    /// ds-brain's `Authentication` middleware admits a device credential on
+    /// `/api/v1/projects` exactly as it admits a restored user (the principal's
+    /// email and uid are set either way, and the capability gate reads the
+    /// email), so a host linked by device administers projects too.
+    pub fn project_properties<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        command: &crate::project_properties::Command,
+        now: u64,
+    ) -> Result<crate::project_properties::Receipt, ClientError> {
+        command.validate()?;
+        self.ensure_active(now)?;
+        crate::project_properties::run(self.profile, transport, self.authority(), command)
+    }
     pub fn sre<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

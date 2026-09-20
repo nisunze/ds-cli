@@ -62,10 +62,10 @@ pub use device::{
     DEVICE_ACCESS_RESPONSE_LIMIT, DEVICE_ACCESS_TTL_MAX_SECONDS, DEVICE_AUTH_SCHEMA, DEVICE_SCOPE,
 };
 pub use error::{
-    ClientError, DeviceApprovalServiceCode, ErrorKind, ProjectReportServiceCode, ServiceRefusal,
-    StoreError, SurveyEntriesChangesServiceCode, SurveyEntriesSelectServiceCode,
-    SurveyEntryCreateServiceCode, SurveyFormReadServiceCode, SurveyQueryServiceCode,
-    TransportError,
+    ClientError, DeviceApprovalServiceCode, ErrorKind, ProjectPropertiesServiceCode,
+    ProjectReportServiceCode, ServiceRefusal, StoreError, SurveyEntriesChangesServiceCode,
+    SurveyEntriesSelectServiceCode, SurveyEntryCreateServiceCode, SurveyFormReadServiceCode,
+    SurveyQueryServiceCode, TransportError,
 };
 pub use layers::{
     LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
@@ -218,7 +218,11 @@ pub use transport::InstallsCall;
 /// browser for the first time.
 pub mod installs;
 pub mod project_management;
+/// Creating a project and editing its properties: server-side, admin-gated,
+/// and reachable without a window for the first time.
+pub mod project_properties;
 pub use transport::GridModelsCall;
+pub use transport::ProjectPropertiesCall;
 pub use transport::ReportArtifactCall;
 pub use transport::{SreEventsCall, SreOverviewCall};
 

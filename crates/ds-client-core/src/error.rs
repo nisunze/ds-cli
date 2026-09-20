@@ -134,6 +134,27 @@ pub enum DeviceApprovalServiceCode {
     AuthorityUnavailable,
 }
 
+/// Closed refusal code of `POST /api/v1/projects` for `create` and `update`.
+///
+/// The route answers with ds-brain's standard envelope
+/// (`internal/router/handlers_unified.go`, `pkg/response`). The two `403`s
+/// name different next moves — a missing capability is granted by a project
+/// admin, a read-only project is unarchived first — and the status alone
+/// cannot tell them apart, so the envelope code is matched exactly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectPropertiesServiceCode {
+    /// `400 VALIDATION_FAILED`: the payload was refused by the handler's own
+    /// checks (a missing name, an unknown project type, a bad CRS).
+    Invalid,
+    /// `403 INSUFFICIENT_PERMISSIONS`: the caller lacks `project.create`, or
+    /// `project.properties.edit` on this project (project admin).
+    CapabilityMissing,
+    /// `403 PROJECT_ARCHIVED` / `PROJECT_EXPIRED`: the lifecycle write gate.
+    ProjectReadOnly,
+    /// `404 PROJECT_NOT_FOUND`: no project carries this id on this lane.
+    ProjectNotFound,
+}
+
 /// One governed route's own refusal, bounded and sanitized at this boundary.
 ///
 /// The crate's standing rule is that backend error text stays behind the
@@ -250,6 +271,7 @@ pub struct ClientError {
     survey_form_read_service_code: Option<SurveyFormReadServiceCode>,
     survey_query_service_code: Option<SurveyQueryServiceCode>,
     device_approval_service_code: Option<DeviceApprovalServiceCode>,
+    project_properties_service_code: Option<ProjectPropertiesServiceCode>,
 }
 
 impl ClientError {
@@ -265,6 +287,7 @@ impl ClientError {
             survey_form_read_service_code: None,
             survey_query_service_code: None,
             device_approval_service_code: None,
+            project_properties_service_code: None,
         }
     }
 
@@ -284,6 +307,7 @@ impl ClientError {
             survey_form_read_service_code: None,
             survey_query_service_code: None,
             device_approval_service_code: None,
+            project_properties_service_code: None,
         }
     }
 
@@ -303,6 +327,7 @@ impl ClientError {
             survey_form_read_service_code: None,
             survey_query_service_code: None,
             device_approval_service_code: None,
+            project_properties_service_code: None,
         }
     }
 
@@ -322,6 +347,7 @@ impl ClientError {
             survey_form_read_service_code: None,
             survey_query_service_code: None,
             device_approval_service_code: None,
+            project_properties_service_code: None,
         }
     }
 
@@ -341,6 +367,7 @@ impl ClientError {
             survey_form_read_service_code: None,
             survey_query_service_code: None,
             device_approval_service_code: None,
+            project_properties_service_code: None,
         }
     }
 
@@ -360,6 +387,7 @@ impl ClientError {
             survey_form_read_service_code: Some(code),
             survey_query_service_code: None,
             device_approval_service_code: None,
+            project_properties_service_code: None,
         }
     }
 
@@ -381,6 +409,7 @@ impl ClientError {
             survey_form_read_service_code: None,
             survey_query_service_code: None,
             device_approval_service_code: None,
+            project_properties_service_code: None,
         }
     }
 
@@ -411,6 +440,25 @@ impl ClientError {
     /// The device-approval route's own refusal, when it named one.
     pub const fn device_approval_service_code(&self) -> Option<DeviceApprovalServiceCode> {
         self.device_approval_service_code
+    }
+
+    /// A project-properties refusal: the route's typed code, and its own
+    /// bounded sentence when it authored one a project admin can act on.
+    pub(crate) fn with_project_properties_service_code(
+        kind: ErrorKind,
+        message: &'static str,
+        code: ProjectPropertiesServiceCode,
+        refusal: Option<ServiceRefusal>,
+    ) -> Self {
+        let mut error = Self::new(kind, message);
+        error.project_properties_service_code = Some(code);
+        error.service_refusal = refusal;
+        error
+    }
+
+    /// The project-properties route's own refusal, when it named one.
+    pub const fn project_properties_service_code(&self) -> Option<ProjectPropertiesServiceCode> {
+        self.project_properties_service_code
     }
 
     pub const fn kind(&self) -> ErrorKind {

@@ -1199,6 +1199,71 @@ impl ProjectManagementCall<'_> {
     }
 }
 
+/// `POST /api/v1/projects` — create one project or edit one project's
+/// properties.
+///
+/// Hard-coded like `/api/v1/pm` and `/api/v1/governance` beside it, and for
+/// the same reason: the profile supplies the origin and the credentials, not
+/// the route, and a path in the profile would bump `CLIENT_PROFILE_SCHEMA`.
+/// ds-brain's `Authentication` middleware admits a restored user AND a device
+/// credential here, and `project.create` / `project.properties.edit` on the
+/// principal decides the answer either way.
+pub struct ProjectPropertiesCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl ProjectPropertiesCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        "/api/v1/projects".into()
+    }
+    pub fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    /// One project document's receipt: far smaller than a tile or a plan.
+    pub const fn response_limit(&self) -> usize {
+        crate::project_properties::MAX_RESPONSE_BYTES
+    }
+    /// Creation provisions a dataset and copies template forms before it
+    /// answers, so this waits longer than a read.
+    pub const fn timeout_seconds(&self) -> u64 {
+        60
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(
+            serde_json::to_vec(&self.payload).expect("closed project properties request"),
+        )
+    }
+}
+
 /// `POST /api/v1/auth/device/approve` — decide one headless device
 /// authorization under a Firebase USER principal.
 ///
@@ -2640,6 +2705,12 @@ pub trait Transport {
     fn installs(&mut self, _call: InstallsCall<'_>) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn project_properties(
+        &mut self,
+        _call: ProjectPropertiesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn global_tiles(
         &mut self,
         _call: GlobalTilesCall<'_>,
@@ -2911,6 +2982,12 @@ pub trait AuthorizedTransport {
     fn installs(&mut self, _call: InstallsCall<'_>) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn project_properties(
+        &mut self,
+        _call: ProjectPropertiesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn global_tiles(
         &mut self,
         _call: GlobalTilesCall<'_>,
@@ -3162,6 +3239,12 @@ impl<T: Transport> AuthorizedTransport for T {
     }
     fn installs(&mut self, call: InstallsCall<'_>) -> Result<TransportResponse, TransportError> {
         Transport::installs(self, call)
+    }
+    fn project_properties(
+        &mut self,
+        call: ProjectPropertiesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::project_properties(self, call)
     }
     fn global_tiles(
         &mut self,

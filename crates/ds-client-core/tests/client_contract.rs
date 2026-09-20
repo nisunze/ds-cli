@@ -249,6 +249,7 @@ struct TransportState {
     sync_gateway: VecDeque<TransportResponse>,
     governance: VecDeque<TransportResponse>,
     device_approve: VecDeque<TransportResponse>,
+    project_properties: VecDeque<TransportResponse>,
     calls: Vec<String>,
     correlated_project_requests: usize,
     correlated_transformer_requests: usize,
@@ -438,6 +439,14 @@ impl FixtureTransport {
             .push_back(TransportResponse::new(status, body));
     }
 
+    fn push_project_properties(&self, status: u16, body: &[u8]) {
+        self.0
+            .lock()
+            .unwrap()
+            .project_properties
+            .push_back(TransportResponse::new(status, body));
+    }
+
     fn calls(&self) -> Vec<String> {
         self.0.lock().unwrap().calls.clone()
     }
@@ -578,6 +587,34 @@ impl Transport for FixtureTransport {
             String::from_utf8_lossy(call.body().as_bytes())
         ));
         Ok(state.governance.pop_front().expect("governance answer"))
+    }
+    fn project_properties(
+        &mut self,
+        call: ds_client_core::ProjectPropertiesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/projects");
+        assert_eq!(call.method(), "POST");
+        assert_eq!(call.content_type(), "application/json");
+        assert_eq!(call.timeout_seconds(), 60);
+        assert_eq!(call.response_limit(), 256 * 1024);
+        assert_eq!(
+            call.correlation_headers(),
+            ["X-Request-Id", "X-DS-Action-Id"]
+        );
+        let mut state = self.0.lock().unwrap();
+        state.calls.push(format!(
+            "project_properties origin={} api_key={} user_id_token={} device={} email={} body={}",
+            call.gateway_origin(),
+            !call.gateway_api_key().is_empty(),
+            call.bearer_token().starts_with("e30."),
+            call.device_id().is_some(),
+            call.canonical_email(),
+            String::from_utf8_lossy(call.body().as_bytes()),
+        ));
+        Ok(state
+            .project_properties
+            .pop_front()
+            .expect("project properties answer"))
     }
     fn sre_overview(
         &mut self,
@@ -5677,6 +5714,12 @@ impl AuthorizedTransport for DeviceAuthorizedProbe {
     ) -> Result<TransportResponse, TransportError> {
         device_authorized_call!(self, call, "installs", installs)
     }
+    fn project_properties(
+        &mut self,
+        call: ds_client_core::ProjectPropertiesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        device_authorized_call!(self, call, "project_properties", project_properties)
+    }
     fn sre_overview(
         &mut self,
         call: ds_client_core::SreOverviewCall<'_>,
@@ -6105,6 +6148,141 @@ fn device_authorization_reaches_the_projectless_governance_doors() {
             },
             NOW + 300,
         )
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::SignedOut);
+    assert!(idle.seen.is_empty());
+}
+
+/// Creating a project and editing its properties needs no window: the same
+/// door answers the restored native user and a linked device, at the one
+/// hard-coded route, with the exact body the handler reads. Before this the
+/// two integration test projects could not be named from any headless host.
+#[test]
+fn project_properties_reach_the_projects_route_as_native_user_and_as_device() {
+    use ds_client_core::project_properties::{Command, Properties, Receipt};
+    let update = Command::Update {
+        project_id: "it_rwanda".into(),
+        properties: Properties {
+            display_name: Some("Integration test — Rwanda".into()),
+            country: Some("Rwanda".into()),
+            ..Properties::default()
+        },
+    };
+    let create = Command::Create {
+        display_name: "Gisagara LV".into(),
+        properties: Properties {
+            country: Some("Rwanda".into()),
+            ..Properties::default()
+        },
+        network_template: None,
+        styling_template: None,
+    };
+    let updated = serde_json::to_vec(&json!({
+        "success": true,
+        "message": "Project updated successfully",
+        "data": {"project_id": "it_rwanda", "resources_ensured": true, "dataset_exists": true, "fields_updated": 2},
+        "timestamp": "2026-09-20T10:00:00Z", "service": "data-solutions-backend", "version": "1.0.0"
+    }))
+    .unwrap();
+    let created = serde_json::to_vec(&json!({
+        "success": true,
+        "message": "Project created successfully",
+        "data": {
+            "project_id": "uid1_gisagara_lv", "project_name": "gisagara_lv", "display_name": "Gisagara LV",
+            "project_location": "", "network_template": "master",
+            "project_params": {"project_type": "new_build", "crs": {"mode": "tm_rwanda"}},
+            "project_phases": {}, "project_components": {}, "processing_lanes": {"fast": true},
+            "project_type": "new_build", "crs": {"mode": "tm_rwanda"}
+        },
+        "timestamp": "2026-09-20T10:00:00Z", "service": "data-solutions-backend", "version": "1.0.0"
+    }))
+    .unwrap();
+    let forbidden = serde_json::to_vec(&json!({
+        "success": false,
+        "error": {"code": "INSUFFICIENT_PERMISSIONS", "message": "Requires project.properties.edit capability (project admin)", "timestamp": 1},
+        "timestamp": "2026-09-20T10:00:00Z", "service": "data-solutions-backend", "version": "1.0.0"
+    }))
+    .unwrap();
+
+    // The restored native user.
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project_properties(200, &updated);
+    transport.push_project_properties(200, &created);
+    transport.push_project_properties(403, &forbidden);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let receipt = client.project_properties(&update, NOW + 1).unwrap();
+    assert!(
+        matches!(receipt, Receipt::Updated(ref r) if r.project_id == "it_rwanda" && r.fields_updated == 2)
+    );
+    let receipt = client.project_properties(&create, NOW + 1).unwrap();
+    assert!(
+        matches!(receipt, Receipt::Created(ref r) if r.project_id == "uid1_gisagara_lv" && r.project_name == "gisagara_lv")
+    );
+    let error = client.project_properties(&update, NOW + 1).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::AuthenticationRejected);
+    assert_eq!(
+        error.project_properties_service_code(),
+        Some(ds_client_core::ProjectPropertiesServiceCode::CapabilityMissing)
+    );
+    assert_eq!(
+        error.service_refusal().and_then(|r| r.message()),
+        Some("Requires project.properties.edit capability (project admin)")
+    );
+    let calls = transport.calls();
+    let properties: Vec<&String> = calls
+        .iter()
+        .filter(|call| call.starts_with("project_properties "))
+        .collect();
+    assert_eq!(properties.len(), 3);
+    assert_eq!(
+        properties[0].as_str(),
+        r#"project_properties origin=https://eds-gateway-3c0q477h.ue.gateway.dev api_key=true user_id_token=true device=false email=user@example.com body={"action":"update","data":{"country":"Rwanda","display_name":"Integration test — Rwanda","project_id":"it_rwanda"}}"#
+    );
+    assert!(properties[1].ends_with(
+        r#"body={"action":"create","data":{"country":"Rwanda","display_name":"Gisagara LV","project_name":"gisagara_lv"}}"#
+    ), "{}", properties[1]);
+
+    // An invalid command never reaches the transport.
+    let error = client
+        .project_properties(
+            &Command::Update {
+                project_id: "it_rwanda".into(),
+                properties: Properties::default(),
+            },
+            NOW + 1,
+        )
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidInput);
+    assert_eq!(transport.calls().len(), calls.len());
+
+    // The linked device: same door, device authority on the call.
+    let stable = profile(DeploymentLane::Stable);
+    let credential = device_credential(&stable);
+    let live = DeviceAccessSession::new("ds-memory-access-jwt".to_owned(), NOW + 300, NOW).unwrap();
+    let authorization = credential
+        .authorize_api(&live, &stable, "uid-1", NOW)
+        .unwrap();
+    let fixture = FixtureTransport::default();
+    fixture.push_project_properties(200, &updated);
+    let mut probe = DeviceAuthorizedProbe::new(fixture);
+    let receipt = authorization
+        .project_properties(&mut probe, &update, NOW)
+        .unwrap();
+    assert!(matches!(receipt, Receipt::Updated(ref r) if r.project_id == "it_rwanda"));
+    assert_eq!(probe.seen, ["project_properties"]);
+    let calls = probe.inner.calls();
+    assert!(
+        calls[0].contains(
+            "user_id_token=false device=true email=user@example.com body={\"action\":\"update\""
+        ),
+        "{}",
+        calls[0]
+    );
+
+    // An expired memory session is refused before any I/O.
+    let mut idle = DeviceAuthorizedProbe::new(FixtureTransport::default());
+    let error = authorization
+        .project_properties(&mut idle, &update, NOW + 300)
         .unwrap_err();
     assert_eq!(error.kind(), ErrorKind::SignedOut);
     assert!(idle.seen.is_empty());
