@@ -1330,6 +1330,31 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One governed correspondence action, for one project — the same door
+    /// as [`Self::project_management`], the actions the correspondence
+    /// contract added.
+    pub fn project_correspondence(
+        &mut self,
+        project: &str,
+        action: &crate::project_correspondence::Action,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::project_correspondence::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            action,
+        )
+    }
+
     /// One governed project-management read, for one project.
     ///
     /// Project-scoped, unlike [`Self::installs`]: a plan belongs to a project,

@@ -9,6 +9,30 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 pub enum Command {
+    /// Register bytes held outside DS — a Drive link with its digest — as a
+    /// catalogue row (`reference`, external form, `assets.ingest`). DS never
+    /// fetches the URL; the row's `read` is its link.
+    External {
+        url: String,
+        sha256: String,
+        size: u64,
+        kind: String,
+        format: Option<String>,
+        folder_id: Option<String>,
+        sensitivity: Option<String>,
+        provider: Option<String>,
+        name: Option<String>,
+    },
+    /// One link from an asset to the work it belongs to, or its removal.
+    Attach {
+        asset_id: String,
+        link: Link,
+        detach: bool,
+    },
+    /// One catalogue row by id, under the caller's class authority.
+    Get {
+        asset_id: String,
+    },
     PublishMap {
         name: String,
         bytes: Vec<u8>,
@@ -90,7 +114,42 @@ fn link_valid(link: &Link) -> bool {
             entity_id,
         } => object_type == "transformer" && token(entity_id),
         Link::PmTask { id } => token(id),
+        Link::PmRecord { id } => token(id),
     }
+}
+
+/// A catalogue asset id as ds-brain mints one: `a_` and twelve of its
+/// alphabet.
+fn asset_id(id: &str) -> bool {
+    id.len() == 14
+        && id.starts_with("a_")
+        && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+/// An https URL with a host and no credentials, bounded as ds-brain bounds it.
+fn external_url(raw: &str) -> bool {
+    if raw.trim() != raw || raw.is_empty() || raw.len() > 2048 || raw.chars().any(char::is_control)
+    {
+        return false;
+    }
+    let Ok(parsed) = url::Url::parse(raw) else {
+        return false;
+    };
+    parsed.scheme() == "https"
+        && parsed.host_str().is_some_and(|host| !host.is_empty())
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
+}
+
+fn hex_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+fn optional_token(value: &Option<String>) -> bool {
+    value.as_deref().is_none_or(token)
 }
 impl Command {
     pub fn validate(&self, project: &str) -> Result<(), ClientError> {
@@ -98,6 +157,38 @@ impl Command {
             return Err(invalid());
         }
         let valid = match self {
+            Self::External {
+                url,
+                sha256,
+                size,
+                kind,
+                format,
+                folder_id,
+                sensitivity,
+                provider,
+                name,
+            } => {
+                external_url(url)
+                    && hex_digest(sha256)
+                    && *size > 0
+                    && matches!(
+                        kind.as_str(),
+                        "doc" | "sheet" | "mail" | "note" | "geo" | "image" | "pack" | "other"
+                    )
+                    && optional_token(format)
+                    && optional_token(folder_id)
+                    && sensitivity.as_deref().is_none_or(|class| {
+                        matches!(class, "open" | "internal" | "restricted" | "confidential")
+                    })
+                    && provider
+                        .as_deref()
+                        .is_none_or(|provider| matches!(provider, "google_drive" | "other"))
+                    && optional_token(name)
+            }
+            Self::Attach {
+                asset_id: id, link, ..
+            } => asset_id(id) && link_valid(link),
+            Self::Get { asset_id: id } => asset_id(id),
             Self::PublishMap {
                 name,
                 bytes,
@@ -172,6 +263,41 @@ pub(crate) fn run<T: AuthorizedTransport>(
         Command::PublishMap { .. } => {
             unreachable!("map publication is a closed upload transaction")
         }
+        Command::External {
+            url,
+            sha256,
+            size,
+            kind,
+            format,
+            folder_id,
+            sensitivity,
+            provider,
+            name,
+        } => {
+            let mut external = json!({"url": url, "sha256": sha256, "size": size, "kind": kind});
+            for (key, value) in [
+                ("format", format),
+                ("folder_id", folder_id),
+                ("sensitivity", sensitivity),
+                ("provider", provider),
+                ("name", name),
+            ] {
+                if let Some(value) = value {
+                    external[key] = json!(value);
+                }
+            }
+            json!({"action":"reference","ds_project":project,"external":external})
+        }
+        Command::Attach {
+            asset_id,
+            link,
+            detach,
+        } => {
+            json!({"action": if *detach { "detach" } else { "attach" }, "ds_project":project,"asset_id":asset_id,"link":link})
+        }
+        Command::Get { asset_id } => {
+            json!({"action":"get","ds_project":project,"asset_id":asset_id})
+        }
         Command::Maps { limit, cursor } => {
             let mut value = json!({"action":"list","ds_project":project,"limit":limit});
             if let Some(cursor) = cursor {
@@ -195,7 +321,21 @@ pub(crate) fn run<T: AuthorizedTransport>(
         payload,
     })?;
     if response.status != 200 {
-        return Err(classify_tile_error(response.status));
+        // The catalogue's own refusals name their rule: `ASSET_REFUSED` with
+        // `details.reason` (`asset_bytes_not_held`, `invalid_external_reference`,
+        // …), `CONFLICT` for the same reference under different facts,
+        // `ASSET_CLASS_FORBIDDEN` naming the class. Those cross as the code
+        // and the details the rule named; the class stays the status's.
+        let served = crate::project_correspondence::envelope(response.status, &response.body);
+        let coarse = classify_tile_error(response.status);
+        return Err(match served {
+            Some(served) => ClientError::with_service_refusal(
+                coarse.kind(),
+                "the assets catalogue refused this request",
+                served,
+            ),
+            None => coarse,
+        });
     }
     if response.body.len() > 1024 * 1024 {
         return Err(bad());
@@ -247,6 +387,42 @@ pub(crate) fn run<T: AuthorizedTransport>(
         return Err(bad());
     }
     match command {
+        Command::External { url, sha256, .. } => {
+            // The row is the reference the caller declared, or it is not the
+            // row: same digest, the link kept, no bytes held here.
+            if asset["digest"] != format!("sha256:{sha256}")
+                || asset["source"]["kind"] != "external_reference"
+                || asset["bytes_held"] != false
+                || asset["external"]["url"].as_str().is_none_or(|held| {
+                    url::Url::parse(held).ok().map(|u| u.to_string())
+                        != url::Url::parse(url).ok().map(|u| u.to_string())
+                })
+            {
+                return Err(bad());
+            }
+            return Ok(
+                json!({"asset":asset,"project":project,"storage_copied":false,"bytes_held":false}),
+            );
+        }
+        Command::Attach {
+            asset_id,
+            link,
+            detach,
+        } => {
+            let held = asset["links"]
+                .as_array()
+                .is_some_and(|links| links.contains(&json!(link)));
+            if asset["asset_id"] != *asset_id || held == *detach {
+                return Err(bad());
+            }
+            return Ok(json!({"asset":asset,"project":project,"storage_copied":false}));
+        }
+        Command::Get { asset_id } => {
+            if asset["asset_id"] != *asset_id {
+                return Err(bad());
+            }
+            return Ok(json!({"asset":asset,"project":project,"storage_copied":false}));
+        }
         Command::PublishMap { .. } => {
             unreachable!("map publication returned before reference reads")
         }

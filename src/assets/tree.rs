@@ -56,21 +56,22 @@ use serde::{de::DeserializeOwned, Deserialize, Deserializer};
 use serde_json::{json, Value};
 
 use super::{
-    digest_of, format, Asset, ClassifiedBy, Counts, Dated, FolderKind, Format, Kind, Link, Origin,
-    Owner, Sensitivity, Source, SourceKind, Status, TreeFolder, TreeRequest, TreeResponse,
-    ASSET_SCHEMA, TREE_SCHEMA, TREE_SOURCE_NAMES,
+    digest_of, format, Asset, ClassifiedBy, Counts, Dated, FolderKind, Format, Kind, Link,
+    MailPart, Origin, Owner, Sensitivity, Source, SourceKind, Status, TreeFolder, TreeRequest,
+    TreeResponse, ASSET_SCHEMA, TREE_SCHEMA, TREE_SOURCE_NAMES,
 };
 
 /// The system roots of §2.5, in the contract's order. A user folder may not
 /// claim one of these names (`build` refuses it by name); `Unclassified` is
 /// rendered only when something landed in it.
-pub const SYSTEM_ROOTS: [&str; 11] = [
+pub const SYSTEM_ROOTS: [&str; 12] = [
     "Transformers",
     "MV models",
     "Survey",
     "Project data",
     "My data",
     "Project work",
+    "Correspondence",
     "Reports",
     "Solar",
     "Local data",
@@ -82,7 +83,11 @@ pub const SYSTEM_ROOTS: [&str; 11] = [
 /// their own: they are the lookup rows that give a PM attachment its `<wbs>`
 /// or `<reference>` folder, so they feed `Project work` without projecting a
 /// row of their own.
-const SOURCE_ROOTS: [(&str, &str); 19] = [
+///
+/// `Correspondence` is fed by the same `pm_records` lookup rows and by
+/// `pm_parties` (party id → name): one folder per thread, listing the
+/// catalogued assets the thread's records carry — never a row of its own.
+const SOURCE_ROOTS: [(&str, &str); 21] = [
     ("compounded", "Reports"),
     ("compute_artifacts", "Reports"),
     ("dataset_rooms", "Local data"),
@@ -92,6 +97,8 @@ const SOURCE_ROOTS: [(&str, &str); 19] = [
     ("local_prints", "Prints"),
     ("national_datasets", "Local data"),
     ("pm_attachments", "Project work"),
+    ("pm_parties", "Correspondence"),
+    ("pm_records", "Correspondence"),
     ("pm_records", "Project work"),
     ("pm_tasks", "Project work"),
     ("print_setups", "Prints"),
@@ -105,7 +112,7 @@ const SOURCE_ROOTS: [(&str, &str); 19] = [
 ];
 
 /// Sources whose rows are lookups, never assets (see [`SOURCE_ROOTS`]).
-const LOOKUP_SOURCES: [&str; 2] = ["pm_records", "pm_tasks"];
+const LOOKUP_SOURCES: [&str; 3] = ["pm_parties", "pm_records", "pm_tasks"];
 
 /// The closed reserved-transformer-document set of ds-brain's
 /// `IsReservedTransformerDocName` (`internal/services/path_resolver.go`),
@@ -529,6 +536,16 @@ impl Row {
                 source: self.origin.to_string(),
                 r#ref: self.reference,
             }),
+            document: None,
+            mail: None,
+            external: None,
+            bytes_held: true,
+            folder_id: None,
+            content_type: None,
+            created_by: None,
+            updated_at: None,
+            updated_by: None,
+            version: None,
         };
         (self.folder, asset)
     }
@@ -545,6 +562,9 @@ struct Projector<'a> {
     tasks: BTreeMap<String, String>,
     /// PM record id → `<reference>` (from the `pm_records` lookup source).
     records: BTreeMap<String, String>,
+    /// Party id → name (from the `pm_parties` lookup source), for the
+    /// `Correspondence/<thread>` folder names.
+    parties: BTreeMap<String, String>,
     /// Grid model id → `<display_name>` (from the `grid_models` source), so an
     /// export lands beside the revisions of the same model.
     models: BTreeMap<String, String>,
@@ -557,6 +577,7 @@ impl<'a> Projector<'a> {
             project_id,
             tasks: BTreeMap::new(),
             records: BTreeMap::new(),
+            parties: BTreeMap::new(),
             models: BTreeMap::new(),
             placed: Vec::new(),
         }
@@ -597,8 +618,20 @@ impl<'a> Projector<'a> {
                 .map(str::to_string)?;
             Some((id, wbs))
         });
+        self.parties = lookup_map(request, "pm_parties", |row| {
+            let party: PartyRow = decode(row);
+            let id = present(&party.id).map(str::to_string)?;
+            let inner: PartyRow = decode(&party.data);
+            let name = any_of([
+                present(&party.name),
+                present(&inner.name),
+                Some(id.as_str()),
+            ])
+            .map(str::to_string)?;
+            Some((id, name))
+        });
         self.records = lookup_map(request, "pm_records", |row| {
-            let record: RecordRow = decode(row);
+            let record = RecordRow::flattened(row);
             let id = present(&record.id).map(str::to_string)?;
             let reference = any_of([
                 present(&record.reference_number),
@@ -1208,7 +1241,9 @@ impl<'a> Projector<'a> {
             Some("record") => match self.records.get(linked) {
                 Some(reference) => (
                     Some(format!("Project work/records/{}", segment(reference))),
-                    None,
+                    Some(Link::PmRecord {
+                        id: linked.to_string(),
+                    }),
                 ),
                 None => (None, None),
             },
@@ -1565,6 +1600,242 @@ fn lookup_map(
     map
 }
 
+// ── Correspondence (correspondence.md §Asset, owner ruling 2026-09-20) ──────
+
+/// `Correspondence/<thread>`: every correspondence record and what it carries,
+/// indexed in the project's assets as one system folder per thread.
+///
+/// A projection over rows the project already holds — the `pm_records`
+/// lookup rows, the `pm_parties` names and the catalogued `assets` — rebuilt
+/// at read time and never written (D15/D16). A thread folder lists the
+/// catalogued asset each of its records was authored against
+/// (`source_asset_id`, `meeting_note_asset_id`), the registered documents it
+/// names (`document_ids`), every catalogued asset linked `pm_record:<id>` to
+/// one of its records, and, under a mail container, the MIME parts the row
+/// carries. Each listing is the catalogued row itself under a second path —
+/// the same `asset_id`, so `read`/`preview --member` work from here exactly
+/// as from the declared folder — with an `origin` naming the thread and the
+/// role the asset plays. A record the caller may not read has no row and so
+/// no folder; a thread whose assets the caller may not read has no folder
+/// either: nothing here is a placeholder for what was redacted.
+mod correspondence {
+    use super::*;
+
+    /// One thread as the lookup rows describe it.
+    struct Thread {
+        thread_id: String,
+        root_subject: String,
+        root_date: String,
+        party_ids: Vec<String>,
+        record_ids: Vec<String>,
+        /// (asset id, role, record id) in record order.
+        members: Vec<(String, &'static str, String)>,
+    }
+
+    pub(super) fn project(
+        request: &TreeRequest,
+        parties: &BTreeMap<String, String>,
+        roots: &mut BTreeMap<String, Node>,
+    ) {
+        let Some(rows) = request.sources.get("pm_records") else {
+            return;
+        };
+        let mut threads: BTreeMap<String, Thread> = BTreeMap::new();
+        let mut records: Vec<RecordRow> = rows.iter().map(RecordRow::flattened).collect();
+        // Time order decides which record is the root of a thread whose root
+        // was not loaded, and the order the members are listed in.
+        records.sort_by(|left, right| {
+            present(&left.happened_at)
+                .unwrap_or("")
+                .cmp(present(&right.happened_at).unwrap_or(""))
+                .then_with(|| present(&left.id).cmp(&present(&right.id)))
+        });
+        for record in &records {
+            let Some(id) = present(&record.id) else {
+                continue;
+            };
+            let thread_id = present(&record.thread_id).unwrap_or(id).to_string();
+            let thread = threads.entry(thread_id.clone()).or_insert_with(|| Thread {
+                thread_id: thread_id.clone(),
+                root_subject: String::new(),
+                root_date: String::new(),
+                party_ids: Vec::new(),
+                record_ids: Vec::new(),
+                members: Vec::new(),
+            });
+            // The thread's own record names it; failing that, its earliest.
+            if id == thread_id || thread.root_subject.is_empty() {
+                thread.root_subject = present(&record.subject).unwrap_or("").to_string();
+                thread.root_date = present(&record.happened_at)
+                    .map(|stamp| stamp.chars().take(10).collect())
+                    .unwrap_or_default();
+            }
+            for party in string_list(&record.external_party_ids) {
+                if !thread.party_ids.contains(&party) {
+                    thread.party_ids.push(party);
+                }
+            }
+            thread.record_ids.push(id.to_string());
+            if let Some(source) = present(&record.source_asset_id) {
+                thread
+                    .members
+                    .push((source.to_string(), "source", id.to_string()));
+            }
+            if let Some(note) = present(&record.meeting_note_asset_id) {
+                thread
+                    .members
+                    .push((note.to_string(), "meeting_note", id.to_string()));
+            }
+            for document in string_list(&record.document_ids) {
+                thread.members.push((document, "document", id.to_string()));
+            }
+        }
+        // Assets linked `pm_record:<id>` join the thread of that record.
+        let mut record_thread: BTreeMap<&str, &str> = BTreeMap::new();
+        for thread in threads.values() {
+            for record in &thread.record_ids {
+                record_thread.insert(record.as_str(), thread.thread_id.as_str());
+            }
+        }
+        let mut linked: Vec<(String, String, String)> = Vec::new();
+        for asset in &request.assets {
+            for link in &asset.links {
+                if let Link::PmRecord { id } = link {
+                    if let Some(thread_id) = record_thread.get(id.as_str()) {
+                        linked.push(((*thread_id).to_string(), asset.asset_id.clone(), id.clone()));
+                    }
+                }
+            }
+        }
+        for (thread_id, asset_id, record_id) in linked {
+            if let Some(thread) = threads.get_mut(&thread_id) {
+                thread.members.push((asset_id, "attachment", record_id));
+            }
+        }
+
+        let catalogue: BTreeMap<&str, &Asset> = request
+            .assets
+            .iter()
+            .map(|asset| (asset.asset_id.as_str(), asset))
+            .collect();
+        for thread in threads.values() {
+            let folder = format!("Correspondence/{}", segment(&folder_name(thread, parties)));
+            let mut listed: BTreeSet<&str> = BTreeSet::new();
+            for (asset_id, role, record_id) in &thread.members {
+                // One listing per asset per thread, under its first role.
+                if !listed.insert(asset_id.as_str()) {
+                    continue;
+                }
+                let Some(row) = catalogue.get(asset_id.as_str()) else {
+                    // Named by the record but not in the catalogue the caller
+                    // may read: no row, no placeholder.
+                    continue;
+                };
+                let mut asset = (*row).clone();
+                asset.folder = folder.clone();
+                asset.origin = Some(Origin {
+                    source: "correspondence".to_string(),
+                    r#ref: json!({
+                        "thread_id": thread.thread_id,
+                        "record_id": record_id,
+                        "role": role,
+                        "asset_id": asset_id,
+                    }),
+                });
+                let parts = asset.mail.as_ref().map(|mail| mail.parts.clone());
+                place(roots, &folder, asset, FolderKind::System);
+                if let Some(parts) = parts {
+                    let container_folder = format!("{folder}/{}", segment(&row.name));
+                    for part in parts {
+                        place(
+                            roots,
+                            &container_folder,
+                            mail_part_row(row, &thread.thread_id, &part),
+                            FolderKind::System,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// `<party names> — <root subject> (<root date>)`, each piece present only
+    /// when the thread carries it; never empty.
+    fn folder_name(thread: &Thread, parties: &BTreeMap<String, String>) -> String {
+        let names: Vec<&str> = thread
+            .party_ids
+            .iter()
+            .take(2)
+            .map(|id| parties.get(id).map_or(id.as_str(), String::as_str))
+            .collect();
+        let mut name = names.join(" + ");
+        if !thread.root_subject.is_empty() {
+            if !name.is_empty() {
+                name.push_str(" — ");
+            }
+            name.push_str(&thread.root_subject);
+        }
+        if !thread.root_date.is_empty() {
+            name.push_str(&format!(" ({})", thread.root_date));
+        }
+        if name.trim().is_empty() {
+            name = thread.thread_id.clone();
+        }
+        name
+    }
+
+    /// One MIME part of a mail container as a row of its own: the member
+    /// name, the decoded size, the kernel's reading of its kind, and an origin
+    /// that says exactly how to read it (`read --asset <id> --member <path>`).
+    fn mail_part_row(container: &Asset, thread_id: &str, part: &MailPart) -> Asset {
+        let (kind, format) = recognise_name(&part.path, part.bytes, Some(&part.content_type));
+        Asset {
+            reference: None,
+            schema: ASSET_SCHEMA.to_string(),
+            asset_id: format!("sys:mail_part:{}:{}", container.asset_id, part.path),
+            project_id: container.project_id.clone(),
+            folder: String::new(),
+            name: part.path.clone(),
+            kind,
+            format,
+            bytes: part.bytes,
+            digest: None,
+            status: container.status,
+            sensitivity: container.sensitivity,
+            dated: container.dated.clone(),
+            owner: container.owner.clone(),
+            source: Source {
+                kind: SourceKind::Container,
+                detail: Some(format!("mail part {} of {}", part.section, container.name)),
+            },
+            classified_by: ClassifiedBy::Kernel,
+            container: Some(container.asset_id.clone()),
+            links: Vec::new(),
+            origin: Some(Origin {
+                source: "correspondence".to_string(),
+                r#ref: json!({
+                    "thread_id": thread_id,
+                    "asset_id": container.asset_id,
+                    "member": part.path,
+                    "section": part.section,
+                    "disposition": part.disposition,
+                    "content_type": part.content_type,
+                }),
+            }),
+            document: None,
+            mail: None,
+            external: None,
+            bytes_held: container.bytes_held,
+            folder_id: None,
+            content_type: Some(part.content_type.clone()),
+            created_by: None,
+            updated_at: None,
+            updated_by: None,
+            version: None,
+        }
+    }
+}
+
 // ── the foreign wire rows, read leniently ───────────────────────────────────
 //
 // Each struct below reads only the fields the projection needs from one
@@ -1804,6 +2075,65 @@ struct RecordRow {
     reference_number: Option<String>,
     #[serde(deserialize_with = "lenient_text")]
     subject: Option<String>,
+    // The correspondence fields (ds-brain correspondence.md §Record), read
+    // from the raw `data` shape ds-brain answers and the camelCase shape a
+    // browser decodes, so the thread folder is the same whichever host fed
+    // the rows.
+    #[serde(deserialize_with = "lenient_text", alias = "thread_id")]
+    thread_id: Option<String>,
+    #[serde(deserialize_with = "lenient_text", alias = "happened_at")]
+    happened_at: Option<String>,
+    #[serde(deserialize_with = "lenient_text", alias = "source_asset_id")]
+    source_asset_id: Option<String>,
+    #[serde(deserialize_with = "lenient_text", alias = "meeting_note_asset_id")]
+    meeting_note_asset_id: Option<String>,
+    #[serde(default, alias = "document_ids")]
+    document_ids: Value,
+    #[serde(default, alias = "external_party_ids")]
+    external_party_ids: Value,
+    #[serde(default)]
+    data: Value,
+}
+
+impl RecordRow {
+    /// A raw ds-brain row keeps its authored fields under `data`; a decoded
+    /// row carries them at the top. Whichever arrived, one reader.
+    fn flattened(row: &Value) -> RecordRow {
+        let mut decoded: RecordRow = decode(row);
+        if decoded.data.is_object() {
+            let inner: RecordRow = decode(&decoded.data);
+            let take = |outer: &Option<String>, inner: &Option<String>| {
+                present(outer)
+                    .map(str::to_string)
+                    .or_else(|| present(inner).map(str::to_string))
+            };
+            decoded.reference_number = take(&decoded.reference_number, &inner.reference_number);
+            decoded.subject = take(&decoded.subject, &inner.subject);
+            decoded.thread_id = take(&decoded.thread_id, &inner.thread_id);
+            decoded.happened_at = take(&decoded.happened_at, &inner.happened_at);
+            decoded.source_asset_id = take(&decoded.source_asset_id, &inner.source_asset_id);
+            decoded.meeting_note_asset_id =
+                take(&decoded.meeting_note_asset_id, &inner.meeting_note_asset_id);
+            if decoded.document_ids.is_null() {
+                decoded.document_ids = inner.document_ids;
+            }
+            if decoded.external_party_ids.is_null() {
+                decoded.external_party_ids = inner.external_party_ids;
+            }
+        }
+        decoded
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct PartyRow {
+    #[serde(deserialize_with = "lenient_text")]
+    id: Option<String>,
+    #[serde(deserialize_with = "lenient_text")]
+    name: Option<String>,
+    #[serde(default)]
+    data: Value,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -2273,9 +2603,31 @@ fn system_root_named(name: &str) -> Option<&'static str> {
         .find(|root| root.eq_ignore_ascii_case(name))
 }
 
+/// The one system root a declared folder may share: `correspondence/…` is the
+/// natural name for the folder a project files its letters in — the
+/// contract's own acceptance declares one — so refusing it would refuse the
+/// project's whole tree the day the index landed. A declared folder rooted
+/// there is filed under the same root as the thread index, spelled as the
+/// root is spelled, and the two coexist.
+const SHARED_ROOT: &str = "Correspondence";
+
+/// A declared path with a `correspondence` root respelled to the system root.
+fn respell_shared_root(path: &str) -> String {
+    let mut parts: Vec<&str> = segments(path).collect();
+    if let Some(first) = parts.first_mut() {
+        if first.eq_ignore_ascii_case(SHARED_ROOT) {
+            *first = SHARED_ROOT;
+        }
+    }
+    parts.join("/")
+}
+
 fn check_user_folders(request: &TreeRequest) -> Result<(), String> {
     for folder in &request.folders {
-        if let Some(root) = root_segment(&folder.path).and_then(system_root_named) {
+        if let Some(root) = root_segment(&folder.path)
+            .and_then(system_root_named)
+            .filter(|root| *root != SHARED_ROOT)
+        {
             return Err(format!(
                 "user folder \"{}\" collides with the system root {root}; system roots are projected from the sources, not declared — rename the folder",
                 folder.path
@@ -2283,7 +2635,10 @@ fn check_user_folders(request: &TreeRequest) -> Result<(), String> {
         }
     }
     for asset in &request.assets {
-        if let Some(root) = root_segment(&asset.folder).and_then(system_root_named) {
+        if let Some(root) = root_segment(&asset.folder)
+            .and_then(system_root_named)
+            .filter(|root| *root != SHARED_ROOT)
+        {
             return Err(format!(
                 "asset \"{}\" is filed in \"{}\", which collides with the system root {root}; system roots are projected from the sources, not declared — file it elsewhere",
                 asset.name, asset.folder
@@ -2320,12 +2675,17 @@ fn project_id_of(request: &TreeRequest) -> String {
 fn merge_declared(request: &TreeRequest, roots: &mut BTreeMap<String, Node>) {
     for folder in &request.folders {
         if root_segment(&folder.path).is_some() {
-            ensure_path(roots, &folder.path, folder.kind);
+            ensure_path(roots, &respell_shared_root(&folder.path), folder.kind);
         }
     }
     for asset in &request.assets {
         match root_segment(&asset.folder) {
-            Some(_) => place(roots, &asset.folder, asset.clone(), FolderKind::User),
+            Some(_) => {
+                let mut asset = asset.clone();
+                asset.folder = respell_shared_root(&asset.folder);
+                let folder = asset.folder.clone();
+                place(roots, &folder, asset, FolderKind::User)
+            }
             None => {
                 let is_tag_map = asset
                     .reference
@@ -2432,6 +2792,7 @@ pub fn build(request: &TreeRequest) -> Result<TreeResponse, String> {
         place(&mut roots, &path, asset, FolderKind::System);
     }
     merge_declared(request, &mut roots);
+    correspondence::project(request, &projector.parties, &mut roots);
 
     // `folder` roots the answer at one path; a path nothing declared or
     // projected answers with no folders rather than an error.
@@ -3410,6 +3771,7 @@ mod tests {
                 "local_prints",
                 "national_datasets",
                 "pm_attachments",
+                "pm_parties",
                 "pm_records",
                 "pm_tasks",
                 "print_setups",
@@ -3423,6 +3785,127 @@ mod tests {
         assert_eq!(
             not_loaded_sources(&tree_request(json!({}))).len(),
             TREE_SOURCE_NAMES.len()
+        );
+    }
+
+    /// Owner ruling 2026-09-20: everything about a thread is under
+    /// `Assets › Correspondence`. Two records of one thread (raw ds-brain
+    /// shape) and one in another (browser camelCase shape); the catalogue
+    /// holds the .eml with its parts, a registered document, an external
+    /// reference linked `pm_record`, and one asset the record names that the
+    /// caller may not read.
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    fn assets_tree_indexes_every_thread_under_correspondence() {
+        let row = |id: &str, name: &str, kind: &str, extra: Value| {
+            let mut asset = json!({
+                "schema": "ds.assets.asset/v1", "asset_id": id, "project_id": "p", "folder": "correspondence/2026-09",
+                "name": name, "kind": kind, "format": "unknown", "bytes": 10, "digest": "sha256:ab", "status": "fresh",
+                "sensitivity": "internal", "dated": {}, "owner": {"kind": "user", "id": "u"},
+                "source": {"kind": "upload"}, "classified_by": "user", "links": [],
+                "created_by": "u", "updated_at": "2026-09-20T00:00:00Z", "updated_by": "u", "version": 1,
+            });
+            for (key, value) in extra.as_object().expect("extra") {
+                asset[key] = value.clone();
+            }
+            asset
+        };
+        let request = tree_request(json!({
+            "sources": {
+                "pm_parties": [
+                    {"id": "p_acme", "data": {"name": "Acme Consultancy", "kind": "organisation"}},
+                    {"id": "p_zed", "name": "Zed Ltd"},
+                ],
+                "pm_records": [
+                    {"id": "R1", "data": {"subject": "Review of the MV design", "thread_id": "R1", "happened_at": "2026-09-14T09:00:00Z",
+                     "external_party_ids": ["p_acme", "p_zed"], "source_asset_id": "a_mail", "document_ids": ["a_doc", "a_hidden"]}},
+                    {"id": "R2", "data": {"subject": "Re: Review", "thread_id": "R1", "happened_at": "2026-09-18T09:00:00Z",
+                     "external_party_ids": ["p_zed"], "source_asset_id": "a_mail"}},
+                    {"id": "R3", "subject": "Site note", "threadId": "R3", "happenedAt": "2026-09-19T09:00:00Z",
+                     "externalParticipantNames": ["nobody"]},
+                    {"id": "R4", "subject": "Letter", "threadId": "R4", "happenedAt": "2026-09-19T09:00:00Z", "sourceAssetId": "a_gone"},
+                ],
+            },
+            "assets": [
+                row("a_mail", "review.eml", "mail", json!({"format": "eml", "mail": {
+                    "from": "x@example.com", "to": ["y@example.com"], "cc": [], "subject": "Review", "message_id": "<m@example.com>",
+                    "parts": [
+                        {"path": "part-1.txt", "section": "1", "content_type": "text/plain", "disposition": "body", "bytes": 12, "kind": "doc", "format": "txt", "named": false},
+                        {"path": "drawing.pdf", "section": "2", "content_type": "application/pdf", "disposition": "attachment", "bytes": 3000, "kind": "doc", "format": "pdf", "named": true},
+                    ], "parts_total": 2, "truncated": false}})),
+                row("a_doc", "GTP-001.pdf", "doc", json!({"format": "pdf", "document": {"number": "GTP-001", "revision_label": "B", "state": "issued"}})),
+                row("a_ref", "package.zip", "pack", json!({"source": {"kind": "external_reference"}, "bytes_held": false,
+                    "external": {"url": "https://drive.google.com/file/d/abc", "provider": "google_drive"},
+                    "links": [{"kind": "pm_record", "id": "R2"}]})),
+                row("a_note", "note.md", "note", json!({"links": [{"kind": "pm_record", "id": "R3"}]})),
+            ],
+        }));
+        let response = build(&request).expect("tree");
+        let listing = rows(&response);
+        let thread =
+            "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)";
+        let under = |folder: &str| -> Vec<&str> {
+            listing
+                .iter()
+                .filter(|(path, _, _)| path == folder)
+                .map(|(_, _, id)| id.as_str())
+                .collect()
+        };
+        // Rows sit in name order, as everywhere in the tree.
+        assert_eq!(
+            under(thread),
+            vec!["a_doc", "a_ref", "a_mail"],
+            "the source mail, the registered document and the linked reference — the hidden document has no row and no placeholder"
+        );
+        let parts = under(&format!("{thread}/review.eml"));
+        assert_eq!(
+            parts,
+            vec![
+                "sys:mail_part:a_mail:drawing.pdf",
+                "sys:mail_part:a_mail:part-1.txt"
+            ]
+        );
+        let pdf = asset_named(&response, "sys:mail_part:a_mail:drawing.pdf");
+        assert_eq!(pdf.format, Format::Pdf);
+        assert_eq!(pdf.bytes, 3000);
+        assert_eq!(pdf.container.as_deref(), Some("a_mail"));
+        assert_eq!(
+            pdf.origin.as_ref().expect("origin").r#ref["member"],
+            "drawing.pdf"
+        );
+        let mail = assets_of(&response)
+            .into_iter()
+            .find(|asset| asset.asset_id == "a_mail" && asset.folder == thread)
+            .expect("the indexed listing of the mail");
+        assert_eq!(
+            mail.origin.as_ref().expect("origin").r#ref["role"],
+            "source"
+        );
+        assert_eq!(
+            mail.origin.as_ref().expect("origin").r#ref["thread_id"],
+            "R1"
+        );
+        // The catalogued row keeps its declared folder too: the index is a
+        // second path to the same asset, never a move.
+        assert!(
+            listing.iter().any(|(path, _, id)| path == "Correspondence/2026-09" && id == "a_mail"),
+            "a declared `correspondence/…` folder shares the root, respelled, rather than refusing the tree"
+        );
+        // R3 carries a linked note; R4 names an asset the caller cannot see,
+        // so it has no folder at all.
+        assert_eq!(
+            under("Correspondence/Site note (2026-09-19)"),
+            vec!["a_note"]
+        );
+        assert!(
+            !listing
+                .iter()
+                .any(|(path, _, _)| path.starts_with("Correspondence/Letter")),
+            "a thread with nothing readable has no folder"
+        );
+        assert_eq!(
+            folder_at(&response, "Correspondence").kind,
+            FolderKind::System
         );
     }
 

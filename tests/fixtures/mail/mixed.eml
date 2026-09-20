@@ -1,0 +1,52 @@
+From: =?UTF-8?B?WmhhbmcgWXVwZW5n?= <zhang-yupeng@example.com>
+To: "Project Lead" <lead@example.com>, second@example.com
+Cc: consultant@example.com
+Subject: =?UTF-8?Q?Re=3A_Assessment_Report_=E2=80=94_5_review_points?=
+Date: Fri, 18 Sep 2026 09:15:00 +0200
+Message-ID: <abc123@example.com>
+In-Reply-To: <parent@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: multipart/alternative; boundary="inner"
+
+--inner
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Please see the five review points =E2=80=94 details attached.
+--inner
+Content-Type: text/html; charset=utf-8
+
+<p>Please see the five review points.</p>
+--inner--
+--outer
+Content-Type: image/png; name="picture.png"
+Content-Disposition: inline; filename="picture.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAA=
+--outer
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename="=?UTF-8?B?U2hha2VyIHJldmlldy5wZGY=?="
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQgdGlueQ==
+--outer
+Content-Type: application/vnd.google-earth.kmz
+Content-Disposition: attachment; filename="../../route.kmz"
+Content-Transfer-Encoding: base64
+
+UEsDBAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ==
+--outer
+Content-Type: image/png
+Content-Disposition: attachment; filename="picture.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAA=
+--outer--

@@ -1,0 +1,12 @@
+From: a@example.com
+Subject: Broken boundary
+Content-Type: multipart/mixed; boundary="b"
+
+--b
+Content-Type: text/plain
+
+first part
+--b
+Content-Type: text/plain
+
+second part, then no closing boundary
