@@ -2559,6 +2559,161 @@ pub(crate) mod tests {
         assert!(activity.adoption_inventory_for_test(A).unwrap().is_empty());
     }
 
+    /// A restart replays every completed job through the observer NEWEST
+    /// FIRST (`ds-compute-runtime` reopens the queue, `jobs()` orders by
+    /// `created DESC`). Two legacy completions of one city — both before
+    /// the seal existed — end with the newest as the city's row and the
+    /// older's result freed, exactly as if they had been sealed in order;
+    /// the older never takes the city and never frees the newer's bytes.
+    /// A second restart changes nothing: the older has no result to seal,
+    /// so it seals nothing and leaves no second receipt.
+    #[test]
+    fn a_restart_replays_completions_newest_first_and_the_newest_result_is_the_citys_row() {
+        use ds_command_kernel::sync_store::ArtifactState;
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        let identity = app.sessions.identity().clone();
+        let submitted_at = runtime::now_ms();
+        let mut legacy = Vec::new();
+        for (index, run_id) in ["legacy-older", "legacy-newer"].into_iter().enumerate() {
+            let bytes = prepared_solar_request(A, run_id);
+            let job = runtime::submit_solar(
+                &app.database,
+                &Admission {
+                    identity: &identity,
+                    client: "test:1",
+                    key: run_id,
+                    requested_project: None,
+                    saved_project: None,
+                    limits: limits(),
+                    // Distinct creation instants: the replay order is the
+                    // queue's, newest first, and the test must not depend
+                    // on two submissions sharing a millisecond.
+                    now_ms: submitted_at + index as u64 * 10,
+                },
+                &bytes,
+            )
+            .expect("admitted");
+            let context = runtime::WorkerContext {
+                path: app.database.clone(),
+                identity: identity.clone(),
+                limits: limits(),
+                auth: app.auth.clone(),
+                observer: None,
+            };
+            assert!(runtime::run_one(&context, "worker").expect("the real engine runs"));
+            legacy.push(job.id);
+        }
+        let (older, newer) = (&legacy[0], &legacy[1]);
+        let caller = identity.caller(None);
+        let completed = |id: &str| {
+            runtime::open(&app.database)
+                .unwrap()
+                .job(&caller, id)
+                .unwrap()
+                .expect("the job is durable")
+        };
+        let (older_job, newer_job) = (completed(older), completed(newer));
+        assert!(
+            newer_job.updated_at_ms >= older_job.updated_at_ms,
+            "the newer completed after the older"
+        );
+        let result_digest = |id: &str| completed(id).result_sha256.clone().unwrap();
+        assert_ne!(
+            result_digest(older),
+            result_digest(newer),
+            "two runs are two results"
+        );
+
+        // The restart: what ds-compute-runtime does before any worker claims.
+        let activity =
+            crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
+                .expect("the activity host needs no gateway to exist");
+        let replay = || {
+            let jobs = runtime::open(&app.database)
+                .unwrap()
+                .jobs(&caller, 1000)
+                .unwrap()
+                .into_iter()
+                .filter(|job| job.phase == ds_command_kernel::compute_jobs::Phase::Completed)
+                .collect::<Vec<_>>();
+            assert_eq!(jobs[0].id, *newer, "the queue replays newest first");
+            assert_eq!(jobs[1].id, *older);
+            for job in &jobs {
+                ds_compute_runtime::CompletionObserver::completed(&*activity, job)
+                    .expect("a replayed completion is sealed or already settled");
+            }
+        };
+        replay();
+
+        let fence = crate::server_sync::fence_of(&identity);
+        let scope = ds_sync_runtime::rows::store_scope(A);
+        let rows = ds_sync_store::Store::open(&app.database)
+            .unwrap()
+            .snapshot(&fence, &scope)
+            .unwrap()
+            .artifacts;
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0].replay_key, *newer, "the newest completion is the row");
+        assert_eq!(rows[0].state, ArtifactState::Held);
+        assert!(rows[0].readable, "the newer's bytes were not freed");
+        assert_eq!(
+            rows[0].bytes_locator,
+            format!("solar:prepared:job:{newer}")
+        );
+        let result = |id: &str| {
+            runtime::open(&app.database)
+                .unwrap()
+                .job_result(&identity.caller(Some(A)), id)
+                .unwrap()
+        };
+        assert!(result(newer).is_some(), "the row's bytes are here");
+        assert!(result(older).is_none(), "the older result was freed");
+        assert!(
+            completed(older).result_sha256.is_some(),
+            "the older job stays as evidence"
+        );
+        let receipts = ds_sync_store::Store::open(&app.database)
+            .unwrap()
+            .receipts(&fence, &scope, 10)
+            .unwrap();
+        assert_eq!(receipts.len(), 1, "{receipts:?}");
+        assert_eq!(receipts[0].action, "reclaimed");
+        assert_eq!(receipts[0].outcome, "superseded_locally");
+        assert!(receipts[0].committed_bytes.unwrap() > 0);
+        assert!(receipts[0].identity.is_none(), "the row was not transitioned");
+        let detail = receipts[0].detail.as_deref().unwrap();
+        assert!(detail.starts_with(&format!("{older} lost to")), "{detail}");
+        assert!(detail.ends_with(&format!("({newer})")), "{detail}");
+        assert!(activity.adoption_inventory_for_test(A).unwrap().is_empty());
+        let queue = ds_sync_store::Store::open_read_only(&app.database)
+            .unwrap()
+            .expect("the store exists")
+            .queue_all(Some(A), runtime::now_ms())
+            .unwrap();
+        assert_eq!(queue.queued_batches, 1);
+
+        // A second restart: the same replay, nothing new.
+        replay();
+        let rows = ds_sync_store::Store::open(&app.database)
+            .unwrap()
+            .snapshot(&fence, &scope)
+            .unwrap()
+            .artifacts;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].replay_key, *newer);
+        assert!(rows[0].readable);
+        assert_eq!(
+            ds_sync_store::Store::open(&app.database)
+                .unwrap()
+                .receipts(&fence, &scope, 10)
+                .unwrap()
+                .len(),
+            1,
+            "a freed result is not receipted again"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn owner_only_connection_survives_restart_and_refuses_identity_switch() {

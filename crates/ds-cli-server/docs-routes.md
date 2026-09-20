@@ -130,7 +130,10 @@ The city's previous result on this machine is freed (`Store::retire_job_result`,
 `reclaimed:superseded_locally` receipt): an artefact never accumulates on the
 edge. A job completed before this rule, or whose seal the store could not
 record, is adopted by the pump's next observation (`adopted:from_producer`),
-exactly once. A second job of the same city with the SAME bytes is
+exactly once. A restart replays every completed job through the seal newest
+first, so a city's older completion is sealed behind its newer one: the
+newest stays the row and the older's result is freed (the same receipt). A
+second job of the same city with the SAME bytes is
 `already_recorded`: the standing row stands and the duplicate result stays
 readable by id — its retention is the ruling §6 owes, not the seal's.
 

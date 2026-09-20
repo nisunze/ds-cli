@@ -342,11 +342,13 @@ impl SolarActivity {
     /// Seal one completed prepared job's row into the sync store — the
     /// same acknowledged step as the completion, from the compute worker's
     /// own thread. The city's previous result on this machine is freed
-    /// through `Store::retire_job_result` and told so with a receipt. A
-    /// result already reclaimed has nothing to seal. A seal the store could
-    /// not record is returned as the error it is and undoes nothing: the
-    /// job's result is durable, and the pump adopts the row on its next
-    /// observation.
+    /// through `Store::retire_job_result` and told so with a receipt; a
+    /// completion sealed BEHIND a later one of its city — a restart replays
+    /// every completed job newest first — frees its own result the same
+    /// way and the newer row stands. A result already reclaimed has nothing
+    /// to seal. A seal the store could not record is returned as the error
+    /// it is and undoes nothing: the job's result is durable, and the pump
+    /// adopts the row on its next observation.
     fn seal_completed(&self, job: &Job) -> Result<(), String> {
         let project = job
             .context
