@@ -19,7 +19,9 @@
 //!   declared routes ([`routes::SyncRoute`]); never a URL, never a bearer the
 //!   loop can see;
 //! * [`host::Producer`] — where the bytes come from and how they leave through
-//!   the host's one native transport host;
+//!   the host's one native transport host; a host that runs several engines
+//!   supplies one [`host::Producers`] set keyed by engine, so every row is
+//!   moved and freed by the producer that owns its bytes;
 //! * [`host::Reads`] — where downloaded heads land.
 //!
 //! No Tauri, no webview, no credential of its own. Contracts:
@@ -52,8 +54,8 @@ pub use ds_command_kernel::sync_store as store;
 pub use gateway::{BearerGateway, Gateway, UnavailableGateway};
 pub use guard::run_contained;
 pub use host::{
-    open_store, projects_of_fence, ActivityRow, Producer, Reads, SharedStore, SolarPublishOutcome,
-    SolarPublisher, StoreHost, StoreOnlyProducer, LEASE_TTL_MS,
+    open_store, projects_of_fence, ActivityRow, Producer, Producers, Reads, SharedStore,
+    SolarPublishOutcome, SolarPublisher, StoreHost, StoreOnlyProducer, LEASE_TTL_MS,
 };
 #[cfg(feature = "fakes")]
 pub use native_transfer::drive_loopback_output;

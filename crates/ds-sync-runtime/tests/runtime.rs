@@ -17,7 +17,7 @@ use ds_sync_runtime::fakes::{
 use ds_sync_runtime::store::Fence;
 use ds_sync_runtime::{
     kernel_sync as sync, open_store, projects_of_fence, run, LocalOutput, LocalRow, Producer,
-    SharedStore, SolarPublishOutcome, SolarPublisher, StoreHost, SyncHost, SyncRun,
+    Producers, SharedStore, SolarPublishOutcome, SolarPublisher, StoreHost, SyncHost, SyncRun,
     TransferReceipt,
 };
 use sha2::Digest;
@@ -1669,6 +1669,180 @@ fn a_reclaim_the_producer_cannot_perform_is_reported_and_never_silent() {
     );
 }
 
+/// The store's verdict on one row, as the record would pass it: the row
+/// is `conflict`, still readable, still naming its bytes — a lost row the
+/// next observation must free.
+fn settle_as_lost(host: &StoreHost<'_>, row: &LocalRow) {
+    host.record_receipt(
+        PROJECT,
+        &ds_sync_runtime::Receipt::new("conflict", "superseded_by_head").about(&row.identity),
+    )
+    .expect("the verdict is recorded");
+    let stored = host
+        .snapshot()
+        .unwrap()
+        .artifacts
+        .into_iter()
+        .find(|stored| stored.identity == row.identity)
+        .expect("the row is in the store");
+    assert_eq!(stored.state.as_str(), "conflict");
+    assert!(stored.readable && !stored.bytes_locator.is_empty());
+}
+
+#[test]
+fn a_lost_row_is_freed_by_the_producer_of_its_engine_never_answered_zero_by_another() {
+    // WHY: the Server's report pass and the desktop's one host observed a
+    // lost Solar row through the REPORT producer, which holds no batch by
+    // that id and answered 0 — and the kernel then cleared the row's locator
+    // while the result stayed in the compute store. One producer set keyed
+    // by engine: the Solar row is freed by the Solar producer, with its
+    // bytes on the receipt, whichever pass observes it; the report producer
+    // is never asked about it.
+    let h = Harness::new();
+    let report = local_row(b"report output");
+    let solar = solar_row();
+    h.seal(&[report.clone(), solar.clone()]);
+    let gateway = FakeGateway {
+        world: h.world.clone(),
+    };
+    let report_world = fakes::world();
+    let solar_world = fakes::world();
+    let report_producer = FakeProducer::new(report_world.clone(), vec![report.clone()]);
+    let solar_producer = FakeProducer::new(solar_world.clone(), vec![solar.clone()]);
+    let producers = Producers::new(vec![
+        ("network_reporter", &report_producer as &dyn Producer),
+        ("solar", &solar_producer as &dyn Producer),
+    ])
+    .expect("one producer per engine");
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = host_over_producer(&h, &gateway, &producers, &reads, &online);
+    settle_as_lost(&host, &solar);
+
+    let rows = host.local(PROJECT).expect("observe");
+    assert!(
+        rows.iter().all(|row| row.identity != solar.identity),
+        "a lost row never re-enters the plan"
+    );
+    let receipts = host.take_receipts(PROJECT);
+    assert_eq!(receipts.len(), 1, "{receipts:?}");
+    assert_eq!(receipts[0].action, "reclaimed");
+    assert_eq!(receipts[0].outcome, "conflict");
+    assert_eq!(
+        receipts[0].bytes,
+        Some(solar.size_bytes),
+        "the bytes freed are the Solar result's, not another producer's 0"
+    );
+    assert_eq!(
+        fakes::lock(&solar_world).reclaims,
+        vec![(solar.client_publish_id.clone(), solar.size_bytes)],
+        "the Solar producer freed its own row"
+    );
+    assert!(
+        fakes::lock(&report_world).reclaims.is_empty(),
+        "the report producer was never asked about a Solar row"
+    );
+    assert!(
+        solar_producer.inventory(PROJECT).unwrap().is_empty(),
+        "the result left the machine"
+    );
+    assert_eq!(
+        report_producer.inventory(PROJECT).unwrap().len(),
+        1,
+        "the report batch, which did not lose, is untouched"
+    );
+    let stored = stored_rows(&h, PROJECT)
+        .into_iter()
+        .find(|row| row.identity == solar.identity)
+        .unwrap();
+    assert!(!stored.readable && stored.bytes_locator.is_empty());
+}
+
+#[test]
+fn a_lost_row_of_an_engine_with_no_producer_here_is_reclaim_failed_never_a_silent_zero() {
+    // WHY: a host with a report producer only — the desktop today — must
+    // not tell the store a Solar row's bytes are gone. The reclaim fails
+    // with the engine named, the row keeps naming its bytes, and the next
+    // observation asks again in the open.
+    let h = Harness::new();
+    let solar = solar_row();
+    h.seal(std::slice::from_ref(&solar));
+    let gateway = FakeGateway {
+        world: h.world.clone(),
+    };
+    let report_producer = FakeProducer::new(fakes::world(), Vec::new());
+    let producers = Producers::new(vec![(
+        "network_reporter",
+        &report_producer as &dyn Producer,
+    )])
+    .expect("one producer");
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = host_over_producer(&h, &gateway, &producers, &reads, &online);
+    settle_as_lost(&host, &solar);
+
+    host.local(PROJECT).expect("observe");
+    let receipts = host.take_receipts(PROJECT);
+    assert_eq!(receipts.len(), 1, "{receipts:?}");
+    assert_eq!(receipts[0].action, "reclaim_failed");
+    assert_eq!(receipts[0].outcome, "conflict");
+    assert!(
+        receipts[0]
+            .detail
+            .as_deref()
+            .unwrap()
+            .contains("no solar producer on this host"),
+        "{:?}",
+        receipts[0].detail
+    );
+    let stored = stored_rows(&h, PROJECT)
+        .into_iter()
+        .find(|row| row.identity == solar.identity)
+        .unwrap();
+    assert!(
+        stored.readable && stored.bytes_locator == solar.bytes_locator,
+        "the row still names its bytes: nothing told the store they left"
+    );
+
+    // Asked again, in the open, on the next observation.
+    host.local(PROJECT).expect("observe again");
+    assert_eq!(host.take_receipts(PROJECT)[0].action, "reclaim_failed");
+
+    // The set itself refuses ambiguity and emptiness.
+    assert!(Producers::new(Vec::new()).is_err());
+    assert!(Producers::new(vec![
+        ("solar", &report_producer as &dyn Producer),
+        ("solar", &report_producer as &dyn Producer),
+    ])
+    .is_err());
+}
+
+fn host_over_producer<'a>(
+    h: &'a Harness,
+    gateway: &'a FakeGateway,
+    producer: &'a dyn Producer,
+    reads: &'a FakeReads,
+    online: &'a dyn Fn() -> bool,
+) -> StoreHost<'a> {
+    StoreHost::new(
+        h.store.clone(),
+        fence(),
+        "install-1#201".into(),
+        PROJECT,
+        gateway,
+        producer,
+        reads,
+        online,
+    )
+    .expect("host")
+}
+
 fn host_receipt_actions(h: &Harness) -> Vec<String> {
     let gateway = FakeGateway {
         world: h.world.clone(),
@@ -2648,14 +2822,29 @@ fn a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_new
     use ds_sync_runtime::store::ArtifactState;
     let h = Harness::new();
     let freed: Freed = Arc::new(Mutex::new(Vec::new()));
-    let SolarSeal::Sealed(newest) =
-        solar_seal_completed_at(&h, &fence(), PROJECT, "city-1", "job-2", 2_000, b"second!", &freed)
-    else {
+    let SolarSeal::Sealed(newest) = solar_seal_completed_at(
+        &h,
+        &fence(),
+        PROJECT,
+        "city-1",
+        "job-2",
+        2_000,
+        b"second!",
+        &freed,
+    ) else {
         panic!("the newest completion seals")
     };
     assert!(newest.superseded.is_none());
-    let older =
-        solar_seal_completed_at(&h, &fence(), PROJECT, "city-1", "job-1", 1_000, b"first", &freed);
+    let older = solar_seal_completed_at(
+        &h,
+        &fence(),
+        PROJECT,
+        "city-1",
+        "job-1",
+        1_000,
+        b"first",
+        &freed,
+    );
     assert!(
         matches!(
             older,
@@ -2699,11 +2888,29 @@ fn a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_new
     let h2 = Harness::new();
     let freed2: Freed = Arc::new(Mutex::new(Vec::new()));
     assert!(matches!(
-        solar_seal_completed_at(&h2, &fence(), PROJECT, "city-1", "job-1", 1_000, b"first", &freed2),
+        solar_seal_completed_at(
+            &h2,
+            &fence(),
+            PROJECT,
+            "city-1",
+            "job-1",
+            1_000,
+            b"first",
+            &freed2
+        ),
         SolarSeal::Sealed(_)
     ));
     assert!(matches!(
-        solar_seal_completed_at(&h2, &fence(), PROJECT, "city-1", "job-2", 2_000, b"second!", &freed2),
+        solar_seal_completed_at(
+            &h2,
+            &fence(),
+            PROJECT,
+            "city-1",
+            "job-2",
+            2_000,
+            b"second!",
+            &freed2
+        ),
         SolarSeal::Sealed(_)
     ));
     assert_eq!(*freed2.lock().unwrap(), vec!["job-1".to_string()]);

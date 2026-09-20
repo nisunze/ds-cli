@@ -11,8 +11,13 @@
 //! with a `from_producer` receipt — the legacy signal — and was not in the
 //! queue at all until a pump with a gateway session had run. Now the host
 //! seals it at completion, under its own local fence, with no session and
-//! no gateway; the pump's adoption remains for jobs completed before this
-//! rule and for a completion whose seal the store could not record.
+//! no gateway — and that seal is the ONLY way a Solar row is born (owner,
+//! 2026-09-20: "the legacy jobs in solar are not good — we should remove
+//! them"). A completed job the store holds no row for — completed before
+//! the seal existed, or one whose seal the store could not record — is not
+//! a publication and is never adopted: the producer retires its result on
+//! its next observation, and the job can be run again. An artefact never
+//! stacks on the edge.
 //!
 //! The choreography is [`crate::seal`]'s, the same one the report seal
 //! runs: the city's previous result on this machine is freed through the
@@ -124,9 +129,9 @@ pub enum SealOutcome {
         state: store::ArtifactState,
     },
     /// The city's standing row is a LATER completion than this one: this
-    /// job lost before it was observed — a completion replayed behind a
-    /// newer one, as a restart replays every completed job newest first —
-    /// so it does not take the identity. Its result is freed through the
+    /// job lost before it was observed — two workers completed two jobs of
+    /// one city and the later completion reached the seal first — so it
+    /// does not take the identity. Its result is freed through the
     /// producer and told so (`reclaimed:superseded_locally`), exactly as
     /// the row it would have superseded is freed by a seal in order: the
     /// city's row is its newest completion whatever order completions are
@@ -144,11 +149,12 @@ pub enum SealOutcome {
 /// this machine has it freed through `free` — the producer's reclaim of
 /// that job's result bytes — with a receipt, before the new row takes the
 /// identity; a city whose standing row completed LATER than this job keeps
-/// it, and this job's result is freed instead ([`SealOutcome::Superseded`]).
-/// If the store refuses or cannot be written, nothing is undone: the job's
-/// result is durable and its own, and the pump adopts the row on its next
-/// observation, exactly as it adopts a job completed before the seal
-/// existed.
+/// it, and this job's result is freed instead ([`SealOutcome::Superseded`]:
+/// two workers can complete two jobs of one city and reach the seal out of
+/// completion order). If the store refuses or cannot be written, nothing is
+/// undone here and nothing adopts the job later: it is not a publication,
+/// the producer retires its result on its next observation, and the job
+/// can be run again.
 pub fn seal(
     store: &SharedStore,
     fence: &store::Fence,

@@ -696,8 +696,11 @@ pub trait Authorizer: Send + Sync + 'static {
 }
 
 /// A host-owned projection hook after a durable terminal commit.  It never
-/// decides compute lifecycle and failures are retried by recovery; hosts use
-/// it to project completed work into their existing durable activity owner.
+/// decides compute lifecycle; hosts use it to project completed work into
+/// their existing durable activity owner. `completed` is called ONCE per
+/// completion, on the worker's thread, in the completion's own step, and is
+/// never replayed by a restart: a completion the observer could not project
+/// is the observer's to settle in `recover`, never a second projection.
 pub trait CompletionObserver: Send + Sync + 'static {
     fn completed(&self, job: &Job) -> Result<(), String>;
     /// Reconcile existing terminal work after restart and after transient
@@ -814,17 +817,14 @@ impl Workers {
                 named(&recovery.unrecoverable)
             );
         }
+        // A restart replays NO completion through the observer. `completed`
+        // is called exactly once, on the worker's thread, in the completion's
+        // own step: that is the only moment a Solar publication row is born
+        // (owner, 2026-09-20: pre-seal jobs are not migrated). A completed
+        // job the store holds no row for is not a publication; the
+        // observer's own recovery retires its result and the job can be run
+        // again.
         if let Some(observer) = context.observer.as_ref() {
-            for job in open(&context.path)?
-                .jobs(&context.identity.caller(None), 1000)
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .filter(|job| job.phase == Phase::Completed)
-            {
-                if let Err(error) = observer.completed(&job) {
-                    eprintln!("compute activity recovery: {error}");
-                }
-            }
             if let Err(error) = observer.recover() {
                 eprintln!("compute activity recovery: {error}");
             }
