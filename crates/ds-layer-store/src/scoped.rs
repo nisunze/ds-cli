@@ -51,6 +51,12 @@ impl<T> Default for Store<T> {
     }
 }
 
+/// The lane tokens a scope may carry: the two release lanes `ds` and the
+/// installed desktop share, and `local` — the unprovisioned debug desktop's
+/// own lane, which pairs with no `ds` and so never inherits or leaks a
+/// release lane's choices.
+pub const LANES: [&str; 3] = ["stable", "canary", "local"];
+
 pub fn scope(noun: &str, lane: &str, uid: &str, project: &str) -> Result<String, String> {
     let ok = |value: &str| {
         !value.is_empty()
@@ -58,7 +64,7 @@ pub fn scope(noun: &str, lane: &str, uid: &str, project: &str) -> Result<String,
             && value.chars().count() <= 500
             && !value.chars().any(|c| c.is_control() || c == '/')
     };
-    if !matches!(lane, "stable" | "canary") || !ok(uid) || !ok(project) {
+    if !LANES.contains(&lane) || !ok(uid) || !ok(project) {
         return Err(format!(
             "{noun} needs a lane, a bounded account uid and a bounded project id"
         ));
