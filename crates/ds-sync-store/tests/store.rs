@@ -396,6 +396,13 @@ fn the_queue_is_read_from_the_rows_and_a_read_only_open_leaves_nothing_behind() 
         0,
         "another account's queue is empty"
     );
+    // The whole file, every fence: what a status reads with no identity to
+    // name one. One store is one owner's.
+    let whole = reader.queue_all(None, now).unwrap();
+    assert_eq!(whole.queued_batches, 2);
+    assert_eq!(whole.leases.len(), 1);
+    assert!(whole.stuck);
+    assert_eq!(reader.queue_all(Some("p"), now).unwrap().queued_batches, 1);
 }
 
 #[test]

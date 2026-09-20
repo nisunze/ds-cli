@@ -285,6 +285,20 @@ impl Store {
         Ok(kernel::queue_status(&rows, &leases, project, now_ms))
     }
 
+    /// The queue as this whole file holds it, every fence together: what a
+    /// status command reads on a machine with no native identity to name a
+    /// fence. One store is one owner's (a Server serves exactly one), so
+    /// this is that owner's queue across the lanes and installs it has run
+    /// under — a local diagnostic, never an execution: the fence still
+    /// decides what a worker may drain.
+    pub fn queue_all(&self, project: Option<&str>, now_ms: u64) -> Result<QueueStatus> {
+        let rows = self.all::<ArtifactRow>(
+            "SELECT row FROM artifacts ORDER BY account, deployment, install_id, scope, engine, operation, variant",
+        )?;
+        let leases = self.all::<LeaseRow>("SELECT row FROM leases ORDER BY scope")?;
+        Ok(kernel::queue_status(&rows, &leases, project, now_ms))
+    }
+
     /// The most recent receipts of one scope, newest first.
     pub fn receipts(&self, fence: &Fence, scope: &Scope, limit: usize) -> Result<Vec<ReceiptRow>> {
         let mut statement = self.connection.prepare(
@@ -358,6 +372,16 @@ impl Store {
         }
         tx.commit()?;
         Ok(transition)
+    }
+
+    fn all<T: serde::de::DeserializeOwned>(&self, sql: &str) -> Result<Vec<T>> {
+        let mut statement = self.connection.prepare(sql)?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(serde_json::from_str(&row?)?);
+        }
+        Ok(out)
     }
 
     fn rows<T: serde::de::DeserializeOwned>(
