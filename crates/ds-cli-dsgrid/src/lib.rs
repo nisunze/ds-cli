@@ -40,6 +40,7 @@ pub mod model;
 pub mod mutation;
 pub mod objects;
 pub mod package;
+pub mod profile;
 pub mod project;
 pub mod report;
 pub mod run;

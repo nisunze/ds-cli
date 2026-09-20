@@ -597,11 +597,11 @@ pub fn choose(
 /// the kernel's compatibility vocabulary on purpose: `Requirement.lane` is
 /// `stable | canary`, so a provisioned caller can never *match* one. It was
 /// never selected by identity even before instances existed — it was selected
-/// because it was the only thing running, and every operation that carries an
-/// identity fence then refuses it by name (`desktop_operation_unsupported`,
-/// "use a provisioned Canary or Stable build"). That is the development loop,
-/// and it is kept exactly as it was: one runtime, nothing to choose between,
-/// and the fence still answering for the work that needs a provisioned lane.
+/// because it was the only thing running. Since 2026-09-20 the fence carries
+/// `local` as itself and paired operations are served over it: that is the
+/// live coding loop (`ds` driving the local dev desktop), one runtime,
+/// nothing to choose between, and nothing impersonating a provisioned lane
+/// because `local` is written where the window said it.
 ///
 /// The moment a second runtime is live, this stops applying and the caller
 /// names one like anywhere else — and an explicit target that names something
@@ -649,7 +649,7 @@ fn adopted_requirement(candidates: &[kernel::Candidate]) -> Result<Requirement, 
             "candidates": kernel::list(candidates, None).map(|(listed, _)| listed).unwrap_or_default()
         })));
     }
-    if !matches!(lane, "stable" | "canary") {
+    if !matches!(lane, "stable" | "canary" | "local") {
         return Err(crate::ops::unprovisioned_lane());
     }
     Ok(Requirement {

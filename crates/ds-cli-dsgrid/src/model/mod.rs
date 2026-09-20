@@ -106,7 +106,10 @@ pub const MODEL_PUBLISH: BridgeOp = BridgeOp {
 /// readiness is a fact about this machine's catalogue against the project's
 /// governed heads, and a missing head is downloaded through the same door
 /// `ds dsgrid project download` uses.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[&MODEL_PUBLISH];
+/// `dsgrid.profile.open` (2026-09-20) is the one way back: the application
+/// opens this machine's working copy by path, under the copy's own id, and
+/// occupies Profile with it.
+pub const BRIDGE_OPS: &[&BridgeOp] = &[&MODEL_PUBLISH, &crate::profile::open::PROFILE_OPEN];
 
 /// The largest page of local models one read returns. A hand copy of the
 /// adapter's own `MAX_LIST_LIMIT`, held to it by `tests/bridge_parity.rs`; the
@@ -347,16 +350,17 @@ mod tests {
         let mut unique = names.clone();
         unique.dedup();
         assert_eq!(names, unique, "an operation is declared twice");
-        // One since 2026-09-20: what is left is the working copy the
-        // application itself holds open, published from the window.
+        // Two since 2026-09-20: the working copy the application itself holds
+        // open, published from the window, and the window opening one of this
+        // machine's working copies in Profile.
         assert_eq!(
             names.len(),
-            1,
+            2,
             "the family sends exactly one operation per command"
         );
         assert!(
-            names.iter().all(|name| name.starts_with("dsgrid.model.")),
-            "every operation belongs to the application's DS Grid model namespace"
+            names.iter().all(|name| name.starts_with("dsgrid.")),
+            "every operation belongs to the application's DS Grid namespace"
         );
     }
 

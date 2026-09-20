@@ -435,22 +435,20 @@ pub const REFUSED: Refusal = Refusal {
 };
 pub const UNSUPPORTED: Refusal = Refusal {
     code: "desktop_operation_unsupported",
-    when: "this build lacks the operation or runs the `local` dev lane",
+    when: "this build lacks the operation, or a lane outside stable, canary and local was published",
     remedy: "use a Canary or Stable DS GridDesign, or update it; `ds desktop list` names lanes",
 };
 
-/// The paired application is a development build on lane `local`.
+/// The paired application published a lane this shell does not know.
 ///
 /// Two places meet this — the requirement the kernel routes on, and the
 /// identity fence read off a live session — and both must say the same thing,
-/// because they carry the same code. Writing the text twice is how they came
-/// to disagree, and how the remedy came to name an action the product does
-/// not offer: nothing provisions a lane, and `ds desktop status` only echoes
-/// `profile: dev`.
+/// because they carry the same code. `local` (a development build) is a
+/// known lane since 2026-09-20 and is served; this is for anything else.
 pub fn unprovisioned_lane() -> Failure {
     Failure::unavailable(
         UNSUPPORTED.code,
-        "the paired DS GridDesign runs the `local` lane of a development build, which performs no paired CLI work",
+        "the paired DS GridDesign published a lane outside stable, canary and local; this shell cannot fence work on it",
     )
     .remedy(UNSUPPORTED.remedy)
 }
@@ -701,16 +699,27 @@ mod tests {
         );
         assert!(UNSUPPORTED.when.contains("local"), "{}", UNSUPPORTED.when);
 
-        // The identity fence read off a live session is the other site, and
-        // it must be the same refusal rather than a second spelling of it.
-        let fence = crate::bridge::IdentityFence::from_session(&json!({
+        // A development build's `local` lane is carried as itself (2026-09-20).
+        let local = crate::bridge::IdentityFence::from_session(&json!({
             "uid": "u1",
             "lane": "local",
             "credential_audience_sha256": "a".repeat(64),
             "project": "p_one",
             "session_revision": 3,
         }))
-        .expect_err("a local lane serves no paired work");
+        .expect("a local lane is served");
+        assert_eq!(local.lane, "local");
+
+        // The identity fence read off a live session is the other site, and
+        // it must be the same refusal rather than a second spelling of it.
+        let fence = crate::bridge::IdentityFence::from_session(&json!({
+            "uid": "u1",
+            "lane": "nightly",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "p_one",
+            "session_revision": 3,
+        }))
+        .expect_err("an unknown lane serves no paired work");
         assert_eq!(fence.code(), refused.code());
         assert_eq!(fence.message(), refused.message());
         assert_eq!(fence.remedy_text(), refused.remedy_text());

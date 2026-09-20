@@ -1037,7 +1037,11 @@ const DSGRID_RETIRED_OPERATIONS: &[&str] = &[
 /// is a fact about this machine's catalogue against the project's governed
 /// heads, and a missing head is downloaded through `ds dsgrid project
 /// download`'s door (contract dsgrid-authority/01, decision 19).
-const DSGRID_PROJECT_OPERATIONS: &[&str] = &["dsgrid.model.publish"];
+/// `dsgrid.profile.open` (2026-09-20) is the second: it asks the window to
+/// open this machine's working copy by path and occupy Profile with it. It
+/// reads no project — the copy is a fact about the machine — so it is the
+/// one project-independent operation the adapter admits.
+const DSGRID_PROJECT_OPERATIONS: &[&str] = &["dsgrid.model.publish", "dsgrid.profile.open"];
 
 #[test]
 fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments() {
@@ -1093,8 +1097,8 @@ fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments
     assert_eq!(
         seen.len(),
         DSGRID_PROJECT_OPERATIONS.len(),
-        "the family sends exactly the one operation that is about the application's own \
-         working copy"
+        "the family sends exactly the two operations that are about the application's own \
+         window: publish, and profile open"
     );
     let allowlist = between(
         &app.transport,

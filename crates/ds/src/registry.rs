@@ -171,6 +171,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::model::show::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::profile::open::COMMAND,
+        handler: ds_cli_dsgrid::profile::open::run,
+        render: ds_cli_dsgrid::profile::open::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::model::link::COMMAND,
         handler: ds_cli_dsgrid::model::link::run,
         render: ds_cli_dsgrid::model::link::render,

@@ -504,6 +504,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("dsgrid.model.set-active", "local_file_write", "none"),
+    ("dsgrid.profile.open", "local_ui", "desktop_pairing"),
     // The typed command family over the engine (program contract 01 §2):
     // authority none on a working copy or a package file, `local_file_write`
     // because a working copy's next revision — or a new package — lands on

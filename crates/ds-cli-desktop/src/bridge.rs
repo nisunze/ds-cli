@@ -334,11 +334,15 @@ impl IdentityFence {
             )
             .remedy("update DS GridDesign, sign in, select the intended project, and retry")
         })?;
-        if fence.lane == "local" {
+        // A development build publishes `local`, and it is carried as itself:
+        // it never matches a provisioned catalogue lane, and it never has to
+        // — a paired operation is fenced on the identity the window
+        // published, whatever lane that window runs (2026-09-20: the live
+        // coding loop drives the local dev desktop through `ds`).
+        if !matches!(fence.lane.as_str(), "stable" | "canary" | "local") {
             return Err(crate::ops::unprovisioned_lane());
         }
         if fence.uid.is_empty()
-            || !matches!(fence.lane.as_str(), "stable" | "canary")
             || fence.credential_audience_sha256.len() != 64
             || !fence
                 .credential_audience_sha256
@@ -462,15 +466,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn signed_in_local_desktop_is_unsupported_not_an_identity_mismatch() {
-        let error = IdentityFence::from_session(&json!({
+    fn signed_in_local_desktop_is_carried_as_local_and_an_unknown_lane_is_unsupported() {
+        // A development build's fence is served, as `local` (2026-09-20).
+        let local = IdentityFence::from_session(&json!({
             "uid": "uid-1",
             "lane": "local",
             "credential_audience_sha256": "a".repeat(64),
             "project": "project-1",
             "session_revision": 7,
         }))
-        .expect_err("local Desktop must not impersonate a provisioned release lane");
+        .expect("a local Desktop is served on its own lane");
+        assert_eq!(local.lane, "local");
+        let error = IdentityFence::from_session(&json!({
+            "uid": "uid-1",
+            "lane": "nightly",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "project-1",
+            "session_revision": 7,
+        }))
+        .expect_err("an unknown lane must not be fenced as if it were provisioned");
         assert_eq!(error.code(), "desktop_operation_unsupported");
         // The remedy is the one the command contracts publish under that
         // code, not a second text minted here: one code, one recovery.

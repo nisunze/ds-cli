@@ -505,6 +505,9 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     // uses it is file-in/file-out engine work and stays native.
     "dsgrid.model.link",
     "dsgrid.model.set-active",
+    // The paired application shows a working copy in Profile (2026-09-20):
+    // the one door from this machine's catalogue into the window.
+    "dsgrid.profile.open",
     "dsgrid.model.prepare-project",
     "dsgrid.publish-version",
     // The typed edits of a working copy and its structure list (program
@@ -521,6 +524,7 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
 /// it (its budget holds the file-in/file-out engine workflow).
 const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.model.show",
+    "dsgrid.profile.open",
     "dsgrid.structure.describe",
     "dsgrid.structure.retype",
     "dsgrid.report.structures",
