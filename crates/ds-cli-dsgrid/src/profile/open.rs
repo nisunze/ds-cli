@@ -188,6 +188,12 @@ fn receipt(id: &str, result: &Value) -> Result<Value, Failure> {
         "alignment_label": result["alignment_label"],
         "alignments": result["alignments"],
         "revision": result["revision"],
+        // What the window holds after the open: the session the Profile
+        // reads and the workspace state, so a blank Profile is diagnosable
+        // from the receipt alone.
+        "session": result["session"],
+        "workspace": result["workspace"],
+        "runtime_errors": result["runtime_errors"],
     }))
 }
 
