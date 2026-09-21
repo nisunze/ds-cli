@@ -12786,3 +12786,70 @@ fn dsgrid_feature_codes_family_runs_over_a_package_and_refuses_by_name() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn dsgrid_import_structure_preserves_exact_native_and_refuses_overwrite() {
+    let root = temp_root("dsgrid-import-structure");
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("source.dsgrid");
+    let out = root.join("imported.dsgrid");
+    let duplicate = root.join("duplicate.dsgrid");
+    let native = workspace_file("structures/hp-m1-strain.012");
+    let created = ok(&[
+        "dsgrid",
+        "create",
+        "--out",
+        source.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    let source_bytes = std::fs::read(&source).unwrap();
+    let args = [
+        "dsgrid",
+        "import-structure",
+        "--package",
+        source.to_str().unwrap(),
+        "--source",
+        native.as_str(),
+        "--out",
+        out.to_str().unwrap(),
+        "--revision",
+        created["authored_revision"].as_str().unwrap(),
+        "--output",
+        "json",
+    ];
+    let result = ok(&args);
+    assert_eq!(result["persisted"], true);
+    assert_eq!(result["package_revision"], 1);
+    assert!(result["added_capacity_artifacts"].as_u64().unwrap() > 0);
+    let output_bytes = std::fs::read(&out).unwrap();
+    let package = unpack(&output_bytes).unwrap();
+    assert_eq!(package.snapshot.structure_types.len(), 1);
+    assert!(!package.snapshot.span_limit_angle_knots.is_empty());
+    assert!(
+        package
+            .assets
+            .iter()
+            .any(|asset| asset.invariant_leaf == "hp-m1-strain.012"
+                && asset.bytes == std::fs::read(&native).unwrap())
+    );
+    assert_eq!(std::fs::read(&source).unwrap(), source_bytes);
+    let overwrite = ds(&args);
+    assert_eq!(overwrite.envelope["error"]["code"], "output_exists");
+    assert_eq!(std::fs::read(&out).unwrap(), output_bytes);
+    let conflict = ds(&[
+        "dsgrid",
+        "import-structure",
+        "--package",
+        out.to_str().unwrap(),
+        "--source",
+        native.as_str(),
+        "--out",
+        duplicate.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(conflict.envelope["error"]["code"], "structure_conflict");
+    assert!(!duplicate.exists());
+    std::fs::remove_dir_all(root).unwrap();
+}

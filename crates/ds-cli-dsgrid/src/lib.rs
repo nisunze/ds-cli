@@ -38,6 +38,7 @@ pub mod criteria;
 pub mod describe;
 pub mod feature_codes;
 pub mod folder;
+pub mod import_structure;
 pub mod inspect;
 pub mod model;
 pub mod mutation;
@@ -60,6 +61,7 @@ pub static DOMAIN: Domain = Domain {
         &project::LIST,
         &project::DOWNLOAD,
         &create::COMMAND,
+        &import_structure::COMMAND,
         &inspect::COMMAND,
         &validate::COMMAND,
         &describe::COMMAND,
