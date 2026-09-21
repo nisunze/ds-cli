@@ -502,6 +502,21 @@ fn dispatch(operation_id: &str, params: &Value, session: &GridSession) -> Result
                     .map_err(|error| engine_error(operation_id, error))?,
             )
         }
+        "spotting_graph" => serialize(
+            operation_id,
+            ds_grid_engine::spotting_graph::spotting_graph(session.snapshot())
+                .map_err(|error| engine_error(operation_id, error))?,
+        ),
+        "plan_optimum_spotting_batch" => {
+            let request: ds_grid_engine::spotting::batch::SpottingBatchRequest =
+                parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                ds_grid_engine::spotting::batch::plan_optimum_spotting_batch(
+                    session.snapshot(), session.current_revision(), &request,
+                ).map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
         "plan_optimum_spotting" => {
             let request: SpottingPlanRequest = parse(operation_id, params)?;
             serialize(
