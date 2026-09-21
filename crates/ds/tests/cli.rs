@@ -446,9 +446,10 @@ fn inspect_reports_the_engine_s_own_identity() {
     // Regenerated again on 2026-09-20 when the FEA member became engineering
     // (program contract 03): the fixture carries its feature-code definition
     // and its survey points resolve by number.
+    // Native axis normalization re-emitted the fixture on 2026-09-21.
     // Keep the source fingerprint and its derived model id coupled: changing
     // one while leaving the other stale would conceal an identity drift.
-    const HUMBLE_FINGERPRINT: &str = "fnv1a64:bd82b3ba56689510";
+    const HUMBLE_FINGERPRINT: &str = "fnv1a64:f8c09810d87a25ee";
     assert_eq!(data["model"]["fingerprint"], HUMBLE_FINGERPRINT);
     assert_eq!(
         data["model"]["id"],
