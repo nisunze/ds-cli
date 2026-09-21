@@ -440,16 +440,17 @@ fn inspect_reports_the_engine_s_own_identity() {
     // test failure rather than a silent change in what `ds` reports.
     assert_eq!(data["format"], "dsgrid");
     assert_eq!(data["model"]["crs"], "EPSG:32735");
-    assert_eq!(data["model"]["schema_version"], 1);
+    assert_eq!(data["model"]["schema_version"], 3);
     assert_eq!(data["model"]["format_version"], 1);
     // Canonical ds-network granular-tag schema regenerated this self-authored fixture.
     // Regenerated again on 2026-09-20 when the FEA member became engineering
     // (program contract 03): the fixture carries its feature-code definition
     // and its survey points resolve by number.
-    // Native axis normalization re-emitted the fixture on 2026-09-21.
+    // Native axis normalization and the spotting-warnings schema re-emitted
+    // the fixture on 2026-09-21 and 2026-09-22, respectively.
     // Keep the source fingerprint and its derived model id coupled: changing
     // one while leaving the other stale would conceal an identity drift.
-    const HUMBLE_FINGERPRINT: &str = "fnv1a64:f8c09810d87a25ee";
+    const HUMBLE_FINGERPRINT: &str = "fnv1a64:677b0f5a87d4b5d2";
     assert_eq!(data["model"]["fingerprint"], HUMBLE_FINGERPRINT);
     assert_eq!(
         data["model"]["id"],
