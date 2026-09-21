@@ -472,6 +472,18 @@ fn dispatch(operation_id: &str, params: &Value, session: &GridSession) -> Result
             ds_grid_engine::report_structures(session.snapshot(), None)
                 .map_err(|error| engine_error(operation_id, error))?,
         ),
+        // A structure-rules standard's design-policy facts (REG v7 bundled;
+        // any ds.*-structure-rules/v1 document by path): what a design
+        // policy row is authored from, so its values are the standard's.
+        "design_policy_facts_from_standard" => {
+            let request: ds_grid_engine::DesignPolicyFactsRequest = parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                session
+                    .design_policy_facts_from_standard(&request)
+                    .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
         "clearance_report" => {
             let options: ds_grid_engine::ClearanceReportOptions = parse(operation_id, params)?;
             serialize(
