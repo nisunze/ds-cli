@@ -29,7 +29,14 @@ use crate::model::{
 /// model's first alignment.
 pub const PROFILE_OPEN: BridgeOp = BridgeOp {
     operation: "dsgrid.profile.open",
-    arguments: &["model", "path", "name", "alignment"],
+    arguments: &[
+        "model",
+        "path",
+        "name",
+        "alignment",
+        "checkpoint_out",
+        "expect_revision",
+    ],
 };
 
 const MODEL_ARG: Arg = Arg {
@@ -58,7 +65,37 @@ const ALIGNMENT_NOT_FOUND: Refusal = Refusal {
     remedy: "run `ds dsgrid inspect --model <path> --include tables` and pass one alignment id",
 };
 
-const OWN: [Refusal; 8] = [
+const OWN: [Refusal; 14] = [
+    Refusal {
+        code: "checkpoint_output_invalid",
+        when: "checkpoint output is not an absolute .dsgrid path, or --expect-revision is given without it",
+        remedy: "pass --checkpoint-out with a new absolute .dsgrid path",
+    },
+    Refusal {
+        code: "revision_conflict",
+        when: "the captured live head differs from --expect-revision",
+        remedy: "inspect the live revision and choose again",
+    },
+    Refusal {
+        code: "checkpoint_failed",
+        when: "the desktop could not capture or write the exact live checkpoint",
+        remedy: "read the desktop refusal; preserve the live session and choose a new writable output path",
+    },
+    Refusal {
+        code: "output_exists",
+        when: "the checkpoint destination exists",
+        remedy: "choose a new checkpoint filename",
+    },
+    Refusal {
+        code: "output_parent_missing",
+        when: "the checkpoint output parent is missing",
+        remedy: "create the intended output directory",
+    },
+    Refusal {
+        code: "output_unwritable",
+        when: "the checkpoint output is not a writable destination",
+        remedy: "choose a writable new output path",
+    },
     NOT_PAIRED,
     AMBIGUOUS,
     UNREACHABLE,
@@ -96,19 +133,29 @@ the application from the catalogue's own file — no bytes cross the bridge — 
 and it is opened under the copy's id, so what `ds dsgrid model show` names \
 and what the window shows are one model. Reopening the copy the application \
 already holds is a focus change, never a second session. The session is not \
-added to the application's catalogue; the operator's checkpoint does that.",
+added to the application's catalogue. Optional --checkpoint-out captures its exact live head through the model queue and writes a verified new .dsgrid file in the paired application; no model bytes cross the CLI bridge. --expect-revision guards that captured head.",
     chapter: Chapter::GridModel,
-    effect: Effect::LocalUi,
+    effect: Effect::LocalFileWrite,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[
         MODEL_ARG,
         ALIGNMENT_ARG,
+        Arg::value(
+            "checkpoint-out",
+            "<absolute-path>",
+            "Optional new absolute .dsgrid file for the exact live model; never overwritten.",
+        ),
+        Arg::value(
+            "expect-revision",
+            "<rev>",
+            "Optional expected live authored head; requires --checkpoint-out.",
+        ),
         workspace::ACCOUNT_ARG,
         workspace::LANE_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "The copy, its package path, whether the application had it open already, the alignment focused and the alignments it carries.",
+    output: "The copy, package path, live revision, alignment and session state; optional checkpoint receipt names the exact captured revision and persisted file path, SHA-256 and byte length.",
     examples: &[
         Example {
             command: "ds dsgrid profile open --model local-b1b2d3b9e6ab4959",
@@ -131,6 +178,7 @@ added to the application's catalogue; the operator's checkpoint does that.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let checkpoint_out = checkpoint_output(inputs)?;
     let id = inputs.require("model")?.trim().to_owned();
     let located = workspace::locate(inputs, &id)?;
     let path = located.path.display().to_string();
@@ -139,13 +187,55 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "path": path,
         "name": located.row.display_name,
     });
-    if let Some(alignment) = inputs.value("alignment").map(str::trim).filter(|a| !a.is_empty()) {
+    if let Some(alignment) = inputs
+        .value("alignment")
+        .map(str::trim)
+        .filter(|a| !a.is_empty())
+    {
         arguments["alignment"] = json!(alignment);
+    }
+    if let Some(path) = checkpoint_out {
+        arguments["checkpoint_out"] = json!(path);
+    }
+    if let Some(revision) = inputs.value("expect-revision") {
+        arguments["expect_revision"] = json!(revision);
     }
     let descriptor = crate::model::paired(inputs.value("desktop-descriptor"))?;
     let result = crate::model::invoke(&descriptor, &PROFILE_OPEN, arguments, LOCAL_TIMEOUT)
         .map_err(classify)?;
-    receipt(&located.row.id, &result)
+    let receipt = receipt(&located.row.id, &result)?;
+    if checkpoint_out.is_some() && receipt["checkpoint"]["persisted"] != true {
+        return Err(Failure::failed(
+            "desktop_unreadable",
+            "the application did not confirm the requested live checkpoint",
+        )
+        .remedy(UNREADABLE.remedy));
+    }
+    Ok(receipt)
+}
+
+fn checkpoint_output(inputs: &Inputs) -> Result<Option<&str>, Failure> {
+    let out = inputs.value("checkpoint-out");
+    let invalid = || {
+        Failure::invalid(
+            "checkpoint_output_invalid",
+            "checkpoint requires a new absolute .dsgrid path",
+        )
+        .remedy("pass --checkpoint-out with a new absolute .dsgrid path")
+    };
+    if inputs.value("expect-revision").is_some() && out.is_none() {
+        return Err(invalid());
+    }
+    if let Some(path) = out {
+        let path_value = std::path::Path::new(path);
+        if !path_value.is_absolute()
+            || path_value.extension().and_then(|v| v.to_str()) != Some("dsgrid")
+        {
+            return Err(invalid());
+        }
+        crate::apply::validate_output_path(path)?;
+    }
+    Ok(out)
 }
 
 /// The application's own refusal for a missing alignment is named here so a
@@ -160,6 +250,14 @@ fn classify(failure: Failure) -> Failure {
         .and_then(|detail| detail["detail"].as_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
+    if detail.contains("checkpoint_revision_conflict:") {
+        return Failure::invalid("revision_conflict", detail)
+            .remedy("inspect the live revision and choose again");
+    }
+    if detail.contains("checkpoint_failed:") {
+        return Failure::failed("checkpoint_failed", detail)
+            .remedy("preserve the live session and choose a new writable output path");
+    }
     if detail.contains("alignment") && detail.contains("not") {
         return Failure::invalid(ALIGNMENT_NOT_FOUND.code, detail)
             .remedy(ALIGNMENT_NOT_FOUND.remedy);
@@ -195,6 +293,7 @@ fn receipt(id: &str, result: &Value) -> Result<Value, Failure> {
         "session": result["session"],
         "workspace": result["workspace"],
         "runtime_errors": result["runtime_errors"],
+        "checkpoint": result["checkpoint"],
     }))
 }
 

@@ -12853,3 +12853,68 @@ fn dsgrid_import_structure_preserves_exact_native_and_refuses_overwrite() {
     assert!(!duplicate.exists());
     std::fs::remove_dir_all(root).unwrap();
 }
+
+
+#[test]
+fn dsgrid_profile_checkpoint_validates_output_before_touching_the_window() {
+    for args in [
+        vec![
+            "dsgrid",
+            "profile",
+            "open",
+            "--model",
+            "any",
+            "--account",
+            "test-account",
+            "--lane",
+            "stable",
+            "--checkpoint-out",
+            "relative.dsgrid",
+            "--output",
+            "json",
+        ],
+        vec![
+            "dsgrid",
+            "profile",
+            "open",
+            "--model",
+            "any",
+            "--account",
+            "test-account",
+            "--lane",
+            "stable",
+            "--expect-revision",
+            "rev:old",
+            "--output",
+            "json",
+        ],
+    ] {
+        let result = ds(&args);
+        assert_eq!(
+            result.envelope["error"]["code"],
+            "checkpoint_output_invalid"
+        );
+    }
+    let root = temp_root("profile-checkpoint-existing");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("existing.dsgrid");
+    std::fs::write(&path, b"preserve").unwrap();
+    let result = ds(&[
+        "dsgrid",
+        "profile",
+        "open",
+        "--model",
+        "any",
+        "--account",
+        "test-account",
+        "--lane",
+        "stable",
+        "--checkpoint-out",
+        path.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(result.envelope["error"]["code"], "output_exists");
+    assert_eq!(std::fs::read(&path).unwrap(), b"preserve");
+    std::fs::remove_dir_all(root).unwrap();
+}
