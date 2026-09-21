@@ -36,6 +36,7 @@ pub const PROFILE_OPEN: BridgeOp = BridgeOp {
         "alignment",
         "checkpoint_out",
         "expect_revision",
+        "replace_temporary_models",
     ],
 };
 
@@ -57,6 +58,16 @@ const ALIGNMENT_ARG: Arg = Arg {
     default: None,
     choices: &[],
     summary: "The alignment to focus; omitted, the model's first alignment.",
+};
+
+const REPLACE_TEMPORARY_MODELS_ARG: Arg = Arg {
+    name: "replace-temporary-models",
+    kind: ArgKind::Switch,
+    value: "",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Remove temporary models and groups before opening this working copy.",
 };
 
 const ALIGNMENT_NOT_FOUND: Refusal = Refusal {
@@ -133,7 +144,7 @@ the application from the catalogue's own file — no bytes cross the bridge — 
 and it is opened under the copy's id, so what `ds dsgrid model show` names \
 and what the window shows are one model. Reopening the copy the application \
 already holds is a focus change, never a second session. The session is not \
-added to the application's catalogue. Optional --checkpoint-out captures its exact live head through the model queue and writes a verified new .dsgrid file in the paired application; no model bytes cross the CLI bridge. --expect-revision guards that captured head.",
+added to the application's catalogue. Optional --checkpoint-out captures its exact live head through the model queue and writes a verified new .dsgrid file in the paired application; no model bytes cross the CLI bridge. --expect-revision guards that captured head. --replace-temporary-models removes browser-local temporary groups and models before opening the copy.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopPairing,
@@ -151,11 +162,12 @@ added to the application's catalogue. Optional --checkpoint-out captures its exa
             "<rev>",
             "Optional expected live authored head; requires --checkpoint-out.",
         ),
+        REPLACE_TEMPORARY_MODELS_ARG,
         workspace::ACCOUNT_ARG,
         workspace::LANE_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "The copy, package path, live revision, alignment and session state; optional checkpoint receipt names the exact captured revision and persisted file path, SHA-256 and byte length.",
+    output: "The copy, package path, live revision, alignment and session state; optional checkpoint receipt names the exact captured revision and persisted file path, SHA-256 and byte length. With --replace-temporary-models, temporary_models_removed reports group and model counts.",
     examples: &[
         Example {
             command: "ds dsgrid profile open --model local-b1b2d3b9e6ab4959",
@@ -165,6 +177,11 @@ added to the application's catalogue. Optional --checkpoint-out captures its exa
         Example {
             command: "ds dsgrid profile open --model local-b1b2d3b9e6ab4959 --alignment al-0007 --output json",
             note: "Focuses one named alignment and returns the receipt.",
+            runnable: false,
+        },
+        Example {
+            command: "ds dsgrid profile open --model local-b1b2d3b9e6ab4959 --replace-temporary-models --output json",
+            note: "Removes browser-local temporary groups and models before opening; the receipt counts them.",
             runnable: false,
         },
     ],
@@ -199,6 +216,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     if let Some(revision) = inputs.value("expect-revision") {
         arguments["expect_revision"] = json!(revision);
+    }
+    if inputs.switch("replace-temporary-models") {
+        arguments["replace_temporary_models"] = json!(true);
     }
     let descriptor = crate::model::paired(inputs.value("desktop-descriptor"))?;
     let result = crate::model::invoke(&descriptor, &PROFILE_OPEN, arguments, LOCAL_TIMEOUT)
@@ -277,7 +297,7 @@ fn receipt(id: &str, result: &Value) -> Result<Value, Failure> {
         .detail(json!({ "reply": result }))
         .remedy(UNREADABLE.remedy));
     }
-    Ok(json!({
+    let mut receipt = json!({
         "model": id,
         "path": result["path"],
         "name": result["name"],
@@ -294,7 +314,11 @@ fn receipt(id: &str, result: &Value) -> Result<Value, Failure> {
         "workspace": result["workspace"],
         "runtime_errors": result["runtime_errors"],
         "checkpoint": result["checkpoint"],
-    }))
+    });
+    if let Some(removed) = result.get("temporary_models_removed") {
+        receipt["temporary_models_removed"] = removed.clone();
+    }
+    Ok(receipt)
 }
 
 pub fn render(data: &Value) -> String {
@@ -315,4 +339,26 @@ pub fn render(data: &Value) -> String {
             ""
         },
     )
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_open_receipt_keeps_temporary_removal_counts() {
+        let reply = json!({
+            "model": "local-1",
+            "profile_open": true,
+            "alignment": "al-1",
+            "temporary_models_removed": {"groups": 1, "models": 2}
+        });
+        let data = receipt("local-1", &reply).expect("valid profile open");
+        assert_eq!(data["temporary_models_removed"], json!({"groups": 1, "models": 2}));
+        let mut no_replacement = reply;
+        no_replacement.as_object_mut().unwrap().remove("temporary_models_removed");
+        let data = receipt("local-1", &no_replacement).expect("valid profile open");
+        assert!(data.get("temporary_models_removed").is_none());
+    }
 }
