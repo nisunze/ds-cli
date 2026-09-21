@@ -12,8 +12,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
-    Requires,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops::BridgeOp;
@@ -21,7 +20,7 @@ use serde_json::{Value, json};
 
 use crate::model::{
     AMBIGUOUS, DESCRIPTOR_ARG, LOCAL_TIMEOUT, NOT_PAIRED, PAIRING_REJECTED, REFUSED, UNREACHABLE,
-    UNREADABLE, UNSUPPORTED, workspace,
+    UNREADABLE, UNSUPPORTED, paired_availability, workspace,
 };
 
 /// What the application is asked: open these package bytes (by path, never
@@ -125,8 +124,10 @@ added to the application's catalogue; the operator's checkpoint does that.",
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &["working copy", "alignment", "desktop"],
+    // The two halves of one fact: this command asks the application for its
+    // answer, so it declares the window and hands over the paired availability.
     requires: Requires::Window,
-    availability: || Availability::Available,
+    availability: paired_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
