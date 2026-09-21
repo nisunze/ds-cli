@@ -132,6 +132,15 @@ record, or feature is staged or persisted; `persisted: false` in the receipt is
 the project-data fact. Missing selection members are reported and never
 substituted.
 
+Each `--mode` has one target shape, and `invalid_mode` refuses any other:
+
+| `--mode` | targets |
+|---|---|
+| `read`, `clear` | none |
+| `load` | exactly one `--selection` |
+| `set`, `add`, `remove` | `--transformer` values, a `--selection`, or both |
+| `unpin` | one or more `--transformer` |
+
 ```bash
 ds map design pin --mode read --output json
 ds map design pin --mode load --selection phase1-review --output json
