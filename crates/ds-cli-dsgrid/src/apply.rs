@@ -320,7 +320,7 @@ fn read_envelope(raw_path: &str) -> Result<CommandEnvelope, Failure> {
     })
 }
 
-fn map_command_error(error: CommandError) -> Failure {
+pub(crate) fn map_command_error(error: CommandError) -> Failure {
     match error {
         CommandError::StaleRevision { expected, actual } => Failure::conflict(
             "revision_conflict",

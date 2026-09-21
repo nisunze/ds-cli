@@ -12919,3 +12919,242 @@ fn dsgrid_profile_checkpoint_validates_output_before_touching_the_window() {
     assert_eq!(std::fs::read(&path).unwrap(), b"preserve");
     std::fs::remove_dir_all(root).unwrap();
 }
+
+// File-only batching must have the same canonical result as single-command
+// apply while avoiding intermediate package writes.
+#[test]
+fn dsgrid_apply_batch_matches_sequential_apply_and_preserves_package_members() {
+    let model = common::fixture();
+    let source = std::fs::read(&model).unwrap();
+    let package = unpack(&source).unwrap();
+    let mut session = GridSession::open(package.snapshot.clone());
+    let head = session.current_revision().revision_id.clone();
+    let alignment_id = package.snapshot.alignments[0].id.clone();
+    let commands: Vec<_> = ["first", "second"]
+        .into_iter()
+        .map(|note| GridCommand::SetAlignmentSurveyFacts {
+            alignment_id: alignment_id.clone(),
+            terrain_corridor_half_width_m: None,
+            route_buffer_half_width_m: None,
+            terrain_gap_tolerance_m: None,
+            survey_note: Some(note.to_string()),
+        })
+        .collect();
+    let root = tempfile::tempdir().unwrap();
+    let batch_path = root.path().join("batch.json");
+    let out = root.path().join("batch.dsgrid");
+    let payload = json!({"expected_revision": head, "commands": commands.iter().enumerate()
+        .map(|(i, command)| json!({"command_id": format!("batch-{i}"), "command": command})).collect::<Vec<_>>()});
+    std::fs::write(&batch_path, serde_json::to_vec(&payload).unwrap()).unwrap();
+    let preview = ok(&[
+        "dsgrid",
+        "apply-batch",
+        "--model",
+        &model,
+        "--batch",
+        batch_path.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(preview["commands"], 2);
+    assert_eq!(preview["operations"]["set_alignment_survey_facts"], 2);
+    assert_eq!(preview["persisted"], false);
+    assert!(!out.exists());
+    let applied = ok(&[
+        "dsgrid",
+        "apply-batch",
+        "--model",
+        &model,
+        "--batch",
+        batch_path.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(applied["resulting_revision"], preview["resulting_revision"]);
+    assert_eq!(applied["package_revision_increment"], 1);
+    assert_eq!(
+        applied["artifact"]["package_revision"],
+        package.manifest.model.model_revision + 1
+    );
+    let mut previous = model.clone();
+    for (i, command) in commands.into_iter().enumerate() {
+        let envelope = CommandEnvelope::new(
+            format!("batch-{i}"),
+            session.current_revision().revision_id.clone(),
+            command,
+        );
+        session.apply_command(envelope.clone()).unwrap();
+        let envelope_path = root.path().join(format!("envelope-{i}.json"));
+        std::fs::write(&envelope_path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+        let next = root.path().join(format!("sequential-{i}.dsgrid"));
+        ok(&[
+            "dsgrid",
+            "apply",
+            "--model",
+            &previous,
+            "--envelope",
+            envelope_path.to_str().unwrap(),
+            "--out",
+            next.to_str().unwrap(),
+            "--output",
+            "json",
+        ]);
+        previous = next.display().to_string();
+    }
+    let revised = unpack(&std::fs::read(&out).unwrap()).unwrap();
+    let sequential = unpack(&std::fs::read(previous).unwrap()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&revised.snapshot).unwrap(),
+        serde_json::to_value(&sequential.snapshot).unwrap()
+    );
+    assert_eq!(
+        revised
+            .assets
+            .iter()
+            .map(|a| (&a.invariant_leaf, &a.bytes))
+            .collect::<Vec<_>>(),
+        package
+            .assets
+            .iter()
+            .map(|a| (&a.invariant_leaf, &a.bytes))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        serde_json::to_value(&revised.exchange_bindings).unwrap(),
+        serde_json::to_value(&package.exchange_bindings).unwrap()
+    );
+    assert_eq!(std::fs::read(&model).unwrap(), source);
+    let retained = std::fs::read(&out).unwrap();
+    let refused = ds(&[
+        "dsgrid",
+        "apply-batch",
+        "--model",
+        &model,
+        "--batch",
+        batch_path.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refused.envelope["error"]["code"], "output_exists");
+    assert_eq!(std::fs::read(&out).unwrap(), retained);
+}
+
+#[test]
+fn dsgrid_apply_batch_refuses_late_failure_stale_head_and_mixed_pins_without_output() {
+    let model = common::fixture();
+    let source = std::fs::read(&model).unwrap();
+    let package = unpack(&source).unwrap();
+    let mut session = GridSession::open(package.snapshot.clone());
+    let head = session.current_revision().revision_id.clone();
+    let command = GridCommand::SetAlignmentSurveyFacts {
+        alignment_id: package.snapshot.alignments[0].id.clone(),
+        terrain_corridor_half_width_m: None,
+        route_buffer_half_width_m: None,
+        terrain_gap_tolerance_m: None,
+        survey_note: Some("must roll back".into()),
+    };
+    let mut bad_command = serde_json::to_value(&command).unwrap();
+    bad_command["alignment_id"] = json!("missing-batch-alignment");
+    let bad_command: GridCommand = serde_json::from_value(bad_command).unwrap();
+    assert!(
+        session
+            .apply_transaction_at_head(
+                head.clone(),
+                vec![
+                    ("first".into(), command.clone()),
+                    ("bad".into(), bad_command.clone())
+                ]
+            )
+            .is_err()
+    );
+    assert_eq!(session.current_revision().revision_id, head);
+    assert_eq!(
+        serde_json::to_value(session.snapshot()).unwrap(),
+        serde_json::to_value(&package.snapshot).unwrap()
+    );
+    let root = tempfile::tempdir().unwrap();
+    let batch_path = root.path().join("batch.json");
+    let out = root.path().join("rejected.dsgrid");
+    let good = json!({"command_id":"first", "command":command});
+    let bad = json!({"command_id":"bad", "command":bad_command});
+    let same_pin_envelope =
+        serde_json::to_value(CommandEnvelope::new("first", head.clone(), command.clone())).unwrap();
+    let cases = [
+        (
+            json!({"expected_revision":head, "commands":[good.clone(), bad]}),
+            "target_not_found",
+        ),
+        (
+            json!({"expected_revision":"rev:stale", "commands":[good.clone()]}),
+            "revision_conflict",
+        ),
+        (
+            json!([same_pin_envelope.clone(), {"command_id":"second", "command_schema_version":ds_grid_engine::COMMAND_SCHEMA_VERSION, "expected_revision":"rev:stale", "command":command}]),
+            "batch_invalid",
+        ),
+        (
+            json!({"expected_revision":head, "commands":[good.clone(), good]}),
+            "batch_invalid",
+        ),
+        (
+            json!({"expected_revision":head, "commands":[]}),
+            "batch_invalid",
+        ),
+    ];
+    for (payload, code) in cases {
+        std::fs::write(&batch_path, serde_json::to_vec(&payload).unwrap()).unwrap();
+        for dry_run in [false, true] {
+            let mut args = vec![
+                "dsgrid",
+                "apply-batch",
+                "--model",
+                &model,
+                "--batch",
+                batch_path.to_str().unwrap(),
+                "--out",
+                out.to_str().unwrap(),
+                "--output",
+                "json",
+            ];
+            if dry_run {
+                args.push("--dry-run");
+            }
+            let rejected = ds(&args);
+            assert_eq!(
+                rejected.envelope["error"]["code"], code,
+                "{}",
+                rejected.stdout
+            );
+            assert!(!out.exists());
+            assert_eq!(std::fs::read(&model).unwrap(), source);
+        }
+    }
+    // A valid retry proves the failed transaction left no file/session residue;
+    // the array input is the same-head convenience form, never a rebasing path.
+    std::fs::write(
+        &batch_path,
+        serde_json::to_vec(&json!([same_pin_envelope])).unwrap(),
+    )
+    .unwrap();
+    let retry = ok(&[
+        "dsgrid",
+        "apply-batch",
+        "--model",
+        &model,
+        "--batch",
+        batch_path.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(retry["commands"], 1);
+    assert_eq!(retry["persisted"], true);
+}

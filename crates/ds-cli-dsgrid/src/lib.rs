@@ -32,6 +32,7 @@
 
 pub mod analyse;
 pub mod apply;
+pub mod apply_batch;
 pub mod backup;
 pub mod create;
 pub mod criteria;
@@ -67,6 +68,7 @@ pub static DOMAIN: Domain = Domain {
         &describe::COMMAND,
         &run::COMMAND,
         &apply::COMMAND,
+        &apply_batch::COMMAND,
         &model::list::COMMAND,
         &model::show::COMMAND,
         &model::create_local::COMMAND,

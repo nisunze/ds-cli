@@ -201,7 +201,9 @@ impl Profile {
             // record, its pin to a live PLS-CADD workspace, and the write
             // back into that workspace. Without them the broad router could
             // import from PLS-CADD but never deliver to it.
-            Self::Grid => 25,
+            // 2026-09-21: immutable native structure import and atomic
+            // apply-batch add two file-authoring leaves to this same workflow.
+            Self::Grid => 27,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,

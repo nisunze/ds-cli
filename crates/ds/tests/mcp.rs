@@ -1374,7 +1374,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // live PLS-CADD workspace, and the write back into it. A router
             // that imports from PLS-CADD and cannot deliver to it is half a
             // workflow.
-            "grid" => 25,
+            // 2026-09-21: native structure import and atomic batch editing
+            // add two file-authoring leaves; see the profile's matching limit.
+            "grid" => 27,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
@@ -1479,6 +1481,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "dsgrid_describe",
         "dsgrid_run",
         "dsgrid_apply",
+        "dsgrid_apply-batch",
         "dsgrid-exchange_inspect",
         "dsgrid-exchange_plan",
         "dsgrid-exchange_convert",
