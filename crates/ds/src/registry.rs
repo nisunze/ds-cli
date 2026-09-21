@@ -403,6 +403,11 @@ static PLS_ENTRIES: &[Entry] = &[
         render: ds_cli_pls::compare_don::render,
     },
     Entry {
+        command: &ds_cli_pls::structure_inventory::COMMAND,
+        handler: ds_cli_pls::structure_inventory::run,
+        render: ds_cli_pls::structure_inventory::render,
+    },
+    Entry {
         command: &ds_cli_pls::shading_variants::COMMAND,
         handler: ds_cli_pls::shading_variants::run,
         render: ds_cli_pls::shading_variants::render,

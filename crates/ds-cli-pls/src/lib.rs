@@ -25,6 +25,7 @@ pub mod pole_capacity;
 pub mod reference_closure;
 pub mod section_orientation;
 pub mod shading_variants;
+pub mod structure_inventory;
 pub mod structure_substitute;
 pub mod terrain_reconcile;
 
@@ -39,6 +40,7 @@ pub static DOMAIN: Domain = Domain {
         &reference_closure::COMMAND,
         &section_orientation::COMMAND,
         &compare_don::COMMAND,
+        &structure_inventory::COMMAND,
         &shading_variants::COMMAND,
         &structure_substitute::COMMAND,
         &terrain_reconcile::COMMAND,
