@@ -1325,6 +1325,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "grid",
         "grid-native",
         "grid-local-model",
+        "clearance",
         "pls",
         "pls-library",
         "library-governance",
@@ -1501,6 +1502,17 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             && published["grid-local-model"].contains("dsgrid_publish-version"),
         "the grid-local-model profile must project the complete model and project-cache lifecycle"
     );
+    assert!(
+        published["clearance"].contains("dsgrid_feature-codes_report")
+            && published["clearance"].contains("dsgrid_feature-codes_import")
+            && published["clearance"].contains("dsgrid_feature-codes_migrate")
+            && published["clearance"].contains("dsgrid_feature-codes_export")
+            && published["clearance"].contains("dsgrid_criteria_show")
+            && published["clearance"].contains("dsgrid_criteria_clearance_set")
+            && published["clearance"].contains("dsgrid_analyse_clearance"),
+        "the grid-clearance profile must project the whole feature-code and clearance workflow"
+    );
+    assert!(!published["grid-native"].contains("dsgrid_analyse_clearance"));
     assert!(
         published["pls"].contains("pls_backup-create"),
         "the PLS profile must expose the live backup command without a second MCP schema"

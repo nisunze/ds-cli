@@ -128,7 +128,7 @@ reference, class}], `verification`, `written`, `warnings`.",
     ],
     refusals: &REFUSALS,
     reference: Some("docs/reference/dsgrid-exchange.md"),
-    search: &["write back", "pls-cadd", "in place", "round trip", "export into workspace", "delta"],
+    search: &["write back", "pls-cadd", "in place", "round trip", "export workspace", "delta"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

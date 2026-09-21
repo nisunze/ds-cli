@@ -524,6 +524,17 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // session's own selected project's catalogue, so it is `global_write` and
     // confirmation-gated. It activates nothing locally.
     ("dsgrid.publish-version", "global_write", "project"),
+    // Program contract 03: the feature-code table and the clearance criteria
+    // of a model, against the owner-issued standard. Reads over a working
+    // copy or a package; the writes are one revision of a working copy (in
+    // place) or one new package, never a governed object.
+    ("dsgrid.feature-codes.report", "read_only", "none"),
+    ("dsgrid.feature-codes.import", "local_file_write", "none"),
+    ("dsgrid.feature-codes.migrate", "local_file_write", "none"),
+    ("dsgrid.feature-codes.export", "local_file_write", "none"),
+    ("dsgrid.criteria.show", "read_only", "none"),
+    ("dsgrid.criteria.clearance.set", "local_file_write", "none"),
+    ("dsgrid.analyse.clearance", "read_only", "none"),
     ("feedback.close", "global_write", "headless_user"),
     ("feedback.list", "read_only", "headless_user"),
     ("feedback.note", "global_write", "headless_user"),

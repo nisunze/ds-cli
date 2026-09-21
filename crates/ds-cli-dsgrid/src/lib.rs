@@ -30,10 +30,13 @@
 //! typed verb is its inputs, its engine commands and its render; nothing
 //! else.
 
+pub mod analyse;
 pub mod apply;
 pub mod backup;
 pub mod create;
+pub mod criteria;
 pub mod describe;
+pub mod feature_codes;
 pub mod folder;
 pub mod inspect;
 pub mod model;
@@ -73,5 +76,12 @@ pub static DOMAIN: Domain = Domain {
         &structure::describe::COMMAND,
         &structure::retype::COMMAND,
         &report::structures::COMMAND,
+        &feature_codes::report::COMMAND,
+        &feature_codes::import::COMMAND,
+        &feature_codes::migrate::COMMAND,
+        &feature_codes::export::COMMAND,
+        &criteria::show::COMMAND,
+        &criteria::clearance_set::COMMAND,
+        &analyse::clearance::COMMAND,
     ],
 };

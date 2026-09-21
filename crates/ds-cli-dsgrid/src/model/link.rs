@@ -108,7 +108,7 @@ folder is on a streamed or network drive.",
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["pls-cadd", "workspace", "pin", "provenance", "connect"],
+    search: &["pls-cadd", "provenance", "connect"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

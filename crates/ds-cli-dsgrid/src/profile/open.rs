@@ -124,7 +124,7 @@ added to the application's catalogue; the operator's checkpoint does that.",
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["profile", "working copy", "open", "alignment", "desktop"],
+    search: &["working copy", "alignment", "desktop"],
     requires: Requires::Window,
     availability: || Availability::Available,
 };

@@ -222,6 +222,43 @@ static DSGRID_ENTRIES: &[Entry] = &[
         handler: ds_cli_dsgrid::report::structures::run,
         render: ds_cli_dsgrid::report::structures::render,
     },
+    // Program contract 03: the feature-code and clearance workflow, on the
+    // same plumbing.
+    Entry {
+        command: &ds_cli_dsgrid::feature_codes::report::COMMAND,
+        handler: ds_cli_dsgrid::feature_codes::report::run,
+        render: ds_cli_dsgrid::feature_codes::report::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::feature_codes::import::COMMAND,
+        handler: ds_cli_dsgrid::feature_codes::import::run,
+        render: ds_cli_dsgrid::feature_codes::import::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::feature_codes::migrate::COMMAND,
+        handler: ds_cli_dsgrid::feature_codes::migrate::run,
+        render: ds_cli_dsgrid::feature_codes::migrate::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::feature_codes::export::COMMAND,
+        handler: ds_cli_dsgrid::feature_codes::export::run,
+        render: ds_cli_dsgrid::feature_codes::export::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::criteria::show::COMMAND,
+        handler: ds_cli_dsgrid::criteria::show::run,
+        render: ds_cli_dsgrid::criteria::show::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::criteria::clearance_set::COMMAND,
+        handler: ds_cli_dsgrid::criteria::clearance_set::run,
+        render: ds_cli_dsgrid::criteria::clearance_set::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::analyse::clearance::COMMAND,
+        handler: ds_cli_dsgrid::analyse::clearance::run,
+        render: ds_cli_dsgrid::analyse::clearance::render,
+    },
 ];
 
 /// The exchange domain lists its commands in the order they are meant to be
