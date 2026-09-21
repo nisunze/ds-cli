@@ -48,6 +48,7 @@
 //!   went.
 
 pub mod create_local;
+pub mod forget;
 pub mod import_external;
 pub mod link;
 pub mod list;

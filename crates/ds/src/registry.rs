@@ -201,6 +201,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::model::set_active::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::model::forget::COMMAND,
+        handler: ds_cli_dsgrid::model::forget::run,
+        render: ds_cli_dsgrid::model::forget::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::model::prepare_project::COMMAND,
         handler: ds_cli_dsgrid::model::prepare_project::run,
         render: ds_cli_dsgrid::model::prepare_project::render,

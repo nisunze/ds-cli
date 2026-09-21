@@ -73,6 +73,7 @@ pub static DOMAIN: Domain = Domain {
         &model::import_external::COMMAND,
         &model::link::COMMAND,
         &model::set_active::COMMAND,
+        &model::forget::COMMAND,
         &model::prepare_project::COMMAND,
         &model::publish_version::COMMAND,
         &structure::describe::COMMAND,
