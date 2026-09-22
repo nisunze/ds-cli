@@ -7,8 +7,12 @@
 //! a saved-selection pre-scope) and two vocabularies (the register's and the
 //! picker's), plus a second authority that enumerated the options each filter
 //! may offer and pruned stale filter state. All of it is one declarative
-//! selector here. What a row IS (saved, locked, who acted, its lane, its
-//! findings) is read from the two kernels named above, never re-derived.
+//! selector here. What a row IS (saved, locked, who acted, its findings) is
+//! read from the two kernels named above, never re-derived.
+//!
+//! There is one way to process a transformer (owner ruling 2026-09-22): the
+//! register has no lane filter, no Draft/Sketch column and no per-lane
+//! picker chips, and the Tags column is always present.
 use crate::design::{canonical_row_name, is_special_row};
 use crate::design_health::{transformer_health, FindingSeverity, TransformerHealth};
 use crate::design_status_row::{self, GovernanceState, RowReply, SyncState};
@@ -23,11 +27,10 @@ const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 pub const ADMIN_NONE_VALUE: &str = "__admin_bounds_none__";
 
 const ADMIN_LEVELS: [&str; 4] = ["district", "sector", "cell", "village"];
-const SORT_KEYS: [&str; 11] = [
+const SORT_KEYS: [&str; 10] = [
     "name",
     "district",
     "tags",
-    "legacy",
     "process",
     "report",
     "combined",
@@ -48,8 +51,7 @@ const PHASE_FILTER_ORDER: [&str; 7] = [
 const COMBINED_FILTER_ORDER: [&str; 5] = ["success", "stale", "processing", "error", "none"];
 const GOVERNANCE_FILTER_ORDER: [&str; 2] = ["locked", "draft"];
 const SYNC_VALUES: [&str; 2] = ["saved", "unsaved"];
-const LANE_VALUES: [&str; 2] = ["standard", "fast"];
-const PICKER_FILTERS: [&str; 6] = ["all", "fast", "standard", "unsaved", "warning", "error"];
+const PICKER_FILTERS: [&str; 4] = ["all", "unsaved", "warning", "error"];
 /// Deterministic aggregate-row order: compounded report first, then the
 /// combined selection, then `mv_data`, then collisions, then anything else
 /// the vocabulary calls special.
@@ -92,7 +94,7 @@ struct QueryRequest {
     selector: Selector,
     #[serde(default)]
     sort: Option<Sort>,
-    /// The Fast-lane tag summary per row name, as the page renders it.
+    /// The tag summary per row name, as the page renders it.
     #[serde(default)]
     tag_summaries: Map<String, Value>,
     /// Ask for the picker's option facts for these names as well.
@@ -112,9 +114,6 @@ struct Context {
     current_user_email: String,
     local_edit_lock: Option<String>,
     now_ms: i64,
-    /// Fast mode has no Draft/Sketch column and no lane filter (owner ruling
-    /// 2026-08-26); it is the only lane with a Tags column.
-    fast_lane: bool,
     /// Whether the combined-mirror column is on this page at all.
     #[serde(default = "default_true")]
     combined_ui: bool,
@@ -130,13 +129,11 @@ struct Selector {
     admin_level: Option<String>,
     admin_value: String,
     sync: Vec<String>,
-    legacy: String,
     process: String,
     report: String,
     combined: String,
     governance: String,
     user: String,
-    lane: Vec<String>,
     warning_types: Vec<String>,
     tag_presence: String,
     pinned_only: bool,
@@ -159,7 +156,6 @@ impl Default for Context {
             current_user_email: String::new(),
             local_edit_lock: None,
             now_ms: 0,
-            fast_lane: false,
             combined_ui: true,
         }
     }
@@ -200,8 +196,6 @@ pub struct OptionFacts {
     pub name: String,
     pub label: String,
     #[serde(default)]
-    pub lane: Option<String>,
-    #[serde(default)]
     pub dirty: bool,
     #[serde(default)]
     pub warning: bool,
@@ -226,7 +220,7 @@ struct QueryReply {
     /// The register's rows, in order, by name.
     ordered: Vec<String>,
     /// The selector as the page must hold it: unknown values dropped, values
-    /// no row exhibits pruned, dimensions the lane does not have cleared.
+    /// no row exhibits pruned, dimensions the page does not have cleared.
     normalized: Normalized,
     /// What each filter may offer, over the whole list.
     options: Options,
@@ -238,20 +232,17 @@ struct QueryReply {
 #[derive(Serialize, Default, Debug, PartialEq)]
 struct Normalized {
     sync: Vec<String>,
-    legacy: String,
     process: String,
     report: String,
     combined: String,
     governance: String,
     user: String,
-    lane: Vec<String>,
     warning_types: Vec<String>,
 }
 
 #[derive(Serialize, Default, Debug)]
 struct Options {
     admin: Vec<String>,
-    legacy: Vec<String>,
     process: Vec<String>,
     report: Vec<String>,
     combined: Vec<String>,
@@ -259,7 +250,6 @@ struct Options {
     user: Vec<String>,
     warning_types: Vec<WarningTypeOption>,
     sync: Vec<String>,
-    lane: Vec<String>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -351,27 +341,6 @@ impl RowFacts<'_> {
     fn phase(&self, key: &str) -> Option<&Map<String, Value>> {
         self.row.get(key).and_then(Value::as_object)
     }
-    /// `t.process_metadata` was truthy: present and neither null, false, 0 nor "".
-    fn has_process(&self) -> bool {
-        match self.row.get("process_metadata") {
-            None | Some(Value::Null) => false,
-            Some(Value::Bool(b)) => *b,
-            Some(Value::Number(n)) => n.as_f64() != Some(0.0),
-            Some(Value::String(s)) => !s.is_empty(),
-            Some(_) => true,
-        }
-    }
-    /// The lane filter's reading: a run that named no lane is Standard.
-    fn process_lane(&self) -> &'static str {
-        match self
-            .phase("process_metadata")
-            .and_then(|meta| meta.get("lane"))
-            .and_then(Value::as_str)
-        {
-            Some("fast") => "fast",
-            _ => "standard",
-        }
-    }
     fn admin_value(&self, level: &str) -> Option<&str> {
         self.row
             .get("admin_bounds")
@@ -456,30 +425,6 @@ fn phase_filter_value(meta: Option<&Map<String, Value>>) -> String {
         Some(Value::String(status)) => status.clone(),
         Some(_) => "\u{0}".to_string(),
     }
-}
-
-/// `latestLegacyPhase`: Draft or Sketch, whichever stamped later.
-fn latest_legacy_phase(row: &Map<String, Value>) -> Option<&Map<String, Value>> {
-    let draft = row.get("draft_metadata").and_then(Value::as_object);
-    let sketch = row.get("sketch_metadata").and_then(Value::as_object);
-    match (draft, sketch) {
-        (None, None) => None,
-        (None, Some(sketch)) => Some(sketch),
-        (Some(draft), None) => Some(draft),
-        (Some(draft), Some(sketch)) => {
-            let sketch_when = when_ms(sketch.get("sketched_at").or_else(|| sketch.get("when")));
-            let draft_when = when_ms(draft.get("drafted_at").or_else(|| draft.get("when")));
-            if sketch_when >= draft_when {
-                Some(sketch)
-            } else {
-                Some(draft)
-            }
-        }
-    }
-}
-
-fn when_ms(value: Option<&Value>) -> i64 {
-    design_status_row::timestamp_ms(value)
 }
 
 const STATUS_ORDER: [(&str, i64); 5] = [
@@ -720,10 +665,6 @@ fn enumerate_options(facts: &[RowFacts], admin_level: &str, combined_ui: bool) -
             .map(|value| value.to_string())
             .collect()
     };
-    let legacy = present(
-        &|row| phase_filter_value(latest_legacy_phase(row.row)),
-        &PHASE_FILTER_ORDER,
-    );
     let process = present(
         &|row| phase_filter_value(row.phase("process_metadata")),
         &PHASE_FILTER_ORDER,
@@ -780,19 +721,8 @@ fn enumerate_options(facts: &[RowFacts], admin_level: &str, combined_ui: bool) -
         },
         &SYNC_VALUES,
     );
-    let lane_present: HashSet<&str> = fleet
-        .iter()
-        .filter(|row| row.has_process())
-        .map(|row| row.process_lane())
-        .collect();
-    let lane = LANE_VALUES
-        .iter()
-        .filter(|value| lane_present.contains(**value))
-        .map(|value| value.to_string())
-        .collect();
     Options {
         admin,
-        legacy,
         process,
         report,
         combined,
@@ -800,12 +730,11 @@ fn enumerate_options(facts: &[RowFacts], admin_level: &str, combined_ui: bool) -
         user,
         warning_types,
         sync,
-        lane,
     }
 }
 
 /// `normalizeStatusFilterState` and the register's option-pruning effect, as
-/// one rule: drop unknown values, clear what this lane does not have, keep
+/// one rule: drop unknown values, clear what this page does not have, keep
 /// only what some row exhibits.
 fn normalize(
     selector: &Selector,
@@ -815,13 +744,11 @@ fn normalize(
 ) -> Normalized {
     let mut next = Normalized {
         sync: normalize_multi(&selector.sync, &SYNC_VALUES),
-        legacy: selector.legacy.clone(),
         process: selector.process.clone(),
         report: selector.report.clone(),
         combined: selector.combined.clone(),
         governance: selector.governance.clone(),
         user: selector.user.clone(),
-        lane: normalize_multi(&selector.lane, &LANE_VALUES),
         warning_types: selector
             .warning_types
             .iter()
@@ -831,15 +758,8 @@ fn normalize(
             .into_iter()
             .collect(),
     };
-    if context.fast_lane {
-        next.legacy.clear();
-        next.lane.clear();
-    }
     if !next.sync.is_empty() {
         next.sync.retain(|value| options.sync.contains(value));
-    }
-    if !next.lane.is_empty() {
-        next.lane.retain(|value| options.lane.contains(value));
     }
     if !next.warning_types.is_empty() {
         let present: HashSet<String> = facts
@@ -848,9 +768,6 @@ fn normalize(
             .flat_map(|row| row.warning_keys())
             .collect();
         next.warning_types.retain(|key| present.contains(key));
-    }
-    if !next.legacy.is_empty() && !options.legacy.contains(&next.legacy) {
-        next.legacy.clear();
     }
     if !next.process.is_empty() && !options.process.contains(&next.process) {
         next.process.clear();
@@ -895,12 +812,6 @@ fn sort_value(row: &RowFacts, key: &str, tag_summaries: &Map<String, Value>) -> 
                 .trim()
                 .to_lowercase(),
         ),
-        "legacy" => SortVal::Num(status_order(
-            latest_legacy_phase(row.row)
-                .and_then(|meta| meta.get("status"))
-                .and_then(Value::as_str)
-                .unwrap_or(""),
-        )),
         "process" => SortVal::Num(status_order(
             row.phase("process_metadata")
                 .and_then(|meta| meta.get("status"))
@@ -932,18 +843,12 @@ fn select_and_order(request: &QueryRequest, facts: &[RowFacts], admin_level: &st
     } else {
         ""
     };
-    // The Tags column exists only in Fast mode; elsewhere its filter is moot.
-    let tag_presence = if context.fast_lane {
-        match selector.tag_presence.as_str() {
-            "tagged" => "tagged",
-            "untagged" => "untagged",
-            _ => "all",
-        }
-    } else {
-        "all"
+    let tag_presence = match selector.tag_presence.as_str() {
+        "tagged" => "tagged",
+        "untagged" => "untagged",
+        _ => "all",
     };
     let sync: Vec<&str> = selector.sync.iter().map(String::as_str).collect();
-    let lane: Vec<&str> = selector.lane.iter().map(String::as_str).collect();
     let warning_types: HashSet<&str> = selector
         .warning_types
         .iter()
@@ -951,13 +856,11 @@ fn select_and_order(request: &QueryRequest, facts: &[RowFacts], admin_level: &st
         .filter(|key| !key.is_empty())
         .collect();
     let has_secondary = !sync.is_empty()
-        || !selector.legacy.is_empty()
         || !selector.process.is_empty()
         || !selector.report.is_empty()
         || !combined.is_empty()
         || !selector.governance.is_empty()
         || !selector.user.is_empty()
-        || !lane.is_empty()
         || !warning_types.is_empty()
         || tag_presence != "all";
     let (needle, exact) = parse_name_query(&selector.search);
@@ -1018,11 +921,6 @@ fn select_and_order(request: &QueryRequest, facts: &[RowFacts], admin_level: &st
                     return false;
                 }
             }
-            if !selector.legacy.is_empty()
-                && phase_filter_value(latest_legacy_phase(row.row)) != selector.legacy
-            {
-                return false;
-            }
             if !selector.process.is_empty()
                 && phase_filter_value(row.phase("process_metadata")) != selector.process
             {
@@ -1059,14 +957,6 @@ fn select_and_order(request: &QueryRequest, facts: &[RowFacts], admin_level: &st
                     .any(|key| warning_types.contains(key.as_str()))
             {
                 return false;
-            }
-            if !lane.is_empty() {
-                if !row.has_process() {
-                    return false;
-                }
-                if !lane.contains(&row.process_lane()) {
-                    return false;
-                }
             }
             if tag_names
                 .as_ref()
@@ -1135,13 +1025,6 @@ fn picker_option(name: &str, row: Option<&RowFacts>) -> PickerOption {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let lane = process.filter(|_| !process_status.is_empty()).map(|meta| {
-        if meta.get("lane").and_then(Value::as_str) == Some("fast") {
-            "fast".to_string()
-        } else {
-            "standard".to_string()
-        }
-    });
     let health = row
         .map(|row| row.health.clone())
         .unwrap_or_else(|| TransformerHealth {
@@ -1154,7 +1037,6 @@ fn picker_option(name: &str, row: Option<&RowFacts>) -> PickerOption {
         facts: OptionFacts {
             name: name.to_string(),
             label: format_transformer_name(name),
-            lane,
             dirty: row.is_some_and(RowFacts::unsaved),
             warning: health.warning_count > 0,
             error: health.error_count > 0,
@@ -1177,8 +1059,6 @@ fn picker_option(name: &str, row: Option<&RowFacts>) -> PickerOption {
 
 fn option_matches_chip(option: &OptionFacts, chip: &str) -> bool {
     match chip {
-        "fast" => option.lane.as_deref() == Some("fast"),
-        "standard" => option.lane.as_deref() == Some("standard"),
         "unsaved" => option.dirty,
         "warning" => option.warning,
         "error" => option.error,
@@ -1492,10 +1372,9 @@ mod tests {
             names(&out["options"]["admin"]),
             [ADMIN_NONE_VALUE, "Karongi", "Rubavu", "Rutsiro"]
         );
-        assert_eq!(
-            names(&out["options"]["legacy"]),
-            ["success", "error", "none"]
-        );
+        // The retired Draft/Sketch column and the lane are not options.
+        assert!(out["options"].get("legacy").is_none());
+        assert!(out["options"].get("lane").is_none());
         assert_eq!(
             names(&out["options"]["process"]),
             ["success", "warning", "none"]
@@ -1514,7 +1393,6 @@ mod tests {
             ["alice@example.com", "bob@example.com", "dana@example.com"]
         );
         assert_eq!(names(&out["options"]["sync"]), ["saved", "unsaved"]);
-        assert_eq!(names(&out["options"]["lane"]), ["standard", "fast"]);
         assert_eq!(
             out["options"]["warning_types"][0]["key"],
             "non_snapping_lv_lines"
@@ -1523,24 +1401,37 @@ mod tests {
     }
 
     #[test]
-    fn normalisation_drops_unknowns_prunes_absent_values_and_clears_fast_lane_columns() {
+    fn normalisation_drops_unknowns_prunes_absent_values_and_clears_absent_columns() {
         let out = query(
-            json!({"sync": ["unsaved", "bogus"], "lane": ["fast", "standard"], "warning_types": ["z", "non_snapping_lv_lines", ""], "process": "stale", "user": "nobody@example.com", "legacy": "success"}),
+            json!({"sync": ["unsaved", "bogus"], "warning_types": ["z", "non_snapping_lv_lines", ""], "process": "stale", "user": "nobody@example.com"}),
             None,
         );
         assert_eq!(out["normalized"]["sync"], json!(["unsaved"]));
-        assert_eq!(out["normalized"]["lane"], json!([]));
         assert_eq!(
             out["normalized"]["warning_types"],
             json!(["non_snapping_lv_lines"])
         );
         assert_eq!(out["normalized"]["process"], "");
         assert_eq!(out["normalized"]["user"], "");
-        assert_eq!(out["normalized"]["legacy"], "success");
-        let mut request = json!({"op": "query", "schema": SCHEMA, "rows": rows(), "selector": {"legacy": "success", "lane": ["fast"]}, "context": {"fast_lane": true}});
-        let out = reply(request.clone());
-        assert_eq!(out["normalized"]["legacy"], "");
-        assert_eq!(out["normalized"]["lane"], json!([]));
+        assert!(out["normalized"].get("legacy").is_none());
+        assert!(out["normalized"].get("lane").is_none());
+        // The retired selector members and the lane switch are the host's
+        // error, not a silently ignored filter.
+        for selector in [json!({"legacy": "success"}), json!({"lane": ["fast"]})] {
+            let request =
+                json!({"op": "query", "schema": SCHEMA, "rows": rows(), "selector": selector});
+            assert!(evaluate(&serde_json::to_vec(&request).unwrap()).is_err());
+        }
+        let request = json!({"op": "query", "schema": SCHEMA, "rows": rows(), "context": {"fast_lane": true}});
+        assert!(evaluate(&serde_json::to_vec(&request).unwrap()).is_err());
+        // The Tags column is simply there, so its presence filter always bites.
+        let tagged = reply(json!({
+            "op": "query", "schema": SCHEMA, "rows": rows(),
+            "selector": {"tag_presence": "tagged"},
+            "tag_summaries": {"alpha": "mv-1", "beta": "  "},
+        }));
+        assert_eq!(names(&tagged["ordered"]), ["alpha"]);
+        let mut request = json!({"op": "query", "schema": SCHEMA, "rows": rows()});
         request["context"] = json!({"combined_ui": false});
         request["selector"] = json!({"combined": "success"});
         let out = reply(request);
@@ -1587,9 +1478,8 @@ mod tests {
         assert_eq!(options[0]["dirty"], true);
         assert_eq!(options[0]["local"], true);
         assert_eq!(options[0]["warning"], true);
-        assert_eq!(options[0]["lane"], "standard");
+        assert!(options[0].get("lane").is_none());
         assert_eq!(options[0]["warnings"][0]["key"], "non_snapping_lv_lines");
-        assert_eq!(options[1]["lane"], "fast");
         assert_eq!(options[2]["label"], "MV Data");
         assert_eq!(options[3]["label"], "unknown tr");
         assert_eq!(options[3]["health"]["severity"], "ok");
@@ -1599,9 +1489,7 @@ mod tests {
             .iter()
             .map(|option| {
                 let mut facts = Map::new();
-                for key in [
-                    "name", "label", "lane", "dirty", "warning", "error", "warnings",
-                ] {
+                for key in ["name", "label", "dirty", "warning", "error", "warnings"] {
                     facts.insert(key.into(), option[key].clone());
                 }
                 Value::Object(facts)
@@ -1617,7 +1505,7 @@ mod tests {
         );
         assert_eq!(
             picker["counts"],
-            json!({"all": 4, "error": 0, "fast": 1, "standard": 1, "unsaved": 1, "warning": 1})
+            json!({"all": 4, "error": 0, "unsaved": 1, "warning": 1})
         );
         let picker = reply(
             json!({"op": "picker", "schema": SCHEMA, "options": options, "filter": "warning", "search": " BETA "}),

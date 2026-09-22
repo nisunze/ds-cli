@@ -1,6 +1,6 @@
 {
 	"schema": "ds.design-status-row-parity/v1",
-	"purpose": "Campaign slice 3 — status row truth owned by ds-command-kernel. Each case holds one `design_status_row` request, what the deleted TypeScript answered for it (`expected_ts`: `statusRowView`, `mergeLocalTransformerStatus`, `supersededPhase`, `latestAction`, `transformerGovernanceBadge`, `canRetryProcess`, the three row-name sets — recorded by running that code once before deleting it), and what the kernel answers (`expected`). A case where the two differ carries a `why`; the kernel is right in every one. `label_rename` and `lane_rename` are the vocabulary tables that make the two comparable — the kernel returns i18n KEYS and a per-phase lane fact where the browser returned English and a badge letter.",
+	"purpose": "Campaign slice 3 — status row truth owned by ds-command-kernel. Each case holds one `design_status_row` request, what the deleted TypeScript answered for it (`expected_ts`: `statusRowView`, `mergeLocalTransformerStatus`, `supersededPhase`, `latestAction`, `transformerGovernanceBadge`, `canRetryProcess`, the three row-name sets — recorded by running that code once before deleting it), and what the kernel answers (`expected`). A case where the two differ carries a `why`; the kernel is right in every one. `label_rename` is the vocabulary table that makes the two comparable — the kernel returns i18n KEYS where the browser returned English. Since 2026-09-22 there is one way to process a transformer: the kernel answers no `lane`, `phase_lanes`, `legacy_standard_output` or per-stamp `lane`, so those members of `expected_ts` are retired and not compared.",
 	"label_rename": {
 		"Document update": "dsr_action_document_update",
 		"Browser edit": "dsr_action_browser_edit",
@@ -24,11 +24,6 @@
 		"Process upload": "dsr_action_process_upload",
 		"Combined report": "dsr_action_combined_report",
 		"": ""
-	},
-	"lane_rename": {
-		"fast": "F",
-		"standard": "S",
-		"none": ""
 	},
 	"owner_rename": {
 		"process": "legacy",
@@ -145,7 +140,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "success",
 							"report_state": "success",
 							"report_has_files": true,
@@ -161,7 +155,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -340,7 +333,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "local",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -356,7 +348,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -555,7 +546,6 @@
 							"sync_state": "unsaved",
 							"sync_title_key": "dsr_sync_local_edits_title",
 							"locality": "unsaved",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -571,7 +561,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -762,7 +751,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -782,7 +770,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -962,7 +949,6 @@
 							"sync_state": "unsaved",
 							"sync_title_key": "dsr_sync_local_edits_title",
 							"locality": "unsaved",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -978,7 +964,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -1161,7 +1146,6 @@
 							"sync_state": "unsaved",
 							"sync_title_key": "dsr_sync_local_edits_title",
 							"locality": "unsaved",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -1177,7 +1161,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -1357,7 +1340,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -1373,7 +1355,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -1561,7 +1542,6 @@
 							"sync_state": "unsaved",
 							"sync_title_key": "dsr_sync_browser_only_title",
 							"locality": "unsaved",
-							"lane": "fast",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -1577,9 +1557,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"process": "fast"
-							},
 							"badges": [
 								{
 									"key": "sync",
@@ -1598,8 +1575,7 @@
 						"phase_bylines": {
 							"process": {
 								"user": "nisunze@gmail.com",
-								"when_ms": 1787743200000,
-								"lane": "fast"
+								"when_ms": 1787743200000
 							}
 						},
 						"process_settings_used": {},
@@ -1846,7 +1822,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -1862,7 +1837,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -1926,7 +1900,6 @@
 							"sync_state": "unsaved",
 							"sync_title_key": "dsr_sync_local_edits_title",
 							"locality": "unsaved",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -1942,7 +1915,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -2109,7 +2081,6 @@
 							"sync_state": "unsaved",
 							"sync_title_key": "ui_unsaved",
 							"locality": "unsaved",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -2125,7 +2096,6 @@
 							"active_edit_dirty": true,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -2283,7 +2253,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -2299,7 +2268,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -2475,7 +2443,6 @@
 							"sync_state": "unsaved",
 							"sync_title_key": "dsr_sync_local_edits_title",
 							"locality": "unsaved",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -2491,7 +2458,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -2691,7 +2657,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -2719,7 +2684,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -2916,7 +2880,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -2944,7 +2907,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -3140,7 +3102,6 @@
 							"sync_state": "unsaved",
 							"sync_title_key": "dsr_sync_local_edits_title",
 							"locality": "unsaved",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -3168,7 +3129,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -3347,7 +3307,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -3371,7 +3330,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -3539,7 +3497,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -3555,7 +3512,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -3730,7 +3686,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -3750,7 +3705,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -3913,7 +3867,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -3929,7 +3882,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -4095,7 +4047,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "fast",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -4111,9 +4062,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"process": "fast"
-							},
 							"badges": [
 								{
 									"key": "sync",
@@ -4132,8 +4080,7 @@
 						"phase_bylines": {
 							"process": {
 								"user": "ops@x.com",
-								"when_ms": 1787738400000,
-								"lane": "fast"
+								"when_ms": 1787738400000
 							}
 						},
 						"process_settings_used": {},
@@ -4289,7 +4236,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -4305,10 +4251,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {
-								"draft": "standard"
-							},
-							"legacy_standard_output": "draft-sketch",
 							"badges": [
 								{
 									"key": "sync",
@@ -4323,14 +4265,12 @@
 						"legacy_phase": "draft",
 						"creation": {
 							"user": "",
-							"when_ms": 1787738400000,
-							"lane": "standard"
+							"when_ms": 1787738400000
 						},
 						"phase_bylines": {
 							"draft": {
 								"user": "",
-								"when_ms": 1787738400000,
-								"lane": "standard"
+								"when_ms": 1787738400000
 							}
 						},
 						"process_settings_used": {},
@@ -4482,7 +4422,6 @@
 							"sync_state": "unsaved",
 							"sync_title_key": "dsr_sync_local_edits_title",
 							"locality": "unsaved",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -4498,7 +4437,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -4661,7 +4599,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -4677,7 +4614,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -4845,7 +4781,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -4861,10 +4796,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {
-								"draft": "standard"
-							},
-							"legacy_standard_output": "draft-sketch",
 							"badges": [
 								{
 									"key": "sync",
@@ -4879,14 +4810,12 @@
 						"legacy_phase": "draft",
 						"creation": {
 							"user": "draft@x.com",
-							"when_ms": 1787648400000,
-							"lane": "standard"
+							"when_ms": 1787648400000
 						},
 						"phase_bylines": {
 							"draft": {
 								"user": "draft@x.com",
-								"when_ms": 1787648400000,
-								"lane": "standard"
+								"when_ms": 1787648400000
 							}
 						},
 						"process_settings_used": {},
@@ -5041,7 +4970,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "fast",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -5057,10 +4985,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "success",
-							"phase_lanes": {
-								"process": "fast",
-								"report": "standard"
-							},
 							"badges": [
 								{
 									"key": "sync",
@@ -5079,13 +5003,11 @@
 						"phase_bylines": {
 							"process": {
 								"user": "",
-								"when_ms": 1787738400250,
-								"lane": "fast"
+								"when_ms": 1787738400250
 							},
 							"report": {
 								"user": "rep@x.com",
-								"when_ms": 1787738400750,
-								"lane": "standard"
+								"when_ms": 1787738400750
 							}
 						},
 						"process_settings_used": {},
@@ -5239,7 +5161,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -5255,10 +5176,6 @@
 							"active_edit_dirty": false,
 							"process_status": "processing",
 							"report_status": "",
-							"phase_lanes": {
-								"process": "standard"
-							},
-							"legacy_standard_output": "standard-process",
 							"badges": [
 								{
 									"key": "sync",
@@ -5277,8 +5194,7 @@
 						"phase_bylines": {
 							"process": {
 								"user": "ops@x.com",
-								"when_ms": 1787731200000,
-								"lane": "standard"
+								"when_ms": 1787731200000
 							}
 						},
 						"process_settings_used": {},
@@ -5449,7 +5365,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -5465,7 +5380,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -5632,7 +5546,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -5648,10 +5561,6 @@
 							"active_edit_dirty": false,
 							"process_status": "stale",
 							"report_status": "",
-							"phase_lanes": {
-								"draft": "standard"
-							},
-							"legacy_standard_output": "draft-sketch",
 							"badges": [
 								{
 									"key": "sync",
@@ -5666,14 +5575,12 @@
 						"legacy_phase": "draft",
 						"creation": {
 							"user": "",
-							"when_ms": 1787738400000,
-							"lane": "standard"
+							"when_ms": 1787738400000
 						},
 						"phase_bylines": {
 							"draft": {
 								"user": "",
-								"when_ms": 1787738400000,
-								"lane": "standard"
+								"when_ms": 1787738400000
 							},
 							"process": {
 								"user": "ops@x.com",
@@ -5822,7 +5729,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -5838,7 +5744,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -6001,7 +5906,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -6017,7 +5921,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -6179,7 +6082,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -6195,7 +6097,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -6357,7 +6258,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -6373,7 +6273,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -6533,7 +6432,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -6549,7 +6447,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -6712,7 +6609,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -6728,7 +6624,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -6895,7 +6790,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -6911,7 +6805,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -7074,7 +6967,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -7090,7 +6982,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -7254,7 +7145,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -7270,7 +7160,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -7431,7 +7320,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -7447,7 +7335,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -7613,7 +7500,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -7629,7 +7515,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -7792,7 +7677,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -7808,7 +7692,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -7973,7 +7856,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -7989,7 +7871,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -8152,7 +8033,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -8168,7 +8048,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -8330,7 +8209,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -8346,7 +8224,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -8507,7 +8384,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -8523,10 +8399,6 @@
 							"active_edit_dirty": false,
 							"process_status": "error",
 							"report_status": "",
-							"phase_lanes": {
-								"process": "standard"
-							},
-							"legacy_standard_output": "standard-process",
 							"badges": [
 								{
 									"key": "sync",
@@ -8545,8 +8417,7 @@
 						"phase_bylines": {
 							"process": {
 								"user": "",
-								"when_ms": 0,
-								"lane": "standard"
+								"when_ms": 0
 							}
 						},
 						"drafting_source": "ds-web",
@@ -8693,7 +8564,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -8709,7 +8579,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -8880,7 +8749,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "fast",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -8896,10 +8764,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"draft": "standard",
-								"process": "fast"
-							},
 							"badges": [
 								{
 									"key": "sync",
@@ -8919,19 +8783,16 @@
 						"legacy_phase": "draft",
 						"creation": {
 							"user": "a@x.com",
-							"when_ms": 1787220000000,
-							"lane": "standard"
+							"when_ms": 1787220000000
 						},
 						"phase_bylines": {
 							"draft": {
 								"user": "a@x.com",
-								"when_ms": 1787220000000,
-								"lane": "standard"
+								"when_ms": 1787220000000
 							},
 							"process": {
 								"user": "b@x.com",
-								"when_ms": 1787652000000,
-								"lane": "fast"
+								"when_ms": 1787652000000
 							}
 						},
 						"process_settings_used": {},
@@ -9085,7 +8946,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "fast",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -9101,10 +8961,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"draft": "standard",
-								"process": "fast"
-							},
 							"badges": [
 								{
 									"key": "sync",
@@ -9123,19 +8979,16 @@
 						"legacy_phase": "draft",
 						"creation": {
 							"user": "",
-							"when_ms": 1787220000000,
-							"lane": "standard"
+							"when_ms": 1787220000000
 						},
 						"phase_bylines": {
 							"draft": {
 								"user": "",
-								"when_ms": 1787220000000,
-								"lane": "standard"
+								"when_ms": 1787220000000
 							},
 							"process": {
 								"user": "",
-								"when_ms": 1787652000000,
-								"lane": "fast"
+								"when_ms": 1787652000000
 							}
 						},
 						"process_settings_used": {},
@@ -9295,7 +9148,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "fast",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -9311,11 +9163,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"draft": "standard",
-								"sketch": "standard",
-								"process": "fast"
-							},
 							"badges": [
 								{
 									"key": "sync",
@@ -9335,24 +9182,20 @@
 						"legacy_phase": "sketch",
 						"creation": {
 							"user": "",
-							"when_ms": 1787133600000,
-							"lane": "standard"
+							"when_ms": 1787133600000
 						},
 						"phase_bylines": {
 							"draft": {
 								"user": "",
-								"when_ms": 1787133600000,
-								"lane": "standard"
+								"when_ms": 1787133600000
 							},
 							"sketch": {
 								"user": "",
-								"when_ms": 1787220000000,
-								"lane": "standard"
+								"when_ms": 1787220000000
 							},
 							"process": {
 								"user": "",
-								"when_ms": 1787652000000,
-								"lane": "fast"
+								"when_ms": 1787652000000
 							}
 						},
 						"process_settings_used": {},
@@ -9508,7 +9351,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "fast",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -9524,9 +9366,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"process": "fast"
-							},
 							"badges": [
 								{
 									"key": "sync",
@@ -9555,8 +9394,7 @@
 							},
 							"process": {
 								"user": "",
-								"when_ms": 1787652000000,
-								"lane": "fast"
+								"when_ms": 1787652000000
 							}
 						},
 						"process_settings_used": {},
@@ -9710,7 +9548,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -9726,11 +9563,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"sketch": "standard",
-								"process": "standard"
-							},
-							"legacy_standard_output": "draft-sketch",
 							"badges": [
 								{
 									"key": "sync",
@@ -9745,19 +9577,16 @@
 						"legacy_phase": "sketch",
 						"creation": {
 							"user": "",
-							"when_ms": 1787738400000,
-							"lane": "standard"
+							"when_ms": 1787738400000
 						},
 						"phase_bylines": {
 							"sketch": {
 								"user": "",
-								"when_ms": 1787738400000,
-								"lane": "standard"
+								"when_ms": 1787738400000
 							},
 							"process": {
 								"user": "",
-								"when_ms": 1787565600000,
-								"lane": "standard"
+								"when_ms": 1787565600000
 							}
 						},
 						"process_settings_used": {},
@@ -9911,7 +9740,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "fast",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -9927,10 +9755,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"draft": "standard",
-								"process": "fast"
-							},
 							"badges": [
 								{
 									"key": "sync",
@@ -9945,19 +9769,16 @@
 						"legacy_phase": "draft",
 						"creation": {
 							"user": "",
-							"when_ms": 1787220000000,
-							"lane": "standard"
+							"when_ms": 1787220000000
 						},
 						"phase_bylines": {
 							"draft": {
 								"user": "",
-								"when_ms": 1787220000000,
-								"lane": "standard"
+								"when_ms": 1787220000000
 							},
 							"process": {
 								"user": "",
-								"when_ms": 1787565600000,
-								"lane": "fast"
+								"when_ms": 1787565600000
 							}
 						},
 						"process_settings_used": {},
@@ -10112,7 +9933,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "fast",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -10128,10 +9948,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"draft": "standard",
-								"process": "fast"
-							},
 							"badges": [
 								{
 									"key": "sync",
@@ -10146,19 +9962,16 @@
 						"legacy_phase": "draft",
 						"creation": {
 							"user": "",
-							"when_ms": 1787738400000,
-							"lane": "standard"
+							"when_ms": 1787738400000
 						},
 						"phase_bylines": {
 							"draft": {
 								"user": "",
-								"when_ms": 1787738400000,
-								"lane": "standard"
+								"when_ms": 1787738400000
 							},
 							"process": {
 								"user": "",
-								"when_ms": 1787565600000,
-								"lane": "fast"
+								"when_ms": 1787565600000
 							}
 						},
 						"process_settings_used": {},
@@ -10200,8 +10013,8 @@
 			}
 		},
 		{
-			"id": "legacy-standard-head",
-			"note": "A Standard Process run owns the head — the Migrate to Fast nudge.",
+			"id": "stored-lane-stamp-is-wire-data",
+			"note": "A run stamped with the retired lane word is a run like any other: the row answers no lane, no migration nudge, no legacy output.",
 			"request": {
 				"schema": "ds.design-status-row/v1",
 				"server_rows": [
@@ -10308,7 +10121,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -10324,10 +10136,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"process": "standard"
-							},
-							"legacy_standard_output": "standard-process",
 							"badges": [
 								{
 									"key": "sync",
@@ -10346,8 +10154,7 @@
 						"phase_bylines": {
 							"process": {
 								"user": "",
-								"when_ms": 1787565600000,
-								"lane": "standard"
+								"when_ms": 1787565600000
 							}
 						},
 						"process_settings_used": {},
@@ -10358,382 +10165,6 @@
 							"user": "",
 							"rank": "phase",
 							"age_ms": 177840000,
-							"attributed_user": ""
-						},
-						"governance": {
-							"state": "unknown",
-							"code": "",
-							"message_key": "dsr_gov_unavailable",
-							"message": "",
-							"locally_overridden": false
-						},
-						"retry": {
-							"allowed": false,
-							"source": "none",
-							"reason": "no_source"
-						},
-						"fence": {
-							"present": false
-						},
-						"kind": "individual",
-						"allows": {
-							"combinable": true,
-							"versionable": true,
-							"reportable": true,
-							"deletable": true
-						}
-					}
-				],
-				"presence_rooms": [],
-				"presence_complete": true
-			}
-		},
-		{
-			"id": "legacy-standard-head-unlaned",
-			"note": "A run that named no lane still happened, and it was Standard.",
-			"request": {
-				"schema": "ds.design-status-row/v1",
-				"server_rows": [
-					{
-						"name": "tx_1",
-						"process_metadata": {
-							"status": "success",
-							"when": "2026-08-24T10:00:00Z"
-						}
-					}
-				],
-				"local_room_headers": [],
-				"current_user_email": "nisunze@gmail.com",
-				"now_ms": 1787743440000,
-				"room_targets": []
-			},
-			"expected_ts": {
-				"names": [
-					"tx_1"
-				],
-				"presence_rooms": [],
-				"presence_complete": true,
-				"rows": [
-					{
-						"client": {
-							"cached": false,
-							"dirty": false,
-							"server_known": true,
-							"local": false
-						},
-						"view": {
-							"sync_state": "saved",
-							"locality": "remote",
-							"lane": "standard",
-							"combined_state": "stale",
-							"report_state": "stale",
-							"report_has_files": false,
-							"version": {
-								"version": 0,
-								"label": "v0",
-								"latest": 0,
-								"restored": false,
-								"unversioned": true
-							},
-							"show_sync_badge": true,
-							"server_known": true,
-							"client_dirty": false,
-							"active_edit_dirty": false,
-							"process_status": "success",
-							"report_status": "",
-							"locality_hint": null,
-							"phase_lanes": {
-								"draft": "",
-								"sketch": "",
-								"process": "S",
-								"report": "",
-								"combined": ""
-							},
-							"legacy_standard_output": "standard-process"
-						},
-						"phase_ownership": {
-							"superseded_phase": null
-						},
-						"latest_action": {
-							"label": "Process",
-							"when_ms": 1787565600000,
-							"user": "",
-							"attributed_user": ""
-						},
-						"governance": {
-							"state": "locked",
-							"label": "Blocked",
-							"code": "",
-							"message": "",
-							"filter": "locked"
-						},
-						"retry": {
-							"allowed": false,
-							"source": ""
-						},
-						"kind": {
-							"special": false,
-							"combinable": true,
-							"versionable": true
-						}
-					}
-				]
-			},
-			"expected": {
-				"schema": "ds.design-status-row/v1",
-				"rows": [
-					{
-						"name": "tx_1",
-						"origin": "server",
-						"server_index": 0,
-						"client": {
-							"cached": false,
-							"dirty": false,
-							"server_known": true,
-							"local": false
-						},
-						"view": {
-							"sync_state": "saved",
-							"sync_title_key": "dsr_sync_saved_title",
-							"locality": "remote",
-							"lane": "standard",
-							"combined_state": "stale",
-							"report_state": "stale",
-							"report_has_files": false,
-							"version": {
-								"version": 0,
-								"latest": 0,
-								"restored": false,
-								"unversioned": true
-							},
-							"show_sync_badge": true,
-							"server_known": true,
-							"client_dirty": false,
-							"active_edit_dirty": false,
-							"process_status": "success",
-							"report_status": "",
-							"phase_lanes": {
-								"process": "standard"
-							},
-							"legacy_standard_output": "standard-process",
-							"badges": [
-								{
-									"key": "sync",
-									"label_key": "dsr_badge_saved",
-									"tone": "slate"
-								}
-							]
-						},
-						"phase_ownership": {
-							"owner": "none"
-						},
-						"creation": {
-							"user": "",
-							"when_ms": 1787565600000
-						},
-						"phase_bylines": {
-							"process": {
-								"user": "",
-								"when_ms": 1787565600000,
-								"lane": "standard"
-							}
-						},
-						"process_settings_used": {},
-						"saved_layer_names": [],
-						"latest_action": {
-							"label_key": "dsr_action_process",
-							"when_ms": 1787565600000,
-							"user": "",
-							"rank": "phase",
-							"age_ms": 177840000,
-							"attributed_user": ""
-						},
-						"governance": {
-							"state": "unknown",
-							"code": "",
-							"message_key": "dsr_gov_unavailable",
-							"message": "",
-							"locally_overridden": false
-						},
-						"retry": {
-							"allowed": false,
-							"source": "none",
-							"reason": "no_source"
-						},
-						"fence": {
-							"present": false
-						},
-						"kind": "individual",
-						"allows": {
-							"combinable": true,
-							"versionable": true,
-							"reportable": true,
-							"deletable": true
-						}
-					}
-				],
-				"presence_rooms": [],
-				"presence_complete": true
-			}
-		},
-		{
-			"id": "lane-stale-is-not-a-run",
-			"note": "A stale save-invalidation is not a run and claims no lane.",
-			"request": {
-				"schema": "ds.design-status-row/v1",
-				"server_rows": [
-					{
-						"name": "tx_1",
-						"process_metadata": {
-							"status": "stale"
-						},
-						"report_metadata": {
-							"status": "stale"
-						}
-					}
-				],
-				"local_room_headers": [],
-				"current_user_email": "nisunze@gmail.com",
-				"now_ms": 1787743440000,
-				"room_targets": []
-			},
-			"expected_ts": {
-				"names": [
-					"tx_1"
-				],
-				"presence_rooms": [],
-				"presence_complete": true,
-				"rows": [
-					{
-						"client": {
-							"cached": false,
-							"dirty": false,
-							"server_known": true,
-							"local": false
-						},
-						"view": {
-							"sync_state": "saved",
-							"locality": "remote",
-							"lane": "standard",
-							"combined_state": "stale",
-							"report_state": "stale",
-							"report_has_files": false,
-							"version": {
-								"version": 0,
-								"label": "v0",
-								"latest": 0,
-								"restored": false,
-								"unversioned": true
-							},
-							"show_sync_badge": true,
-							"server_known": true,
-							"client_dirty": false,
-							"active_edit_dirty": false,
-							"process_status": "stale",
-							"report_status": "stale",
-							"locality_hint": null,
-							"phase_lanes": {
-								"draft": "",
-								"sketch": "",
-								"process": "",
-								"report": "",
-								"combined": ""
-							},
-							"legacy_standard_output": null
-						},
-						"phase_ownership": {
-							"superseded_phase": null
-						},
-						"latest_action": {
-							"label": "",
-							"when_ms": 0,
-							"user": "",
-							"attributed_user": ""
-						},
-						"governance": {
-							"state": "locked",
-							"label": "Blocked",
-							"code": "",
-							"message": "",
-							"filter": "locked"
-						},
-						"retry": {
-							"allowed": false,
-							"source": ""
-						},
-						"kind": {
-							"special": false,
-							"combinable": true,
-							"versionable": true
-						}
-					}
-				]
-			},
-			"expected": {
-				"schema": "ds.design-status-row/v1",
-				"rows": [
-					{
-						"name": "tx_1",
-						"origin": "server",
-						"server_index": 0,
-						"client": {
-							"cached": false,
-							"dirty": false,
-							"server_known": true,
-							"local": false
-						},
-						"view": {
-							"sync_state": "saved",
-							"sync_title_key": "dsr_sync_saved_title",
-							"locality": "remote",
-							"lane": "standard",
-							"combined_state": "stale",
-							"report_state": "stale",
-							"report_has_files": false,
-							"version": {
-								"version": 0,
-								"latest": 0,
-								"restored": false,
-								"unversioned": true
-							},
-							"show_sync_badge": true,
-							"server_known": true,
-							"client_dirty": false,
-							"active_edit_dirty": false,
-							"process_status": "stale",
-							"report_status": "stale",
-							"phase_lanes": {},
-							"badges": [
-								{
-									"key": "sync",
-									"label_key": "dsr_badge_saved",
-									"tone": "slate"
-								}
-							]
-						},
-						"phase_ownership": {
-							"owner": "none"
-						},
-						"creation": {
-							"user": "",
-							"when_ms": 0
-						},
-						"phase_bylines": {
-							"process": {
-								"user": "",
-								"when_ms": 0
-							},
-							"report": {
-								"user": "",
-								"when_ms": 0
-							}
-						},
-						"process_settings_used": {},
-						"saved_layer_names": [],
-						"latest_action": {
-							"label_key": "",
-							"when_ms": 0,
-							"user": "",
 							"attributed_user": ""
 						},
 						"governance": {
@@ -10868,7 +10299,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -10884,7 +10314,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -11048,7 +10477,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -11065,7 +10493,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -11227,7 +10654,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -11243,7 +10669,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -11404,7 +10829,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -11420,7 +10844,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": [
 								{
 									"key": "sync",
@@ -11587,7 +11010,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "fast",
 							"combined_state": "success",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -11603,9 +11025,6 @@
 							"active_edit_dirty": false,
 							"process_status": "success",
 							"report_status": "",
-							"phase_lanes": {
-								"process": "fast"
-							},
 							"badges": []
 						},
 						"phase_ownership": {
@@ -11618,8 +11037,7 @@
 						"phase_bylines": {
 							"process": {
 								"user": "",
-								"when_ms": 1787565600000,
-								"lane": "fast"
+								"when_ms": 1787565600000
 							}
 						},
 						"process_settings_used": {},
@@ -11767,7 +11185,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "success",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -11783,7 +11200,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": []
 						},
 						"phase_ownership": {
@@ -11934,7 +11350,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -11950,7 +11365,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": []
 						},
 						"phase_ownership": {
@@ -12101,7 +11515,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -12117,7 +11530,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": []
 						},
 						"phase_ownership": {
@@ -12268,7 +11680,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -12284,7 +11695,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": []
 						},
 						"phase_ownership": {
@@ -12435,7 +11845,6 @@
 							"sync_state": "saved",
 							"sync_title_key": "dsr_sync_saved_title",
 							"locality": "remote",
-							"lane": "standard",
 							"combined_state": "stale",
 							"report_state": "stale",
 							"report_has_files": false,
@@ -12451,7 +11860,6 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {},
 							"badges": []
 						},
 						"phase_ownership": {

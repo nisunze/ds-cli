@@ -1,7 +1,7 @@
 {
   "schema": "ds.application-settings-cases/v1",
-  "purpose": "The application settings record, replayed. Each case carries the op (without the schema wrapper) and the answer the kernel must give: the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is malformed. ds-web replays the same file through the vendored WASM, so no default, bound, first-launch rule, legacy-lane migration or lane decision can be true on one host and not another.",
-  "source": "Transcribed from ds-web src/lib/stores/applicationSettings.ts (DEFAULT_APPLICATION_SETTINGS, every normalize* helper, normalizeSettings, loadApplicationSettings, updateApplicationSettings, resetApplicationSettings, mapPerformanceProfileForBudget, workingAreaUpdateIntervalLabel), src/lib/batch/browser-bulk.ts (normalizeBrowserBatchConcurrency), src/lib/stores/processingLane.ts (standardLaneAvailable, normalizeLane, setProcessingLane), and every case of src/tests/application-settings.test.ts and the store cases of src/tests/processing-lane.test.ts, 2026-09-12.",
+  "purpose": "The application settings record, replayed. Each case carries the op (without the schema wrapper) and the answer the kernel must give: the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is malformed. ds-web replays the same file through the vendored WASM, so no default, bound, first-launch rule or retired-key drop can be true on one host and not another.",
+  "source": "Transcribed from ds-web src/lib/stores/applicationSettings.ts (DEFAULT_APPLICATION_SETTINGS, every normalize* helper, normalizeSettings, loadApplicationSettings, updateApplicationSettings, resetApplicationSettings, mapPerformanceProfileForBudget, workingAreaUpdateIntervalLabel), src/lib/batch/browser-bulk.ts (normalizeBrowserBatchConcurrency), and every case of src/tests/application-settings.test.ts, 2026-09-12. The processing-lane preference and its ops (lane, set_lane, legacy_lane, lane_facts) were removed on 2026-09-22 — there is one way to process a transformer; the record is ds.application-settings/v2 and a saved blob that still carries processingLane / standardLaneConfirmedAt / fastLaneConfirmedAt is read tolerantly, dropped, and written back once.",
   "note": "Re-record expected with DS_APPLICATION_SETTINGS_CASES_WRITE=1 cargo test --test application_settings_cases after a deliberate rule change, and say why in the commit.",
   "cases": [
     {
@@ -10,14 +10,9 @@
       "request": {
         "kind": "normalize",
         "saved": null,
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -63,11 +58,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -81,14 +74,9 @@
       "request": {
         "kind": "normalize",
         "saved": null,
-        "legacy_lane": null,
         "device": {
           "phone": true,
           "my_location_default": true
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -134,11 +122,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -155,14 +141,9 @@
           "popupMode": "normal",
           "showMyLocationControl": false
         },
-        "legacy_lane": null,
         "device": {
           "phone": true,
           "my_location_default": true
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -208,11 +189,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": false,
@@ -229,14 +208,9 @@
           "popupMode": null,
           "showMyLocationControl": null
         },
-        "legacy_lane": null,
         "device": {
           "phone": true,
           "my_location_default": true
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -282,11 +256,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -302,14 +274,9 @@
         "saved": {
           "showMyLocationControl": false
         },
-        "legacy_lane": null,
         "device": {
           "phone": true,
           "my_location_default": true
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -355,11 +322,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -373,14 +338,9 @@
       "request": {
         "kind": "normalize",
         "saved": "garbage",
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -426,11 +386,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -448,14 +406,9 @@
           "showImageRotationInProperties": true,
           "showZoomLevelReadout": true
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -501,156 +454,10 @@
           "showZoomLevelReadout": true,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-legacy-lane-string-migrates-and-is-written",
-      "why": "The oldest lane record was a bare string under ds_processing_lane; with no processingLane in the blob it migrates and the store writes the merged record back once.",
-      "request": {
-        "kind": "normalize",
-        "saved": {},
-        "legacy_lane": "fast",
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": true,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-legacy-lane-record-migrates-and-is-written",
-      "why": "The later lane record was {lane}; it migrates the same way and is written back the same way.",
-      "request": {
-        "kind": "normalize",
-        "saved": null,
-        "legacy_lane": {
-          "lane": "fast"
-        },
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": true,
         "first_launch": {
           "popup_mode": true,
           "my_location": true
@@ -663,16 +470,9 @@
       "request": {
         "kind": "normalize",
         "saved": null,
-        "legacy_lane": {
-          "lane": "standard"
-        },
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -718,159 +518,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
-        "persist": true,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-legacy-unknown-lane-reads-fast-and-is-still-written",
-      "why": "processing-lane.test 'ignores unknown stored values': {lane:'unknown'} is truthy, so it migrates, normalises to fast, and the store wrote that back.",
-      "request": {
-        "kind": "normalize",
-        "saved": null,
-        "legacy_lane": {
-          "lane": "unknown"
-        },
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": true,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-saved-lane-blocks-the-legacy-record",
-      "why": "A blob that already carries a processingLane is never overwritten by the legacy record, and nothing is written back.",
-      "request": {
-        "kind": "normalize",
-        "saved": {
-          "processingLane": "fast"
-        },
-        "legacy_lane": {
-          "lane": "standard"
-        },
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -879,611 +529,19 @@
       }
     },
     {
-      "id": "normalize-saved-confirmed-standard-blocks-the-legacy-record",
-      "why": "A confirmed Standard preference in the blob is kept with its marker; the legacy fast record is ignored and persist stays false.",
-      "request": {
-        "kind": "normalize",
-        "saved": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "legacy_lane": "fast",
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-saved-invalid-lane-still-blocks-the-legacy-record",
-      "why": "`!saved?.processingLane` is a truthiness test: an unreadable but truthy saved lane blocks the migration and normalises to fast without a write-back.",
-      "request": {
-        "kind": "normalize",
-        "saved": {
-          "processingLane": "weird"
-        },
-        "legacy_lane": {
-          "lane": "fast"
-        },
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-legacy-blank-lane-is-no-migration",
-      "why": "An empty legacy string is falsy: nothing migrates and nothing is written back.",
-      "request": {
-        "kind": "normalize",
-        "saved": null,
-        "legacy_lane": "",
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-legacy-record-without-lane-is-no-migration",
-      "why": "A legacy record with no lane key, or a value that is neither a string nor an object, yields no lane (`legacyLane?.lane` is undefined).",
-      "request": {
-        "kind": "normalize",
-        "saved": null,
-        "legacy_lane": {
-          "other": "fast"
-        },
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-legacy-number-is-no-migration",
-      "why": "A number under the legacy key has no `.lane` and is not a string, so it is not a lane.",
-      "request": {
-        "kind": "normalize",
-        "saved": null,
-        "legacy_lane": 5,
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-standard-without-confirmation-reads-fast",
-      "why": "processing-lane.test 'falls back to fast when stored standard mode was never confirmed': Standard needs its confirmation marker or it is fast.",
-      "request": {
-        "kind": "normalize",
-        "saved": {
-          "processingLane": "standard"
-        },
-        "legacy_lane": null,
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-standard-with-confirmation-is-kept-with-its-marker",
-      "why": "processing-lane.test 'restores standard mode only with confirmation metadata': the marker rides with the preference and a stale fast marker is dropped.",
+      "id": "normalize-retired-lane-keys-are-dropped-and-written-back-once",
+      "why": "There is one way to process a transformer (2026-09-22): the processing-lane preference is no longer a setting. A blob persisted by an earlier build still carries processingLane / standardLaneConfirmedAt / fastLaneConfirmedAt; they are read tolerantly, dropped from the record, and persist is true so the host writes the cleaned record back once.",
       "request": {
         "kind": "normalize",
         "saved": {
           "processingLane": "standard",
           "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
-          "fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z"
-        },
-        "legacy_lane": null,
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-fast-with-its-marker-keeps-it",
-      "why": "processing-lane.test 'restores fast mode when the setting carries an explicit confirmation marker': the deprecated fast marker is carried while fast is the preference.",
-      "request": {
-        "kind": "normalize",
-        "saved": {
-          "processingLane": "fast",
-          "fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z"
-        },
-        "legacy_lane": null,
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
+          "mapMemoryBudget": 5
         },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-blank-confirmation-is-no-confirmation",
-      "why": "A whitespace-only marker is not a timestamp (`value.trim()` is falsy), so Standard is not confirmed and reads fast without a marker.",
-      "request": {
-        "kind": "normalize",
-        "saved": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "   "
-        },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -1528,13 +586,11 @@
           "snapToCoordinateGrid": true,
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
+          "mapMemoryBudget": 5,
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
-        "persist": false,
+        "persist": true,
         "first_launch": {
           "popup_mode": true,
           "my_location": true
@@ -1565,14 +621,9 @@
           "maxParallelBatchProcessing": 1000,
           "workingAreaUpdateIntervalMinutes": 9999
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -1618,11 +669,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 300,
           "mapMemoryBudget": 5,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 100,
           "workingAreaUpdateIntervalMinutes": 1440
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -1654,14 +703,9 @@
           "maxParallelBatchProcessing": 0,
           "workingAreaUpdateIntervalMinutes": 5
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -1707,11 +751,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 1,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 1,
           "workingAreaUpdateIntervalMinutes": 15
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -1733,14 +775,9 @@
           "profileLowestWireDropM": -1,
           "coordinateGridIntervalM": -1
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -1786,11 +823,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -1811,14 +846,9 @@
           "maxParallelBatchProcessing": "7.9",
           "boxZoomHideMinZoom": "12"
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -1864,11 +894,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 4,
           "mapMemoryBudget": 4,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 7,
           "workingAreaUpdateIntervalMinutes": 15
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -1892,14 +920,9 @@
           "profileVerticalExaggeration": 7.3,
           "coordinateGridIntervalM": 33.3
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -1945,11 +968,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 3,
           "mapMemoryBudget": 5,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 7,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -1977,14 +998,9 @@
           "coordinateGridIntervalM": [],
           "profileAlignmentGapM": "far"
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2030,11 +1046,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -2056,14 +1070,9 @@
           "maxParallelBatchProcessing": "",
           "profileAlignmentGapM": ""
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2109,11 +1118,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 1,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -2138,14 +1145,9 @@
           "maxParallelBatchProcessing": null,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2191,11 +1193,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -2212,14 +1212,9 @@
           "workingAreaUpdateIntervalMinutes": "never",
           "coordinateGridIntervalM": "auto"
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2265,11 +1260,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -2285,14 +1278,9 @@
         "saved": {
           "workingAreaUpdateIntervalMinutes": 90
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2338,11 +1326,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": 90
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -2363,14 +1349,9 @@
           "maxParallelBatchProcessing": "0b11",
           "boxZoomHideMinZoom": " 7 "
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2416,11 +1397,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 100,
           "mapMemoryBudget": 4,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 3,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -2430,24 +1409,18 @@
     },
     {
       "id": "normalize-enumerations-fall-back-to-their-default",
-      "why": "application-settings.test: 'bad' placement → bottom-left, 'all' grid label → top-left; an unknown popup mode, fill mode or lane word takes its default too.",
+      "why": "application-settings.test: 'bad' placement → bottom-left, 'all' grid label → top-left; an unknown popup mode or fill mode takes its default too.",
       "request": {
         "kind": "normalize",
         "saved": {
           "featureHoverPopupPlacement": "bad",
           "coordinateGridLabelPlacement": "all",
           "popupMode": "huge",
-          "profileGroundFillMode": "fill",
-          "processingLane": 7
+          "profileGroundFillMode": "fill"
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2493,11 +1466,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": false,
@@ -2516,14 +1487,9 @@
           "popupMode": "minimal",
           "profileGroundFillMode": "to_clearance"
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2569,11 +1535,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": false,
@@ -2591,14 +1555,9 @@
           "profileClearanceColor": " #ABCDEF ",
           "profileTerrainPointColor": "#E5E7EB"
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2644,11 +1603,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -2665,14 +1622,9 @@
           "profileTerrainPointColor": "#94a3b8",
           "profileGroundColor": "#38bdf8"
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2718,11 +1670,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -2738,14 +1688,9 @@
         "saved": {
           "profileTerrainPointColor": "#38bdf8"
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2791,11 +1736,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -2823,14 +1766,9 @@
             ]
           ]
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -2883,11 +1821,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -3504,14 +2440,9 @@
             "id-599"
           ]
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -4058,11 +2989,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -4078,14 +3007,9 @@
         "saved": {
           "hiddenProfileAlignmentIds": "side-a"
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -4131,11 +3055,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -4156,14 +3078,9 @@
           "showCoordinateGrid": false,
           "showProfileSectionLabels": true
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -4209,11 +3126,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -4229,14 +3144,9 @@
         "saved": {
           "profileTerrainPointRadiusPx": 3
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -4282,11 +3192,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -4303,14 +3211,9 @@
           "profileTerrainPointRadiusPx": 3,
           "profileTerrainPointWidthPx": 4
         },
-        "legacy_lane": null,
         "device": {
           "phone": false,
           "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -4356,11 +3259,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         },
-        "lane": "fast",
         "persist": false,
         "first_launch": {
           "popup_mode": true,
@@ -4418,23 +3319,76 @@
           "showZoomLevelReadout": true,
           "gpsPositionUpdateIntervalSeconds": 5,
           "mapMemoryBudget": 4,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
           "maxParallelBatchProcessing": 25,
           "workingAreaUpdateIntervalMinutes": 120
         },
-        "legacy_lane": null,
         "device": {
           "phone": true,
           "my_location_default": true
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
         "settings": {
+          "hideBoxZoomAtHighZoom": false,
+          "boxZoomHideMinZoom": 12,
+          "featureHoverPopupsEnabled": false,
+          "featureHoverPopupMinZoom": 11,
+          "featureHoverPopupPlacement": "top-right",
+          "popupMode": "minimal",
+          "profileVerticalExaggeration": 7.3,
+          "profileAlignmentGapM": 250,
+          "profileTerrainCorridorHalfWidthM": 20,
+          "profileTerrainGapToleranceM": 80,
+          "profileGroundClearanceOffsetM": 6.5,
+          "profileLowestWireDropM": 1.2,
+          "profileGroundFillMode": "to_floor",
+          "showProfileGround": false,
+          "showProfileSideProfiles": true,
+          "showProfileClearanceLine": false,
+          "showProfileTerrainPoints": false,
+          "showProfileTerrainOrdinates": true,
+          "showProfileGrid": false,
+          "profileGroundColor": "#123456",
+          "profileClearanceColor": "#654321",
+          "profileTerrainPointColor": "#e5e7eb",
+          "profileTerrainOrdinateOpacity": 0.4,
+          "profileGroundWidthPx": 2.25,
+          "profileClearanceWidthPx": 0.75,
+          "profileTerrainPointWidthPx": 3.5,
+          "hiddenProfileAlignmentIds": [
+            "side-b",
+            "side-a"
+          ],
+          "showProfileStructures": false,
+          "showProfileWire": false,
+          "showProfileSectionLabels": true,
+          "showProfileSpanDistances": false,
+          "showProfileStructureLabels": false,
+          "showMapNavigationControls": true,
+          "showMyLocationControl": true,
+          "showCoordinateGrid": false,
+          "coordinateGridIntervalM": 250,
+          "coordinateGridLabelPlacement": "bottom-right",
+          "snapToCoordinateGrid": false,
+          "showZoomLevelReadout": true,
+          "gpsPositionUpdateIntervalSeconds": 5,
+          "mapMemoryBudget": 4,
+          "maxParallelBatchProcessing": 25,
+          "workingAreaUpdateIntervalMinutes": 120
+        },
+        "persist": false,
+        "first_launch": {
+          "popup_mode": false,
+          "my_location": false
+        }
+      }
+    },
+    {
+      "id": "normalize-a-v1-record-reopens-without-its-lane-keys-and-is-written-back",
+      "why": "A record persisted under ds.application-settings/v1 carried the lane preference; under v2 it reopens with every other key and value unchanged, the three retired keys dropped, and persist true so the cleaned record is written back exactly once.",
+      "request": {
+        "kind": "normalize",
+        "saved": {
           "hideBoxZoomAtHighZoom": false,
           "boxZoomHideMinZoom": 12,
           "featureHoverPopupsEnabled": false,
@@ -4484,229 +3438,64 @@
           "maxParallelBatchProcessing": 25,
           "workingAreaUpdateIntervalMinutes": 120
         },
-        "lane": "fast",
-        "persist": false,
+        "device": {
+          "phone": false,
+          "my_location_default": false
+        }
+      },
+      "expected": {
+        "settings": {
+          "hideBoxZoomAtHighZoom": false,
+          "boxZoomHideMinZoom": 12,
+          "featureHoverPopupsEnabled": false,
+          "featureHoverPopupMinZoom": 11,
+          "featureHoverPopupPlacement": "top-right",
+          "popupMode": "minimal",
+          "profileVerticalExaggeration": 7.3,
+          "profileAlignmentGapM": 250,
+          "profileTerrainCorridorHalfWidthM": 20,
+          "profileTerrainGapToleranceM": 80,
+          "profileGroundClearanceOffsetM": 6.5,
+          "profileLowestWireDropM": 1.2,
+          "profileGroundFillMode": "to_floor",
+          "showProfileGround": false,
+          "showProfileSideProfiles": true,
+          "showProfileClearanceLine": false,
+          "showProfileTerrainPoints": false,
+          "showProfileTerrainOrdinates": true,
+          "showProfileGrid": false,
+          "profileGroundColor": "#123456",
+          "profileClearanceColor": "#654321",
+          "profileTerrainPointColor": "#e5e7eb",
+          "profileTerrainOrdinateOpacity": 0.4,
+          "profileGroundWidthPx": 2.25,
+          "profileClearanceWidthPx": 0.75,
+          "profileTerrainPointWidthPx": 3.5,
+          "hiddenProfileAlignmentIds": [
+            "side-b",
+            "side-a"
+          ],
+          "showProfileStructures": false,
+          "showProfileWire": false,
+          "showProfileSectionLabels": true,
+          "showProfileSpanDistances": false,
+          "showProfileStructureLabels": false,
+          "showMapNavigationControls": true,
+          "showMyLocationControl": true,
+          "showCoordinateGrid": false,
+          "coordinateGridIntervalM": 250,
+          "coordinateGridLabelPlacement": "bottom-right",
+          "snapToCoordinateGrid": false,
+          "showZoomLevelReadout": true,
+          "gpsPositionUpdateIntervalSeconds": 5,
+          "mapMemoryBudget": 4,
+          "maxParallelBatchProcessing": 25,
+          "workingAreaUpdateIntervalMinutes": 120
+        },
+        "persist": true,
         "first_launch": {
           "popup_mode": false,
           "my_location": false
-        }
-      }
-    },
-    {
-      "id": "normalize-confirmed-standard-in-a-fast-only-project-keeps-the-preference",
-      "why": "processing-lane.test 'withholds standard when the active project does not support it, without rewriting the setting': the record keeps Standard, the lane answered is fast.",
-      "request": {
-        "kind": "normalize",
-        "saved": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "legacy_lane": null,
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": false
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-confirmed-standard-on-desktop-keeps-the-preference",
-      "why": "processing-lane.test 'forces fast in the installed app even for a stored, confirmed standard setting': the installed shell is fast-only by ruling and the preference is not rewritten.",
-      "request": {
-        "kind": "normalize",
-        "saved": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "legacy_lane": null,
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": true,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast",
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
-        }
-      }
-    },
-    {
-      "id": "normalize-without-lane-facts-answers-no-lane",
-      "why": "A host that has no lane facts at boot gets the record without a lane; the lane is asked separately through the lane op.",
-      "request": {
-        "kind": "normalize",
-        "saved": {
-          "showZoomLevelReadout": true
-        },
-        "legacy_lane": null,
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": true,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "persist": false,
-        "first_launch": {
-          "popup_mode": true,
-          "my_location": true
         }
       }
     },
@@ -4765,224 +3554,22 @@
           "showZoomLevelReadout": true,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
-      }
-    },
-    {
-      "id": "patch-standard-without-confirmation-stays-fast",
-      "why": "application-settings.test 'defaults to Fast and requires confirmation metadata for Standard': a bare processingLane 'standard' patch does not change the lane.",
-      "request": {
-        "kind": "patch",
-        "current": {},
-        "patch": {
-          "processingLane": "standard"
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "patch-standard-with-confirmation-is-standard",
-      "why": "The same test's second step: Standard with its confirmation marker is the preference and the marker is carried in the record.",
-      "request": {
-        "kind": "patch",
-        "current": {},
-        "patch": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "patch-back-to-fast-drops-the-standard-marker",
-      "why": "The same test's last step: patching processingLane fast over a confirmed Standard drops standardLaneConfirmedAt.",
-      "request": {
-        "kind": "patch",
-        "current": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "patch": {
-          "processingLane": "fast"
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
       }
     },
     {
       "id": "patch-null-clears-a-key",
-      "why": "JSON has no undefined: a null in the patch clears the key exactly as `{...current, key: undefined}` did, so clearing the Standard marker drops the lane to fast.",
+      "why": "JSON has no undefined: a null in the patch clears the key exactly as `{...current, key: undefined}` did, so the key reads as its shipped default.",
       "request": {
         "kind": "patch",
         "current": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
+          "showZoomLevelReadout": true,
+          "mapMemoryBudget": 5
         },
         "patch": {
-          "standardLaneConfirmedAt": null
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
+          "showZoomLevelReadout": null
         }
       },
       "expected": {
@@ -5027,12 +3614,10 @@
           "snapToCoordinateGrid": true,
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
+          "mapMemoryBudget": 5,
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
+        }
       }
     },
     {
@@ -5050,9 +3635,7 @@
             "a"
           ],
           "coordinateGridIntervalM": 50,
-          "boxZoomHideMinZoom": 12,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
+          "boxZoomHideMinZoom": 12
         },
         "patch": {
           "profileGroundWidthPx": null,
@@ -5063,10 +3646,6 @@
           "hiddenProfileAlignmentIds": null,
           "coordinateGridIntervalM": null,
           "boxZoomHideMinZoom": null
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
         }
       },
       "expected": {
@@ -5112,12 +3691,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
+        }
       }
     },
     {
@@ -5186,7 +3762,6 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
@@ -5245,7 +3820,6 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
@@ -5306,7 +3880,6 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
@@ -5366,7 +3939,6 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
@@ -5426,7 +3998,6 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
@@ -5485,7 +4056,6 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
@@ -5493,7 +4063,7 @@
     },
     {
       "id": "patch-current-is-normalised-too",
-      "why": "The current record is read through the same normaliser as the patch, so a stale key or an out-of-range value already in the store cannot survive a change.",
+      "why": "The current record is read through the same normaliser as the patch, so a stale key (a retired lane key included) or an out-of-range value already in the store cannot survive a change.",
       "request": {
         "kind": "patch",
         "current": {
@@ -5548,76 +4118,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 5,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
-      }
-    },
-    {
-      "id": "patch-answers-the-lane-when-the-facts-are-given",
-      "why": "With lane facts in the request the patched record's effective lane rides in the same answer: a confirmed Standard on a fast-only project is fast.",
-      "request": {
-        "kind": "patch",
-        "current": {},
-        "patch": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": false
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
       }
     },
     {
@@ -5682,7 +4185,6 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
@@ -5749,7 +4251,6 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
@@ -5816,81 +4317,9 @@
           "showZoomLevelReadout": false,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 3,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
-      }
-    },
-    {
-      "id": "reset-of-the-standard-marker-drops-the-lane-to-fast",
-      "why": "A confirmation marker has no shipped default, so resetting it clears it and Standard is no longer confirmed.",
-      "request": {
-        "kind": "reset",
-        "current": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "keys": [
-          "standardLaneConfirmedAt"
-        ],
-        "device": {
-          "phone": false,
-          "my_location_default": false
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
       }
     },
     {
@@ -5951,7 +4380,6 @@
           "showZoomLevelReadout": true,
           "gpsPositionUpdateIntervalSeconds": 1,
           "mapMemoryBudget": 5,
-          "processingLane": "fast",
           "maxParallelBatchProcessing": 10,
           "workingAreaUpdateIntervalMinutes": null
         }
@@ -5974,384 +4402,6 @@
       },
       "expected": {
         "error": "reset names settings that do not exist: bogus"
-      }
-    },
-    {
-      "id": "lane-confirmed-standard-on-web-with-project-support",
-      "why": "processing-lane.test 'persists standard in IndexedDB and scopes it to processing routes': on deployed web with a supporting project a confirmed Standard is Standard.",
-      "request": {
-        "kind": "lane",
-        "settings": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "lane-project-without-standard-is-fast",
-      "why": "The active project must declare Standard in its processing_lanes property; absent, the lane is fast and the preference is untouched.",
-      "request": {
-        "kind": "lane",
-        "settings": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": false
-        }
-      },
-      "expected": {
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "lane-desktop-is-fast",
-      "why": "processing-lane.test 'offers the standard lane on web and withholds it in the installed app': the installed shell is fast-only by ruling (2026-08-13).",
-      "request": {
-        "kind": "lane",
-        "settings": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "lane_facts": {
-          "desktop_surface": true,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "lane-unconfirmed-standard-is-fast",
-      "why": "The record is normalised before the lane is read, so a raw blob claiming Standard without its marker cannot reach the Standard lane.",
-      "request": {
-        "kind": "lane",
-        "settings": {
-          "processingLane": "standard"
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "lane-default-record-is-fast",
-      "why": "processing-lane.test 'defaults processing calls to the fast path': nothing saved is fast everywhere.",
-      "request": {
-        "kind": "lane",
-        "settings": {},
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "lane-fast-preference-stays-fast-on-web",
-      "why": "processing-lane.test 'restores fast mode from stored settings without a confirmation marker': fast is fast even where Standard is offered.",
-      "request": {
-        "kind": "lane",
-        "settings": {
-          "processingLane": "fast"
-        },
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "set-lane-standard-on-web-is-written-with-its-confirmation",
-      "why": "setProcessingLane('standard') where Standard is reachable writes the preference with the confirmation time and clears the deprecated fast marker.",
-      "request": {
-        "kind": "set_lane",
-        "current": {
-          "fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z"
-        },
-        "requested": "standard",
-        "confirmed_at": "2026-05-31T10:00:00.000Z",
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "set-lane-standard-on-desktop-is-written-as-fast",
-      "why": "The write path refuses through the same seam: on the installed shell a requested Standard is written as fast with no marker, so a desktop operator can never select Standard, see it selected, and silently get Fast.",
-      "request": {
-        "kind": "set_lane",
-        "current": {},
-        "requested": "standard",
-        "confirmed_at": "2026-05-31T10:00:00.000Z",
-        "lane_facts": {
-          "desktop_surface": true,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "set-lane-standard-in-a-fast-only-project-is-written-as-fast",
-      "why": "A project that does not declare Standard withholds it at the write path too.",
-      "request": {
-        "kind": "set_lane",
-        "current": {},
-        "requested": "standard",
-        "confirmed_at": "2026-05-31T10:00:00.000Z",
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": false
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "set-lane-fast-drops-the-standard-marker",
-      "why": "setProcessingLane('fast') writes fast and clears standardLaneConfirmedAt; a fast marker already in the record is left as it was.",
-      "request": {
-        "kind": "set_lane",
-        "current": {
-          "processingLane": "standard",
-          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
-        },
-        "requested": "fast",
-        "confirmed_at": "2026-06-01T00:00:00.000Z",
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "settings": {
-          "hideBoxZoomAtHighZoom": true,
-          "boxZoomHideMinZoom": 15,
-          "featureHoverPopupsEnabled": true,
-          "featureHoverPopupMinZoom": 14,
-          "featureHoverPopupPlacement": "bottom-left",
-          "popupMode": "normal",
-          "profileVerticalExaggeration": 10,
-          "profileAlignmentGapM": 100,
-          "profileTerrainCorridorHalfWidthM": 15,
-          "profileTerrainGapToleranceM": 100,
-          "profileGroundClearanceOffsetM": 6,
-          "profileLowestWireDropM": 0,
-          "profileGroundFillMode": "none",
-          "showProfileGround": true,
-          "showProfileSideProfiles": false,
-          "showProfileClearanceLine": true,
-          "showProfileTerrainPoints": true,
-          "showProfileTerrainOrdinates": false,
-          "showProfileGrid": true,
-          "profileGroundColor": "#38bdf8",
-          "profileClearanceColor": "#fb7185",
-          "profileTerrainPointColor": "#d1d5db",
-          "profileTerrainOrdinateOpacity": 0.25,
-          "profileGroundWidthPx": 1.5,
-          "profileClearanceWidthPx": 1.25,
-          "profileTerrainPointWidthPx": 2.5,
-          "hiddenProfileAlignmentIds": [],
-          "showProfileStructures": true,
-          "showProfileWire": true,
-          "showProfileSectionLabels": false,
-          "showProfileSpanDistances": true,
-          "showProfileStructureLabels": true,
-          "showMapNavigationControls": false,
-          "showMyLocationControl": false,
-          "showCoordinateGrid": true,
-          "coordinateGridIntervalM": null,
-          "coordinateGridLabelPlacement": "top-left",
-          "snapToCoordinateGrid": true,
-          "showZoomLevelReadout": false,
-          "gpsPositionUpdateIntervalSeconds": 1,
-          "mapMemoryBudget": 3,
-          "processingLane": "fast",
-          "maxParallelBatchProcessing": 10,
-          "workingAreaUpdateIntervalMinutes": null
-        },
-        "lane": "fast"
-      }
-    },
-    {
-      "id": "set-lane-without-a-confirmation-time-is-the-hosts-error",
-      "why": "The clock is an input; a blank confirmation time would write a Standard that immediately reads as fast, so the request is refused as malformed.",
-      "request": {
-        "kind": "set_lane",
-        "current": {},
-        "requested": "standard",
-        "confirmed_at": " ",
-        "lane_facts": {
-          "desktop_surface": false,
-          "project_standard_lane": true
-        }
-      },
-      "expected": {
-        "error": "set_lane needs the confirmation time"
       }
     },
     {
@@ -6591,7 +4641,7 @@
         "kind": "sideways"
       },
       "expected": {
-        "error": "invalid application settings request: unknown variant `sideways`, expected one of `normalize`, `patch`, `reset`, `lane`, `set_lane`, `performance_profile`, `interval_label` at line 1 column 62"
+        "error": "invalid application settings request: unknown variant `sideways`, expected one of `normalize`, `patch`, `reset`, `performance_profile`, `interval_label` at line 1 column 62"
       }
     },
     {
@@ -6607,18 +4657,7 @@
         "extra": 1
       },
       "expected": {
-        "error": "invalid application settings request: unknown field `extra`, expected one of `saved`, `legacy_lane`, `device`, `lane_facts` at line 1 column 141"
-      }
-    },
-    {
-      "id": "error-lane-without-facts",
-      "why": "The lane op needs both facts; without them there is no lane to answer.",
-      "request": {
-        "kind": "lane",
-        "settings": {}
-      },
-      "expected": {
-        "error": "invalid application settings request: missing field `lane_facts` at line 1 column 74"
+        "error": "invalid application settings request: unknown field `extra`, expected `saved` or `device` at line 1 column 141"
       }
     },
     {
@@ -6642,7 +4681,7 @@
       },
       "schema": "ds.application-settings/v0",
       "expected": {
-        "error": "unsupported application settings schema; expected ds.application-settings/v1"
+        "error": "unsupported application settings schema; expected ds.application-settings/v2"
       }
     }
   ]

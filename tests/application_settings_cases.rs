@@ -5,8 +5,8 @@
 //! carries the op (without the schema wrapper) and the answer the kernel must
 //! give: the parsed answer, or `{"error": "<the exact Err string>"}` when the
 //! request itself is malformed. ds-web's browser test replays the same file
-//! through the vendored WASM, so no default, bound, migration or lane rule can
-//! be true in Rust and not in the build the browser loads.
+//! through the vendored WASM, so no default, bound, first-launch rule or
+//! retired-key drop can be true in Rust and not in the build the browser loads.
 //!
 //! Re-record `expected` with `DS_APPLICATION_SETTINGS_CASES_WRITE=1 cargo test
 //! --test application_settings_cases` after a deliberate rule change, and say
@@ -14,6 +14,13 @@
 //! present.
 
 use ds_command_kernel::application_settings::{evaluate, SCHEMA, SETTING_KEYS};
+
+/// The keys a v1 record carried for the retired processing-lane preference.
+const RETIRED_KEYS: [&str; 3] = [
+    "processingLane",
+    "standardLaneConfirmedAt",
+    "fastLaneConfirmedAt",
+];
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -98,7 +105,7 @@ fn the_ds_web_copy_is_the_same_file() {
 fn the_corpus_covers_every_op_the_contract_names() {
     let corpus = corpus();
     let cases = corpus["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 40, "the corpus lost cases");
+    assert!(cases.len() >= 60, "the corpus lost cases");
     let mut ids = BTreeSet::new();
     let mut ops = BTreeSet::new();
     let mut errors = 0;
@@ -123,23 +130,27 @@ fn the_corpus_covers_every_op_the_contract_names() {
         "normalize",
         "patch",
         "reset",
-        "lane",
-        "set_lane",
         "performance_profile",
         "interval_label",
     ] {
         assert!(ops.contains(op), "no case exercises the {op} op");
     }
     assert!(errors >= 3, "malformed requests are part of the contract");
+    // The retired lane ops are not part of the record any more.
+    for op in ["lane", "set_lane"] {
+        assert!(
+            !ops.contains(op),
+            "a case still exercises the retired {op} op"
+        );
+    }
 }
 
 /// The record is the store's record: every answered `settings` carries every
-/// key the store produced, in the store's order, and nothing else — the
-/// confirmation markers only while they apply.
+/// key the store produced, in the store's order, and nothing else. The
+/// retired lane keys never appear.
 #[test]
 fn every_answered_record_has_the_store_keys_in_the_store_order() {
     let corpus = corpus();
-    let markers = ["standardLaneConfirmedAt", "fastLaneConfirmedAt"];
     let mut checked = 0;
     for case in corpus["cases"].as_array().expect("cases") {
         let id = case["id"].as_str().expect("case id");
@@ -148,20 +159,20 @@ fn every_answered_record_has_the_store_keys_in_the_store_order() {
         };
         checked += 1;
         let keys: Vec<&str> = settings.keys().map(String::as_str).collect();
-        let expected: Vec<&str> = SETTING_KEYS
-            .iter()
-            .copied()
-            .filter(|key| !markers.contains(key) || settings.contains_key(*key))
-            .collect();
-        assert_eq!(keys, expected, "{id}: the record's keys or their order");
-        let lane = settings["processingLane"].as_str().expect("a lane word");
-        assert!(
-            settings.contains_key("standardLaneConfirmedAt") == (lane == "standard"),
-            "{id}: the Standard marker is present exactly while Standard is the preference"
+        assert_eq!(
+            keys,
+            SETTING_KEYS.to_vec(),
+            "{id}: the record's keys or their order"
         );
+        for retired in RETIRED_KEYS {
+            assert!(
+                !settings.contains_key(retired),
+                "{id}: the retired {retired} was written"
+            );
+        }
         assert!(
-            !(settings.contains_key("fastLaneConfirmedAt") && lane != "fast"),
-            "{id}: a fast marker never rides on a Standard preference"
+            case["expected"].get("lane").is_none(),
+            "{id}: the answer still names a lane"
         );
     }
     assert!(checked >= 25, "the corpus records too few records");
@@ -169,19 +180,12 @@ fn every_answered_record_has_the_store_keys_in_the_store_order() {
 
 /// `persist` and `first_launch` are functions of the request alone, so the
 /// recorded answers are checked against the requests rather than against
-/// prose: a legacy lane migrates only into a blob without one, and a device
-/// default applies only where the blob has nothing.
+/// prose: a blob is written back exactly when it still carried a retired lane
+/// key, and a device default applies only where the blob has nothing.
 #[test]
-fn normalize_writes_back_only_a_migration_and_fills_only_what_the_blob_lacks() {
+fn normalize_writes_back_only_a_retired_key_drop_and_fills_only_what_the_blob_lacks() {
     let corpus = corpus();
-    let truthy = |value: &Value| match value {
-        Value::Null => false,
-        Value::Bool(flag) => *flag,
-        Value::Number(number) => number.as_f64() != Some(0.0),
-        Value::String(text) => !text.is_empty(),
-        Value::Array(_) | Value::Object(_) => true,
-    };
-    let mut migrations = 0;
+    let mut write_backs = 0;
     let mut first_launches = 0;
     for case in corpus["cases"].as_array().expect("cases") {
         let id = case["id"].as_str().expect("case id");
@@ -191,15 +195,13 @@ fn normalize_writes_back_only_a_migration_and_fills_only_what_the_blob_lacks() {
         }
         let expected = &case["expected"];
         let saved = request["saved"].as_object().cloned().unwrap_or_default();
-        let legacy = match &request["legacy_lane"] {
-            lane @ Value::String(_) => Some(lane.clone()),
-            Value::Object(record) => record.get("lane").cloned(),
-            _ => None,
-        };
-        let migrate =
-            !saved.get("processingLane").is_some_and(truthy) && legacy.as_ref().is_some_and(truthy);
-        assert_eq!(expected["persist"], json!(migrate), "{id}: persist");
-        migrations += usize::from(migrate);
+        assert!(
+            request.get("legacy_lane").is_none() && request.get("lane_facts").is_none(),
+            "{id}: a retired request member is still recorded"
+        );
+        let write_back = RETIRED_KEYS.iter().any(|key| saved.contains_key(*key));
+        assert_eq!(expected["persist"], json!(write_back), "{id}: persist");
+        write_backs += usize::from(write_back);
         let absent = |key: &str| matches!(saved.get(key), None | Some(Value::Null));
         assert_eq!(
             expected["first_launch"],
@@ -230,43 +232,10 @@ fn normalize_writes_back_only_a_migration_and_fills_only_what_the_blob_lacks() {
             );
         }
     }
-    assert!(migrations >= 3, "the corpus proves too few migrations");
+    assert!(write_backs >= 2, "the corpus proves too few write-backs");
     assert!(
         first_launches >= 3,
         "the corpus proves too few first launches"
-    );
-}
-
-/// The lane rule, asserted over every recorded answer: Standard is never the
-/// lane where the installed shell or the project withholds it, and a record's
-/// preference is never rewritten by the facts.
-#[test]
-fn standard_is_never_answered_where_it_is_unreachable() {
-    let corpus = corpus();
-    let mut withheld = 0;
-    let mut kept = 0;
-    for case in corpus["cases"].as_array().expect("cases") {
-        let id = case["id"].as_str().expect("case id");
-        let facts = &case["request"]["lane_facts"];
-        let Some(lane) = case["expected"]["lane"].as_str() else {
-            continue;
-        };
-        let available = facts["desktop_surface"] == false && facts["project_standard_lane"] == true;
-        if !available {
-            assert_eq!(
-                lane, "fast",
-                "{id}: Standard answered where it is unreachable"
-            );
-            withheld += 1;
-            if case["expected"]["settings"]["processingLane"] == "standard" {
-                kept += 1;
-            }
-        }
-    }
-    assert!(withheld >= 4, "the corpus proves too few withheld lanes");
-    assert!(
-        kept >= 2,
-        "the corpus never shows a preference surviving a fast-only visit"
     );
 }
 

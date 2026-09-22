@@ -243,8 +243,8 @@ offline authorization and application-controlled deletion against those limits.
 - Complete offline network-setting sheet edits with a durable local transaction
   and authenticated exact-content reconciliation. Cached reads are not offline
   publication; never reuse a server reporter receipt with mutated settings.
-  Verify assembly dirty state and Fast/Standard output selection through the
-  actual saved project configuration, without hardcoded export substitutes.
+  Verify assembly dirty state and output selection through the actual saved
+  project configuration, without hardcoded export substitutes.
 - Prove a transformer can be created/imported, edited, processed and reported
   using explicit local inputs with no map or desktop dependency for headless
   commands. Pin project config, libraries, templates, fonts, images and reference
@@ -398,7 +398,7 @@ assemblies. That does not prove cloud seed freshness or earlier consumed bytes.
   authored/surveyed/installed component authority. See the owning
   `ds-network/docs/contracts/lv-poles-rules-family-contract.md`.
 - Define suspension/earthing policy as explicit standard-level data; do not
-  guess Tchad equivalents. Verify cloud deployment and legacy Standard routes.
+  guess Tchad equivalents. Verify cloud deployment routes.
   The earlier full release gate also reported exchange Clippy failures; those
   were not revalidated by the subsequent conversion test fix.
 

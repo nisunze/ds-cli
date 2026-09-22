@@ -3,8 +3,8 @@
 //! Eight authorities used to answer this question, in four TypeScript files,
 //! and every pair of them disagreed somewhere:
 //!
-//! - `statusRowView` folded Saved/Unsaved, locality, lane, version, presence
-//!   and the foreign room;
+//! - `statusRowView` folded Saved/Unsaved, locality, version, presence and
+//!   the foreign room;
 //! - `mergeLocalTransformerStatus` decided the client half of that fold from
 //!   this browser's rooms — and FIRED presence reconciliation from inside
 //!   itself, an authority hidden in a call order;
@@ -60,13 +60,6 @@ pub enum Locality {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum Lane {
-    Fast,
-    Standard,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
 pub enum CombinedState {
     Success,
     Stale,
@@ -90,14 +83,6 @@ pub enum PhaseOwner {
 pub enum LegacyPhase {
     Draft,
     Sketch,
-}
-
-/// Which Standard-lane output owns the head, when one does.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum LegacyStandardOutput {
-    StandardProcess,
-    DraftSketch,
 }
 
 /// The latest-action ladder. Declaration order IS the rank (later wins a
@@ -202,29 +187,11 @@ pub struct VersionView {
     pub reason: Option<String>,
 }
 
-/// Per-phase lane, where a run actually happened. `None` is the rule
-/// `phaseLaneLabel` carried as a rendering accident: a stale
-/// save-invalidation is not a run, so it claims no lane.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PhaseLanes {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub draft: Option<Lane>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sketch: Option<Lane>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub process: Option<Lane>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub report: Option<Lane>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub combined: Option<Lane>,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct View {
     pub sync_state: SyncState,
     pub sync_title_key: String,
     pub locality: Locality,
-    pub lane: Lane,
     pub combined_state: CombinedState,
     pub report_state: CombinedState,
     pub report_has_files: bool,
@@ -239,9 +206,6 @@ pub struct View {
     pub active_edit_dirty: bool,
     pub process_status: String,
     pub report_status: String,
-    pub phase_lanes: PhaseLanes,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub legacy_standard_output: Option<LegacyStandardOutput>,
     pub badges: Vec<Badge>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locality_hint_key: Option<String>,
@@ -295,8 +259,6 @@ pub struct LatestAction {
 pub struct Stamp {
     pub user: String,
     pub when_ms: i64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lane: Option<Lane>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -428,8 +390,8 @@ pub struct LocalRoomHeader {
     pub updated_at_ms: Option<i64>,
     #[serde(default)]
     pub layer_feature_counts: Map<String, Value>,
-    /// Fast-lane output held locally; it governs the row's process phase
-    /// until a save lands.
+    /// Process output held locally; it governs the row's process phase until
+    /// a save lands.
     #[serde(default)]
     pub process_metadata: Option<Value>,
 }
@@ -518,23 +480,6 @@ fn combined_state(value: Option<&Value>) -> Option<CombinedState> {
         Some("error") => Some(CombinedState::Error),
         Some("none") => Some(CombinedState::None),
         _ => None,
-    }
-}
-
-fn lane_of(meta: Option<&Map<String, Value>>) -> Option<Lane> {
-    let meta = meta?;
-    match meta.get("lane").and_then(Value::as_str) {
-        Some("fast") => Some(Lane::Fast),
-        Some("standard") => Some(Lane::Standard),
-        // A run happened but named no lane: Standard, unless the phase is a
-        // stale save-invalidation, which is not a run at all.
-        _ => {
-            if phase_status(Some(meta)) == "stale" {
-                None
-            } else {
-                Some(Lane::Standard)
-            }
-        }
     }
 }
 
@@ -741,34 +686,6 @@ pub fn phase_supersession(row: &Value) -> PhaseSupersession {
         draft,
         sketch,
     }
-}
-
-/// Which legacy output owns this row's saved head, when a Standard one does.
-fn legacy_standard_output(
-    row: &Map<String, Value>,
-    supersession: &PhaseSupersession,
-) -> Option<LegacyStandardOutput> {
-    if is_special_row(&string_at(Some(row), "name")) {
-        return None;
-    }
-    let process = phase(row, "process_metadata");
-    let process_status = phase_status(process);
-    let process_ran = process.is_some() && !process_status.is_empty() && process_status != "stale";
-    let legacy_success = latest_legacy_phase(row)
-        .map(|(_, legacy)| phase_status(Some(legacy)) == "success")
-        .unwrap_or(false);
-    if legacy_success && (!process_ran || supersession.owner == PhaseOwner::Legacy) {
-        return Some(LegacyStandardOutput::DraftSketch);
-    }
-    if process_ran
-        && process
-            .and_then(|meta| meta.get("lane"))
-            .and_then(Value::as_str)
-            != Some("fast")
-    {
-        return Some(LegacyStandardOutput::StandardProcess);
-    }
-    None
 }
 
 // ── latest action ───────────────────────────────────────────────────────
@@ -982,7 +899,6 @@ pub(crate) fn phase_stamp(meta: Option<&Map<String, Value>>) -> Option<Stamp> {
     Some(Stamp {
         user: string_at(Some(meta), "user"),
         when_ms,
-        lane: lane_of(Some(meta)),
     })
 }
 
@@ -1027,7 +943,6 @@ fn creation(row: &Map<String, Value>, latest: &LatestAction) -> Stamp {
     Stamp {
         user: latest.attributed_user.clone(),
         when_ms: latest.when_ms,
-        lane: None,
     }
 }
 
@@ -1384,8 +1299,8 @@ fn merge(request: &Request) -> (Vec<Entry>, Vec<PresenceRoom>, bool) {
 }
 
 /// The effective document for a row: the server's, with the local room's
-/// fast-lane process stamp where the room holds newer output, or a synthetic
-/// record for a row that exists only in this browser.
+/// process stamp where the room holds newer output, or a synthetic record for
+/// a row that exists only in this browser.
 fn effective_row(request: &Request, entry: &Entry) -> Value {
     let mut row = entry
         .server_index
@@ -1540,15 +1455,6 @@ fn row_reply(request: &Request, entry: Entry, current_user: &str) -> RowReply {
             sync_state,
             sync_title_key: sync_title_key.into(),
             locality,
-            lane: if process
-                .and_then(|meta| meta.get("lane"))
-                .and_then(Value::as_str)
-                == Some("fast")
-            {
-                Lane::Fast
-            } else {
-                Lane::Standard
-            },
             combined_state: combined_state(
                 computed.and_then(|c| c.get("combined_inclusion_state")),
             )
@@ -1566,14 +1472,6 @@ fn row_reply(request: &Request, entry: Entry, current_user: &str) -> RowReply {
             active_edit_dirty,
             process_status: phase_status(process).to_string(),
             report_status: phase_status(phase(row, "report_metadata")).to_string(),
-            phase_lanes: PhaseLanes {
-                draft: lane_of(phase(row, "draft_metadata")),
-                sketch: lane_of(phase(row, "sketch_metadata")),
-                process: lane_of(process),
-                report: lane_of(phase(row, "report_metadata")),
-                combined: lane_of(phase(row, "combined_inclusion_metadata")),
-            },
-            legacy_standard_output: legacy_standard_output(row, &supersession),
             badges,
             locality_hint_key: (locality == Locality::Local).then(|| "dsr_local_copy".into()),
         },
@@ -1733,7 +1631,7 @@ mod tests {
             "name": "tx_1",
             "draft_metadata": {"status": "error", "when": "2026-08-20T10:00:00Z",
                                "error_message": "Drafting failed."},
-            "process_metadata": {"status": "success", "when": "2026-08-25T10:00:00Z", "lane": "fast"}
+            "process_metadata": {"status": "success", "when": "2026-08-25T10:00:00Z"}
         });
         let supersession = phase_supersession(&row);
         let draft = supersession.draft.expect("draft lost the record");
@@ -1760,7 +1658,7 @@ mod tests {
             "local_room_headers": [{
                 "transformer_name": "tx_new", "local_dirty": true, "server_known": false,
                 "updated_at_ms": 7, "layer_feature_counts": {"lv_poles": 3},
-                "process_metadata": {"status": "success", "lane": "fast", "when": "2026-08-26T11:20:00Z"}
+                "process_metadata": {"status": "success", "when": "2026-08-26T11:20:00Z"}
             }]
         }));
         let row = &answer["rows"][0];
@@ -1771,8 +1669,12 @@ mod tests {
         assert_eq!(row["client"]["server_known"], false);
         assert_eq!(row["view"]["sync_state"], "unsaved");
         assert_eq!(row["view"]["sync_title_key"], "dsr_sync_browser_only_title");
-        // The room's own fast-lane stamp governs the row until a save lands.
-        assert_eq!(row["view"]["lane"], "fast");
+        // The room's own process stamp governs the row until a save lands.
+        assert_eq!(row["view"]["process_status"], "success");
+        // A stored `lane` stamp is wire data other consumers read; the row
+        // model never answers it.
+        assert!(row["view"].get("lane").is_none());
+        assert!(row["view"].get("phase_lanes").is_none());
     }
 
     #[test]

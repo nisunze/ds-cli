@@ -1,38 +1,41 @@
 //! Application settings — one owner for the effective settings record a host
-//! keeps for its operator, and for the four things that decide it.
+//! keeps for its operator, and for the things that decide it.
 //!
 //! The browser persists one JSON blob (`application_settings:v1`) in
 //! IndexedDB and holds the effective record in a Svelte store. Everything
 //! between the two — which keys exist, what each default is, how a stored
 //! value is read, clipped or dropped, which first-launch defaults follow the
-//! device, when a legacy processing-lane record is migrated and whether that
-//! migration is written back, what a reset lands on, and which lane a
-//! processing request actually goes down — was decided in TypeScript at
-//! import time (`stores/applicationSettings.ts`, `stores/processingLane.ts`).
-//! It is decided here now. The host reads the blob, asks, writes the answer.
+//! device, what a reset lands on — was decided in TypeScript at import time
+//! (`stores/applicationSettings.ts`). It is decided here now. The host reads
+//! the blob, asks, writes the answer.
 //!
 //! The rules are transcribed, bound for bound and default for default, from
 //! ds-web's `DEFAULT_APPLICATION_SETTINGS`, every `normalize*` helper,
-//! `normalizeSettings`, `loadApplicationSettings` (the legacy-lane migration
-//! and the device-aware first launch), `resetApplicationSettings`,
-//! `normalizeBrowserBatchConcurrency` (`batch/browser-bulk.ts`),
-//! `mapPerformanceProfileForBudget`, `workingAreaUpdateIntervalLabel`, and
-//! `normalizeLane` / `standardLaneAvailable` / `setProcessingLane`
-//! (`processingLane.ts`). The effective record is the SAME JSON the store
-//! already persisted — same keys, same units, same order — so an existing
-//! profile reopens unchanged; that is the parity baseline. A saved blob is
-//! user data: an unknown key is dropped and an unreadable value takes its
-//! default, never a refusal. A request the host built wrong is an `Err`.
+//! `normalizeSettings`, `loadApplicationSettings` (the device-aware first
+//! launch), `resetApplicationSettings`, `normalizeBrowserBatchConcurrency`
+//! (`batch/browser-bulk.ts`), `mapPerformanceProfileForBudget` and
+//! `workingAreaUpdateIntervalLabel`. The effective record is the SAME JSON
+//! the store already persisted — same keys, same units, same order — so an
+//! existing profile reopens unchanged; that is the parity baseline. A saved
+//! blob is user data: an unknown key is dropped and an unreadable value takes
+//! its default, never a refusal. A request the host built wrong is an `Err`.
 //!
-//! Pure: the device class, the lane facts and the confirmation clock are
-//! inputs, so the same request always has the same answer.
+//! There is one way to process a transformer (owner ruling 2026-09-22). The
+//! record once carried a processing-lane preference (`processingLane`,
+//! `standardLaneConfirmedAt`, `fastLaneConfirmedAt`) and the ops that read and
+//! wrote it; a saved blob that still carries those keys is read tolerantly and
+//! they are dropped on normalise, never written again. That is why the schema
+//! is `v2`: the record has fewer keys and the request has fewer ops.
+//!
+//! Pure: the device class and the browser estimate are inputs, so the same
+//! request always has the same answer.
 //! `tests/fixtures/application-settings-cases.json` is the named proof,
 //! replayed by the kernel and by ds-web over the vendored WASM.
 
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
-pub const SCHEMA: &str = "ds.application-settings/v1";
+pub const SCHEMA: &str = "ds.application-settings/v2";
 pub const MAX_INPUT_BYTES: usize = 4 * 1024 * 1024;
 
 // ── Bounds and defaults, transcribed ────────────────────────────────────
@@ -73,7 +76,6 @@ pub const COORDINATE_GRID_LABEL_PLACEMENTS: [&str; 5] = [
 ];
 pub const POPUP_MODES: [&str; 2] = ["minimal", "normal"];
 pub const PROFILE_GROUND_FILL_MODES: [&str; 3] = ["none", "to_floor", "to_clearance"];
-pub const PROCESSING_LANES: [&str; 2] = ["standard", "fast"];
 
 const DEFAULT_FEATURE_HOVER_POPUP_PLACEMENT: &str = "bottom-left";
 const DEFAULT_POPUP_MODE: &str = "normal";
@@ -95,11 +97,9 @@ const DEFAULT_PROFILE_GROUND_WIDTH_PX: f64 = 1.5;
 const DEFAULT_PROFILE_CLEARANCE_WIDTH_PX: f64 = 1.25;
 const DEFAULT_PROFILE_TERRAIN_POINT_WIDTH_PX: f64 = 2.5;
 const DEFAULT_COORDINATE_GRID_LABEL_PLACEMENT: &str = "top-left";
-const DEFAULT_PROCESSING_LANE: &str = "fast";
 
 /// The keys of the effective record, in the order the record is written.
-/// The two confirmation markers are present only while they apply.
-pub const SETTING_KEYS: [&str; 46] = [
+pub const SETTING_KEYS: [&str; 43] = [
     "hideBoxZoomAtHighZoom",
     "boxZoomHideMinZoom",
     "featureHoverPopupsEnabled",
@@ -141,9 +141,6 @@ pub const SETTING_KEYS: [&str; 46] = [
     "showZoomLevelReadout",
     "gpsPositionUpdateIntervalSeconds",
     "mapMemoryBudget",
-    "processingLane",
-    "standardLaneConfirmedAt",
-    "fastLaneConfirmedAt",
     "maxParallelBatchProcessing",
     "workingAreaUpdateIntervalMinutes",
 ];
@@ -152,7 +149,7 @@ pub const SETTING_KEYS: [&str; 46] = [
 /// `showMyLocationControl` are the desktop-safe static defaults here; the
 /// device-aware first-launch values are `normalize`'s and `reset`'s answer.
 pub fn default_settings() -> Map<String, Value> {
-    let entries: [(&str, Value); 44] = [
+    let entries: [(&str, Value); 43] = [
         ("hideBoxZoomAtHighZoom", true.into()),
         ("boxZoomHideMinZoom", 15.into()),
         ("featureHoverPopupsEnabled", true.into()),
@@ -209,7 +206,6 @@ pub fn default_settings() -> Map<String, Value> {
         ("showZoomLevelReadout", false.into()),
         ("gpsPositionUpdateIntervalSeconds", 1.into()),
         ("mapMemoryBudget", 3.into()),
-        ("processingLane", DEFAULT_PROCESSING_LANE.into()),
         ("maxParallelBatchProcessing", 10.into()),
         ("workingAreaUpdateIntervalMinutes", Value::Null),
     ];
@@ -640,14 +636,6 @@ pub fn normalize_browser_batch_concurrency(value: Option<&Value>) -> f64 {
     }
 }
 
-/// `normalizedTimestamp`: a string that is not blank, kept as written.
-fn normalized_timestamp(value: Option<&Value>) -> Option<String> {
-    value
-        .and_then(Value::as_str)
-        .filter(|text| !js_trim(text).is_empty())
-        .map(str::to_owned)
-}
-
 /// `hiddenProfileAlignmentIds`: each item as a string, trimmed, blanks out,
 /// first occurrence kept, at most 500.
 fn normalize_hidden_profile_alignment_ids(value: Option<&Value>) -> Vec<String> {
@@ -671,16 +659,6 @@ pub fn normalize_settings(value: &Map<String, Value>) -> Map<String, Value> {
     let defaults = default_settings();
     let get = |key: &str| value.get(key);
     let fallback = |key: &str| defaults.get(key).expect("every default is written");
-    let raw_standard_confirmed_at = normalized_timestamp(get("standardLaneConfirmedAt"));
-    let raw_fast_confirmed_at = normalized_timestamp(get("fastLaneConfirmedAt"));
-    let processing_lane = match get("processingLane").and_then(Value::as_str) {
-        Some("standard") if raw_standard_confirmed_at.is_some() => "standard",
-        Some("fast") => "fast",
-        _ => DEFAULT_PROCESSING_LANE,
-    };
-    let standard_lane_confirmed_at =
-        raw_standard_confirmed_at.filter(|_| processing_lane == "standard");
-    let fast_lane_confirmed_at = raw_fast_confirmed_at.filter(|_| processing_lane == "fast");
 
     let mut out = Map::new();
     let mut put = |key: &str, value: Value| {
@@ -880,13 +858,6 @@ pub fn normalize_settings(value: &Map<String, Value>) -> Map<String, Value> {
             fallback("mapMemoryBudget"),
         ))),
     );
-    put("processingLane", processing_lane.into());
-    if let Some(confirmed_at) = standard_lane_confirmed_at {
-        put("standardLaneConfirmedAt", confirmed_at.into());
-    }
-    if let Some(confirmed_at) = fast_lane_confirmed_at {
-        put("fastLaneConfirmedAt", confirmed_at.into());
-    }
     put(
         "maxParallelBatchProcessing",
         number_value(normalize_browser_batch_concurrency(coalesce(
@@ -922,50 +893,6 @@ pub fn working_area_update_interval_label(value: Option<&Value>) -> String {
         let unit = if hours == 1 { "hour" } else { "hours" };
         format!("{hours} {unit} {minutes} min")
     }
-}
-
-// ── The lane seam ───────────────────────────────────────────────────────
-
-/// The two facts a host reports about the Standard (legacy Python) lane.
-/// They are still read off the wire — the shape is a contract with every
-/// deployed client — and they no longer decide anything: see below.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct LaneFacts {
-    pub desktop_surface: bool,
-    pub project_standard_lane: bool,
-}
-
-/// `standardLaneAvailable` — retired 2026-09-20, for every host and every
-/// project. The installed desktop was fast-only by ruling since 2026-08-13;
-/// deployed web kept Standard as a "sunset path" for projects that declared
-/// it. On 2026-09-17 that path stamped `updated_by: legacy_pipeline` on 134
-/// transformers of one project — the Python pipeline writing itself where
-/// the person belongs, three days before this line — and the activities
-/// ledger, which exists to say who did what, could not. A backup that writes
-/// a different actor and a different shape is not a backup; it is a second
-/// writer. The Rust lane is the one lane. The facts stay on the wire so no
-/// client changes; they simply cannot grant Standard any more.
-pub fn standard_lane_available(_facts: LaneFacts) -> bool {
-    false
-}
-
-/// `normalizeLane`: where Standard is unreachable the answer is fast, with
-/// deliberately no fallback direction; otherwise only the word `fast` is fast.
-pub fn normalize_lane(value: Option<&str>, facts: LaneFacts) -> &'static str {
-    if !standard_lane_available(facts) || value == Some("fast") {
-        "fast"
-    } else {
-        "standard"
-    }
-}
-
-/// The lane a normalised record's preference resolves to under these facts.
-fn effective_lane(settings: &Map<String, Value>, facts: LaneFacts) -> &'static str {
-    normalize_lane(
-        settings.get("processingLane").and_then(Value::as_str),
-        facts,
-    )
 }
 
 // ── The device ──────────────────────────────────────────────────────────
@@ -1107,37 +1034,16 @@ struct Request {
     op: Op,
 }
 
-#[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-enum Lane {
-    Standard,
-    Fast,
-}
-
-impl Lane {
-    const fn word(self) -> &'static str {
-        match self {
-            Self::Standard => "standard",
-            Self::Fast => "fast",
-        }
-    }
-}
-
 /// What a host may ask about its operator's settings.
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Op {
     /// `loadApplicationSettings` without the I/O: the effective record from
-    /// the saved blob, the legacy lane record and the device, and whether
-    /// the host writes it back.
+    /// the saved blob and the device, and whether the host writes it back.
     Normalize {
         #[serde(default)]
         saved: Option<Value>,
-        #[serde(default)]
-        legacy_lane: Option<Value>,
         device: Device,
-        #[serde(default)]
-        lane_facts: Option<LaneFacts>,
     },
     /// `updateApplicationSettings`: the record after a change. A `null` in the
     /// patch is the store's `undefined`: the key is absent from the merged
@@ -1146,8 +1052,6 @@ enum Op {
     Patch {
         current: Map<String, Value>,
         patch: Map<String, Value>,
-        #[serde(default)]
-        lane_facts: Option<LaneFacts>,
     },
     /// `resetApplicationSettings`: the named keys back to their shipped
     /// defaults — the device-aware ones to the device's value, exactly where a
@@ -1156,22 +1060,6 @@ enum Op {
         current: Map<String, Value>,
         keys: Vec<String>,
         device: Device,
-        #[serde(default)]
-        lane_facts: Option<LaneFacts>,
-    },
-    /// `normalizeLane` over the record: the lane a processing request goes
-    /// down here, now. Never rewrites the preference.
-    Lane {
-        settings: Map<String, Value>,
-        lane_facts: LaneFacts,
-    },
-    /// `setProcessingLane`: the write path through the same seam. A Standard
-    /// that is unreachable here is written as fast; the clock is an input.
-    SetLane {
-        current: Map<String, Value>,
-        requested: Lane,
-        confirmed_at: String,
-        lane_facts: LaneFacts,
     },
     /// `mapPerformanceProfileForBudget`: the MapLibre cache profile for a
     /// budget, scaled by what the host measured about its browser.
@@ -1217,45 +1105,34 @@ fn merged(current: &Map<String, Value>, patch: Map<String, Value>) -> Map<String
     next
 }
 
-/// The answer every op that yields a record gives: the record, and the lane
-/// it resolves to when the facts were given.
-fn record(settings: Map<String, Value>, lane_facts: Option<LaneFacts>) -> Map<String, Value> {
+/// The keys a saved blob may still carry from the retired processing-lane
+/// preference. They are read tolerantly and dropped on normalise; a blob that
+/// carries one is written back once so the retired record does not linger.
+const RETIRED_KEYS: [&str; 3] = [
+    "processingLane",
+    "standardLaneConfirmedAt",
+    "fastLaneConfirmedAt",
+];
+
+/// The answer every op that yields a record gives: the record.
+fn record(settings: Map<String, Value>) -> Map<String, Value> {
     let mut answer = Map::new();
-    let lane = lane_facts.map(|facts| effective_lane(&settings, facts));
     answer.insert("settings".to_owned(), Value::Object(settings));
-    if let Some(lane) = lane {
-        answer.insert("lane".to_owned(), lane.into());
-    }
     answer
 }
 
 fn apply(op: Op) -> Result<Value, String> {
     match op {
-        Op::Normalize {
-            saved,
-            legacy_lane,
-            device,
-            lane_facts,
-        } => {
+        Op::Normalize { saved, device } => {
             // `{...saved}`: a blob that is not an object spreads no setting.
             let saved = match saved {
                 Some(Value::Object(saved)) => saved,
                 _ => Map::new(),
             };
-            // `typeof legacyLane === 'string' ? legacyLane : legacyLane?.lane`.
-            let legacy_lane = match legacy_lane {
-                Some(lane @ Value::String(_)) => Some(lane),
-                Some(Value::Object(record)) => record.get("lane").cloned(),
-                _ => None,
-            };
-            let saved_lane_set = saved.get("processingLane").is_some_and(js_truthy);
-            let migrate = !saved_lane_set && legacy_lane.as_ref().is_some_and(js_truthy);
+            let carries_retired_key = RETIRED_KEYS.iter().any(|key| saved.contains_key(*key));
             let first_launch_popup_mode = nullish(saved.get("popupMode"));
             let first_launch_my_location = nullish(saved.get("showMyLocationControl"));
             let mut input = saved;
-            if let Some(lane) = legacy_lane.filter(|_| migrate) {
-                input.insert("processingLane".to_owned(), lane);
-            }
             if first_launch_popup_mode {
                 input.insert("popupMode".to_owned(), device.popup_mode().into());
             }
@@ -1265,8 +1142,8 @@ fn apply(op: Op) -> Result<Value, String> {
                     device.my_location_default.into(),
                 );
             }
-            let mut answer = record(normalize_settings(&input), lane_facts);
-            answer.insert("persist".to_owned(), migrate.into());
+            let mut answer = record(normalize_settings(&input));
+            answer.insert("persist".to_owned(), carries_retired_key.into());
             answer.insert(
                 "first_launch".to_owned(),
                 json!({
@@ -1276,19 +1153,13 @@ fn apply(op: Op) -> Result<Value, String> {
             );
             Ok(Value::Object(answer))
         }
-        Op::Patch {
-            current,
-            patch,
-            lane_facts,
-        } => Ok(Value::Object(record(
-            normalize_settings(&merged(&current, patch)),
-            lane_facts,
-        ))),
+        Op::Patch { current, patch } => Ok(Value::Object(record(normalize_settings(&merged(
+            &current, patch,
+        ))))),
         Op::Reset {
             current,
             keys,
             device,
-            lane_facts,
         } => {
             let unknown: Vec<&str> = keys
                 .iter()
@@ -1307,51 +1178,13 @@ fn apply(op: Op) -> Result<Value, String> {
                 let value = match key.as_str() {
                     "popupMode" => device.popup_mode().into(),
                     "showMyLocationControl" => device.my_location_default.into(),
-                    // A key without a shipped default (a confirmation marker)
-                    // resets to absent.
                     _ => defaults.get(&key).cloned().unwrap_or(Value::Null),
                 };
                 patch.insert(key, value);
             }
-            Ok(Value::Object(record(
-                normalize_settings(&merged(&current, patch)),
-                lane_facts,
-            )))
-        }
-        Op::Lane {
-            settings,
-            lane_facts,
-        } => Ok(json!({
-            "lane": effective_lane(&normalize_settings(&settings), lane_facts),
-        })),
-        Op::SetLane {
-            current,
-            requested,
-            confirmed_at,
-            lane_facts,
-        } => {
-            if js_trim(&confirmed_at).is_empty() {
-                return Err("set_lane needs the confirmation time".into());
-            }
-            let patch = if normalize_lane(Some(requested.word()), lane_facts) == "standard" {
-                json!({
-                    "processingLane": "standard",
-                    "standardLaneConfirmedAt": confirmed_at,
-                    "fastLaneConfirmedAt": null,
-                })
-            } else {
-                json!({
-                    "processingLane": "fast",
-                    "standardLaneConfirmedAt": null,
-                })
-            };
-            let Value::Object(patch) = patch else {
-                unreachable!("the lane patch is an object")
-            };
-            Ok(Value::Object(record(
-                normalize_settings(&merged(&current, patch)),
-                Some(lane_facts),
-            )))
+            Ok(Value::Object(record(normalize_settings(&merged(
+                &current, patch,
+            )))))
         }
         Op::PerformanceProfile {
             budget,
@@ -1377,10 +1210,6 @@ mod tests {
 
     fn settings_of(answer: &Value) -> &Map<String, Value> {
         answer["settings"].as_object().expect("a record")
-    }
-
-    fn web() -> Value {
-        json!({"desktop_surface": false, "project_standard_lane": true})
     }
 
     // ── JavaScript coercion ─────────────────────────────────────────────
@@ -1761,14 +1590,9 @@ mod tests {
     #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn the_defaults_are_the_shipped_record_in_order() {
         let defaults = default_settings();
-        let expected: Vec<&str> = SETTING_KEYS
-            .iter()
-            .copied()
-            .filter(|key| !key.ends_with("ConfirmedAt"))
-            .collect();
         assert_eq!(
             defaults.keys().map(String::as_str).collect::<Vec<_>>(),
-            expected
+            SETTING_KEYS
         );
         assert_eq!(normalize_settings(&Map::new()), defaults);
         assert_eq!(normalize_settings(&defaults), defaults);
@@ -1795,36 +1619,21 @@ mod tests {
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg_attr(not(target_arch = "wasm32"), test)]
-    fn standard_needs_its_confirmation_and_markers_follow_the_lane() {
-        let Value::Object(unconfirmed) = json!({"processingLane": "standard"}) else {
-            unreachable!()
-        };
-        let record = normalize_settings(&unconfirmed);
-        assert_eq!(record["processingLane"], json!("fast"));
-        assert!(!record.contains_key("standardLaneConfirmedAt"));
-
-        let Value::Object(confirmed) = json!({
+    fn the_retired_lane_keys_are_read_tolerantly_and_dropped() {
+        let Value::Object(blob) = json!({
             "processingLane": "standard",
             "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
             "fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z",
+            "mapMemoryBudget": 5,
         }) else {
             unreachable!()
         };
-        let record = normalize_settings(&confirmed);
-        assert_eq!(record["processingLane"], json!("standard"));
-        assert_eq!(
-            record["standardLaneConfirmedAt"],
-            json!("2026-05-31T10:00:00.000Z")
-        );
-        assert!(!record.contains_key("fastLaneConfirmedAt"));
-
-        let Value::Object(blank) = json!({
-            "processingLane": "standard",
-            "standardLaneConfirmedAt": "   ",
-        }) else {
-            unreachable!()
-        };
-        assert_eq!(normalize_settings(&blank)["processingLane"], json!("fast"));
+        let record = normalize_settings(&blob);
+        assert_eq!(record["mapMemoryBudget"], json!(5));
+        for key in RETIRED_KEYS {
+            assert!(!record.contains_key(key), "{key} was written");
+        }
+        assert_eq!(record.len(), SETTING_KEYS.len());
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
@@ -1857,9 +1666,7 @@ mod tests {
         let answer = ask(json!({
             "kind": "normalize",
             "saved": null,
-            "legacy_lane": null,
             "device": {"phone": true, "my_location_default": true},
-            "lane_facts": web(),
         }))
         .unwrap();
         assert_eq!(answer["settings"]["popupMode"], json!("minimal"));
@@ -1869,10 +1676,9 @@ mod tests {
             answer["first_launch"],
             json!({"popup_mode": true, "my_location": true})
         );
-        assert_eq!(answer["lane"], json!("fast"));
         assert_eq!(
             answer.as_object().unwrap().keys().collect::<Vec<_>>(),
-            ["settings", "lane", "persist", "first_launch"]
+            ["settings", "persist", "first_launch"]
         );
     }
 
@@ -1891,59 +1697,41 @@ mod tests {
             answer["first_launch"],
             json!({"popup_mode": false, "my_location": false})
         );
-        assert!(answer.get("lane").is_none());
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg_attr(not(target_arch = "wasm32"), test)]
-    fn a_legacy_lane_migrates_only_into_a_blob_without_one_and_is_then_written() {
+    fn a_blob_carrying_a_retired_lane_key_is_written_back_once_without_it() {
         let device = json!({"phone": false, "my_location_default": false});
-        let string_form = ask(json!({
-            "kind": "normalize", "saved": {}, "legacy_lane": "fast", "device": device,
-        }))
-        .unwrap();
-        assert_eq!(string_form["persist"], json!(true));
-        assert_eq!(string_form["settings"]["processingLane"], json!("fast"));
-
-        let record_form = ask(json!({
-            "kind": "normalize", "saved": null, "legacy_lane": {"lane": "standard"}, "device": device,
-        }))
-        .unwrap();
-        // Standard migrates without a confirmation, so it reads as fast — and
-        // the migration is still written, exactly as the store wrote it.
-        assert_eq!(record_form["persist"], json!(true));
-        assert_eq!(record_form["settings"]["processingLane"], json!("fast"));
-
-        let unknown = ask(json!({
-            "kind": "normalize", "saved": null, "legacy_lane": {"lane": "unknown"}, "device": device,
-        }))
-        .unwrap();
-        assert_eq!(unknown["persist"], json!(true));
-        assert_eq!(unknown["settings"]["processingLane"], json!("fast"));
-
-        let blocked = ask(json!({
-            "kind": "normalize",
-            "saved": {"processingLane": "fast"},
-            "legacy_lane": {"lane": "standard"},
-            "device": device,
-        }))
-        .unwrap();
-        assert_eq!(blocked["persist"], json!(false));
-
-        for empty in [
-            json!(""),
-            json!({"lane": ""}),
-            json!({}),
-            json!(5),
-            json!([]),
-            json!(null),
+        for saved in [
+            json!({"processingLane": "fast"}),
+            json!({"processingLane": "standard", "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"}),
+            json!({"fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z"}),
+            json!({"processingLane": null}),
         ] {
-            let answer = ask(json!({
-                "kind": "normalize", "saved": null, "legacy_lane": empty, "device": device,
-            }))
-            .unwrap();
-            assert_eq!(answer["persist"], json!(false), "{empty}");
+            let answer =
+                ask(json!({"kind": "normalize", "saved": saved, "device": device})).unwrap();
+            assert_eq!(answer["persist"], json!(true), "{saved}");
+            for key in RETIRED_KEYS {
+                assert!(settings_of(&answer).get(key).is_none(), "{saved}: {key}");
+            }
         }
+        // A blob without one is never written from `normalize`.
+        let clean = ask(json!({
+            "kind": "normalize", "saved": {"mapMemoryBudget": 5}, "device": device,
+        }))
+        .unwrap();
+        assert_eq!(clean["persist"], json!(false));
+        // The retired legacy-lane record is not a request member any more.
+        assert!(ask(json!({
+            "kind": "normalize", "saved": null, "legacy_lane": "fast", "device": device,
+        }))
+        .is_err());
+        assert!(ask(json!({
+            "kind": "normalize", "saved": null, "device": device,
+            "lane_facts": {"desktop_surface": false, "project_standard_lane": true},
+        }))
+        .is_err());
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
@@ -1971,15 +1759,19 @@ mod tests {
                 "processingLane": "standard",
                 "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
                 "mapMemoryBudget": 5,
+                "showZoomLevelReadout": true,
             },
-            "patch": {"standardLaneConfirmedAt": null, "retired": 1},
-            "lane_facts": web(),
+            "patch": {"showZoomLevelReadout": null, "retired": 1},
         }))
         .unwrap();
-        assert_eq!(answer["settings"]["processingLane"], json!("fast"));
+        assert_eq!(answer["settings"]["showZoomLevelReadout"], json!(false));
         assert_eq!(answer["settings"]["mapMemoryBudget"], json!(5));
-        assert_eq!(answer["lane"], json!("fast"));
+        assert!(settings_of(&answer).get("processingLane").is_none());
         assert!(settings_of(&answer).get("retired").is_none());
+        assert_eq!(
+            answer.as_object().unwrap().keys().collect::<Vec<_>>(),
+            ["settings"]
+        );
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
@@ -2059,15 +1851,6 @@ mod tests {
         assert_eq!(record["popupMode"], json!("minimal"));
         assert_eq!(record["showMyLocationControl"], json!(true));
 
-        let marker = ask(json!({
-            "kind": "reset",
-            "current": {"processingLane": "standard", "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"},
-            "keys": ["standardLaneConfirmedAt"],
-            "device": {"phone": false, "my_location_default": false},
-        }))
-        .unwrap();
-        assert_eq!(marker["settings"]["processingLane"], json!("fast"));
-
         let error = ask(json!({
             "kind": "reset",
             "current": {},
@@ -2079,117 +1862,18 @@ mod tests {
             error,
             "reset names settings that do not exist: bogus, alsoBogus"
         );
-    }
-
-    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-    #[cfg_attr(not(target_arch = "wasm32"), test)]
-    fn the_lane_is_decided_by_two_facts_and_never_rewrites_the_preference() {
-        let confirmed = json!({
-            "processingLane": "standard",
-            "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
-        });
-        let lane = |facts: Value, settings: &Value| {
-            ask(json!({"kind": "lane", "settings": settings, "lane_facts": facts})).unwrap()["lane"]
-                .clone()
-        };
-        // Retired 2026-09-20: not even the web with a project that declares
-        // Standard resolves to it. The preference below is still kept as
-        // written — a record is never rewritten by a rule — it just cannot
-        // reach the lane it names.
-        assert_eq!(lane(web(), &confirmed), json!("fast"));
-        assert_eq!(
-            lane(
-                json!({"desktop_surface": true, "project_standard_lane": true}),
-                &confirmed
-            ),
-            json!("fast")
-        );
-        assert_eq!(
-            lane(
-                json!({"desktop_surface": false, "project_standard_lane": false}),
-                &confirmed
-            ),
-            json!("fast")
-        );
-        assert_eq!(
-            lane(web(), &json!({"processingLane": "standard"})),
-            json!("fast")
-        );
-        assert_eq!(lane(web(), &json!({})), json!("fast"));
-
-        let kept = ask(json!({
-            "kind": "normalize",
-            "saved": confirmed,
+        // A retired key is not a setting a reset may name.
+        let retired = ask(json!({
+            "kind": "reset",
+            "current": {},
+            "keys": ["standardLaneConfirmedAt"],
             "device": {"phone": false, "my_location_default": false},
-            "lane_facts": {"desktop_surface": true, "project_standard_lane": true},
-        }))
-        .unwrap();
-        assert_eq!(kept["settings"]["processingLane"], json!("standard"));
-        assert_eq!(kept["lane"], json!("fast"));
-        assert_eq!(
-            normalize_lane(
-                None,
-                LaneFacts {
-                    desktop_surface: false,
-                    project_standard_lane: true
-                }
-            ),
-            "fast"
-        );
-    }
-
-    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-    #[cfg_attr(not(target_arch = "wasm32"), test)]
-    fn set_lane_never_writes_standard_anywhere() {
-        let on_web = ask(json!({
-            "kind": "set_lane",
-            "current": {"fastLaneConfirmedAt": "2026-05-19T03:55:00.000Z"},
-            "requested": "standard",
-            "confirmed_at": "2026-05-31T10:00:00.000Z",
-            "lane_facts": web(),
-        }))
-        .unwrap();
-        // Retired 2026-09-20: the web behaves exactly as the desktop always
-        // has — a Standard request writes fast and confirms nothing.
-        assert_eq!(on_web["settings"]["processingLane"], json!("fast"));
-        assert!(settings_of(&on_web)
-            .get("standardLaneConfirmedAt")
-            .is_none());
-        assert_eq!(on_web["lane"], json!("fast"));
-
-        let on_desktop = ask(json!({
-            "kind": "set_lane",
-            "current": {},
-            "requested": "standard",
-            "confirmed_at": "2026-05-31T10:00:00.000Z",
-            "lane_facts": {"desktop_surface": true, "project_standard_lane": true},
-        }))
-        .unwrap();
-        assert_eq!(on_desktop["settings"]["processingLane"], json!("fast"));
-        assert!(settings_of(&on_desktop)
-            .get("standardLaneConfirmedAt")
-            .is_none());
-
-        let back = ask(json!({
-            "kind": "set_lane",
-            "current": {"processingLane": "standard", "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"},
-            "requested": "fast",
-            "confirmed_at": "2026-06-01T00:00:00.000Z",
-            "lane_facts": web(),
-        }))
-        .unwrap();
-        assert_eq!(back["settings"]["processingLane"], json!("fast"));
-        assert!(settings_of(&back).get("standardLaneConfirmedAt").is_none());
-
-        let blank = ask(json!({
-            "kind": "set_lane",
-            "current": {},
-            "requested": "standard",
-            "confirmed_at": " ",
-            "lane_facts": web(),
         }))
         .unwrap_err();
-        assert_eq!(blank, "set_lane needs the confirmation time");
+        assert_eq!(
+            retired,
+            "reset names settings that do not exist: standardLaneConfirmedAt"
+        );
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
@@ -2251,10 +1935,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             evaluate(&other_schema).unwrap_err(),
-            "unsupported application settings schema; expected ds.application-settings/v1"
+            "unsupported application settings schema; expected ds.application-settings/v2"
         );
         assert!(ask(json!({"kind": "sideways"})).is_err());
         assert!(ask(json!({"kind": "lane", "settings": {}})).is_err());
+        assert!(ask(json!({"kind": "set_lane", "current": {}, "requested": "fast"})).is_err());
         assert!(ask(json!({
             "kind": "normalize",
             "device": {"phone": false, "my_location_default": false},

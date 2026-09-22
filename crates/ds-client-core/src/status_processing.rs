@@ -1,4 +1,4 @@
-//! Fixed native transport for the Standard design-intake upload effects.
+//! Fixed native transport for the design-intake upload effects.
 use crate::{ClientError, ErrorKind, TransportResponse, UploadBytesCall};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -62,7 +62,7 @@ fn invalid(message: &'static str) -> ClientError {
 fn unreadable() -> ClientError {
     ClientError::new(
         ErrorKind::UnreadableResponse,
-        "invalid Standard design-intake response",
+        "invalid design-intake response",
     )
 }
 
@@ -136,7 +136,7 @@ pub(crate) fn run<T: crate::AuthorizedTransport>(
                 || size > crate::MAX_UPLOAD_BYTES
                 || !content_type(media_type)
             {
-                return Err(invalid("invalid Standard design-intake file"));
+                return Err(invalid("invalid design-intake file"));
             }
             let payload = json!({
                 "action":"upload_start", "eds_project_id":project,
@@ -202,7 +202,7 @@ pub(crate) fn run<T: crate::AuthorizedTransport>(
             };
             if !file_name(name) || !blob_path(path, project, action) || !valid_chain || !valid_extra
             {
-                return Err(invalid("invalid Standard design-intake process request"));
+                return Err(invalid("invalid design-intake process request"));
             }
             let mut payload = extra.clone();
             payload.insert("action".into(), json!(action.token()));

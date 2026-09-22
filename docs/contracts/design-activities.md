@@ -95,7 +95,7 @@ hold the same history of the same captures.
 
 A retained capture is one envelope, `ds.design-activities-snapshot/v1`:
 `{schema, ds_project, project_name?, display_name?, status?, lane, captured_at_ms,
-captured_by, source:{rows, fast_lane, diagnostics_source}, ledger, dashboard?,
+captured_by, source:{rows, diagnostics_source}, ledger, dashboard?,
 digest}`. `digest` is `sha256:` over the canonical (compact) bytes of the
 ledger; `captured_by` is the account the capture was taken as — **not** a
 device, because the rows carry none.

@@ -2,14 +2,14 @@
 //!
 //! The Design Dashboard was a pure TypeScript pass (`processing-dashboard.ts`,
 //! ~560 lines) that counted the project's transformer status rows into a
-//! pipeline, a momentum timeline, a crew, a geography, phase summaries, a lane
-//! split, a governance mix, an attention pile, a health score and a handful of
-//! fun facts — and a second pure pass beside it (`collisions-insight.ts`) that
+//! pipeline, a momentum timeline, a crew, a geography, phase summaries, a
+//! governance mix, an attention pile, a health score and a handful of fun
+//! facts — and a second pure pass beside it (`collisions-insight.ts`) that
 //! explained why transformers collide. Both are this module now, so `ds` can
 //! answer the same question with no browser.
 //!
 //! It DECIDES nothing that is already decided. A row's issue list is
-//! `design_health`'s verdict, read in-process; its lane, latest action,
+//! `design_health`'s verdict, read in-process; its latest action,
 //! governance bucket, sync state and phase ownership are `design_status_row`'s
 //! answer over the same rows, read in-process from ONE call. This module
 //! counts, buckets and ranks — nothing else. The Dashboard's own `rowIssue`
@@ -27,7 +27,7 @@
 //! day is spelled.
 //!
 //! Ring geometry is decided here too. Every bucket list the page draws as a
-//! donut — the districts, the lanes and the health reading's `ring` — carries
+//! donut — the districts and the health reading's `ring` — carries
 //! each slice's `percent` of the whole and its cumulative `offset` (the
 //! percent of everything ranked before it), both `Math.round`ed the way every
 //! other percentage in this reply is. The page used to sum unrounded floats
@@ -52,7 +52,7 @@ use crate::design::{row_kind, RowKind};
 use crate::design_health::{
     self, FindingSeverity, Phase, TransformerHealth, PROCESSED_OUTPUT_MISSING,
 };
-use crate::design_status_row::{self, GovernanceState, Lane, PhaseOwner, RowReply, SyncState};
+use crate::design_status_row::{self, GovernanceState, PhaseOwner, RowReply, SyncState};
 use crate::response_policy::iso8601_ms;
 
 pub const SCHEMA: &str = "ds.design-dashboard/v1";
@@ -205,17 +205,6 @@ pub struct PhaseSummary {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct LaneSplit {
-    pub lane: Lane,
-    pub label_key: String,
-    pub count: usize,
-    /// Share of the lane donut, 0–100, over the lanes actually reported.
-    pub percent: i64,
-    /// Cumulative percent of the lanes ranked before this one.
-    pub offset: i64,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct GovernanceMix {
     pub status: GovernanceBucket,
     pub label_key: String,
@@ -312,10 +301,8 @@ pub struct Crew {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Model {
     pub total: usize,
-    /// Transformers with a computed LV network on any lane.
+    /// Transformers with a computed LV network.
     pub designed_count: usize,
-    /// Subset of `designed_count` computed on the new process / Fast lane.
-    pub process_lane_count: usize,
     pub report_ready_count: usize,
     pub combined_count: usize,
     pub latest: ActionFacts,
@@ -328,8 +315,6 @@ pub struct Model {
     pub district_count: usize,
     pub sector_count: usize,
     pub phase_summaries: Vec<PhaseSummary>,
-    pub lanes: Vec<LaneSplit>,
-    pub fast_pct: i64,
     pub governance: Vec<GovernanceMix>,
     pub attention: Vec<AttentionNote>,
     pub health: HealthReading,
@@ -405,7 +390,10 @@ pub struct ProcessDiagnostic {
     /// Epoch millis, as the host's store records it.
     #[serde(default)]
     pub at: i64,
+    /// Accepted so the host can pass its own record unchanged; the stored
+    /// stamp is wire data no reading here branches on.
     #[serde(default)]
+    #[allow(dead_code)]
     pub lane: Option<String>,
     #[serde(default)]
     pub user: Option<String>,
@@ -438,8 +426,6 @@ struct Request {
     diagnostics: Vec<ProcessDiagnostic>,
     #[serde(default)]
     now_ms: i64,
-    #[serde(default)]
-    fast_lane: bool,
     /// Minutes to ADD to UTC for the host's local day — the browser's
     /// `-getTimezoneOffset()`. The momentum timeline buckets by local day, as
     /// the page always has.
@@ -707,16 +693,8 @@ fn rows_with_diagnostics(rows: Vec<Value>, diagnostics: &[ProcessDiagnostic]) ->
             Value::String(if error { "error" } else { "warning" }.into()),
         );
         meta.insert("when".into(), Value::String(iso_from_ms(diagnostic.at)));
-        // The spread wrote these keys whether or not the diagnostic named
-        // them, so a lane the document carried is overwritten, not kept.
-        meta.insert(
-            "lane".into(),
-            diagnostic
-                .lane
-                .clone()
-                .map(Value::String)
-                .unwrap_or(Value::Null),
-        );
+        // The spread wrote this key whether or not the diagnostic named it,
+        // so a user the document carried is overwritten, not kept.
         meta.insert(
             "user".into(),
             diagnostic
@@ -808,8 +786,8 @@ fn row_truth(rows: &[Value], now_ms: i64) -> Vec<Option<RowReply>> {
 
 /// The most recent successful design compute on a row, or none when the LV
 /// network has never been computed. A transformer becomes "designed" through
-/// ANY compute phase — sketch, draft (the classic lanes) or process (the
-/// unified / Fast lane). A green process stamp whose saved output layers are
+/// ANY compute phase — sketch or draft (the retired phases, still stamped on
+/// older documents) or process. A green process stamp whose saved output layers are
 /// missing does NOT count: that is `design_health`'s
 /// `processed_output_missing`, and it lands in the attention pile instead.
 pub(crate) struct ComputeStamp {
@@ -924,7 +902,10 @@ fn phase_slot(phase: Phase) -> &'static str {
     }
 }
 
-fn is_legacy_phase(phase: Phase) -> bool {
+/// The Draft/Sketch phases of the retired second process path. Older
+/// documents still carry their stamps; no reading here treats one as a
+/// finding a person can act on today.
+pub(crate) fn is_retired_phase(phase: Phase) -> bool {
     matches!(phase, Phase::Draft | Phase::Sketch)
 }
 
@@ -942,12 +923,6 @@ fn note_from_finding(
         (
             "ddash_note_output_missing",
             "ddash_note_detail_output_missing",
-            Tone::Red,
-        )
-    } else if finding.code == design_health::LEGACY_PHASE_SUPERSEDED {
-        (
-            "ddash_note_legacy_superseded",
-            "ddash_note_detail_phase_error",
             Tone::Red,
         )
     } else {
@@ -1041,7 +1016,6 @@ fn build_facts(
     leader: Option<&CrewMember>,
     district_count: usize,
     sector_count: usize,
-    fast_pct: i64,
     locked_pct: i64,
 ) -> Vec<FunFact> {
     let mut facts: Vec<FunFact> = Vec::new();
@@ -1103,14 +1077,6 @@ fn build_facts(
             vec![("pct", Value::from(share))],
         ));
     }
-    if fast_pct > 0 {
-        facts.push(fact(
-            "⚡",
-            FactTone::Lime,
-            "ddash_fact_fast_share",
-            vec![("pct", Value::from(fast_pct))],
-        ));
-    }
     if locked_pct > 0 {
         facts.push(fact(
             "🔒",
@@ -1151,7 +1117,6 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
 
     let mut designed_users: Vec<String> = Vec::new();
     let mut designed_count = 0usize;
-    let mut process_lane_count = 0usize;
     let mut report_ready_count = 0usize;
     let mut combined_count = 0usize;
     let mut day_counts: BTreeMap<String, usize> = BTreeMap::new();
@@ -1161,14 +1126,11 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
     let mut districts: Vec<String> = Vec::new();
     let mut district_names: Vec<String> = Vec::new();
     let mut sector_names: Vec<String> = Vec::new();
-    let mut lane_fast = 0usize;
-    let mut lane_standard = 0usize;
-    let mut processed_rows = 0usize;
     let mut gov_locked = 0usize;
     let mut gov_draft = 0usize;
     let mut notes: Vec<AttentionNote> = Vec::new();
     let mut actions: Vec<(usize, String, ActionFacts)> = Vec::new();
-    let mut phase_counts: Vec<BTreeMap<String, usize>> = vec![BTreeMap::new(); 4];
+    let mut phase_counts: Vec<BTreeMap<String, usize>> = vec![BTreeMap::new(); 3];
     let mut owner_by_name: BTreeMap<String, String> = BTreeMap::new();
 
     for (index, value) in rows.iter().enumerate() {
@@ -1200,9 +1162,6 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
             }
         }
         let process = phase_meta(row, "process_metadata");
-        if phase_succeeded(process) && !output_never_saved {
-            process_lane_count += 1;
-        }
         if phase_succeeded(phase_meta(row, "report_metadata")) {
             report_ready_count += 1;
         }
@@ -1219,20 +1178,6 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
         ));
 
         let truth = truth.get(index).and_then(Option::as_ref);
-        // Lane counts cover rows whose Process actually ran: a row that never
-        // processed has no lane, and a stale save-invalidation is not a run.
-        let process_status = process
-            .and_then(|meta| meta.get("status"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        if !process_status.is_empty() && process_status != "stale" {
-            processed_rows += 1;
-            match truth.map(|truth| truth.view.lane) {
-                Some(Lane::Fast) => lane_fast += 1,
-                Some(Lane::Standard) => lane_standard += 1,
-                None => {}
-            }
-        }
         match truth.map(|truth| truth.governance.state) {
             Some(GovernanceState::Open) => gov_draft += 1,
             _ => gov_locked += 1,
@@ -1260,24 +1205,25 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
             action
         };
 
-        // Phase-by-phase, in the four slots the page summarised.
-        let legacy_status = phase_status(latest_legacy_phase(row)).to_string();
+        // Phase-by-phase, in the three slots the page summarises. The retired
+        // Draft/Sketch phase is not a slot: there is one way to process a
+        // transformer, so a stamp an older document still carries is no
+        // summary of anything.
         for (slot, status) in [
-            (0usize, legacy_status),
-            (1, phase_status(process).to_string()),
+            (0usize, phase_status(process).to_string()),
             (
-                2,
+                1,
                 phase_status(phase_meta(row, "report_metadata")).to_string(),
             ),
             (
-                3,
+                2,
                 phase_status(phase_meta(row, "combined_inclusion_metadata")).to_string(),
             ),
         ] {
             *phase_counts[slot].entry(status).or_insert(0) += 1;
         }
 
-        if let Some(note) = attention_note(row, &name, &health, truth, &action, request.fast_lane) {
+        if let Some(note) = attention_note(row, &name, &health, truth, &action) {
             notes.push(note);
         }
         actions.push((index, name, action));
@@ -1357,40 +1303,6 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
         .collect();
     let district_count = distinct_count(&district_names);
     let sector_count = distinct_count(&sector_names);
-
-    let lane_buckets: Vec<(Lane, &str, usize)> = [
-        (
-            Lane::Standard,
-            if request.fast_lane {
-                "ddash_lane_legacy_standard"
-            } else {
-                "ddash_lane_standard"
-            },
-            lane_standard,
-        ),
-        (Lane::Fast, "ddash_lane_fast", lane_fast),
-    ]
-    .into_iter()
-    .filter(|(_, _, count)| *count > 0)
-    .collect();
-    let lane_ring = ring_geometry(
-        &lane_buckets
-            .iter()
-            .map(|(_, _, count)| *count)
-            .collect::<Vec<usize>>(),
-    );
-    let lanes: Vec<LaneSplit> = lane_buckets
-        .into_iter()
-        .zip(lane_ring)
-        .map(|((lane, label_key, count), (percent, offset))| LaneSplit {
-            lane,
-            label_key: label_key.into(),
-            count,
-            percent,
-            offset,
-        })
-        .collect();
-    let fast_pct = pct(lane_fast, processed_rows);
 
     let governance: Vec<GovernanceMix> = [
         (GovernanceBucket::Locked, "ddash_leg_locked", gov_locked),
@@ -1481,15 +1393,13 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
             .collect()
     };
 
-    let phase_slots: [(&str, &str, usize); 4] = [
-        ("draft", "ddash_phase_draft_sketch", 0),
-        ("process", "dsh_phase_label_process", 1),
-        ("report", "dsh_phase_label_report", 2),
-        ("combined", "dsh_phase_label_combined", 3),
+    let phase_slots: [(&str, &str, usize); 3] = [
+        ("process", "dsh_phase_label_process", 0),
+        ("report", "dsh_phase_label_report", 1),
+        ("combined", "dsh_phase_label_combined", 2),
     ];
     let phase_summaries: Vec<PhaseSummary> = phase_slots
         .into_iter()
-        .filter(|(key, _, _)| !(request.fast_lane && *key == "draft"))
         .map(|(key, label_key, slot)| PhaseSummary {
             key: key.into(),
             label_key: label_key.into(),
@@ -1515,14 +1425,12 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
         leader.as_ref(),
         district_count,
         sector_count,
-        fast_pct,
         locked_pct,
     );
 
     let model = Model {
         total,
         designed_count,
-        process_lane_count,
         report_ready_count,
         combined_count,
         latest,
@@ -1551,8 +1459,6 @@ fn build_model(request: &Request) -> (Model, BTreeMap<String, String>) {
         district_count,
         sector_count,
         phase_summaries,
-        lanes,
-        fast_pct,
         governance,
         attention: notes,
         health: HealthReading {
@@ -1582,13 +1488,14 @@ pub(crate) fn attention_note(
     health: &TransformerHealth,
     truth: Option<&RowReply>,
     action: &ActionFacts,
-    fast_lane: bool,
 ) -> Option<AttentionNote> {
-    // Fast mode never surfaces a Standard-lane phase (owner ruling 2026-08-26).
+    // A retired Draft/Sketch phase never reaches the pile: there is one way
+    // to process a transformer (owner ruling 2026-09-22), and a stamp an
+    // older document still carries is not a finding anyone can act on.
     let finding = health
         .findings
         .iter()
-        .find(|finding| !(fast_lane && is_legacy_phase(finding.phase)));
+        .find(|finding| !is_retired_phase(finding.phase));
     if let Some(finding) = finding {
         return Some(note_from_finding(
             row,
@@ -1963,7 +1870,7 @@ mod tests {
     }
 
     #[test]
-    fn a_transformer_is_designed_through_any_compute_lane() {
+    fn a_transformer_is_designed_through_any_compute_phase() {
         let model = dashboard(json!([
             {"name": "a", "process_metadata": {"status": "success", "when": "2026-08-25T09:00:00Z", "user": "a@x", "lane": "fast"},
              "layers": {"lv_poles": 1, "service_cables": 1, "spans": 1}},
@@ -1971,9 +1878,18 @@ mod tests {
             {"name": "c", "sketch_metadata": {"status": "success", "sketched_at": "2026-08-23T09:00:00Z", "user": "b@x"}},
         ]));
         assert_eq!(model["designed_count"], 3);
-        assert_eq!(model["process_lane_count"], 1);
         // Not a funnel: each stage is measured against the total.
         assert_eq!(model["pipeline"][1]["pct_of_total"], 100);
+        // The model has no lane split, no lane share and no per-lane count:
+        // there is one way to process a transformer.
+        for retired in ["lanes", "fast_pct", "process_lane_count"] {
+            assert!(model.get(retired).is_none(), "{retired} is still answered");
+        }
+        assert!(model["facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|fact| fact["key"] != "ddash_fact_fast_share"));
     }
 
     #[test]
@@ -1983,7 +1899,6 @@ mod tests {
              "layers": {"other": 1}},
         ]));
         assert_eq!(model["designed_count"], 0);
-        assert_eq!(model["process_lane_count"], 0);
         assert_eq!(model["health"]["error_count"], 1);
         assert_eq!(
             model["attention"][0]["label_key"],
@@ -2005,26 +1920,34 @@ mod tests {
     }
 
     #[test]
-    fn fast_mode_drops_the_legacy_phase_summary_its_notes_and_names_the_legacy_lane() {
+    fn the_retired_draft_sketch_phase_has_no_summary_and_reaches_no_pile() {
         let rows = json!([
             {"name": "a", "draft_metadata": {"status": "error", "when": "2026-08-25T09:00:00Z", "error_message": "bad"}},
             {"name": "b", "process_metadata": {"status": "success", "when": "2026-08-25T09:00:00Z", "lane": "standard"},
              "layers": {"lv_poles": 1, "service_cables": 1, "spans": 1}},
+            {"name": "c", "draft_metadata": {"status": "error", "when": "2026-08-20T10:00:00Z", "error_message": "Drafting failed."},
+             "process_metadata": {"status": "success", "when": "2026-08-25T10:00:00Z"},
+             "layers": {"lv_poles": 1, "service_cables": 1, "spans": 1}},
         ]);
-        let standard =
-            reply(json!({"schema": SCHEMA, "rows": rows, "now_ms": 1_787_743_440_000i64}))
-                ["dashboard"]
-                .clone();
-        let fast = reply(
-            json!({"schema": SCHEMA, "rows": rows, "now_ms": 1_787_743_440_000i64, "fast_lane": true}),
-        )["dashboard"]
+        let model = reply(json!({"schema": SCHEMA, "rows": rows, "now_ms": 1_787_743_440_000i64}))
+            ["dashboard"]
             .clone();
-        assert_eq!(standard["phase_summaries"][0]["key"], "draft");
-        assert_eq!(fast["phase_summaries"][0]["key"], "process");
-        assert_eq!(standard["attention"].as_array().unwrap().len(), 1);
-        assert!(fast["attention"].as_array().unwrap().is_empty());
-        assert_eq!(standard["lanes"][0]["label_key"], "ddash_lane_standard");
-        assert_eq!(fast["lanes"][0]["label_key"], "ddash_lane_legacy_standard");
+        let keys: Vec<&str> = model["phase_summaries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|summary| summary["key"].as_str().unwrap())
+            .collect();
+        assert_eq!(keys, ["process", "report", "combined"]);
+        // `a` errored only on the retired phase; `c` carries a superseded
+        // legacy error. Neither is anything a person can act on today.
+        assert!(model["attention"].as_array().unwrap().is_empty());
+        // The request has no lane switch any more.
+        let bytes = serde_json::to_vec(
+            &json!({"schema": SCHEMA, "rows": [], "now_ms": 1_787_743_440_000i64, "fast_lane": true}),
+        )
+        .unwrap();
+        assert!(evaluate(&bytes).is_err());
     }
 
     #[test]
@@ -2194,14 +2117,6 @@ mod tests {
         assert_eq!(districts[1]["offset"], 50);
         assert_eq!(districts[2]["unassigned"], true);
         assert_eq!(districts[2]["offset"], 75);
-        // The errored run on `c` is a Standard-lane run too: 2 vs 1.
-        let lanes = model["lanes"].as_array().unwrap();
-        assert_eq!(lanes.len(), 2);
-        assert_eq!(lanes[0]["lane"], "standard");
-        assert_eq!(lanes[0]["percent"], 67);
-        assert_eq!(lanes[0]["offset"], 0);
-        assert_eq!(lanes[1]["percent"], 33);
-        assert_eq!(lanes[1]["offset"], 67);
         let ring = model["health"]["ring"].as_array().unwrap();
         assert_eq!(ring.len(), 2, "no warning or info band is drawn");
         assert_eq!(ring[0]["key"], "error");
