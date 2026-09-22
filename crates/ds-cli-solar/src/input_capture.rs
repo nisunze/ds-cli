@@ -88,11 +88,7 @@ pub static COMMAND: Command = Command {
             "the packaged profile is unsafe or malformed",
             "reinstall one complete ds release"
         ),
-        refusal!(
-            "headless_signed_out",
-            "the lane has no restorable native user",
-            "run ds auth login --email <address>"
-        ),
+        ds_cli_auth::SIGNED_OUT_REFUSAL,
         refusal!(
             "native_state_unsafe",
             "protected native state is unsafe or unreadable",

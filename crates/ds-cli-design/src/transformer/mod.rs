@@ -93,12 +93,7 @@ refusal!(
     "the packaged native catalogue is unsafe or malformed",
     "reinstall one complete ds release"
 );
-refusal!(
-    HEADLESS_SIGNED_OUT,
-    "headless_signed_out",
-    "the selected lane has no restorable native user",
-    "run ds auth login --email <address>"
-);
+pub const HEADLESS_SIGNED_OUT: Refusal = ds_cli_auth::SIGNED_OUT_REFUSAL;
 refusal!(
     HEADLESS_NO_PROJECT,
     "headless_project_not_selected",

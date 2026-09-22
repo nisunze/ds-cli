@@ -78,11 +78,7 @@ pub const MAX_BLOCKED_ON_CHARS: usize = 200;
 // Refusals this domain adds to the shared pairing set
 // ---------------------------------------------------------------------------
 
-pub const NOT_SIGNED_IN: Refusal = Refusal {
-    code: "headless_signed_out",
-    when: "this machine has no restored native user for the selected lane",
-    remedy: "run `ds auth login --email <address>`, or link this machine from a signed-in Desktop",
-};
+pub const NOT_SIGNED_IN: Refusal = ds_cli_auth::SIGNED_OUT_REFUSAL;
 pub const INVALID_TEXT: Refusal = Refusal {
     code: "invalid_text",
     when: "a required report field is empty, untrimmed, or exceeds its bound",

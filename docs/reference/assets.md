@@ -211,7 +211,7 @@ every command here.
 
 | Code | Means |
 |---|---|
-| `headless_signed_out` | no restored native credential on this lane — `ds auth login` or `ds auth link begin` |
+| `headless_signed_out` | no credential is connected on this lane — `ds account connect`, approved in the Desktop |
 | `headless_project_not_selected` | no project selected for this credential and lane — `ds auth project use --project <id>` |
 | `projected_asset_read_only` | a `sys:` row or a system folder was named by `classify`, `attach` or `folder` |
 | `nothing_to_update` | a `classify` with no change flag — refused before a round trip |

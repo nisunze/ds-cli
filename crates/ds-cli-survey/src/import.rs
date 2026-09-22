@@ -195,11 +195,7 @@ const REFUSALS: &[Refusal] = &[
         when: "the packaged native catalogue is unsafe or malformed",
         remedy: "reinstall one complete ds release",
     },
-    Refusal {
-        code: "headless_signed_out",
-        when: "the selected lane has no restorable native user",
-        remedy: "run ds auth login --email <address>",
-    },
+    ds_cli_auth::SIGNED_OUT_REFUSAL,
     Refusal {
         code: "headless_project_not_selected",
         when: "the user has no audience-fenced selected project",
