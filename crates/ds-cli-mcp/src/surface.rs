@@ -1417,6 +1417,22 @@ pub fn leaf_tool_json(tool: &Tool) -> Value {
     })
 }
 
+/// The chapters `ds_catalog` will accept, read from the routing table rather
+/// than written out again.
+///
+/// It WAS written out again, and it had drifted: `data` was missing, so an
+/// agent that found `desktop.data.rwanda.install` through a query could not
+/// then ask for that chapter — the one chapter whose whole job is putting the
+/// country's data on the machine was the one it could not name.
+fn catalog_chapter_enum() -> Value {
+    let mut tokens: Vec<Value> = ROUTED_CHAPTERS
+        .iter()
+        .map(|chapter| json!(chapter.token()))
+        .collect();
+    tokens.push(Value::Null);
+    Value::Array(tokens)
+}
+
 fn catalog_tool_json() -> Value {
     json!({
         "name": "ds_catalog",
@@ -1426,7 +1442,7 @@ fn catalog_tool_json() -> Value {
             "type": "object",
             "properties": {
                 "query": { "type": ["string", "null"], "description": "Words to match against command ids and descriptions; at most ten summaries return." },
-                "chapter": { "type": ["string", "null"], "enum": ["project", "assets", "grid-model", "pls-cadd", "survey", "design", "map-presentation", "vector-tiles", "solar", "reports", "operations", "workstation", null], "description": "Restrict discovery to one operator-intent chapter." },
+                "chapter": { "type": ["string", "null"], "enum": catalog_chapter_enum(), "description": "Restrict discovery to one operator-intent chapter." },
                 "command": { "type": ["string", "null"], "description": "Route one exact canonical command id to its chapter describe call." }
             },
             "additionalProperties": false
