@@ -463,23 +463,21 @@ mod tests {
         assert_eq!(read_at(root.path(), &scope()).unwrap(), revised.catalogue);
 
         // A revision without bytes is not a revision.
-        assert!(
-            execute_at(
-                root.path(),
-                &scope(),
-                Op::Revise {
-                    id: "m-1".to_owned(),
-                    expected_sha256: None,
-                    model_revision: 2,
-                    bytes: 5,
-                    sha256: "e".repeat(64),
-                    head_revision: None,
-                    revised_at: None,
-                },
-                None
-            )
-            .is_err()
-        );
+        assert!(execute_at(
+            root.path(),
+            &scope(),
+            Op::Revise {
+                id: "m-1".to_owned(),
+                expected_sha256: None,
+                model_revision: 2,
+                bytes: 5,
+                sha256: "e".repeat(64),
+                head_revision: None,
+                revised_at: None,
+            },
+            None
+        )
+        .is_err());
     }
 
     #[test]

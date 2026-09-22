@@ -178,9 +178,10 @@ pub fn resolve(resources: &[ReferenceResource], id: &str) -> Result<Option<Decla
 pub fn cloud_dataset(resource: &ReferenceResource) -> Dataset {
     let mut dataset = catalog_dataset(resource);
     dataset.provider = CLOUD_READ_PROVIDER.to_owned();
-    dataset
-        .parameters
-        .insert("layer".to_owned(), serde_json::Value::String(resource.layer.clone()));
+    dataset.parameters.insert(
+        "layer".to_owned(),
+        serde_json::Value::String(resource.layer.clone()),
+    );
     dataset
 }
 

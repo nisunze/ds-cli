@@ -1505,8 +1505,15 @@ pub fn decode_cloud_read(response: &Value, area: &Value, layer: &str) -> Result<
         ));
     }
     for (index, feature) in features.iter().enumerate() {
-        if feature["type"] != "Feature" || feature["geometry"].get("type").and_then(Value::as_str).is_none() {
-            return Err(format!("cloud read feature {index} is not a GeoJSON Feature with a geometry"));
+        if feature["type"] != "Feature"
+            || feature["geometry"]
+                .get("type")
+                .and_then(Value::as_str)
+                .is_none()
+        {
+            return Err(format!(
+                "cloud read feature {index} is not a GeoJSON Feature with a geometry"
+            ));
         }
     }
     let version = response["dataset"]["version"].as_str().unwrap_or("");

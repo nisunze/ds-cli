@@ -222,13 +222,15 @@ fn validate_bound(
         ds_command_kernel::reference_cache::validate_area(area).map_err(|_| {
             invalid("Invalid boundary: expected a GeoJSON Polygon or MultiPolygon in WGS84")
         })?;
-        if serde_json::to_vec(area).map_or(true, |bytes| bytes.len() > DATA_DISTRIBUTION_MAX_AREA_BYTES)
+        if serde_json::to_vec(area)
+            .map_or(true, |bytes| bytes.len() > DATA_DISTRIBUTION_MAX_AREA_BYTES)
         {
             return Err(invalid("The boundary exceeds its request bound"));
         }
-        rectangle_within_cap(geometry_envelope(area).ok_or_else(|| {
-            invalid("Invalid boundary: no finite WGS84 positions")
-        })?)?;
+        rectangle_within_cap(
+            geometry_envelope(area)
+                .ok_or_else(|| invalid("Invalid boundary: no finite WGS84 positions"))?,
+        )?;
     }
     Ok(())
 }
@@ -776,7 +778,10 @@ mod tests {
             boundary: None,
             limit: None,
         };
-        assert_eq!([upi.action(), village.action(), parcels.action()], FOUNDATION_ACTIONS);
+        assert_eq!(
+            [upi.action(), village.action(), parcels.action()],
+            FOUNDATION_ACTIONS
+        );
         assert!(upi.is_foundation() && !DataDistributionRequest::ListDatasets {}.is_foundation());
         // Never in the profile-pinned seeding vocabulary.
         for action in FOUNDATION_ACTIONS {
