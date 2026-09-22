@@ -193,7 +193,7 @@ lands beside these two.
 
 | Code | Means |
 |---|---|
-| `headless_signed_out` | no restored native credential on this lane — `ds auth login` or `ds auth link begin` |
+| `headless_signed_out` | no credential is connected on this lane — `ds account connect`, approved in the Desktop |
 | `headless_project_not_selected` | no project selected for this credential and lane — `ds auth project use --project <id>` |
 | `project_not_visible` | the selected project is not one this account is a member of |
 | `pm_refused` | ds-brain or the engine declined the command by name; `detail.service_message` says what |

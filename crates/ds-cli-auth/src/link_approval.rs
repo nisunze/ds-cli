@@ -1,7 +1,7 @@
 //! Approval of one exact headless device authorization.
 //!
 //! `POST /api/v1/auth/device/approve` needs a Firebase USER id token and
-//! nothing else — exactly what `ds auth login --email` leaves in the native
+//! nothing else — exactly what a trusted-terminal sign-in leaves in the native
 //! refresh store. So the restored native session is the approving principal:
 //! it previews one fixed operation, this module verifies the returned public
 //! binding, and only then does it commit the operator-confirmed approval. This
@@ -35,7 +35,7 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 const REQUEST_ID: Arg = Arg::value(
     "request",
     "<request-id>",
-    "Exact public request id returned by `auth link begin`.",
+    "Exact public request id shown by `account connect` or `auth link begin`.",
 )
 .required();
 const DEVICE_FINGERPRINT: Arg = Arg::value(
@@ -60,7 +60,7 @@ pub const APPROVE_OP: BridgeOp = BridgeOp {
 const INVALID_REQUEST: Refusal = Refusal {
     code: "device_authorization_input_invalid",
     when: "the request id or device fingerprint is empty, untrimmed, oversized, or malformed",
-    remedy: "copy both exact public values from `ds auth link begin`",
+    remedy: "copy both exact values shown by `ds account connect`",
 };
 const BINDING_MISMATCH: Refusal = Refusal {
     code: "device_authorization_binding_mismatch",
@@ -77,17 +77,17 @@ const RECEIPT_UNREADABLE: Refusal = Refusal {
 const CANNOT_ADMIT: Refusal = Refusal {
     code: "device_cannot_admit",
     when: "the signed-in credential is a device, and a device cannot admit a sibling",
-    remedy: "approve from a session signed in with a password: `ds auth login --email <address> --lane <lane>`",
+    remedy: "approve in the signed-in Desktop; a device cannot admit a sibling",
 };
 const NOT_FOUND: Refusal = Refusal {
     code: "device_authorization_not_found",
     when: "no authorization request carries this id on this lane; it may have begun on another",
-    remedy: "run `ds auth link begin` again on the requesting device",
+    remedy: "run `ds account connect` again on the requesting device",
 };
 const EXPIRED: Refusal = Refusal {
     code: "device_authorization_expired",
     when: "the request expired deliberately and cannot be extended",
-    remedy: "run `ds auth link begin` again on the requesting device",
+    remedy: "run `ds account connect` again on the requesting device",
 };
 const DECIDED: Refusal = Refusal {
     code: "device_authorization_decided",
@@ -419,7 +419,7 @@ fn bounded_public_text(value: Option<&Value>, max: usize) -> bool {
 
 fn invalid_input(message: &str) -> Failure {
     Failure::invalid("device_authorization_input_invalid", message)
-        .remedy("copy the exact request id and fingerprint from `ds auth link begin`")
+        .remedy("copy the exact request id and fingerprint shown by `ds account connect`")
 }
 
 fn binding_mismatch(message: &str) -> Failure {
@@ -737,7 +737,7 @@ mod tests {
             match *wire {
                 "DESKTOP_PRINCIPAL_REQUIRED" => {
                     assert!(
-                        remedy.contains("ds auth login --email <address> --lane <lane>"),
+                        remedy.contains("signed-in Desktop") && !remedy.contains("auth login"),
                         "{remedy}"
                     );
                     assert!(
@@ -762,7 +762,7 @@ mod tests {
                     assert!(remedy.starts_with("do not approve"), "{remedy}");
                 }
                 "DEVICE_AUTHORIZATION_NOT_FOUND" | "DEVICE_AUTHORIZATION_EXPIRED" => {
-                    assert!(remedy.contains("ds auth link begin"), "{remedy}");
+                    assert!(remedy.contains("ds account connect"), "{remedy}");
                 }
                 _ => {}
             }

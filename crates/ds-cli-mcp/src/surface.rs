@@ -10,11 +10,22 @@ use crate::tools::{self, CONFIRM_PROPERTY, Tool};
 
 pub const EXPOSURES: &[&str] = &["chapters", "commands"];
 
-// MCP never asks an operator for a password. The protected device-link commands
-// remain the only sign-in path this surface advertises.
-const DEVICE_LINK_GUIDANCE: &str = "If signed out, call auth.link.begin on this host, approve its request from the signed-in Desktop, then call auth.link.complete. Keep the same lane and principal throughout. Never collect an email or password through MCP.";
-const DEVICE_LINK_REMEDY: &str = "Use the protected device link: auth.link.begin, approval from the signed-in Desktop, then auth.link.complete on this host.";
-const PASSWORD_ONLY_REMEDY: &str = "This command currently requires a password session and cannot run with a device-linked MCP identity; report this command as a device-link coverage gap.";
+// The only sign-in this surface ever advertises is the device link a person
+// approves in their signed-in Desktop. One sentence, on every exposure: a
+// person who has never opened a terminal can follow it, and it is the same
+// sentence `ds` itself gives. Nothing here names a terminal sign-in, an
+// address or a secret; `mcp_device_link_guidance` below scrubs any that
+// slips through from a descriptor, and `crates/ds/tests/mcp.rs` proves the
+// published surface carries none.
+const DEVICE_LINK_GUIDANCE: &str = "If signed out, run `ds account connect` on this machine (or call the account.connect tool), then approve the request in the signed-in DS GridDesign Desktop under Account > Link a trusted device; call account.connect again once approved. Keep the same lane throughout. That is the only sign-in.";
+/// Word for word `ds_cli_auth::SIGNED_OUT_REMEDY`. Spelled here because this
+/// crate reaches `ds` only through its executable, never its crates;
+/// `crates/ds/tests/mcp.rs` holds the two equal.
+pub const DEVICE_LINK_REMEDY: &str = "run `ds account connect`";
+pub const DEVICE_LINK_NEXT: &str = "account.connect";
+/// Words no MCP answer may carry: each is the beginning of advice that sends
+/// a person to a terminal sign-in. Matched case-insensitively.
+pub const TERMINAL_SIGN_IN_WORDS: &[&str] = &["auth login", "--email", "password"];
 pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
     "admin-bounds",
@@ -275,6 +286,12 @@ impl Profile {
             // one thing the comment was about. The proposal is what the person
             // confirms; the read is what the map paints from.
             Self::Project => 19,
+            // Seventeen working-copy leaves plus both bootstrap tools. Raised
+            // from the default on 2026-09-22 when the four 2026-09-21 leaves
+            // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
+            // `dsgrid profile labels set|show`) were routed here from the
+            // broad `grid` router they had pushed past its own budget.
+            Self::GridLocalModel => 19,
             _ => 16,
         }
     }
@@ -345,7 +362,11 @@ impl Profile {
             // Native account bootstrap is available on the broad live surface
             // but is not project-workflow tooling and must not inflate the
             // already bounded specialized project profile.
-            Self::Project => tool.chapter == Chapter::Project && !tool.id.starts_with("auth."),
+            Self::Project => {
+                tool.chapter == Chapter::Project
+                    && !tool.id.starts_with("auth.")
+                    && !tool.id.starts_with("account.")
+            }
             Self::Operations => {
                 tool.chapter == Chapter::Operations
                     && !INSTALLATION_COMMANDS.contains(&tool.id.as_str())
@@ -454,6 +475,7 @@ impl Profile {
 // begin/status/complete and inventory operate only through protected native
 // state; `auth.link.approve` remains human-only and globally excluded.
 const AUTH_CONTEXT_COMMANDS: &[&str] = &[
+    "account.connect",
     "auth.status",
     "auth.link.begin",
     "auth.link.status",
@@ -540,6 +562,14 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.structure.retype",
     "dsgrid.structure.staking-enrich",
     "dsgrid.report.structures",
+    // 2026-09-21 landings that widened the broad `grid` router past its
+    // budget (31 tools against 27) without a profile decision: forgetting a
+    // working copy, its village facts and its Profile labels are the same
+    // working-copy workflow as the typed edits above and live here.
+    "dsgrid.model.forget",
+    "dsgrid.structure.admin-refresh",
+    "dsgrid.profile.labels.set",
+    "dsgrid.profile.labels.show",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -551,6 +581,10 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.structure.retype",
     "dsgrid.structure.staking-enrich",
     "dsgrid.report.structures",
+    "dsgrid.model.forget",
+    "dsgrid.structure.admin-refresh",
+    "dsgrid.profile.labels.set",
+    "dsgrid.profile.labels.show",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD
@@ -1301,47 +1335,124 @@ fn invoke_leaf(
     invoke_argv(&argv, executable)
 }
 
-// The CLI retains its trusted-terminal login contract. MCP cannot collect
-// credentials, so translate only advice that would send an MCP caller there.
-// A password-only command stays an explicit coverage gap instead of pretending
-// that device linking will make it work.
+/// Whether one sentence would send a person to a terminal sign-in.
+pub fn names_terminal_sign_in(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    TERMINAL_SIGN_IN_WORDS
+        .iter()
+        .any(|banned| lower.contains(banned))
+}
+
+// Belt and braces. Every remedy `ds` emits already names the device link,
+// and `crates/ds/tests/mcp.rs` proves the published surface carries no
+// terminal sign-in advice — so in production this rewrites nothing. It stays
+// because the cost of one sentence slipping through is a person told to open
+// a terminal, and that is the failure this whole surface exists to prevent.
+//
+// Only advisory fields are touched: `remedy`, `next`, `message` and `when`
+// inside an envelope's `error` or a descriptor's refusals, plus the prose of
+// a descriptor and the `next` of a result. Data a command returns — a
+// feedback report's text, a survey answer — is never rewritten: those are
+// facts about the world, not advice to the caller.
 fn mcp_device_link_guidance(value: &mut Value) {
-    match value {
-        Value::Object(fields) => {
-            let password_only = fields
-                .get("message")
-                .or_else(|| fields.get("when"))
-                .and_then(Value::as_str)
-                .is_some_and(|message| {
-                    message.contains("needs the password session")
-                        || message.contains("requires a password session")
-                });
-            for (name, child) in fields.iter_mut() {
-                if matches!(name.as_str(), "remedy" | "next")
-                    && child
-                        .as_str()
-                        .is_some_and(|advice| advice.contains("auth login"))
+    let Some(fields) = value.as_object_mut() else {
+        return;
+    };
+    if let Some(error) = fields.get_mut("error") {
+        scrub_advice(error);
+    }
+    if let Some(data) = fields.get_mut("data") {
+        if let Some(command) = data.get_mut("command") {
+            scrub_descriptor(command);
+        }
+        if let Some(commands) = data.get_mut("commands").and_then(Value::as_array_mut) {
+            for command in commands {
+                scrub_descriptor(command);
+            }
+        }
+        if let Some(object) = data.as_object_mut() {
+            for key in ["next", "remedy", "approve"] {
+                if let Some(Value::String(text)) = object.get_mut(key)
+                    && names_terminal_sign_in(text)
                 {
-                    *child = Value::String(
-                        match (name.as_str(), password_only) {
-                            ("next", true) => "ds auth status",
-                            ("next", false) => "auth.link.begin",
-                            (_, true) => PASSWORD_ONLY_REMEDY,
-                            _ => DEVICE_LINK_REMEDY,
-                        }
-                        .to_string(),
-                    );
-                } else {
-                    mcp_device_link_guidance(child);
+                    *text = match key {
+                        "next" => DEVICE_LINK_NEXT.to_string(),
+                        _ => DEVICE_LINK_REMEDY.to_string(),
+                    };
                 }
             }
         }
-        Value::Array(items) => {
-            for item in items {
-                mcp_device_link_guidance(item);
+    }
+}
+
+/// The advisory fields of one refusal or error body.
+fn scrub_advice(value: &mut Value) {
+    let Some(fields) = value.as_object_mut() else {
+        return;
+    };
+    for (name, child) in fields.iter_mut() {
+        match (name.as_str(), child) {
+            ("next", Value::String(text)) if names_terminal_sign_in(text) => {
+                *text = DEVICE_LINK_NEXT.to_string();
+            }
+            ("next", Value::Array(items)) => {
+                for item in items {
+                    if let Value::String(text) = item
+                        && names_terminal_sign_in(text)
+                    {
+                        *text = DEVICE_LINK_NEXT.to_string();
+                    }
+                }
+            }
+            ("remedy" | "when", Value::String(text)) if names_terminal_sign_in(text) => {
+                *text = DEVICE_LINK_REMEDY.to_string();
+            }
+            ("message", Value::String(text)) if names_terminal_sign_in(text) => {
+                *text = format!("sign-in is needed: {DEVICE_LINK_REMEDY}");
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The prose of one command descriptor: its own sentences, its inputs'
+/// summaries, its examples and its refusals.
+pub(crate) fn scrub_descriptor(command: &mut Value) {
+    let Some(fields) = command.as_object_mut() else {
+        return;
+    };
+    for key in ["summary", "purpose", "output", "description"] {
+        if let Some(Value::String(text)) = fields.get_mut(key)
+            && names_terminal_sign_in(text)
+        {
+            *text = DEVICE_LINK_REMEDY.to_string();
+        }
+    }
+    for key in ["inputs", "args", "examples"] {
+        for item in fields
+            .get_mut(key)
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(object) = item.as_object_mut() {
+                for field in ["summary", "note", "command"] {
+                    if let Some(Value::String(text)) = object.get_mut(field)
+                        && names_terminal_sign_in(text)
+                    {
+                        *text = DEVICE_LINK_REMEDY.to_string();
+                    }
+                }
             }
         }
-        _ => {}
+    }
+    for refusal in fields
+        .get_mut("refusals")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        scrub_advice(refusal);
     }
 }
 
@@ -1589,7 +1700,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mcp_advertises_device_link_for_every_exposure() {
+    fn mcp_advertises_account_connect_for_every_exposure() {
         for (exposure, profile) in [
             (Exposure::Chapters, None),
             (Exposure::Commands, None),
@@ -1597,56 +1708,84 @@ mod tests {
         ] {
             let surface = Surface::new(exposure, profile, vec![]).expect("surface");
             let instructions = surface.instructions();
-            assert!(instructions.contains("auth.link.begin"));
-            assert!(instructions.contains("auth.link.complete"));
-            assert!(!instructions.contains("auth login"));
+            assert!(
+                instructions.contains("ds account connect"),
+                "{instructions}"
+            );
+            assert!(instructions.contains("account.connect"), "{instructions}");
+            assert!(
+                instructions.contains("Link a trusted device"),
+                "{instructions}"
+            );
+            assert!(!names_terminal_sign_in(&instructions), "{instructions}");
         }
     }
 
     #[test]
-    fn mcp_signed_out_guidance_replaces_password_advice_in_both_shapes() {
+    fn mcp_scrubs_terminal_sign_in_advice_from_every_advisory_shape() {
         let mut descriptor = json!({
-            "data": {"command": {"refusals": [{
-                "code": "headless_signed_out",
-                "remedy": "run ds auth login --email <address>"
-            }]}}
+            "data": {"command": {
+                "id": "x.y",
+                "purpose": "Exchanges an email and hidden TTY password for a session.",
+                "inputs": [{"name": "email", "summary": "Pass --email <address>."}],
+                "examples": [{"command": "ds auth login --email a@b", "note": "Prompts for a password."}],
+                "refusals": [{
+                    "code": "headless_signed_out",
+                    "when": "no password session",
+                    "remedy": "run ds auth login --email <address>"
+                }]
+            }}
         });
         mcp_device_link_guidance(&mut descriptor);
-        assert_eq!(
-            descriptor["data"]["command"]["refusals"][0]["remedy"],
-            DEVICE_LINK_REMEDY
-        );
+        let command = &descriptor["data"]["command"];
+        assert_eq!(command["refusals"][0]["remedy"], DEVICE_LINK_REMEDY);
+        assert_eq!(command["refusals"][0]["when"], DEVICE_LINK_REMEDY);
+        assert_eq!(command["purpose"], DEVICE_LINK_REMEDY);
+        assert_eq!(command["inputs"][0]["summary"], DEVICE_LINK_REMEDY);
+        assert_eq!(command["examples"][0]["command"], DEVICE_LINK_REMEDY);
+        assert_eq!(command["examples"][0]["note"], DEVICE_LINK_REMEDY);
+        assert!(!names_terminal_sign_in(&descriptor.to_string()));
 
-        let mut error = json!({
-            "error": {
-                "code": "headless_signed_out",
-                "message": "no native user is signed in",
-                "remedy": "run ds auth login --email <address>",
-                "next": "ds auth login --email <address>"
-            }
-        });
-        mcp_device_link_guidance(&mut error);
-        assert_eq!(error["error"]["remedy"], DEVICE_LINK_REMEDY);
-        assert_eq!(error["error"]["next"], "auth.link.begin");
-        assert!(!error.to_string().contains("auth login"));
-    }
-
-    #[test]
-    fn mcp_password_only_gap_is_truthful_and_unrelated_remedies_survive() {
         let mut error = json!({
             "error": {
                 "code": "headless_signed_out",
                 "message": "this command needs the password session",
                 "remedy": "run ds auth login --email <address>",
-                "next": "ds auth status"
+                "next": ["ds auth login --email <address>", "ds auth status"]
             },
-            "unrelated": {"remedy": "repair the package"}
+            "data": {"next": "ds auth login --email <address>"}
         });
         mcp_device_link_guidance(&mut error);
-        assert_eq!(error["error"]["remedy"], PASSWORD_ONLY_REMEDY);
-        assert_eq!(error["error"]["next"], "ds auth status");
-        assert_eq!(error["unrelated"]["remedy"], "repair the package");
+        assert_eq!(error["error"]["remedy"], DEVICE_LINK_REMEDY);
+        assert_eq!(error["error"]["next"][0], DEVICE_LINK_NEXT);
+        assert_eq!(error["error"]["next"][1], "ds auth status");
+        assert_eq!(error["data"]["next"], DEVICE_LINK_NEXT);
+        assert!(
+            error["error"]["message"]
+                .as_str()
+                .unwrap()
+                .starts_with("sign-in is needed")
+        );
+        assert!(!names_terminal_sign_in(&error.to_string()));
     }
+
+    #[test]
+    fn mcp_scrub_leaves_facts_and_unrelated_advice_alone() {
+        // A feedback report quoting a person's complaint is a fact, not
+        // advice; the scrub must not rewrite it. And advice that never
+        // mentions a terminal sign-in is exactly what it was.
+        let mut envelope = json!({
+            "data": {
+                "reports": [{"detail": "the remedy said ds auth login --email; a password prompt is intimidating"}],
+                "next": "ds feedback list"
+            },
+            "error": {"remedy": "repair the package", "next": "ds doctor"}
+        });
+        let before = envelope.clone();
+        mcp_device_link_guidance(&mut envelope);
+        assert_eq!(envelope, before);
+    }
+
     use ds_cli_contract::spec::Authority;
 
     fn tool(id: &str, chapter: Chapter, confirmation_required: bool) -> Tool {

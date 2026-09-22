@@ -70,6 +70,11 @@ pub fn tool_name(id: &str) -> String {
 
 /// Build one tool from a tier-3 `ds capabilities <id>` descriptor.
 pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
+    // A tool's description is read by every host before any call, so it is
+    // scrubbed of terminal sign-in advice at the source, like every answer.
+    let mut scrubbed = command.clone();
+    crate::surface::scrub_descriptor(&mut scrubbed);
+    let command = &scrubbed;
     let id = command.get("id")?.as_str()?.to_string();
     let chapter = Chapter::from_token(command.get("chapter")?.as_str()?)?;
     let authority = Authority::from_token(command.get("authority")?.as_str()?)?;

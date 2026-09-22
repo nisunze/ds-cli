@@ -25,7 +25,6 @@ ds capabilities --search '<words>' --output json
 ```
 
 Search is lexical: try domain and product vocabulary before declaring a gap.
-Help reads contracts; capabilities selects them for a machine.
 
 ## Read, then invoke, the contract
 
@@ -42,11 +41,12 @@ reconstruct a refused answer.
 
 ## Recover identity
 
-When signed out or password login is rejected, do not loop it. Discover `auth`
-and follow the device-link contract from `auth.link.begin`; launch the matching
-installed lane only where it requires that. CLI and map lane/principal must
-match — a mismatch is a refusal, never permission to borrow credentials,
-projects or lanes.
+Signed out (`headless_signed_out`): run `ds account connect` (MCP: the
+`account.connect` tool), have the person approve it in their signed-in DS
+GridDesign Desktop under Account > Link a trusted device, then run it again.
+That is the only sign-in; never ask for an address or a secret. CLI and map
+lane/principal must match; a mismatch is a refusal, never permission to borrow
+credentials, projects or lanes.
 
 ## Through MCP
 

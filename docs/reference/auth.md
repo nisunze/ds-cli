@@ -1,5 +1,35 @@
 # Native authentication and project context
 
+## `ds account connect` — the one sign-in a person is asked to do
+
+`ds account connect [--lane stable|canary] [--timeout <0-900>] [--device-name
+<name>]` is the sign-in every surface advertises. It begins a protected device
+link for the lane, prints the request id and device fingerprint (stderr for a
+person, the envelope for a machine), waits for the approval, then completes
+the link and answers with the `auth status` shape plus `state: connected`.
+The person approves it in their signed-in DS GridDesign Desktop under
+Account > Link a trusted device. Nothing is typed but this command: it never
+asks for an address or a secret, and no `ds` remedy anywhere advises the
+trusted-terminal sign-in.
+
+It is idempotent and resumable. A lane that already holds a device credential
+answers `state: already_connected` without touching anything. A pending link
+is resumed rather than restarted; an expired one is replaced. When the wait
+runs out (default 300 s at a terminal; 0 s under a machine host such as
+`ds mcp serve`, which sets `DS_CLI_NONINTERACTIVE=1`), the answer is
+`state: pending_approval` with the values to approve and `next: ds account
+connect --lane <lane>` — the same command finishes the job once approved.
+A denial discards the pending link (`device_link_denied`); a link the endpoint
+no longer recognises is discarded too (`device_link_stale`).
+
+It composes `auth link begin`, `auth link status` and `auth link complete`,
+which remain CLI contracts for operators who want the steps apart. Through
+MCP it is the `account.connect` tool, in the `auth-context` profile and the
+broad chapter surface; the MCP instructions name it as the only sign-in.
+
+The shared signed-out remedy — `ds_cli_auth::SIGNED_OUT_REMEDY` — is the one
+sentence every `headless_signed_out` refusal carries, in every domain.
+
 `auth status` contract 2 also emits the non-secret, provider-independent
 `ds.auth-context/v1` projection while preserving the earlier `lane`,
 `signed_in`, `uid`, and `email` fields. The context and compatibility mapping
@@ -39,7 +69,7 @@ Catalog schema v10 retains the four exact transformer-context fields: `POST`,
 validated as exact bytes and do not create a generic request surface. Because
 these fixed call fields participate in the credential audience, upgrading
 from a v1 credential intentionally appears signed out and can require
-`ds auth login` followed by `ds auth project use`; credentials and project
+`ds account connect` followed by `ds auth project use`; credentials and project
 contexts are never silently migrated across that audience change. Schema v3
 also fixes project forms to `POST /api/v1/project-forms`, action `activate`;
 the v2-to-v3 audience change can likewise require login and project selection
@@ -53,13 +83,17 @@ digest nor product root, so its auth surface is typed unavailable. The desktop
 packaging owner must generate/stage the catalog and inject both compile-time
 values before an installable release may claim native auth is configured.
 
-MCP publishes `auth.link.begin`, `auth.link.status`, and
-`auth.link.complete` for sign-in. The person approves the request on the
-signed-in Desktop; the MCP host never receives a password or approval
-authority. MCP omits `auth.login` and `auth.link.approve` as tools and
-projects signed-out remedies to the device-link sequence. A command that
-still requires a password-only native session reports that device-link
-coverage gap instead of advising credential entry through MCP.
+MCP publishes `account.connect` for sign-in, with `auth.link.begin`,
+`auth.link.status` and `auth.link.complete` as its parts. The person approves
+the request on the signed-in Desktop; the MCP host never receives a secret or
+approval authority. MCP omits `auth.login` and `auth.link.approve` as tools,
+its instructions name `account.connect` as the only sign-in, and a
+belt-and-braces scrub (`crates/ds-cli-mcp/src/surface.rs`) rewrites any
+advisory field that would name the terminal sign-in; `crates/ds/tests/mcp.rs`
+proves the published surface — instructions, tool descriptions, every
+descriptor, every skill resource — carries none. A command that has no
+device-credential route yet reports that coverage gap (with the device
+credential intact) instead of advising credential entry through MCP.
 
 `auth login` defaults exactly to Stable and reads a hidden controlling-TTY
 password. `--password-stdin` explicitly reads one line, bounded to 4096 bytes.
@@ -67,8 +101,8 @@ Passwords and tokens are never accepted in argv or environment variables.
 MCP children cannot open the prompt. Only a rotating refresh credential is
 durable; the ID token stays in process memory and is zeroized by the core.
 Firebase password failures are classified without exposing the response body.
-Invalid credentials and password-provider unavailability point to the governed
-`auth link` flow so a headless machine can adopt the already signed-in paired
+Invalid credentials and password-provider unavailability point to
+`ds account connect` so a headless machine can adopt the already signed-in
 Desktop principal instead of repeating a password that Firebase will never
 accept. Account-disabled and transient failures remain distinct. The link
 contracts preserve the exact Stable/Canary lane and reject a different map

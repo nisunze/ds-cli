@@ -129,7 +129,13 @@ fn root_help_is_cheap() {
     // only from one Governance page in a browser, which is the host least
     // likely to be running where an operator asks which installations exist
     // and which licences are blocked. Its four commands stay below this tier.
-    assert_within("root help", &["--help"], 2_550);
+    // 2026-09-22: raised from 2_550 by one domain line for the `account`
+    // domain — the one sign-in a person is asked to do (`ds account connect`,
+    // approved in the Desktop). It earns its line because every signed-out
+    // refusal in the product now names it, and a stranger reading root help
+    // for "sign in" must find it without opening `auth`. Measured 2,640 bytes
+    // with 24 domains.
+    assert_within("root help", &["--help"], 2_650);
 }
 
 #[test]

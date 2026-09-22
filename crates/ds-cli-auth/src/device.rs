@@ -52,27 +52,27 @@ const DEVICE_NAME: Arg = Arg::value(
 const REQUEST: Arg = Arg::value("request", "<request-id>", "Exact link request id.").required();
 const DEVICE_ID: Arg = Arg::value("device", "<device-id>", "Exact public DS device id.").required();
 
-const STATE_UNAVAILABLE: Refusal = Refusal {
+pub(crate) const STATE_UNAVAILABLE: Refusal = Refusal {
     code: "device_state_unavailable",
     when: "protected device state is absent or unsafe",
     remedy: "repair the owner-only DS config directory",
 };
-const STATE_CONFLICT: Refusal = Refusal {
+pub(crate) const STATE_CONFLICT: Refusal = Refusal {
     code: "device_state_conflict",
     when: "another process holds or changed protected device state",
     remedy: "retry after the other device operation finishes",
 };
-const AUTH_TRANSIENT: Refusal = Refusal {
+pub(crate) const AUTH_TRANSIENT: Refusal = Refusal {
     code: "device_auth_transient",
     when: "the fixed DS device endpoint is temporarily unreachable",
     remedy: "retry without deleting protected device state",
 };
-const AUTH_RESPONSE_INVALID: Refusal = Refusal {
+pub(crate) const AUTH_RESPONSE_INVALID: Refusal = Refusal {
     code: "device_auth_response_invalid",
     when: "the fixed endpoint returns a response outside the closed device contract",
     remedy: "update ds and retry; do not copy credentials into arguments",
 };
-const AUTH_ENDPOINT_UNAVAILABLE: Refusal = Refusal {
+pub(crate) const AUTH_ENDPOINT_UNAVAILABLE: Refusal = Refusal {
     code: "device_auth_endpoint_unavailable",
     when: "the fixed device-authorization begin route is absent from the deployed gateway or backend",
     remedy: "deploy the matching ds-brain and API Gateway device-auth routes, then retry without changing local state",
@@ -90,9 +90,9 @@ pub const RNG_UNAVAILABLE: Refusal = Refusal {
 const NOT_LINKED: Refusal = Refusal {
     code: "device_not_linked",
     when: "no protected DS device state exists for the lane",
-    remedy: "run ds auth link begin",
+    remedy: "run ds account connect",
 };
-const REQUEST_MISMATCH: Refusal = Refusal {
+pub(crate) const REQUEST_MISMATCH: Refusal = Refusal {
     code: "device_request_mismatch",
     when: "the requested link id is not the protected pending link for the lane",
     remedy: "use the exact request id returned by ds auth link begin",
@@ -279,7 +279,15 @@ pub const REVOKE_COMMAND: Command = Command {
 };
 
 pub fn run_begin(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let lane = lane(inputs)?;
+    begin_link(lane(inputs)?, inputs.require("device-name")?)
+}
+
+/// Begin one protected device link for `lane` under `device_name`: the typed
+/// half of `ds auth link begin`, which `ds account connect` composes without
+/// re-entering the CLI. Refuses `device_state_exists` while the lane holds an
+/// unexpired pending link or a durable credential; an expired pending link is
+/// replaced atomically.
+pub(crate) fn begin_link(lane: Lane, device_name: &str) -> Result<Value, Failure> {
     let (profile, catalog_digest, gateway_key) = profile::load_device(lane)?;
     let state_key = state_key(&profile);
     let (mut store, previous) = store_reserve(&state_key, &profile, unix_seconds())?;
@@ -290,7 +298,7 @@ pub fn run_begin(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let verifier = random_token::<32>()?;
     let nonce = random_token::<24>()?;
     let request = DeviceBeginRequest::new(
-        inputs.require("device-name")?,
+        device_name,
         platform(),
         &key.public_key_base64url(),
         &nonce,
@@ -355,6 +363,13 @@ pub fn run_status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .map_err(transport_failure)?;
     let result = parse_device_status(response).map_err(device_failure)?;
     release(&mut store, &state_key(&profile))?;
+    Ok(observed_status_json(public, result))
+}
+
+fn observed_status_json(
+    public: DeviceBeginPublic,
+    result: ds_client_core::DeviceStatusResult,
+) -> Value {
     let mut output = begin_public_json(public);
     output
         .as_object_mut()
@@ -369,17 +384,92 @@ pub fn run_status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             .expect("status fields are an object")
             .clone(),
         );
-    Ok(output)
+    output
 }
 
-pub fn run_complete(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let lane = lane(inputs)?;
+/// The lane's pending link as its public handoff fields, read from protected
+/// state without touching the network — `None` when the lane holds no state
+/// at all or holds a durable credential instead of a pending link. Carries
+/// `expired: true` when the link's own deadline has passed, so a caller can
+/// replace it rather than poll a request the endpoint will never approve.
+pub(crate) fn pending_link_local(lane: Lane) -> Result<Option<Value>, Failure> {
+    let (profile, _, _) = profile::load_device(lane)?;
+    let key = state_key(&profile);
+    let mut store = NativeDeviceStore::open()?;
+    store.acquire(&key).map_err(store_failure)?;
+    let loaded = store.load(&key).map_err(store_failure)?.map(Zeroizing::new);
+    let pending = match loaded.as_deref() {
+        None => None,
+        Some(bytes) => match DevicePendingAuthorization::decode_protected(bytes, &profile) {
+            Ok(pending) => Some(pending),
+            Err(_) if DeviceCredential::decode_protected(bytes, &profile).is_ok() => None,
+            Err(error) => {
+                let _ = store.release(&key);
+                return Err(device_failure(error));
+            }
+        },
+    };
+    release(&mut store, &key)?;
+    Ok(pending.map(|pending| {
+        let expired = pending.is_expired(unix_seconds()).unwrap_or(true);
+        let mut output = begin_public_json(pending.public());
+        output["status"] = json!("unobserved");
+        output["expired"] = json!(expired);
+        output
+    }))
+}
+
+/// Poll the fixed endpoint for the lane's pending link: the typed half of
+/// `ds auth link status` without `--request` or `--local-only`.
+pub(crate) fn link_status(lane: Lane) -> Result<Value, Failure> {
     let (profile, _, gateway_key) = profile::load_device(lane)?;
     let key = state_key(&profile);
     let (mut store, bytes) = store_load(&key)?;
     let pending =
         DevicePendingAuthorization::decode_protected(&bytes, &profile).map_err(device_failure)?;
-    exact_request(inputs, &pending.public().request_id)?;
+    let public = pending.public();
+    let mut transport = NativeDeviceTransport::new(&profile, gateway_key);
+    let response = transport
+        .status(device_secret_json(&pending.status_request()).map_err(device_failure)?)
+        .map_err(transport_failure)?;
+    let result = parse_device_status(response).map_err(device_failure)?;
+    release(&mut store, &key)?;
+    Ok(observed_status_json(public, result))
+}
+
+/// Forget the lane's pending link so a new one can begin. Only a pending
+/// bundle is removed: a durable credential is never touched here, and a lane
+/// with no state is left as it is.
+pub(crate) fn discard_pending_link(lane: Lane) -> Result<(), Failure> {
+    let (profile, _, _) = profile::load_device(lane)?;
+    let key = state_key(&profile);
+    let mut store = NativeDeviceStore::open()?;
+    store.acquire(&key).map_err(store_failure)?;
+    if let Some(bytes) = store.load(&key).map_err(store_failure)?.map(Zeroizing::new)
+        && DevicePendingAuthorization::decode_protected(&bytes, &profile).is_ok()
+    {
+        store
+            .compare_and_swap(&key, Some(&bytes), None)
+            .map_err(store_failure)?;
+    }
+    release(&mut store, &key)
+}
+
+pub fn run_complete(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    complete_link(lane(inputs)?, Some(inputs.require("request")?))
+}
+
+/// Complete the lane's approved pending link: the typed half of `ds auth link
+/// complete`. A supplied `request` must be the exact protected pending link.
+pub(crate) fn complete_link(lane: Lane, request: Option<&str>) -> Result<Value, Failure> {
+    let (profile, _, gateway_key) = profile::load_device(lane)?;
+    let key = state_key(&profile);
+    let (mut store, bytes) = store_load(&key)?;
+    let pending =
+        DevicePendingAuthorization::decode_protected(&bytes, &profile).map_err(device_failure)?;
+    if let Some(request) = request {
+        exact_request_id(request, &pending.public().request_id)?;
+    }
     let mut transport = NativeDeviceTransport::new(&profile, gateway_key);
     let response = transport
         .complete(
@@ -1056,10 +1146,6 @@ pub fn lane_from_token(value: &str) -> Result<Lane, Failure> {
     Lane::parse(value)
 }
 
-fn exact_request(inputs: &Inputs, stored: &str) -> Result<(), Failure> {
-    exact_request_id(inputs.require("request")?, stored)
-}
-
 fn exact_request_id(request: &str, stored: &str) -> Result<(), Failure> {
     if request == stored {
         Ok(())
@@ -1114,7 +1200,7 @@ fn store_load(key: &str) -> Result<(NativeDeviceStore, Zeroizing<Vec<u8>>), Fail
             "device_not_linked",
             "no protected DS device state exists for this lane",
         )
-        .remedy("run ds auth link begin"));
+        .remedy("run ds account connect"));
     };
     Ok((store, Zeroizing::new(bytes)))
 }

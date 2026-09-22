@@ -135,12 +135,13 @@ refusal!(
     "the packaged native catalogue is unsafe or malformed",
     "reinstall one complete ds release"
 );
-refusal!(
-    HEADLESS_SIGNED_OUT,
-    "headless_signed_out",
-    "the selected lane has no restorable native user",
-    "run ds auth login --email <address>"
-);
+// The one signed-out sentence, spelled with its literal code so the source
+// scan behind `refusal_coverage.rs` can follow `HEADLESS_SIGNED_OUT.code`.
+const HEADLESS_SIGNED_OUT: Refusal = Refusal {
+    code: "headless_signed_out",
+    when: ds_cli_auth::SIGNED_OUT_REFUSAL.when,
+    remedy: ds_cli_auth::SIGNED_OUT_REMEDY,
+};
 refusal!(
     HEADLESS_NO_PROJECT,
     "headless_project_not_selected",
@@ -574,7 +575,11 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
         Ok(resources) => {
             let declared = ds_project_data::declared(&resources).map_err(refused)?;
             let count = resources.len();
-            (declared, resources, json!({"read": true, "resources": count}))
+            (
+                declared,
+                resources,
+                json!({"read": true, "resources": count}),
+            )
         }
         Err(error) => (
             Vec::new(),
@@ -609,7 +614,10 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
         seen.insert(id.clone());
         // A seeded cloud room keeps its catalogue identity (label, cloud
         // residency); the room itself records only the digest.
-        let dataset = match resources.iter().find(|r| &r.id == id && r.is_cloud_resident()) {
+        let dataset = match resources
+            .iter()
+            .find(|r| &r.id == id && r.is_cloud_resident())
+        {
             Some(resource) => cloud_entry(resource),
             None => room_entry(id, room),
         };
@@ -622,9 +630,12 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
     // where they live. A named bundle row nobody declared or seeded is
     // listed once, unpublished or not seeded, rather than refused.
     for resource in &resources {
-        let listed = resource.is_cloud_resident()
-            || (!explicit.is_empty() && resource.id == explicit);
-        if !listed || seen.contains(&resource.id) || (!explicit.is_empty() && resource.id != explicit) {
+        let listed =
+            resource.is_cloud_resident() || (!explicit.is_empty() && resource.id == explicit);
+        if !listed
+            || seen.contains(&resource.id)
+            || (!explicit.is_empty() && resource.id != explicit)
+        {
             continue;
         }
         seen.insert(resource.id.clone());
@@ -706,13 +717,26 @@ impl Provider for CliProvider<'_> {
         // A cloud-resident dataset seeds through its bounded read: the cell is
         // the boundary, and only a complete cell extends coverage.
         if dataset.provider == ds_project_data::declared::CLOUD_READ_PROVIDER {
-            let layer = dataset.parameters.get("layer").and_then(Value::as_str).unwrap_or("").to_owned();
+            let layer = dataset
+                .parameters
+                .get("layer")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_owned();
             let request = match layer.as_str() {
                 "rwanda_upi_parcels" => DataDistributionRequest::ParcelsQuery {
-                    village_code: None, cell_code: None, bbox: None, boundary: Some(area.clone()), limit: None,
+                    village_code: None,
+                    cell_code: None,
+                    bbox: None,
+                    boundary: Some(area.clone()),
+                    limit: None,
                 },
                 "edcl_customers" => DataDistributionRequest::CustomersQuery {
-                    village_code: None, cell_code: None, bbox: None, boundary: Some(area.clone()), limit: None,
+                    village_code: None,
+                    cell_code: None,
+                    bbox: None,
+                    boundary: Some(area.clone()),
+                    limit: None,
                 },
                 other => {
                     return Err(Cause::AcquisitionFailed(format!(
@@ -720,14 +744,18 @@ impl Provider for CliProvider<'_> {
                     )));
                 }
             };
-            let response = ds_cli_auth::data_distribution(self.lane, &request).map_err(|error| {
-                let message = format!("{}: {}", error.code(), error.message());
-                match error.code() {
-                    "data_distribution_unavailable" | "auth_transient" => Cause::ProviderUnavailable(message),
-                    _ => Cause::AcquisitionFailed(message),
-                }
-            })?;
-            let decoded = policy::decode_cloud_read(&response, area, &layer).map_err(Cause::AcquisitionFailed)?;
+            let response =
+                ds_cli_auth::data_distribution(self.lane, &request).map_err(|error| {
+                    let message = format!("{}: {}", error.code(), error.message());
+                    match error.code() {
+                        "data_distribution_unavailable" | "auth_transient" => {
+                            Cause::ProviderUnavailable(message)
+                        }
+                        _ => Cause::AcquisitionFailed(message),
+                    }
+                })?;
+            let decoded = policy::decode_cloud_read(&response, area, &layer)
+                .map_err(Cause::AcquisitionFailed)?;
             return Ok(decoded_page(decoded));
         }
         let (kind, contour_parameters) = match dataset.id.as_str() {
@@ -953,7 +981,8 @@ fn dataset_lines(dataset: &Value) -> String {
             ""
         },
         match dataset["ready_reason"].as_str() {
-            Some(reason) if dataset["seeded"] == Value::Bool(true) => format!(" · not ready: {reason}"),
+            Some(reason) if dataset["seeded"] == Value::Bool(true) =>
+                format!(" · not ready: {reason}"),
             _ => String::new(),
         },
     );

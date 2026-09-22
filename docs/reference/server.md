@@ -8,7 +8,7 @@ their Cargo dependency closures can differ. Development builds omit release
 provenance and cannot be admitted as release engines.
 
 `ds server serve` hosts the shared Rust compute runtime under the identity
-established by `ds auth login` or device linking. Run both under the same Linux
+established by `ds account connect` (device linking). Run both under the same Linux
 user and lane. No browser, paired Desktop, ADC or service-account impersonation
 is involved. The Server is the desktop's own core without the desktop: it
 stands on the desktop's side of the one boundary with ds-brain, and the API is
@@ -319,8 +319,8 @@ server after successful Rust rebuilds. Failed builds preserve the running
 server. Durable state is outside the checkout and survives reloads. It uses
 an installed, digest-bound native profile catalog, or the explicit debug-only
 `DS_NATIVE_CLIENT_PROFILE_BUNDLE`. `./run-linux-server.sh --cli auth status`
-uses the exact development executable; `--cli auth login --email <email>` or
-`--cli auth link begin` establish its native identity when needed.
+uses the exact development executable; `--cli account connect` establishes its
+native identity when needed.
 
 MCP exposes submit, status, cancel, result and input through the existing
 command catalog, including `--project`. Starting the foreground host is a

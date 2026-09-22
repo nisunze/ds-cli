@@ -12377,6 +12377,15 @@ fn an_outsiders_word_for_an_operation_finds_it_first() {
         // row, and it was a project-cache command.
         ("buffers", "data.vector.buffer"),
         ("polygons", "data.vector.buffer"),
+        // The words a person who has never opened a terminal uses for the
+        // one sign-in. Before 2026-09-22 `sign in` led with `install.show`
+        // and `connect device` with `auth.device.list`.
+        ("sign in", "account.connect"),
+        ("connect device", "account.connect"),
+        ("link device", "account.connect"),
+        ("signed out", "account.connect"),
+        ("connect me", "account.connect"),
+        ("account", "account.connect"),
     ] {
         let found = ok(&["capabilities", "--search", query, "--output", "json"]);
         let first = found["results"][0]["id"].as_str().unwrap_or("<nothing>");
@@ -12672,61 +12681,151 @@ fn dsgrid_feature_codes_family_runs_over_a_package_and_refuses_by_name() {
     let blank = root.join("blank.dsgrid");
     let blank_text = blank.to_str().unwrap();
     ok(&[
-        "dsgrid", "create", "--out", blank_text, "--model-id", "fc-smoke", "--crs", "EPSG:32735",
-        "--output", "json",
+        "dsgrid",
+        "create",
+        "--out",
+        blank_text,
+        "--model-id",
+        "fc-smoke",
+        "--crs",
+        "EPSG:32735",
+        "--output",
+        "json",
     ]);
 
     // Baseline: no codes, nothing unresolved, no window, no account.
-    let baseline = ok(&["dsgrid", "feature-codes", "report", "--package", blank_text, "--output", "json"]);
+    let baseline = ok(&[
+        "dsgrid",
+        "feature-codes",
+        "report",
+        "--package",
+        blank_text,
+        "--output",
+        "json",
+    ]);
     assert_eq!(baseline["code_count"], 0);
     assert_eq!(baseline["unresolved_token_count"], 0);
 
     // Dry run needs no --out; a write needs one; both modes together refuse.
     let dry = ok(&[
-        "dsgrid", "feature-codes", "import", "--package", blank_text, "--voltage-class", "MV",
-        "--dry-run", "--output", "json",
+        "dsgrid",
+        "feature-codes",
+        "import",
+        "--package",
+        blank_text,
+        "--voltage-class",
+        "MV",
+        "--dry-run",
+        "--output",
+        "json",
     ]);
     assert_eq!(dry["dry_run"], true);
     assert_eq!(dry["added"].as_array().map_or(0, Vec::len), 60);
     assert_eq!(dry["standard"]["pinned"], true);
     assert_eq!(dry["clearance_voltage_kv"], 30.0);
     assert_eq!(
-        refusal(&["dsgrid", "feature-codes", "import", "--package", blank_text, "--voltage-class", "MV", "--yes", "--output", "json"]),
+        refusal(&[
+            "dsgrid",
+            "feature-codes",
+            "import",
+            "--package",
+            blank_text,
+            "--voltage-class",
+            "MV",
+            "--yes",
+            "--output",
+            "json"
+        ]),
         "output_required"
     );
     assert_eq!(
-        refusal(&["dsgrid", "feature-codes", "import", "--package", blank_text, "--voltage-class", "MV", "--dry-run", "--yes", "--output", "json"]),
+        refusal(&[
+            "dsgrid",
+            "feature-codes",
+            "import",
+            "--package",
+            blank_text,
+            "--voltage-class",
+            "MV",
+            "--dry-run",
+            "--yes",
+            "--output",
+            "json"
+        ]),
         "mode_conflict"
     );
     // The class is a declared choice: the parser refuses it before the
     // standard is even opened.
     assert_eq!(
-        refusal(&["dsgrid", "feature-codes", "import", "--package", blank_text, "--voltage-class", "HV", "--dry-run", "--output", "json"]),
+        refusal(&[
+            "dsgrid",
+            "feature-codes",
+            "import",
+            "--package",
+            blank_text,
+            "--voltage-class",
+            "HV",
+            "--dry-run",
+            "--output",
+            "json"
+        ]),
         "invalid_choice"
     );
     // An edited standard is refused by its digest.
     let edited = root.join("edited.json");
     std::fs::write(
         &edited,
-        ds_grid_engine::feature_code_standard::BUNDLED_STANDARD_JSON.replace("\"rv_m\": 8", "\"rv_m\": 7"),
+        ds_grid_engine::feature_code_standard::BUNDLED_STANDARD_JSON
+            .replace("\"rv_m\": 8", "\"rv_m\": 7"),
     )
     .unwrap();
     assert_eq!(
         refusal(&[
-            "dsgrid", "feature-codes", "import", "--package", blank_text, "--voltage-class", "MV",
-            "--standard", edited.to_str().unwrap(), "--dry-run", "--output", "json"]),
+            "dsgrid",
+            "feature-codes",
+            "import",
+            "--package",
+            blank_text,
+            "--voltage-class",
+            "MV",
+            "--standard",
+            edited.to_str().unwrap(),
+            "--dry-run",
+            "--output",
+            "json"
+        ]),
         "standard_digest_mismatch"
     );
 
     let imported = root.join("mv.dsgrid");
     let imported_text = imported.to_str().unwrap();
     let written = ok(&[
-        "dsgrid", "feature-codes", "import", "--package", blank_text, "--out", imported_text,
-        "--voltage-class", "MV", "--yes", "--output", "json",
+        "dsgrid",
+        "feature-codes",
+        "import",
+        "--package",
+        blank_text,
+        "--out",
+        imported_text,
+        "--voltage-class",
+        "MV",
+        "--yes",
+        "--output",
+        "json",
     ]);
     assert_eq!(written["persisted"], true);
     assert_eq!(written["touched"]["commands_with_effect"], 60);
-    let report = ok(&["dsgrid", "feature-codes", "report", "--package", imported_text, "--limit", "100", "--output", "json"]);
+    let report = ok(&[
+        "dsgrid",
+        "feature-codes",
+        "report",
+        "--package",
+        imported_text,
+        "--limit",
+        "100",
+        "--output",
+        "json",
+    ]);
     assert_eq!(report["code_count"], 60);
     assert_eq!(report["with_clearance_count"], 60);
     assert_eq!(report["voltage_classes"], json!(["MV"]));
@@ -12742,8 +12841,15 @@ fn dsgrid_feature_codes_family_runs_over_a_package_and_refuses_by_name() {
     // Migration over a model without terrain: nothing to migrate, nothing
     // written, and the delivery gate has nothing to refuse.
     let migrated = ok(&[
-        "dsgrid", "feature-codes", "migrate", "--package", imported_text, "--deliver", "--dry-run",
-        "--output", "json",
+        "dsgrid",
+        "feature-codes",
+        "migrate",
+        "--package",
+        imported_text,
+        "--deliver",
+        "--dry-run",
+        "--output",
+        "json",
     ]);
     assert_eq!(migrated["point_count"], 0);
     assert_eq!(migrated["unknown_point_count"], 0);
@@ -12752,8 +12858,17 @@ fn dsgrid_feature_codes_family_runs_over_a_package_and_refuses_by_name() {
     // The FEA 15 member.
     let fea = root.join("mv.fea");
     let exported = ok(&[
-        "dsgrid", "feature-codes", "export", "--package", imported_text, "--voltage-class", "MV",
-        "--out", fea.to_str().unwrap(), "--output", "json",
+        "dsgrid",
+        "feature-codes",
+        "export",
+        "--package",
+        imported_text,
+        "--voltage-class",
+        "MV",
+        "--out",
+        fea.to_str().unwrap(),
+        "--output",
+        "json",
     ]);
     assert_eq!(exported["member"]["type"], "FEA");
     assert_eq!(exported["member"]["version"], 15);
@@ -12761,30 +12876,92 @@ fn dsgrid_feature_codes_family_runs_over_a_package_and_refuses_by_name() {
     let head = std::fs::read_to_string(&fea).unwrap();
     assert!(head.starts_with("TYPE='FEA FILE' VERSION='15' UNITS='SI'"));
     assert_eq!(
-        refusal(&["dsgrid", "feature-codes", "export", "--package", imported_text, "--voltage-class", "LV", "--out", root.join("lv.fea").to_str().unwrap(), "--output", "json"]),
+        refusal(&[
+            "dsgrid",
+            "feature-codes",
+            "export",
+            "--package",
+            imported_text,
+            "--voltage-class",
+            "LV",
+            "--out",
+            root.join("lv.fea").to_str().unwrap(),
+            "--output",
+            "json"
+        ]),
         "voltage_class_mismatch"
     );
     assert_eq!(
-        refusal(&["dsgrid", "feature-codes", "export", "--package", imported_text, "--voltage-class", "MV", "--out", fea.to_str().unwrap(), "--output", "json"]),
+        refusal(&[
+            "dsgrid",
+            "feature-codes",
+            "export",
+            "--package",
+            imported_text,
+            "--voltage-class",
+            "MV",
+            "--out",
+            fea.to_str().unwrap(),
+            "--output",
+            "json"
+        ]),
         "output_exists"
     );
 
     // Criteria: a blank model has no criterion set to fill and no clearance
     // cases to analyse; both say so by name.
-    let shown = ok(&["dsgrid", "criteria", "show", "--package", imported_text, "--output", "json"]);
+    let shown = ok(&[
+        "dsgrid",
+        "criteria",
+        "show",
+        "--package",
+        imported_text,
+        "--output",
+        "json",
+    ]);
     assert_eq!(shown["sets"].as_array().map_or(0, Vec::len), 0);
     assert_eq!(
         refusal(&[
-            "dsgrid", "criteria", "clearance", "set", "--package", imported_text, "--voltage-class", "MV",
-            "--vertical-case", "Maximum Conductor Temperature", "--horizontal-case", "High wind", "--dry-run", "--output", "json"]),
+            "dsgrid",
+            "criteria",
+            "clearance",
+            "set",
+            "--package",
+            imported_text,
+            "--voltage-class",
+            "MV",
+            "--vertical-case",
+            "Maximum Conductor Temperature",
+            "--horizontal-case",
+            "High wind",
+            "--dry-run",
+            "--output",
+            "json"
+        ]),
         "criterion_set_missing"
     );
     assert_eq!(
-        refusal(&["dsgrid", "analyse", "clearance", "--package", imported_text, "--output", "json"]),
+        refusal(&[
+            "dsgrid",
+            "analyse",
+            "clearance",
+            "--package",
+            imported_text,
+            "--output",
+            "json"
+        ]),
         "criterion_set_missing"
     );
     assert_eq!(
-        refusal(&["dsgrid", "analyse", "clearance", "--package", blank_text, "--output", "json"]),
+        refusal(&[
+            "dsgrid",
+            "analyse",
+            "clearance",
+            "--package",
+            blank_text,
+            "--output",
+            "json"
+        ]),
         "criterion_set_missing"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -12856,7 +13033,6 @@ fn dsgrid_import_structure_preserves_exact_native_and_refuses_overwrite() {
     assert!(!duplicate.exists());
     std::fs::remove_dir_all(root).unwrap();
 }
-
 
 #[test]
 fn dsgrid_profile_checkpoint_validates_output_before_touching_the_window() {

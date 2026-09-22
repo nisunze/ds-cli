@@ -184,32 +184,200 @@ fn response(responses: &[Value], id: i64) -> &Value {
         .unwrap_or_else(|| panic!("no response for id {id}: {responses:?}"))
 }
 
-// MCP preserves every CLI descriptor field except the signed-out advice that
-// would ask an MCP caller to enter an email/password. That one field names the
-// protected device-link route instead.
+// MCP preserves every CLI descriptor field. Since 2026-09-22 nothing in a
+// descriptor names the terminal sign-in — every signed-out remedy is the one
+// `ds account connect` sentence — so the belt-and-braces scrub in
+// `ds-cli-mcp` rewrites nothing, and the two descriptors are equal.
 fn assert_mcp_descriptor_with_device_link(actual: &Value, cli_descriptor: Value) {
-    let mut expected = cli_descriptor;
-    let actual_refusals = actual["data"]["command"]["refusals"]
-        .as_array()
-        .expect("MCP refusals");
-    let expected_refusals = expected["data"]["command"]["refusals"]
-        .as_array_mut()
-        .expect("CLI refusals");
-    assert_eq!(actual_refusals.len(), expected_refusals.len());
-    for (actual_refusal, expected_refusal) in
-        actual_refusals.iter().zip(expected_refusals.iter_mut())
-    {
-        if expected_refusal["remedy"]
-            .as_str()
-            .is_some_and(|remedy| remedy.contains("auth login"))
-        {
-            let advice = actual_refusal["remedy"].as_str().expect("MCP advice");
-            assert!(advice.contains("auth.link.begin"), "{advice}");
-            assert!(!advice.contains("auth login"), "{advice}");
-            expected_refusal["remedy"] = actual_refusal["remedy"].clone();
+    assert_eq!(actual, &cli_descriptor);
+    assert_no_terminal_sign_in("descriptor", &actual.to_string());
+}
+
+/// The words that would send a person to a terminal sign-in. No MCP answer
+/// may carry them; `ds-cli-mcp` publishes the same list.
+fn assert_no_terminal_sign_in(label: &str, text: &str) {
+    let lower = text.to_lowercase();
+    for banned in ds_cli_mcp::surface::TERMINAL_SIGN_IN_WORDS {
+        assert!(
+            !lower.contains(banned),
+            "{label} names the terminal sign-in (`{banned}`): {text}"
+        );
+    }
+}
+
+/// The one signed-out sentence is the same on both sides of the executable
+/// boundary: `ds-cli-mcp` cannot depend on `ds-cli-auth`, so it spells the
+/// sentence itself, and this is what holds the two copies equal.
+#[test]
+fn the_mcp_signed_out_remedy_is_the_cli_signed_out_remedy() {
+    assert_eq!(
+        ds_cli_mcp::surface::DEVICE_LINK_REMEDY,
+        ds_cli_auth::SIGNED_OUT_REMEDY
+    );
+    assert_no_terminal_sign_in("remedy", ds_cli_auth::SIGNED_OUT_REMEDY);
+    assert_no_terminal_sign_in("instructions", ds_cli_auth::APPROVAL_INSTRUCTIONS);
+}
+
+/// The whole published surface — instructions, every tool description, every
+/// catalogue row, every descriptor, every skill resource — names no terminal
+/// sign-in. This is the gate the owner asked for on 2026-09-22 after a
+/// non-technical engineer was told to open a terminal: the words are banned
+/// everywhere an MCP host can read, not only in the one field that leaked.
+///
+/// Cost is kept in mind: every descriptor is read once through the CLI in
+/// schema mode (what the MCP server itself reads at startup, and what a
+/// `describe` answers verbatim — `assert_mcp_descriptor_with_device_link`
+/// holds that equality), and the live MCP sweep describes the sign-in
+/// commands themselves rather than resolving availability for four hundred.
+#[test]
+fn no_published_mcp_text_names_a_terminal_sign_in() {
+    let bundle = TestDir::new("clean-skills");
+    let version = cli(&["version", "--output", "json"]);
+    let source_sha = version["data"]["source_sha"].as_str().expect("source sha");
+    write_skill_bundle(&bundle.0, source_sha);
+
+    // Every command the surface publishes, read from the catalogue itself so
+    // the sweep is derived from the live surface rather than a list that
+    // could go stale.
+    let routed: Vec<Chapter> = Chapter::ALL
+        .iter()
+        .copied()
+        .filter(|chapter| *chapter != Chapter::Catalog)
+        .collect();
+    let mut requests = vec![
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+        json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/list" }),
+        json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": {} } }),
+        json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "identity" } } }),
+        json!({ "jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "query": "sign in" } } }),
+    ];
+    let mut next_id = 100;
+    for chapter in &routed {
+        requests.push(json!({ "jsonrpc": "2.0", "id": next_id, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "chapter": chapter.token() } } }));
+        next_id += 1;
+    }
+    // The sign-in commands are the ones whose descriptors said the banned
+    // words; their live describe answers are read through the router.
+    for id in [
+        "account.connect",
+        "auth.status",
+        "auth.link.begin",
+        "auth.link.status",
+        "auth.link.complete",
+        "auth.logout",
+    ] {
+        requests.push(
+            json!({ "jsonrpc": "2.0", "id": next_id, "method": "tools/call", "params": {
+            "name": ds_cli_mcp::surface::chapter_tool_name(Chapter::Project),
+            "arguments": { "operation": "describe", "command": id }
+        } }),
+        );
+        next_id += 1;
+    }
+    for name in ["ds", "ds-mcp-host"] {
+        requests.push(json!({ "jsonrpc": "2.0", "id": next_id, "method": "resources/read", "params": { "uri": format!("ds-skill://bundle/{name}/SKILL.md") } }));
+        next_id += 1;
+    }
+    let (responses, _) = mcp_with_env(
+        &["--exposure", "chapters"],
+        &requests,
+        &[("DS_CLI_SKILLS_BUNDLE", bundle.0.as_path())],
+    );
+    assert_eq!(
+        responses.len(),
+        requests.len() + 1,
+        "one answer per request"
+    );
+    let mut published: Vec<String> = Vec::new();
+    for response in &responses {
+        assert!(
+            response.get("error").is_none() || response["id"] == 999,
+            "an MCP call in the sweep was refused: {response}"
+        );
+        assert_no_terminal_sign_in("MCP answer", &response.to_string());
+        if let Some(commands) = response["result"]["structuredContent"]["commands"].as_array() {
+            published.extend(
+                commands
+                    .iter()
+                    .filter_map(|row| row["id"].as_str().map(str::to_string)),
+            );
         }
     }
-    assert_eq!(actual, &expected);
+    assert!(published.iter().any(|id| id == "account.connect"));
+    assert!(
+        published
+            .iter()
+            .all(|id| id != "auth.login" && id != "auth.link.approve"),
+        "{published:?}"
+    );
+
+    // Every published descriptor, as the server reads it at startup and as
+    // `describe` answers it.
+    for id in &published {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(["capabilities", id, "--output", "json"])
+            .env("DS_CLI_SCHEMA_ONLY", "1")
+            .output()
+            .expect("ds runs");
+        assert!(output.status.success(), "ds capabilities {id} failed");
+        assert_no_terminal_sign_in(
+            &format!("descriptor `{id}`"),
+            &String::from_utf8_lossy(&output.stdout),
+        );
+    }
+
+    // The instructions name the one sign-in, and the catalogue's answer to
+    // a person's own words for it is that command.
+    let instructions = response(&responses, 1)["result"]["instructions"]
+        .as_str()
+        .expect("instructions");
+    assert!(
+        instructions.contains("ds account connect"),
+        "{instructions}"
+    );
+    assert!(instructions.contains("account.connect"), "{instructions}");
+    assert!(
+        instructions.contains("Link a trusted device"),
+        "{instructions}"
+    );
+    assert_eq!(
+        response(&responses, 6)["result"]["structuredContent"]["results"][0]["id"],
+        "account.connect"
+    );
+
+    // The broad command exposure builds its tool descriptions from the same
+    // descriptors; the typed profiles are swept in
+    // `every_specialized_profile_is_bounded_and_catalogued`.
+    let (broad, _) = mcp(
+        &["--exposure", "commands"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+        ],
+    );
+    for response in &broad {
+        assert_no_terminal_sign_in("broad command exposure", &response.to_string());
+    }
+}
+
+/// The skill resources a host reads are the repository's own skills, and
+/// none of them names the terminal sign-in either. The MCP sweep above reads
+/// a fixture bundle; this reads the real documents that ship.
+#[test]
+fn no_shipped_skill_names_a_terminal_sign_in() {
+    let skills = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills");
+    let mut seen = 0;
+    for entry in fs::read_dir(&skills).expect("skills directory").flatten() {
+        let document = entry.path().join("SKILL.md");
+        if !document.is_file() {
+            continue;
+        }
+        seen += 1;
+        let text = fs::read_to_string(&document).expect("skill document");
+        assert_no_terminal_sign_in(&document.display().to_string(), &text);
+    }
+    assert!(seen > 0, "no skills under {}", skills.display());
 }
 
 #[test]
@@ -224,15 +392,15 @@ fn auth_mcp_profile_advertises_only_device_link_sign_in() {
     let instructions = response(&responses, 1)["result"]["instructions"]
         .as_str()
         .expect("MCP instructions");
-    assert!(instructions.contains("auth.link.begin"));
-    assert!(instructions.contains("auth.link.complete"));
-    assert!(!instructions.contains("auth login"));
+    assert!(instructions.contains("account.connect"), "{instructions}");
+    assert_no_terminal_sign_in("auth-context instructions", instructions);
     let names = response(&responses, 2)["result"]["tools"]
         .as_array()
         .expect("MCP tools")
         .iter()
         .filter_map(|tool| tool["name"].as_str())
         .collect::<BTreeSet<_>>();
+    assert!(names.contains("account_connect"), "{names:?}");
     assert!(names.contains("auth_link_begin"));
     assert!(names.contains("auth_link_complete"));
     assert!(!names.contains("auth_login"));
@@ -1430,6 +1598,12 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // 2026-09-21: native structure import and atomic batch editing
             // add two file-authoring leaves; see the profile's matching limit.
             "grid" => 27,
+            // Seventeen working-copy leaves plus bootstrap: the four
+            // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
+            // admin-refresh`, `dsgrid profile labels set|show`) were routed
+            // here on 2026-09-22 from the broad `grid` router they had pushed
+            // past its budget.
+            "grid-local-model" => 19,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
@@ -1480,6 +1654,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "{profile}: {}",
             tools.len()
         );
+        // No typed profile's tool descriptions send a person to a terminal
+        // sign-in; the broad surface is held to the same words in
+        // `no_published_mcp_text_names_a_terminal_sign_in`.
+        assert_no_terminal_sign_in(&format!("profile `{profile}`"), &responses[0].to_string());
         assert_eq!(tools[0]["name"], "ds_catalog", "{profile}");
         assert_eq!(tools[1]["name"], "ds_diagnostics", "{profile}");
         published.insert(
@@ -1714,6 +1892,7 @@ fn auth_context_profile_hands_off_only_non_secret_native_identity_commands() {
         [
             "ds_catalog",
             "ds_diagnostics",
+            "account_connect",
             "auth_device_list",
             "auth_device_read",
             "auth_device_revoke",

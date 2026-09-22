@@ -49,7 +49,7 @@ inclusion and its SHA-256. There is no `--project`, Desktop descriptor,
 arbitrary request field, browser store, or processing-lane argument.
 
 ```bash
-ds auth login --email operator@example.com
+ds account connect
 ds auth project use --project <exact-id>
 ds design lv project-export --transformer T-1042 \
   --out ./T-1042.fast-lv.json --output json
@@ -134,7 +134,7 @@ selector's top-level WGS84 `--bbox` remains an extent-overlap filter; no source
 Feature bbox is copied or synthesized.
 
 ```bash
-ds auth login --email operator@example.com
+ds account connect
 ds auth project use --project <exact-id>
 ds design features select --transformer T-1042 --layer lv_lines \
   --where drafting_status= --sample 5 --ids 100 --output json

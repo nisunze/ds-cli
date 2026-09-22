@@ -93,12 +93,13 @@ refusal!(
     "the packaged native catalogue is unsafe or malformed",
     "reinstall one complete ds release"
 );
-refusal!(
-    HEADLESS_SIGNED_OUT,
-    "headless_signed_out",
-    "the selected lane has no restorable native user",
-    "run ds auth login --email <address>"
-);
+// The one signed-out sentence, spelled with its literal code so the source
+// scan behind `refusal_coverage.rs` can follow `HEADLESS_SIGNED_OUT.code`.
+pub const HEADLESS_SIGNED_OUT: Refusal = Refusal {
+    code: "headless_signed_out",
+    when: ds_cli_auth::SIGNED_OUT_REFUSAL.when,
+    remedy: ds_cli_auth::SIGNED_OUT_REMEDY,
+};
 refusal!(
     HEADLESS_NO_PROJECT,
     "headless_project_not_selected",
