@@ -52,7 +52,8 @@ and the count checks against the restored result. Do not call the backup
 submittable until all of those pass.
 
 When native acceptance is requested or fails, read
-[references/windows-native-acceptance.md](references/windows-native-acceptance.md).
+[references/windows-native-acceptance.md](references/windows-native-acceptance.md)
+and apply the `ds-pls-cadd-native-dialogs` skill to every native prompt.
 If the host's supported Windows controller is unavailable, stop at the
 validated candidate and give the operator the exact Restore/reopen action;
 never replace the missing controller with coordinate clicks, arbitrary
