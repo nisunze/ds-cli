@@ -116,9 +116,9 @@ ds report project archives --output json                   # the registry, newes
 the same individual transformer report, computed by the cloud reporter and
 published to the project by the governed service (what the application's
 "Export reports" button asks; ds-brain action `export_reports_only`).
-`--transformer` names the scope; omitted, every active saved
-transformer is named from the same inventory `scope` reads, because the route
-takes exact names. The service skips a transformer whose report is fresh,
+`--transformer` names the scope; omitted, every active saved transformer is
+named from the same inventory `scope` reads, because the route takes exact
+names. The service skips a transformer whose report is fresh,
 refuses one another editor holds a lease on (`auth_input_invalid`, HTTP 423,
 the holder named), and answers per transformer. A run with any errored row
 exits non-zero as `report_compute_partial`, with the whole receipt in

@@ -6298,8 +6298,8 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
 // design
 // ---------------------------------------------------------------------------
 //
-// Native LV processing has two file-owned commands in this domain: a governed project
-// snapshot export and the project-free native process. They are intentionally
+// Native LV processing has two file-owned commands in this domain: a
+// governed project snapshot export and the project-free native process. They are intentionally
 // exercised here before the paired collaboration refusals below.
 
 #[test]
@@ -7643,7 +7643,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 // decides membership, but `ds` no longer needs a paired
                 // browser to ask it.
                 && !id.starts_with("design.selection.")
-                // Standard intake is a headless Rust upload/process workflow,
+                // Design intake is a headless Rust upload/process workflow,
                 // not a paired collaboration record operation.
                 && !id.starts_with("design.intake.")
                 // Project-to-project design migration is a bulk service call

@@ -13,7 +13,7 @@ ds-client-core = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-auth = { workspace = true }
 # Collaboration commands are governed routes on ds-brain under the native
-# credential (`ds-cli-auth`); nothing here pairs with a window. Offline Fast LV
+# credential (`ds-cli-auth`); nothing here pairs with a window. Offline LV
 # compute links the same pure ds-network kernel the browser's WASM adapter
 # calls; the CLI adds no engineering logic.
 ds-geo = { workspace = true }

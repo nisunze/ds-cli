@@ -997,8 +997,8 @@ them where the rooms are and the same kernel answers over real ones.
 `ds design process settings --preset drafting|sketch
 [--project-config config.json] [--operator toggles.json]
 [--firestore-design-data]` answers what the LV process dialog sends for that
-preset, from the same kernel module (`process_settings`) over the
-engine's own processor catalogue: `settings` (the preset applied to the
+preset, from the same kernel module (`process_settings`) over the engine's
+own processor catalogue: `settings` (the preset applied to the
 catalogue defaults and the project's own `transformer_settings` rows, the
 dependency collapse applied, the operator's toggles laid over), `visible_groups`
 (what the dialog would show), `wire_settings` (what the run receives — hidden

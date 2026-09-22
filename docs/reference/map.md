@@ -297,8 +297,9 @@ returns only counts and a staging receipt to the CLI.
 
 ## Project-scoped LV process setup
 
-The application owns one project-scoped LV process setup. The CLI does not keep a
-second copy: it discovers and updates the same local preference used by the UI.
+The application owns one project-scoped LV process setup. The CLI does not
+keep a second copy: it discovers and updates the same local preference used by
+the UI.
 It names survey layer keys, while ds-web owns IndexedDB addresses and processor
 wiring:
 

@@ -3,8 +3,9 @@
 //! The same native status read `ds design status` performs, folded once by
 //! `ds-command-kernel::design_dashboard` into the model the application's
 //! Design wall renders: pipeline, momentum, crew, geography, phase summaries,
-//! governance mix, the attention pile, the health score and the fun facts. One question, one answer, whether it is asked from a browser or
-//! from a terminal.
+//! governance mix, the attention pile, the health score and the fun facts.
+//! One question, one answer, whether it is asked from a browser or from a
+//! terminal.
 //!
 //! Labels come back as i18n keys, because naming them is the reading
 //! surface's job — `--output json` gives a caller the keys, and the renderer
@@ -80,8 +81,9 @@ reference document describes each member.",
     output: "\
 Lane and the named project, then `dashboard`: the counts, \
 `pipeline`, `momentum`, `crew`, `errors_by_user`, `districts`, \
-`phase_summaries`, `governance`, `attention`, `health`, `recent` and `facts`. Labels are i18n keys, timestamps epoch millis, and a headless client \
-holds none of the live diagnostics the application folds in.",
+`phase_summaries`, `governance`, `attention`, `health`, `recent` and \
+`facts`. Labels are i18n keys, timestamps epoch millis, and a headless \
+client holds none of the live diagnostics the application folds in.",
     examples: &[
         Example {
             command: "ds design dashboard --project <id> --output json",
