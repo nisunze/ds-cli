@@ -553,6 +553,15 @@ fn dispatch(
                     .map_err(|error| engine_error(operation_id, error))?,
             )
         }
+        "profile_anomaly_layer" => {
+            let options: TerrainAnomalyOptions = parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                session
+                    .profile_anomaly_layer(&options)
+                    .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
         "spotting_graph" => serialize(
             operation_id,
             ds_grid_engine::spotting_graph::spotting_graph(session.snapshot())
