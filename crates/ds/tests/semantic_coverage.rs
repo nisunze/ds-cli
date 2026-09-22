@@ -521,6 +521,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.structure.admin-refresh", "local_file_write", "none"),
     ("dsgrid.structure.describe", "local_file_write", "none"),
     ("dsgrid.structure.retype", "local_file_write", "none"),
+    ("dsgrid.structure.staking-enrich", "local_file_write", "none"),
     ("dsgrid.report.structures", "local_file_write", "none"),
     // The one project act, and the only command in the family that carries
     // `project` authority: it registers one immutable revision in the paired

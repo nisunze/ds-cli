@@ -11,6 +11,7 @@
 pub mod admin_refresh;
 pub mod describe;
 pub mod retype;
+pub mod staking_enrich;
 
 use ds_cli_contract::outcome::Failure;
 use ds_grid_model::{GridModelSnapshot, StructureId, StructureRow, StructureTypeId};

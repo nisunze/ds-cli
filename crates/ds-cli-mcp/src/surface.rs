@@ -538,6 +538,7 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     // as `prepare-project` does; the chapter router carries them regardless.
     "dsgrid.structure.describe",
     "dsgrid.structure.retype",
+    "dsgrid.structure.staking-enrich",
     "dsgrid.report.structures",
 ];
 
@@ -548,6 +549,7 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.profile.open",
     "dsgrid.structure.describe",
     "dsgrid.structure.retype",
+    "dsgrid.structure.staking-enrich",
     "dsgrid.report.structures",
 ];
 
