@@ -822,7 +822,7 @@ pub struct ProjectDataCall<'a> {
     pub(crate) authority: CallAuthority<'a>,
 }
 
-/// One fixed Standard design-intake request. The core supplies the entire body.
+/// One fixed design-intake request. The core supplies the entire body.
 pub struct StatusProcessingCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: &'a serde_json::Value,

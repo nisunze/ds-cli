@@ -1256,7 +1256,6 @@ mod tests {
         );
     }
 
-    #[test]
     /// Nobody can upload into an archived project, so a second capture can
     /// only repeat the first. `all` therefore means "everything whose ledger
     /// can still move", and the one way to reach an archived project is to
