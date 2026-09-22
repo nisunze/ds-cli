@@ -1,4 +1,4 @@
-//! `ds map design setup` — discover or configure project Fast LV inputs.
+//! `ds map design setup` — discover or configure project LV process inputs.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -106,7 +106,7 @@ const PRESET_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &["drafting", "sketch"],
-    summary: "Project Fast LV process preset.",
+    summary: "Project LV process preset.",
 };
 
 const DRY_RUN_ARG: Arg = Arg {
@@ -125,7 +125,7 @@ pub static COMMAND: Command = Command {
     id: "map.design.setup",
     path: &["map", "design", "setup"],
     contract: 1,
-    summary: "Discover or configure project-scoped Fast LV inputs.",
+    summary: "Discover or configure project-scoped LV process inputs.",
     purpose: "\
 With no configuration flags, reports the project preset, selected customer \
 sources, available Point layers, and effective processor parameters. Source \
@@ -373,7 +373,7 @@ pub fn render(data: &Value) -> String {
         .as_array()
         .map_or(0, Vec::len);
     format!(
-        "Fast LV setup for {}\n  preset  {}\n  design customers  {}\n  selected temporary layers  {}\n  selected survey layers  {}\n  effective settings  {}\n  available Point survey layers  {}\n  {}\n",
+        "LV process setup for {}\n  preset  {}\n  design customers  {}\n  selected temporary layers  {}\n  selected survey layers  {}\n  effective settings  {}\n  available Point survey layers  {}\n  {}\n",
         data["project"].as_str().unwrap_or("project"),
         data["preset"].as_str().unwrap_or("sketch"),
         if data["include_design_customers"].as_bool().unwrap_or(false) {

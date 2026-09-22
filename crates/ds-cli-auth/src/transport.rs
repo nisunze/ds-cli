@@ -547,6 +547,10 @@ impl Transport for NativeTransport {
             .header("x-api-key", call.gateway_api_key())
             .header("Authorization", &bearer)
             .header("X-Forwarded-Authorization", &bearer)
+            // A fixed wire value, not a choice: ds-brain's `/process` proxy
+            // routes on this header and answers 501 to any other value.
+            // Whether the proxied intake still answers now that ds-system is
+            // retired is the owner's question, not this adapter's.
             .header("X-DS-Processing-Lane", "standard")
             .config()
             .max_redirects(0)
@@ -1659,9 +1663,9 @@ impl NativeTransport {
             .header("x-api-key", call.gateway_api_key())
             .header("Authorization", &bearer)
             .header("X-Forwarded-Authorization", &bearer);
-        // The compounded deliverable is Fast-lane only; ds-brain warns on a
-        // lane-aware action without the header and defaults to the retired
-        // Standard lane, so the core names the lane and the adapter sends it.
+        // The header is transport, not a choice: ds-brain routes the report
+        // actions on it and, without it, falls back to the demolished Python
+        // path. The core names the fixed value and the adapter sends it.
         if let Some(lane) = call.processing_lane() {
             request = request.header(call.processing_lane_header(), lane);
         }

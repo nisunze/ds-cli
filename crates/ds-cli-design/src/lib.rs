@@ -8,7 +8,7 @@
 //! one local result document through ds-network's native Rayon adapter.
 //! It has no project id, credential, Desktop bridge, map state, browser store,
 //! or generic engine operation. The Rust kernel is the same owner used below
-//! ds-web's Fast WASM adapter; only host file placement differs.
+//! ds-web's WASM adapter; only host file placement differs.
 //! `design.features.select` separately restores the governed native user and
 //! its audience-fenced project, fetches one fixed context projection, and
 //! delegates deterministic selection to `ds-geo`.
@@ -34,7 +34,7 @@
 //! ## Why this is not `ds map`
 //!
 //! No command here needs a map instance, an edit session, or an open design
-//! room: local Fast LV consumes an explicit file; a selection is a list of
+//! room: local LV processing consumes an explicit file; a selection is a list of
 //! stable identities; an attachment is bytes with a media type; a tag is a
 //! value from a project's own vocabulary. `ds map` owns local map state; this
 //! domain owns none.

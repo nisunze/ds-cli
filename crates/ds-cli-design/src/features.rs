@@ -297,7 +297,7 @@ pub static COMMAND: Command = Command {
     contract: 2,
     chapter: Chapter::Design,
     summary: "Select design features without opening a map.",
-    purpose: "Restores the native user, reads one exact transformer from the audience-fenced selected project through the fixed gateway call, and runs the authoritative bounded Rust selector locally. The server remains membership authority. No Desktop descriptor, project override, arbitrary request, or processing-lane value is accepted.",
+    purpose: "Restores the native user, reads one exact transformer from the audience-fenced selected project through the fixed gateway call, and runs the authoritative bounded Rust selector locally. The server remains membership authority. No Desktop descriptor, project override, or arbitrary request is accepted.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,

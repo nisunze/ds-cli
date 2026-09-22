@@ -1,4 +1,4 @@
-//! Create-new local artifact writes shared by native Fast-LV commands.
+//! Create-new local artifact writes shared by the native LV commands.
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -20,7 +20,7 @@ pub(super) struct ArtifactContract {
 }
 
 pub(super) const RESULT: ArtifactContract = ArtifactContract {
-    name: "Fast LV result",
+    name: "LV result",
     stage_tag: "ds-fast-lv-result",
     exists_code: "fast_lv_output_exists",
     write_code: "fast_lv_output_write_failed",
@@ -29,7 +29,7 @@ pub(super) const RESULT: ArtifactContract = ArtifactContract {
 };
 
 pub(super) const PROJECT_REQUEST: ArtifactContract = ArtifactContract {
-    name: "Fast LV project request",
+    name: "LV project request",
     stage_tag: "ds-fast-lv-project-request",
     exists_code: "fast_lv_request_output_exists",
     write_code: "fast_lv_request_output_write_failed",
