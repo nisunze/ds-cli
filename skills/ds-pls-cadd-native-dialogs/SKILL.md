@@ -54,14 +54,27 @@ The final dialog observed in that run was titled
 'C:\Users\magese\Desktop\PLS-AW-DIAG-20260922\restore-1\nyamagabe.xyz'?`.
 The 63 files and path identify that *one diagnostic backup*, not a default
 for other projects. For a new run, derive the expected count, backup leaf and
-fresh destination from its pinned candidate and manifest. Require the exact
-backup identity, the expected project path, the expected restored count, zero
-skips, and the restored tree/required members before choosing. If the plan
-is to open that restored project, the characterized Yes control is ID 6;
-No is ID 7 only when the plan deliberately leaves PLS without that project.
-After the choice, prove the opened project identity and reopen/count/closure
-checks separately. A dialog that reports completion while files were skipped
-or names another project is a refusal.
+fresh destination from its pinned candidate and manifest. At that exact final
+dialog, check backup identity, expected project path, restored count and zero
+skips, then choose **Yes immediately** (control ID 6) when the purpose is to
+open the restored project. Do not hold this dialog while attempting byte
+comparison of the restored folder: PLS-CADD rewrites text line endings and
+embedded absolute FILENAME paths during Restore. Check content, references,
+counts and any native warnings after opening; do not turn those later gates
+into reasons to leave the Yes dialog stacked. No (ID 7) is only for an explicit
+workflow that deliberately leaves the project unopened. A dialog reporting
+skipped files or another project is a refusal.
+
+For the observed PLS 16.81 final prompt, use the bundled
+[scripts/open-verified-restore.ps1](scripts/open-verified-restore.ps1). Transfer
+that exact script from ds-server to the PLS workstation, then provide the
+observed PLS PID and modal handle, backup leaf, absolute fresh project path,
+and inventory file count. It checks the executable, owning process, modal
+class/title, entire normalized body, enabled Yes ID 6, sends the dialog's
+IDYES command with a timeout, and verifies the opened project title. The
+generic posted button click was observed to leave this modal stacked; do not
+repeat that ineffective action. This script is for the final Restore prompt
+only and never decides unknown dialogs.
 
 A dialog that initially looks blocking may be only a draw/transition state.
 A dialog that disappears may also hide a failed restore. The evidence is the
