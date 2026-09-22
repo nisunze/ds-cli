@@ -121,7 +121,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["backfill", "native", "capacity", "library"],
+    search: &["backfill", "capacity", "library"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

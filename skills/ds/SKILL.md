@@ -24,7 +24,7 @@ ds capabilities <domain> --output json
 ds capabilities --search '<words>' --output json
 ```
 
-Search is lexical: try domain and product vocabulary before declaring a gap.
+Try domain and product terms before declaring a gap.
 
 ## Read, then invoke, the contract
 
@@ -71,8 +71,6 @@ result:
 - The operator — the effect needs authority `ds` will not grant: approval,
   credentials, an OS install, a deploy, a refusal's remedy. Report the refusal
   code with that remedy; never route around it.
-
-A stop is not a gap: name it and what it needs.
 
 ## When `ds` cannot
 

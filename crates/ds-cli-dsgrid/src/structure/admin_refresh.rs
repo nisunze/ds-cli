@@ -136,7 +136,7 @@ pub static COMMAND: Command = Command {
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["rwanda", "village", "administrative", "staking location"],
+    search: &["administrative", "staking location"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

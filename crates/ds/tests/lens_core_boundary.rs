@@ -17,7 +17,8 @@
 //! the problem.
 //!
 //! So this suite pins the inventory rather than the prose, the same way
-//! `process_boundary.rs` pins process construction. The numbers may only fall.
+//! `process_boundary.rs` pins process construction. An increase needs an
+//! explicit reviewed decision naming the window command and its owner.
 //! A new crate reaching for the bridge is red here and has to be classified:
 //! either it is a lens crate, or its command needs the core implementation the
 //! contract asks for.
@@ -97,7 +98,10 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     // `dsgrid.publish-version` may publish from the application's own open
     // working copy — the one door left; `prepare-project` left on 2026-09-20
     // (readiness is this machine's catalogue against the governed heads).
-    ("ds-cli-dsgrid", Layer::CorePending, 1),
+    // 2026-09-22 decision: `profile.open` is the already-shipped window
+    // handoff for a local model. Count it explicitly until that handoff has
+    // a headless owner; do not hide its bridge site behind the old ceiling.
+    ("ds-cli-dsgrid", Layer::CorePending, 2),
     // Solar runs read the workspace the application holds open.
     ("ds-cli-solar", Layer::CorePending, 2),
     // `ds-cli-pm` left on 2026-09-20: every Project Management command is a
@@ -271,13 +275,14 @@ fn the_target_layers_are_exactly_the_window_and_the_binary() {
 /// *is* the bridge, so it cannot "depend on" it, but its commands are window
 /// commands like any other and its count has to be able to fall too.
 ///
-/// Measured 2026-09-18 against the run tip.
+/// Measured against the 2026-09-22 run tip.
 const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // The bridge's own domain: pairing, sync, printing, published artifacts.
     ("ds-cli-desktop", 25),
     // The lens crate. Window commands are its purpose; its server commands
     // (the machine-local layer catalogue) are not counted here.
-    ("ds-cli-map", 39),
+    // Profile view/set are display controls in the paired window.
+    ("ds-cli-map", 41),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
     // command headless (contract 01 of the dsgrid-authority program).
@@ -289,12 +294,12 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // collaboration commands headless and four window-cache controls retired
     // (contract 01 of the dsgrid-authority program).
     // 1 → 0 on 2026-09-20: `model prepare-project` answers from this
-    // machine's catalogue and the governed heads. The crate stays on the
-    // ledger at zero because `dsgrid publish-version` without `--path` still
-    // publishes the application's own browser-held working copy through the
-    // bridge — a `requires: server` command with a paired fallback, not a
-    // window command (see its descriptor comment).
-    ("ds-cli-dsgrid", 0),
+    // machine's catalogue and the governed heads. `dsgrid publish-version`
+    // without `--path` still publishes the application's own working copy
+    // through the bridge — a `requires: server` command with a paired fallback,
+    // not a window command (see its descriptor comment). `dsgrid.profile.open` is
+    // the one declared window command admitted on 2026-09-22.
+    ("ds-cli-dsgrid", 1),
     ("ds-cli-solar", 16),
     // `ds-cli-pm` left this ledger on 2026-09-20: 9 → 8 on 2026-09-19 when
     // `pm plan` took the native headless route, 8 → 0 when the other eight
@@ -502,9 +507,10 @@ fn the_window_ledger_and_the_bridge_inventory_name_the_same_crates() {
 ///
 /// Two ledgers because a crate is not a domain and a line is not a command;
 /// the same rule governs both, and the same rule governs the totals:
-/// 85 declaration sites, 85 registered commands, and both may only fall.
+/// 87 declaration sites and 88 registered commands after the 2026-09-22
+/// Profile admission; new increases require a named review decision.
 ///
-/// Measured 2026-09-18 against the run tip.
+/// Measured against the 2026-09-22 run tip.
 const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // 9 → 0 on 2026-09-20: list/tree/read/preview/classify/promote/attach/
     // ingest/folder run headless through `POST /api/v1/assets`.
@@ -517,9 +523,10 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // `design.sync.*` and `design.transformer.download` were retired.
     ("design", 0),
     ("desktop", 26),
-    // 1 → 0 on 2026-09-20: `dsgrid.model.prepare-project` is headless.
-    ("dsgrid", 0),
-    ("map", 39),
+    // `dsgrid.model.prepare-project` is headless; `dsgrid.profile.open` is
+    // the one window command admitted on 2026-09-22.
+    ("dsgrid", 1),
+    ("map", 41),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
@@ -530,8 +537,11 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 /// What the filter answers for the whole surface. Pinned beside the rows so a
 /// domain cannot be quietly dropped from the ledger to hide its commands.
 /// 131 → 123 on 2026-09-20 (`pm`), 123 → 114 the same day (`assets`),
-/// 114 → 86 the same day (`design`), 86 → 85 the same day (`dsgrid`).
-const WINDOW_BACKLOG_TOTAL: u64 = 85;
+/// 114 → 86 the same day (`design`), 86 → 85 the same day (`dsgrid`),
+/// then 85 → 88 on 2026-09-22 when three shipped Profile controls were admitted.
+// The 2026-09-22 audit admits three existing Profile window commands that
+// landed after the prior snapshot: dsgrid.profile.open and map.profile.view/set.
+const WINDOW_BACKLOG_TOTAL: u64 = 88;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {

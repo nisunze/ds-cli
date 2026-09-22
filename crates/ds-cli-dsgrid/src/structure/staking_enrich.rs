@@ -50,7 +50,7 @@ pub static COMMAND: Command = Command {
     id: "dsgrid.structure.staking-enrich",
     path: &["dsgrid", "structure", "staking-enrich"],
     contract: 1,
-    summary: "Preview or author canonical functions, mandatory earthing, and transformer load joins for a number range.",
+    summary: "Preview or apply structure functions, earthing and transformer loads.",
     purpose: "Derive meaningful structure functions and material earthing from the exact structure family, then join each transformer to a unique nearby surveyed transformer name and kVA. Ordinary LINE supports remain without a Comment 1 proposal. Existing authored load references win; ambiguous and distant survey matches stay unknown and are reported. The inclusive engineering-number selection is revision-gated and bounded. Dry-run and write exercise the same typed engine command.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
@@ -92,12 +92,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &[
-        "structure comment 1",
-        "transformer kVA",
-        "staking",
-        "nearest transformer",
-    ],
+    search: &["comment 1", "kva", "nearest transformer"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

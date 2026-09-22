@@ -62,7 +62,7 @@ pub static VIEW: Command = Command {
         crate::UNREADABLE,
     ],
     reference: Some("docs/reference/map.md"),
-    search: &["profile", "visual", "viewport"],
+    search: &["viewport"],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };
@@ -124,14 +124,7 @@ pub static SET: Command = Command {
         crate::UNREADABLE,
     ],
     reference: Some("docs/reference/map.md"),
-    search: &[
-        "profile",
-        "visual",
-        "labels",
-        "fit",
-        "rebuild",
-        "visibility",
-    ],
+    search: &["labels", "fit", "rebuild", "visibility"],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };

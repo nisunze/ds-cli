@@ -12,7 +12,7 @@ pub static COMMAND: Command = Command {
     id: "pls.structure-inventory",
     path: &["pls", "structure-inventory"],
     contract: 1,
-    summary: "Count placed structure definitions in a PLS-CADD backup, DON, or workspace.",
+    summary: "Count placed structures in a PLS-CADD backup, DON or workspace.",
     purpose: "Reads DON design blocks through the native parser and counts actual placed rows by structure definition leaf. Keeps projects and active or historical blocks separate, so unused library files never enter the denominator. Read-only; no CRS or native conversion required.",
     chapter: Chapter::PlsCadd,
     effect: Effect::Discovery,

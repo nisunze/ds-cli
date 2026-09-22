@@ -39,7 +39,7 @@ pub static SHOW: Command = Command {
     id: "dsgrid.profile.labels.show",
     path: &["dsgrid", "profile", "labels", "show"],
     contract: 1,
-    summary: "Read model-authored interactive Profile labels with the Desktop closed.",
+    summary: "Read authored Profile labels with the Desktop closed.",
     purpose: "Reads the verified .dsgrid manifest's interactive Profile label policy. An absent authored policy resolves to the typed DS Grid default; no browser preference is consulted. Fixed-paper sheet labels are separate.",
     chapter: Chapter::GridModel,
     effect: Effect::ReadOnly,
@@ -54,7 +54,7 @@ pub static SHOW: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["profile", "labels", "model", "headless"],
+    search: &["headless", "composition"],
     requires: Requires::Server,
     availability: available,
 };
@@ -108,7 +108,7 @@ pub static SET: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["profile", "labels", "model", "headless"],
+    search: &["headless", "composition"],
     requires: Requires::Server,
     availability: available,
 };

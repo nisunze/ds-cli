@@ -91,7 +91,7 @@ pub static COMMAND: Command = Command {
     id: "dsgrid.report.staking",
     path: &["dsgrid", "report", "staking"],
     contract: 1,
-    summary: "Canonical two-header MV client staking table with derived quantity matrix.",
+    summary: "Build the canonical MV staking table and quantity matrix.",
     purpose: "Build the client staking table from canonical structure names, comments 1–9, ahead spans, conductor set and transformer kVA. The fixed matrix has one row per structure and a numeric sum row for later BOQ references. Project choices are supplied as JSON options; unknown facts remain visible as warnings rather than being invented.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
@@ -116,7 +116,7 @@ pub static COMMAND: Command = Command {
     reference: Some("docs/reference/dsgrid.md"),
     search: &[
         "staking table",
-        "MV matrix",
+        "mv matrix",
         "earthing",
         "transformer protection",
     ],

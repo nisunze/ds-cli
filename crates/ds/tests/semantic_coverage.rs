@@ -511,6 +511,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.model.import-external", "local_file_write", "none"),
     ("dsgrid.model.link", "local_file_write", "none"),
     ("dsgrid.model.list", "read_only", "none"),
+    ("dsgrid.model.forget", "local_file_write", "none"),
     ("dsgrid.model.show", "read_only", "none"),
     (
         "dsgrid.model.prepare-project",
@@ -519,6 +520,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("dsgrid.model.set-active", "local_file_write", "none"),
     ("dsgrid.profile.open", "local_file_write", "desktop_pairing"),
+    ("dsgrid.profile.labels.show", "read_only", "none"),
+    ("dsgrid.profile.labels.set", "local_file_write", "none"),
     // The typed command family over the engine (program contract 01 §2):
     // authority none on a working copy or a package file, `local_file_write`
     // because a working copy's next revision — or a new package — lands on
@@ -534,6 +537,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "none",
     ),
     ("dsgrid.report.structures", "local_file_write", "none"),
+    ("dsgrid.report.staking", "local_file_write", "none"),
     // The one project act, and the only command in the family that carries
     // `project` authority: it registers one immutable revision in the paired
     // session's own selected project's catalogue, so it is `global_write` and
@@ -672,6 +676,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pls.pole-capacity.read", "discovery", "none"),
     ("pls.reference-closure", "discovery", "none"),
     ("pls.section-orientation", "discovery", "none"),
+    ("pls.structure-inventory", "discovery", "none"),
     ("pls.shading-variants", "local_file_write", "none"),
     ("pls.terrain-reconcile", "local_file_write", "none"),
     ("report.bundle", "local_file_write", "none"),
