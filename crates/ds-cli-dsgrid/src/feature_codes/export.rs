@@ -88,7 +88,12 @@ same member into a linked workspace; this verb writes it to a file you name.",
         mutation::LANE_ARG,
         mutation::ACCOUNT_ARG,
         super::VOLTAGE_CLASS_ARG,
-        Arg::value("out", "<file.fea>", "The FEA file to write; never overwrites.").required(),
+        Arg::value(
+            "out",
+            "<file.fea>",
+            "The FEA file to write; never overwrites.",
+        )
+        .required(),
         Arg::value(
             "filename",
             "<workspace path>",
@@ -99,13 +104,11 @@ same member into a linked workspace; this verb writes it to a file you name.",
 The member written (path, bytes, sha256), `FEA 15 / SI`, the code count, the \
 class, the default codes, the assumed codes and the definitions skipped \
 (retired, or without clearances).",
-    examples: &[
-        Example {
-            command: "ds dsgrid feature-codes export --model local-e9b0ccbf92d7447b --voltage-class MV --out ./nyamagabe-mv.fea",
-            note: "The MV table as the FEA 15 member PLS-CADD 16.81 opens.",
-            runnable: false,
-        },
-    ],
+    examples: &[Example {
+        command: "ds dsgrid feature-codes export --model local-e9b0ccbf92d7447b --voltage-class MV --out ./nyamagabe-mv.fea",
+        note: "The MV table as the FEA 15 member PLS-CADD 16.81 opens.",
+        runnable: false,
+    }],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &["feature code", "pls-cadd", "code data"],
@@ -202,6 +205,8 @@ pub fn render(data: &Value) -> String {
         data["interp_tin_point_feature_code"],
         data["assumed_codes"].as_array().map_or(0, Vec::len),
         data["skipped_retired"].as_array().map_or(0, Vec::len),
-        data["skipped_without_clearance"].as_array().map_or(0, Vec::len),
+        data["skipped_without_clearance"]
+            .as_array()
+            .map_or(0, Vec::len),
     )
 }

@@ -16,12 +16,15 @@ use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::TaggedAlignmentLengthsRequest;
 use ds_grid_engine::descriptor::operation_descriptors;
 use ds_grid_engine::{
-    EffectClass, EngineeringAttributeEvidence, GridSession, NetworkCalculationRequest, OperationDescriptor, ProfileAtlasOptions,
-    ResultStore, SectionDemandsRequest, SpottingPlanError, SpottingPlanRequest,
-    StructureAnalysisRequest, StructureUsageScreeningRequest, TerrainAnomalyOptions,
-    analyze_network_topology, calculate_stringing_and_structures, structure_usage_screening,
+    EffectClass, EngineeringAttributeEvidence, GridSession, NetworkCalculationRequest,
+    OperationDescriptor, ProfileAtlasOptions, ResultStore, SectionDemandsRequest,
+    SpottingPlanError, SpottingPlanRequest, StructureAnalysisRequest,
+    StructureUsageScreeningRequest, TerrainAnomalyOptions, analyze_network_topology,
+    calculate_stringing_and_structures, structure_usage_screening,
 };
-use ds_grid_model::{AlignmentId, EntityId, StructureLabelPolicy, StructureTypeId, TableKind, TensionSectionId};
+use ds_grid_model::{
+    AlignmentId, EntityId, StructureLabelPolicy, StructureTypeId, TableKind, TensionSectionId,
+};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -205,8 +208,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let session = GridSession::open(package.snapshot);
     let authored_revision = session.current_revision().revision_id.clone();
     let evidence = if operation_id == "profile_properties" {
-        package.assets.iter()
-            .find(|asset| asset.invariant_leaf == ds_grid_exchange::ENGINEERING_ATTRIBUTE_EVIDENCE_LEAF)
+        package
+            .assets
+            .iter()
+            .find(|asset| {
+                asset.invariant_leaf == ds_grid_exchange::ENGINEERING_ATTRIBUTE_EVIDENCE_LEAF
+            })
             .map(|asset| ds_grid_exchange::decode_engineering_attribute_evidence(&asset.bytes))
             .transpose()
             .map_err(|error| engine_error(operation_id, error))?
@@ -214,7 +221,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         EngineeringAttributeEvidence::default()
     };
-    let profile_labels = package.manifest.model.presentation.effective_profile_structure_labels();
+    let profile_labels = package
+        .manifest
+        .model
+        .presentation
+        .effective_profile_structure_labels();
     let result = dispatch(operation_id, &params, &session, &evidence, &profile_labels)?;
     let (result, truncated) = bound_result(result, limit);
 
@@ -391,9 +402,13 @@ fn dispatch(
                 &session.current_revision().revision_id,
                 request.entity_id.as_str(),
                 evidence,
-            ).ok_or_else(|| engine_error(operation_id, format!(
-                "no Profile properties for entity {}", request.entity_id
-            )))
+            )
+            .ok_or_else(|| {
+                engine_error(
+                    operation_id,
+                    format!("no Profile properties for entity {}", request.entity_id),
+                )
+            })
         }
         "project_plan" => serialize(operation_id, session.plan_projection()),
         "project_profile" => {
@@ -423,7 +438,10 @@ fn dispatch(
             let mut scene = session
                 .profile_atlas_scene(options)
                 .map_err(|error| engine_error(operation_id, error))?;
-            ds_grid_engine::profile_labels::compose_scene_structure_labels(&mut scene, profile_labels);
+            ds_grid_engine::profile_labels::compose_scene_structure_labels(
+                &mut scene,
+                profile_labels,
+            );
             serialize(operation_id, scene)
         }
         "project_structure_library" => {
@@ -546,8 +564,11 @@ fn dispatch(
             serialize(
                 operation_id,
                 ds_grid_engine::spotting::batch::plan_optimum_spotting_batch(
-                    session.snapshot(), session.current_revision(), &request,
-                ).map_err(|error| engine_error(operation_id, error))?,
+                    session.snapshot(),
+                    session.current_revision(),
+                    &request,
+                )
+                .map_err(|error| engine_error(operation_id, error))?,
             )
         }
         "plan_optimum_spotting" => {
@@ -685,16 +706,18 @@ mod tests {
     #[test]
     fn native_profile_properties_uses_the_engine_sheet() {
         let mut snapshot = ds_grid_model::GridModelSnapshot::default();
-        snapshot.terrain_points.push(ds_grid_model::TerrainPointRow {
-            id: ds_grid_model::TerrainPointId::new("tp-1").unwrap(),
-            x_m: 1.0,
-            y_m: 2.0,
-            z_m: 103.5,
-            feature_class: "GP".into(),
-            description: None,
-            required_clearance_m: None,
-            source_id: None,
-        });
+        snapshot
+            .terrain_points
+            .push(ds_grid_model::TerrainPointRow {
+                id: ds_grid_model::TerrainPointId::new("tp-1").unwrap(),
+                x_m: 1.0,
+                y_m: 2.0,
+                z_m: 103.5,
+                feature_class: "GP".into(),
+                description: None,
+                required_clearance_m: None,
+                source_id: None,
+            });
         let session = GridSession::open(snapshot);
         let sheet = dispatch(
             "profile_properties",
@@ -702,12 +725,15 @@ mod tests {
             &session,
             &EngineeringAttributeEvidence::default(),
             &StructureLabelPolicy::default(),
-        ).expect("native Profile sheet");
+        )
+        .expect("native Profile sheet");
         assert_eq!(sheet["kind"], "terrain_point");
         assert_eq!(sheet["edit_layer"], "terrain");
         assert_eq!(sheet["groups"][0]["fields"][1]["value"], 103.5);
-        assert_eq!(sheet["groups"][0]["fields"][1]["editor"]["command_kind"],
-            "edit_profile_properties");
+        assert_eq!(
+            sheet["groups"][0]["fields"][1]["editor"]["command_kind"],
+            "edit_profile_properties"
+        );
     }
 
     #[test]

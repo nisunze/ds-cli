@@ -341,7 +341,6 @@ pub fn render(data: &Value) -> String {
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,9 +354,15 @@ mod tests {
             "temporary_models_removed": {"groups": 1, "models": 2}
         });
         let data = receipt("local-1", &reply).expect("valid profile open");
-        assert_eq!(data["temporary_models_removed"], json!({"groups": 1, "models": 2}));
+        assert_eq!(
+            data["temporary_models_removed"],
+            json!({"groups": 1, "models": 2})
+        );
         let mut no_replacement = reply;
-        no_replacement.as_object_mut().unwrap().remove("temporary_models_removed");
+        no_replacement
+            .as_object_mut()
+            .unwrap()
+            .remove("temporary_models_removed");
         let data = receipt("local-1", &no_replacement).expect("valid profile open");
         assert!(data.get("temporary_models_removed").is_none());
     }

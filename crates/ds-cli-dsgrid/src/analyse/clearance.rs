@@ -97,9 +97,13 @@ verification level `proposal` — PLS-CADD 16.81 confirms.",
         mutation::LANE_ARG,
         mutation::ACCOUNT_ARG,
         Arg::value("alignment", "<id>", "Restrict to one alignment."),
-        Arg::value("case", "<vertical|horizontal|both>", "Which clearance to evaluate.")
-            .default("both")
-            .choices(&["vertical", "horizontal", "both"]),
+        Arg::value(
+            "case",
+            "<vertical|horizontal|both>",
+            "Which clearance to evaluate.",
+        )
+        .default("both")
+        .choices(&["vertical", "horizontal", "both"]),
         Arg::value(
             "criterion-set",
             "<id>",
@@ -268,9 +272,13 @@ pub fn render(data: &Value) -> String {
         data["verification_level"].as_str().unwrap_or("proposal"),
         data["criterion_set_id"].as_str().unwrap_or("?"),
         data["clearance_voltage_kv"],
-        data["vertical_case"]["weather_label"].as_str().unwrap_or("—"),
+        data["vertical_case"]["weather_label"]
+            .as_str()
+            .unwrap_or("—"),
         data["vertical_case"]["temperature_c"],
-        data["horizontal_case"]["weather_label"].as_str().unwrap_or("—"),
+        data["horizontal_case"]["weather_label"]
+            .as_str()
+            .unwrap_or("—"),
         data["horizontal_case"]["wind_pressure_pa"],
         data["points_checked"],
         data["vertical_violations"],
@@ -287,9 +295,19 @@ pub fn render(data: &Value) -> String {
             total["points_checked"],
             total["vertical_violations"],
             total["horizontal_violations"],
-            total["worst_vertical_deficit_m"].as_f64().map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".to_string()),
-            total["worst_horizontal_deficit_m"].as_f64().map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".to_string()),
-            if total["assumed_clearance"].as_bool().unwrap_or(false) { " (assumed)" } else { "" },
+            total["worst_vertical_deficit_m"]
+                .as_f64()
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".to_string()),
+            total["worst_horizontal_deficit_m"]
+                .as_f64()
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".to_string()),
+            if total["assumed_clearance"].as_bool().unwrap_or(false) {
+                " (assumed)"
+            } else {
+                ""
+            },
         ));
     }
     for finding in data["findings"].as_array().into_iter().flatten() {
@@ -320,7 +338,10 @@ pub fn render(data: &Value) -> String {
     }
     if let Some(truncated) = data["more"]["truncated"].as_array() {
         for entry in truncated {
-            out.push_str(&format!("  … {} more findings withheld by --limit\n", entry["withheld"]));
+            out.push_str(&format!(
+                "  … {} more findings withheld by --limit\n",
+                entry["withheld"]
+            ));
         }
     }
     out

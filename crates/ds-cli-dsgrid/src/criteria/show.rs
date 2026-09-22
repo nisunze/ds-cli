@@ -42,13 +42,11 @@ The target; per set: id, label, assigned sections, clearance voltage, wire \
 clearance line, survey-point vertical/horizontal cases, clearance rules, \
 configured flag; the weather cases; the maximum conductor temperature with \
 the standard's value; the findings.",
-    examples: &[
-        Example {
-            command: "ds dsgrid criteria show --model local-e9b0ccbf92d7447b --output json",
-            note: "Read the weather labels before `criteria clearance set`, and the 60 °C finding.",
-            runnable: false,
-        },
-    ],
+    examples: &[Example {
+        command: "ds dsgrid criteria show --model local-e9b0ccbf92d7447b --output json",
+        note: "Read the weather labels before `criteria clearance set`, and the 60 °C finding.",
+        runnable: false,
+    }],
     refusals: feature_codes::READ_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[

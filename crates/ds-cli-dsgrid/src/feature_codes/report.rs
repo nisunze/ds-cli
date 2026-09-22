@@ -36,8 +36,12 @@ delivery carries no unknown code.",
         mutation::PACKAGE_ARG,
         mutation::LANE_ARG,
         mutation::ACCOUNT_ARG,
-        Arg::value("limit", "<n>", "Cap the codes and unresolved tokens listed.")
-            .default(package::DEFAULT_LIMIT),
+        Arg::value(
+            "limit",
+            "<n>",
+            "Cap the codes and unresolved tokens listed.",
+        )
+        .default(package::DEFAULT_LIMIT),
     ],
     output: "\
 The target, the table (codes with number, RV/RH, TIN, class, assumed, usage), \
@@ -58,7 +62,13 @@ names any list shortened by --limit.",
     ],
     refusals: super::READ_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["feature code", "feature codes", "clearance", "survey token", "fea"],
+    search: &[
+        "feature code",
+        "feature codes",
+        "clearance",
+        "survey token",
+        "fea",
+    ],
     requires: Requires::Server,
     availability: available,
 };
@@ -114,7 +124,11 @@ pub fn render(data: &Value) -> String {
         data["assumed_count"],
         data["voltage_classes"]
             .as_array()
-            .map(|classes| classes.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(","))
+            .map(|classes| classes
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(","))
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "—".to_string()),
         data["resolved_token_count"],
@@ -125,17 +139,30 @@ pub fn render(data: &Value) -> String {
     for code in data["codes"].as_array().into_iter().flatten() {
         out.push_str(&format!(
             "  {:>4} {:<24} RV {:<5} RH {:<5} {:<8} used {}{}\n",
-            code["code_number"].as_u64().map(|n| n.to_string()).unwrap_or_else(|| "—".to_string()),
+            code["code_number"]
+                .as_u64()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "—".to_string()),
             code["name"].as_str().unwrap_or("?"),
-            code["required_vertical_m"].as_f64().map(|v| format!("{v}")).unwrap_or_else(|| "—".to_string()),
-            code["required_horizontal_m"].as_f64().map(|v| format!("{v}")).unwrap_or_else(|| "—".to_string()),
+            code["required_vertical_m"]
+                .as_f64()
+                .map(|v| format!("{v}"))
+                .unwrap_or_else(|| "—".to_string()),
+            code["required_horizontal_m"]
+                .as_f64()
+                .map(|v| format!("{v}"))
+                .unwrap_or_else(|| "—".to_string()),
             match code["tin_member"].as_bool() {
                 Some(true) => "ground",
                 Some(false) => "obstacle",
                 None => "—",
             },
             code["usage"],
-            if code["retired"].as_bool().unwrap_or(false) { " (retired)" } else { "" },
+            if code["retired"].as_bool().unwrap_or(false) {
+                " (retired)"
+            } else {
+                ""
+            },
         ));
     }
     for token in data["unresolved_tokens"].as_array().into_iter().flatten() {

@@ -15,9 +15,9 @@ pub mod import;
 pub mod migrate;
 pub mod report;
 
+use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
-use ds_cli_contract::Inputs;
 use ds_grid_engine::feature_code_standard::{BUNDLED_STANDARD_NAME, VOLTAGE_CLASSES};
 use ds_grid_engine::{FeatureCodeStandard, StandardError};
 use serde_json::{Value, json};
@@ -187,9 +187,7 @@ pub fn map_standard_error(error: StandardError) -> Failure {
 /// The class named by `--voltage-class`, validated against the standard.
 pub fn voltage_class(inputs: &Inputs, standard: &FeatureCodeStandard) -> Result<String, Failure> {
     let class = inputs.require("voltage-class")?.trim().to_string();
-    standard
-        .voltage_class(&class)
-        .map_err(map_standard_error)?;
+    standard.voltage_class(&class).map_err(map_standard_error)?;
     Ok(class)
 }
 

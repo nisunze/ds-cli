@@ -144,12 +144,16 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let standard = feature_codes::load_standard(inputs)?;
     let voltage_class = feature_codes::voltage_class(inputs, &standard)?;
     let voltage_kv = match inputs.value("voltage-kv") {
-        Some(raw) => Some(raw.trim().parse::<f64>().ok().filter(|v| *v > 0.0).ok_or_else(
-            || {
-                Failure::invalid("invalid_voltage", "--voltage-kv must be a positive number")
-                    .remedy("pass the nominal clearance voltage in kV")
-            },
-        )?),
+        Some(raw) => Some(
+            raw.trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|v| *v > 0.0)
+                .ok_or_else(|| {
+                    Failure::invalid("invalid_voltage", "--voltage-kv must be a positive number")
+                        .remedy("pass the nominal clearance voltage in kV")
+                })?,
+        ),
         None => None,
     };
     let criterion_set_id = match inputs.value("criterion-set") {
