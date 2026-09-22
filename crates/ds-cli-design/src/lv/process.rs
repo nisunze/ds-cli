@@ -1,4 +1,4 @@
-//! `ds design lv process` — bounded native Fast LV batch compute.
+//! `ds design lv process` — bounded native LV batch compute.
 
 use std::fs::File;
 use std::io::Read;
@@ -147,7 +147,7 @@ pub fn render(value: &Value) -> String {
     let succeeded = value["succeeded"].as_u64().unwrap_or(0);
     let failed = value["failed"].as_u64().unwrap_or(0);
     let mut text = format!(
-        "Fast LV processed {jobs} transformer(s): {succeeded} succeeded, {failed} failed.\nResult: {}\nSHA-256: {}",
+        "LV processed {jobs} transformer(s): {succeeded} succeeded, {failed} failed.\nResult: {}\nSHA-256: {}",
         value["out"].as_str().unwrap_or(""),
         value["result_sha256"].as_str().unwrap_or(""),
     );
@@ -161,20 +161,20 @@ fn bounded_read(path: &Path) -> Result<Vec<u8>, Failure> {
     let mut file = File::open(path).map_err(|error| {
         Failure::invalid(
             "fast_lv_source_not_found",
-            format!("Could not open the Fast LV request: {error}"),
+            format!("Could not open the LV request: {error}"),
         )
         .remedy("Pass a readable local ds.fast-lv.request/v1 file.")
     })?;
     let metadata = file.metadata().map_err(|error| {
         Failure::invalid(
             "fast_lv_source_not_found",
-            format!("Could not inspect the Fast LV request: {error}"),
+            format!("Could not inspect the LV request: {error}"),
         )
     })?;
     if !metadata.is_file() {
         return Err(Failure::invalid(
             "fast_lv_source_not_found",
-            "The Fast LV request is not a regular file.",
+            "The LV request is not a regular file.",
         )
         .remedy("Pass a readable local ds.fast-lv.request/v1 file."));
     }
@@ -191,7 +191,7 @@ fn bounded_read(path: &Path) -> Result<Vec<u8>, Failure> {
         .map_err(|error| {
             Failure::invalid(
                 "fast_lv_source_not_found",
-                format!("Could not read the Fast LV request: {error}"),
+                format!("Could not read the LV request: {error}"),
             )
         })?;
     if bytes.len() > MAX_NATIVE_FAST_LV_INPUT_BYTES {

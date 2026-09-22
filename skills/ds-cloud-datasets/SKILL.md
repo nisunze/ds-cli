@@ -82,3 +82,8 @@ where it lives, not a fault.
 
 Governance and rate limiting of these reads are the contract's open question;
 do not loop a bounded read to walk a whole district.
+
+Stops at: the cloud authority — `ds` asks one bounded question or seeds one
+project's extents; the national table, its governance and its rate limits stay
+with the dataset owner, and a room refused as too dense goes back to the
+operator for a narrower design buffer.

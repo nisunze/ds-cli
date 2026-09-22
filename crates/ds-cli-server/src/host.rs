@@ -474,7 +474,7 @@ fn read_owner_file(path: &str) -> Result<Vec<u8>, Failure> {
 
 /// The only native Server entry point for a sealed prepared Solar request.
 /// Keeping this separate from legacy transformer processing prevents a failed
-/// Fast LV decode from becoming an alternate engine-dispatch authority.
+/// LV request decode from becoming an alternate engine-dispatch authority.
 async fn submit_tiles(
     State(app): State<App>,
     Param(key): Param<String>,

@@ -31,7 +31,6 @@ pub const SORT_ARG: Arg = Arg::value("sort", "<key>", "Order the rows by this.")
     "name",
     "district",
     "tags",
-    "legacy",
     "process",
     "report",
     "combined",
@@ -48,9 +47,7 @@ pub const DESC_ARG: Arg = Arg::switch("desc", "Sort descending.");
 /// read the vocabulary out of `--help` and out of the refusal.
 pub const FILTER_DIMENSIONS: &[&str] = &[
     "sync",
-    "lane",
     "warning-type",
-    "legacy",
     "process",
     "report",
     "combined",
@@ -199,7 +196,7 @@ fn selector_from_inputs(inputs: &Inputs) -> Result<Option<Value>, Failure> {
             return Err(invalid(format!("--filter {dimension} names no value")));
         }
         match dimension {
-            "sync" | "lane" | "warning-type" => {
+            "sync" | "warning-type" => {
                 let key = if dimension == "warning-type" {
                     "warning_types"
                 } else {
@@ -210,7 +207,7 @@ fn selector_from_inputs(inputs: &Inputs) -> Result<Option<Value>, Failure> {
                 list.push(Value::String(value.to_string()));
                 selector[key] = Value::Array(list);
             }
-            "legacy" | "process" | "report" | "combined" | "governance" | "user" => {
+            "process" | "report" | "combined" | "governance" | "user" => {
                 selector[dimension] = Value::String(value.to_string());
             }
             _ => {
@@ -322,9 +319,7 @@ fn apply_selector(raw: Vec<Value>, rows: &mut Value, request: Value) -> Result<(
 /// the key it carries in `normalized` and `options`.
 const NORMALIZED_DIMENSIONS: &[(&str, &str)] = &[
     ("sync", "sync"),
-    ("lane", "lane"),
     ("warning-type", "warning_types"),
-    ("legacy", "legacy"),
     ("process", "process"),
     ("report", "report"),
     ("combined", "combined"),
@@ -417,7 +412,7 @@ fn status_json(list: &TransformerStatusList, findings: bool) -> Value {
         .iter()
         .map(|row| transformer_health(row.row()))
         .collect();
-    // The rows' truth — saved/unsaved, locality, lane, presence, version,
+    // The rows' truth — saved/unsaved, locality, presence, version,
     // which run owns the record, the latest action, the governance label, the
     // retry verdict, the row's kind and what it may be a target of — is the
     // shared kernel's answer over the same rows. A headless client holds no
@@ -625,6 +620,25 @@ mod tests {
             "{}",
             failure.message()
         );
+    }
+
+    /// There is one way to process a transformer, so the register has no
+    /// lane to filter on and no legacy phase to sort or filter by. Both are
+    /// refused as unknown dimensions, with the vocabulary that does exist.
+    #[test]
+    fn the_retired_lane_and_legacy_dimensions_are_unknown() {
+        for retired in ["lane=fast", "lane=standard", "legacy=success"] {
+            let failure = selector(&[retired]).expect_err(retired);
+            assert_eq!(failure.code(), QUERY_INVALID.code);
+            assert!(
+                failure.message().contains("unknown dimension"),
+                "{}",
+                failure.message()
+            );
+        }
+        assert!(!FILTER_DIMENSIONS.contains(&"lane"));
+        assert!(!FILTER_DIMENSIONS.contains(&"legacy"));
+        assert!(!SORT_ARG.choices.contains(&"legacy"));
     }
 
     #[test]

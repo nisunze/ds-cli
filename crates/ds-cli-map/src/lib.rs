@@ -543,7 +543,7 @@ pub const TOOL_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 pub const DESIGN_READ_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// Staging walks every feature in the room and rewrites the cache.
 pub const DESIGN_STAGE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-/// The Fast LV process generates a network. It is the long one, and it is
+/// The LV process generates a network. It is the long one, and it is
 /// held just inside the application's own 31-minute invocation bound on
 /// purpose: `ds` gives up first, with a typed refusal naming the operation,
 /// rather than waiting for the bridge's bare gateway timeout.

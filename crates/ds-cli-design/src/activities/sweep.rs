@@ -44,11 +44,6 @@ const PAUSE_ARG: Arg = Arg::value(
 )
 .default("2000");
 
-const FAST_ARG: Arg = Arg::switch(
-    "fast",
-    "Read each project as the Fast lane does: no Draft/Sketch summary or notes.",
-);
-
 const REFUSALS: &[Refusal] = &[
     crate::transformer::NATIVE_PROFILE,
     crate::transformer::NATIVE_PROFILE_DIGEST,
@@ -89,7 +84,6 @@ Nothing is scheduled: a capture exists because someone asked for it.",
         LIMIT_ARG,
         MAX_AGE_ARG,
         PAUSE_ARG,
-        FAST_ARG,
         LANE_ARG,
         STATE_DIR_ARG,
         TZ_OFFSET_ARG,
@@ -98,8 +92,8 @@ Nothing is scheduled: a capture exists because someone asked for it.",
 `store` and `captured_by`, the `plan` the kernel decided (`refresh`, `skip`, \
 `pause_ms`, `sequential`), then one `projects` row per planned project: \
 `captured` with its capture time, row and transformer counts, digest and the \
-captures retention kept and dropped — or `refused` with the code and reason \
-the read gave. `not_claimed` states what a capture can never show.",
+older captures kept and dropped — or `refused` with the code and reason the \
+read gave. `not_claimed` states what a capture can never show.",
     examples: &[
         Example {
             command: "ds design activities sweep --limit 3 --yes --output json",
@@ -138,7 +132,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         -840,
         840,
     )?;
-    let fast_lane = inputs.switch("fast");
     let root = state_root(inputs)?;
     let named: Vec<String> = inputs.repeated("project").to_vec();
 
@@ -233,7 +226,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             &root,
             &uid,
             &audience,
-            fast_lane,
             tz_offset,
             &listed,
             entry["reason"].as_str().unwrap_or("missing"),
@@ -274,7 +266,6 @@ fn capture(
     root: &std::path::Path,
     uid: &str,
     audience: &str,
-    fast_lane: bool,
     tz_offset: i64,
     listed: &Value,
     planned_reason: &str,
@@ -310,7 +301,6 @@ fn capture(
         "rows": rows,
         "diagnostics": [],
         "now_ms": captured_at_ms,
-        "fast_lane": fast_lane,
         "tz_offset_minutes": tz_offset,
     });
     let dashboard = serde_json::to_vec(&dashboard_request)
@@ -344,7 +334,7 @@ fn capture(
     snapshot.insert("captured_by".into(), json!(uid));
     snapshot.insert(
         "source".into(),
-        json!({ "rows": row_count, "fast_lane": fast_lane, "diagnostics_source": "none" }),
+        json!({ "rows": row_count, "diagnostics_source": "none" }),
     );
     snapshot.insert("ledger".into(), ledger.clone());
     if let Some(dashboard) = dashboard {

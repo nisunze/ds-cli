@@ -42,9 +42,9 @@ const NOW_MS: Arg = Arg::value(
 pub static COMMAND: Command = Command {
     id: "design.autoprocess.plan",
     path: &["design", "autoprocess", "plan"],
-    contract: 2,
+    contract: 3,
     summary: "Plan what AutoProcess would do with committed edits.",
-    purpose: "Answers the four AutoProcess admission questions from one document: which process mode applies, whether a committed edit warrants re-running the LV network, whether the next run must be differential or full, and whether queued work dispatches now or waits. The clock is an input, so the same document always plans the same way. AutoProcess is a Fast-lane activity; this plans it without running it.",
+    purpose: "Answers the four AutoProcess admission questions from one document: whether the process runs by itself or by hand in this editing context, whether a committed edit warrants re-running the LV network, whether the next run must be differential or full, and whether queued work dispatches now or waits. The clock is an input, so the same document always plans the same way. This plans AutoProcess without running it.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -179,8 +179,7 @@ mod tests {
         let answer = section(
             "mode",
             json!({
-                "is_fast_lane": true,
-                "fast_process_active": true,
+                "process_active": true,
                 "auto_process_enabled": true,
             }),
         )
@@ -188,5 +187,28 @@ mod tests {
         assert_eq!(answer["mode"], "auto");
         assert_eq!(answer["reason_key"], "autoprocess_mode_enabled");
         assert!(render(&json!({"mode": answer})).contains("mode               auto"));
+    }
+
+    #[test]
+    fn mode_has_no_lane_member_to_switch_on() {
+        // There is one way to process a transformer: the only question left
+        // is whether it runs by itself. A document written against the old
+        // lane switch is refused by name, never answered as if it were valid.
+        let manual = section(
+            "mode",
+            json!({ "process_active": false, "auto_process_enabled": true }),
+        )
+        .unwrap();
+        assert_eq!(manual["mode"], "manual");
+        assert_eq!(manual["reason_key"], "autoprocess_mode_manual");
+        let stale = section(
+            "mode",
+            json!({
+                "is_fast_lane": true,
+                "fast_process_active": true,
+                "auto_process_enabled": true,
+            }),
+        );
+        assert_eq!(stale.unwrap_err().code(), "autoprocess_request_invalid");
     }
 }

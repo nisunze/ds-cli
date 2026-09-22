@@ -1795,7 +1795,7 @@ pub fn project_data(lane_value: &str, command: ProjectDataCommand<'_>) -> Result
 
 pub use ds_client_core::StatusUploadDomain;
 
-/// Run the Rust-owned Standard design-intake state machine against files on
+/// Run the Rust-owned design-intake state machine against files on
 /// this machine. The selected project is acquired once and remains frozen for
 /// every upload and process effect in the job.
 pub fn status_upload(
@@ -1849,7 +1849,7 @@ fn status_upload_domain(value: &str) -> Result<StatusUploadDomain, Failure> {
         "sketch_lv" => Ok(StatusUploadDomain::SketchLv),
         "lv_process" => Ok(StatusUploadDomain::LvProcess),
         _ => Err(status_upload_failure(
-            "Upload kernel emitted an unknown Standard processing domain.",
+            "Upload kernel emitted an unknown processing domain.",
         )),
     }
 }

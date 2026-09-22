@@ -161,4 +161,4 @@ ds design consumer-grouping archive --purpose report_archive --yes
   never regroup from administrative columns inside transformer data.
 
 Stops at: the report consumer — `ds` pins the projection; the document that
-quotes it is produced by the report lane.
+quotes it is produced by the reporter.

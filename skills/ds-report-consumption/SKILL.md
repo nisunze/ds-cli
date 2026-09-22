@@ -28,7 +28,7 @@ Discover the live contracts first (`ds capabilities report --output json`,
 ones this skill was written against.
 
 - `ds map design report --transformer <name> --yes --output json` — runs the
-  local reporter lane for one saved transformer. The receipt is evidence, not
+  local reporter for one saved transformer. The receipt is evidence, not
   a path: filename, size and SHA-256 per artifact. A report the freshness
   gate holds back says so instead of regenerating. The application keeps the
   artifact and syncs it to the project; take the file from the project's

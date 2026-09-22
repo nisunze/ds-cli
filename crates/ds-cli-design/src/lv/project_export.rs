@@ -309,7 +309,7 @@ fn map_owner_error(error: NativeFastLvError) -> Failure {
 
 pub fn render(value: &Value) -> String {
     format!(
-        "Fast LV request exported for {} ({} layer(s), owner defaults).\nRequest: {}\nSHA-256: {}",
+        "LV request exported for {} ({} layer(s), owner defaults).\nRequest: {}\nSHA-256: {}",
         value["transformer"].as_str().unwrap_or(""),
         value["layers"].as_u64().unwrap_or(0),
         value["out"].as_str().unwrap_or(""),

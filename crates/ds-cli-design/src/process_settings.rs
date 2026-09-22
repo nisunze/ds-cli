@@ -17,9 +17,6 @@ const REFUSALS: &[Refusal] = &[Refusal {
     remedy: "Pass the project configuration as `ds design config` returns it and settings as {key: bool|number}",
 }];
 
-const LANE: Arg = Arg::value("lane", "<lane>", "Which lane runs the process.")
-    .choices(&["standard", "fast"])
-    .default("fast");
 const PRESET: Arg = Arg::value("preset", "<preset>", "The named preset.")
     .choices(&["drafting", "sketch"])
     .required();
@@ -42,23 +39,17 @@ pub static COMMAND: Command = Command {
     id: "design.process.settings",
     path: &["design", "process", "settings"],
     contract: 1,
-    summary: "Resolve the process settings a lane and preset would send.",
-    purpose: "What a named preset produces for a project, which dependent flags collapse into the effective contract, which settings the operator may see for a lane and preset, and what a hidden setting puts on the wire are decided once in ds-command-kernel (process_settings) over the engine's own catalogue — the same answer the LV process dialog sends. Every key that leaves the wire is named with its reason.",
+    summary: "Resolve the process settings a preset would send.",
+    purpose: "What a named preset produces for a project, which dependent flags collapse into the effective contract, which settings the operator may see for that preset, and what a hidden setting puts on the wire are decided once in ds-command-kernel (process_settings) over the engine's own catalogue — the same answer the LV process dialog sends. Every key that leaves the wire is named with its reason.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[
-        LANE,
-        PRESET,
-        PROJECT_CONFIG,
-        OPERATOR,
-        FIRESTORE_DESIGN_DATA,
-    ],
+    args: &[PRESET, PROJECT_CONFIG, OPERATOR, FIRESTORE_DESIGN_DATA],
     output: "{settings, visible_groups, wire_settings, dropped[{key, why, forced_to?}]}.",
     examples: &[Example {
-        command: "ds design process settings --preset sketch --lane fast --output json",
-        note: "`.data.wire_settings` is the payload a Fast Sketch run carries.",
+        command: "ds design process settings --preset sketch --output json",
+        note: "`.data.wire_settings` is the payload a Sketch run carries.",
         runnable: true,
     }],
     refusals: REFUSALS,
@@ -92,7 +83,6 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let mut request = json!({
         "op": "resolve",
         "catalog": catalog,
-        "lane": i.require("lane")?,
         "preset": i.require("preset")?,
         "use_firestore_design_data": i.switch("firestore-design-data"),
     });

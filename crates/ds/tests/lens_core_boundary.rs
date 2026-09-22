@@ -638,8 +638,8 @@ const ROOM_HEADLESS_OWNERS: &[(&str, &[&str])] = &[
     ("map.design.geometry", &["design.project.edit"]),
     // Discarding an unsaved room ↔ restoring the exact retained revision.
     ("map.design.discard", &["design.project.restore"]),
-    // The project-scoped Fast LV setup the window stores ↔ the settings a
-    // lane and preset resolve to in the kernel, and the governed project
+    // The project-scoped LV process setup the window stores ↔ the settings a
+    // preset resolves to in the kernel, and the governed project
     // configuration reads/sets.
     (
         "map.design.setup",

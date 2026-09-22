@@ -1,4 +1,4 @@
-//! Headless Standard design intake through the shared Rust upload state machine.
+//! Headless design intake through the shared Rust upload state machine.
 use ds_cli_auth::StatusUploadDomain;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -32,7 +32,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "intake", "upload"],
     contract: 1,
     summary: "Upload and process LV design files without Desktop.",
-    purpose: "Captures the lane's selected project once, admits every file through the shared Rust upload state machine, obtains project-scoped resumable targets, uploads local bytes, then submits independent one-file Standard processing jobs. Upload admission, phase order, process request shape, result matching, failures and progress are the same kernel used by the browser; this native adapter supplies filesystem and fixed network effects only.",
+    purpose: "Captures the lane's selected project once, admits every file through the shared Rust upload state machine, obtains project-scoped resumable targets, uploads local bytes, then submits independent one-file processing jobs. Upload admission, phase order, process request shape, result matching, failures and progress are the same kernel used by the browser; this native adapter supplies filesystem and fixed network effects only.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -47,7 +47,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "mode",
             "<lv-drafting|sketch-lv|lv-process>",
-            "Standard processing operation.",
+            "Processing operation.",
         )
         .required()
         .choices(&["lv-drafting", "sketch-lv", "lv-process"]),
@@ -67,7 +67,7 @@ pub static COMMAND: Command = Command {
     output: "Frozen project/lane, terminal upload phase, aggregate progress, and one success or error result per source file.",
     examples: &[Example {
         command: "ds design intake upload --file ./T001.zip --mode lv-process --settings ./process-settings.json --yes --output json",
-        note: "Runs the complete Standard intake on the selected project with no open map or Desktop pairing.",
+        note: "Runs the complete intake on the selected project with no open map or Desktop pairing.",
         runnable: false,
     }],
     refusals: REFUSALS,
@@ -113,7 +113,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "lv-drafting" => StatusUploadDomain::LvDrafting,
         "sketch-lv" => StatusUploadDomain::SketchLv,
         "lv-process" => StatusUploadDomain::LvProcess,
-        _ => return Err(invalid("Unknown Standard processing mode.")),
+        _ => return Err(invalid("Unknown processing mode.")),
     };
     let settings = read_settings(inputs.value("settings"))?;
     ds_cli_auth::status_upload(

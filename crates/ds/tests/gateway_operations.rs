@@ -373,8 +373,9 @@ fn every_operation_the_cli_issues_declares_its_authority_and_principal() {
 #[test]
 fn the_lane_header_is_declared_exactly_where_the_cli_sends_one() {
     // `NativeTransport::send_project_report` is the one call that attaches
-    // `X-DS-Processing-Lane`; ds-brain otherwise defaults a lane-aware action
-    // to the retired Standard lane.
+    // `X-DS-Processing-Lane`. The header is transport, not a choice: ds-brain
+    // routes the report actions on it, and without it the gateway falls back
+    // to the demolished Python path.
     assert_eq!(PROCESSING_LANE_HEADER, "X-DS-Processing-Lane");
     for (id, sender) in CLI_ISSUED {
         let entry = op(id);

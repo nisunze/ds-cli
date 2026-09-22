@@ -1,4 +1,4 @@
-//! `ds map design process` — run the Fast LV process on one transformer.
+//! `ds map design process` — run the LV process on one transformer.
 //!
 //! This is the step that turns staged geometry into a network: customers
 //! pulled from the configured source, poles, spans and service cables
@@ -69,7 +69,7 @@ pub static COMMAND: Command = Command {
     id: "map.design.process",
     path: &["map", "design", "process"],
     contract: 1,
-    summary: "Run the Fast LV process on a staged transformer.",
+    summary: "Run the LV process on a staged transformer.",
     purpose: "\
 Generates the LV network for one transformer — customers, poles, spans and \
 service cables — through the same kernel and the same edit session the \

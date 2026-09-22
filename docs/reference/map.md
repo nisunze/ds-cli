@@ -295,10 +295,11 @@ than saves. It accepts exactly one source: `--features <geojson>` or
 `--source-layer <id>`. The local-layer path keeps geometry inside ds-web and
 returns only counts and a staging receipt to the CLI.
 
-## Project-scoped Fast LV setup
+## Project-scoped LV process setup
 
-The application owns one project-scoped Fast LV setup. The CLI does not keep a
-second copy: it discovers and updates the same local preference used by the UI.
+The application owns one project-scoped LV process setup. The CLI does not
+keep a second copy: it discovers and updates the same local preference used by
+the UI.
 It names survey layer keys, while ds-web owns IndexedDB addresses and processor
 wiring:
 
@@ -380,7 +381,7 @@ order, and one failed transformer does not cancel unrelated items.
 
 Inspection is read-only. Upload staging performs parsing, canonical header
 mapping and Rust cleaning, but leaves successful rooms local and dirty. Process
-reuses the Design Status Fast Process scheduler and also remains staged. Only
+reuses the Design Status bulk Process scheduler and also remains staged. Only
 the separate batch save persists, with optimistic versions and mandatory
 `--yes`. Per-item rows always distinguish `staged` from `persisted` and carry
 their own warning/error so a script can retry a strict subset.

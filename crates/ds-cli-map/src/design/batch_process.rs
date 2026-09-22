@@ -1,4 +1,4 @@
-//! `ds map design batch process` — Fast-process many transformers locally.
+//! `ds map design batch process` — process many transformers locally.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -16,7 +16,7 @@ const TRANSFORMER_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "Transformer to Fast-process. Repeat for the explicit batch.",
+    summary: "Transformer to process. Repeat for the explicit batch.",
 };
 
 const SETTING_ARG: Arg = Arg {
@@ -26,7 +26,7 @@ const SETTING_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Override a processor setting. Repeat; omit to use saved Fast Mode settings.",
+    summary: "Override a processor setting. Repeat; omit to use the saved project process settings.",
 };
 
 const PARALLEL_ARG: Arg = Arg {
@@ -43,7 +43,7 @@ pub static COMMAND: Command = Command {
     id: "map.design.batch.process",
     path: &["map", "design", "batch", "process"],
     contract: 1,
-    summary: "Fast-process an explicit transformer batch locally.",
+    summary: "Process an explicit transformer batch locally.",
     purpose: "\
 Runs the same local-WASM replay scheduler as the Design Status bulk Process \
 action. Each transformer is isolated, the bounded worker pool continues after \
@@ -60,7 +60,7 @@ total/succeeded/failed counts. Successful rows report staged=true and \
 persisted=false.",
     examples: &[Example {
         command: "ds map design batch process --transformer TX-1 --transformer TX-2 --parallel 4 --output json",
-        note: "Uses saved Fast Mode settings and the desktop-owned WASM worker scheduler.",
+        note: "Uses the saved project process settings and the desktop-owned WASM worker scheduler.",
         runnable: false,
     }],
     refusals: &[

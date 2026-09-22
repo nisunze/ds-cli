@@ -9,10 +9,10 @@ is the part that does not belong in any command's help because it is true of
 all of them.
 
 Governed collaboration serves
-`ds-brain/docs/contracts/design-collaboration-roadmap.md`. Offline Fast LV
+`ds-brain/docs/contracts/design-collaboration-roadmap.md`. Offline LV
 processing serves the ds-network native batch contract directly.
 
-## Standard design intake
+## Design intake
 
 `ds design intake upload` runs the same Rust-owned upload job as Transformer
 Status without an open map or paired Desktop. Repeat `--file` for independent
@@ -29,7 +29,7 @@ ds design intake upload --file ./T001.zip --mode lv-process \
   --settings ./process-settings.json --yes --output json
 ```
 
-## Offline Fast LV processing
+## Offline LV processing
 
 `ds design lv project-export` is the authenticated, mapless handoff from one
 governed transformer snapshot into the local file contract below. It restores
@@ -46,7 +46,7 @@ native identity and project as the transformer. Without that flag `config_dfs`
 is empty. Both modes retain explicit owner-default process settings; resolve
 the intended process preset before running. The receipt names configuration
 inclusion and its SHA-256. There is no `--project`, Desktop descriptor,
-arbitrary request field, browser store, or processing-lane argument.
+arbitrary request field or browser store.
 
 ```bash
 ds account connect
@@ -58,7 +58,7 @@ ds design lv process --input ./T-1042.fast-lv.json \
 ```
 
 `ds design lv process` is the mapless, signed-out native route to the same
-Rust engineering kernel used below ds-web's Fast WASM adapter. Its input is one
+Rust engineering kernel used below ds-web's WASM adapter. Its input is one
 closed `ds.fast-lv.request/v1` file:
 
 ```json
@@ -107,8 +107,7 @@ It restores the Firebase user for `--lane stable|canary`, loads only the saved
 project context fenced to that UID, canonical email, lane, and credential
 audience, then performs the fixed `get_transformers_data` context projection
 for one explicit transformer. The gateway remains membership authority. There
-is no `--project`, Desktop descriptor, arbitrary URL, body, header, or
-processing-lane argument.
+is no `--project`, Desktop descriptor, arbitrary URL, body or header.
 
 The returned layers go directly to `ds-geo`'s bounded deterministic selector.
 `--layer`, `--where`, `--bbox`, `--id`, `--sample`, and `--ids` retain the
@@ -230,27 +229,26 @@ timeline buckets by, and is echoed in the receipt.
 
 ```bash
 ds design dashboard --project <id> --output json
-ds design dashboard --project <id> --fast --output json
 ds design dashboard --project <id> --output json | jq '.data.dashboard.health'
 ```
 
 There is no `--transformer`: every percentage here is measured against the
-whole fleet, so a dashboard over a subset would be a different question.
-`--fast` reads the project the way the application's Fast lane does — no
-Draft/Sketch phase summary, no legacy-phase attention note, and the Standard
-lane named as the legacy it is.
+whole fleet, so a dashboard over a subset would be a different question. There
+is one way to process a transformer, so there is no lane to read the project
+through either: the phase summaries cover Process, Report and Combined, and a
+finding on a Draft/Sketch phase older documents still carry never reaches the
+attention pile.
 
 `.data.dashboard` carries, in one object:
 
 | Member | What it answers |
 |---|---|
-| `total`, `designed_count`, `process_lane_count`, `report_ready_count`, `combined_count` | how far the fleet has come. A transformer is *designed* through ANY compute phase — sketch, draft or process — and a green Process stamp whose saved output layers are missing is not designed at all |
+| `total`, `designed_count`, `report_ready_count`, `combined_count` | how far the fleet has come. A transformer is *designed* through ANY compute phase — sketch, draft or process — and a green Process stamp whose saved output layers are missing is not designed at all |
 | `pipeline` | the same four counts as stages with `pct_of_total`. Deliberately NOT a funnel: the phases are independent over one record, so a later stage can out-count an earlier one |
 | `momentum` | designs per local day (`points`, `key` is `YYYY-MM-DD`), the 7-day split (`last7`, `prev7`, `trend`), `busiest`, `active_days`, `avg_per_active_day`. Days are bucketed at the host's UTC offset; `ds` uses this machine's |
 | `crew`, `errors_by_user` | who designed what, and who ran the phases that failed. A bucket with no attributable account carries `unknown: true` and an empty name — the reader names it |
 | `districts`, `district_count`, `sector_count` | where the work is. The leftovers chip carries `unassigned: true` and an empty label, for the same reason |
-| `phase_summaries` | per phase slot, how many rows sit in each status |
-| `lanes`, `fast_pct` | which lane ran the rows whose Process actually ran |
+| `phase_summaries` | per phase slot (`process`, `report`, `combined`), how many rows sit in each status |
 | `governance` | how many rows are locked and how many are open |
 | `attention` | the pile, ranked red → amber → blue then by name. Each note is that row's `design_health` verdict: the same finding the register shows, with the backend's own sanitised `message` |
 | `health` | `score` (clean rows over total), its band as `label_key`, and the red/amber/blue counts |
@@ -438,7 +436,7 @@ Contract: ds-brain `docs/contracts/transformer-retirement.md`.
 ## Where design collaboration is
 
 Governed collaboration is not on disk and is not reachable with a credential
-this process holds. The offline Fast LV file contract above is deliberately
+this process holds. The offline LV file contract above is deliberately
 separate from that authority boundary.
 
 Saved selections, attachments, tags and comment threads are governed project
@@ -485,7 +483,7 @@ same write to the service.
 ## Why this is not `ds map`
 
 No command here needs a map instance, an edit session, or an open design room:
-local Fast LV consumes an explicit file; a selection is a list of stable
+local LV processing consumes an explicit file; a selection is a list of stable
 identities; an attachment is bytes with a media type; a tag is a value from the
 project's own vocabulary. `ds map` owns local map state; this domain owns none.
 
@@ -902,22 +900,25 @@ the operator would see and in what order, decided by
 `ds-command-kernel::design_status_query` — the same selector the register and
 the transformer picker read. A quoted `--search` ("tx_12") is an exact name;
 a bare one is a substring. `--sort` takes `name`, `district`, `tags`,
-`legacy`, `process`, `report`, `combined`, `governance`, `user`, `updated` or
+`process`, `report`, `combined`, `governance`, `user`, `updated` or
 `version`; special rows (`combined_transformer`, `mv_data`, `collisions`,
 `compounded_report`) lead in their fixed order, except that `mv_data` joins
 an `updated` sort. `--filter` repeats: `sync=saved|unsaved`,
-`legacy|process|report=<phase status>`, `combined=<state>`,
-`governance=locked|draft`, `user=<account>`, `lane=standard|fast`,
-`warning-type=<code>` and one `admin-<district|sector|cell|village>=<value>`
-(`__admin_bounds_none__` selects rows with no bounds at that level). Any
-secondary filter hides the special rows, as the register does. The answer's
+`process|report=<phase status>`, `combined=<state>`,
+`governance=locked|draft`, `user=<account>`, `warning-type=<code>` and one
+`admin-<district|sector|cell|village>=<value>` (`__admin_bounds_none__`
+selects rows with no bounds at that level). Any secondary filter hides the
+special rows, as the register does. There is one way to process a
+transformer, so there is no lane dimension and no legacy phase to sort or
+filter by: a Draft/Sketch stamp an older document still carries is data
+provenance the row reports (`phase_ownership`), never a selector. The answer's
 `transformers` are the selection in order, `count` its size, and `query`
 carries the selector, the sort and `options` — what each filter may offer
-over this project (`admin`, `legacy`, `process`, `report`, `combined`,
-`governance`, `user`, `warning_types` with counts, `sync`, `lane`). A
-headless client holds no browser session, pins, tags or saved selection, so
-those members of the selector are empty here; `ds` answers what the register
-would show a fresh browser.
+over this project (`admin`, `process`, `report`, `combined`, `governance`,
+`user`, `warning_types` with counts, `sync`). A headless client holds no
+browser session, pins, tags or saved selection, so those members of the
+selector are empty here; `ds` answers what the register would show a fresh
+browser.
 
 ## Previews: what a batch, a download or an overwrite would do
 
@@ -993,11 +994,11 @@ them where the rooms are and the same kernel answers over real ones.
 
 ## Process settings, resolved headlessly
 
-`ds design process settings --preset drafting|sketch [--lane standard|fast]
+`ds design process settings --preset drafting|sketch
 [--project-config config.json] [--operator toggles.json]
 [--firestore-design-data]` answers what the LV process dialog sends for that
-lane and preset, from the same kernel module (`process_settings`) over the
-engine's own processor catalogue: `settings` (the preset applied to the
+preset, from the same kernel module (`process_settings`) over the engine's
+own processor catalogue: `settings` (the preset applied to the
 catalogue defaults and the project's own `transformer_settings` rows, the
 dependency collapse applied, the operator's toggles laid over), `visible_groups`
 (what the dialog would show), `wire_settings` (what the run receives — hidden
@@ -1016,8 +1017,9 @@ four admission questions AutoProcess asks in the browser, from the same kernel
 module (`autoprocess`). The document holds up to four sections and the answer
 carries the ones it found:
 
-- `mode` — `{is_fast_lane, fast_process_active, auto_process_enabled}` →
-  `standard`, `fast`, or `auto`; every host presents the same process action.
+- `mode` — `{process_active, auto_process_enabled}` → `auto` when the process
+  action is available in this editing context and AutoProcess is on, else
+  `manual`; every host presents the same process action.
 - `trigger` — `{reason, changed_fields[], vocabulary{lockable_cells[],
   status_fields[]}}` → does this committed edit warrant re-running the LV
   network. The two attribute vocabularies are ds-network's and are passed in;
