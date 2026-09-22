@@ -490,6 +490,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid-exchange.inspect", "discovery", "none"),
     ("dsgrid-exchange.plan", "discovery", "none"),
     ("dsgrid-exchange.sync", "local_file_write", "none"),
+    // Already-shipping local model and PLS reads also need explicit pins.
+    ("dsgrid.model.forget", "local_file_write", "none"),
+    ("dsgrid.profile.labels.set", "local_file_write", "none"),
+    ("dsgrid.profile.labels.show", "read_only", "none"),
+    ("dsgrid.report.staking", "local_file_write", "none"),
+    ("pls.structure-inventory", "discovery", "none"),
     ("dsgrid.apply", "local_file_write", "none"),
     ("dsgrid.apply-batch", "local_file_write", "none"),
     ("dsgrid.create", "local_file_write", "none"),
