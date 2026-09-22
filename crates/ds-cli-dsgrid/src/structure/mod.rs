@@ -8,6 +8,7 @@
 //! point 2 (single poles on a big angle become H-poles), and it is the first
 //! command to carry a REG structure-rule finding on its receipt.
 
+pub mod admin_refresh;
 pub mod describe;
 pub mod retype;
 

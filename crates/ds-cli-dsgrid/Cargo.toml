@@ -20,6 +20,7 @@ ds-cli-desktop = { workspace = true }
 # reports was computed by one of these two crates.
 ds-grid-model = { workspace = true }
 ds-grid-engine = { workspace = true }
+ds-rwanda-admin-bounds = { path = "../../../ds-network-reporter/crates/ds-rwanda-admin-bounds" }
 ds-grid-exchange = { workspace = true }
 # The one reprojection this stack has: a model CRS to WGS84, exactly as the
 # MV print projection reprojects. The task-geometry index reads it here.

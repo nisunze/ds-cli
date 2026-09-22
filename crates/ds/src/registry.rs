@@ -233,6 +233,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
     // The typed command family over the engine (program contract 01 §2):
     // one entry per verb, all on `ds_cli_dsgrid::mutation`'s plumbing.
     Entry {
+        command: &ds_cli_dsgrid::structure::admin_refresh::COMMAND,
+        handler: ds_cli_dsgrid::structure::admin_refresh::run,
+        render: ds_cli_dsgrid::structure::admin_refresh::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::structure::describe::COMMAND,
         handler: ds_cli_dsgrid::structure::describe::run,
         render: ds_cli_dsgrid::structure::describe::render,

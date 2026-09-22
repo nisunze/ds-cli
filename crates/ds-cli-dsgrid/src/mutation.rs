@@ -279,7 +279,7 @@ impl Target {
         }
     }
 
-    fn path(&self) -> String {
+    pub(crate) fn path(&self) -> String {
         match self {
             Self::WorkingCopy { path, .. } => path.display().to_string(),
             Self::Package { path, .. } => path.clone(),

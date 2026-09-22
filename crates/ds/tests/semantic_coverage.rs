@@ -518,6 +518,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // this machine's disk and nothing governed is published. Every write
     // takes --yes inside the command (dry-run/--yes), not through the
     // effect-class gate. The structure list writes its CSV/XLSX the same way.
+    ("dsgrid.structure.admin-refresh", "local_file_write", "none"),
     ("dsgrid.structure.describe", "local_file_write", "none"),
     ("dsgrid.structure.retype", "local_file_write", "none"),
     ("dsgrid.report.structures", "local_file_write", "none"),

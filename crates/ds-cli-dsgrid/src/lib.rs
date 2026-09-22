@@ -80,6 +80,7 @@ pub static DOMAIN: Domain = Domain {
         &model::forget::COMMAND,
         &model::prepare_project::COMMAND,
         &model::publish_version::COMMAND,
+        &structure::admin_refresh::COMMAND,
         &structure::describe::COMMAND,
         &structure::retype::COMMAND,
         &report::structures::COMMAND,
