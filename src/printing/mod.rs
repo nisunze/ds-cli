@@ -843,6 +843,16 @@ fn color(value: &str) -> bool {
 fn bounded(value: f64, low: f64, high: f64) -> bool {
     value.is_finite() && (low..=high).contains(&value)
 }
+/// A stroke width that is either a printable width or exactly zero.
+///
+/// Zero is the governed *label only* state: an administrative boundary is
+/// labelled on every sheet but its geometry is never drawn, and the style has
+/// to be able to say so. A positive width still obeys the physical minimum,
+/// so nothing is ever promoted to a sub-`low` hairline the operator did not
+/// author — the 0.1 mm workaround a refused zero used to force.
+fn no_stroke_or_bounded(value: f64, low: f64, high: f64) -> bool {
+    value == 0. || bounded(value, low, high)
+}
 pub fn validate(layout: &Layout) -> Result<(), String> {
     if layout.schema == LEGACY_SCHEMA {
         return upgrade(layout.clone()).map(|_| ());
@@ -1112,7 +1122,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             || !color(&style.stroke)
             || !color(&style.fill)
             || (!style.casing.is_empty() && !color(&style.casing))
-            || !bounded(style.width_mm, 0.05, 10.)
+            || !no_stroke_or_bounded(style.width_mm, 0.05, 10.)
             || !bounded(style.stroke_opacity, 0., 1.)
             || !bounded(style.fill_opacity, 0., 1.)
             || !bounded(style.casing_mm, 0., 10.)
@@ -1123,7 +1133,10 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             || style.colors.len() > 50
             || style.widths.len() > 50
             || style.colors.values().any(|c| !color(c))
-            || style.widths.values().any(|v| !bounded(*v, 0.05, 10.))
+            || style
+                .widths
+                .values()
+                .any(|v| !no_stroke_or_bounded(*v, 0.05, 10.))
         {
             return Err(format!("invalid print style {id}"));
         }
@@ -3343,6 +3356,78 @@ mod tests {
         change.label.as_mut().unwrap().size_pt = Some(0.);
         layout.style_overrides.insert("roads".into(), change);
         assert!(validate(&layout).is_err());
+    }
+
+    #[test]
+    fn a_label_only_administrative_boundary_is_a_valid_print_style() {
+        let mut layout = default_layout();
+        let mut style = PrintStyle {
+            width_mm: 0.,
+            stroke_opacity: 0.,
+            label_field: "village".into(),
+            ..Default::default()
+        };
+        layout
+            .styles
+            .insert("village_boundaries".into(), style.clone());
+        // Zero width is the governed "labelled but never drawn" state, not a
+        // refusal the operator has to work around with a 0.1 mm hairline.
+        validate(&layout).expect("label-only administrative boundary");
+        // A positive width still obeys the physical minimum.
+        for refused in [0.01, -1., 10.5, f64::NAN] {
+            style.width_mm = refused;
+            layout
+                .styles
+                .insert("village_boundaries".into(), style.clone());
+            assert!(
+                validate(&layout).is_err(),
+                "width {refused} must stay refused"
+            );
+        }
+        style.width_mm = 0.;
+        style.widths = BTreeMap::from([("built".into(), 0.), ("planned".into(), 0.4)]);
+        layout
+            .styles
+            .insert("village_boundaries".into(), style.clone());
+        validate(&layout).expect("a per-category width may also suppress its stroke");
+        style.widths.insert("planned".into(), 0.01);
+        layout.styles.insert("village_boundaries".into(), style);
+        assert!(validate(&layout).is_err());
+    }
+
+    #[test]
+    fn the_district_map_plan_suppresses_village_strokes_without_refusing_itself() {
+        let mut layout = default_layout();
+        layout.styles.insert(
+            "village_boundaries".into(),
+            PrintStyle {
+                width_mm: 0.6,
+                stroke_opacity: 0.75,
+                casing_mm: 0.4,
+                casing: "#ffffff".into(),
+                dash_mm: vec![2., 2.],
+                label_field: "village".into(),
+                ..Default::default()
+            },
+        );
+        for (id, style) in &mut layout.styles {
+            if id.contains("village") {
+                style.width_mm = 0.;
+                style.stroke_opacity = 0.;
+                style.dash_mm.clear();
+                style.casing_mm = 0.;
+                style.widths.clear();
+            }
+        }
+        // The same suppression `printing::map` applies before it validates the
+        // plan it just built. It used to write a width `validate` refused.
+        validate(&layout).expect("suppressed village strokes must still validate");
+        let village = &layout.styles["village_boundaries"];
+        assert_eq!(village.width_mm, 0.);
+        assert_eq!(village.stroke_opacity, 0.);
+        assert!(village.dash_mm.is_empty());
+        assert_eq!(village.casing_mm, 0.);
+        assert_eq!(village.label_field, "village");
     }
 }
 
