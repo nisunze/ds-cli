@@ -313,7 +313,7 @@ pub static COMMAND: Command = Command {
     output: "\
 Lane, project, scope, engine identity, publication state, batch counts and receipt \
 (partial_formats), context diagnostics and ordered transformer results: artifact \
-inventory, failed_formats (output_id, code, remedy, layout knob: \
+inventory, survey_layers_omitted, failed_formats (output_id, code, remedy, layout knob: \
 overflow/panels/row_mm), or typed error. `publication.stage` is `queued`, or \
 `nothing_published` for a dry run.",
     examples: &[
@@ -1522,6 +1522,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "receipt": outcome.receipt_path.display().to_string(),
     });
     output["results"] = outcome.receipt["results"].clone();
+    if let Some(omitted) = outcome.receipt.get("survey_layers_omitted") {
+        output["batch"]["survey_layers_omitted"] = omitted.clone();
+    }
     // What each completed print carried from outside its room, from the run
     // receipts the host wrote: the digest the engine verified, the layers, and
     // the selected layers this machine could not supply.
@@ -1918,6 +1921,15 @@ pub fn render(data: &Value) -> String {
                 row["error"]["message"].as_str().unwrap_or(""),
             ));
         }
+        if let Some(forms) = row["survey_layers_omitted"]["forms"].as_array() {
+            let names = forms.iter().filter_map(Value::as_str).collect::<Vec<_>>();
+            if !names.is_empty() {
+                out.push_str(&format!(
+                    "           survey omitted: {}\n",
+                    names.join(", ")
+                ));
+            }
+        }
     }
     if more > 0 {
         out.push_str(&format!(
@@ -2000,7 +2012,8 @@ mod tests {
                                 "detail": "212 rows need 3 panels; the layout permits 1"}
                  }]},
                 {"transformer": "tx_b", "status": "ok", "receipt": "tx_b/report-run.json",
-                 "artifacts": 5},
+                 "artifacts": 5,
+                 "survey_layers_omitted": {"code": "print_survey_layers_omitted", "forms": ["field_notes", "transformer_survey"]}},
             ],
         });
         let screen = super::render(&data);
@@ -2016,6 +2029,10 @@ mod tests {
         assert!(screen.contains("fix: raise `panels`"), "{screen}");
         // A run that lost nothing still reads exactly as it did.
         assert!(screen.contains("  ok     tx_b"), "{screen}");
+        assert!(
+            screen.contains("survey omitted: field_notes, transformer_survey"),
+            "{screen}"
+        );
     }
 
     /// The naming is bounded, and the truncation says how much it did not
@@ -2354,6 +2371,7 @@ mod tests {
                 layout: None,
             }],
             warnings: vec![],
+            survey_layers_omitted: None,
             engine: ds_command_kernel::report_export::EngineIdentity {
                 engine_version: format!("ds-network-reporter@0.1.0+{}", "c".repeat(40)),
                 build_manifest_sha256: "d".repeat(64),
