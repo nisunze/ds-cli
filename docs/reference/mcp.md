@@ -102,13 +102,15 @@ comparison and wait for readiness; no VS Code or other UI host mediates those
 transitions. Version feature data remains inside the application, and the MCP
 receipts expose metadata or aggregate counts only.
 
-`auth-context` is the principal handoff for MCP hosts after a person signs in
-through a trusted terminal. It publishes native identity status, fresh visible
+`auth-context` is the principal handoff for MCP hosts. Its sign-in is
+`account.connect`: the person approves the request in their signed-in DS
+GridDesign Desktop under Account > Link a trusted device, and the tool is
+called again once approved. It publishes native identity status, fresh visible
 project inventory, exact project selection, and selected-project status from
-the live `auth` descriptors. It does not publish password login, logout, or any
-Desktop-owned device approval. Password login and `auth link approve` are also
-excluded from the broad compatibility command exposure, so no MCP profile can
-receive a password prompt or approve its own device authorization.
+the live `auth` descriptors. It does not publish the terminal sign-in, logout,
+or any Desktop-owned device approval; those two are excluded from every
+exposure, and no MCP answer names the terminal sign-in (see
+`docs/reference/auth.md`).
 
 `solar-input` is the narrow authenticated selected-project capture surface.
 The established `solar-run` profile retains seeding, preparation, execution,

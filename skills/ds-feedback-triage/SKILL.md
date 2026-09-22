@@ -129,7 +129,7 @@ A note needs no triage capability, so leave one even when `close` would refuse.
   report naming that id; it will link to it automatically.
 - `feedback_cursor_rejected` — drop `--cursor`, or pass `--all`.
 - `feedback_not_found` — list again with `--view all`.
-- `headless_signed_out` — `ds auth login --email <address>`.
+- `headless_signed_out` — `ds account connect`, approved in the signed-in Desktop.
 
 ## Rules
 
