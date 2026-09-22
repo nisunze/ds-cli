@@ -4,6 +4,7 @@
 //! per-user files. Identity, Firebase validation, refresh rotation, and the
 //! project response contract remain exclusively in `ds-client-core`.
 
+pub mod account;
 mod context;
 pub mod device;
 pub mod link_approval;
@@ -16,6 +17,11 @@ pub mod sync;
 mod test_support;
 mod transport;
 mod upload;
+
+pub use account::{
+    APPROVAL_INSTRUCTIONS, SIGNED_OUT_NEXT, SIGNED_OUT_REFUSAL, SIGNED_OUT_REMEDY, signed_out_next,
+    signed_out_remedy,
+};
 
 /// The weak-network acceptance seam. Feature-gated, so it exists only for
 /// `crates/ds-cli-auth/tests/weak_network.rs` and never in a release build;
@@ -183,9 +189,9 @@ pub fn refresh_runtime_identity(lane_value: &str) -> Result<ProviderIdentity, Fa
     let lane = Lane::parse(lane_value)?;
     let before = probe_headless_identity(lane_value)?
         .ok_or_else(|| {
-            Failure::conflict("headless_signed_out", "the server has no native identity").remedy(
-                "sign in with ds auth login or ds auth link under the server's Linux account",
-            )
+            Failure::conflict("headless_signed_out", "the server has no native identity")
+                .remedy(signed_out_remedy(lane_value))
+                .next(signed_out_next(lane_value))
         })?
         .0;
     if device::restore_session(lane)?.is_none() {
@@ -382,17 +388,12 @@ const NETWORK_TEMPLATE: Arg = Arg::value(
 );
 const STYLING_TEMPLATE: Arg = Arg::value("styling-template", "<id>", "Styling template id.");
 
-const PROFILE_REFUSAL: Refusal = Refusal {
+pub(crate) const PROFILE_REFUSAL: Refusal = Refusal {
     code: "native_profile_not_configured",
     when: "this build lacks its exact digest-pinned two-lane native client catalog",
     remedy: "install one complete ds release containing ds-client-profiles/catalog.json",
 };
-const SIGNED_OUT_REFUSAL: Refusal = Refusal {
-    code: "headless_signed_out",
-    when: "no restorable refresh credential exists for the selected lane and profile",
-    remedy: "run ds auth login --email <address>",
-};
-const STATE_REFUSAL: Refusal = Refusal {
+pub(crate) const STATE_REFUSAL: Refusal = Refusal {
     code: "native_state_unsafe",
     when: "protected native state is unsafe, malformed, or cannot be accessed atomically",
     remedy: "repair the owner-only DS config directory and retry",
@@ -444,13 +445,13 @@ const AUTH_REJECTED_REFUSAL: Refusal = Refusal {
 };
 const INVALID_CREDENTIALS_REFUSAL: Refusal = Refusal {
     code: "auth_invalid_credentials",
-    when: "Firebase does not accept the protected email/password exchange",
-    remedy: "retry the exact password, or run ds auth link begin to use the signed-in Desktop identity",
+    when: "Firebase does not accept the protected terminal sign-in",
+    remedy: SIGNED_OUT_REMEDY,
 };
 const PASSWORD_SIGN_IN_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     code: "auth_password_sign_in_unavailable",
-    when: "password sign-in is disabled for the Firebase project or unavailable for this account",
-    remedy: "run ds auth link begin to use the signed-in Desktop identity",
+    when: "terminal sign-in is disabled for the Firebase project or unavailable for this account",
+    remedy: SIGNED_OUT_REMEDY,
 };
 const ACCOUNT_DISABLED_REFUSAL: Refusal = Refusal {
     code: "auth_account_disabled",
@@ -460,7 +461,7 @@ const ACCOUNT_DISABLED_REFUSAL: Refusal = Refusal {
 const AUTH_REVOKED_REFUSAL: Refusal = Refusal {
     code: "auth_revoked",
     when: "Firebase permanently revokes the native session",
-    remedy: "sign in again interactively",
+    remedy: SIGNED_OUT_REMEDY,
 };
 const IDENTITY_REFUSAL: Refusal = Refusal {
     code: "auth_identity_mismatch",
@@ -495,7 +496,7 @@ const PASSWORD_INPUT_REFUSAL: Refusal = Refusal {
 const PASSWORD_PROMPT_REFUSAL: Refusal = Refusal {
     code: "password_prompt_forbidden",
     when: "a non-interactive child process attempts to open a password prompt",
-    remedy: "run auth login directly in a trusted terminal",
+    remedy: SIGNED_OUT_REMEDY,
 };
 const PASSWORD_TTY_REFUSAL: Refusal = Refusal {
     code: "password_tty_unavailable",
@@ -4240,22 +4241,9 @@ fn client(inputs: &Inputs) -> Result<(Lane, NativeClient), Failure> {
 
 pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = Lane::parse(inputs.require("lane")?)?;
-    let profile = profile::load(lane)?;
     let _ = probe_headless_identity(lane.token())?;
-    if let Some(device) = device::probe_context(lane)? {
-        let selected = ProjectContextLease::acquire(&profile)?
-            .load_snapshot(&profile, device.uid(), device.email())?
-            .as_ref()
-            .map(selected_project);
-        let auth_context = AuthContext::restored_device(&profile, &device, selected);
-        return Ok(json!({
-            "lane": lane.token(), "signed_in": true,
-            "uid": device.uid(), "email": device.email(),
-            "credential_provider": "ds_device", "device_id": device.device_id(),
-            "auth_context": serde_json::to_value(auth_context).map_err(|_| Failure::failed(
-                "auth_context_unreadable", "the bounded authenticated context could not be projected safely"
-            ))?,
-        }));
+    if let Some(status) = device_status(lane)? {
+        return Ok(status);
     }
     let (lane, mut client) = client(inputs)?;
     let context = ProjectContextLease::acquire(client.profile())?;
@@ -4281,6 +4269,30 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
         )
     })?;
     Ok(output)
+}
+
+/// The `auth status` answer for a lane connected by device credential, or
+/// `None` when the lane holds no device credential. `ds account connect`
+/// answers with exactly this shape, so a caller reads one status whichever
+/// command it asked.
+pub(crate) fn device_status(lane: Lane) -> Result<Option<Value>, Failure> {
+    let profile = profile::load(lane)?;
+    let Some(device) = device::probe_context(lane)? else {
+        return Ok(None);
+    };
+    let selected = ProjectContextLease::acquire(&profile)?
+        .load_snapshot(&profile, device.uid(), device.email())?
+        .as_ref()
+        .map(selected_project);
+    let auth_context = AuthContext::restored_device(&profile, &device, selected);
+    Ok(Some(json!({
+        "lane": lane.token(), "signed_in": true,
+        "uid": device.uid(), "email": device.email(),
+        "credential_provider": "ds_device", "device_id": device.device_id(),
+        "auth_context": serde_json::to_value(auth_context).map_err(|_| Failure::failed(
+            "auth_context_unreadable", "the bounded authenticated context could not be projected safely"
+        ))?,
+    })))
 }
 
 fn selected_project(context: &state::ProjectContext) -> SelectedProject {
@@ -4656,19 +4668,30 @@ fn signed_out_failure(lane: Lane) -> Failure {
 
 fn signed_out_refusal(lane: Lane, device_linked: bool) -> Failure {
     let token = lane.token();
-    let message = if device_linked {
-        format!(
-            "lane {token} holds a device credential but no native password session; this \
-             command needs the password session"
+    if device_linked {
+        // The lane IS connected. What this command lacks is a route that
+        // accepts the device credential, and no sign-in a person can do
+        // changes that — so the remedy is to report the gap, never to
+        // send them to a terminal.
+        return Failure::unauthorized(
+            "headless_signed_out",
+            format!(
+                "lane {token} is connected by device credential, but this command has no \
+                 device-credential route yet"
+            ),
         )
-    } else {
-        format!("no native user is signed in for lane {token} and its profile")
-    };
-    Failure::unauthorized("headless_signed_out", message)
-        .remedy(format!(
-            "run ds auth login --email <address> --lane {token}"
-        ))
-        .next(format!("ds auth status --lane {token}"))
+        .remedy(
+            "report this command as a device-link coverage gap with `ds feedback submit`; \
+             the connected device credential is intact",
+        )
+        .next(format!("ds auth status --lane {token}"));
+    }
+    Failure::unauthorized(
+        "headless_signed_out",
+        format!("no credential is connected for lane {token}"),
+    )
+    .remedy(signed_out_remedy(token))
+    .next(signed_out_next(token))
 }
 
 fn with_disposition<T>(
@@ -4926,26 +4949,32 @@ fn map_service_refusal(
             "service_code": "upi_invalid",
             "service_message": refusal.message(),
         })),
-        Some("invalid_admin_scope") => Failure::invalid("invalid_admin_scope", message).detail(json!({
-            "http_status": refusal.status(),
-            "service_code": "invalid_admin_scope",
-            "service_message": refusal.message(),
-        })),
+        Some("invalid_admin_scope") => {
+            Failure::invalid("invalid_admin_scope", message).detail(json!({
+                "http_status": refusal.status(),
+                "service_code": "invalid_admin_scope",
+                "service_message": refusal.message(),
+            }))
+        }
         Some("bound_exceeded") => Failure::invalid("bound_exceeded", message).detail(json!({
             "http_status": refusal.status(),
             "service_code": "bound_exceeded",
             "service_message": refusal.message(),
         })),
-        Some("dataset_ambiguous") => Failure::conflict("dataset_ambiguous", message).detail(json!({
-            "http_status": refusal.status(),
-            "service_code": "dataset_ambiguous",
-            "service_message": refusal.message(),
-        })),
-        Some("dataset_cloud_only") => Failure::conflict("dataset_cloud_only", message).detail(json!({
-            "http_status": refusal.status(),
-            "service_code": "dataset_cloud_only",
-            "service_message": refusal.message(),
-        })),
+        Some("dataset_ambiguous") => {
+            Failure::conflict("dataset_ambiguous", message).detail(json!({
+                "http_status": refusal.status(),
+                "service_code": "dataset_ambiguous",
+                "service_message": refusal.message(),
+            }))
+        }
+        Some("dataset_cloud_only") => {
+            Failure::conflict("dataset_cloud_only", message).detail(json!({
+                "http_status": refusal.status(),
+                "service_code": "dataset_cloud_only",
+                "service_message": refusal.message(),
+            }))
+        }
         // Every other refusal keeps the shared kind mapping's class, code,
         // remedy and next step — several of those arms answer with their own
         // static sentence, so the status and the service's words are carried
@@ -5210,19 +5239,20 @@ fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
         // next step says that one has to be named rather than naming the
         // default by omission.
         ErrorKind::SignedOut => Failure::unauthorized("headless_signed_out", message)
-            .next("ds auth login --email <address> --lane <stable|canary>"),
+            .remedy(SIGNED_OUT_REMEDY)
+            .next("ds account connect --lane <stable|canary>"),
         ErrorKind::InvalidCredentials => Failure::unauthorized(
             "auth_invalid_credentials",
-            "Firebase did not accept this email/password sign-in",
+            "Firebase did not accept this terminal sign-in",
         )
-        .remedy("retry the exact password, or link this machine through the signed-in Desktop")
-        .next("ds auth link begin"),
+        .remedy(SIGNED_OUT_REMEDY)
+        .next(SIGNED_OUT_NEXT),
         ErrorKind::PasswordSignInUnavailable => Failure::unauthorized(
             "auth_password_sign_in_unavailable",
-            "password sign-in is unavailable for this Firebase account or project",
+            "terminal sign-in is unavailable for this Firebase account or project",
         )
-        .remedy("link this machine through the signed-in Desktop identity")
-        .next("ds auth link begin"),
+        .remedy(SIGNED_OUT_REMEDY)
+        .next(SIGNED_OUT_NEXT),
         ErrorKind::AccountDisabled => Failure::unauthorized(
             "auth_account_disabled",
             "Firebase reports that this account is disabled",
@@ -5236,7 +5266,8 @@ fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
             "auth_revoked",
             "Firebase permanently revoked the native session",
         )
-        .next("ds auth login --email <address>"),
+        .remedy(SIGNED_OUT_REMEDY)
+        .next(SIGNED_OUT_NEXT),
         ErrorKind::IdentityMismatch => Failure::unauthorized(
             "auth_identity_mismatch",
             "Firebase returned an identity outside the bound native session",
@@ -5332,7 +5363,7 @@ fn refuse_noninteractive_prompt(from_stdin: bool, noninteractive: bool) -> Resul
             "password_prompt_forbidden",
             "a non-interactive child process cannot open an interactive password prompt",
         )
-        .remedy("run ds auth login directly in a trusted terminal"))
+        .remedy(SIGNED_OUT_REMEDY))
     } else {
         Ok(())
     }
@@ -6313,15 +6344,13 @@ mod tests {
             let flag = format!("--lane {}", lane.token());
             let remedy = failure.remedy_text().expect("a way out");
             assert!(remedy.contains(&flag), "{remedy}");
-            assert!(
-                remedy.contains("ds auth login --email <address>"),
-                "{remedy}"
-            );
+            assert!(remedy.contains("ds account connect"), "{remedy}");
+            assert!(remedy.contains("Link a trusted device"), "{remedy}");
             assert!(
                 failure
                     .next_commands()
                     .iter()
-                    .any(|next| next.contains(&flag) && next.starts_with("ds auth status")),
+                    .any(|next| next.contains(&flag) && next.starts_with("ds account connect")),
                 "{:?}",
                 failure.next_commands()
             );
@@ -6346,8 +6375,19 @@ mod tests {
             "{}",
             failure.message()
         );
+        // The lane IS connected; no sign-in fixes a missing route, so the
+        // remedy reports the gap and the next step names the lane.
         let remedy = failure.remedy_text().expect("a way out");
-        assert!(remedy.contains("--lane canary"), "{remedy}");
+        assert!(remedy.contains("coverage gap"), "{remedy}");
+        assert!(!remedy.contains("account connect"), "{remedy}");
+        assert!(
+            failure
+                .next_commands()
+                .iter()
+                .any(|next| next == "ds auth status --lane canary"),
+            "{:?}",
+            failure.next_commands()
+        );
         // Without a device credential the sentence must not mention one.
         assert!(
             !signed_out_refusal(Lane::Canary, false)
@@ -6406,11 +6446,11 @@ mod tests {
             "upstream detail must not escape".to_owned(),
         );
         assert_eq!(failure.code(), "auth_invalid_credentials");
-        assert_eq!(failure.next_commands(), &["ds auth link begin"]);
+        assert_eq!(failure.next_commands(), &["ds account connect"]);
         assert!(
             failure
                 .remedy_text()
-                .is_some_and(|remedy| remedy.contains("signed-in Desktop"))
+                .is_some_and(|remedy| remedy.contains("signed-in DS GridDesign Desktop"))
         );
         assert!(!failure.message().contains("upstream detail"));
     }

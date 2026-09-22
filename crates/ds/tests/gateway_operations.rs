@@ -52,9 +52,18 @@ use ds_client_core::{
 /// This list is the CLI's half of the answer: if a `Transport` method exists
 /// for it, it is here. A row that is not here is an operation `ds` never sends.
 const CLI_ISSUED: &[(&str, &str)] = &[
-    ("domains.auth.device.begin", "ds auth login"),
-    ("domains.auth.device.status", "ds auth login"),
-    ("domains.auth.device.complete", "ds auth login"),
+    (
+        "domains.auth.device.begin",
+        "ds account connect / ds auth link begin",
+    ),
+    (
+        "domains.auth.device.status",
+        "ds account connect / ds auth link status",
+    ),
+    (
+        "domains.auth.device.complete",
+        "ds account connect / ds auth link complete",
+    ),
     ("domains.auth.device.refresh", "every authenticated call"),
     ("domains.auth.device.list", "ds auth device list"),
     ("domains.auth.device.read", "ds auth device read"),

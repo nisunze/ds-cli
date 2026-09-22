@@ -30,6 +30,15 @@ pub struct Registered {
     pub entries: &'static [Entry],
 }
 
+// The one sign-in a person is asked to do. Listed before `auth` because it
+// is the step every signed-out refusal names; `auth` keeps the contracts it
+// composes and the trusted-terminal commands.
+static ACCOUNT_ENTRIES: &[Entry] = &[Entry {
+    command: &ds_cli_auth::account::CONNECT_COMMAND,
+    handler: ds_cli_auth::account::run_connect,
+    render: ds_cli_auth::account::render_connect,
+}];
+
 static AUTH_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_auth::STATUS_COMMAND,
@@ -2709,6 +2718,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_mcp::DOMAIN,
         entries: MCP_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_auth::account::DOMAIN,
+        entries: ACCOUNT_ENTRIES,
     },
     Registered {
         domain: &ds_cli_auth::DOMAIN,

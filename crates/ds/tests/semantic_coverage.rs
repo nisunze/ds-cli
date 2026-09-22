@@ -73,6 +73,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_auth_state",
         "headless_project",
     ),
+    // The one sign-in a person is asked to do: it composes the three link
+    // commands below and writes only this device's own credential.
+    ("account.connect", "local_auth_state", "none"),
     // Native auth is one local-state class because even status/list can rotate
     // a refresh credential. None of these authorities implies Desktop.
     ("auth.link.begin", "local_auth_state", "none"),
@@ -136,7 +139,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // The cloud-resident foundation reads: one bounded BigQuery question
     // each, answered as a receipt; `--geometry-out` is their only write.
     ("data.upi.lookup", "local_file_write", "headless_project"),
-    ("data.customers.query", "local_file_write", "headless_project"),
+    (
+        "data.customers.query",
+        "local_file_write",
+        "headless_project",
+    ),
     ("data.parcels.query", "local_file_write", "headless_project"),
     (
         "data.elevation.extract",
@@ -521,7 +528,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.structure.admin-refresh", "local_file_write", "none"),
     ("dsgrid.structure.describe", "local_file_write", "none"),
     ("dsgrid.structure.retype", "local_file_write", "none"),
-    ("dsgrid.structure.staking-enrich", "local_file_write", "none"),
+    (
+        "dsgrid.structure.staking-enrich",
+        "local_file_write",
+        "none",
+    ),
     ("dsgrid.report.structures", "local_file_write", "none"),
     // The one project act, and the only command in the family that carries
     // `project` authority: it registers one immutable revision in the paired
