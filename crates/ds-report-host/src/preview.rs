@@ -138,6 +138,9 @@ pub struct PreviewPage {
     pub context_layers: Vec<String>,
     /// The draft's context layers the page was printed without, each named.
     pub context_omitted: Vec<ContextOmission>,
+    /// The survey forms the project appends to delivered reports that this
+    /// proof was rendered without (`report_export::preview::Facts`).
+    pub survey_forms_omitted: Vec<String>,
     /// Digest of the staged `ds.print-context/v1` document, when one was.
     pub context_sha256: Option<String>,
     /// The page's filename as the engine named it, so a filesystem host
@@ -146,6 +149,17 @@ pub struct PreviewPage {
     /// The run receipt exactly as the run wrote its `report-run.json`, so a
     /// filesystem host can place it beside the page under that name.
     pub receipt: Value,
+}
+
+/// The diagnostic code a preview page carries when the project's policy
+/// appends survey layers the local proof was rendered without.
+pub const SURVEY_LAYERS_OMITTED: &str = "print_survey_layers_omitted";
+
+fn survey_layers_omitted_message(forms: &[String]) -> String {
+    format!(
+        "rendered without the survey layers the project appends to delivered reports ({}); a local preview cannot append cloud-resident survey layers",
+        forms.join(", ")
+    )
 }
 
 fn inputs_invalid(message: impl Into<String>) -> HostFailure {
@@ -311,10 +325,28 @@ pub fn transformer_page(
             "the print preview page is not an SVG document",
         ));
     }
-    let print_diagnostics = outcome.receipt["print_diagnostics"]
+    let mut print_diagnostics = outcome.receipt["print_diagnostics"]
         .as_array()
         .cloned()
         .unwrap_or_default();
+    // The survey forms the delivered report appends that this proof was
+    // rendered without: a named omission in the diagnostics, and one named
+    // omission per form beside the context layers, so a sheet's status line
+    // and an agent reading the receipt both see it.
+    let mut context_omitted = context_omitted;
+    if !preview.facts.survey_forms_omitted.is_empty() {
+        print_diagnostics.push(json!({
+            "code": SURVEY_LAYERS_OMITTED,
+            "forms": preview.facts.survey_forms_omitted,
+            "message": survey_layers_omitted_message(&preview.facts.survey_forms_omitted),
+        }));
+        for form in &preview.facts.survey_forms_omitted {
+            context_omitted.push(ContextOmission {
+                layer: form.clone(),
+                reason: "survey layer: appended to delivered reports from the cloud, absent from a local preview".into(),
+            });
+        }
+    }
     let elapsed_ms = outcome.receipt["elapsed_ms"].as_u64().unwrap_or_default();
     drop(page_root);
     Ok(PreviewPage {
@@ -334,6 +366,7 @@ pub fn transformer_page(
         engine: outcome.engine,
         context_layers,
         context_omitted,
+        survey_forms_omitted: preview.facts.survey_forms_omitted.clone(),
         context_sha256,
         filename: artifact.filename.clone(),
         receipt: outcome.receipt,
@@ -708,6 +741,7 @@ pub fn answer(project: &str, lane: &str, pages: &[(&PreviewPage, PageRef<'_>)]) 
             "output_id": first.map(|page| page.output_id.as_str()),
             "format": "svg",
             "note": PREVIEW_NOTE,
+            "survey_forms_omitted": first.map_or_else(Vec::new, |page| page.survey_forms_omitted.clone()),
         },
         "results": results,
         "batch": {
@@ -798,6 +832,65 @@ mod tests {
 
     fn nothing_left(staging: &Path) -> bool {
         !staging.exists() || fs::read_dir(staging).unwrap().next().is_none()
+    }
+
+    /// 4c193e6d: a survey-append policy no longer stops a proof. The engine
+    /// receives the recipe with the append switched off, the page carries a
+    /// `print_survey_layers_omitted` diagnostic naming the forms, and each
+    /// form is a named omission beside the context layers.
+    #[test]
+    fn a_survey_policy_project_previews_with_the_survey_layers_named_absent() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let sheets = r#"{"project_settings":[{"parameter":"design_export_format","value":["shp","xlsx"]},{"parameter":"include_survey_data_in_transformer_exports","value":true},{"parameter":"survey_forms_in_transformer_exports","value":["field_notes","transformer_survey"]}]}"#;
+        let receipt = InputReceipt {
+            local_print_recipe: None,
+            schema: 1,
+            country: "Benin".into(),
+            sheets_json: sheets.into(),
+            sheets_sha256: format!("{:x}", Sha256::digest(sheets.as_bytes())),
+            reference_semantic_sha256: "7".repeat(64),
+        };
+        let engine = FakeEngine::release();
+        let page = transformer_page(
+            &engine,
+            &settings(&receipt, &staging),
+            &room("tx_a"),
+            &draft(),
+            |_| Ok(None),
+        )
+        .unwrap();
+        assert_eq!(
+            page.survey_forms_omitted,
+            ["field_notes", "transformer_survey"]
+        );
+        let named = page
+            .print_diagnostics
+            .iter()
+            .find(|d| d["code"] == SURVEY_LAYERS_OMITTED)
+            .expect("the omission is a diagnostic");
+        assert_eq!(named["forms"], json!(["field_notes", "transformer_survey"]));
+        assert!(named["message"].as_str().unwrap().contains("field_notes"));
+        assert!(page
+            .context_omitted
+            .iter()
+            .any(|o| o.layer == "transformer_survey" && o.reason.contains("survey layer")));
+        let recipe = &page.receipt["local_print_recipe"];
+        assert_eq!(
+            recipe["preview"]["survey_forms_omitted"],
+            json!(["field_notes", "transformer_survey"])
+        );
+        let answer = answer("proj-1", "stable", &[(&page, PageRef::Inline)]);
+        assert_eq!(
+            answer["preview"]["survey_forms_omitted"],
+            json!(["field_notes", "transformer_survey"])
+        );
+        assert!(answer["results"][0]["print_diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == SURVEY_LAYERS_OMITTED));
+        assert!(nothing_left(&staging));
     }
 
     #[test]
@@ -1273,8 +1366,16 @@ mod tests {
         assert_eq!(inline["project"], "proj-1");
         assert_eq!(
             keys(&inline["preview"]),
-            ["layout_id", "layout_sha256", "output_id", "format", "note"]
+            [
+                "layout_id",
+                "layout_sha256",
+                "output_id",
+                "format",
+                "note",
+                "survey_forms_omitted"
+            ]
         );
+        assert_eq!(inline["preview"]["survey_forms_omitted"], json!([]));
         assert_eq!(inline["preview"]["layout_id"], "draft-a3");
         assert_eq!(inline["preview"]["layout_sha256"], page.layout_sha256);
         assert_eq!(inline["preview"]["output_id"], "svg__draft-a3");
