@@ -19,8 +19,113 @@
      "captured_by": "owner@example.com",
      "source": {
       "rows": 4,
-      "fast_lane": true,
       "diagnostics_source": "server"
+     },
+     "ledger": {
+      "schema": "ds.design-activity-ledger/v1",
+      "ds_project": "arjgpydw_nyam",
+      "captured_at_ms": 1788992800000,
+      "row_count": 4,
+      "transformer_count": 2,
+      "transformers": [
+       {
+        "name": "MUS_001",
+        "district": "Nyamagabe",
+        "sector": "Gasaka",
+        "created_by": "owner@example.com",
+        "created_at_ms": 1786400800000,
+        "updated_by": "intruder@example.com",
+        "updated_at_ms": 1788982000000,
+        "designed": {
+         "when_ms": 1788978400000,
+         "user": "intruder@example.com"
+        },
+        "phases": {
+         "sketch": {
+          "status": "success",
+          "when_ms": 1787264800000,
+          "user": "owner@example.com"
+         },
+         "draft": {
+          "status": "success",
+          "when_ms": 1788978400000,
+          "user": "intruder@example.com"
+         },
+         "process": {
+          "status": "success",
+          "when_ms": 1788982000000,
+          "user": "intruder@example.com"
+         }
+        },
+        "latest": {
+         "label_key": "dsr_action_process",
+         "when_ms": 1788982000000,
+         "user": "intruder@example.com"
+        },
+        "health": {
+         "tone": "green",
+         "error_count": 0,
+         "warning_count": 0
+        }
+       },
+       {
+        "name": "MUS_002",
+        "district": "Nyamagabe",
+        "sector": "Kaduha",
+        "created_by": "owner@example.com",
+        "created_at_ms": 1786832800000,
+        "phases": {
+         "draft": {
+          "status": "error",
+          "when_ms": 1788215200000,
+          "user": "owner@example.com"
+         }
+        },
+        "latest": {
+         "label_key": "dsr_action_draft",
+         "when_ms": 1788215200000,
+         "user": "owner@example.com"
+        },
+        "health": {
+         "tone": "red",
+         "error_count": 1,
+         "warning_count": 0,
+         "user": "owner@example.com"
+        }
+       }
+      ]
+     },
+     "digest": "sha256:f9d3a7c43bbcd28cb31111a7f5b09b37185868b171a302ae4259cb3f156c4f8b"
+    }
+   },
+   "expected": {
+    "schema": "ds.design-activities-store/v1",
+    "ok": true,
+    "ds_project": "arjgpydw_nyam",
+    "captured_at_ms": 1788992800000,
+    "digest": "sha256:f9d3a7c43bbcd28cb31111a7f5b09b37185868b171a302ae4259cb3f156c4f8b",
+    "ledger_transformers": 2
+   }
+  },
+  {
+   "id": "validate-admits-a-capture-written-with-the-retired-lane-member",
+   "why": "a capture a host wrote before 2026-09-22 still says source.fast_lane; there is one way to process a transformer now, so the member is read and dropped and the capture still opens",
+   "request": {
+    "schema": "ds.design-activities-store/v1",
+    "action": "validate",
+    "snapshot": {
+     "schema": "ds.design-activities-snapshot/v1",
+     "ds_project": "arjgpydw_nyam",
+     "project_name": "nyam",
+     "display_name": "Nyamagabe - Nyaruguru, TBEA",
+     "status": "active",
+     "lane": "stable",
+     "captured_at_ms": 1788992800000,
+     "captured_by": "owner@example.com",
+     "source": {
+      "rows": 4,
+      "diagnostics_source": "server",
+      "fast_lane": true
      },
      "ledger": {
       "schema": "ds.design-activity-ledger/v1",
@@ -125,7 +230,6 @@
      "captured_by": "owner@example.com",
      "source": {
       "rows": 4,
-      "fast_lane": true,
       "diagnostics_source": "server"
      },
      "ledger": {
@@ -199,7 +303,6 @@
      "captured_by": "owner@example.com",
      "source": {
       "rows": 4,
-      "fast_lane": true,
       "diagnostics_source": "server"
      },
      "ledger": {
@@ -846,7 +949,7 @@
   },
   {
    "id": "select-an-empty-store",
-   "why": "nothing captured is nothing to fold \u2014 a gap, not a placeholder",
+   "why": "nothing captured is nothing to fold — a gap, not a placeholder",
    "request": {
     "schema": "ds.design-activities-store/v1",
     "action": "select",
@@ -947,7 +1050,7 @@
   },
   {
    "id": "plan-every-bucket",
-   "why": "the same directory, swept whole \u2014 and an archived project is not re-read, however old its capture is",
+   "why": "the same directory, swept whole — and an archived project is not re-read, however old its capture is",
    "request": {
     "schema": "ds.design-activities-store/v1",
     "action": "plan",

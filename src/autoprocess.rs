@@ -1,6 +1,6 @@
-//! AutoProcess admission: which process mode applies, whether a committed edit
-//! warrants re-running the LV network, how wide the next run must be, and when
-//! queued work dispatches.
+//! AutoProcess admission: whether the process action runs on its own or on
+//! request, whether a committed edit warrants re-running the LV network, how
+//! wide the next run must be, and when queued work dispatches.
 //!
 //! Four decisions live here, and nothing else. The HOST keeps the effects it
 //! already owned — the accumulator bookkeeping, the GDF walk that maps changed
@@ -17,7 +17,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
 
-pub const SCHEMA: &str = "ds.design-autoprocess/v2";
+pub const SCHEMA: &str = "ds.design-autoprocess/v3";
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
 
 /// Settle window. A rapid burst coalesces behind it even at the every-edit
@@ -123,10 +123,14 @@ pub struct CadenceRequest {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
-    /// Which process action the host presents for this editing context.
+    /// Which process action the host presents for this editing context:
+    /// `auto` when the process is available here and AutoProcess is on,
+    /// otherwise `manual`. There is one way to process a transformer, so the
+    /// only question is whether it runs by itself.
     Mode {
-        is_fast_lane: bool,
-        fast_process_active: bool,
+        /// The process action is available in this editing context (not a
+        /// temporary edit).
+        process_active: bool,
         auto_process_enabled: bool,
     },
     /// Does this committed edit warrant re-running the LV network?
@@ -149,10 +153,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let request: Request = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match request {
         Request::Mode {
-            is_fast_lane,
-            fast_process_active,
+            process_active,
             auto_process_enabled,
-        } => process_mode(is_fast_lane, fast_process_active, auto_process_enabled),
+        } => process_mode(process_active, auto_process_enabled),
         Request::Trigger {
             reason,
             changed_fields,
@@ -164,18 +167,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     Ok(json!({"schema": SCHEMA, "result": result}).to_string())
 }
 
-fn process_mode(
-    is_fast_lane: bool,
-    fast_process_active: bool,
-    auto_process_enabled: bool,
-) -> serde_json::Value {
-    if fast_process_active && is_fast_lane && auto_process_enabled {
+fn process_mode(process_active: bool, auto_process_enabled: bool) -> serde_json::Value {
+    if process_active && auto_process_enabled {
         return json!({"mode": "auto", "reason_key": "autoprocess_mode_enabled"});
     }
-    if is_fast_lane {
-        return json!({"mode": "fast", "reason_key": "autoprocess_mode_fast_lane"});
-    }
-    json!({"mode": "standard", "reason_key": "autoprocess_mode_standard_lane"})
+    json!({"mode": "manual", "reason_key": "autoprocess_mode_manual"})
 }
 
 /// Lowercase, then collapse every non-alphanumeric run to one `_` and trim.
@@ -369,19 +365,25 @@ mod tests {
 
     #[test]
     fn process_mode_has_one_answer_for_every_host() {
-        let mode = |is_fast_lane, fast_process_active, auto_process_enabled| {
+        let mode = |process_active, auto_process_enabled| {
             run(json!({
                 "op": "mode",
-                "is_fast_lane": is_fast_lane,
-                "fast_process_active": fast_process_active,
+                "process_active": process_active,
                 "auto_process_enabled": auto_process_enabled,
             }))
         };
-        assert_eq!(mode(false, false, false)["mode"], "standard");
-        assert_eq!(mode(true, false, true)["mode"], "fast");
-        assert_eq!(mode(true, true, false)["mode"], "fast");
-        assert_eq!(mode(true, true, true)["mode"], "auto");
-        assert_eq!(mode(false, true, true)["mode"], "standard");
+        assert_eq!(mode(false, false)["mode"], "manual");
+        assert_eq!(mode(false, false)["reason_key"], "autoprocess_mode_manual");
+        assert_eq!(mode(true, false)["mode"], "manual");
+        assert_eq!(mode(false, true)["mode"], "manual");
+        assert_eq!(mode(true, true)["mode"], "auto");
+        assert_eq!(mode(true, true)["reason_key"], "autoprocess_mode_enabled");
+        // The lane switch is gone from the request.
+        let stale = serde_json::to_vec(&json!({
+            "op": "mode", "is_fast_lane": true, "fast_process_active": true, "auto_process_enabled": true,
+        }))
+        .unwrap();
+        assert!(evaluate(&stale).is_err());
     }
 
     #[test]

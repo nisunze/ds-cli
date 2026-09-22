@@ -2,14 +2,15 @@
 //!
 //! Which settings a run may carry, what a named preset produces for THIS
 //! project, which dependent flags collapse into the effective contract, which
-//! settings the operator may see for a lane and preset, what a hidden setting
+//! settings the operator may see for a preset, what a hidden setting
 //! puts on the wire, and what the project's default preset is — all of this
 //! was TypeScript in three modules (with module-level state that depended on
 //! which project was loaded last) and, for the dependency collapse, a second
 //! copy in the engine that disagreed on one key. This module is the one
 //! answer: pure over the processor catalogue (ds-network's, handed in as a
-//! fact), the project's configuration sheets, the lane, the preset and the
-//! operator's own toggles. It performs no IO.
+//! fact), the project's configuration sheets, the preset and the operator's
+//! own toggles. It performs no IO. There is one way to process a transformer
+//! (owner ruling 2026-09-22), so no input names a lane.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -123,13 +124,6 @@ pub struct Catalog {
     pub presets: Vec<Preset>,
     #[serde(default)]
     pub labels: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Lane {
-    Standard,
-    Fast,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -517,7 +511,6 @@ pub fn merge_known(defaults: &Settings, raw: &Settings) -> Settings {
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct DialogContext {
-    pub lane: Lane,
     pub preset: Preset2,
     #[serde(default)]
     pub use_firestore_design_data: bool,
@@ -529,24 +522,13 @@ fn dialog_hidden(context: DialogContext) -> BTreeMap<&'static str, &'static str>
         hidden.insert(key, "not_operator_tunable");
     }
     hidden.insert(GEOMETRY_PROPERTIES, "not_operator_tunable");
-    if context.lane == Lane::Fast || context.preset == Preset2::Sketch {
-        for key in CUSTOMER_SOURCE_KEYS {
-            hidden.insert(
-                key,
-                if context.lane == Lane::Fast {
-                    "customer_source_chosen_in_fast_setup"
-                } else {
-                    "sketch_has_no_customer_source"
-                },
-            );
-        }
+    // The customer source is chosen in the process setup, not per run, and
+    // reporting is its own action after the run.
+    for key in CUSTOMER_SOURCE_KEYS {
+        hidden.insert(key, "customer_source_chosen_in_setup");
     }
-    if context.lane == Lane::Fast {
-        for key in REPORT_ACTION_KEYS {
-            hidden.insert(key, "reporting_is_a_separate_fast_action");
-        }
-    } else {
-        hidden.insert(DESIRABLE_PROPERTIES, "browser_pipeline_only");
+    for key in REPORT_ACTION_KEYS {
+        hidden.insert(key, "reporting_is_a_separate_action");
     }
     if context.use_firestore_design_data {
         hidden.insert(
@@ -560,7 +542,7 @@ fn dialog_hidden(context: DialogContext) -> BTreeMap<&'static str, &'static str>
     hidden
 }
 
-/// The dialog's groups for this lane and preset.
+/// The dialog's groups for this preset.
 pub fn visible_groups(groups: &[GroupView], context: DialogContext) -> Vec<GroupView> {
     let hidden = dialog_hidden(context);
     groups
@@ -717,7 +699,6 @@ enum Command {
         catalog: Catalog,
         #[serde(default)]
         project_config: Option<Value>,
-        lane: Lane,
         preset: Preset2,
         #[serde(default)]
         use_firestore_design_data: bool,
@@ -759,10 +740,9 @@ enum Command {
         catalog: Catalog,
         settings: Settings,
     },
-    /// The dialog's groups for a lane and preset.
+    /// The dialog's groups for a preset.
     VisibleGroups {
         groups: Vec<GroupView>,
-        lane: Lane,
         preset: Preset2,
         #[serde(default)]
         use_firestore_design_data: bool,
@@ -775,7 +755,6 @@ enum Command {
     Wire {
         catalog: Catalog,
         settings: Settings,
-        lane: Lane,
         preset: Preset2,
         #[serde(default)]
         use_firestore_design_data: bool,
@@ -817,13 +796,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::Resolve {
             catalog,
             project_config,
-            lane,
             preset,
             use_firestore_design_data,
             operator,
         } => {
             let context = DialogContext {
-                lane,
                 preset,
                 use_firestore_design_data,
             };
@@ -894,11 +871,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
         Command::VisibleGroups {
             groups,
-            lane,
             preset,
             use_firestore_design_data,
         } => {
-            json!({"groups": visible_groups(&groups, DialogContext { lane, preset, use_firestore_design_data })})
+            json!({"groups": visible_groups(&groups, DialogContext { preset, use_firestore_design_data })})
         }
         Command::ProjectPresets { project_config } => {
             json!({"presets": project_preset_overrides(project_config.as_ref())})
@@ -906,7 +882,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::Wire {
             catalog,
             settings,
-            lane,
             preset,
             use_firestore_design_data,
         } => {
@@ -915,7 +890,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 &catalog,
                 &settings,
                 DialogContext {
-                    lane,
                     preset,
                     use_firestore_design_data,
                 },
@@ -1061,51 +1035,54 @@ mod tests {
     }
 
     #[test]
-    fn the_wire_drops_lane_and_preset_hidden_keys_pins_geometry_and_stamps_sketch() {
+    fn the_wire_drops_preset_hidden_keys_pins_geometry_and_stamps_sketch() {
         let cat = catalog();
         let base = model(&cat, None).unwrap().base_settings;
         let sketch = dialog_defaults(&apply_preset(&cat, None, &base, Preset2::Sketch));
-        let (wire_fast, dropped) = wire(
+        let (wire_sketch, dropped) = wire(
             &cat,
             &sketch,
             DialogContext {
-                lane: Lane::Fast,
                 preset: Preset2::Sketch,
                 use_firestore_design_data: false,
             },
         );
-        assert_eq!(wire_fast[GEOMETRY_PROPERTIES], b(true));
-        assert_eq!(wire_fast[CONNECT_UNCONNECTED_CUSTOMERS], b(false));
+        assert_eq!(wire_sketch[GEOMETRY_PROPERTIES], b(true));
+        assert_eq!(wire_sketch[CONNECT_UNCONNECTED_CUSTOMERS], b(false));
         for key in CUSTOMER_SOURCE_KEYS
             .iter()
             .chain(REPORT_ACTION_KEYS.iter())
             .chain(REPORT_DETAIL_KEYS.iter())
         {
-            assert!(!wire_fast.contains_key(*key), "{key}");
+            assert!(!wire_sketch.contains_key(*key), "{key}");
         }
         assert!(dropped
             .iter()
             .any(|d| d.key == "export_reports_for_download"
-                && d.why == "reporting_is_a_separate_fast_action"));
+                && d.why == "reporting_is_a_separate_action"));
         let drafting = dialog_defaults(&apply_preset(&cat, None, &base, Preset2::Drafting));
-        let (wire_std, _) = wire(
+        let (wire_drafting, dropped) = wire(
             &cat,
             &drafting,
             DialogContext {
-                lane: Lane::Standard,
                 preset: Preset2::Drafting,
                 use_firestore_design_data: false,
             },
         );
-        assert!(wire_std.contains_key("pull_customers_from_bldg"));
+        // Drafting is the same one process: the customer source is chosen in
+        // the setup, never on the wire of a run.
+        assert!(!wire_drafting.contains_key("pull_customers_from_bldg"));
+        assert!(dropped
+            .iter()
+            .any(|d| d.key == "pull_customers_from_bldg"
+                && d.why == "customer_source_chosen_in_setup"));
         assert!(
-            !wire_std.contains_key(DESIRABLE_PROPERTIES),
-            "browser-only flag never reaches Standard"
+            !dropped.iter().any(|d| d.why == "sketch_preset_contract"),
+            "drafting is not stamped as sketch"
         );
         let groups = visible_groups(
             &model(&cat, None).unwrap().groups,
             DialogContext {
-                lane: Lane::Fast,
                 preset: Preset2::Sketch,
                 use_firestore_design_data: true,
             },

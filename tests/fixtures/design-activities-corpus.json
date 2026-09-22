@@ -1350,8 +1350,8 @@
         "user": ""
        },
        "health": {
-        "tone": "red",
-        "error_count": 1,
+        "tone": "green",
+        "error_count": 0,
         "warning_count": 0
        }
       },
@@ -1378,8 +1378,8 @@
         "user": ""
        },
        "health": {
-        "tone": "red",
-        "error_count": 1,
+        "tone": "green",
+        "error_count": 0,
         "warning_count": 0
        }
       },
@@ -1549,8 +1549,8 @@
         "user": ""
        },
        "health": {
-        "tone": "red",
-        "error_count": 1,
+        "tone": "green",
+        "error_count": 0,
         "warning_count": 0
        }
       },
@@ -1785,10 +1785,9 @@
         "user": "b@x.com"
        },
        "health": {
-        "tone": "red",
-        "error_count": 1,
-        "warning_count": 0,
-        "user": "a@x.com"
+        "tone": "green",
+        "error_count": 0,
+        "warning_count": 0
        }
       },
       {

@@ -61,8 +61,9 @@ use serde_json::{Map, Value};
 
 use crate::design::{row_kind, RowKind};
 use crate::design_dashboard::{
-    self as dashboard, attention_note, design_stamp, locale_compare, object, phase_meta,
-    phase_status, row_name, short_user, stamp_user, string_at, timestamp_ms, ActionFacts, Tone,
+    self as dashboard, attention_note, design_stamp, is_retired_phase, locale_compare, object,
+    phase_meta, phase_status, row_name, short_user, stamp_user, string_at, timestamp_ms,
+    ActionFacts, Tone,
 };
 use crate::design_health;
 use crate::design_status_row::{self, phase_stamp, RowReply};
@@ -735,7 +736,20 @@ fn ledger_transformer(value: &Value, truth: Option<&RowReply>) -> LedgerTransfor
             when_ms: 0,
             user: String::new(),
         });
-    let note = attention_note(row, &name, &health, truth, &action, false);
+    let note = attention_note(row, &name, &health, truth, &action);
+    // The counts the badge shows, over the same findings the note may name:
+    // document-sourced, and never on a retired Draft/Sketch phase.
+    let counted = health.findings.iter().filter(|finding| {
+        finding.source == design_health::Source::Document && !is_retired_phase(finding.phase)
+    });
+    let (mut error_count, mut warning_count) = (0usize, 0usize);
+    for finding in counted {
+        match finding.severity {
+            design_health::FindingSeverity::Error => error_count += 1,
+            design_health::FindingSeverity::Warning => warning_count += 1,
+            _ => {}
+        }
+    }
     let tone = match note.as_ref().map(|note| note.tone) {
         Some(Tone::Red) => HealthTone::Red,
         Some(Tone::Amber) => HealthTone::Amber,
@@ -770,8 +784,8 @@ fn ledger_transformer(value: &Value, truth: Option<&RowReply>) -> LedgerTransfor
         }),
         health: LedgerHealth {
             tone,
-            error_count: health.error_count,
-            warning_count: health.warning_count,
+            error_count,
+            warning_count,
             user: note.and_then(|note| non_empty(note.user.trim().to_string())),
         },
     }

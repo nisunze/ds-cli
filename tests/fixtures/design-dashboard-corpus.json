@@ -1,12 +1,12 @@
 {
   "schema": "ds.design-dashboard-parity/v1",
-  "purpose": "Campaign slice 4 — the Dashboard model owned by ds-command-kernel. Each case holds one `design_dashboard` request, what the deleted TypeScript answered for it (`expected_ts`: `buildProcessingDashboard` and `buildCollisionsInsight`, recorded by running that code once before deleting it), and what the kernel answers (`expected`). A case where the two differ carries a `why`; the kernel is right in every one.",
+  "purpose": "Campaign slice 4 — the Dashboard model owned by ds-command-kernel. Each case holds one `design_dashboard` request, what the deleted TypeScript answered for it (`expected_ts`: `buildProcessingDashboard` and `buildCollisionsInsight`, recorded by running that code once before deleting it), and what the kernel answers (`expected`). A case where the two differ carries a `why`; the kernel is right in every one. Since 2026-09-22 there is one way to process a transformer: the kernel answers no `lanes`, `fast_pct` or `process_lane_count`, no Draft/Sketch phase summary and no `ddash_fact_fast_share`, so those members of `expected_ts` are retired and not compared.",
   "captured_at_tz_offset_minutes": 0,
   "captured_language": "en",
   "cases": [
     {
-      "id": "fleet-standard",
-      "note": "A real-project-shaped fleet on the Standard lane: 65 captured status rows renamed, two thirds with admin bounds, plus the cases the deleted unit test pinned and the four special rows the kernel must exclude.",
+      "id": "fleet",
+      "note": "A real-project-shaped fleet: 65 captured status rows renamed, two thirds with admin bounds, plus the cases the deleted unit test pinned and the four special rows the kernel must exclude.",
       "request": {
         "schema": "ds.design-dashboard/v1",
         "rows": [
@@ -1048,7 +1048,6 @@
         ],
         "diagnostics": [],
         "now_ms": 1787743440000,
-        "fast_lane": false,
         "tz_offset_minutes": 0
       },
       "expected_ts": {
@@ -1674,2361 +1673,6 @@
         "dashboard": {
           "total": 84,
           "designed_count": 26,
-          "process_lane_count": 21,
-          "report_ready_count": 2,
-          "combined_count": 1,
-          "latest": {
-            "label_key": "dsr_action_process_progress",
-            "when_ms": 1787740200000,
-            "user": "ops@x.com"
-          },
-          "pipeline": [
-            {
-              "key": "design",
-              "label_key": "ddash_pipeline_design",
-              "count": 84,
-              "pct_of_total": 100
-            },
-            {
-              "key": "designed",
-              "label_key": "ddash_pipeline_designed",
-              "count": 26,
-              "pct_of_total": 31
-            },
-            {
-              "key": "reported",
-              "label_key": "ddash_pipeline_reported",
-              "count": 2,
-              "pct_of_total": 2
-            },
-            {
-              "key": "combined",
-              "label_key": "ddash_pipeline_combined",
-              "count": 1,
-              "pct_of_total": 1
-            }
-          ],
-          "momentum": {
-            "points": [
-              {
-                "key": "2026-08-16",
-                "count": 1
-              },
-              {
-                "key": "2026-08-20",
-                "count": 1
-              },
-              {
-                "key": "2026-08-21",
-                "count": 1
-              },
-              {
-                "key": "2026-08-22",
-                "count": 1
-              },
-              {
-                "key": "2026-08-23",
-                "count": 2
-              },
-              {
-                "key": "2026-08-24",
-                "count": 8
-              },
-              {
-                "key": "2026-08-25",
-                "count": 6
-              },
-              {
-                "key": "2026-08-26",
-                "count": 5
-              }
-            ],
-            "total": 25,
-            "max": 8,
-            "last7": 24,
-            "prev7": 1,
-            "trend": "up",
-            "busiest": {
-              "key": "2026-08-24",
-              "count": 8
-            },
-            "active_days": 8,
-            "avg_per_active_day": 3.1
-          },
-          "crew": {
-            "members": [
-              {
-                "name": "",
-                "short": "",
-                "count": 12,
-                "unknown": true
-              },
-              {
-                "name": "alice@ds.rw",
-                "short": "alice",
-                "count": 3
-              },
-              {
-                "name": "bob@ds.rw",
-                "short": "bob",
-                "count": 3
-              },
-              {
-                "name": "b@x.com",
-                "short": "b",
-                "count": 1
-              },
-              {
-                "name": "dan@ds.rw",
-                "short": "dan",
-                "count": 1
-              },
-              {
-                "name": "draft@x.com",
-                "short": "draft",
-                "count": 1
-              },
-              {
-                "name": "erin@ds.rw",
-                "short": "erin",
-                "count": 1
-              },
-              {
-                "name": "frank@ds.rw",
-                "short": "frank",
-                "count": 1
-              },
-              {
-                "name": "gina@ds.rw",
-                "short": "gina",
-                "count": 1
-              },
-              {
-                "name": "hana@ds.rw",
-                "short": "hana",
-                "count": 1
-              }
-            ],
-            "leader": {
-              "name": "",
-              "short": "",
-              "count": 12,
-              "unknown": true
-            },
-            "contributors": 10
-          },
-          "errors_by_user": [
-            {
-              "name": "",
-              "short": "",
-              "count": 4,
-              "unknown": true
-            },
-            {
-              "name": "a@x.com",
-              "short": "a",
-              "count": 1
-            },
-            {
-              "name": "carol@ds.rw",
-              "short": "carol",
-              "count": 1
-            },
-            {
-              "name": "dan@ds.rw",
-              "short": "dan",
-              "count": 1
-            },
-            {
-              "name": "erin@ds.rw",
-              "short": "erin",
-              "count": 1
-            }
-          ],
-          "districts": [
-            {
-              "label": "",
-              "count": 35,
-              "weight": 1.0,
-              "percent": 42,
-              "offset": 0,
-              "unassigned": true
-            },
-            {
-              "label": "Gasabo",
-              "count": 13,
-              "weight": 0.37142857142857144,
-              "percent": 15,
-              "offset": 42
-            },
-            {
-              "label": "Kicukiro",
-              "count": 12,
-              "weight": 0.34285714285714286,
-              "percent": 14,
-              "offset": 57
-            },
-            {
-              "label": "Karongi",
-              "count": 11,
-              "weight": 0.3142857142857143,
-              "percent": 13,
-              "offset": 71
-            },
-            {
-              "label": "Rubavu",
-              "count": 11,
-              "weight": 0.3142857142857143,
-              "percent": 13,
-              "offset": 85
-            },
-            {
-              "label": "Zanzibar",
-              "count": 2,
-              "weight": 0.05714285714285714,
-              "percent": 2,
-              "offset": 98
-            }
-          ],
-          "district_count": 5,
-          "sector_count": 11,
-          "phase_summaries": [
-            {
-              "key": "draft",
-              "label_key": "ddash_phase_draft_sketch",
-              "total": 84,
-              "buckets": [
-                {
-                  "status": "success",
-                  "label_key": "ddash_phase_status_success",
-                  "count": 8
-                },
-                {
-                  "status": "processing",
-                  "label_key": "ddash_phase_status_processing",
-                  "count": 1
-                },
-                {
-                  "status": "stale",
-                  "label_key": "ddash_phase_status_stale",
-                  "count": 1
-                },
-                {
-                  "status": "error",
-                  "label_key": "ddash_phase_status_error",
-                  "count": 3
-                },
-                {
-                  "status": "none",
-                  "label_key": "ddash_phase_status_none",
-                  "count": 71
-                }
-              ]
-            },
-            {
-              "key": "process",
-              "label_key": "dsh_phase_label_process",
-              "total": 84,
-              "buckets": [
-                {
-                  "status": "success",
-                  "label_key": "ddash_phase_status_success",
-                  "count": 22
-                },
-                {
-                  "status": "warning",
-                  "label_key": "ddash_phase_status_warning",
-                  "count": 1
-                },
-                {
-                  "status": "processing",
-                  "label_key": "ddash_phase_status_processing",
-                  "count": 1
-                },
-                {
-                  "status": "stale_processing",
-                  "label_key": "ddash_phase_status_stale_processing",
-                  "count": 1
-                },
-                {
-                  "status": "stale",
-                  "label_key": "ddash_phase_status_stale",
-                  "count": 2
-                },
-                {
-                  "status": "error",
-                  "label_key": "ddash_phase_status_error",
-                  "count": 2
-                },
-                {
-                  "status": "none",
-                  "label_key": "ddash_phase_status_none",
-                  "count": 55
-                }
-              ]
-            },
-            {
-              "key": "report",
-              "label_key": "dsh_phase_label_report",
-              "total": 84,
-              "buckets": [
-                {
-                  "status": "success",
-                  "label_key": "ddash_phase_status_success",
-                  "count": 2
-                },
-                {
-                  "status": "stale",
-                  "label_key": "ddash_phase_status_stale",
-                  "count": 2
-                },
-                {
-                  "status": "error",
-                  "label_key": "ddash_phase_status_error",
-                  "count": 1
-                },
-                {
-                  "status": "none",
-                  "label_key": "ddash_phase_status_none",
-                  "count": 79
-                }
-              ]
-            },
-            {
-              "key": "combined",
-              "label_key": "dsh_phase_label_combined",
-              "total": 84,
-              "buckets": [
-                {
-                  "status": "success",
-                  "label_key": "ddash_phase_status_success",
-                  "count": 1
-                },
-                {
-                  "status": "none",
-                  "label_key": "ddash_phase_status_none",
-                  "count": 83
-                }
-              ]
-            }
-          ],
-          "lanes": [
-            {
-              "lane": "standard",
-              "label_key": "ddash_lane_standard",
-              "count": 13,
-              "percent": 48,
-              "offset": 0
-            },
-            {
-              "lane": "fast",
-              "label_key": "ddash_lane_fast",
-              "count": 14,
-              "percent": 52,
-              "offset": 48
-            }
-          ],
-          "fast_pct": 52,
-          "governance": [
-            {
-              "status": "locked",
-              "label_key": "ddash_leg_locked",
-              "count": 76
-            },
-            {
-              "status": "draft",
-              "label_key": "ddash_leg_draft",
-              "count": 8
-            }
-          ],
-          "attention": [
-            {
-              "name": "kacyiru_16",
-              "tone": "red",
-              "label_key": "ddash_note_legacy_superseded",
-              "phase": "sketch",
-              "message": "Sketch failed.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787652000000,
-              "user": ""
-            },
-            {
-              "name": "kagarama_20",
-              "tone": "red",
-              "label_key": "ddash_note_phase_error",
-              "phase": "draft",
-              "message": "Still broken.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787738400000,
-              "user": ""
-            },
-            {
-              "name": "kimironko_17",
-              "tone": "red",
-              "label_key": "ddash_note_legacy_superseded",
-              "phase": "draft",
-              "message": "Drafting failed on 12 poles.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787652000000,
-              "user": ""
-            },
-            {
-              "name": "muhazi_12",
-              "tone": "red",
-              "label_key": "ddash_note_phase_error",
-              "phase": "process",
-              "message": "",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 0,
-              "user": ""
-            },
-            {
-              "name": "nyabugogo_14",
-              "tone": "red",
-              "label_key": "ddash_note_legacy_superseded",
-              "phase": "draft",
-              "message": "Drafting failed on 12 poles.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787652000000,
-              "user": "a@x.com"
-            },
-            {
-              "name": "pin_output_missing",
-              "tone": "red",
-              "label_key": "ddash_note_output_missing",
-              "phase": "process",
-              "message": "",
-              "detail_key": "ddash_note_detail_output_missing",
-              "when_ms": 1787624640000,
-              "user": "carol@ds.rw"
-            },
-            {
-              "name": "pin_process_error",
-              "tone": "red",
-              "label_key": "ddash_note_phase_error",
-              "phase": "process",
-              "message": "network build failed",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787624640000,
-              "user": "dan@ds.rw"
-            },
-            {
-              "name": "pin_report_error",
-              "tone": "red",
-              "label_key": "ddash_note_phase_error",
-              "phase": "report",
-              "message": "workbook refused",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787624640000,
-              "user": "erin@ds.rw"
-            },
-            {
-              "name": "karongi_north",
-              "tone": "amber",
-              "label_key": "ddash_note_unsaved",
-              "message": "",
-              "detail_key": "dsr_sync_local_edits_title",
-              "when_ms": 0,
-              "user": ""
-            },
-            {
-              "name": "muhanga_edcl",
-              "tone": "amber",
-              "label_key": "ddash_note_unsaved",
-              "message": "",
-              "detail_key": "dsr_sync_local_edits_title",
-              "when_ms": 1787738400000,
-              "user": ""
-            },
-            {
-              "name": "nyagatare_edcl",
-              "tone": "amber",
-              "label_key": "ddash_note_phase_processing",
-              "phase": "process",
-              "message": "spotting",
-              "detail_key": "ddash_note_detail_processing",
-              "when_ms": 1787740200000,
-              "user": "ops@x.com"
-            },
-            {
-              "name": "pin_diag_layer",
-              "tone": "amber",
-              "label_key": "ddash_note_phase_warning",
-              "phase": "process",
-              "message": "",
-              "detail_key": "ddash_note_detail_warning",
-              "when_ms": 1787279040000,
-              "user": "erin@ds.rw"
-            },
-            {
-              "name": "pin_process_warning",
-              "tone": "amber",
-              "label_key": "ddash_note_phase_warning",
-              "phase": "process",
-              "message": "3 customers unconnected",
-              "detail_key": "ddash_note_detail_warning",
-              "when_ms": 1787624640000,
-              "user": "dan@ds.rw"
-            },
-            {
-              "name": "pin_stuck",
-              "tone": "amber",
-              "label_key": "ddash_note_phase_stuck",
-              "phase": "process",
-              "message": "",
-              "detail_key": "ddash_note_detail_processing",
-              "when_ms": 1787624640000,
-              "user": "dan@ds.rw"
-            },
-            {
-              "name": "pin_unsaved",
-              "tone": "amber",
-              "label_key": "ddash_note_unsaved",
-              "message": "",
-              "detail_key": "dsr_sync_local_edits_title",
-              "when_ms": 1787192640000,
-              "user": "frank@ds.rw"
-            },
-            {
-              "name": "gikondo_18",
-              "tone": "blue",
-              "label_key": "ddash_note_superseded",
-              "message": "",
-              "detail_key": "ddash_note_superseded_process",
-              "when_ms": 1787738400000,
-              "user": ""
-            },
-            {
-              "name": "niboye_19",
-              "tone": "blue",
-              "label_key": "ddash_note_superseded",
-              "message": "",
-              "detail_key": "ddash_note_superseded_legacy",
-              "when_ms": 1787565600000,
-              "user": ""
-            },
-            {
-              "name": "pin_superseded",
-              "tone": "blue",
-              "label_key": "ddash_note_superseded",
-              "message": "",
-              "detail_key": "ddash_note_superseded_legacy",
-              "when_ms": 1787538240000,
-              "user": "gina@ds.rw"
-            }
-          ],
-          "health": {
-            "score": 79,
-            "label_key": "ddash_health_healthy",
-            "error_count": 8,
-            "warning_count": 7,
-            "info_count": 3,
-            "clean_count": 66,
-            "ring": [
-              {
-                "key": "error",
-                "label_key": "ddash_ring_error",
-                "count": 8,
-                "percent": 10,
-                "offset": 0
-              },
-              {
-                "key": "warning",
-                "label_key": "ddash_ring_warning",
-                "count": 7,
-                "percent": 8,
-                "offset": 10
-              },
-              {
-                "key": "info",
-                "label_key": "ddash_ring_info",
-                "count": 3,
-                "percent": 4,
-                "offset": 18
-              },
-              {
-                "key": "clean",
-                "label_key": "ddash_ring_clean",
-                "count": 66,
-                "percent": 79,
-                "offset": 21
-              }
-            ]
-          },
-          "recent": [
-            {
-              "name": "nyagatare_edcl",
-              "action": {
-                "label_key": "dsr_action_process_progress",
-                "when_ms": 1787740200000,
-                "user": "ops@x.com"
-              }
-            },
-            {
-              "name": "ngoma_3",
-              "action": {
-                "label_key": "dsr_action_report",
-                "when_ms": 1787738400750,
-                "user": "rep@x.com"
-              }
-            },
-            {
-              "name": "kigali_12",
-              "action": {
-                "label_key": "dsr_action_process",
-                "when_ms": 1787738400000,
-                "user": "ops@x.com"
-              }
-            },
-            {
-              "name": "kirehe_v2",
-              "action": {
-                "label_key": "dsr_action_draft",
-                "when_ms": 1787738400000,
-                "user": ""
-              }
-            },
-            {
-              "name": "muhanga_edcl",
-              "action": {
-                "label_key": "dsr_action_browser_edit",
-                "when_ms": 1787738400000,
-                "user": ""
-              }
-            },
-            {
-              "name": "nyamata",
-              "action": {
-                "label_key": "dsr_action_draft",
-                "when_ms": 1787738400000,
-                "user": ""
-              }
-            },
-            {
-              "name": "gikondo_18",
-              "action": {
-                "label_key": "dsr_action_sketch",
-                "when_ms": 1787738400000,
-                "user": ""
-              }
-            },
-            {
-              "name": "kagarama_20",
-              "action": {
-                "label_key": "dsr_action_draft",
-                "when_ms": 1787738400000,
-                "user": ""
-              }
-            }
-          ],
-          "facts": [
-            {
-              "emoji": "⭐",
-              "tone": "amber",
-              "key": "ddash_fact_busiest_day",
-              "params": {
-                "label": "2026-08-24",
-                "count": 8
-              },
-              "date_params": [
-                "label"
-              ]
-            },
-            {
-              "emoji": "🏆",
-              "tone": "violet",
-              "key": "ddash_fact_leader",
-              "params": {
-                "short": "",
-                "count": 12
-              },
-              "key_params": {
-                "short": "ddash_owner_unknown"
-              }
-            },
-            {
-              "emoji": "🗺️",
-              "tone": "teal",
-              "key": "ddash_fact_geography",
-              "params": {
-                "districts": 5,
-                "sectors": 11
-              },
-              "plural_params": {
-                "districts": "ddash_district_one|ddash_district_other",
-                "sectors": "ddash_sector_one|ddash_sector_other"
-              }
-            },
-            {
-              "emoji": "📈",
-              "tone": "sky",
-              "key": "ddash_fact_last7_share",
-              "params": {
-                "pct": 96
-              }
-            },
-            {
-              "emoji": "⚡",
-              "tone": "lime",
-              "key": "ddash_fact_fast_share",
-              "params": {
-                "pct": 52
-              }
-            },
-            {
-              "emoji": "🔒",
-              "tone": "rose",
-              "key": "ddash_fact_locked_share",
-              "params": {
-                "pct": 90
-              }
-            },
-            {
-              "emoji": "🔥",
-              "tone": "amber",
-              "key": "ddash_fact_active_days",
-              "params": {
-                "days": 8,
-                "avg": 3.1
-              }
-            }
-          ]
-        }
-      },
-      "divergences": {
-        "fields": [
-          "crew",
-          "errorsByUser",
-          "districts",
-          "attention",
-          "health"
-        ],
-        "attention": {
-          "left_the_pile": [
-            "bumbogo_23",
-            "nyamata",
-            "pin_stale_report"
-          ],
-          "joined_the_pile": [
-            "nyagatare_edcl",
-            "pin_diag_layer"
-          ],
-          "restated": [
-            "kacyiru_16",
-            "kagarama_20",
-            "nyabugogo_14",
-            "kimironko_17"
-          ]
-        }
-      }
-    },
-    {
-      "id": "fleet-fast",
-      "note": "The same fleet read in Fast mode: no Draft/Sketch phase summary, no legacy-phase attention note, and the Standard lane labelled as the legacy it is.",
-      "request": {
-        "schema": "ds.design-dashboard/v1",
-        "rows": [
-          {
-            "name": "agasharu",
-            "computed": {
-              "combined_inclusion_state": "success",
-              "report_state": "success",
-              "report_has_files": true
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S0"
-            }
-          },
-          {
-            "name": "agasharu_edcl",
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S1"
-            }
-          },
-          {
-            "name": "agasharu_edcl2",
-            "metadata": {
-              "version": 4
-            }
-          },
-          {
-            "name": "bugesera_11",
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S3"
-            }
-          },
-          {
-            "name": "bugesera_12",
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S0"
-            }
-          },
-          {
-            "name": "byumba_hv"
-          },
-          {
-            "name": "gahanga_edcl",
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S2"
-            }
-          },
-          {
-            "name": "gasabo_01",
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S3"
-            }
-          },
-          {
-            "name": "gasabo_02"
-          },
-          {
-            "name": "gatsibo_mv",
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S1"
-            }
-          },
-          {
-            "name": "huye_a",
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S2"
-            }
-          },
-          {
-            "name": "huye_b"
-          },
-          {
-            "name": "kabeza_edcl",
-            "client_dirty": false,
-            "client_server_known": true,
-            "computed": {
-              "combined_inclusion_state": "stale",
-              "report_state": "stale",
-              "report_has_files": false,
-              "write_blocked": true,
-              "write_block_code": "TRANSFORMER_EDIT_LOCKED",
-              "edit_locked": true,
-              "presence": {
-                "locked_by": "aduhireemery@gmail.com",
-                "session_id": "",
-                "locked_at": "2026-08-26T08:52:00Z",
-                "last_seen": "2026-08-26T09:10:00Z",
-                "hold": true,
-                "unsaved_since": "2026-08-26T08:52:00Z",
-                "feature_counts": {
-                  "lv_poles": 31,
-                  "customers": 47
-                }
-              }
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S0"
-            }
-          },
-          {
-            "name": "kamonyi_1",
-            "client_dirty": false,
-            "client_server_known": true,
-            "computed": {
-              "combined_inclusion_state": "stale",
-              "report_state": "stale",
-              "report_has_files": false,
-              "write_blocked": true,
-              "write_block_code": "TRANSFORMER_EDIT_LOCKED",
-              "edit_locked": true,
-              "presence": {
-                "locked_by": "aduhireemery@gmail.com",
-                "session_id": "",
-                "locked_at": "2026-08-26T08:52:00Z",
-                "last_seen": "2026-08-26T09:10:00Z",
-                "hold": true,
-                "unsaved_since": "2026-08-26T08:52:00Z",
-                "feature_counts": {
-                  "lv_poles": 31,
-                  "customers": 47
-                }
-              }
-            },
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S1"
-            }
-          },
-          {
-            "name": "karongi_north",
-            "client_dirty": true,
-            "client_server_known": true,
-            "computed": {
-              "combined_inclusion_state": "stale",
-              "report_state": "stale",
-              "report_has_files": false,
-              "write_blocked": true,
-              "write_block_code": "TRANSFORMER_EDIT_LOCKED",
-              "edit_locked": true,
-              "presence": {
-                "locked_by": "aduhireemery@gmail.com",
-                "session_id": "",
-                "locked_at": "2026-08-26T08:52:00Z",
-                "last_seen": "2026-08-26T09:10:00Z",
-                "hold": true,
-                "unsaved_since": "2026-08-26T08:52:00Z",
-                "feature_counts": {
-                  "lv_poles": 31,
-                  "customers": 47
-                }
-              }
-            }
-          },
-          {
-            "name": "karongi_south",
-            "client_dirty": false,
-            "client_server_known": true,
-            "computed": {
-              "combined_inclusion_state": "stale",
-              "report_state": "stale",
-              "report_has_files": false,
-              "presence": {
-                "locked_by": "bob@x.com",
-                "session_id": "s1",
-                "locked_at": "2026-08-26T11:20:00Z",
-                "last_seen": "2026-08-26T11:23:00Z",
-                "hold": false
-              }
-            },
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S3"
-            }
-          },
-          {
-            "name": "kayonza_7",
-            "computed": {
-              "presence": {
-                "locked_by": ""
-              }
-            },
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S0"
-            }
-          },
-          {
-            "name": "kicukiro_edcl",
-            "client_dirty": false,
-            "client_server_known": true,
-            "client_foreign_room": {
-              "owner": "aduhireemery@gmail.com",
-              "updated_at": 1787743440000
-            }
-          },
-          {
-            "name": "kigali_11",
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S2"
-            }
-          },
-          {
-            "name": "kigali_12",
-            "metadata": {
-              "updated_at": "2026-08-26T10:00:00Z"
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-26T10:00:00Z",
-              "user": "ops@x.com",
-              "lane": "fast"
-            },
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S3"
-            }
-          },
-          {
-            "name": "kirehe_v2",
-            "uploads": {
-              "draft": [
-                {
-                  "uploaded_at": "2026-08-26T10:00:00Z"
-                }
-              ]
-            },
-            "draft_metadata": {
-              "status": "success",
-              "when": "2026-08-26T10:00:00Z"
-            }
-          },
-          {
-            "name": "muhanga_edcl",
-            "client_dirty": true,
-            "client_updated_at": 1787738400000,
-            "metadata": {
-              "updated_at": "2026-08-26T10:00:00Z"
-            },
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S1"
-            }
-          },
-          {
-            "name": "musanze_a",
-            "metadata": {
-              "updated_at": 1787734800000,
-              "updated_by": "ops@x.com"
-            },
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S2"
-            }
-          },
-          {
-            "name": "musanze_b",
-            "metadata": {
-              "updated_at": "1787734800000",
-              "updated_by": "ops@x.com"
-            },
-            "draft_metadata": {
-              "status": "success",
-              "when": "2026-08-25T09:00:00Z",
-              "user": "draft@x.com"
-            }
-          },
-          {
-            "name": "ngoma_3",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-26T10:00:00.250Z",
-              "lane": "fast"
-            },
-            "report_metadata": {
-              "status": "success",
-              "when": "2026-08-26T10:00:00.750Z",
-              "user": "rep@x.com"
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S0"
-            }
-          },
-          {
-            "name": "nyagatare_edcl",
-            "process_metadata": {
-              "status": "processing",
-              "when": "2026-08-26T08:00:00Z",
-              "user": "ops@x.com",
-              "progress": {
-                "updated_at": "2026-08-26T10:30:00Z",
-                "message": "spotting"
-              }
-            },
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S1"
-            }
-          },
-          {
-            "name": "nyamata_copy",
-            "uploads": {
-              "draft": [
-                {
-                  "uploaded_at": "2026-08-20T10:00:00Z",
-                  "uploaded_by": "a@x.com"
-                }
-              ],
-              "sketch": [
-                {
-                  "uploaded_at": "2026-08-21T10:00:00Z",
-                  "uploaded_by": "b@x.com"
-                }
-              ],
-              "process": [
-                {
-                  "uploaded_at": "2026-08-22T10:00:00Z",
-                  "uploaded_by": "c@x.com"
-                }
-              ]
-            },
-            "combined_reports": {
-              "r1": {
-                "when": "2026-08-23T10:00:00Z",
-                "user": "d@x.com"
-              }
-            }
-          },
-          {
-            "name": "nyamata",
-            "draft_metadata": {
-              "status": "success",
-              "when": "2026-08-26T10:00:00Z"
-            },
-            "process_metadata": {
-              "status": "stale",
-              "user": "ops@x.com"
-            },
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S3"
-            }
-          },
-          {
-            "name": "nyanza_edcl",
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S0"
-            }
-          },
-          {
-            "name": "nyarugenge_1",
-            "computed": {
-              "edit_locked": true,
-              "write_blocked": true,
-              "write_block_code": "TRANSFORMER_EDIT_LOCKED",
-              "write_block_message": "Locked by ops@x.com."
-            }
-          },
-          {
-            "name": "nyaruguru_2",
-            "computed": {
-              "write_blocked": true,
-              "write_block_code": "TRANSFORMER_FINAL_LOCKED",
-              "write_block_message": "Final."
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S2"
-            }
-          },
-          {
-            "name": "rubavu_edcl",
-            "computed": {
-              "write_blocked": true,
-              "write_block_code": "PROJECT_READ_ONLY",
-              "write_block_message": "Project is read-only."
-            },
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S3"
-            }
-          },
-          {
-            "name": "ruhango_4",
-            "computed": {
-              "write_blocked": false
-            }
-          },
-          {
-            "name": "rulindo_a",
-            "computed": {
-              "write_blocked": false
-            },
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S1"
-            }
-          },
-          {
-            "name": "rusizi_5",
-            "computed": {
-              "edit_locked": true,
-              "write_blocked": true,
-              "write_block_code": "TRANSFORMER_EDIT_LOCKED",
-              "write_block_message": "Locked."
-            },
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S2"
-            }
-          },
-          {
-            "name": "rutsiro_6",
-            "computed": {
-              "write_blocked": false
-            }
-          },
-          {
-            "name": "rwamagana_7",
-            "computed": {
-              "write_blocked": true,
-              "write_block_message": "Blocked."
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S0"
-            }
-          },
-          {
-            "name": "skwhqafc_edcl",
-            "computed": {
-              "write_blocked": true,
-              "write_block_message": "Refused: token ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa at https://api.example.com/x"
-            },
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S1"
-            }
-          },
-          {
-            "name": "wnmajona_edcl2",
-            "layers": {
-              "lv_poles": 40
-            },
-            "retry_capabilities": {
-              "process": {
-                "can_retry": false,
-                "source": "firestore_replay"
-              }
-            }
-          },
-          {
-            "name": "gicumbi_8",
-            "layers": {
-              "lv_poles": 40
-            },
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S3"
-            }
-          },
-          {
-            "name": "burera_9",
-            "retry_capabilities": {
-              "process": {
-                "can_retry": true,
-                "source": "firestore_replay"
-              }
-            },
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S0"
-            }
-          },
-          {
-            "name": "gakenke_10",
-            "retry_capabilities": {
-              "process": {
-                "can_retry": true,
-                "source": "upload"
-              }
-            }
-          },
-          {
-            "name": "kamembe_11",
-            "retry_capabilities": {
-              "process": {
-                "source": "firestore_replay"
-              }
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S2"
-            }
-          },
-          {
-            "name": "muhazi_12",
-            "process_metadata": {
-              "status": "error",
-              "drafting_source": "ds-web"
-            },
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S3"
-            }
-          },
-          {
-            "name": "nyabihu_13",
-            "layers": {
-              "lv_poles": 0
-            }
-          },
-          {
-            "name": "nyabugogo_14",
-            "draft_metadata": {
-              "status": "error",
-              "when": "2026-08-20T10:00:00Z",
-              "error_message": "Drafting failed on 12 poles.",
-              "user": "a@x.com"
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-25T10:00:00Z",
-              "lane": "fast",
-              "user": "b@x.com"
-            },
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S1"
-            }
-          },
-          {
-            "name": "remera_15",
-            "draft_metadata": {
-              "status": "processing",
-              "when": "2026-08-20T10:00:00Z"
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-25T10:00:00Z",
-              "lane": "fast"
-            },
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S2"
-            }
-          },
-          {
-            "name": "kacyiru_16",
-            "draft_metadata": {
-              "status": "error",
-              "when": "2026-08-19T10:00:00Z",
-              "error_message": "Draft failed."
-            },
-            "sketch_metadata": {
-              "status": "error",
-              "when": "2026-08-20T10:00:00Z",
-              "error_message": "Sketch failed."
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-25T10:00:00Z",
-              "lane": "fast"
-            }
-          },
-          {
-            "name": "kimironko_17",
-            "draft_metadata": {
-              "status": "stale",
-              "superseded_by": "process_metadata",
-              "superseded_at": "2026-08-25T10:00:00Z",
-              "superseded_error_message": "Drafting failed on 12 poles."
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-25T10:00:00Z",
-              "lane": "fast"
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S0"
-            }
-          },
-          {
-            "name": "gikondo_18",
-            "sketch_metadata": {
-              "status": "success",
-              "sketched_at": "2026-08-26T10:00:00Z"
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-24T10:00:00Z",
-              "lane": "standard"
-            },
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S1"
-            }
-          },
-          {
-            "name": "niboye_19",
-            "draft_metadata": {
-              "status": "success",
-              "drafted_at": "2026-08-20T10:00:00Z"
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-24T10:00:00Z",
-              "lane": "fast"
-            }
-          },
-          {
-            "name": "kagarama_20",
-            "draft_metadata": {
-              "status": "error",
-              "when": "2026-08-26T10:00:00Z",
-              "error_message": "Still broken."
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-24T10:00:00Z",
-              "lane": "fast"
-            },
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S3"
-            }
-          },
-          {
-            "name": "gisozi_21",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-24T10:00:00Z",
-              "lane": "standard"
-            },
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S0"
-            }
-          },
-          {
-            "name": "kinyinya_22",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-24T10:00:00Z"
-            }
-          },
-          {
-            "name": "bumbogo_23",
-            "process_metadata": {
-              "status": "stale"
-            },
-            "report_metadata": {
-              "status": "stale"
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S2"
-            }
-          },
-          {
-            "name": "jabana_24",
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S3"
-            }
-          },
-          {
-            "name": "rusororo_25",
-            "version_metadata": {
-              "lead_version": 3,
-              "latest_version": 3,
-              "count": 3,
-              "lead_reason": "  Pre-handover cut  "
-            }
-          },
-          {
-            "name": "ndera_26",
-            "version_metadata": {
-              "lead_version": 7,
-              "latest_version": 10,
-              "count": 10
-            },
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S1"
-            }
-          },
-          {
-            "name": "masaka_27",
-            "version_metadata": {
-              "lead_version": "2",
-              "latest_version": "5"
-            },
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S2"
-            }
-          },
-          {
-            "name": "kanombe_28",
-            "computed": {
-              "combined_inclusion_state": "success",
-              "report_state": "stale",
-              "report_has_files": false
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-24T10:00:00Z",
-              "lane": "fast"
-            }
-          },
-          {
-            "name": "gahanga_29",
-            "computed": {
-              "combined_inclusion_state": "success"
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S0"
-            }
-          },
-          {
-            "name": "nyarugunga_30",
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S1"
-            }
-          },
-          {
-            "name": "gatenga_31"
-          },
-          {
-            "name": "kigarama_32",
-            "admin_bounds": {
-              "district": "Karongi",
-              "sector": "Karongi-S3"
-            }
-          },
-          {
-            "name": "kicukiro_33",
-            "admin_bounds": {
-              "district": "Rubavu",
-              "sector": "Rubavu-S0"
-            }
-          },
-          {
-            "name": "pin_process_fast",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-25T02:24:00.000Z",
-              "user": "alice@ds.rw",
-              "lane": "fast"
-            },
-            "layers": {
-              "lv_poles": 1,
-              "service_cables": 1,
-              "spans": 1
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S"
-            }
-          },
-          {
-            "name": "pin_process_std",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-24T02:24:00.000Z",
-              "user": "alice@ds.rw",
-              "lane": "standard"
-            },
-            "layers": {
-              "lv_poles": 1,
-              "service_cables": 1,
-              "spans": 1
-            },
-            "admin_bounds": {
-              "district": "Gasabo",
-              "sector": "Gasabo-S"
-            }
-          },
-          {
-            "name": "pin_process_old",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-16T02:24:00.000Z",
-              "user": "bob@ds.rw",
-              "lane": "standard"
-            },
-            "layers": {
-              "lv_poles": 1,
-              "service_cables": 1,
-              "spans": 1
-            },
-            "admin_bounds": {
-              "district": "Kicukiro",
-              "sector": "Kicukiro-S"
-            }
-          },
-          {
-            "name": "pin_drafted",
-            "draft_metadata": {
-              "status": "success",
-              "when": "2026-08-24T02:24:00.000Z",
-              "user": "bob@ds.rw"
-            },
-            "report_metadata": {
-              "status": "success",
-              "when": "2026-08-25T02:24:00.000Z",
-              "user": "bob@ds.rw"
-            }
-          },
-          {
-            "name": "pin_sketched",
-            "sketch_metadata": {
-              "status": "success",
-              "sketched_at": "2026-08-23T02:24:00.000Z",
-              "user": "bob@ds.rw"
-            }
-          },
-          {
-            "name": "pin_output_missing",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-25T02:24:00.000Z",
-              "user": "carol@ds.rw"
-            },
-            "layers": {
-              "other": 1
-            }
-          },
-          {
-            "name": "pin_process_error",
-            "process_metadata": {
-              "status": "error",
-              "when": "2026-08-25T02:24:00.000Z",
-              "user": "dan@ds.rw",
-              "error_message": "network build failed"
-            }
-          },
-          {
-            "name": "pin_report_error",
-            "report_metadata": {
-              "status": "error",
-              "when": "2026-08-25T02:24:00.000Z",
-              "user": "erin@ds.rw",
-              "error": {
-                "message": "workbook refused"
-              }
-            }
-          },
-          {
-            "name": "pin_process_warning",
-            "process_metadata": {
-              "status": "warning",
-              "when": "2026-08-25T02:24:00.000Z",
-              "user": "dan@ds.rw",
-              "warning": {
-                "code": "unconnected_customers",
-                "message": "3 customers unconnected"
-              }
-            },
-            "layers": {
-              "lv_poles": 2,
-              "service_cables": 2,
-              "spans": 2
-            }
-          },
-          {
-            "name": "pin_stuck",
-            "process_metadata": {
-              "status": "stale_processing",
-              "when": "2026-08-25T02:24:00.000Z",
-              "user": "dan@ds.rw"
-            }
-          },
-          {
-            "name": "pin_stale_report",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-22T02:24:00.000Z",
-              "user": "dan@ds.rw",
-              "lane": "fast"
-            },
-            "layers": {
-              "lv_poles": 3,
-              "service_cables": 1,
-              "spans": 1
-            },
-            "report_metadata": {
-              "status": "stale",
-              "when": "2026-08-23T02:24:00.000Z"
-            }
-          },
-          {
-            "name": "pin_diag_layer",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-21T02:24:00.000Z",
-              "user": "erin@ds.rw",
-              "lane": "fast"
-            },
-            "layers": {
-              "lv_poles": 4,
-              "service_cables": 2,
-              "spans": 2,
-              "unconnected_customers": 2
-            }
-          },
-          {
-            "name": "pin_unsaved",
-            "client_dirty": true,
-            "client_server_known": true,
-            "client_cached": true,
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-20T02:24:00.000Z",
-              "user": "frank@ds.rw"
-            },
-            "layers": {
-              "lv_poles": 1,
-              "service_cables": 1,
-              "spans": 1
-            }
-          },
-          {
-            "name": "pin_superseded",
-            "draft_metadata": {
-              "status": "success",
-              "when": "2026-08-17T02:24:00.000Z",
-              "user": "gina@ds.rw"
-            },
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-24T02:24:00.000Z",
-              "user": "gina@ds.rw",
-              "lane": "fast"
-            },
-            "layers": {
-              "lv_poles": 1,
-              "service_cables": 1,
-              "spans": 1
-            }
-          },
-          {
-            "name": "pin_undated",
-            "process_metadata": {
-              "status": "success",
-              "user": "hana@ds.rw"
-            },
-            "layers": {
-              "lv_poles": 1,
-              "service_cables": 1,
-              "spans": 1
-            }
-          },
-          {
-            "name": "pin_untouched"
-          },
-          {
-            "name": "pin_combined",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-23T02:24:00.000Z",
-              "user": "alice@ds.rw",
-              "lane": "fast"
-            },
-            "layers": {
-              "lv_poles": 1,
-              "service_cables": 1,
-              "spans": 1
-            },
-            "combined_inclusion_metadata": {
-              "status": "success",
-              "when": "2026-08-24T02:24:00.000Z",
-              "user": "alice@ds.rw"
-            },
-            "computed": {
-              "write_blocked": true,
-              "write_block_code": "TRANSFORMER_EDIT_LOCKED",
-              "edit_locked": true
-            }
-          },
-          {
-            "name": "pin_tie_a",
-            "admin_bounds": {
-              "district": "Zanzibar",
-              "sector": "Z-S"
-            }
-          },
-          {
-            "name": "pin_tie_b",
-            "admin_bounds": {
-              "district": "Zanzibar",
-              "sector": "Z-S"
-            }
-          },
-          {
-            "name": "combined_transformer",
-            "report_metadata": {
-              "status": "success",
-              "when": "2026-08-25T02:24:00.000Z",
-              "user": "alice@ds.rw"
-            }
-          },
-          {
-            "name": "mv_data",
-            "process_metadata": {
-              "status": "success",
-              "when": "2026-08-24T02:24:00.000Z",
-              "user": "bob@ds.rw"
-            }
-          },
-          {
-            "name": "collisions",
-            "process_metadata": {
-              "status": "warning",
-              "when": "2026-08-25T02:24:00.000Z",
-              "warning": {
-                "message": "4 collisions"
-              }
-            }
-          },
-          {
-            "name": "all_transformers"
-          }
-        ],
-        "diagnostics": [],
-        "now_ms": 1787743440000,
-        "fast_lane": true,
-        "tz_offset_minutes": 0
-      },
-      "expected_ts": {
-        "dashboard": {
-          "total": 84,
-          "designedCount": 26,
-          "processLaneCount": 21,
-          "reportReadyCount": 2,
-          "combinedCount": 1,
-          "latest": {
-            "label": "Process progress",
-            "when": "8/26/2026 10:30 AM",
-            "ms": 1787740200000,
-            "user": "ops@x.com"
-          },
-          "pipeline": [
-            {
-              "key": "design",
-              "label": "In design",
-              "count": 84,
-              "pctOfTotal": 100
-            },
-            {
-              "key": "designed",
-              "label": "Designed",
-              "count": 26,
-              "pctOfTotal": 31
-            },
-            {
-              "key": "reported",
-              "label": "Report ready",
-              "count": 2,
-              "pctOfTotal": 2
-            },
-            {
-              "key": "combined",
-              "label": "In combined",
-              "count": 1,
-              "pctOfTotal": 1
-            }
-          ],
-          "momentum": {
-            "points": [
-              {
-                "key": "2026-08-16",
-                "label": "Aug 16",
-                "count": 1
-              },
-              {
-                "key": "2026-08-20",
-                "label": "Aug 20",
-                "count": 1
-              },
-              {
-                "key": "2026-08-21",
-                "label": "Aug 21",
-                "count": 1
-              },
-              {
-                "key": "2026-08-22",
-                "label": "Aug 22",
-                "count": 1
-              },
-              {
-                "key": "2026-08-23",
-                "label": "Aug 23",
-                "count": 2
-              },
-              {
-                "key": "2026-08-24",
-                "label": "Aug 24",
-                "count": 8
-              },
-              {
-                "key": "2026-08-25",
-                "label": "Aug 25",
-                "count": 6
-              },
-              {
-                "key": "2026-08-26",
-                "label": "Aug 26",
-                "count": 5
-              }
-            ],
-            "total": 25,
-            "max": 8,
-            "last7": 24,
-            "prev7": 1,
-            "trend": "up",
-            "busiest": {
-              "key": "2026-08-24",
-              "label": "Aug 24",
-              "count": 8
-            },
-            "activeDays": 8,
-            "avgPerActiveDay": 3.1
-          },
-          "crew": {
-            "members": [
-              {
-                "name": "Unknown",
-                "short": "Unknown",
-                "count": 12
-              },
-              {
-                "name": "alice@ds.rw",
-                "short": "alice",
-                "count": 3
-              },
-              {
-                "name": "bob@ds.rw",
-                "short": "bob",
-                "count": 3
-              },
-              {
-                "name": "b@x.com",
-                "short": "b",
-                "count": 1
-              },
-              {
-                "name": "dan@ds.rw",
-                "short": "dan",
-                "count": 1
-              },
-              {
-                "name": "draft@x.com",
-                "short": "draft",
-                "count": 1
-              },
-              {
-                "name": "erin@ds.rw",
-                "short": "erin",
-                "count": 1
-              },
-              {
-                "name": "frank@ds.rw",
-                "short": "frank",
-                "count": 1
-              },
-              {
-                "name": "gina@ds.rw",
-                "short": "gina",
-                "count": 1
-              },
-              {
-                "name": "hana@ds.rw",
-                "short": "hana",
-                "count": 1
-              }
-            ],
-            "leader": {
-              "name": "Unknown",
-              "short": "Unknown",
-              "count": 12
-            },
-            "contributors": 11
-          },
-          "errorsByUser": [
-            {
-              "name": "carol@ds.rw",
-              "short": "carol",
-              "count": 1
-            },
-            {
-              "name": "dan@ds.rw",
-              "short": "dan",
-              "count": 1
-            },
-            {
-              "name": "erin@ds.rw",
-              "short": "erin",
-              "count": 1
-            },
-            {
-              "name": "Unknown",
-              "short": "Unknown",
-              "count": 1
-            }
-          ],
-          "districts": [
-            {
-              "label": "Unassigned",
-              "count": 35,
-              "weight": 1
-            },
-            {
-              "label": "Gasabo",
-              "count": 13,
-              "weight": 0.37142857142857144
-            },
-            {
-              "label": "Kicukiro",
-              "count": 12,
-              "weight": 0.34285714285714286
-            },
-            {
-              "label": "Karongi",
-              "count": 11,
-              "weight": 0.3142857142857143
-            },
-            {
-              "label": "Rubavu",
-              "count": 11,
-              "weight": 0.3142857142857143
-            },
-            {
-              "label": "Zanzibar",
-              "count": 2,
-              "weight": 0.05714285714285714
-            }
-          ],
-          "districtCount": 5,
-          "sectorCount": 11,
-          "phaseSummaries": [
-            {
-              "key": "process",
-              "label": "Process",
-              "total": 84,
-              "buckets": [
-                {
-                  "status": "success",
-                  "count": 22
-                },
-                {
-                  "status": "warning",
-                  "count": 1
-                },
-                {
-                  "status": "processing",
-                  "count": 1
-                },
-                {
-                  "status": "stale_processing",
-                  "count": 1
-                },
-                {
-                  "status": "stale",
-                  "count": 2
-                },
-                {
-                  "status": "error",
-                  "count": 2
-                },
-                {
-                  "status": "none",
-                  "count": 55
-                }
-              ]
-            },
-            {
-              "key": "report",
-              "label": "Report",
-              "total": 84,
-              "buckets": [
-                {
-                  "status": "success",
-                  "count": 2
-                },
-                {
-                  "status": "stale",
-                  "count": 2
-                },
-                {
-                  "status": "error",
-                  "count": 1
-                },
-                {
-                  "status": "none",
-                  "count": 79
-                }
-              ]
-            },
-            {
-              "key": "combined",
-              "label": "Combined",
-              "total": 84,
-              "buckets": [
-                {
-                  "status": "success",
-                  "count": 1
-                },
-                {
-                  "status": "none",
-                  "count": 83
-                }
-              ]
-            }
-          ],
-          "lanes": [
-            {
-              "lane": "standard",
-              "label": "Legacy Standard",
-              "count": 13
-            },
-            {
-              "lane": "fast",
-              "label": "Fast",
-              "count": 14
-            }
-          ],
-          "fastPct": 52,
-          "governance": [
-            {
-              "status": "locked",
-              "label": "Locked",
-              "count": 76
-            },
-            {
-              "status": "draft",
-              "label": "Draft",
-              "count": 8
-            }
-          ],
-          "attention": [
-            {
-              "name": "muhazi_12",
-              "when": "",
-              "user": "",
-              "tone": "red",
-              "label": "Process error",
-              "detail": "Review phase output"
-            },
-            {
-              "name": "pin_output_missing",
-              "when": "8/25/2026 02:24 AM",
-              "user": "carol@ds.rw",
-              "tone": "red",
-              "label": "Process output missing",
-              "detail": "Process succeeded but saved output layers are absent"
-            },
-            {
-              "name": "pin_process_error",
-              "when": "8/25/2026 02:24 AM",
-              "user": "dan@ds.rw",
-              "tone": "red",
-              "label": "Process error",
-              "detail": "network build failed"
-            },
-            {
-              "name": "pin_report_error",
-              "when": "8/25/2026 02:24 AM",
-              "user": "erin@ds.rw",
-              "tone": "red",
-              "label": "Report error",
-              "detail": "workbook refused"
-            },
-            {
-              "name": "bumbogo_23",
-              "when": "",
-              "user": "",
-              "tone": "amber",
-              "label": "Process stale",
-              "detail": "Refresh or rerun when ready"
-            },
-            {
-              "name": "karongi_north",
-              "when": "",
-              "user": "",
-              "tone": "amber",
-              "label": "Unsaved browser state",
-              "detail": "This browser has local edits or Fast Process output newer than the cloud project record."
-            },
-            {
-              "name": "muhanga_edcl",
-              "when": "8/26/2026 10:00 AM",
-              "user": "",
-              "tone": "amber",
-              "label": "Unsaved browser state",
-              "detail": "This browser has local edits or Fast Process output newer than the cloud project record."
-            },
-            {
-              "name": "nyamata",
-              "when": "8/26/2026 10:00 AM",
-              "user": "",
-              "tone": "amber",
-              "label": "Process stale",
-              "detail": "Refresh or rerun when ready"
-            },
-            {
-              "name": "pin_process_warning",
-              "when": "8/25/2026 02:24 AM",
-              "user": "dan@ds.rw",
-              "tone": "amber",
-              "label": "Process warning",
-              "detail": "3 customers unconnected"
-            },
-            {
-              "name": "pin_stale_report",
-              "when": "8/23/2026 02:24 AM",
-              "user": "",
-              "tone": "amber",
-              "label": "Report stale",
-              "detail": "Refresh or rerun when ready"
-            },
-            {
-              "name": "pin_stuck",
-              "when": "8/25/2026 02:24 AM",
-              "user": "dan@ds.rw",
-              "tone": "amber",
-              "label": "Process stale processing",
-              "detail": "Refresh or rerun when ready"
-            },
-            {
-              "name": "pin_unsaved",
-              "when": "8/20/2026 02:24 AM",
-              "user": "frank@ds.rw",
-              "tone": "amber",
-              "label": "Unsaved browser state",
-              "detail": "This browser has local edits or Fast Process output newer than the cloud project record."
-            },
-            {
-              "name": "gikondo_18",
-              "when": "8/26/2026 10:00 AM",
-              "user": "",
-              "tone": "blue",
-              "label": "Superseded phase",
-              "detail": "Process predates latest draft/sketch"
-            },
-            {
-              "name": "niboye_19",
-              "when": "8/24/2026 10:00 AM",
-              "user": "",
-              "tone": "blue",
-              "label": "Superseded phase",
-              "detail": "Draft/sketch predates process"
-            },
-            {
-              "name": "pin_superseded",
-              "when": "8/24/2026 02:24 AM",
-              "user": "gina@ds.rw",
-              "tone": "blue",
-              "label": "Superseded phase",
-              "detail": "Draft/sketch predates process"
-            }
-          ],
-          "health": {
-            "score": 82,
-            "label": "Healthy",
-            "errorCount": 4,
-            "warningCount": 8,
-            "infoCount": 3,
-            "cleanCount": 69
-          },
-          "recent": [
-            {
-              "name": "nyagatare_edcl",
-              "action": {
-                "label": "Process progress",
-                "when": "8/26/2026 10:30 AM",
-                "ms": 1787740200000,
-                "user": "ops@x.com"
-              }
-            },
-            {
-              "name": "ngoma_3",
-              "action": {
-                "label": "Report",
-                "when": "8/26/2026 10:00 AM",
-                "ms": 1787738400750,
-                "user": "rep@x.com"
-              }
-            },
-            {
-              "name": "kigali_12",
-              "action": {
-                "label": "Process",
-                "when": "8/26/2026 10:00 AM",
-                "ms": 1787738400000,
-                "user": "ops@x.com"
-              }
-            },
-            {
-              "name": "kirehe_v2",
-              "action": {
-                "label": "Draft",
-                "when": "8/26/2026 10:00 AM",
-                "ms": 1787738400000,
-                "user": ""
-              }
-            },
-            {
-              "name": "muhanga_edcl",
-              "action": {
-                "label": "Browser edit",
-                "when": "8/26/2026 10:00 AM",
-                "ms": 1787738400000,
-                "user": ""
-              }
-            },
-            {
-              "name": "nyamata",
-              "action": {
-                "label": "Draft",
-                "when": "8/26/2026 10:00 AM",
-                "ms": 1787738400000,
-                "user": ""
-              }
-            },
-            {
-              "name": "gikondo_18",
-              "action": {
-                "label": "Sketch",
-                "when": "8/26/2026 10:00 AM",
-                "ms": 1787738400000,
-                "user": ""
-              }
-            },
-            {
-              "name": "kagarama_20",
-              "action": {
-                "label": "Draft",
-                "when": "8/26/2026 10:00 AM",
-                "ms": 1787738400000,
-                "user": ""
-              }
-            }
-          ],
-          "facts": [
-            {
-              "emoji": "⭐",
-              "tone": "amber",
-              "text": "Aug 24 was the busiest day — 8 designed"
-            },
-            {
-              "emoji": "🏆",
-              "tone": "violet",
-              "text": "Unknown leads the crew with 12 designed"
-            },
-            {
-              "emoji": "🗺️",
-              "tone": "teal",
-              "text": "Work spans 5 districts and 11 sectors"
-            },
-            {
-              "emoji": "📈",
-              "tone": "sky",
-              "text": "96% of dated design work landed in the last 7 days"
-            },
-            {
-              "emoji": "⚡",
-              "tone": "lime",
-              "text": "Fast lane carried 52% of the fleet"
-            },
-            {
-              "emoji": "🔒",
-              "tone": "rose",
-              "text": "90% of transformers have a technical lock"
-            },
-            {
-              "emoji": "🔥",
-              "tone": "amber",
-              "text": "8 active days · ~3.1 designed each"
-            }
-          ]
-        }
-      },
-      "expected": {
-        "schema": "ds.design-dashboard/v1",
-        "dashboard": {
-          "total": 84,
-          "designed_count": 26,
-          "process_lane_count": 21,
           "report_ready_count": 2,
           "combined_count": 1,
           "latest": {
@@ -4329,23 +1973,6 @@
               ]
             }
           ],
-          "lanes": [
-            {
-              "lane": "standard",
-              "label_key": "ddash_lane_legacy_standard",
-              "count": 13,
-              "percent": 48,
-              "offset": 0
-            },
-            {
-              "lane": "fast",
-              "label_key": "ddash_lane_fast",
-              "count": 14,
-              "percent": 52,
-              "offset": 48
-            }
-          ],
-          "fast_pct": 52,
           "governance": [
             {
               "status": "locked",
@@ -4645,14 +2272,6 @@
               }
             },
             {
-              "emoji": "⚡",
-              "tone": "lime",
-              "key": "ddash_fact_fast_share",
-              "params": {
-                "pct": 52
-              }
-            },
-            {
               "emoji": "🔒",
               "tone": "rose",
               "key": "ddash_fact_locked_share",
@@ -4675,6 +2294,7 @@
       "divergences": {
         "fields": [
           "crew",
+          "errorsByUser",
           "districts",
           "attention",
           "health"
@@ -4689,7 +2309,12 @@
             "nyagatare_edcl",
             "pin_diag_layer"
           ],
-          "restated": []
+          "restated": [
+            "kacyiru_16",
+            "kagarama_20",
+            "nyabugogo_14",
+            "kimironko_17"
+          ]
         }
       }
     },
@@ -5775,7 +3400,6 @@
           }
         ],
         "now_ms": 1787743440000,
-        "fast_lane": false,
         "tz_offset_minutes": 0
       },
       "expected_ts": {
@@ -6430,7 +4054,6 @@
         "dashboard": {
           "total": 85,
           "designed_count": 25,
-          "process_lane_count": 20,
           "report_ready_count": 2,
           "combined_count": 1,
           "latest": {
@@ -6577,13 +4200,8 @@
             {
               "name": "",
               "short": "",
-              "count": 5,
+              "count": 2,
               "unknown": true
-            },
-            {
-              "name": "a@x.com",
-              "short": "a",
-              "count": 1
             },
             {
               "name": "alice@ds.rw",
@@ -6654,38 +4272,6 @@
           "district_count": 5,
           "sector_count": 11,
           "phase_summaries": [
-            {
-              "key": "draft",
-              "label_key": "ddash_phase_draft_sketch",
-              "total": 85,
-              "buckets": [
-                {
-                  "status": "success",
-                  "label_key": "ddash_phase_status_success",
-                  "count": 8
-                },
-                {
-                  "status": "processing",
-                  "label_key": "ddash_phase_status_processing",
-                  "count": 1
-                },
-                {
-                  "status": "stale",
-                  "label_key": "ddash_phase_status_stale",
-                  "count": 1
-                },
-                {
-                  "status": "error",
-                  "label_key": "ddash_phase_status_error",
-                  "count": 3
-                },
-                {
-                  "status": "none",
-                  "label_key": "ddash_phase_status_none",
-                  "count": 72
-                }
-              ]
-            },
             {
               "key": "process",
               "label_key": "dsh_phase_label_process",
@@ -6773,23 +4359,6 @@
               ]
             }
           ],
-          "lanes": [
-            {
-              "lane": "standard",
-              "label_key": "ddash_lane_standard",
-              "count": 14,
-              "percent": 48,
-              "offset": 0
-            },
-            {
-              "lane": "fast",
-              "label_key": "ddash_lane_fast",
-              "count": 15,
-              "percent": 52,
-              "offset": 48
-            }
-          ],
-          "fast_pct": 52,
           "governance": [
             {
               "status": "locked",
@@ -6814,36 +4383,6 @@
               "user": ""
             },
             {
-              "name": "kacyiru_16",
-              "tone": "red",
-              "label_key": "ddash_note_legacy_superseded",
-              "phase": "sketch",
-              "message": "Sketch failed.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787652000000,
-              "user": ""
-            },
-            {
-              "name": "kagarama_20",
-              "tone": "red",
-              "label_key": "ddash_note_phase_error",
-              "phase": "draft",
-              "message": "Still broken.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787738400000,
-              "user": ""
-            },
-            {
-              "name": "kimironko_17",
-              "tone": "red",
-              "label_key": "ddash_note_legacy_superseded",
-              "phase": "draft",
-              "message": "Drafting failed on 12 poles.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787652000000,
-              "user": ""
-            },
-            {
               "name": "muhazi_12",
               "tone": "red",
               "label_key": "ddash_note_phase_error",
@@ -6852,16 +4391,6 @@
               "detail_key": "ddash_note_detail_phase_error",
               "when_ms": 0,
               "user": ""
-            },
-            {
-              "name": "nyabugogo_14",
-              "tone": "red",
-              "label_key": "ddash_note_legacy_superseded",
-              "phase": "draft",
-              "message": "Drafting failed on 12 poles.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787652000000,
-              "user": "a@x.com"
             },
             {
               "name": "pin_output_missing",
@@ -7009,18 +4538,18 @@
             }
           ],
           "health": {
-            "score": 75,
+            "score": 80,
             "label_key": "ddash_health_healthy",
-            "error_count": 10,
+            "error_count": 6,
             "warning_count": 8,
             "info_count": 3,
-            "clean_count": 64,
+            "clean_count": 68,
             "ring": [
               {
                 "key": "error",
                 "label_key": "ddash_ring_error",
-                "count": 10,
-                "percent": 12,
+                "count": 6,
+                "percent": 7,
                 "offset": 0
               },
               {
@@ -7028,21 +4557,21 @@
                 "label_key": "ddash_ring_warning",
                 "count": 8,
                 "percent": 9,
-                "offset": 12
+                "offset": 7
               },
               {
                 "key": "info",
                 "label_key": "ddash_ring_info",
                 "count": 3,
                 "percent": 4,
-                "offset": 21
+                "offset": 16
               },
               {
                 "key": "clean",
                 "label_key": "ddash_ring_clean",
-                "count": 64,
-                "percent": 75,
-                "offset": 25
+                "count": 68,
+                "percent": 80,
+                "offset": 20
               }
             ]
           },
@@ -7156,14 +4685,6 @@
               "key": "ddash_fact_last7_share",
               "params": {
                 "pct": 96
-              }
-            },
-            {
-              "emoji": "⚡",
-              "tone": "lime",
-              "key": "ddash_fact_fast_share",
-              "params": {
-                "pct": 52
               }
             },
             {
@@ -7503,7 +5024,6 @@
         ],
         "diagnostics": [],
         "now_ms": 1787743440000,
-        "fast_lane": false,
         "tz_offset_minutes": 0
       },
       "expected_ts": {
@@ -7976,7 +5496,6 @@
         "dashboard": {
           "total": 19,
           "designed_count": 11,
-          "process_lane_count": 9,
           "report_ready_count": 1,
           "combined_count": 1,
           "latest": {
@@ -8150,23 +5669,6 @@
           "sector_count": 3,
           "phase_summaries": [
             {
-              "key": "draft",
-              "label_key": "ddash_phase_draft_sketch",
-              "total": 19,
-              "buckets": [
-                {
-                  "status": "success",
-                  "label_key": "ddash_phase_status_success",
-                  "count": 3
-                },
-                {
-                  "status": "none",
-                  "label_key": "ddash_phase_status_none",
-                  "count": 16
-                }
-              ]
-            },
-            {
               "key": "process",
               "label_key": "dsh_phase_label_process",
               "total": 19,
@@ -8243,23 +5745,6 @@
               ]
             }
           ],
-          "lanes": [
-            {
-              "lane": "standard",
-              "label_key": "ddash_lane_standard",
-              "count": 8,
-              "percent": 62,
-              "offset": 0
-            },
-            {
-              "lane": "fast",
-              "label_key": "ddash_lane_fast",
-              "count": 5,
-              "percent": 38,
-              "offset": 62
-            }
-          ],
-          "fast_pct": 38,
           "governance": [
             {
               "status": "locked",
@@ -8495,14 +5980,6 @@
               }
             },
             {
-              "emoji": "⚡",
-              "tone": "lime",
-              "key": "ddash_fact_fast_share",
-              "params": {
-                "pct": 38
-              }
-            },
-            {
               "emoji": "🔒",
               "tone": "rose",
               "key": "ddash_fact_locked_share",
@@ -8576,7 +6053,6 @@
         ],
         "diagnostics": [],
         "now_ms": 1787743440000,
-        "fast_lane": false,
         "tz_offset_minutes": 0
       },
       "expected_ts": {
@@ -8686,7 +6162,6 @@
         "dashboard": {
           "total": 0,
           "designed_count": 0,
-          "process_lane_count": 0,
           "report_ready_count": 0,
           "combined_count": 0,
           "latest": {
@@ -8740,12 +6215,6 @@
           "sector_count": 0,
           "phase_summaries": [
             {
-              "key": "draft",
-              "label_key": "ddash_phase_draft_sketch",
-              "total": 0,
-              "buckets": []
-            },
-            {
               "key": "process",
               "label_key": "dsh_phase_label_process",
               "total": 0,
@@ -8764,8 +6233,6 @@
               "buckets": []
             }
           ],
-          "lanes": [],
-          "fast_pct": 0,
           "governance": [],
           "attention": [],
           "health": {
@@ -8794,7 +6261,6 @@
         "rows": [],
         "diagnostics": [],
         "now_ms": 1787743440000,
-        "fast_lane": false,
         "tz_offset_minutes": 0
       },
       "expected_ts": {
@@ -8904,7 +6370,6 @@
         "dashboard": {
           "total": 0,
           "designed_count": 0,
-          "process_lane_count": 0,
           "report_ready_count": 0,
           "combined_count": 0,
           "latest": {
@@ -8958,12 +6423,6 @@
           "sector_count": 0,
           "phase_summaries": [
             {
-              "key": "draft",
-              "label_key": "ddash_phase_draft_sketch",
-              "total": 0,
-              "buckets": []
-            },
-            {
               "key": "process",
               "label_key": "dsh_phase_label_process",
               "total": 0,
@@ -8982,8 +6441,6 @@
               "buckets": []
             }
           ],
-          "lanes": [],
-          "fast_pct": 0,
           "governance": [],
           "attention": [],
           "health": {
@@ -10048,7 +7505,6 @@
         ],
         "diagnostics": [],
         "now_ms": 1787743440000,
-        "fast_lane": false,
         "tz_offset_minutes": 0,
         "collisions": {
           "features": [
@@ -10798,7 +8254,6 @@
         "dashboard": {
           "total": 84,
           "designed_count": 26,
-          "process_lane_count": 21,
           "report_ready_count": 2,
           "combined_count": 1,
           "latest": {
@@ -10943,17 +8398,6 @@
           },
           "errors_by_user": [
             {
-              "name": "",
-              "short": "",
-              "count": 4,
-              "unknown": true
-            },
-            {
-              "name": "a@x.com",
-              "short": "a",
-              "count": 1
-            },
-            {
               "name": "carol@ds.rw",
               "short": "carol",
               "count": 1
@@ -10967,6 +8411,12 @@
               "name": "erin@ds.rw",
               "short": "erin",
               "count": 1
+            },
+            {
+              "name": "",
+              "short": "",
+              "count": 1,
+              "unknown": true
             }
           ],
           "districts": [
@@ -11017,38 +8467,6 @@
           "district_count": 5,
           "sector_count": 11,
           "phase_summaries": [
-            {
-              "key": "draft",
-              "label_key": "ddash_phase_draft_sketch",
-              "total": 84,
-              "buckets": [
-                {
-                  "status": "success",
-                  "label_key": "ddash_phase_status_success",
-                  "count": 8
-                },
-                {
-                  "status": "processing",
-                  "label_key": "ddash_phase_status_processing",
-                  "count": 1
-                },
-                {
-                  "status": "stale",
-                  "label_key": "ddash_phase_status_stale",
-                  "count": 1
-                },
-                {
-                  "status": "error",
-                  "label_key": "ddash_phase_status_error",
-                  "count": 3
-                },
-                {
-                  "status": "none",
-                  "label_key": "ddash_phase_status_none",
-                  "count": 71
-                }
-              ]
-            },
             {
               "key": "process",
               "label_key": "dsh_phase_label_process",
@@ -11136,23 +8554,6 @@
               ]
             }
           ],
-          "lanes": [
-            {
-              "lane": "standard",
-              "label_key": "ddash_lane_standard",
-              "count": 13,
-              "percent": 48,
-              "offset": 0
-            },
-            {
-              "lane": "fast",
-              "label_key": "ddash_lane_fast",
-              "count": 14,
-              "percent": 52,
-              "offset": 48
-            }
-          ],
-          "fast_pct": 52,
           "governance": [
             {
               "status": "locked",
@@ -11167,36 +8568,6 @@
           ],
           "attention": [
             {
-              "name": "kacyiru_16",
-              "tone": "red",
-              "label_key": "ddash_note_legacy_superseded",
-              "phase": "sketch",
-              "message": "Sketch failed.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787652000000,
-              "user": ""
-            },
-            {
-              "name": "kagarama_20",
-              "tone": "red",
-              "label_key": "ddash_note_phase_error",
-              "phase": "draft",
-              "message": "Still broken.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787738400000,
-              "user": ""
-            },
-            {
-              "name": "kimironko_17",
-              "tone": "red",
-              "label_key": "ddash_note_legacy_superseded",
-              "phase": "draft",
-              "message": "Drafting failed on 12 poles.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787652000000,
-              "user": ""
-            },
-            {
               "name": "muhazi_12",
               "tone": "red",
               "label_key": "ddash_note_phase_error",
@@ -11205,16 +8576,6 @@
               "detail_key": "ddash_note_detail_phase_error",
               "when_ms": 0,
               "user": ""
-            },
-            {
-              "name": "nyabugogo_14",
-              "tone": "red",
-              "label_key": "ddash_note_legacy_superseded",
-              "phase": "draft",
-              "message": "Drafting failed on 12 poles.",
-              "detail_key": "ddash_note_detail_phase_error",
-              "when_ms": 1787652000000,
-              "user": "a@x.com"
             },
             {
               "name": "pin_output_missing",
@@ -11342,18 +8703,18 @@
             }
           ],
           "health": {
-            "score": 79,
+            "score": 83,
             "label_key": "ddash_health_healthy",
-            "error_count": 8,
+            "error_count": 4,
             "warning_count": 7,
             "info_count": 3,
-            "clean_count": 66,
+            "clean_count": 70,
             "ring": [
               {
                 "key": "error",
                 "label_key": "ddash_ring_error",
-                "count": 8,
-                "percent": 10,
+                "count": 4,
+                "percent": 5,
                 "offset": 0
               },
               {
@@ -11361,21 +8722,21 @@
                 "label_key": "ddash_ring_warning",
                 "count": 7,
                 "percent": 8,
-                "offset": 10
+                "offset": 5
               },
               {
                 "key": "info",
                 "label_key": "ddash_ring_info",
                 "count": 3,
                 "percent": 4,
-                "offset": 18
+                "offset": 13
               },
               {
                 "key": "clean",
                 "label_key": "ddash_ring_clean",
-                "count": 66,
-                "percent": 79,
-                "offset": 21
+                "count": 70,
+                "percent": 83,
+                "offset": 17
               }
             ]
           },
@@ -11489,14 +8850,6 @@
               "key": "ddash_fact_last7_share",
               "params": {
                 "pct": 96
-              }
-            },
-            {
-              "emoji": "⚡",
-              "tone": "lime",
-              "key": "ddash_fact_fast_share",
-              "params": {
-                "pct": 52
               }
             },
             {

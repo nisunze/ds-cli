@@ -122,9 +122,23 @@ pub enum DiagnosticsSource {
 pub struct SnapshotSource {
     /// Rows the status list returned, special rows included.
     pub rows: usize,
-    /// Whether the host asked the fast lane for them.
-    pub fast_lane: bool,
     pub diagnostics_source: DiagnosticsSource,
+    /// A capture written before 2026-09-22 said which processing lane the
+    /// host asked for. There is one way to process a transformer now: the
+    /// member is read so an older capture still opens, and never written.
+    #[serde(default, rename = "fast_lane", skip_serializing)]
+    #[allow(dead_code)]
+    retired_fast_lane: Retired,
+}
+
+/// A member an older record still carries: read from any value, never written.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Retired;
+
+impl<'de> Deserialize<'de> for Retired {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        serde::de::IgnoredAny::deserialize(deserializer).map(|_| Retired)
+    }
 }
 
 /// One retained capture of one project.
@@ -904,7 +918,7 @@ mod tests {
             "lane": "stable",
             "captured_at_ms": captured_at_ms,
             "captured_by": "owner@example.com",
-            "source": {"rows": 2, "fast_lane": false, "diagnostics_source": "none"},
+            "source": {"rows": 2, "diagnostics_source": "none"},
             "ledger": ledger,
             "digest": ledger_digest(&parsed),
         })
@@ -988,6 +1002,21 @@ mod tests {
         let mut lane = snapshot("arjgpydw_nyam", 1_789_000_000_000);
         lane["lane"] = json!("nightly");
         assert!(validate(lane).unwrap_err().contains("Invalid design"));
+
+        // An unknown envelope member is refused; the one retired member an
+        // older capture still carries is read and dropped.
+        let mut invented = snapshot("arjgpydw_nyam", 1_789_000_000_000);
+        invented["source"]["invented"] = json!(true);
+        assert!(validate(invented).is_err());
+        let mut older = snapshot("arjgpydw_nyam", 1_789_000_000_000);
+        older["source"]["fast_lane"] = json!(true);
+        let parsed: Snapshot =
+            serde_json::from_value(older.clone()).expect("an older capture reads");
+        assert!(!serde_json::to_value(&parsed).unwrap()["source"]
+            .as_object()
+            .unwrap()
+            .contains_key("fast_lane"));
+        assert_eq!(validate(older).expect("admitted")["ok"], json!(true));
     }
 
     #[test]

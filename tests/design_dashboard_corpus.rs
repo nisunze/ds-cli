@@ -131,7 +131,7 @@ fn every_recorded_request_reads_the_same_in_rust_as_the_corpus_records() {
         record(&mut corpus);
     }
     let cases = corpus["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 7, "the corpus lost cases");
+    assert!(cases.len() >= 6, "the corpus lost cases");
     let biggest = cases
         .iter()
         .map(|case| case["request"]["rows"].as_array().map_or(0, Vec::len))
@@ -167,7 +167,7 @@ fn special_rows_travel_with_the_list_and_are_never_counted() {
     // And the same names inside a real fleet change nothing but their absence.
     let fleet = cases
         .iter()
-        .find(|case| case["id"] == "fleet-standard")
+        .find(|case| case["id"] == "fleet")
         .expect("the fleet case");
     let rows = fleet["request"]["rows"].as_array().expect("rows");
     let named: Vec<&str> = rows
@@ -313,9 +313,8 @@ fn every_ring_starts_at_zero_and_walks_its_offsets_forward() {
         let reply = answer(&case["request"]);
         let dashboard = &reply["dashboard"];
         let total = dashboard["total"].as_u64().expect("total");
-        let rings: [(&str, Option<&Vec<Value>>); 3] = [
+        let rings: [(&str, Option<&Vec<Value>>); 2] = [
             ("districts", dashboard["districts"].as_array()),
-            ("lanes", dashboard["lanes"].as_array()),
             ("health.ring", dashboard["health"]["ring"].as_array()),
         ];
         for (name, slices) in rings {
