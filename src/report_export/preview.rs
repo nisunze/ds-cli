@@ -31,72 +31,27 @@ pub struct Facts {
     pub format: PrintArtifactFormat,
     /// The survey forms the project's policy appends to a delivered report
     /// that this preview page was rendered without. A preview is a local
-    /// proof of a sheet, and survey layers live in the cloud: the delivery
-    /// engine refuses a local room under a survey-append policy
-    /// (`plain_local_survey_append_requires_cloud`), so the preview recipe
-    /// switches the append off in memory and names the omission here.
+    /// proof of a sheet and survey layers live in the cloud, so the preview
+    /// recipe switches the append off in its in-memory settings and names the
+    /// omission here. A delivery reaches the same page from the other side:
+    /// it leaves the policy alone and names the omission on its plan
+    /// ([`super::ExportPlan::survey_layers_omitted`]) under the same code.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub survey_forms_omitted: Vec<String>,
 }
 
-/// The settings row that switches survey appending on, under every spelling
-/// the reporter reads (`INCLUDE_SURVEY_EXPORT_SETTING_ALIASES`).
-const INCLUDE_SURVEY_ALIASES: &[&str] = &[
-    "include_survey_data_in_transformer_exports",
-    "include-survey-data-in-transformer-exports",
-];
-/// The settings row naming the appended forms, under every spelling the
-/// reporter reads (`SURVEY_EXPORT_FORM_SETTING_ALIASES`).
-const SURVEY_FORMS_ALIASES: &[&str] = &[
-    "survey_forms_in_transformer_exports",
-    "survey-forms-in-transformer-exports",
-    "transformer_export_survey_forms",
-    "transformer-export-survey-forms",
-];
-
-fn setting_truthy(value: &Value) -> bool {
-    match value {
-        Value::Bool(flag) => *flag,
-        Value::Number(number) => number.as_f64().is_some_and(|n| n != 0.0),
-        Value::String(text) => matches!(
-            text.trim().to_ascii_lowercase().as_str(),
-            "true" | "yes" | "1" | "on"
-        ),
-        _ => false,
-    }
-}
-
-fn parameter_matches(row: &Value, aliases: &[&str]) -> bool {
-    row["parameter"]
-        .as_str()
-        .map(|name| name.trim().to_ascii_lowercase())
-        .is_some_and(|name| aliases.contains(&name.as_str()))
-}
-
 /// Switch a survey-append policy off in the preview's in-memory settings and
-/// return the forms the page will be rendered without. A policy with no
+/// return the forms the page will be rendered without. The reading is the
+/// shared one ([`super::survey_append_forms`]), so a preview and a delivery
+/// never disagree about which forms a project appends. A policy with no
 /// forms appends nothing, so nothing is omitted and nothing is changed.
 fn omit_survey_append(rows: &mut [Value]) -> Vec<String> {
-    let enabled = rows
-        .iter()
-        .any(|row| parameter_matches(row, INCLUDE_SURVEY_ALIASES) && setting_truthy(&row["value"]));
-    if !enabled {
-        return Vec::new();
-    }
-    let forms = rows
-        .iter()
-        .filter(|row| parameter_matches(row, SURVEY_FORMS_ALIASES))
-        .flat_map(|row| crate::report_formats::string_list(&row["value"]))
-        .map(|form| form.trim().to_string())
-        .filter(|form| !form.is_empty())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
+    let forms = super::survey_append_forms(rows);
     if forms.is_empty() {
         return Vec::new();
     }
     for row in rows.iter_mut() {
-        if parameter_matches(row, INCLUDE_SURVEY_ALIASES) {
+        if super::include_survey_row(row) {
             row["value"] = Value::Bool(false);
         }
     }

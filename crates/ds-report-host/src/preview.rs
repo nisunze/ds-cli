@@ -152,15 +152,11 @@ pub struct PreviewPage {
 }
 
 /// The diagnostic code a preview page carries when the project's policy
-/// appends survey layers the local proof was rendered without.
-pub const SURVEY_LAYERS_OMITTED: &str = "print_survey_layers_omitted";
-
-fn survey_layers_omitted_message(forms: &[String]) -> String {
-    format!(
-        "rendered without the survey layers the project appends to delivered reports ({}); a local preview cannot append cloud-resident survey layers",
-        forms.join(", ")
-    )
-}
+/// appends survey layers the local proof was rendered without — the kernel's
+/// own, so a preview and a delivery name the omission with one word.
+pub use ds_command_kernel::report_export::{
+    survey_layers_omitted_message, SURVEY_LAYERS_OMITTED, SURVEY_LAYER_OMISSION_REASON,
+};
 
 fn inputs_invalid(message: impl Into<String>) -> HostFailure {
     HostFailure::new(CODE_INPUTS_INVALID, message)
@@ -343,7 +339,7 @@ pub fn transformer_page(
         for form in &preview.facts.survey_forms_omitted {
             context_omitted.push(ContextOmission {
                 layer: form.clone(),
-                reason: "survey layer: appended to delivered reports from the cloud, absent from a local preview".into(),
+                reason: SURVEY_LAYER_OMISSION_REASON.into(),
             });
         }
     }
