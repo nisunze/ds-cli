@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    apply::{map_command_error, validate_output_path, write_new},
+    apply::{guard_admin_refresh, map_command_error, validate_output_path, write_new},
     package,
 };
 
@@ -119,6 +119,11 @@ Receipt size is independent of entity count; per-command deltas are not returned
             code: "batch_invalid",
             when: "the JSON has invalid commands, mixed revision pins, duplicate IDs, or no commands",
             remedy: "read the command descriptor with `ds dsgrid describe --kind commands --id <id>`",
+        },
+        Refusal {
+            code: "admin_authority_required",
+            when: "a batch carries Rwanda admin facts that have not been resolved from the exact local village index",
+            remedy: "use ds dsgrid structure admin-refresh with a verified village index",
         },
         Refusal {
             code: "revision_conflict",
@@ -283,6 +288,7 @@ fn read_batch(raw_path: &str) -> Result<(Batch, String), Failure> {
     }
     let mut ids = HashSet::new();
     for item in &batch.commands {
+        guard_admin_refresh(&item.command)?;
         if item.command_id.trim().is_empty() || !ids.insert(&item.command_id) {
             return Err(invalid(
                 "command IDs must be nonempty and unique within the batch",

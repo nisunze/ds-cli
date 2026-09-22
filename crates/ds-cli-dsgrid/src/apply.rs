@@ -14,7 +14,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{CommandEnvelope, CommandError, GridSession};
+use ds_grid_engine::{CommandEnvelope, CommandError, GridCommand, GridSession};
 use ds_grid_exchange::{PackOptions, dsgrid};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -116,6 +116,11 @@ also returns the new package path, package revision, byte length and SHA-256.",
             remedy: "read the command descriptor with `ds dsgrid describe --kind commands --id <id>`",
         },
         Refusal {
+            code: "admin_authority_required",
+            when: "a generic command envelope attempts to author Rwanda admin fields without exact local index resolution",
+            remedy: "use ds dsgrid structure admin-refresh with a verified village index",
+        },
+        Refusal {
             code: "revision_conflict",
             when: "expected_revision does not equal the model's current authored revision",
             remedy: "re-read the model and deliberately rebuild the envelope against its current revision",
@@ -189,6 +194,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let model_bytes = package::read_bytes(model_path)?;
     let package = package::decode(model_path, &model_bytes)?;
     let envelope = read_envelope(envelope_path)?;
+    guard_admin_refresh(&envelope.command)?;
 
     let source_model_id = package.manifest.model.model_id.clone();
     let source_package_revision = package.manifest.model.model_revision;
@@ -280,6 +286,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "sha256": sha256(&artifact.bytes),
         },
     }))
+}
+
+/// The generic JSON lane cannot prove that a named village came from the
+/// exact local index. Only the typed admin-refresh adapter resolves that proof.
+pub(crate) fn guard_admin_refresh(command: &GridCommand) -> Result<(), Failure> {
+    if matches!(command, GridCommand::RefreshRwandaAdmin { .. }) {
+        return Err(Failure::invalid(
+            "admin_authority_required",
+            "Rwanda admin refresh needs exact village-index resolution",
+        )
+        .remedy("use ds dsgrid structure admin-refresh with a verified village index"));
+    }
+    Ok(())
 }
 
 fn read_envelope(raw_path: &str) -> Result<CommandEnvelope, Failure> {
@@ -445,4 +464,27 @@ pub fn render(data: &Value) -> String {
         data["artifact"]["path"].as_str().unwrap_or("?"),
         data["artifact"]["sha256"].as_str().unwrap_or("?"),
     )
+}
+
+#[cfg(test)]
+mod admin_guard_tests {
+    use super::*;
+
+    #[test]
+    fn generic_envelope_refuses_unverified_admin_names() {
+        let forged = GridCommand::RefreshRwandaAdmin {
+            authority_sha256: "unverified".into(),
+            rows: Vec::new(),
+            preview_token: "unverified".into(),
+            accept_existing_conflicts: false,
+        };
+        let error = guard_admin_refresh(&forged).unwrap_err();
+        assert_eq!(error.code(), "admin_authority_required");
+    }
+
+    #[test]
+    fn generic_envelope_keeps_unrelated_commands_available() {
+        let ordinary = GridCommand::EditEntityProperties { edits: Vec::new() };
+        assert!(guard_admin_refresh(&ordinary).is_ok());
+    }
 }
