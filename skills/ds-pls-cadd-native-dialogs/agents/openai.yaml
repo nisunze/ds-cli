@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS PLS-CADD Native Dialogs"
+  short_description: "Classify native Restore and report prompts"
+  default_prompt: "Use $ds-pls-cadd-native-dialogs to classify the next PLS-CADD 16.81 dialog in an authorized native workflow."
