@@ -99,6 +99,4 @@ acceptance. Never create a gap file, call the API or bypass `ds`.
 - Surface and backlog — `ds-mcp-host`, `ds-workstation-setup`,
   `ds-feedback-triage`.
 
-They assume this one; load none for ordinary discovery.
-
 Stops at: the four continuations above, each on its own condition.

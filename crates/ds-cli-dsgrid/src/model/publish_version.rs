@@ -17,11 +17,11 @@ use crate::model::{
 const PATH_ARG: Arg = Arg {
     name: "path",
     kind: ArgKind::Value,
-    value: "<absolute-path.dsgrid>",
+    value: "<absolute-path.dsgrid|bak>",
     required: false,
     default: None,
     choices: &[],
-    summary: "Exact .dsgrid file for headless publication; requires --project and --kind.",
+    summary: "Exact .dsgrid or, with --replace-content, PLS-CADD .bak for headless publication.",
 };
 
 const PROJECT_MODEL_ARG: Arg = Arg {
@@ -131,6 +131,36 @@ const LOCAL_REFUSALS: &[Refusal] = &[
     LOCAL_MODEL_NOT_FOUND,
     CONFIRMATION_REQUIRED,
     Refusal {
+        code: "replace_content_target_required",
+        when: "--replace-content lacks --path, --project, --project-model or --expected-head",
+        remedy: "name the exact incoming file and reviewed existing project head",
+    },
+    Refusal {
+        code: "backup_crs_required",
+        when: "a .bak replacement lacks --crs",
+        remedy: "declare its projected native CRS",
+    },
+    Refusal {
+        code: "backup_selection_invalid",
+        when: "--select-project does not resolve one PLS project",
+        remedy: "inspect the backup and name one exact .don leaf",
+    },
+    Refusal {
+        code: "backup_conversion_blocked",
+        when: "the exchange plan has blockers or losses",
+        remedy: "resolve the reported CRS, project selection or native source finding",
+    },
+    Refusal {
+        code: "backup_conversion_failed",
+        when: "the exchange did not produce exactly one valid .dsgrid",
+        remedy: "read the per-source conversion finding",
+    },
+    Refusal {
+        code: "replace_content_invalid",
+        when: "the incoming or downloaded head package cannot be validated or imported",
+        remedy: "inspect both packages and the selected project head",
+    },
+    Refusal {
         code: "model_invalid",
         when: "the captured model has validation findings",
         remedy: "run ds dsgrid validate and resolve its findings",
@@ -148,7 +178,7 @@ const LOCAL_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "model_not_found",
         when: "the source file does not exist",
-        remedy: "provide an existing .dsgrid path",
+        remedy: "provide an existing .dsgrid or .bak path",
     },
     Refusal {
         code: "model_unreadable",
@@ -158,7 +188,7 @@ const LOCAL_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "not_a_dsgrid_package",
         when: "the source is not a valid container",
-        remedy: "convert the source to .dsgrid first",
+        remedy: "provide a valid .dsgrid, or import a .bak with --replace-content and --crs",
     },
     Refusal {
         code: "manifest_unreadable",
@@ -188,7 +218,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "publish-version"],
     contract: 2,
     summary: "Publish a verified model revision from a file or Desktop.",
-    purpose: "With --path and --project, the Rust owner validates and uploads exact bytes, commits against --expected-head, and verifies the saved revision without Desktop. --kind is required; an existing project model also requires --expected-head. The destination project is authorized by the gateway and never changes saved selection. Without --path, publishes the selected Desktop working copy through the existing paired flow. Publishing a revision never renames an existing model.",
+    purpose: "With --path and --project, validate and publish exact model bytes without Desktop. For incoming .dsgrid or PLS-CADD .bak content replacing an existing model, --replace-content downloads the reviewed head, converts a backup in memory with explicit --crs, imports the source as the next native version, and commits under --expected-head. It preserves the existing project model and immutable prior versions. Without --path, publishes the selected Desktop working copy. Publication never changes the active local model.",
     chapter: Chapter::GridModel,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,
@@ -196,6 +226,24 @@ pub static COMMAND: Command = Command {
     args: &[
         MODEL_ARG,
         PATH_ARG,
+        Arg::switch(
+            "replace-content",
+            "Import incoming .dsgrid or .bak content as the next version of an existing project model.",
+        ),
+        Arg::value(
+            "crs",
+            "<code>",
+            "Declared projected CRS required for a PLS-CADD .bak source.",
+        ),
+        Arg::value(
+            "select-project",
+            "<don-leaf>",
+            "Exact .don project leaf when a .bak holds several projects.",
+        ),
+        Arg::switch(
+            "swap-xy",
+            "Apply the explicit X/Y correction while importing a PLS-CADD .bak.",
+        ),
         PROJECT_MODEL_ARG,
         KIND_ARG,
         NAME_ARG,
@@ -221,12 +269,19 @@ pub static COMMAND: Command = Command {
         },
         DESCRIPTOR_ARG,
     ],
-    output: "Published project/model/revision, kind, expected and parent heads, digest and byte length. Native publication includes verified=true and upload_skipped after exact readback; the paired flow also reports its local working-copy binding. active_model_changed=false confirms publication did not switch a local model.",
-    examples: &[Example {
-        command: "ds dsgrid publish-version --path /work/route.dsgrid --project <exact-id> --name \"Kamonyi MV\" --kind mv_line --yes",
-        note: "Publish a new model through the native server contract without an open map.",
-        runnable: false,
-    }],
+    output: "Published project/model/revision, kind, parent head, exact digest and byte length. Replacement adds source/head/result attestations and any backup conversion receipt. Native replacement reports active_model_changed=false.",
+    examples: &[
+        Example {
+            command: "ds dsgrid publish-version --path /work/route.dsgrid --project <exact-id> --name \"Kamonyi MV\" --kind mv_line --yes",
+            note: "Publish a new model without Desktop.",
+            runnable: false,
+        },
+        Example {
+            command: "ds dsgrid publish-version --path /work/replacement.bak --replace-content --crs EPSG:32735 --project <project> --project-model <model> --expected-head <revision> --kind mv_line --yes",
+            note: "Import a backup as the next version of an existing model.",
+            runnable: false,
+        },
+    ],
     refusals: &publication_refusals(),
     reference: Some("docs/reference/dsgrid.md"),
     // The only command in the CLI that reaches the paired window without
@@ -249,6 +304,18 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // operator meant, and it has no way to know.
     let model = inputs.value("model");
     let path = inputs.value("path");
+    let replace_content = inputs.switch("replace-content");
+    if replace_content
+        && (path.is_none()
+            || inputs.value("project").is_none()
+            || inputs.value("project-model").is_none()
+            || inputs.value("expected-head").is_none())
+    {
+        return Err(Failure::invalid(
+            "replace_content_target_required",
+            "--replace-content needs a file, explicit project, existing project model and reviewed expected head",
+        ));
+    }
     if model.is_some() && path.is_some() {
         return Err(Failure::invalid(
             "ambiguous_publish_source",
@@ -263,7 +330,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(path) = path {
         arguments.insert(
             "path".into(),
-            json!(crate::model::external_dsgrid_path(path, "path")?),
+            json!(if replace_content {
+                replace_source_path(path)?
+            } else {
+                crate::model::external_dsgrid_path(path, "path")?
+            }),
         );
     }
 
@@ -328,6 +399,27 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     .map_err(crate::model::classify)
 }
 
+fn replace_source_path(raw: &str) -> Result<String, Failure> {
+    let path = std::path::Path::new(raw);
+    if !path.is_absolute() {
+        return Err(Failure::invalid(
+            "absolute_path_required",
+            "--path must be absolute",
+        ));
+    }
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    if !extension.eq_ignore_ascii_case("dsgrid") && !extension.eq_ignore_ascii_case("bak") {
+        return Err(Failure::invalid(
+            "unsupported_model_source",
+            "--replace-content accepts .dsgrid or .bak",
+        ));
+    }
+    Ok(raw.to_owned())
+}
+
 pub fn render(data: &Value) -> String {
     let mut out = format!(
         "published {} v{} in {}\n",
@@ -357,4 +449,80 @@ pub fn render(data: &Value) -> String {
         out.push_str("  note       the version is committed; the local binding was not written\n");
     }
     out
+}
+
+#[cfg(test)]
+mod replacement_tests {
+    use super::*;
+    use ds_cli_contract::{Format, Output, parse};
+
+    fn inputs(flags: &[&str]) -> Inputs {
+        parse(
+            &COMMAND,
+            &flags.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        )
+        .expect("declared command flags")
+    }
+
+    fn context() -> Context {
+        Context {
+            confirmed: true,
+            output: Output {
+                format: Format::Json,
+                pretty: false,
+                color: false,
+            },
+        }
+    }
+
+    fn pinned_flags<'a>(path: &'a str) -> Vec<&'a str> {
+        vec![
+            "--path",
+            path,
+            "--replace-content",
+            "--project",
+            "project",
+            "--project-model",
+            "model",
+            "--expected-head",
+            "revision",
+            "--kind",
+            "mv_line",
+        ]
+    }
+
+    #[test]
+    fn replacement_requires_an_existing_reviewed_target_before_reading_source() {
+        let flags = inputs(&[
+            "--path",
+            "/missing.dsgrid",
+            "--replace-content",
+            "--project",
+            "project",
+            "--kind",
+            "mv_line",
+        ]);
+        let error = run(&flags, &context()).unwrap_err();
+        assert_eq!(error.code(), "replace_content_target_required");
+    }
+
+    #[test]
+    fn backup_requires_declared_crs_before_reading_source() {
+        let flags = inputs(&pinned_flags("/missing.bak"));
+        let error = run(&flags, &context()).unwrap_err();
+        assert_eq!(error.code(), "backup_crs_required");
+    }
+
+    #[test]
+    fn invalid_backup_plan_refuses_before_auth_or_project_write() {
+        let path =
+            std::env::temp_dir().join(format!("dsgrid-invalid-backup-{}.bak", std::process::id()));
+        std::fs::write(&path, b"invalid-backup").unwrap();
+        let path_text = path.to_str().unwrap();
+        let mut flags = pinned_flags(path_text);
+        flags.extend(["--crs", "EPSG:32735"]);
+        let error = run(&inputs(&flags), &context()).unwrap_err();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(error.code(), "backup_conversion_blocked");
+    }
 }

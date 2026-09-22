@@ -37,6 +37,23 @@ Publish separately with `ds dsgrid publish-version`. For a new project model, na
 
 Do not retry a moved-head conflict or change projects to force publication. Re-read the project model, review the new head, and ask for a fresh publication decision.
 
+
+To import replacement content as the next version of an existing project
+model, discover the live `dsgrid.publish-version` descriptor. Use one
+`ds dsgrid publish-version --path <incoming.dsgrid|incoming.bak>
+--replace-content --project <id> --project-model <existing-id>
+--expected-head <reviewed-revision> --kind mv_line --reason <text> --yes`
+operation. A PLS-CADD `.bak` also needs explicit `--crs`; a backup with
+several projects needs exact `--select-project <don-leaf>`. The command
+converts a backup in memory, downloads and verifies the immutable head,
+imports the source under that head's native identity at the next revision,
+then performs normal expected-head publication and exact readback. Inspect
+the receipt's source/head/result attestations, backup warnings or losses,
+new revision and digest. A changed head, invalid source or conversion loss
+refuses. No manual manifest ID rewrite, extra local Desktop model or third
+project model is part of this flow. Verify V1 is unchanged and the active
+local model did not change.
+
 ## Typed edits of a working copy (structure list, descriptions, H-poles)
 
 A working copy is edited in place through typed commands, never by hand-built
