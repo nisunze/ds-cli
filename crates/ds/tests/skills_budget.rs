@@ -29,10 +29,15 @@ fn every_skill_fits_its_conditional_load_budget() {
         let bytes = fs::metadata(&skill).expect("skill metadata").len();
         checked += 1;
         if bytes > budget {
-            oversized.push(format!("skills/{name}/SKILL.md is {bytes} bytes; budget {budget}"));
+            oversized.push(format!(
+                "skills/{name}/SKILL.md is {bytes} bytes; budget {budget}"
+            ));
         }
     }
-    assert!(checked > 10, "expected the skills directory beside the crates, found {checked} skills");
+    assert!(
+        checked > 10,
+        "expected the skills directory beside the crates, found {checked} skills"
+    );
     assert!(
         oversized.is_empty(),
         "the desktop release lane refuses these skills; trim them before pushing:\n{}",

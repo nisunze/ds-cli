@@ -22,12 +22,14 @@ const INDEX_ARG: Arg = Arg::value(
     "index",
     "<path>",
     "Exact local Rwanda village .dsab or .geojson.zst authority file.",
-).required();
+)
+.required();
 const DIGEST_ARG: Arg = Arg::value(
     "index-sha256",
     "<sha256>",
     "SHA-256 of the installed index bytes; must match a reviewed release digest.",
-).required();
+)
+.required();
 const SELECTION_ARG: Arg = Arg::value(
     "selection",
     "<json-path>",
@@ -127,13 +129,11 @@ pub static COMMAND: Command = Command {
         mutation::ACCOUNT_ARG,
     ],
     output: "The exact source revision and index SHA-256, resolved hierarchy and coordinate evidence per selected structure, conflict list, preview token, and apply revision/artifact receipt.",
-    examples: &[
-        Example {
-            command: "ds dsgrid structure admin-refresh --package model.dsgrid --selection selected.json --index rwanda_villages.geojson.zst --index-sha256 381363ec19272091faf78f8f18b96187be5eb0634b8a047fef4edaab003a8b31 --dry-run --output json",
-            note: "Preview an explicit bounded selection.",
-            runnable: false,
-        },
-    ],
+    examples: &[Example {
+        command: "ds dsgrid structure admin-refresh --package model.dsgrid --selection selected.json --index rwanda_villages.geojson.zst --index-sha256 381363ec19272091faf78f8f18b96187be5eb0634b8a047fef4edaab003a8b31 --dry-run --output json",
+        note: "Preview an explicit bounded selection.",
+        runnable: false,
+    }],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &["administrative", "staking location"],
@@ -160,43 +160,57 @@ fn read_selection(path: &str) -> Result<Selection, Failure> {
         Failure::invalid("selection_invalid", format!("cannot read selection: {e}"))
     })?;
     if !metadata.is_file() || metadata.len() > 512 * 1024 {
-        return Err(Failure::invalid("selection_invalid", "selection is not a bounded regular file"));
+        return Err(Failure::invalid(
+            "selection_invalid",
+            "selection is not a bounded regular file",
+        ));
     }
     let bytes = std::fs::read(path).map_err(|e| {
         Failure::invalid("selection_invalid", format!("cannot read selection: {e}"))
     })?;
     let selection: Selection = serde_json::from_slice(&bytes).map_err(|e| {
-        Failure::invalid("selection_invalid", format!("selection JSON is invalid: {e}"))
+        Failure::invalid(
+            "selection_invalid",
+            format!("selection JSON is invalid: {e}"),
+        )
     })?;
     if selection.structures.is_empty() || selection.structures.len() > 5000 {
-        return Err(Failure::invalid("selection_invalid", "select 1..5000 structures"));
+        return Err(Failure::invalid(
+            "selection_invalid",
+            "select 1..5000 structures",
+        ));
     }
     Ok(selection)
 }
 
 fn load_index(path: &str, required_digest: &str) -> Result<AdminBoundsIndex, Failure> {
-    let metadata = std::fs::metadata(path).map_err(|e| {
-        Failure::invalid("index_unavailable", format!("cannot read index: {e}"))
-    })?;
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| Failure::invalid("index_unavailable", format!("cannot read index: {e}")))?;
     if !metadata.is_file() || metadata.len() > 128 * 1024 * 1024 {
-        return Err(Failure::invalid("index_unavailable", "index is not a bounded regular file"));
+        return Err(Failure::invalid(
+            "index_unavailable",
+            "index is not a bounded regular file",
+        ));
     }
-    let bytes = std::fs::read(path).map_err(|e| {
-        Failure::invalid("index_unavailable", format!("cannot read index: {e}"))
-    })?;
+    let bytes = std::fs::read(path)
+        .map_err(|e| Failure::invalid("index_unavailable", format!("cannot read index: {e}")))?;
     let observed = format!("{:x}", Sha256::digest(&bytes));
     if observed != required_digest || !released_digest_matches(&observed) {
         return Err(Failure::invalid(
             "index_digest_mismatch",
             "index bytes do not match the supplied reviewed release digest",
-        ).detail(json!({ "expected": required_digest, "observed": observed })));
+        )
+        .detail(json!({ "expected": required_digest, "observed": observed })));
     }
     let index = AdminBoundsIndex::load_from_bytes_for_path(Path::new(path), &bytes)
         .map_err(|e| Failure::invalid("index_invalid", format!("index parse failed: {e}")))?;
     if index.village_count() != 14_920 {
         return Err(Failure::invalid(
             "index_invalid",
-            format!("index has {} villages; expected 14,920", index.village_count()),
+            format!(
+                "index has {} villages; expected 14,920",
+                index.village_count()
+            ),
         ));
     }
     Ok(index)
@@ -204,13 +218,22 @@ fn load_index(path: &str, required_digest: &str) -> Result<AdminBoundsIndex, Fai
 
 fn exact_village(index: &AdminBoundsIndex, code: &str) -> Result<AdminDetail, Failure> {
     if code.len() != 8 || !code.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(Failure::invalid("village_unknown", "village code must have eight digits"));
+        return Err(Failure::invalid(
+            "village_unknown",
+            "village code must have eight digits",
+        ));
     }
     let detail = index.detail(code).ok_or_else(|| {
-        Failure::invalid("village_unknown", format!("village code {code} is absent from the index"))
+        Failure::invalid(
+            "village_unknown",
+            format!("village code {code} is absent from the index"),
+        )
     })?;
     if detail.level != "village" || detail.village_code.as_deref() != Some(code) {
-        return Err(Failure::invalid("index_invalid", "village hierarchy has an inconsistent leaf"));
+        return Err(Failure::invalid(
+            "index_invalid",
+            "village hierarchy has an inconsistent leaf",
+        ));
     }
     Ok(detail)
 }
@@ -244,9 +267,16 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let digest = inputs.require("index-sha256")?;
     let index = load_index(index_path, digest)?;
     let selection = read_selection(inputs.require("selection")?)?;
-    let need_positions = selection.structures.iter().any(|s| s.village_code.is_none());
+    let need_positions = selection
+        .structures
+        .iter()
+        .any(|s| s.village_code.is_none());
     let positions = if need_positions {
-        Some(crate::objects::index("admin-refresh", &opened.target.path(), None)?)
+        Some(crate::objects::index(
+            "admin-refresh",
+            &opened.target.path(),
+            None,
+        )?)
     } else {
         None
     };
@@ -256,26 +286,42 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     for selected in &selection.structures {
         let structure = resolve_structure(opened.session.snapshot(), &selected.id)?;
         if !seen.insert(structure.id.as_str().to_owned()) {
-            return Err(Failure::invalid("selection_invalid", format!(
-                "structure {} occurs more than once", structure.id,
-            )));
+            return Err(Failure::invalid(
+                "selection_invalid",
+                format!("structure {} occurs more than once", structure.id,),
+            ));
         }
         let code = if let Some(code) = &selected.village_code {
             code.clone()
         } else {
-            let object = positions.as_ref().unwrap().structures.iter()
+            let object = positions
+                .as_ref()
+                .unwrap()
+                .structures
+                .iter()
                 .find(|object| object.id == structure.id.as_str())
-                .ok_or_else(|| Failure::invalid(
-                    "model_crs_unsupported",
-                    format!("structure {} has no provable projected position", structure.id),
-                ))?;
+                .ok_or_else(|| {
+                    Failure::invalid(
+                        "model_crs_unsupported",
+                        format!(
+                            "structure {} has no provable projected position",
+                            structure.id
+                        ),
+                    )
+                })?;
             let [lon, lat] = object.position;
-            let hit = index.enrich_unique(lon, lat)
+            let hit = index
+                .enrich_unique(lon, lat)
                 .map_err(|e| Failure::invalid("village_unknown", e.to_string()))?
-                .ok_or_else(|| Failure::invalid(
-                    "village_unknown",
-                    format!("structure {} position is outside indexed Rwanda villages", structure.id),
-                ))?;
+                .ok_or_else(|| {
+                    Failure::invalid(
+                        "village_unknown",
+                        format!(
+                            "structure {} position is outside indexed Rwanda villages",
+                            structure.id
+                        ),
+                    )
+                })?;
             coordinate_evidence.push(json!({
                 "structure_id": structure.id.as_str(),
                 "declared_crs": positions.as_ref().unwrap().crs,
@@ -291,8 +337,13 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     }
     let accept_conflicts = inputs.switch("accept-existing-conflicts");
     let preview = preview_rwanda_admin_refresh(
-        opened.session.snapshot(), &opened.head, digest, &rows, accept_conflicts,
-    ).map_err(crate::apply::map_command_error)?;
+        opened.session.snapshot(),
+        &opened.head,
+        digest,
+        &rows,
+        accept_conflicts,
+    )
+    .map_err(crate::apply::map_command_error)?;
     let preview_token = preview.preview_token.clone();
     if !writing {
         return Ok(json!({
@@ -310,7 +361,8 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         return Err(Failure::conflict(
             "preview_changed",
             "the token does not match this model revision, index, selection and conflict choice",
-        ).detail(json!({ "expected_preview_token": preview_token })));
+        )
+        .detail(json!({ "expected_preview_token": preview_token })));
     }
     let command = GridCommand::RefreshRwandaAdmin {
         authority_sha256: digest.to_owned(),
@@ -320,7 +372,10 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     };
     mutation::run(
         opened,
-        vec![Planned { command_id: uuid::Uuid::new_v4().to_string(), command }],
+        vec![Planned {
+            command_id: uuid::Uuid::new_v4().to_string(),
+            command,
+        }],
         true,
         json!({
             "index_path": index_path,
@@ -352,10 +407,16 @@ mod tests {
         if !path.exists() {
             return;
         }
-        let index = load_index(path.to_str().unwrap(), ds_rwanda_admin_bounds::RWANDA_GEOJSON_SHA256)
-            .unwrap();
-        let location = location_from_detail(exact_village(&index, "11090307").unwrap(),
-            ds_rwanda_admin_bounds::RWANDA_GEOJSON_SHA256).unwrap();
+        let index = load_index(
+            path.to_str().unwrap(),
+            ds_rwanda_admin_bounds::RWANDA_GEOJSON_SHA256,
+        )
+        .unwrap();
+        let location = location_from_detail(
+            exact_village(&index, "11090307").unwrap(),
+            ds_rwanda_admin_bounds::RWANDA_GEOJSON_SHA256,
+        )
+        .unwrap();
         assert_eq!(location.village, "Inyarurembo");
         assert_eq!(location.sector, "Nyarugenge");
         assert_eq!(location.district, "Nyarugenge");

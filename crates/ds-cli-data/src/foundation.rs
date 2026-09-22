@@ -61,8 +61,8 @@ const BOUNDARY_ARG: Arg = Arg::value(
     "<path.geojson>",
     "One WGS84 Polygon or MultiPolygon (bare, a Feature, or a one-feature FeatureCollection) whose envelope is at most 25 km²: a corridor from `ds data vector buffer`, an admin unit, a drawn extent.",
 );
-const LIMIT_ARG: Arg = Arg::value("limit", "<1-5000>", "Most rows to answer; 5000 is the cap.")
-    .default("5000");
+const LIMIT_ARG: Arg =
+    Arg::value("limit", "<1-5000>", "Most rows to answer; 5000 is the cap.").default("5000");
 const GEOMETRY_OUT_ARG: Arg = Arg::value(
     "geometry-out",
     "<path.geojson>",
@@ -240,7 +240,15 @@ pub static QUERY_COMMAND: Command = Command {
     ],
     refusals: QUERY_REFUSALS,
     reference: Some("docs/reference/data.md"),
-    search: &["meter", "edcl", "household", "served", "foundation", "cloud", "bigquery"],
+    search: &[
+        "meter",
+        "edcl",
+        "household",
+        "served",
+        "foundation",
+        "cloud",
+        "bigquery",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -280,7 +288,17 @@ pub static PARCELS_COMMAND: Command = Command {
     ],
     refusals: QUERY_REFUSALS,
     reference: Some("docs/reference/data.md"),
-    search: &["parcel", "land", "plot", "corridor", "crossed", "cadastral", "foundation", "cloud", "bigquery"],
+    search: &[
+        "parcel",
+        "land",
+        "plot",
+        "corridor",
+        "crossed",
+        "cadastral",
+        "foundation",
+        "cloud",
+        "bigquery",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -360,9 +378,7 @@ fn refused_locally(error: Failure) -> Failure {
         Failure::invalid(UPI_INVALID.code, message).remedy(UPI_INVALID.remedy)
     } else if message.contains("exceeds") || message.contains("limit") {
         Failure::invalid(BOUND_EXCEEDED.code, message).remedy(BOUND_EXCEEDED.remedy)
-    } else if message.contains("bound")
-        || message.contains("code")
-        || message.contains("rectangle")
+    } else if message.contains("bound") || message.contains("code") || message.contains("rectangle")
     {
         Failure::invalid(INVALID_SCOPE.code, message).remedy(INVALID_SCOPE.remedy)
     } else {
@@ -477,7 +493,8 @@ fn bound(inputs: &Inputs, lane: &str) -> Result<(BoundFields, Value), Failure> {
     let limit = match inputs.value("limit") {
         None => None,
         Some(raw) => Some(raw.trim().parse::<u64>().map_err(|_| {
-            Failure::invalid(BOUND_EXCEEDED.code, "--limit is 1 to 5000").remedy(BOUND_EXCEEDED.remedy)
+            Failure::invalid(BOUND_EXCEEDED.code, "--limit is 1 to 5000")
+                .remedy(BOUND_EXCEEDED.remedy)
         })?),
     };
     let named = ["village", "cell", "bbox", "boundary", "transformer"]
@@ -491,7 +508,10 @@ fn bound(inputs: &Inputs, lane: &str) -> Result<(BoundFields, Value), Failure> {
         )
         .remedy(INVALID_SCOPE.remedy));
     }
-    let mut fields = BoundFields { limit, ..Default::default() };
+    let mut fields = BoundFields {
+        limit,
+        ..Default::default()
+    };
     let mut scope = Value::Null;
     if let Some(code) = inputs.value("village") {
         fields.village_code = Some(code.trim().to_owned());
@@ -523,12 +543,18 @@ struct BoundFields {
 /// and its envelope is the client core's, shared with every other caller.
 fn read_boundary(path: &Path) -> Result<Value, Failure> {
     let raw = std::fs::read_to_string(path).map_err(|error| {
-        Failure::invalid(INVALID_SCOPE.code, format!("--boundary: cannot read {}: {error}", path.display()))
-            .remedy(INVALID_SCOPE.remedy)
+        Failure::invalid(
+            INVALID_SCOPE.code,
+            format!("--boundary: cannot read {}: {error}", path.display()),
+        )
+        .remedy(INVALID_SCOPE.remedy)
     })?;
     let value: Value = serde_json::from_str(&raw).map_err(|error| {
-        Failure::invalid(INVALID_SCOPE.code, format!("--boundary: not GeoJSON: {error}"))
-            .remedy(INVALID_SCOPE.remedy)
+        Failure::invalid(
+            INVALID_SCOPE.code,
+            format!("--boundary: not GeoJSON: {error}"),
+        )
+        .remedy(INVALID_SCOPE.remedy)
     })?;
     let geometry = match value["type"].as_str() {
         Some("FeatureCollection") => {
@@ -536,7 +562,10 @@ fn read_boundary(path: &Path) -> Result<Value, Failure> {
             if features.len() != 1 {
                 return Err(Failure::invalid(
                     INVALID_SCOPE.code,
-                    format!("--boundary: the collection holds {} features; a bound is one polygon", features.len()),
+                    format!(
+                        "--boundary: the collection holds {} features; a bound is one polygon",
+                        features.len()
+                    ),
                 )
                 .remedy(INVALID_SCOPE.remedy));
             }
@@ -547,7 +576,10 @@ fn read_boundary(path: &Path) -> Result<Value, Failure> {
         other => {
             return Err(Failure::invalid(
                 INVALID_SCOPE.code,
-                format!("--boundary: {} is not a Polygon or MultiPolygon", other.unwrap_or("this")),
+                format!(
+                    "--boundary: {} is not a Polygon or MultiPolygon",
+                    other.unwrap_or("this")
+                ),
             )
             .remedy(INVALID_SCOPE.remedy));
         }
@@ -647,7 +679,8 @@ fn answer(
     });
     if let Some(out) = out {
         write_geometry(&out, &features)?;
-        receipt["geometry"] = json!({"written_to": out.to_string_lossy(), "features": features.len()});
+        receipt["geometry"] =
+            json!({"written_to": out.to_string_lossy(), "features": features.len()});
     }
     Ok((answer, features, receipt))
 }
@@ -665,7 +698,10 @@ pub fn render_lookup(data: &Value) -> String {
         parcel["cell"].as_str().unwrap_or("?"),
         geometry["type"].as_str().unwrap_or("geometry"),
         geometry["coordinate_positions"].as_u64().unwrap_or(0),
-        parcel["source_area"].as_f64().map(|a| format!("{a:.0}")).unwrap_or_else(|| "?".into()),
+        parcel["source_area"]
+            .as_f64()
+            .map(|a| format!("{a:.0}"))
+            .unwrap_or_else(|| "?".into()),
         data["dataset"]["layer"].as_str().unwrap_or("?"),
         data["dataset"]["residency"].as_str().unwrap_or("?"),
         data["dataset"]["source"].as_str().unwrap_or("?"),
@@ -716,7 +752,10 @@ pub fn render_parcels(data: &Value) -> String {
         } else {
             ""
         },
-        data["source_area_m2"].as_f64().map(|a| format!("{a:.0}")).unwrap_or_else(|| "?".into()),
+        data["source_area_m2"]
+            .as_f64()
+            .map(|a| format!("{a:.0}"))
+            .unwrap_or_else(|| "?".into()),
         data["dataset"]["layer"].as_str().unwrap_or("?"),
         data["dataset"]["residency"].as_str().unwrap_or("?"),
         serde_json::to_string(&data["query"]["bound"]).unwrap_or_default(),
@@ -748,7 +787,10 @@ mod tests {
 
     #[test]
     fn a_rectangle_is_four_ordered_numbers() {
-        assert_eq!(parse_bbox("29.57,-2.53, 29.59,-2.51").unwrap(), [29.57, -2.53, 29.59, -2.51]);
+        assert_eq!(
+            parse_bbox("29.57,-2.53, 29.59,-2.51").unwrap(),
+            [29.57, -2.53, 29.59, -2.51]
+        );
         assert!(parse_bbox("29.57,-2.53").is_err());
         assert!(parse_bbox("a,b,c,d").is_err());
     }
@@ -756,15 +798,27 @@ mod tests {
     #[test]
     fn local_refusals_carry_this_commands_codes() {
         assert_eq!(
-            refused_locally(Failure::invalid("auth_input_invalid", "A UPI is 8 to 20 digits")).code(),
+            refused_locally(Failure::invalid(
+                "auth_input_invalid",
+                "A UPI is 8 to 20 digits"
+            ))
+            .code(),
             "upi_invalid"
         );
         assert_eq!(
-            refused_locally(Failure::invalid("auth_input_invalid", "The rectangle exceeds the 25 km² bound")).code(),
+            refused_locally(Failure::invalid(
+                "auth_input_invalid",
+                "The rectangle exceeds the 25 km² bound"
+            ))
+            .code(),
             "bound_exceeded"
         );
         assert_eq!(
-            refused_locally(Failure::invalid("auth_input_invalid", "A village code is exactly 8 digits")).code(),
+            refused_locally(Failure::invalid(
+                "auth_input_invalid",
+                "A village code is exactly 8 digits"
+            ))
+            .code(),
             "invalid_admin_scope"
         );
     }

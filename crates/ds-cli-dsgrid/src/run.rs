@@ -585,7 +585,9 @@ fn dispatch(
                 ds_grid_engine::terrain_sampling_regularity(
                     session.snapshot(),
                     &request.alignment_id,
-                    request.corridor_m.unwrap_or(ds_grid_engine::projection::DEFAULT_PROFILE_CORRIDOR_M),
+                    request
+                        .corridor_m
+                        .unwrap_or(ds_grid_engine::projection::DEFAULT_PROFILE_CORRIDOR_M),
                 )
                 .map_err(|error| engine_error(operation_id, error))?,
             )
@@ -781,7 +783,10 @@ mod tests {
         assert_eq!(fallback.maximum_span_m, 180.0);
 
         let mut ordinary = params;
-        ordinary.as_object_mut().unwrap().remove("bounded_interval_fallback");
+        ordinary
+            .as_object_mut()
+            .unwrap()
+            .remove("bounded_interval_fallback");
         validate_params(&descriptor, &ordinary).unwrap();
         let parsed: SpottingPlanRequest = parse("plan_optimum_spotting", &ordinary).unwrap();
         assert!(parsed.bounded_interval_fallback.is_none());
