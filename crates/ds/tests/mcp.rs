@@ -223,6 +223,12 @@ fn the_mcp_signed_out_remedy_is_the_cli_signed_out_remedy() {
 /// sign-in. This is the gate the owner asked for on 2026-09-22 after a
 /// non-technical engineer was told to open a terminal: the words are banned
 /// everywhere an MCP host can read, not only in the one field that leaked.
+///
+/// Cost is kept in mind: every descriptor is read once through the CLI in
+/// schema mode (what the MCP server itself reads at startup, and what a
+/// `describe` answers verbatim — `assert_mcp_descriptor_with_device_link`
+/// holds that equality), and the live MCP sweep describes the sign-in
+/// commands themselves rather than resolving availability for four hundred.
 #[test]
 fn no_published_mcp_text_names_a_terminal_sign_in() {
     let bundle = TestDir::new("clean-skills");
@@ -230,25 +236,14 @@ fn no_published_mcp_text_names_a_terminal_sign_in() {
     let source_sha = version["data"]["source_sha"].as_str().expect("source sha");
     write_skill_bundle(&bundle.0, source_sha);
 
-    // Every command the CLI registers, so the describe sweep below is
-    // derived from the live registry rather than a list that could go stale.
-    let index = cli(&["capabilities", "--output", "json"]);
-    let mut commands: Vec<(Chapter, String)> = Vec::new();
-    for domain in index["data"]["domains"].as_array().expect("domains") {
-        let id = domain["id"].as_str().expect("domain id");
-        let listing = cli(&["capabilities", id, "--output", "json"]);
-        for command in listing["data"]["commands"].as_array().expect("commands") {
-            let id = command["id"].as_str().expect("id");
-            if matches!(id, "auth.login" | "auth.link.approve" | "server.serve") {
-                continue;
-            }
-            let chapter = Chapter::from_token(command["chapter"].as_str().expect("chapter"))
-                .expect("known chapter");
-            commands.push((chapter, id.to_string()));
-        }
-    }
-    assert!(commands.iter().any(|(_, id)| id == "account.connect"));
-
+    // Every command the surface publishes, read from the catalogue itself so
+    // the sweep is derived from the live surface rather than a list that
+    // could go stale.
+    let routed: Vec<Chapter> = Chapter::ALL
+        .iter()
+        .copied()
+        .filter(|chapter| *chapter != Chapter::Catalog)
+        .collect();
     let mut requests = vec![
         json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
         json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
@@ -258,17 +253,23 @@ fn no_published_mcp_text_names_a_terminal_sign_in() {
         json!({ "jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "query": "sign in" } } }),
     ];
     let mut next_id = 100;
-    for chapter in Chapter::ALL
-        .iter()
-        .filter(|chapter| **chapter != Chapter::Catalog)
-    {
+    for chapter in &routed {
         requests.push(json!({ "jsonrpc": "2.0", "id": next_id, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "chapter": chapter.token() } } }));
         next_id += 1;
     }
-    for (chapter, id) in &commands {
+    // The sign-in commands are the ones whose descriptors said the banned
+    // words; their live describe answers are read through the router.
+    for id in [
+        "account.connect",
+        "auth.status",
+        "auth.link.begin",
+        "auth.link.status",
+        "auth.link.complete",
+        "auth.logout",
+    ] {
         requests.push(
             json!({ "jsonrpc": "2.0", "id": next_id, "method": "tools/call", "params": {
-            "name": ds_cli_mcp::surface::chapter_tool_name(*chapter),
+            "name": ds_cli_mcp::surface::chapter_tool_name(Chapter::Project),
             "arguments": { "operation": "describe", "command": id }
         } }),
         );
@@ -288,12 +289,42 @@ fn no_published_mcp_text_names_a_terminal_sign_in() {
         requests.len() + 1,
         "one answer per request"
     );
+    let mut published: Vec<String> = Vec::new();
     for response in &responses {
         assert!(
             response.get("error").is_none() || response["id"] == 999,
             "an MCP call in the sweep was refused: {response}"
         );
         assert_no_terminal_sign_in("MCP answer", &response.to_string());
+        if let Some(commands) = response["result"]["structuredContent"]["commands"].as_array() {
+            published.extend(
+                commands
+                    .iter()
+                    .filter_map(|row| row["id"].as_str().map(str::to_string)),
+            );
+        }
+    }
+    assert!(published.iter().any(|id| id == "account.connect"));
+    assert!(
+        published
+            .iter()
+            .all(|id| id != "auth.login" && id != "auth.link.approve"),
+        "{published:?}"
+    );
+
+    // Every published descriptor, as the server reads it at startup and as
+    // `describe` answers it.
+    for id in &published {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(["capabilities", id, "--output", "json"])
+            .env("DS_CLI_SCHEMA_ONLY", "1")
+            .output()
+            .expect("ds runs");
+        assert!(output.status.success(), "ds capabilities {id} failed");
+        assert_no_terminal_sign_in(
+            &format!("descriptor `{id}`"),
+            &String::from_utf8_lossy(&output.stdout),
+        );
     }
 
     // The instructions name the one sign-in, and the catalogue's answer to
@@ -315,21 +346,9 @@ fn no_published_mcp_text_names_a_terminal_sign_in() {
         "account.connect"
     );
 
-    // The same sweep across the typed profiles: their tool descriptions are
-    // built from the same descriptors, and the auth-context profile is the
-    // one a signed-out host is sent to.
-    for profile in ds_cli_mcp::surface::PROFILE_IDS {
-        let (responses, _) = mcp(
-            &["--exposure", "commands", "--profile", profile],
-            &[
-                json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
-                json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
-            ],
-        );
-        for response in &responses {
-            assert_no_terminal_sign_in(&format!("profile `{profile}`"), &response.to_string());
-        }
-    }
+    // The broad command exposure builds its tool descriptions from the same
+    // descriptors; the typed profiles are swept in
+    // `every_specialized_profile_is_bounded_and_catalogued`.
     let (broad, _) = mcp(
         &["--exposure", "commands"],
         &[
@@ -1579,6 +1598,12 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // 2026-09-21: native structure import and atomic batch editing
             // add two file-authoring leaves; see the profile's matching limit.
             "grid" => 27,
+            // Seventeen working-copy leaves plus bootstrap: the four
+            // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
+            // admin-refresh`, `dsgrid profile labels set|show`) were routed
+            // here on 2026-09-22 from the broad `grid` router they had pushed
+            // past its budget.
+            "grid-local-model" => 19,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
@@ -1629,6 +1654,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "{profile}: {}",
             tools.len()
         );
+        // No typed profile's tool descriptions send a person to a terminal
+        // sign-in; the broad surface is held to the same words in
+        // `no_published_mcp_text_names_a_terminal_sign_in`.
+        assert_no_terminal_sign_in(&format!("profile `{profile}`"), &responses[0].to_string());
         assert_eq!(tools[0]["name"], "ds_catalog", "{profile}");
         assert_eq!(tools[1]["name"], "ds_diagnostics", "{profile}");
         published.insert(
@@ -1863,6 +1892,7 @@ fn auth_context_profile_hands_off_only_non_secret_native_identity_commands() {
         [
             "ds_catalog",
             "ds_diagnostics",
+            "account_connect",
             "auth_device_list",
             "auth_device_read",
             "auth_device_revoke",

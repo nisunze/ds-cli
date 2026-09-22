@@ -35,9 +35,15 @@ use crate::profile::Lane;
 /// following it exactly connects the lane that refused — on 2026-09-19 an
 /// agent followed a lane-less remedy onto the default lane and reproduced
 /// the refusal.
-pub const SIGNED_OUT_REMEDY: &str = "connect this device: run `ds account connect`, then approve the request in your signed-in DS GridDesign Desktop under Account > Link a trusted device";
-const SIGNED_OUT_REMEDY_HEAD: &str = "connect this device: run `";
-const SIGNED_OUT_REMEDY_TAIL: &str = "`, then approve the request in your signed-in DS GridDesign Desktop under Account > Link a trusted device";
+///
+/// Terse on purpose: every command that can be signed out prints it in its
+/// own help, twice where `auth_revoked` sits beside it, and the help budget
+/// is priced per refusal — a dozen commands sit within twenty bytes of
+/// theirs. The command names the step; what to approve, and where in the
+/// Desktop, is what the command itself says ([`APPROVAL_INSTRUCTIONS`]).
+pub const SIGNED_OUT_REMEDY: &str = "run `ds account connect`";
+const SIGNED_OUT_REMEDY_HEAD: &str = "run `";
+const SIGNED_OUT_REMEDY_TAIL: &str = "`";
 /// The command a signed-out refusal names as its next step. Callers that know
 /// the lane append `--lane <lane>`; see [`signed_out_next`].
 pub const SIGNED_OUT_NEXT: &str = "ds account connect";
@@ -77,7 +83,7 @@ const MAX_POLL: Duration = Duration::from_secs(30);
 
 pub static DOMAIN: Domain = Domain {
     id: "account",
-    summary: "Your DS account on this machine: connect it once, approved from the Desktop.",
+    summary: "Your DS account: connect this machine once, approved in the Desktop.",
     commands: &[&CONNECT_COMMAND],
 };
 
@@ -91,7 +97,7 @@ const LANE: Arg = Arg::value(
 const TIMEOUT: Arg = Arg::value(
     "timeout",
     "<0-900>",
-    "Seconds to wait for the approval; default 300 at a terminal, 0 from a machine host.",
+    "Seconds to wait for the approval; 300 at a terminal, 0 from a machine host.",
 );
 const DEVICE_NAME: Arg = Arg::value(
     "device-name",
@@ -130,7 +136,7 @@ pub static CONNECT_COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Project,
     summary: "Connect this machine to your DS account through the Desktop.",
-    purpose: "The one sign-in. Begins a protected device link for the lane, shows the request id and device fingerprint a person approves in the signed-in DS GridDesign Desktop (Account > Link a trusted device), waits for that approval, then completes the link. Nothing is typed but this command. Run it again to resume: a connected lane answers already_connected, a pending request keeps waiting, an approved one completes. With --timeout 0 (the machine-host default) it returns the pending request at once and names itself as the next step.",
+    purpose: "The one sign-in. Begins a protected device link for the lane, shows the request id and device fingerprint a person approves in the signed-in DS GridDesign Desktop (Account > Link a trusted device), waits for that approval, then completes the link. Nothing is typed but this command. Run it again to resume: a connected lane answers already_connected, a pending request keeps waiting, an approved one completes. With --timeout 0 (the machine-host default) it returns the pending request at once.",
     effect: Effect::LocalAuthState,
     authority: Authority::None,
     execution: Execution::Sync,

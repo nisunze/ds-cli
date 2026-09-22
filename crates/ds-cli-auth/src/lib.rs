@@ -6345,7 +6345,7 @@ mod tests {
             let remedy = failure.remedy_text().expect("a way out");
             assert!(remedy.contains(&flag), "{remedy}");
             assert!(remedy.contains("ds account connect"), "{remedy}");
-            assert!(remedy.contains("Link a trusted device"), "{remedy}");
+            assert!(remedy.contains("ds account connect"), "{remedy}");
             assert!(
                 failure
                     .next_commands()
@@ -6450,7 +6450,7 @@ mod tests {
         assert!(
             failure
                 .remedy_text()
-                .is_some_and(|remedy| remedy.contains("signed-in DS GridDesign Desktop"))
+                .is_some_and(|remedy| remedy.contains("ds account connect"))
         );
         assert!(!failure.message().contains("upstream detail"));
     }

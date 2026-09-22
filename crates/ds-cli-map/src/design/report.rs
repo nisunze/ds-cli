@@ -37,7 +37,7 @@ the design Status surface uses — and reports each committed artifact's output 
 id, filename, content type, size and SHA-256. Compute is local; publication \
 to the project continues through the application's ordinary artifact sync. \
 Use --force to replace the current committed artifact batch from local inputs. \
-Installed compute consumes no shared cloud resources and requires no force password.",
+Installed compute consumes no shared cloud resources and passes no cloud force gate.",
     chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,

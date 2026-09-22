@@ -21,7 +21,7 @@ const DEVICE_LINK_GUIDANCE: &str = "If signed out, run `ds account connect` on t
 /// Word for word `ds_cli_auth::SIGNED_OUT_REMEDY`. Spelled here because this
 /// crate reaches `ds` only through its executable, never its crates;
 /// `crates/ds/tests/mcp.rs` holds the two equal.
-pub const DEVICE_LINK_REMEDY: &str = "connect this device: run `ds account connect`, then approve the request in your signed-in DS GridDesign Desktop under Account > Link a trusted device";
+pub const DEVICE_LINK_REMEDY: &str = "run `ds account connect`";
 pub const DEVICE_LINK_NEXT: &str = "account.connect";
 /// Words no MCP answer may carry: each is the beginning of advice that sends
 /// a person to a terminal sign-in. Matched case-insensitively.
@@ -286,6 +286,12 @@ impl Profile {
             // one thing the comment was about. The proposal is what the person
             // confirms; the read is what the map paints from.
             Self::Project => 19,
+            // Seventeen working-copy leaves plus both bootstrap tools. Raised
+            // from the default on 2026-09-22 when the four 2026-09-21 leaves
+            // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
+            // `dsgrid profile labels set|show`) were routed here from the
+            // broad `grid` router they had pushed past its own budget.
+            Self::GridLocalModel => 19,
             _ => 16,
         }
     }
@@ -556,6 +562,14 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.structure.retype",
     "dsgrid.structure.staking-enrich",
     "dsgrid.report.structures",
+    // 2026-09-21 landings that widened the broad `grid` router past its
+    // budget (31 tools against 27) without a profile decision: forgetting a
+    // working copy, its village facts and its Profile labels are the same
+    // working-copy workflow as the typed edits above and live here.
+    "dsgrid.model.forget",
+    "dsgrid.structure.admin-refresh",
+    "dsgrid.profile.labels.set",
+    "dsgrid.profile.labels.show",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -567,6 +581,10 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.structure.retype",
     "dsgrid.structure.staking-enrich",
     "dsgrid.report.structures",
+    "dsgrid.model.forget",
+    "dsgrid.structure.admin-refresh",
+    "dsgrid.profile.labels.set",
+    "dsgrid.profile.labels.show",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD

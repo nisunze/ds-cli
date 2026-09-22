@@ -60,7 +60,7 @@ pub const APPROVE_OP: BridgeOp = BridgeOp {
 const INVALID_REQUEST: Refusal = Refusal {
     code: "device_authorization_input_invalid",
     when: "the request id or device fingerprint is empty, untrimmed, oversized, or malformed",
-    remedy: "copy both exact public values shown by `ds account connect` on the requesting device",
+    remedy: "copy both exact values shown by `ds account connect`",
 };
 const BINDING_MISMATCH: Refusal = Refusal {
     code: "device_authorization_binding_mismatch",
@@ -77,7 +77,7 @@ const RECEIPT_UNREADABLE: Refusal = Refusal {
 const CANNOT_ADMIT: Refusal = Refusal {
     code: "device_cannot_admit",
     when: "the signed-in credential is a device, and a device cannot admit a sibling",
-    remedy: "approve it in the signed-in DS GridDesign Desktop under Account > Link a trusted device; a device-linked terminal cannot admit a sibling",
+    remedy: "approve in the signed-in Desktop; a device cannot admit a sibling",
 };
 const NOT_FOUND: Refusal = Refusal {
     code: "device_authorization_not_found",
@@ -737,7 +737,7 @@ mod tests {
             match *wire {
                 "DESKTOP_PRINCIPAL_REQUIRED" => {
                     assert!(
-                        remedy.contains("Link a trusted device") && !remedy.contains("auth login"),
+                        remedy.contains("signed-in Desktop") && !remedy.contains("auth login"),
                         "{remedy}"
                     );
                     assert!(
