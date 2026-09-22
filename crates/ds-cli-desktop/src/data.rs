@@ -182,6 +182,7 @@ pub static INSTALL_COMMAND: Command = Command {
         "geographic",
         "offline",
         "seed",
+        "add all",
     ],
     requires: Requires::Window,
     availability: ops::paired_availability,

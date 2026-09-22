@@ -958,6 +958,7 @@ mod tests {
             ("download datasets", "desktop.data.rwanda.install"),
             ("install reference data", "desktop.data.rwanda.install"),
             ("ground data", "desktop.data.rwanda.install"),
+            ("add all datasets", "desktop.data.rwanda.install"),
         ] {
             assert_eq!(
                 top_hit(query),
