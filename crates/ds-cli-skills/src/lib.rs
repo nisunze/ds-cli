@@ -5,6 +5,15 @@
 //! documents to the exact `ds` source SHA they describe. `ds doctor` verifies
 //! that local bundle and any user-level copies without executing an installer
 //! or an engine.
+//!
+//! There is ONE verdict about the packaged bundle, [`verdict`], and both
+//! `ds doctor` and the MCP identity report it. On 2026-09-22 a Windows
+//! install answered `invalid` to doctor and `ready` to MCP for the same
+//! bundle from the same build (feedback 8c1e8b93): doctor digested every file
+//! while MCP only read the receipt and deferred the digests to read time. An
+//! operator cannot act on two answers. Now both index the receipt AND verify
+//! the content, name the first file that disagrees, and give a remedy narrower
+//! than reinstalling the application.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -17,6 +26,13 @@ use sha2::{Digest, Sha256};
 
 pub const RECEIPT_CONTRACT: &str = "ds-cli-skills-bundle/v3";
 pub const RECEIPT_SOURCE: &str = "ds-cli";
+/// How the one verdict is reached: the receipt is indexed, every file it
+/// names is digested against it, and a document is digested again when it is
+/// read. Both `ds doctor` and the MCP identity carry this token.
+pub const VERIFICATION: &str = "receipt_indexed_content_verified";
+/// The environment variable that names an exact bundle instead of the
+/// packaged candidates.
+pub const BUNDLE_ENV: &str = "DS_CLI_SKILLS_BUNDLE";
 const INSTALL_CONTRACT: &str = "ds-cli-skills-install/v1";
 const OWNER: &str = "nisunze/ds-cli";
 const OWNER_MARKER: &str = ".ds-cli-skills-owner";
@@ -40,9 +56,10 @@ struct Bundle {
     receipt: Receipt,
 }
 
-/// One packaged bundle whose bounded receipt metadata matches the exact CLI
-/// source identity supplied by the caller. File inventory and content digests
-/// are deliberately verified only when a document is read.
+/// One packaged bundle whose receipt matches the exact CLI source identity
+/// supplied by the caller and whose files matched that receipt when the
+/// verdict was reached. A document is digested again when it is read, so a
+/// bundle tampered with after the verdict is still refused.
 #[derive(Clone, Debug)]
 pub struct IndexedBundle {
     bundle: Bundle,
@@ -93,67 +110,67 @@ impl IndexedBundle {
 }
 
 /// Locate one unambiguous release-matched packaged bundle without consulting
-/// or requiring any user-level agent skills directory. This reads bounded
-/// receipt metadata only; [`IndexedBundle::read_skill`] performs the complete
-/// inventory and digest verification lazily.
+/// or requiring any user-level agent skills directory, verified against its
+/// receipt. This is [`verdict`] reduced to its bundle; a caller that needs
+/// the reason or remedy reads the verdict itself.
 pub fn indexed_bundle(expected_cli_sha: &str) -> Result<IndexedBundle, String> {
-    indexed_bundle_from_candidates(&bundle_candidates(), expected_cli_sha)
+    let verdict = verdict(expected_cli_sha);
+    verdict
+        .bundle
+        .ok_or_else(|| verdict.reason.unwrap_or_else(|| verdict.status.to_string()))
 }
 
-fn indexed_bundle_from_candidates(
-    candidates: &[PathBuf],
-    expected_cli_sha: &str,
-) -> Result<IndexedBundle, String> {
+/// The one answer about the packaged bundle.
+#[derive(Clone, Debug)]
+pub struct BundleVerdict {
+    /// `ready`, `missing`, `invalid` or `ambiguous`.
+    pub status: &'static str,
+    /// The verified bundle, when `ready`.
+    pub bundle: Option<IndexedBundle>,
+    /// Why it is not ready, naming the bundle and the first file that
+    /// disagrees with its receipt.
+    pub reason: Option<String>,
+    /// What to do about it — never a whole-application reinstall.
+    pub remedy: Option<String>,
+    /// Every path that was considered, so an operator can see where the
+    /// bundle was looked for.
+    pub candidates: Vec<PathBuf>,
+}
+
+impl BundleVerdict {
+    /// The fields both surfaces publish, so a reader of `ds doctor` and a
+    /// reader of the MCP identity see the same names carrying the same
+    /// values.
+    pub fn json(&self) -> Value {
+        json!({
+            "status": self.status,
+            "verification": VERIFICATION,
+            "contract": RECEIPT_CONTRACT,
+            "source": RECEIPT_SOURCE,
+            "bundle_path": self.bundle.as_ref().map(|found| found.root().display().to_string()),
+            "source_sha": self.bundle.as_ref().map(IndexedBundle::source_sha),
+            "count": self.bundle.as_ref().map_or(0, |bundle| bundle.skills().len()),
+            "candidates": self.candidates.iter().map(|path| path.display().to_string()).collect::<Vec<_>>(),
+            "reason": self.reason,
+            "remedy": self.remedy,
+        })
+    }
+}
+
+/// Index the receipt and verify the content of every packaged candidate; the
+/// verdict is the same whichever surface asks.
+pub fn verdict(expected_cli_sha: &str) -> BundleVerdict {
+    verdict_from_candidates(&bundle_candidates(), expected_cli_sha)
+}
+
+fn verdict_from_candidates(candidates: &[PathBuf], expected_cli_sha: &str) -> BundleVerdict {
     let existing = candidates
         .iter()
         .filter(|path| path.exists())
         .collect::<Vec<_>>();
     let mut valid = Vec::new();
     let mut invalid = Vec::new();
-    for root in existing {
-        match index_bundle_root(root, expected_cli_sha) {
-            Ok(bundle) => valid.push(bundle),
-            Err(reason) => invalid.push(format!("{}: {reason}", root.display())),
-        }
-    }
-    let Some(first) = valid.first().cloned() else {
-        return Err(invalid
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| "no packaged ds-cli-skills bundle was found".to_string()));
-    };
-    if valid
-        .iter()
-        .skip(1)
-        .any(|candidate| candidate.receipt != first.receipt)
-    {
-        return Err("multiple release-matched skill bundles contain different skills".to_string());
-    }
-    Ok(IndexedBundle { bundle: first })
-}
-
-fn index_bundle_root(root: &Path, expected_cli_sha: &str) -> Result<Bundle, String> {
-    let root_meta = fs::symlink_metadata(root).map_err(|error| error.to_string())?;
-    if !root_meta.file_type().is_dir() {
-        return Err("bundle root is not a regular directory".to_string());
-    }
-    let receipt = parse_receipt(&root.join("receipt.json"), expected_cli_sha)?;
-    Ok(Bundle {
-        root: root.to_path_buf(),
-        receipt,
-    })
-}
-
-pub fn doctor_report(expected_cli_sha: &str) -> Value {
-    let candidates = bundle_candidates();
-    let existing: Vec<PathBuf> = candidates
-        .iter()
-        .filter(|path| path.exists())
-        .cloned()
-        .collect();
-    let mut valid = Vec::new();
-    let mut invalid = Vec::new();
-    for root in &existing {
+    for root in existing.iter().copied() {
         match validate_bundle(root, expected_cli_sha) {
             Ok(receipt) => valid.push(Bundle {
                 root: root.clone(),
@@ -162,43 +179,60 @@ pub fn doctor_report(expected_cli_sha: &str) -> Value {
             Err(reason) => invalid.push(format!("{}: {reason}", root.display())),
         }
     }
-
-    let (status, bundle, reason, remedy) = if valid.is_empty() {
+    let candidates = candidates.to_vec();
+    let Some(first) = valid.first().cloned() else {
         if existing.is_empty() {
-            (
-                "missing",
-                None,
-                Some("no packaged ds-cli-skills bundle was found".to_string()),
-                Some("reinstall the complete ds release; its package carries the skills matched to this ds build".to_string()),
-            )
-        } else {
-            (
-                "invalid",
-                None,
-                invalid.first().cloned(),
-                Some("reinstall ds from one complete verified release".to_string()),
-            )
-        }
-    } else {
-        let first = &valid[0];
-        let differs = valid
-            .iter()
-            .skip(1)
-            .any(|candidate| candidate.receipt != first.receipt);
-        if differs {
-            (
-                "ambiguous",
-                None,
-                Some("multiple release-matched skill bundles contain different skills".to_string()),
-                Some(
-                    "set DS_CLI_SKILLS_BUNDLE to the bundle installed with this ds executable"
-                        .to_string(),
+            return BundleVerdict {
+                status: "missing",
+                bundle: None,
+                reason: Some(
+                    "no packaged ds-cli-skills bundle was found at any candidate path".to_string(),
                 ),
-            )
-        } else {
-            ("ready", Some(first.clone()), None, None)
+                remedy: Some(format!(
+                    "restore the ds-cli-skills directory beside this executable from the same release package, or set {BUNDLE_ENV} to an intact copy; the rest of the installation is unaffected"
+                )),
+                candidates,
+            };
         }
+        return BundleVerdict {
+            status: "invalid",
+            bundle: None,
+            reason: invalid.into_iter().next(),
+            remedy: Some(format!(
+                "restore the named file from the same release package's ds-cli-skills directory, or set {BUNDLE_ENV} to an intact copy of the bundle; the executable and the rest of the installation are unaffected"
+            )),
+            candidates,
+        };
     };
+    if valid
+        .iter()
+        .skip(1)
+        .any(|candidate| candidate.receipt != first.receipt)
+    {
+        return BundleVerdict {
+            status: "ambiguous",
+            bundle: None,
+            reason: Some(
+                "multiple release-matched skill bundles contain different skills".to_string(),
+            ),
+            remedy: Some(format!(
+                "set {BUNDLE_ENV} to the bundle installed with this ds executable"
+            )),
+            candidates,
+        };
+    }
+    BundleVerdict {
+        status: "ready",
+        bundle: Some(IndexedBundle { bundle: first }),
+        reason: None,
+        remedy: None,
+        candidates,
+    }
+}
+
+pub fn doctor_report(expected_cli_sha: &str) -> Value {
+    let verdict = verdict(expected_cli_sha);
+    let bundle = verdict.bundle.as_ref().map(|found| &found.bundle);
 
     let agents = [
         ("codex", codex_skills_dir()),
@@ -206,18 +240,16 @@ pub fn doctor_report(expected_cli_sha: &str) -> Value {
         ("copilot", copilot_skills_dir()),
     ]
     .into_iter()
-    .map(|(agent, target)| inspect_install(agent, target, bundle.as_ref(), expected_cli_sha))
+    .map(|(agent, target)| inspect_install(agent, target, bundle, expected_cli_sha))
     .collect::<Vec<_>>();
 
-    let mut report = json!({
-        "status": status,
-        "bundle_path": bundle.as_ref().map(|found| found.root.display().to_string()),
-        "source_sha": bundle.as_ref().map(|found| found.receipt.source_sha.as_str()),
-        "skills": bundle.as_ref().map(|found| found.receipt.skills.clone()).unwrap_or_default(),
-        "agents": agents,
-        "reason": reason,
-        "remedy": remedy,
-    });
+    let mut report = verdict.json();
+    report["skills"] = json!(
+        bundle
+            .map(|found| found.receipt.skills.clone())
+            .unwrap_or_default()
+    );
+    report["agents"] = Value::Array(agents);
     if let Some(found) = bundle {
         report["installers"] = json!({
             "shell": {
@@ -234,7 +266,7 @@ pub fn doctor_report(expected_cli_sha: &str) -> Value {
 }
 
 fn bundle_candidates() -> Vec<PathBuf> {
-    if let Some(override_path) = std::env::var_os("DS_CLI_SKILLS_BUNDLE") {
+    if let Some(override_path) = std::env::var_os(BUNDLE_ENV) {
         return vec![PathBuf::from(override_path)];
     }
 
@@ -310,37 +342,70 @@ fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
     }
 }
 
-fn codex_skills_dir() -> Option<PathBuf> {
-    explicit_or_home("CODEX_SKILLS_DIR", "CODEX_HOME", ".codex", "skills")
+/// Where one agent keeps its skills, or the exact variables that were looked
+/// for and found empty. An absent home directory is reported as the fact it
+/// is — which variable would have named it — so an operator on a machine
+/// where `HOME` is empty but `USERPROFILE` is set reads what to set, not
+/// "no home directory".
+type SkillsDir = Result<PathBuf, String>;
+
+fn codex_skills_dir() -> SkillsDir {
+    explicit_or_home("CODEX_SKILLS_DIR", Some("CODEX_HOME"), ".codex", "skills")
 }
 
-fn claude_skills_dir() -> Option<PathBuf> {
-    if let Some(path) = nonempty_env("CLAUDE_SKILLS_DIR") {
-        return Some(PathBuf::from(path));
-    }
-    nonempty_env("HOME").map(|home| PathBuf::from(home).join(".claude").join("skills"))
+fn claude_skills_dir() -> SkillsDir {
+    explicit_or_home("CLAUDE_SKILLS_DIR", None, ".claude", "skills")
 }
 
-fn copilot_skills_dir() -> Option<PathBuf> {
-    if let Some(path) = nonempty_env("COPILOT_SKILLS_DIR") {
-        return Some(PathBuf::from(path));
+fn copilot_skills_dir() -> SkillsDir {
+    explicit_or_home("COPILOT_SKILLS_DIR", None, ".copilot", "skills")
+}
+
+/// The variables that can name the user's home directory, in the order they
+/// are read. `HOME` first on every platform; Windows sets `USERPROFILE`
+/// instead, and a service or a bare `cmd` session may carry only the
+/// `HOMEDRIVE`/`HOMEPATH` pair.
+const HOME_VARIABLES: &[&str] = &["HOME", "USERPROFILE"];
+
+fn user_home() -> Option<PathBuf> {
+    for name in HOME_VARIABLES {
+        if let Some(home) = nonempty_env(name) {
+            return Some(PathBuf::from(home));
+        }
     }
-    nonempty_env("HOME").map(|home| PathBuf::from(home).join(".copilot").join("skills"))
+    if let (Some(drive), Some(path)) = (nonempty_env("HOMEDRIVE"), nonempty_env("HOMEPATH")) {
+        let mut home = OsString::from(drive);
+        home.push(path);
+        return Some(PathBuf::from(home));
+    }
+    None
 }
 
 fn explicit_or_home(
     explicit: &str,
-    product_home: &str,
+    product_home: Option<&str>,
     default_home: &str,
     leaf: &str,
-) -> Option<PathBuf> {
+) -> SkillsDir {
     if let Some(path) = nonempty_env(explicit) {
-        return Some(PathBuf::from(path));
+        return Ok(PathBuf::from(path));
     }
-    if let Some(path) = nonempty_env(product_home) {
-        return Some(PathBuf::from(path).join(leaf));
+    if let Some(name) = product_home
+        && let Some(path) = nonempty_env(name)
+    {
+        return Ok(PathBuf::from(path).join(leaf));
     }
-    nonempty_env("HOME").map(|home| PathBuf::from(home).join(default_home).join(leaf))
+    if let Some(home) = user_home() {
+        return Ok(home.join(default_home).join(leaf));
+    }
+    let mut looked_for = vec![explicit.to_string()];
+    looked_for.extend(product_home.map(str::to_string));
+    looked_for.extend(HOME_VARIABLES.iter().map(|name| name.to_string()));
+    looked_for.push("HOMEDRIVE+HOMEPATH".to_string());
+    Err(format!(
+        "no skills directory could be located: {} are all unset or empty; set {explicit} to the directory to check, or a home variable so ~/{default_home}/{leaf} can be located",
+        looked_for.join(", ")
+    ))
 }
 
 fn nonempty_env(name: &str) -> Option<OsString> {
@@ -356,7 +421,7 @@ fn validate_bundle(root: &Path, expected_cli_sha: &str) -> Result<Receipt, Strin
     let actual = collect_files(root, Some("receipt.json"))?;
     let actual_digests = digest_files(&actual)?;
     if actual_digests != receipt.files {
-        return Err("receipt file inventory or digest does not match the bundle".to_string());
+        return Err(first_disagreement(&receipt.files, &actual_digests));
     }
 
     let skills_root = root.join("skills");
@@ -483,17 +548,20 @@ fn parse_receipt(path: &Path, expected_cli_sha: &str) -> Result<Receipt, String>
 
 fn inspect_install(
     agent: &str,
-    target: Option<PathBuf>,
+    target: SkillsDir,
     bundle: Option<&Bundle>,
     expected_cli_sha: &str,
 ) -> Value {
-    let Some(target) = target else {
-        return json!({
-            "agent": agent,
-            "path": null,
-            "status": "unavailable",
-            "reason": "no user home directory is available",
-        });
+    let target = match target {
+        Ok(target) => target,
+        Err(reason) => {
+            return json!({
+                "agent": agent,
+                "path": null,
+                "status": "unavailable",
+                "reason": reason,
+            });
+        }
     };
     let path_text = target.display().to_string();
     let inventory_path = target.join(INVENTORY);
@@ -637,6 +705,31 @@ fn collect_files_at(
         files.insert(relative, path);
     }
     Ok(())
+}
+
+/// The first way the bundle on disk disagrees with its receipt, named so an
+/// operator can restore ONE file rather than a whole installation.
+fn first_disagreement(
+    receipt: &BTreeMap<String, String>,
+    actual: &BTreeMap<String, String>,
+) -> String {
+    for (path, digest) in receipt {
+        match actual.get(path) {
+            None => return format!("the receipt lists {path}, which the bundle lacks"),
+            Some(found) if found != digest => {
+                return format!(
+                    "{path} differs from its receipt digest (expected sha256 {}…, found {}…)",
+                    &digest[..12],
+                    &found[..12.min(found.len())]
+                );
+            }
+            Some(_) => {}
+        }
+    }
+    match actual.keys().find(|path| !receipt.contains_key(*path)) {
+        Some(path) => format!("the bundle holds {path}, which its receipt does not list"),
+        None => "receipt file inventory or digest does not match the bundle".to_string(),
+    }
 }
 
 fn digest_files(files: &BTreeMap<String, PathBuf>) -> Result<BTreeMap<String, String>, String> {
@@ -822,8 +915,9 @@ mod tests {
         let candidates = bundle_candidates_for_executable(Some(&executable));
         assert_eq!(candidates, vec![canary.clone()]);
         assert_eq!(
-            indexed_bundle_from_candidates(&candidates, cli_sha)
-                .unwrap()
+            verdict_from_candidates(&candidates, cli_sha)
+                .bundle
+                .expect("verified bundle")
                 .bundle
                 .root,
             canary
@@ -840,15 +934,130 @@ mod tests {
     }
 
     #[test]
-    fn startup_index_reads_receipt_metadata_and_defers_content_verification() {
+    fn a_document_tampered_with_after_the_verdict_is_refused_at_read_time() {
         let temp = TestDir::new();
         let cli_sha = "2222222222222222222222222222222222222222";
         write_bundle(&temp.0, cli_sha);
+        let verdict = verdict_from_candidates(&[temp.0.clone()], cli_sha);
+        assert_eq!(verdict.status, "ready");
+        let indexed = verdict.bundle.expect("verified bundle");
+        assert!(indexed.read_skill("ds").is_ok());
         fs::write(temp.0.join("skills/ds/SKILL.md"), "changed\n").unwrap();
-        let indexed = IndexedBundle {
-            bundle: index_bundle_root(&temp.0, cli_sha).expect("receipt metadata remains readable"),
-        };
         assert!(indexed.read_skill("ds").is_err());
+    }
+
+    /// The Windows case of 2026-09-22 (feedback 8c1e8b93): one bundle, one
+    /// build, and `ds doctor` said `invalid` while the MCP identity said
+    /// `ready`. Both now read this one verdict, and it names the file.
+    #[test]
+    fn doctor_and_mcp_share_one_verdict_that_names_the_disagreeing_file() {
+        let temp = TestDir::new();
+        let cli_sha = "2222222222222222222222222222222222222222";
+        write_bundle(&temp.0, cli_sha);
+        let ready = verdict_from_candidates(&[temp.0.clone()], cli_sha);
+        assert_eq!(ready.status, "ready");
+        assert_eq!(ready.json()["verification"], VERIFICATION);
+        assert_eq!(ready.json()["count"], 1);
+        assert!(ready.reason.is_none() && ready.remedy.is_none());
+
+        fs::write(temp.0.join("skills/ds/SKILL.md"), "changed\n").unwrap();
+        let invalid = verdict_from_candidates(&[temp.0.clone()], cli_sha);
+        assert_eq!(invalid.status, "invalid");
+        assert!(invalid.bundle.is_none());
+        let reason = invalid.reason.clone().expect("reason");
+        assert!(
+            reason.contains("skills/ds/SKILL.md differs from its receipt digest"),
+            "{reason}"
+        );
+        let remedy = invalid.remedy.clone().expect("remedy");
+        assert!(!remedy.to_lowercase().contains("reinstall"), "{remedy}");
+        assert!(remedy.contains(BUNDLE_ENV), "{remedy}");
+        assert_eq!(
+            invalid.json()["candidates"][0],
+            temp.0.display().to_string()
+        );
+
+        fs::write(temp.0.join("skills/ds/extra.md"), "extra\n").unwrap();
+        fs::copy(temp.0.join("receipt.json"), temp.0.join("receipt.bak")).unwrap();
+        write_bundle(&temp.0, cli_sha);
+        fs::remove_file(temp.0.join("skills/ds/extra.md")).unwrap();
+        let lacking = verdict_from_candidates(&[temp.0.clone()], cli_sha);
+        assert_eq!(lacking.status, "invalid");
+        assert!(
+            lacking
+                .reason
+                .clone()
+                .unwrap()
+                .contains("lists skills/ds/extra.md, which the bundle lacks"),
+            "{:?}",
+            lacking.reason
+        );
+
+        let missing = verdict_from_candidates(&[temp.0.join("nowhere")], cli_sha);
+        assert_eq!(missing.status, "missing");
+        assert!(missing.remedy.clone().unwrap().contains(BUNDLE_ENV));
+    }
+
+    /// A machine whose `HOME` is empty but whose `USERPROFILE` is set — a
+    /// Windows session — still has a home; and a machine with neither is told
+    /// which variables were read, not "no home directory".
+    #[test]
+    fn an_absent_home_names_the_variables_it_looked_for() {
+        // Environment is process-global; this test owns the three names it
+        // touches for its duration and restores them.
+        let saved: Vec<(&str, Option<OsString>)> = [
+            "HOME",
+            "USERPROFILE",
+            "HOMEDRIVE",
+            "HOMEPATH",
+            "CLAUDE_SKILLS_DIR",
+        ]
+        .into_iter()
+        .map(|name| (name, std::env::var_os(name)))
+        .collect();
+        // SAFETY: single-threaded within this test's critical section for
+        // these names; every other test in this crate reads none of them.
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("HOMEDRIVE");
+            std::env::remove_var("HOMEPATH");
+            std::env::remove_var("CLAUDE_SKILLS_DIR");
+            std::env::set_var("USERPROFILE", "/profile");
+        }
+        let with_profile = claude_skills_dir();
+        unsafe {
+            std::env::remove_var("USERPROFILE");
+        }
+        let without = claude_skills_dir();
+        unsafe {
+            for (name, value) in saved {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+        assert_eq!(
+            with_profile.unwrap(),
+            PathBuf::from("/profile").join(".claude").join("skills")
+        );
+        let reason = without.unwrap_err();
+        for name in [
+            "CLAUDE_SKILLS_DIR",
+            "HOME",
+            "USERPROFILE",
+            "HOMEDRIVE+HOMEPATH",
+        ] {
+            assert!(reason.contains(name), "{reason}");
+        }
+        let row = inspect_install(
+            "claude",
+            Err(reason.clone()),
+            None,
+            "2222222222222222222222222222222222222222",
+        );
+        assert_eq!(row["status"], "unavailable");
+        assert_eq!(row["reason"], reason);
     }
 
     #[test]

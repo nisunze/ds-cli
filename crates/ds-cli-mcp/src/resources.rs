@@ -1,6 +1,6 @@
 //! Lazy MCP resources backed by the exact receipt-verified skill bundle.
 
-use ds_cli_skills::{IndexedBundle, RECEIPT_CONTRACT, RECEIPT_SOURCE};
+use ds_cli_skills::{BundleVerdict, IndexedBundle, RECEIPT_CONTRACT, RECEIPT_SOURCE};
 use serde_json::{Value, json};
 
 const URI_PREFIX: &str = "ds-skill://bundle/";
@@ -8,47 +8,38 @@ const URI_SUFFIX: &str = "/SKILL.md";
 
 #[derive(Debug)]
 pub struct SkillResources {
-    bundle: Option<IndexedBundle>,
+    verdict: BundleVerdict,
     expected_source_sha: String,
-    reason: Option<String>,
 }
 
 impl SkillResources {
+    /// The one verdict `ds doctor` reads too; see `ds_cli_skills::verdict`.
     pub fn load(expected_source_sha: &str) -> Self {
-        match ds_cli_skills::indexed_bundle(expected_source_sha) {
-            Ok(bundle) => Self {
-                bundle: Some(bundle),
-                expected_source_sha: expected_source_sha.to_string(),
-                reason: None,
-            },
-            Err(reason) => Self {
-                bundle: None,
-                expected_source_sha: expected_source_sha.to_string(),
-                reason: Some(reason),
-            },
+        Self {
+            verdict: ds_cli_skills::verdict(expected_source_sha),
+            expected_source_sha: expected_source_sha.to_string(),
         }
     }
 
+    fn bundle(&self) -> Option<&IndexedBundle> {
+        self.verdict.bundle.as_ref()
+    }
+
     pub fn identity(&self) -> Value {
-        json!({
-            "status": if self.bundle.is_some() { "ready" } else { "unavailable" },
-            "verification": "receipt_indexed_content_verified_on_read",
-            "transport": "mcp_resources",
-            "contract": RECEIPT_CONTRACT,
-            "source": RECEIPT_SOURCE,
-            "source_sha": self.bundle.as_ref().map(IndexedBundle::source_sha).unwrap_or(&self.expected_source_sha),
-            "dirty": false,
-            "count": self.bundle.as_ref().map(|bundle| bundle.skills().len()).unwrap_or(0),
-            "reason": self.reason,
-            "requires_skills_home": false,
-            "uri_template": "ds-skill://bundle/<receipt-skill-id>/SKILL.md",
-        })
+        let mut identity = self.verdict.json();
+        if identity["source_sha"].is_null() {
+            identity["source_sha"] = json!(self.expected_source_sha);
+        }
+        identity["transport"] = json!("mcp_resources");
+        identity["dirty"] = json!(false);
+        identity["requires_skills_home"] = json!(false);
+        identity["uri_template"] = json!("ds-skill://bundle/<receipt-skill-id>/SKILL.md");
+        identity
     }
 
     pub fn list(&self) -> Value {
         let resources = self
-            .bundle
-            .as_ref()
+            .bundle()
             .map(|bundle| {
                 bundle
                     .skills()
@@ -85,12 +76,14 @@ impl SkillResources {
             .ok_or_else(|| (-32602, "`uri` is required and must be a string".to_string()))?;
         let name =
             parse_uri(uri).ok_or_else(|| (-32602, format!("unknown DS skill resource `{uri}`")))?;
-        let bundle = self.bundle.as_ref().ok_or_else(|| {
+        let bundle = self.bundle().ok_or_else(|| {
             (
                 -32002,
                 format!(
-                    "the shipped DS skill bundle is unavailable: {}",
-                    self.reason
+                    "the shipped DS skill bundle is {}: {}",
+                    self.verdict.status,
+                    self.verdict
+                        .reason
                         .as_deref()
                         .unwrap_or("unknown verification failure")
                 ),
