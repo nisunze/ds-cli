@@ -66,7 +66,7 @@ fn retain_capture(account: &Path, project: &str, captured_at_ms: i64) {
         "lane": "stable",
         "captured_at_ms": captured_at_ms,
         "captured_by": "uid",
-        "source": { "rows": 0, "fast_lane": false, "diagnostics_source": "none" },
+        "source": { "rows": 0, "diagnostics_source": "none" },
         "ledger": ledger,
         "digest": digest,
     });

@@ -4565,7 +4565,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         (
             "design.dashboard",
             "local_auth_state",
-            BTreeSet::from(["fast", "lane", "project", "tz-offset-minutes"]),
+            BTreeSet::from(["lane", "project", "tz-offset-minutes"]),
         ),
         (
             "design.transformer.inventory",
@@ -5679,11 +5679,35 @@ fn design_dashboard_is_the_same_headless_read_folded_once() {
         .map(|input| input["name"].as_str().expect("input name"))
         .collect::<BTreeSet<_>>();
     // No `--transformer`: every percentage here is measured against the fleet,
-    // so a dashboard over a subset would be a different question.
+    // so a dashboard over a subset would be a different question. And no
+    // `--fast`: there is one way to process a transformer, so the dashboard
+    // has no lane split to read the project through.
     assert_eq!(
         inputs,
-        BTreeSet::from(["fast", "lane", "project", "tz-offset-minutes"])
+        BTreeSet::from(["lane", "project", "tz-offset-minutes"])
     );
+    assert_eq!(
+        native_ds(&[
+            "design",
+            "dashboard",
+            "--project",
+            "p_smoke",
+            "--fast",
+            "--output",
+            "json"
+        ])
+        .envelope["error"]["code"],
+        "unknown_flag"
+    );
+    for retired in ["lanes", "fast_lane", "process_lane_count", "Fast lane"] {
+        assert!(
+            !command["output"]
+                .as_str()
+                .expect("output")
+                .contains(retired),
+            "the dashboard descriptor still speaks of `{retired}`"
+        );
+    }
     // The descriptor says out loud that a headless client holds no live
     // diagnostics, so a reader is never surprised by their absence.
     assert!(
@@ -5735,7 +5759,6 @@ fn design_dashboard_is_the_same_headless_read_folded_once() {
             "dashboard",
             "--project",
             "p_smoke",
-            "--fast",
             "--lane",
             "canary",
             "--output",
@@ -6275,7 +6298,7 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
 // design
 // ---------------------------------------------------------------------------
 //
-// Fast LV has two file-owned commands in this domain: a governed project
+// Native LV processing has two file-owned commands in this domain: a governed project
 // snapshot export and the project-free native process. They are intentionally
 // exercised here before the paired collaboration refusals below.
 
@@ -6329,7 +6352,7 @@ fn design_lv_process_runs_the_native_batch_without_project_or_desktop_state() {
             "design", "lv", "process", "--input", &input, "--out", &output, "--output", "json",
         ])
         // A stale explicit Desktop descriptor would fail any bridge-backed
-        // command. Native Fast LV must never inspect it.
+        // command. The native LV process must never inspect it.
         .env("DS_DESKTOP_DESCRIPTOR", root.join("stale-desktop.json"))
         .env("NO_COLOR", "1")
         .output()

@@ -3,8 +3,7 @@
 //! The same native status read `ds design status` performs, folded once by
 //! `ds-command-kernel::design_dashboard` into the model the application's
 //! Design wall renders: pipeline, momentum, crew, geography, phase summaries,
-//! lane split, governance mix, the attention pile, the health score and the
-//! fun facts. One question, one answer, whether it is asked from a browser or
+//! governance mix, the attention pile, the health score and the fun facts. One question, one answer, whether it is asked from a browser or
 //! from a terminal.
 //!
 //! Labels come back as i18n keys, because naming them is the reading
@@ -32,11 +31,6 @@ pub const TZ_OFFSET_ARG: Arg = Arg::value(
     "Minutes to add to UTC for the reading day (-840..840); echoed in the receipt.",
 )
 .default("0");
-
-pub const FAST_ARG: Arg = Arg::switch(
-    "fast",
-    "Read the project as the Fast lane does: no Draft/Sketch summary or notes.",
-);
 
 /// The named-project read set plus the one numeric flag this command adds.
 const REFUSALS: &[Refusal] = &[
@@ -82,12 +76,11 @@ reference document describes each member.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PROJECT_ARG, LANE_ARG, FAST_ARG, TZ_OFFSET_ARG],
+    args: &[PROJECT_ARG, LANE_ARG, TZ_OFFSET_ARG],
     output: "\
 Lane and the named project, then `dashboard`: the counts, \
 `pipeline`, `momentum`, `crew`, `errors_by_user`, `districts`, \
-`phase_summaries`, `lanes`, `governance`, `attention`, `health`, `recent` and \
-`facts`. Labels are i18n keys, timestamps epoch millis, and a headless client \
+`phase_summaries`, `governance`, `attention`, `health`, `recent` and `facts`. Labels are i18n keys, timestamps epoch millis, and a headless client \
 holds none of the live diagnostics the application folds in.",
     examples: &[
         Example {
@@ -96,8 +89,8 @@ holds none of the live diagnostics the application folds in.",
             runnable: false,
         },
         Example {
-            command: "ds design dashboard --project <id> --fast --output json",
-            note: "`.data.dashboard.attention` as the Fast lane reads it.",
+            command: "ds design dashboard --project <id> --output json | jq '.data.dashboard.attention'",
+            note: "The attention pile: each note is that row's shared health verdict.",
             runnable: false,
         },
     ],
@@ -125,7 +118,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         &whole_project,
     )?;
     let mut output = super::named_project_receipt(headless.lane(), headless.project_id());
-    let dashboard = dashboard_json(headless.result(), inputs.switch("fast"), tz_offset_minutes);
+    let dashboard = dashboard_json(headless.result(), tz_offset_minutes);
     let receipt = output.as_object_mut().expect("receipt is an object");
     receipt.insert("tz_offset_minutes".into(), json!(tz_offset_minutes));
     receipt.insert("dashboard".into(), dashboard);
@@ -134,7 +127,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 /// One kernel call over the rows as the service sent them. Special rows travel
 /// with the list: which names are not transformers is the kernel's own table.
-fn dashboard_json(list: &TransformerStatusList, fast_lane: bool, tz_offset_minutes: i64) -> Value {
+fn dashboard_json(list: &TransformerStatusList, tz_offset_minutes: i64) -> Value {
     let rows: Vec<Value> = list.rows().iter().map(|row| row.row().clone()).collect();
     let request = json!({
         "schema": ds_command_kernel::design_dashboard::SCHEMA,
@@ -146,7 +139,6 @@ fn dashboard_json(list: &TransformerStatusList, fast_lane: bool, tz_offset_minut
             .duration_since(std::time::UNIX_EPOCH)
             .map(|elapsed| elapsed.as_millis() as i64)
             .unwrap_or(0),
-        "fast_lane": fast_lane,
         "tz_offset_minutes": tz_offset_minutes,
     });
     let Ok(input) = serde_json::to_vec(&request) else {
