@@ -126,7 +126,7 @@ const EXPORT_BLOCKED: Refusal = Refusal {
 const INPUTS_INVALID: Refusal = Refusal {
     code: "report_inputs_invalid",
     when: "the input receipt, a transformer's saved layers or the output policy cannot be run as given",
-    remedy: "refresh the project configuration; `ds report project settings` shows the output policy",
+    remedy: "run `ds report project settings`; it names the missing input and the repair",
 };
 const STAGING_FAILED: Refusal = Refusal {
     code: "report_staging_failed",
@@ -760,6 +760,122 @@ fn seal_run_for_server(
 /// reach that state and each one is something the caller asked for, so the
 /// receipt can always name it rather than leaving "no publication" to be
 /// read as "publication failed".
+/// The governed print style refs the given layouts bind that the receipt's
+/// sealed `printing_styles` sheet does not carry, sorted, once each.
+fn unsealed_print_style_refs(
+    sheets: &Value,
+    layouts: &[ds_command_kernel::printing::Layout],
+) -> Vec<String> {
+    let sealed = &sheets["printing_styles"];
+    layouts
+        .iter()
+        .flat_map(|layout| layout.style_refs.values())
+        .filter(|reference| !sealed[reference.as_str()].is_object())
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// The refusal for a draft or proof binding styles the sealed receipt lacks,
+/// naming the two sources the styles were looked for in: the receipt ds-brain
+/// seals for the SELECTED printing setups, and the governed catalogue.
+fn unsealed_print_styles_refusal(held: &[&String], absent: &[&String], what: &str) -> Failure {
+    let mut message = format!(
+        "the {what} layout binds print styles the sealed project receipt does not carry; the local reporter resolves print styles from the receipt ds-brain seals for the SELECTED printing setups (`ds report project settings` → papers)"
+    );
+    if !held.is_empty() {
+        message.push_str(&format!(
+            "; held by the governed catalogue (`ds style list --query _print`) but not sealed: {}",
+            held.iter()
+                .map(|r| r.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !absent.is_empty() {
+        message.push_str(&format!(
+            "; published nowhere (neither the receipt nor the governed catalogue): {}",
+            absent
+                .iter()
+                .map(|r| r.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    Failure::invalid(INPUTS_INVALID.code, message).remedy(
+        "select a setup that binds these styles with `ds report project outputs set` so the receipt seals them (a proof completes sealed-but-missing styles from the catalogue itself), or bind styles the selected setups already use (`ds report layout style-ref`); a style published nowhere must be published first",
+    )
+}
+
+/// 09b78d74: a local proof (`--print-layout`) is a replacement for an
+/// existing setup, and the receipt seals only the styles the SELECTED setups
+/// bound when ds-brain minted it. A proof that binds a style the governed
+/// catalogue lists today but the receipt does not carry failed in the engine
+/// one ref at a time ("resolved print style X is missing"). The proof now
+/// carries those styles from the same governed catalogue `ds style list`
+/// reads, spliced into its local recipe (the provenance still names the
+/// server's receipt), and refuses — naming the source it looked in — for a
+/// style published nowhere, or a symbol style whose icon the receipt never
+/// sealed (the engine needs the held vector asset, which only ds-brain seals).
+fn complete_proof_print_styles(
+    lane: &str,
+    proof: InputReceipt,
+    layouts: &[ds_command_kernel::printing::Layout],
+) -> Result<InputReceipt, Failure> {
+    let mut sheets = proof
+        .sheets()
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
+    let unsealed = unsealed_print_style_refs(&sheets, layouts);
+    if unsealed.is_empty() {
+        return Ok(proof);
+    }
+    let snapshot = ds_cli_auth::style_catalog(lane)?;
+    let catalogue = snapshot.result().document();
+    let (held, absent): (Vec<_>, Vec<_>) = unsealed
+        .iter()
+        .partition(|reference| catalogue["styles"][reference.as_str()].is_object());
+    if !absent.is_empty() {
+        return Err(unsealed_print_styles_refusal(&held, &absent, "proof"));
+    }
+    let sealed_symbols = sheets["printing_symbol_assets"].clone();
+    let mut unsealed_symbols = Vec::new();
+    for reference in &held {
+        let document = catalogue["styles"][reference.as_str()].clone();
+        if let Some(icon) = document["layout"]["icon-image"]
+            .as_str()
+            .filter(|icon| !icon.is_empty())
+        {
+            if !sealed_symbols[icon].is_object() {
+                unsealed_symbols.push(format!("{icon} (bound by {reference})"));
+            }
+        }
+        if !sheets["printing_styles"].is_object() {
+            sheets["printing_styles"] = json!({});
+        }
+        sheets["printing_styles"][reference.as_str()] = document;
+    }
+    if !unsealed_symbols.is_empty() {
+        return Err(Failure::invalid(
+            INPUTS_INVALID.code,
+            format!(
+                "the proof layout binds symbol styles whose print icons the sealed project receipt does not carry: {}; the engine draws icons from the vector assets ds-brain seals for the SELECTED printing setups",
+                unsealed_symbols.join(", ")
+            ),
+        )
+        .remedy("select a setup that uses these styles with `ds report project outputs set` so the receipt seals their icons, or bind the layer to a style whose icon the selected setups already use"));
+    }
+    let mut completed = proof;
+    completed.sheets_json = serde_json::to_string(&sheets)
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?;
+    completed.sheets_sha256 =
+        ds_command_kernel::report_export::sha256_hex(completed.sheets_json.as_bytes());
+    completed
+        .validate()
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
+    Ok(completed)
+}
+
 fn dry_run_reason(dry_run: bool, proofs: bool, preview: bool) -> &'static str {
     if dry_run {
         "dry_run_requested"
@@ -958,9 +1074,27 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?,
             );
         }
-        ds_command_kernel::report_export::proof::with_layouts(&receipt, &layouts)
-            .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?
+        let proof = ds_command_kernel::report_export::proof::with_layouts(&receipt, &layouts)
+            .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
+        complete_proof_print_styles(lane, proof, &layouts)?
     };
+    if let Some(request) = &preview_request {
+        // A draft may bind styles the sealed receipt never carried; the
+        // engine would refuse them one at a time. Name them all now, with
+        // the source each was looked for in.
+        let sheets = receipt
+            .sheets()
+            .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
+        let unsealed = unsealed_print_style_refs(&sheets, std::slice::from_ref(&request.layout));
+        if !unsealed.is_empty() {
+            let snapshot = ds_cli_auth::style_catalog(lane)?;
+            let catalogue = snapshot.result().document();
+            let (held, absent): (Vec<_>, Vec<_>) = unsealed
+                .iter()
+                .partition(|reference| catalogue["styles"][reference.as_str()].is_object());
+            return Err(unsealed_print_styles_refusal(&held, &absent, "preview"));
+        }
+    }
     // A preview hands the governed receipt over as minted: the kernel rewrites
     // it for the draft inside `ds_report_host::preview::execute`.
     output["local_print_recipe"] = serde_json::to_value(&receipt.local_print_recipe)
@@ -1672,10 +1806,9 @@ fn context_failure(error: ds_project_data::Failure) -> HostFailure {
         Cause::CatalogInvalid(_) => HostFailure::new(CONTEXT_CATALOG.code, message),
         // A print read never names a retired row (printing's catalogue
         // selection excludes it), so reaching here is the document's own defect.
-        Cause::NotHeld(_)
-        | Cause::TooLarge(_)
-        | Cause::Store(_)
-        | Cause::Retired(_) => HostFailure::new(CONTEXT_INVALID.code, message),
+        Cause::NotHeld(_) | Cause::TooLarge(_) | Cause::Store(_) | Cause::Retired(_) => {
+            HostFailure::new(CONTEXT_INVALID.code, message)
+        }
     }
 }
 
@@ -1797,6 +1930,49 @@ pub fn render(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// 09b78d74: a proof's refs the receipt never sealed are named all at
+    /// once, with the source each was looked for in, instead of failing in
+    /// the engine one ref at a time.
+    #[test]
+    fn unsealed_proof_styles_are_named_with_their_sources() {
+        let mut layout = ds_command_kernel::printing::default_layout();
+        layout.style_refs = [
+            ("roads", "gt/roads_print"),
+            ("cells", "gt/cell_boundaries_print"),
+            ("kivu", "gt/kivu_lake_print"),
+            ("again", "gt/cell_boundaries_print"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let sheets = serde_json::json!({"printing_styles": {"gt/roads_print": {"type": "line"}}});
+        let unsealed = super::unsealed_print_style_refs(&sheets, std::slice::from_ref(&layout));
+        assert_eq!(unsealed, ["gt/cell_boundaries_print", "gt/kivu_lake_print"]);
+        assert!(super::unsealed_print_style_refs(
+            &serde_json::json!({"printing_styles": {"gt/roads_print": {}, "gt/cell_boundaries_print": {}, "gt/kivu_lake_print": {}}}),
+            std::slice::from_ref(&layout)
+        )
+        .is_empty());
+        let held = "gt/cell_boundaries_print".to_string();
+        let absent = "gt/kivu_lake_print".to_string();
+        let refused = super::unsealed_print_styles_refusal(&[&held], &[&absent], "proof");
+        assert_eq!(refused.code(), "report_inputs_invalid");
+        let text = format!(
+            "{} {}",
+            refused.message(),
+            refused.remedy_text().unwrap_or("")
+        );
+        for needle in [
+            "SELECTED printing setups",
+            "ds style list --query _print",
+            "gt/cell_boundaries_print",
+            "published nowhere",
+            "gt/kivu_lake_print",
+            "ds report project outputs set",
+        ] {
+            assert!(text.contains(needle), "{text}");
+        }
+    }
     /// The batch screen an operator actually reads. A run that delivered four
     /// artifacts and lost its A0 must not print as plain `ok`: on Gisagara
     /// that would be 86 `ok` rows over 59 missing sheets, the same work lost

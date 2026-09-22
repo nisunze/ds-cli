@@ -133,11 +133,12 @@ pub static COMMAND: Command = Command {
 Restores the native user and reads its audience-fenced selected project's \
 fresh configuration, then asks ds-command-kernel what that project's export \
 setting means: the outputs it will produce, the paper each named printout \
-prints on, whether the selected printing setups are actually held, and — when \
-they are not — the refusal by message key, so `ds` and the GUI refuse in the \
-same words. Reads whatever shape the setting was stored in, including every \
-legacy one. Nothing is generated and nothing is saved. No project, Desktop \
-descriptor, URL, body or action override is accepted.",
+prints on, whether the selected printing setups are actually held, whether \
+the input receipt every local export reads was minted, and — when one is \
+not — the refusal by message key with the server's reason and remedy, so \
+`ds` and the GUI refuse in the same words. Reads whatever shape the setting \
+was stored in, including every legacy one. Nothing is generated or saved. \
+No project, Desktop descriptor, URL, body or action override is accepted.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -147,10 +148,12 @@ descriptor, URL, body or action override is accepted.",
 Lane and selected-project identity, the settings `source` (the project's own \
 row or the report defaults), the stored `setting` row, the resolved `outputs` \
 with their formats and suffixes, the `papers` of the named printouts, \
-`ready`, any `issues`, and the `refusal` with its code, message key and mode.",
+`ready`, any `issues`, the `refusal` with its code, message key and mode \
+(with the server's `reason_key`, `detail`, `remedy` and \
+`missing_print_styles` when the receipt was refused), and `input_receipt`.",
     examples: &[Example {
         command: "ds report project settings --output json",
-        note: "`.data.refusal` names why an unready project cannot export, by key.",
+        note: "`.data.refusal` names why an unready project cannot export, by key; `.remedy` names the repair.",
         runnable: false,
     }],
     refusals: CONFIG_REFUSALS,
@@ -242,10 +245,45 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     .map_err(|_| {
         unreadable("the project's settings sheet is not readable printing configuration")
     })?;
+    // The outputs may be well formed and still unrunnable: every local
+    // export reads the reporter's input receipt ds-brain mints beside this
+    // very configuration. When the server could not mint it, the document
+    // says why, and `ready` must say no with that reason — never "ready"
+    // for an export the kernel will refuse (cd193b7d).
+    with_receipt_readiness(&mut output, &configuration.document);
     let receipt = receipt(lane, &configuration.summary);
     output["lane"] = receipt["lane"].clone();
     output["project"] = receipt["project"].clone();
     Ok(output)
+}
+
+/// Fold the kernel's receipt readiness into the settings answer: `ready`
+/// is false when the receipt is missing or refused, the issue is listed, and
+/// `refusal` carries the server's reason key, detail and remedy (the printing
+/// refusal keeps precedence when both are unready, so the operator repairs
+/// the outputs first). The re-read is this command itself — the native read
+/// substitutes no cache — so the remedy names the repair, then this command.
+fn with_receipt_readiness(output: &mut Value, document: &Value) {
+    let readiness = ds_command_kernel::report_export::InputReceipt::readiness(document);
+    output["input_receipt"] = json!({
+        "member": ds_command_kernel::report_export::INPUT_RECEIPT_MEMBER,
+        "present": readiness.ready,
+    });
+    if readiness.ready {
+        return;
+    }
+    output["ready"] = json!(false);
+    if let Some(issue) = &readiness.issue {
+        if let Some(issues) = output["issues"].as_array_mut() {
+            issues.push(json!(issue));
+        } else {
+            output["issues"] = json!([issue]);
+        }
+    }
+    if output["refusal"].is_null() {
+        output["refusal"] = readiness.refusal.clone().unwrap_or(Value::Null);
+    }
+    output["input_receipt"]["refusal"] = readiness.refusal.unwrap_or(Value::Null);
 }
 
 /// The configuration sheets, completed with the printing setups the selection
@@ -432,6 +470,9 @@ pub fn render(data: &Value) -> String {
             out.push_str(&format!("  {}\n", issue.as_str().unwrap_or("?")));
         }
     }
+    if let Some(remedy) = data["refusal"]["remedy"].as_str() {
+        out.push_str(&format!("  remedy: {remedy}\n"));
+    }
     out
 }
 
@@ -459,6 +500,106 @@ pub fn render_set(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// cd193b7d: `ready:true, issues [], refusal null` while every export
+    /// refused on the missing receipt. The settings read now folds the
+    /// receipt's readiness in, with the server's reason and remedy.
+    #[test]
+    fn settings_are_not_ready_when_the_input_receipt_is_missing_or_refused() {
+        let mut ready = json!({"ready": true, "issues": [], "refusal": null, "outputs": []});
+        with_receipt_readiness(
+            &mut ready,
+            &json!({"network_reporter_input_receipt": {
+                "schema": 1, "country": "Rwanda",
+                "sheets_json": "{\"a\":1}",
+                "sheets_sha256": "1ce0e5a4be0af41f3aa3a4e7a1a0b0b3e3de2ede1f0ce6a5ce3e8db0d7ab1b2c",
+                "reference_semantic_sha256": "a".repeat(64),
+            }}),
+        );
+        // A present-but-unproven receipt is not ready either; the exact digest
+        // is what the kernel proves, so this document is refused.
+        assert_eq!(ready["ready"], json!(false));
+
+        let mut refused = json!({"ready": true, "issues": [], "refusal": null, "outputs": []});
+        with_receipt_readiness(
+            &mut refused,
+            &json!({"network_reporter_input_receipt_refusal": {
+                "reason_key": "printing_style_unavailable",
+                "detail": "the selected printing setup a0-northern-hub binds print style gt/rwanda_villages_print, which the governed style catalogue does not hold",
+                "remedy": "rebind or drop the layers (`ds report layout style-ref`), then read `ds report project settings` again",
+                "missing_print_styles": ["gt/rwanda_villages_print"],
+                "printing_setups": ["a0-northern-hub"],
+            }}),
+        );
+        assert_eq!(refused["ready"], json!(false));
+        assert_eq!(
+            refused["refusal"]["code"],
+            "report_input_receipt_unavailable"
+        );
+        assert_eq!(
+            refused["refusal"]["message_key"],
+            "printing_style_unavailable"
+        );
+        assert_eq!(
+            refused["refusal"]["missing_print_styles"][0],
+            "gt/rwanda_villages_print"
+        );
+        assert_eq!(refused["refusal"]["printing_setups"][0], "a0-northern-hub");
+        assert!(
+            refused["refusal"]["remedy"]
+                .as_str()
+                .unwrap()
+                .contains("ds report layout style-ref")
+        );
+        assert_eq!(refused["input_receipt"]["present"], json!(false));
+        assert_eq!(
+            refused["input_receipt"]["refusal"]["reason_key"],
+            "printing_style_unavailable"
+        );
+        let issues = refused["issues"].as_array().unwrap();
+        assert_eq!(issues.len(), 1);
+        assert!(
+            issues[0]
+                .as_str()
+                .unwrap()
+                .contains("gt/rwanda_villages_print")
+        );
+        let rendered = render(&refused);
+        assert!(
+            rendered.contains("refusal report_input_receipt_unavailable"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("remedy: rebind"), "{rendered}");
+
+        // The printing refusal keeps precedence; the receipt's rides beside it.
+        let mut both = json!({"ready": false, "issues": ["Selected printing setup x is not in the sealed project printing inputs"],
+            "refusal": {"code": "printing_inputs_incomplete", "message_key": "printing_inputs_incomplete_refreshed", "mode": "refreshed"}, "outputs": []});
+        with_receipt_readiness(&mut both, &json!({"sheets": {}}));
+        assert_eq!(both["refusal"]["code"], "printing_inputs_incomplete");
+        assert_eq!(both["issues"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            both["input_receipt"]["refusal"]["code"],
+            "report_input_receipt_unavailable"
+        );
+
+        // A proven receipt leaves the answer as the kernel gave it.
+        let sheets = "{\"a\":1}";
+        let digest = ds_command_kernel::report_export::sha256_hex(sheets.as_bytes());
+        let mut proven = json!({"ready": true, "issues": [], "refusal": null, "outputs": []});
+        with_receipt_readiness(
+            &mut proven,
+            &json!({"network_reporter_input_receipt": {
+                "schema": 1, "country": "Rwanda", "sheets_json": sheets,
+                "sheets_sha256": digest, "reference_semantic_sha256": "a".repeat(64),
+            }}),
+        );
+        assert_eq!(proven["ready"], json!(true));
+        assert_eq!(
+            proven["input_receipt"],
+            json!({"member": "network_reporter_input_receipt", "present": true})
+        );
+        assert!(proven["refusal"].is_null());
+    }
 
     /// One catalogue row in the shape the printing list serves and the
     /// kernel's `named_layouts` reads.
