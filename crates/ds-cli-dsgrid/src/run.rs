@@ -752,6 +752,42 @@ mod tests {
     }
 
     #[test]
+    fn spotting_interval_fallback_is_admitted_and_parsed_by_dsgrid_run() {
+        let descriptor = operation_descriptor("plan_optimum_spotting").unwrap();
+        let params = json!({
+            "alignment_id": "al-line",
+            "stringing_basis_section_id": "ts-basis",
+            "criterion_set_id": "cs-1",
+            "analysis_case_ids": ["ac-1"],
+            "catalog_resource_id": "res-catalog",
+            "attachment_set_label": "conductor",
+            "pass": "preliminary_awaiting_structural_analysis",
+            "design_policy_id": "policy-spotting",
+            "station_step_m": 7.0,
+            "max_candidate_stations": 100,
+            "max_search_states": 10000,
+            "fixed_structures": ["str-before", "str-after"],
+            "bounded_interval_fallback": {
+                "from_fixed_structure_id": "str-before",
+                "to_fixed_structure_id": "str-after",
+                "maximum_span_m": 180.0
+            }
+        });
+        validate_params(&descriptor, &params).expect("published descriptor admits opt-in");
+        let parsed: SpottingPlanRequest = parse("plan_optimum_spotting", &params).unwrap();
+        let fallback = parsed.bounded_interval_fallback.unwrap();
+        assert_eq!(fallback.from_fixed_structure_id.as_str(), "str-before");
+        assert_eq!(fallback.to_fixed_structure_id.as_str(), "str-after");
+        assert_eq!(fallback.maximum_span_m, 180.0);
+
+        let mut ordinary = params;
+        ordinary.as_object_mut().unwrap().remove("bounded_interval_fallback");
+        validate_params(&descriptor, &ordinary).unwrap();
+        let parsed: SpottingPlanRequest = parse("plan_optimum_spotting", &ordinary).unwrap();
+        assert!(parsed.bounded_interval_fallback.is_none());
+    }
+
+    #[test]
     fn native_profile_properties_uses_the_engine_sheet() {
         let mut snapshot = ds_grid_model::GridModelSnapshot::default();
         snapshot
