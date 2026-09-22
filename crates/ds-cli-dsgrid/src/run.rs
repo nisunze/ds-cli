@@ -16,12 +16,12 @@ use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::TaggedAlignmentLengthsRequest;
 use ds_grid_engine::descriptor::operation_descriptors;
 use ds_grid_engine::{
-    EffectClass, GridSession, NetworkCalculationRequest, OperationDescriptor, ProfileAtlasOptions,
+    EffectClass, EngineeringAttributeEvidence, GridSession, NetworkCalculationRequest, OperationDescriptor, ProfileAtlasOptions,
     ResultStore, SectionDemandsRequest, SpottingPlanError, SpottingPlanRequest,
     StructureAnalysisRequest, StructureUsageScreeningRequest, TerrainAnomalyOptions,
     analyze_network_topology, calculate_stringing_and_structures, structure_usage_screening,
 };
-use ds_grid_model::{AlignmentId, StructureTypeId, TableKind, TensionSectionId};
+use ds_grid_model::{AlignmentId, EntityId, StructureTypeId, TableKind, TensionSectionId};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -181,6 +181,12 @@ struct SectionParams {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ProfilePropertiesParams {
+    entity_id: EntityId,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RequestParams<T> {
     request: T,
 }
@@ -198,7 +204,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let package = package::decode(raw_path, &bytes)?;
     let session = GridSession::open(package.snapshot);
     let authored_revision = session.current_revision().revision_id.clone();
-    let result = dispatch(operation_id, &params, &session)?;
+    let evidence = if operation_id == "profile_properties" {
+        package.assets.iter()
+            .find(|asset| asset.invariant_leaf == ds_grid_exchange::ENGINEERING_ATTRIBUTE_EVIDENCE_LEAF)
+            .map(|asset| ds_grid_exchange::decode_engineering_attribute_evidence(&asset.bytes))
+            .transpose()
+            .map_err(|error| engine_error(operation_id, error))?
+            .unwrap_or_default()
+    } else {
+        EngineeringAttributeEvidence::default()
+    };
+    let result = dispatch(operation_id, &params, &session, &evidence)?;
     let (result, truncated) = bound_result(result, limit);
 
     let mut answer = json!({
@@ -359,8 +375,24 @@ fn parse<T: DeserializeOwned>(operation_id: &str, params: &Value) -> Result<T, F
     })
 }
 
-fn dispatch(operation_id: &str, params: &Value, session: &GridSession) -> Result<Value, Failure> {
+fn dispatch(
+    operation_id: &str,
+    params: &Value,
+    session: &GridSession,
+    evidence: &EngineeringAttributeEvidence,
+) -> Result<Value, Failure> {
     match operation_id {
+        "profile_properties" => {
+            let request: ProfilePropertiesParams = parse(operation_id, params)?;
+            ds_grid_engine::profile_properties(
+                session.snapshot(),
+                &session.current_revision().revision_id,
+                request.entity_id.as_str(),
+                evidence,
+            ).ok_or_else(|| engine_error(operation_id, format!(
+                "no Profile properties for entity {}", request.entity_id
+            )))
+        }
         "project_plan" => serialize(operation_id, session.plan_projection()),
         "project_profile" => {
             let params: AlignmentParams = parse(operation_id, params)?;
@@ -647,6 +679,33 @@ mod tests {
                 descriptor.operation_id
             );
         }
+    }
+
+    #[test]
+    fn native_profile_properties_uses_the_engine_sheet() {
+        let mut snapshot = ds_grid_model::GridModelSnapshot::default();
+        snapshot.terrain_points.push(ds_grid_model::TerrainPointRow {
+            id: ds_grid_model::TerrainPointId::new("tp-1").unwrap(),
+            x_m: 1.0,
+            y_m: 2.0,
+            z_m: 103.5,
+            feature_class: "GP".into(),
+            description: None,
+            required_clearance_m: None,
+            source_id: None,
+        });
+        let session = GridSession::open(snapshot);
+        let sheet = dispatch(
+            "profile_properties",
+            &json!({ "entity_id": "tp-1" }),
+            &session,
+            &EngineeringAttributeEvidence::default(),
+        ).expect("native Profile sheet");
+        assert_eq!(sheet["kind"], "terrain_point");
+        assert_eq!(sheet["edit_layer"], "terrain");
+        assert_eq!(sheet["groups"][0]["fields"][1]["value"], 103.5);
+        assert_eq!(sheet["groups"][0]["fields"][1]["editor"]["command_kind"],
+            "edit_profile_properties");
     }
 
     #[test]
