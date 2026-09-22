@@ -21,7 +21,7 @@ use ds_grid_engine::{
     StructureAnalysisRequest, StructureUsageScreeningRequest, TerrainAnomalyOptions,
     analyze_network_topology, calculate_stringing_and_structures, structure_usage_screening,
 };
-use ds_grid_model::{AlignmentId, EntityId, StructureTypeId, TableKind, TensionSectionId};
+use ds_grid_model::{AlignmentId, EntityId, StructureLabelPolicy, StructureTypeId, TableKind, TensionSectionId};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -214,7 +214,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         EngineeringAttributeEvidence::default()
     };
-    let result = dispatch(operation_id, &params, &session, &evidence)?;
+    let profile_labels = package.manifest.model.presentation.effective_profile_structure_labels();
+    let result = dispatch(operation_id, &params, &session, &evidence, &profile_labels)?;
     let (result, truncated) = bound_result(result, limit);
 
     let mut answer = json!({
@@ -380,6 +381,7 @@ fn dispatch(
     params: &Value,
     session: &GridSession,
     evidence: &EngineeringAttributeEvidence,
+    profile_labels: &StructureLabelPolicy,
 ) -> Result<Value, Failure> {
     match operation_id {
         "profile_properties" => {
@@ -418,12 +420,11 @@ fn dispatch(
         }
         "project_profile_atlas" => {
             let options: ProfileAtlasOptions = parse(operation_id, params)?;
-            serialize(
-                operation_id,
-                session
-                    .profile_atlas_scene(options)
-                    .map_err(|error| engine_error(operation_id, error))?,
-            )
+            let mut scene = session
+                .profile_atlas_scene(options)
+                .map_err(|error| engine_error(operation_id, error))?;
+            ds_grid_engine::profile_labels::compose_scene_structure_labels(&mut scene, profile_labels);
+            serialize(operation_id, scene)
         }
         "project_structure_library" => {
             let params: StructureTypeParams = parse(operation_id, params)?;
@@ -700,6 +701,7 @@ mod tests {
             &json!({ "entity_id": "tp-1" }),
             &session,
             &EngineeringAttributeEvidence::default(),
+            &StructureLabelPolicy::default(),
         ).expect("native Profile sheet");
         assert_eq!(sheet["kind"], "terrain_point");
         assert_eq!(sheet["edit_layer"], "terrain");
