@@ -190,6 +190,22 @@ struct ProfilePropertiesParams {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct TerrainSamplingRegularityParams {
+    alignment_id: AlignmentId,
+    corridor_m: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SurfaceConsistencyParams {
+    query: ds_grid_engine::SurfaceObservation,
+    references: Vec<ds_grid_engine::SurfaceObservation>,
+    #[serde(default)]
+    options: ds_grid_engine::SurfaceConsistencyOptions,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RequestParams<T> {
     request: T,
 }
@@ -560,6 +576,29 @@ fn dispatch(
                 session
                     .profile_anomaly_layer(&options)
                     .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
+        "terrain_sampling_regularity" => {
+            let request: TerrainSamplingRegularityParams = parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                ds_grid_engine::terrain_sampling_regularity(
+                    session.snapshot(),
+                    &request.alignment_id,
+                    request.corridor_m.unwrap_or(ds_grid_engine::projection::DEFAULT_PROFILE_CORRIDOR_M),
+                )
+                .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
+        "surface_consistency" => {
+            let request: SurfaceConsistencyParams = parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                ds_grid_engine::surface_consistency(
+                    &request.query,
+                    &request.references,
+                    &request.options,
+                ),
             )
         }
         "spotting_graph" => serialize(
