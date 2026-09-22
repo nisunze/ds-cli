@@ -8,6 +8,10 @@ for skill in "$ROOT"/skills/*; do
 		echo "ERROR: $(basename "$skill") lacks agents/openai.yaml for release packaging" >&2
 		exit 1
 	fi
+	if [[ -e "$skill/scripts" ]]; then
+		echo "ERROR: $(basename "$skill") contains a skill-local executable directory" >&2
+		exit 1
+	fi
 done
 TEMP="$(mktemp -d)"
 trap 'rm -rf -- "$TEMP"' EXIT INT TERM

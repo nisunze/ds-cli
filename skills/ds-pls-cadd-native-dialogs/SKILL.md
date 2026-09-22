@@ -65,16 +65,11 @@ into reasons to leave the Yes dialog stacked. No (ID 7) is only for an explicit
 workflow that deliberately leaves the project unopened. A dialog reporting
 skipped files or another project is a refusal.
 
-For the observed PLS 16.81 final prompt, use the bundled
-[scripts/open-verified-restore.ps1](scripts/open-verified-restore.ps1). Transfer
-that exact script from ds-server to the PLS workstation, then provide the
-observed PLS PID and modal handle, backup leaf, absolute fresh project path,
-and inventory file count. It checks the executable, owning process, modal
-class/title, entire normalized body, enabled Yes ID 6, sends the dialog's
-IDYES command with a timeout, and verifies the opened project title. The
-generic posted button click was observed to leave this modal stacked; do not
-repeat that ineffective action. This script is for the final Restore prompt
-only and never decides unknown dialogs.
+Use only the host's supported native controller for that characterized
+transition. If it is unavailable, preserve the dialog and hand the exact
+observation to the operator; do not improvise a Win32 message driver. The
+generic posted button click was observed to leave this modal stacked, so do
+not repeat that ineffective action.
 
 A dialog that initially looks blocking may be only a draw/transition state.
 A dialog that disappears may also hide a failed restore. The evidence is the
