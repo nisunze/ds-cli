@@ -200,7 +200,9 @@ fn a_survey_policy_delivers_the_print_and_names_every_omitted_form() {
     let mut receipt = receipt_from_example(&examples.join("network-config.a0-a3.example.json"));
     let mut sheets: Value = serde_json::from_str(&receipt.sheets_json).unwrap();
     let settings = sheets["project_settings"].as_array_mut().unwrap();
-    settings.push(serde_json::json!({"parameter":"include_survey_data_in_transformer_exports","value":true}));
+    settings.push(
+        serde_json::json!({"parameter":"include_survey_data_in_transformer_exports","value":true}),
+    );
     settings.push(serde_json::json!({"parameter":"survey_forms_in_transformer_exports","value":["field_notes","transformer_survey"]}));
     receipt.sheets_json = serde_json::to_string(&sheets).unwrap();
     receipt.sheets_sha256 = format!("{:x}", Sha256::digest(receipt.sheets_json.as_bytes()));
@@ -222,15 +224,25 @@ fn a_survey_policy_delivers_the_print_and_names_every_omitted_form() {
         },
         &["tr_example_a".to_string()],
         |name| Ok(room(&examples.join(format!("rooms/{name}.json")), name)),
-    ).unwrap_or_else(|failure| panic!("{failure:?}"));
+    )
+    .unwrap_or_else(|failure| panic!("{failure:?}"));
     assert_eq!(outcome.receipt["status"], "completed");
     let omitted = &outcome.receipt["survey_layers_omitted"];
     assert_eq!(omitted["code"], "print_survey_layers_omitted");
-    assert_eq!(omitted["forms"], serde_json::json!(["field_notes", "transformer_survey"]));
+    assert_eq!(
+        omitted["forms"],
+        serde_json::json!(["field_notes", "transformer_survey"])
+    );
     assert_eq!(omitted["context_omitted"][0]["layer"], "field_notes");
-    assert_eq!(outcome.receipt["results"][0]["survey_layers_omitted"], *omitted);
+    assert_eq!(
+        outcome.receipt["results"][0]["survey_layers_omitted"],
+        *omitted
+    );
     assert_eq!(outcome.runs[0].receipt["survey_layers_omitted"], *omitted);
-    assert!(outcome.runs[0].artifacts.iter().any(|artifact| artifact.format == "pdf_a3"));
+    assert!(outcome.runs[0]
+        .artifacts
+        .iter()
+        .any(|artifact| artifact.format == "pdf_a3"));
 }
 
 #[test]
