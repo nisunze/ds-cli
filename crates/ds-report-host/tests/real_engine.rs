@@ -191,6 +191,50 @@ fn the_installed_engine_produces_prints_and_data_the_host_proves_and_places() {
 
 #[test]
 #[ignore = "requires DS_REPORT_BIN and the reporter printing fixtures"]
+fn a_survey_policy_delivers_the_print_and_names_every_omitted_form() {
+    let binary = std::env::var_os("DS_REPORT_BIN")
+        .map(PathBuf::from)
+        .expect("DS_REPORT_BIN must name the locally built reporter");
+    let examples = examples().expect("the reporter printing examples must be present");
+    let engine = ProcessEngine { binary };
+    let mut receipt = receipt_from_example(&examples.join("network-config.a0-a3.example.json"));
+    let mut sheets: Value = serde_json::from_str(&receipt.sheets_json).unwrap();
+    let settings = sheets["project_settings"].as_array_mut().unwrap();
+    settings.push(serde_json::json!({"parameter":"include_survey_data_in_transformer_exports","value":true}));
+    settings.push(serde_json::json!({"parameter":"survey_forms_in_transformer_exports","value":["field_notes","transformer_survey"]}));
+    receipt.sheets_json = serde_json::to_string(&sheets).unwrap();
+    receipt.sheets_sha256 = format!("{:x}", Sha256::digest(receipt.sheets_json.as_bytes()));
+    let temp = tempfile::tempdir().unwrap();
+    let staging = temp.path().join("staging");
+    let reports = temp.path().join("reports");
+    let outcome = run_batch(
+        &engine,
+        &BatchSettings {
+            run: RunSettings {
+                project_id: "example-project",
+                receipt: &receipt,
+                admin_bounds: None,
+                staging_root: &staging,
+                out_root: &reports,
+            },
+            lane: "stable",
+            concurrency: 1,
+        },
+        &["tr_example_a".to_string()],
+        |name| Ok(room(&examples.join(format!("rooms/{name}.json")), name)),
+    ).unwrap_or_else(|failure| panic!("{failure:?}"));
+    assert_eq!(outcome.receipt["status"], "completed");
+    let omitted = &outcome.receipt["survey_layers_omitted"];
+    assert_eq!(omitted["code"], "print_survey_layers_omitted");
+    assert_eq!(omitted["forms"], serde_json::json!(["field_notes", "transformer_survey"]));
+    assert_eq!(omitted["context_omitted"][0]["layer"], "field_notes");
+    assert_eq!(outcome.receipt["results"][0]["survey_layers_omitted"], *omitted);
+    assert_eq!(outcome.runs[0].receipt["survey_layers_omitted"], *omitted);
+    assert!(outcome.runs[0].artifacts.iter().any(|artifact| artifact.format == "pdf_a3"));
+}
+
+#[test]
+#[ignore = "requires DS_REPORT_BIN and the reporter printing fixtures"]
 fn a_preview_page_is_the_engines_svg_over_the_synthetic_room() {
     let binary = std::env::var_os("DS_REPORT_BIN")
         .map(PathBuf::from)

@@ -539,6 +539,12 @@ pub fn survey_layers_omitted_message(forms: &[String]) -> String {
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SurveyContextOmission {
+    pub layer: String,
+    pub reason: String,
+}
+
 /// The survey forms a project's policy appends to a delivered report that
 /// one run was produced without.
 ///
@@ -556,6 +562,8 @@ pub struct SurveyLayersOmitted {
     /// The form names, as the project's settings spell them.
     pub forms: Vec<String>,
     pub message: String,
+    /// One context_omitted row per form, matching a print preview's receipt.
+    pub context_omitted: Vec<SurveyContextOmission>,
 }
 
 impl SurveyLayersOmitted {
@@ -567,6 +575,13 @@ impl SurveyLayersOmitted {
         Some(Self {
             code: SURVEY_LAYERS_OMITTED.to_string(),
             message: survey_layers_omitted_message(&forms),
+            context_omitted: forms
+                .iter()
+                .map(|form| SurveyContextOmission {
+                    layer: form.clone(),
+                    reason: SURVEY_LAYER_OMISSION_REASON.to_string(),
+                })
+                .collect(),
             forms,
         })
     }
@@ -1875,7 +1890,7 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
             output
         })
         .collect::<Vec<_>>();
-    Ok(json!({
+    let mut receipt = json!({
         "schema": RUN_RECEIPT_SCHEMA,
         "task": REPORT_TASK,
         // A run that built some of its formats says so here, beside the
@@ -1901,10 +1916,6 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
         "print_context_sha256": facts.print_context_sha256,
         "print_context_layers": facts.print_context_layers,
         "print_context_omitted": facts.print_context_omitted,
-        // What the sheet was produced without, beside what it was produced
-        // with. A reader of this receipt learns the drawing is complete, or
-        // exactly which survey forms are not on it.
-        "survey_layers_omitted": facts.plan.survey_layers_omitted,
         "formats_requested": facts.plan.formats,
         "outputs": outputs,
         "failed_formats": facts.result.failed,
@@ -1916,7 +1927,12 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
         "geometry_changed": facts.result.geometry_changed,
         "elapsed_ms": facts.result.elapsed_ms,
         "publication": publication_facts(facts.plan, facts.engine)?,
-    }))
+    });
+    // A no-omission receipt keeps the exact preexisting shape.
+    if let Some(omitted) = &facts.plan.survey_layers_omitted {
+        receipt["survey_layers_omitted"] = json!(omitted);
+    }
+    Ok(receipt)
 }
 
 /// A run identity a host minted: `report-` plus 32 lowercase hex characters.
@@ -2031,7 +2047,7 @@ pub fn batch_receipt(
     let reply: Value = serde_json::from_str(&reply).map_err(|error| error.to_string())?;
     let ordered = reply["result"]["results"].clone();
     let failed = reply["result"]["failed"].as_u64().unwrap_or(0);
-    Ok(json!({
+    let mut receipt = json!({
         "schema": BATCH_RECEIPT_SCHEMA,
         "task": REPORT_TASK,
         "status": batch_status(results),
@@ -2053,15 +2069,17 @@ pub fn batch_receipt(
             .iter()
             .filter(|result| result.failed_formats.is_some())
             .count(),
-        // Every survey form any run in this batch was produced without, once,
-        // so a reader sees the batch-wide omission without opening each row.
-        "survey_layers_omitted": SurveyLayersOmitted::union(
-            results
-                .iter()
-                .filter_map(|result| result.survey_layers_omitted.as_ref()),
-        ),
         "results": ordered,
-    }))
+    });
+    // Union the named omissions once for the batch reader.
+    if let Some(omitted) = SurveyLayersOmitted::union(
+        results
+            .iter()
+            .filter_map(|result| result.survey_layers_omitted.as_ref()),
+    ) {
+        receipt["survey_layers_omitted"] = json!(omitted);
+    }
+    Ok(receipt)
 }
 
 /// The names a batch runs, in the kernel's order, and how many engines it may
@@ -2176,6 +2194,122 @@ mod tests {
             reference_semantic_sha256:
                 "70f0de17599e81d8d85809668cb172ee6ccf68c1edecac6e3709838ab0eb50c1".to_string(),
         }
+    }
+
+    #[test]
+    fn survey_omission_is_verified_and_named_only_when_policy_appends_forms() {
+        let mut receipt = simple_receipt("Benin");
+        receipt.sheets_json = r#"{"project_settings":[{"parameter":"design_export_format","value":["shp","xlsx"]},{"parameter":"include_survey_data_in_transformer_exports","value":true},{"parameter":"survey_forms_in_transformer_exports","value":["field_notes","transformer_survey"]}]}"#.into();
+        receipt.sheets_sha256 = format!("{:x}", Sha256::digest(receipt.sheets_json.as_bytes()));
+        let plan = plan_transformer_export("proj-1", &receipt, "tx_a", 7, &layers(), None).unwrap();
+        let omitted = plan.survey_layers_omitted.as_ref().unwrap();
+        assert_eq!(omitted.code, SURVEY_LAYERS_OMITTED);
+        assert_eq!(omitted.context_omitted.len(), 2);
+        assert_eq!(omitted.context_omitted[0].layer, "field_notes");
+
+        let out_dir = PathBuf::from("/tmp/survey-omission/tx_a");
+        let staged = StagedInputs {
+            transformer_document: Path::new("/tmp/survey-omission/room.json"),
+            network_config: Path::new("/tmp/survey-omission/config.json"),
+            out_dir: &out_dir,
+            admin_bounds: None,
+            media_grant: None,
+            print_context: None,
+            sheet: None,
+        };
+        assert_eq!(
+            engine_request(&plan, &staged).unwrap()["survey_layers_omitted"],
+            json!(["field_notes", "transformer_survey"])
+        );
+        let mut document = result_document(&plan, &out_dir);
+        assert!(verify_result(&serde_json::to_vec(&document).unwrap(), &plan, &out_dir).is_err());
+        document["survey_layers_omitted"] = json!(["field_notes", "transformer_survey"]);
+        let verified =
+            verify_result(&serde_json::to_vec(&document).unwrap(), &plan, &out_dir).unwrap();
+        let run = run_receipt(&RunReceiptFacts {
+            plan: &plan,
+            client_run_id: &format!("report-{}", "a".repeat(32)),
+            engine: &engine(),
+            result: &verified,
+            artifact_dir: "tx_a",
+            now_ms: 1,
+            expected_content_digest: None,
+            print_context_sha256: None,
+            print_context_layers: &[],
+            print_context_omitted: &[],
+        })
+        .unwrap();
+        assert_eq!(
+            run["survey_layers_omitted"]["context_omitted"][1]["layer"],
+            "transformer_survey"
+        );
+        let row = BatchResult::ok("tx_a", "tx_a/report-run.json".into(), 2)
+            .with_survey_layers_omitted(plan.survey_layers_omitted.clone());
+        let batch = batch_receipt(
+            "proj-1",
+            "stable",
+            Some(&engine()),
+            1,
+            &["tx_a".into()],
+            &[row],
+            1,
+        )
+        .unwrap();
+        assert_eq!(batch["status"], "completed");
+        assert_eq!(
+            batch["survey_layers_omitted"]["code"],
+            SURVEY_LAYERS_OMITTED
+        );
+        assert_eq!(
+            batch["results"][0]["survey_layers_omitted"]["forms"],
+            json!(["field_notes", "transformer_survey"])
+        );
+
+        let bare = plan_transformer_export(
+            "proj-1",
+            &simple_receipt("Benin"),
+            "tx_a",
+            7,
+            &layers(),
+            None,
+        )
+        .unwrap();
+        assert!(bare.survey_layers_omitted.is_none());
+        assert!(engine_request(&bare, &staged)
+            .unwrap()
+            .get("survey_layers_omitted")
+            .is_none());
+        let bare_result = verify_result(
+            &serde_json::to_vec(&result_document(&bare, &out_dir)).unwrap(),
+            &bare,
+            &out_dir,
+        )
+        .unwrap();
+        let bare_run = run_receipt(&RunReceiptFacts {
+            plan: &bare,
+            client_run_id: &format!("report-{}", "a".repeat(32)),
+            engine: &engine(),
+            result: &bare_result,
+            artifact_dir: "tx_a",
+            now_ms: 1,
+            expected_content_digest: None,
+            print_context_sha256: None,
+            print_context_layers: &[],
+            print_context_omitted: &[],
+        })
+        .unwrap();
+        assert!(bare_run.get("survey_layers_omitted").is_none());
+        let bare_batch = batch_receipt(
+            "proj-1",
+            "stable",
+            Some(&engine()),
+            1,
+            &["tx_a".into()],
+            &[BatchResult::ok("tx_a", "tx_a/report-run.json".into(), 2)],
+            1,
+        )
+        .unwrap();
+        assert!(bare_batch.get("survey_layers_omitted").is_none());
     }
 
     fn layers() -> BTreeMap<String, Value> {
