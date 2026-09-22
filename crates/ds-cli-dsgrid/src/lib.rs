@@ -69,6 +69,8 @@ pub static DOMAIN: Domain = Domain {
         &run::COMMAND,
         &apply::COMMAND,
         &apply_batch::COMMAND,
+        &profile::labels::SHOW,
+        &profile::labels::SET,
         &model::list::COMMAND,
         &model::show::COMMAND,
         &model::create_local::COMMAND,

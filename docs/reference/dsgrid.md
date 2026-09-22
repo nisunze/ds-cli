@@ -383,3 +383,14 @@ task the geometry of the named structures or alignment, with one `ds_object`
 link per object. The engine's own projection supplies every position; the
 kernel resolves and shapes; nothing in this domain is computed twice.
 `docs/reference/pm.md` has the grammar and the shaping rules.
+
+## Interactive model Profile labels
+
+The model Profile is the interactive engineering view. Its ordered structure-label fields and orientation are typed presentation data in the `.dsgrid` manifest, independent of an open Desktop or browser storage. The default fields are `number,type,comment1,comment2,comment3`; chainage is omitted. `comment1`–`comment3` come from canonical structure staking attributes in the Rust profile projection.
+
+```bash
+ds dsgrid profile labels show --model ./design.dsgrid --output json
+ds dsgrid profile labels set --model ./design.dsgrid --fields number,type,comment1,comment2,comment3 --out ./design-labelled.dsgrid --output json
+```
+
+`set` writes a new model revision and preserves the engineering snapshot and package bindings. It never replaces the source package. Later engineering edits preserve this policy. Sheet Profile and sheet Plan are fixed-paper outputs with separate page composition; neither inherits this interactive setting.

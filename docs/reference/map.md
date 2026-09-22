@@ -704,3 +704,7 @@ positive. Geometry is f64; device pixel ratio does not alter CSS camera math.
 
 A minimal fit request is `{"operation":"fit"}`. Results use `zoom`, `pan_x`,
 `pan_y`, except `project`, which returns `scale`, `offset_x`, `offset_y`.
+
+## Interactive model Profile viewport
+
+`ds map profile view` reads and `ds map profile set` stages the paired Desktop's transient model Profile viewport: vertical exaggeration, layer visibility, zoom, pan, fit and rebuild. Fit/rebuild require an open model Profile; other settings can be staged before opening it. These commands do not author structure-label fields. Use `ds dsgrid profile labels show|set` for the portable model Profile label policy. Fixed-paper sheet Profile and sheet Plan composition are separate from both commands.

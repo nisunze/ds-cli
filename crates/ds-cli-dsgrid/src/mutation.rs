@@ -445,6 +445,7 @@ pub fn run(
     let checkpoint = session.checkpoint();
     let source_package_revision = package.manifest.model.model_revision;
     let options = PackOptions {
+        presentation: package.manifest.model.presentation.clone(),
         model_id: package.manifest.model.model_id.clone(),
         model_revision: source_package_revision + checkpoint.sequence,
         coordinate_system: package.manifest.model.coordinate_system.clone(),

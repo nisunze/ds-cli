@@ -42,6 +42,7 @@ struct App {
     project: String,
     map: String,
     map_layers: String,
+    map_profile: String,
     survey: String,
     design: String,
     design_collaboration: String,
@@ -74,6 +75,7 @@ fn app() -> Option<App> {
         project: read("src/lib/desktop/cli-project.ts")?,
         map: read("src/lib/desktop/cli-map.ts")?,
         map_layers: read("src/lib/desktop/cli-map-layers.ts")?,
+        map_profile: read("src/lib/desktop/cli-map-profile.ts")?,
         survey: read("src/lib/desktop/cli-survey.ts")?,
         design: read("src/lib/desktop/cli-map-design.ts")?,
         design_collaboration: read("src/lib/desktop/cli-design.ts")?,
@@ -357,7 +359,7 @@ fn every_map_command_has_one_closed_operation_owner() {
             operation.operation
         );
 
-        let owners = [&app.map, &app.map_layers, &app.survey]
+        let owners = [&app.map, &app.map_layers, &app.map_profile, &app.survey]
             .into_iter()
             .filter(|source| has_operation_contract(source, operation.operation))
             .collect::<Vec<_>>();
@@ -369,7 +371,7 @@ fn every_map_command_has_one_closed_operation_owner() {
         );
         let contract = operation_contract(owners[0], operation.operation);
         assert!(
-            !contract.is_empty(),
+            operation.arguments.is_empty() || !contract.is_empty(),
             "`{}` has no typed map-adapter argument contract",
             operation.operation
         );
@@ -385,6 +387,7 @@ fn every_map_command_has_one_closed_operation_owner() {
                 assert!(
                     app.map.contains(&format!("'{nested}'"))
                         || app.map_layers.contains(&format!("'{nested}'"))
+                        || app.map_profile.contains(&format!("'{nested}'"))
                         || app.survey.contains(&format!("'{nested}'")),
                     "ds map sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
                     operation.operation

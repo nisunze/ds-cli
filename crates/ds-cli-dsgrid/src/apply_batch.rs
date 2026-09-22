@@ -347,6 +347,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     });
     if let Some(out_path) = out_path {
         let options = PackOptions {
+            presentation: package.manifest.model.presentation.clone(),
             model_id: package.manifest.model.model_id,
             model_revision: package.manifest.model.model_revision + checkpoint.sequence,
             coordinate_system: package.manifest.model.coordinate_system,

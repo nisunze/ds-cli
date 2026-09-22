@@ -232,6 +232,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let checkpoint = session.checkpoint();
 
     let options = PackOptions {
+        presentation: package.manifest.model.presentation.clone(),
         model_id: source_model_id.clone(),
         model_revision: source_package_revision + checkpoint.sequence,
         coordinate_system,

@@ -1,5 +1,6 @@
-//! Paired Profile presentation controls. The profile must already be open in
-//! the local Desktop; these commands never alter the engineering model.
+//! Paired Profile presentation controls. View settings can be staged before
+//! the Profile opens; fit/rebuild require an open surface. Model-authored label
+//! composition is owned by dsgrid profile labels, not this UI bridge.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -9,17 +10,6 @@ use serde_json::{Map, Value, json};
 
 use crate::DESCRIPTOR_ARG;
 
-const LABEL_FIELDS: &[&str] = &[
-    "number",
-    "station",
-    "type",
-    "height",
-    "alignment",
-    "comment1",
-    "comment2",
-    "comment3",
-];
-const ORIENTATIONS: &[&str] = &["auto", "right", "left", "above", "below", "vertical"];
 const VISIBILITY_KEYS: &[&str] = &[
     "ground",
     "side_profiles",
@@ -36,12 +26,12 @@ const VISIBILITY_KEYS: &[&str] = &[
 
 const PROFILE_CLOSED: Refusal = Refusal {
     code: "profile_closed",
-    when: "the paired Desktop has no open Profile",
+    when: "fit or rebuild is requested while the paired Desktop has no open Profile",
     remedy: "open a model with ds dsgrid profile open, then retry",
 };
 const INVALID_PROFILE_VIEW: Refusal = Refusal {
     code: "invalid_profile_view",
-    when: "a label, orientation, visibility, scale, viewport, or action value is invalid",
+    when: "a visibility, scale, viewport, or action value is invalid",
     remedy: "use the exact fields and ranges in ds map profile set --help",
 };
 
@@ -50,13 +40,13 @@ pub static VIEW: Command = Command {
     path: &["map", "profile", "view"],
     contract: 1,
     summary: "Read the paired Profile's exact visual state.",
-    purpose: "Returns the Profile occupant and current labels, orientation, vertical exaggeration, visibility, zoom and pan from the running Desktop. Reads no engineering model and does not change the view.",
+    purpose: "Returns the Profile occupant and current vertical exaggeration, visibility, zoom and pan from the running Desktop. Reads no engineering model and does not change the view.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[DESCRIPTOR_ARG],
-    output: "The paired Profile's exact visual state, including occupant, labels, orientation, scale, visibility and viewport.",
+    output: "The paired Profile's exact visual state, including occupant, scale, visibility and viewport.",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Read the live Profile's visual state before changing it.",
@@ -72,7 +62,7 @@ pub static VIEW: Command = Command {
         crate::UNREADABLE,
     ],
     reference: Some("docs/reference/map.md"),
-    search: &["profile", "visual", "labels", "viewport"],
+    search: &["profile", "visual", "viewport"],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };
@@ -82,23 +72,12 @@ pub static SET: Command = Command {
     path: &["map", "profile", "set"],
     contract: 1,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Patches only the named Profile display settings in the running Desktop; omitted settings stay unchanged. Labels are an ordered list. The visibility object uses the documented concise keys and boolean values. Fit and rebuild are explicit actions, and the receipt returns the resulting live state. No engineering model is changed.",
+    purpose: "Patches only the named Profile display settings in the running Desktop, even before the Profile opens; omitted settings stay unchanged. The visibility object uses the documented concise keys and boolean values. Fit and rebuild are explicit actions, and the receipt returns the resulting live state. No engineering model is changed.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[
-        Arg::value(
-            "labels",
-            "<comma-separated-fields>",
-            "Ordered profile structure label fields: number,station,type,height,alignment,comment1,comment2,comment3.",
-        ),
-        Arg::value(
-            "orientation",
-            "<orientation>",
-            "Profile structure label placement.",
-        )
-        .choices(ORIENTATIONS),
         Arg::value(
             "vertical-exaggeration",
             "<ratio>",
@@ -129,18 +108,11 @@ pub static SET: Command = Command {
         DESCRIPTOR_ARG,
     ],
     output: "The resulting exact visual state from the paired Profile, with the applied patch and optional action.",
-    examples: &[
-        Example {
-            command: "ds map profile set --labels number,type,comment1,comment2,comment3 --output json",
-            note: "Compose the requested structure labels without chainage.",
-            runnable: false,
-        },
-        Example {
-            command: "ds map profile set --vertical-exaggeration 5 --visibility '{\"ground\":true,\"wire\":false}' --action fit --output json",
-            note: "Set scale and visibility, then fit the complete Profile.",
-            runnable: false,
-        },
-    ],
+    examples: &[Example {
+        command: "ds map profile set --vertical-exaggeration 5 --visibility '{\"ground\":true,\"wire\":false}' --action fit --output json",
+        note: "Set scale and visibility, then fit the complete Profile.",
+        runnable: false,
+    }],
     refusals: &[
         crate::NOT_PAIRED,
         crate::AMBIGUOUS,
@@ -187,17 +159,6 @@ pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     let mut patch = Map::new();
-    if let Some(raw) = inputs.value("labels") {
-        patch.insert("labels".to_owned(), json!(parse_labels(raw)?));
-    }
-    if let Some(orientation) = inputs.value("orientation") {
-        if !ORIENTATIONS.contains(&orientation) {
-            return Err(invalid(
-                "orientation must be auto, right, left, above, below, or vertical",
-            ));
-        }
-        patch.insert("orientation".to_owned(), json!(orientation));
-    }
     if let Some(raw) = inputs.value("vertical-exaggeration") {
         patch.insert(
             "vertical_exaggeration".to_owned(),
@@ -234,21 +195,6 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
         return Err(invalid("provide at least one Profile setting or --action"));
     }
     Ok(patch)
-}
-
-fn parse_labels(raw: &str) -> Result<Vec<&str>, Failure> {
-    if raw.is_empty() {
-        return Ok(Vec::new());
-    }
-    let fields: Vec<&str> = raw.split(',').map(str::trim).collect();
-    if fields.iter().any(|field| !LABEL_FIELDS.contains(field)) {
-        return Err(invalid("labels contains an unknown or empty field"));
-    }
-    let mut seen = std::collections::BTreeSet::new();
-    if fields.iter().any(|field| !seen.insert(*field)) {
-        return Err(invalid("labels must not repeat a field"));
-    }
-    Ok(fields)
 }
 
 fn parse_visibility(raw: &str) -> Result<Map<String, Value>, Failure> {
@@ -291,16 +237,6 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn ordered_labels_accept_comments_and_reject_drift() {
-        assert_eq!(
-            parse_labels("number,type,comment1,comment2,comment3").unwrap(),
-            vec!["number", "type", "comment1", "comment2", "comment3"]
-        );
-        assert!(parse_labels("number,number").is_err());
-        assert!(parse_labels("number,comment4").is_err());
-    }
 
     #[test]
     fn visibility_requires_exact_boolean_keys() {
