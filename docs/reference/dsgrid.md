@@ -227,6 +227,8 @@ ds dsgrid structure retype --model local-… --structure 3 --type j-w-60d-S190.0
 ds dsgrid structure retype --model local-… --from-finding structure_type_not_allowed     --skip 346 --skip 446 --type j-w-60d-S190.012 --dry-run     # then --yes: ONE revision
 ds dsgrid report structures --model local-… --out structures.csv     # or .xlsx
 ds dsgrid report structures --model local-… --only-findings --output json
+ds dsgrid report staking --package design.dsgrid --out staking.xlsx
+ds dsgrid report staking --package design.dsgrid --options client-staking.json --out staking-client.xlsx
 ```
 
 `--structure` takes a structure id (`str-…`) or, when unique, the engineering
@@ -246,6 +248,16 @@ Before a retype is written the REG v7 angle-pole rule is evaluated: the dry-run
 receipt lists `findings {cleared, remaining, created}` and a write that would
 leave or create `structure_type_not_allowed` (a single pole carrying
 10° ≤ |line angle| < 60°) is refused with that code.
+
+**The client MV staking table** (`report staking`) projects a canonical
+`.dsgrid` into the two-row PLS-CADD + quantity-matrix workbook. The model's
+structure name, comments 1–3, ahead span, cable and transformer kVA determine
+the matrix; the last row contains totals for later BOQ references. It retains
+legacy imported rows with explicit warnings where a name or source field
+cannot be classified. `--options` reads project JSON for conductor mappings
+(including shield/OPGW), optional actual spans, location source, conductor
+factor and stay allowances; omitted options use the shipped defaults. The
+command creates a new workbook and does not change the model.
 
 **The structure list** (`report structures`, contract 04 §5) is the engine's
 `report_structures` read: one row per placed structure — id, number,
@@ -349,6 +361,7 @@ identity still reaches it without loading exchange planning.
 | `model list/show/create-local/import-external/set-active` | `ds_command_kernel::local_models` over `ds_layer_store::local_models` (this machine's catalogue); `show` opens the package with `ds_grid_engine::GridSession` |
 | `structure describe/retype` | `ds_grid_engine::GridSession::apply_transaction_at_head` (`describe_structure`, `retype_structure`), `ds_grid_engine::evaluate_structure_type`, `ds_grid_exchange::dsgrid::emit`, `local_models::Op::Revise` |
 | `report structures` | `ds_grid_engine::report_structures` (+ `structure_rules::load_standard`), `ds_io::layers_to_xlsx` |
+| `report staking` | `ds_grid_exchange::staking_table::build_staking_table`, `ds_io::table_to_xlsx` |
 | `publish-version` | paired Desktop `dsgrid.model.publish`, composing its existing project version flow |
 | `feature-codes report/import/migrate` | `ds_grid_engine::feature_code_ops` over `ds_grid_engine::feature_code_standard` (the bundled standard and its classifier) |
 | `feature-codes export` | `ds_grid_exchange::feature_code_fea::export_fea`, `ds_io::pls_cadd_fea::write_fea` |

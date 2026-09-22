@@ -2,3 +2,4 @@
 //! the engine's report projections written to a file an engineer hands over.
 
 pub mod structures;
+pub mod staking;

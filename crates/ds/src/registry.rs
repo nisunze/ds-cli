@@ -237,6 +237,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         handler: ds_cli_dsgrid::report::structures::run,
         render: ds_cli_dsgrid::report::structures::render,
     },
+    Entry {
+        command: &ds_cli_dsgrid::report::staking::COMMAND,
+        handler: ds_cli_dsgrid::report::staking::run,
+        render: ds_cli_dsgrid::report::staking::render,
+    },
     // Program contract 03: the feature-code and clearance workflow, on the
     // same plumbing.
     Entry {

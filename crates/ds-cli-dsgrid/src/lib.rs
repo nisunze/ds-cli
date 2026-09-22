@@ -81,6 +81,7 @@ pub static DOMAIN: Domain = Domain {
         &structure::describe::COMMAND,
         &structure::retype::COMMAND,
         &report::structures::COMMAND,
+        &report::staking::COMMAND,
         &feature_codes::report::COMMAND,
         &feature_codes::import::COMMAND,
         &feature_codes::migrate::COMMAND,
