@@ -25,10 +25,82 @@ use crate::report_formats::{NamedPrintSelection, PrintArtifactFormat, OUTPUT_SEL
 pub const FORMAT: PrintArtifactFormat = PrintArtifactFormat::Svg;
 
 /// What a preview run rendered, recorded in its receipt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Facts {
     pub format: PrintArtifactFormat,
+    /// The survey forms the project's policy appends to a delivered report
+    /// that this preview page was rendered without. A preview is a local
+    /// proof of a sheet, and survey layers live in the cloud: the delivery
+    /// engine refuses a local room under a survey-append policy
+    /// (`plain_local_survey_append_requires_cloud`), so the preview recipe
+    /// switches the append off in memory and names the omission here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub survey_forms_omitted: Vec<String>,
+}
+
+/// The settings row that switches survey appending on, under every spelling
+/// the reporter reads (`INCLUDE_SURVEY_EXPORT_SETTING_ALIASES`).
+const INCLUDE_SURVEY_ALIASES: &[&str] = &[
+    "include_survey_data_in_transformer_exports",
+    "include-survey-data-in-transformer-exports",
+];
+/// The settings row naming the appended forms, under every spelling the
+/// reporter reads (`SURVEY_EXPORT_FORM_SETTING_ALIASES`).
+const SURVEY_FORMS_ALIASES: &[&str] = &[
+    "survey_forms_in_transformer_exports",
+    "survey-forms-in-transformer-exports",
+    "transformer_export_survey_forms",
+    "transformer-export-survey-forms",
+];
+
+fn setting_truthy(value: &Value) -> bool {
+    match value {
+        Value::Bool(flag) => *flag,
+        Value::Number(number) => number.as_f64().is_some_and(|n| n != 0.0),
+        Value::String(text) => matches!(
+            text.trim().to_ascii_lowercase().as_str(),
+            "true" | "yes" | "1" | "on"
+        ),
+        _ => false,
+    }
+}
+
+fn parameter_matches(row: &Value, aliases: &[&str]) -> bool {
+    row["parameter"]
+        .as_str()
+        .map(|name| name.trim().to_ascii_lowercase())
+        .is_some_and(|name| aliases.contains(&name.as_str()))
+}
+
+/// Switch a survey-append policy off in the preview's in-memory settings and
+/// return the forms the page will be rendered without. A policy with no
+/// forms appends nothing, so nothing is omitted and nothing is changed.
+fn omit_survey_append(rows: &mut [Value]) -> Vec<String> {
+    let enabled = rows
+        .iter()
+        .any(|row| parameter_matches(row, INCLUDE_SURVEY_ALIASES) && setting_truthy(&row["value"]));
+    if !enabled {
+        return Vec::new();
+    }
+    let forms = rows
+        .iter()
+        .filter(|row| parameter_matches(row, SURVEY_FORMS_ALIASES))
+        .flat_map(|row| crate::report_formats::string_list(&row["value"]))
+        .map(|form| form.trim().to_string())
+        .filter(|form| !form.is_empty())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if forms.is_empty() {
+        return Vec::new();
+    }
+    for row in rows.iter_mut() {
+        if parameter_matches(row, INCLUDE_SURVEY_ALIASES) {
+            row["value"] = Value::Bool(false);
+        }
+    }
+    forms
 }
 
 /// The receipt and selection a host runs, and the one output it will find.
@@ -86,20 +158,26 @@ pub fn with_layout(source: &InputReceipt, layout: &Layout) -> Result<Preview, St
     // this receipt is never saved, which is what `require_deliverable`
     // protects on the host's save paths.
     report_formats::apply_output_selection(&mut rows, &selection)?;
+    // A proof renders with the survey layers absent and says so, rather than
+    // refusing a project whose delivered reports append them from the cloud.
+    let survey_forms_omitted = omit_survey_append(&mut rows);
     sheets["project_settings"] = Value::Array(rows);
     let outputs = report_formats::selected_plan(&sheets, false, Some(&selection))?;
     let output_id = match outputs.as_slice() {
         [one] => one.output_id.clone(),
         _ => return Err("A print preview is exactly one output".into()),
     };
-    let facts = Facts { format: FORMAT };
+    let facts = Facts {
+        format: FORMAT,
+        survey_forms_omitted,
+    };
     let mut result = source.clone();
     result.sheets_json = serde_json::to_string(&sheets).map_err(|e| e.to_string())?;
     result.sheets_sha256 = sha256_hex(result.sheets_json.as_bytes());
     result.local_print_recipe = Some(proof::Provenance {
         source_sheets_sha256: source.sheets_sha256.clone(),
         layouts: BTreeMap::from([(layout.id.clone(), digest.clone())]),
-        preview: Some(facts),
+        preview: Some(facts.clone()),
     });
     result.validate()?;
     Ok(Preview {
@@ -146,7 +224,9 @@ mod tests {
         assert_eq!(preview.layout_id, "draft-a3");
         let recipe = preview.receipt.local_print_recipe.as_ref().unwrap();
         assert_eq!(recipe.source_sheets_sha256, source.sheets_sha256);
-        assert_eq!(recipe.preview.unwrap().format, PrintArtifactFormat::Svg);
+        let facts = recipe.preview.clone().unwrap();
+        assert_eq!(facts.format, PrintArtifactFormat::Svg);
+        assert!(facts.survey_forms_omitted.is_empty());
         assert_eq!(recipe.layouts["draft-a3"], preview.layout_sha256);
         let sheets: Value = serde_json::from_str(&preview.receipt.sheets_json).unwrap();
         assert_eq!(
@@ -211,6 +291,74 @@ mod tests {
         )
         .is_err());
         assert!(preview.selection.require_deliverable().is_err());
+    }
+
+    /// 4c193e6d: a project whose policy appends survey layers to delivered
+    /// reports could publish a layout but never proof it — the delivery
+    /// engine refuses a local room under that policy. A preview is a proof of
+    /// a sheet, not a delivery: it renders with the survey layers absent and
+    /// names the omission.
+    #[test]
+    fn a_preview_renders_without_the_survey_layers_and_names_them() {
+        let layout = crate::printing::default_layout();
+        let sheets = json!({
+            "printing_setups": [],
+            "project_settings": [
+                {"parameter":"design_export_format","value":["xlsx","shp"]},
+                {"parameter":"include_survey_data_in_transformer_exports","value":true},
+                {"parameter":"survey_forms_in_transformer_exports","value":["field_notes","lv_poles_as_built","transformer_survey"]},
+                {"parameter":"minimum_tr_size","value":"25"},
+            ],
+        });
+        let bytes = serde_json::to_string(&sheets).unwrap();
+        let source = InputReceipt {
+            local_print_recipe: None,
+            schema: 1,
+            country: "Rwanda".into(),
+            sheets_sha256: sha256_hex(bytes.as_bytes()),
+            sheets_json: bytes,
+            reference_semantic_sha256: "a".repeat(64),
+        };
+        let preview = with_layout(&source, &layout).unwrap();
+        assert_eq!(
+            preview.facts.survey_forms_omitted,
+            ["field_notes", "lv_poles_as_built", "transformer_survey"]
+        );
+        let recipe = preview.receipt.local_print_recipe.as_ref().unwrap();
+        assert_eq!(
+            recipe.preview.as_ref().unwrap().survey_forms_omitted,
+            preview.facts.survey_forms_omitted
+        );
+        let rewritten: Value = serde_json::from_str(&preview.receipt.sheets_json).unwrap();
+        let rows = rewritten["project_settings"].as_array().unwrap();
+        let include = rows
+            .iter()
+            .find(|row| row["parameter"] == "include_survey_data_in_transformer_exports")
+            .unwrap();
+        assert_eq!(include["value"], json!(false));
+        // Every other row is as the project stored it; the governed receipt
+        // is untouched.
+        assert!(rows
+            .iter()
+            .any(|row| row["parameter"] == "minimum_tr_size" && row["value"] == "25"));
+        assert!(rows.iter().any(
+            |row| row["parameter"] == "survey_forms_in_transformer_exports"
+                && row["value"].as_array().unwrap().len() == 3
+        ));
+        let original: Value = serde_json::from_str(&source.sheets_json).unwrap();
+        assert_eq!(original["project_settings"][1]["value"], json!(true));
+        // The hyphenated spelling and a text flag are read the same way.
+        let mut rows = vec![
+            json!({"parameter":"include-survey-data-in-transformer-exports","value":"yes"}),
+            json!({"parameter":"transformer-export-survey-forms","value":"customer_survey"}),
+        ];
+        assert_eq!(omit_survey_append(&mut rows), ["customer_survey"]);
+        assert_eq!(rows[0]["value"], json!(false));
+        // Appending nothing omits nothing and changes nothing.
+        let mut rows =
+            vec![json!({"parameter":"include_survey_data_in_transformer_exports","value":true})];
+        assert!(omit_survey_append(&mut rows).is_empty());
+        assert_eq!(rows[0]["value"], json!(true));
     }
 
     #[test]

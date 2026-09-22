@@ -37,6 +37,14 @@ use crate::report_formats::{self, DesignOutputSelection, Output};
 pub const INPUT_RECEIPT_SCHEMA: u32 = 1;
 /// The member of the `/config/{project}` document that carries it.
 pub const INPUT_RECEIPT_MEMBER: &str = "network_reporter_input_receipt";
+/// The sibling member ds-brain writes instead when the receipt could not be
+/// minted: why, and what resolves it (`NetworkReporterInputReceiptRefusal`
+/// in `config_service.go`). A document with an effective configuration
+/// carries exactly one of the two.
+pub const INPUT_RECEIPT_REFUSAL_MEMBER: &str = "network_reporter_input_receipt_refusal";
+/// The refusal code every host raises for a missing or refused receipt; the
+/// message key names the reason ds-brain gave, or this code when it gave none.
+pub const INPUT_RECEIPT_UNAVAILABLE: &str = "report_input_receipt_unavailable";
 /// The engine task this module plans and verifies.
 pub const REPORT_TASK: &str = "export_transformer_report";
 /// The engine subcommand a host names for that task.
@@ -227,12 +235,126 @@ pub struct InputReceipt {
     pub reference_semantic_sha256: String,
 }
 
+/// Why ds-brain could not mint the project's receipt, as the configuration
+/// document carries it. `reason_key` is one closed key the hosts already
+/// render (`printing_style_unavailable`, `printing_inputs_incomplete`,
+/// `project_country_missing`, `report_input_receipt_unavailable`); `detail`
+/// and `remedy` are the server's own sentences, carried unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct InputReceiptRefusal {
+    pub reason_key: String,
+    #[serde(default)]
+    pub detail: String,
+    #[serde(default)]
+    pub remedy: String,
+    /// The governed print styles a selected setup binds that the catalogue
+    /// no longer holds, and the setups binding them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_print_styles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub printing_setups: Vec<String>,
+}
+
+impl InputReceiptRefusal {
+    /// The refusal a host raises: the server's reason, detail and remedy in
+    /// one sentence an operator can act on.
+    pub fn sentence(&self) -> String {
+        let mut sentence = format!(
+            "the project configuration carries no `{INPUT_RECEIPT_MEMBER}`: {}",
+            self.reason_key
+        );
+        if !self.detail.trim().is_empty() {
+            sentence.push_str(": ");
+            sentence.push_str(self.detail.trim());
+        }
+        if !self.remedy.trim().is_empty() {
+            sentence.push_str("; ");
+            sentence.push_str(self.remedy.trim());
+        }
+        sentence
+    }
+}
+
+/// Whether a project can run a local report at all: the receipt is present
+/// and proven, or the reason it is not. `ds report project settings` and the
+/// Desktop's export panels read this so `ready` never says yes to an export
+/// the kernel would refuse.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ReceiptReadiness {
+    pub ready: bool,
+    /// One sentence naming the problem, absent when ready.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<String>,
+    /// The refusal a host renders: `code` is `report_input_receipt_unavailable`,
+    /// `message_key` the server's reason key (or the code), plus the server's
+    /// detail and remedy when it gave them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<Value>,
+}
+
 impl InputReceipt {
+    /// The server's refusal beside a missing receipt, when the document
+    /// carries one. An unreadable refusal member reads as none: the receipt's
+    /// absence is still reported, with the generic reason.
+    pub fn refusal_from_config(document: &Value) -> Option<InputReceiptRefusal> {
+        let value = document.get(INPUT_RECEIPT_REFUSAL_MEMBER)?;
+        let refusal: InputReceiptRefusal = serde_json::from_value(value.clone()).ok()?;
+        if !valid_semantic_text(&refusal.reason_key, 128) {
+            return None;
+        }
+        Some(refusal)
+    }
+
+    /// Ready, or why not: the one answer both `ds` and the Desktop give
+    /// before an export is attempted.
+    pub fn readiness(document: &Value) -> ReceiptReadiness {
+        match Self::from_config(document) {
+            Ok(_) => ReceiptReadiness {
+                ready: true,
+                issue: None,
+                refusal: None,
+            },
+            Err(issue) => {
+                let refusal = Self::refusal_from_config(document);
+                let mut rendered = json!({
+                    "code": INPUT_RECEIPT_UNAVAILABLE,
+                    "message_key": refusal
+                        .as_ref()
+                        .map_or(INPUT_RECEIPT_UNAVAILABLE, |r| r.reason_key.as_str()),
+                    "mode": "refreshed",
+                });
+                if let Some(refusal) = refusal {
+                    rendered["reason_key"] = json!(refusal.reason_key);
+                    rendered["detail"] = json!(refusal.detail);
+                    rendered["remedy"] = json!(refusal.remedy);
+                    if !refusal.missing_print_styles.is_empty() {
+                        rendered["missing_print_styles"] = json!(refusal.missing_print_styles);
+                    }
+                    if !refusal.printing_setups.is_empty() {
+                        rendered["printing_setups"] = json!(refusal.printing_setups);
+                    }
+                }
+                ReceiptReadiness {
+                    ready: false,
+                    issue: Some(issue),
+                    refusal: Some(rendered),
+                }
+            }
+        }
+    }
+
     /// Read the receipt out of one `/config/{project}` document — the same
-    /// member the browser reads from its cached copy — and prove it.
+    /// member the browser reads from its cached copy — and prove it. When the
+    /// member is absent and the server said why, the error is the server's
+    /// reason, detail and remedy, not an invitation to refresh.
     pub fn from_config(document: &Value) -> Result<Self, String> {
         let value = document.get(INPUT_RECEIPT_MEMBER).ok_or_else(|| {
-            format!("the project configuration carries no `{INPUT_RECEIPT_MEMBER}`; refresh the project configuration and retry")
+            match Self::refusal_from_config(document) {
+                Some(refusal) => refusal.sentence(),
+                None => format!(
+                    "the project configuration carries no `{INPUT_RECEIPT_MEMBER}` and no `{INPUT_RECEIPT_REFUSAL_MEMBER}`; re-read the project configuration (`ds report project settings`) and retry"
+                ),
+            }
         })?;
         let receipt: Self = serde_json::from_value(value.clone()).map_err(|error| {
             format!("the Network Reporter input receipt is unreadable: {error}")
@@ -1942,6 +2064,74 @@ mod tests {
         let mut schema = receipt.clone();
         schema.schema = 2;
         assert!(schema.validate().is_err());
+    }
+
+    /// cd193b7d: the config came back without the member and every host said
+    /// "refresh the project configuration", which refreshes nothing when the
+    /// server could not mint it. The server's refusal now travels with the
+    /// document, and the kernel's refusal repeats it: reason, detail, remedy.
+    #[test]
+    fn a_missing_receipt_is_refused_with_the_servers_reason_and_remedy() {
+        let refused = json!({"sheets": {}, "network_reporter_input_receipt_refusal": {
+            "reason_key": "printing_style_unavailable",
+            "detail": "the selected printing setup a0-northern-hub binds print style gt/rwanda_villages_print, which the governed style catalogue does not hold",
+            "remedy": "rebind or drop the layers bound to the missing styles (`ds report layout style-ref`), then read `ds report project settings` again",
+            "missing_print_styles": ["gt/rwanda_villages_print"],
+            "printing_setups": ["a0-northern-hub"],
+        }});
+        let error = InputReceipt::from_config(&refused).unwrap_err();
+        for needle in [
+            "network_reporter_input_receipt",
+            "printing_style_unavailable",
+            "gt/rwanda_villages_print",
+            "a0-northern-hub",
+            "ds report layout style-ref",
+        ] {
+            assert!(error.contains(needle), "{error}");
+        }
+        assert!(
+            !error.contains("refresh the project configuration"),
+            "{error}"
+        );
+        let refusal = InputReceipt::refusal_from_config(&refused).unwrap();
+        assert_eq!(refusal.missing_print_styles, ["gt/rwanda_villages_print"]);
+        assert_eq!(refusal.printing_setups, ["a0-northern-hub"]);
+
+        let readiness = InputReceipt::readiness(&refused);
+        assert!(!readiness.ready);
+        assert_eq!(readiness.issue.as_deref(), Some(error.as_str()));
+        let rendered = readiness.refusal.unwrap();
+        assert_eq!(rendered["code"], "report_input_receipt_unavailable");
+        assert_eq!(rendered["message_key"], "printing_style_unavailable");
+        assert_eq!(rendered["reason_key"], "printing_style_unavailable");
+        assert_eq!(
+            rendered["missing_print_styles"][0],
+            "gt/rwanda_villages_print"
+        );
+        assert_eq!(rendered["printing_setups"][0], "a0-northern-hub");
+        assert!(rendered["remedy"]
+            .as_str()
+            .unwrap()
+            .contains("ds report project settings"));
+
+        // No member and no refusal: still refused, still actionable, and the
+        // remedy names the read that re-fetches rather than a phantom refresh.
+        let bare = InputReceipt::readiness(&json!({"sheets": {}}));
+        assert!(!bare.ready);
+        let rendered = bare.refusal.unwrap();
+        assert_eq!(rendered["message_key"], "report_input_receipt_unavailable");
+        assert!(rendered.get("reason_key").is_none());
+        assert!(bare.issue.unwrap().contains("ds report project settings"));
+        // An unreadable refusal member never hides the absence.
+        let junk =
+            json!({"sheets": {}, "network_reporter_input_receipt_refusal": {"reason_key": " "}});
+        assert!(InputReceipt::refusal_from_config(&junk).is_none());
+        assert!(!InputReceipt::readiness(&junk).ready);
+        // A minted receipt is ready and carries no refusal.
+        let ready = InputReceipt::readiness(
+            &json!({"network_reporter_input_receipt": print_receipt("Rwanda")}),
+        );
+        assert!(ready.ready && ready.issue.is_none() && ready.refusal.is_none());
     }
 
     #[test]
