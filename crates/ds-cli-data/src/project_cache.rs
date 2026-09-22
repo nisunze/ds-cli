@@ -380,7 +380,7 @@ pub static SEED_COMMAND: Command = Command {
     ],
     refusals: SEED_REFUSALS,
     reference: Some("docs/reference/data.md"),
-    search: &[],
+    search: &["install", "footprints"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

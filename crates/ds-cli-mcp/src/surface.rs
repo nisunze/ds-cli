@@ -1528,6 +1528,22 @@ pub fn leaf_tool_json(tool: &Tool) -> Value {
     })
 }
 
+/// The chapters `ds_catalog` will accept, read from the routing table rather
+/// than written out again.
+///
+/// It WAS written out again, and it had drifted: `data` was missing, so an
+/// agent that found `desktop.data.rwanda.install` through a query could not
+/// then ask for that chapter — the one chapter whose whole job is putting the
+/// country's data on the machine was the one it could not name.
+fn catalog_chapter_enum() -> Value {
+    let mut tokens: Vec<Value> = ROUTED_CHAPTERS
+        .iter()
+        .map(|chapter| json!(chapter.token()))
+        .collect();
+    tokens.push(Value::Null);
+    Value::Array(tokens)
+}
+
 fn catalog_tool_json() -> Value {
     json!({
         "name": "ds_catalog",
@@ -1537,7 +1553,7 @@ fn catalog_tool_json() -> Value {
             "type": "object",
             "properties": {
                 "query": { "type": ["string", "null"], "description": "Words to match against command ids and descriptions; at most ten summaries return." },
-                "chapter": { "type": ["string", "null"], "enum": ["project", "assets", "grid-model", "pls-cadd", "survey", "design", "map-presentation", "vector-tiles", "solar", "reports", "operations", "workstation", null], "description": "Restrict discovery to one operator-intent chapter." },
+                "chapter": { "type": ["string", "null"], "enum": catalog_chapter_enum(), "description": "Restrict discovery to one operator-intent chapter." },
                 "command": { "type": ["string", "null"], "description": "Route one exact canonical command id to its chapter describe call." }
             },
             "additionalProperties": false
@@ -1617,7 +1633,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
     match chapter {
         Chapter::Catalog => "Discover DS chapters, commands, and one exact live contract.",
         Chapter::Data => {
-            "Prepare local data for analysis: inspect a source file, then convert it to the analytical GeoParquet format. Conversion is an explicit step that runs before analysis, never inside it, and needs no project or paired desktop. Describe a command before invoking it."
+            "Prepare local data for analysis, and hold the country's geographic reference datasets on this computer. Inspect a source file, then convert it to the analytical GeoParquet format; conversion is an explicit step that runs before analysis, never inside it, and needs no project or paired desktop. Downloading and indexing datasets is routine and reversible: it spends disk and nothing else, changes nothing in the cloud, is undone by `desktop data rwanda remove`, and is safe to run on the way to a report, a map or any other action without asking anyone first. Describe a command before invoking it."
         }
         Chapter::Project => {
             "Establish project context and manage project plans, tasks, assignments, and records. Describe a command before invoking it."
