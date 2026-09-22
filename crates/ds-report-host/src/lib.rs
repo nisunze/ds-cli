@@ -27,8 +27,9 @@ use ds_command_kernel::printing::table_rows::PrintWarning;
 use ds_command_kernel::report_export::{
     self as decisions, engine_identity, engine_request, plan_transformer_export, run_receipt,
     transformer_document_bytes, typed_failure, verify_result, BatchResult, EngineIdentity,
-    FailedFormat, InputReceipt, ResultRefusal, RunReceiptFacts, StagedInputs, VerifiedArtifact,
-    BATCH_RECEIPT_FILE, MAX_RESULT_BYTES, MAX_SEMANTIC_REQUEST_BYTES, RUN_RECEIPT_FILE,
+    FailedFormat, InputReceipt, ResultRefusal, RunReceiptFacts, StagedInputs, SurveyLayersOmitted,
+    VerifiedArtifact, BATCH_RECEIPT_FILE, MAX_RESULT_BYTES, MAX_SEMANTIC_REQUEST_BYTES,
+    RUN_RECEIPT_FILE,
 };
 use ds_command_kernel::report_formats::DesignOutputSelection;
 use serde_json::{json, Value};
@@ -222,6 +223,10 @@ pub struct RunOutcome {
     pub artifacts: Vec<VerifiedArtifact>,
     pub failed: Vec<FailedFormat>,
     pub warnings: Vec<PrintWarning>,
+    /// The survey forms the project appends to a delivered report that this
+    /// run's sheet was produced without, as the plan named them. `None` when
+    /// the project appends none.
+    pub survey_layers_omitted: Option<SurveyLayersOmitted>,
     pub engine: EngineIdentity,
 }
 
@@ -737,6 +742,7 @@ pub fn run_transformer_report_with(
         artifacts: result.artifacts,
         failed: result.failed,
         warnings: result.warnings,
+        survey_layers_omitted: plan.survey_layers_omitted,
         engine: identity_before,
     })
 }
@@ -913,7 +919,8 @@ where
                             format!("{}/{}", run.transformer, RUN_RECEIPT_FILE),
                             run.artifacts.len(),
                         )
-                        .with_failed_formats(run.failed.clone()),
+                        .with_failed_formats(run.failed.clone())
+                        .with_survey_layers_omitted(run.survey_layers_omitted.clone()),
                     );
                     runs.push(run);
                 }
