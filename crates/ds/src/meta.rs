@@ -951,6 +951,13 @@ mod tests {
             ("crs", "data.convert"),
             ("shapefile", "data.convert"),
             ("length", "data.vector.measure"),
+            // Holding the country's data is something an agent should reach
+            // for with its own words, on the way to a report, without a human
+            // naming the command. Each of these led somewhere else.
+            ("cache rwanda data", "desktop.data.rwanda.install"),
+            ("download datasets", "desktop.data.rwanda.install"),
+            ("install reference data", "desktop.data.rwanda.install"),
+            ("ground data", "desktop.data.rwanda.install"),
         ] {
             assert_eq!(
                 top_hit(query),
