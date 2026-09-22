@@ -74,7 +74,7 @@ local-selection-to-design creation contract. New rows must enter `lv_lines` as
 - every pre-existing feature remains `approved`;
 - only the accepted new line rows are `draft`.
 
-Discover the project Fast LV setup with the smallest adequate inventory
+Discover the project LV process setup with the smallest adequate inventory
 `--limit` before changing it; selected sources and effective settings remain
 complete even when available-source suggestions are truncated. Configure the
 exact semantic customer source requested. “Additional customers from
