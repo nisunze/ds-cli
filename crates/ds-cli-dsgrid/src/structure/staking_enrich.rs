@@ -9,7 +9,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::staking_enrichment::propose_staking_enrichment;
 use ds_grid_engine::{GridCommand, ProfilePropertyEdit};
-use ds_grid_model::{StakingEarthing, StakingFunction, StructureId};
+use ds_grid_model::{StakingFunction, StructureId};
 use serde_json::{Value, json};
 
 use crate::mutation::{self, Planned, Target};
@@ -50,8 +50,8 @@ pub static COMMAND: Command = Command {
     id: "dsgrid.structure.staking-enrich",
     path: &["dsgrid", "structure", "staking-enrich"],
     contract: 1,
-    summary: "Preview or author canonical Comment 1 and transformer load joins for a number range.",
-    purpose: "Derive meaningful structure functions from authored network role or exact structure family, then join each transformer to a unique nearby surveyed transformer name and kVA. Ordinary LINE supports remain without a Comment 1 proposal. Existing authored load references win; ambiguous and distant survey matches stay unknown and are reported. The inclusive engineering-number selection is revision-gated and bounded. Dry-run and write exercise the same typed engine command.",
+    summary: "Preview or author canonical functions, mandatory earthing, and transformer load joins for a number range.",
+    purpose: "Derive meaningful structure functions and material earthing from the exact structure family, then join each transformer to a unique nearby surveyed transformer name and kVA. Ordinary LINE supports remain without a Comment 1 proposal. Existing authored load references win; ambiguous and distant survey matches stay unknown and are reported. The inclusive engineering-number selection is revision-gated and bounded. Dry-run and write exercise the same typed engine command.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -181,11 +181,13 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
                     value: json!(function),
                 });
             }
-            if function == StakingFunction::Tfo && row.staking.earthing.is_none() {
+        }
+        if row.staking.earthing.is_none() {
+            if let Some(earthing) = proposal.earthing {
                 edits.push(ProfilePropertyEdit {
                     entity_id: row.id.entity().clone(),
                     field_id: "staking.earthing".into(),
-                    value: json!(StakingEarthing::Tfo),
+                    value: json!(earthing),
                 });
             }
         }
