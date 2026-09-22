@@ -9,7 +9,9 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_exchange::{PackOptions, dsgrid};
-use ds_grid_model::{StructureLabelField, StructureLabelOrientation, StructureLabelPolicy};
+use ds_grid_model::{
+    StructureLabelAffix, StructureLabelField, StructureLabelOrientation, StructureLabelPolicy,
+};
 use serde_json::{Value, json};
 use sha2::Digest;
 
@@ -82,6 +84,16 @@ pub static SET: Command = Command {
         )
         .choices(&["auto", "right", "left", "above", "below", "vertical"]),
         Arg::value(
+            "separator",
+            "<text>",
+            "Between nonempty fields; empty concatenates; \n means a new line.",
+        ),
+        Arg::value(
+            "affixes",
+            "<json-path>",
+            "JSON array of selected field/prefix/suffix objects.",
+        ),
+        Arg::value(
             "out",
             "<path>",
             "New .dsgrid package; never overwrites source.",
@@ -139,9 +151,33 @@ pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .orientation
         }
     };
+    let previous = package
+        .manifest
+        .model
+        .presentation
+        .effective_profile_structure_labels();
+    let separator = inputs
+        .value("separator")
+        .map(|raw| raw.replace("\\n", "\n"))
+        .unwrap_or(previous.separator);
+    let affixes = match inputs.value("affixes") {
+        Some(path) => {
+            let bytes = std::fs::read(path)
+                .map_err(|error| invalid(&format!("cannot read affixes file: {error}")))?;
+            serde_json::from_slice::<Vec<StructureLabelAffix>>(&bytes)
+                .map_err(|error| invalid(&format!("invalid affixes JSON: {error}")))?
+        }
+        None => previous
+            .affixes
+            .into_iter()
+            .filter(|part| fields.contains(&part.field))
+            .collect(),
+    };
     let policy = StructureLabelPolicy {
         fields,
         orientation,
+        separator,
+        affixes,
     };
     let mut presentation = package.manifest.model.presentation.clone();
     presentation.profile_structure_labels = Some(policy.clone());
