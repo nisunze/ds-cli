@@ -254,11 +254,17 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
     context_layout
         .context_layers
         .retain(|c| !matches!(c.source, PrintContextSource::ProjectDsgridMv { .. }));
-    // Village names may remain useful; boundary strokes do not.
+    // Village names may remain useful; boundary strokes do not. Zero width is
+    // the label-only state `validate` accepts, so suppress every way the
+    // stroke could still reach the page — width, opacity, dash and casing —
+    // rather than leaving a dash pattern or a casing to print on its own.
     for (id, style) in &mut layout.styles {
         if id.contains("village") {
             style.width_mm = 0.;
             style.stroke_opacity = 0.;
+            style.dash_mm.clear();
+            style.casing_mm = 0.;
+            style.widths.clear();
         }
     }
 
