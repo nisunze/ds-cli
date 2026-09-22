@@ -16,6 +16,7 @@ pub mod local;
 pub mod outliers;
 pub mod points_along;
 pub mod print_schema;
+pub mod profile;
 pub mod random_points;
 pub mod remove;
 pub mod renderer_configure;
@@ -54,6 +55,8 @@ pub static DOMAIN: Domain = Domain {
         &view::COMMAND,
         &camera_set::COMMAND,
         &renderer_configure::COMMAND,
+        &profile::VIEW,
+        &profile::SET,
         &draw::COMMAND,
         &remove::COMMAND,
         &zoom::COMMAND,
@@ -145,6 +148,23 @@ pub const REMOTE_LAYER_VISIBILITY: BridgeOp = BridgeOp {
 pub const ZOOM_TO: BridgeOp = BridgeOp {
     operation: "map.zoom_to",
     arguments: &["bbox", "layerId", "padding"],
+};
+pub const PROFILE_VIEW: BridgeOp = BridgeOp {
+    operation: "map.profile.view",
+    arguments: &[],
+};
+pub const PROFILE_SET: BridgeOp = BridgeOp {
+    operation: "map.profile.set",
+    arguments: &[
+        "labels",
+        "orientation",
+        "vertical_exaggeration",
+        "visibility",
+        "zoom",
+        "pan_x",
+        "pan_y",
+        "action",
+    ],
 };
 pub const CAMERA_SET: BridgeOp = BridgeOp {
     operation: "map.camera.set",
@@ -367,6 +387,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &LAYER_REMOVE,
     &ZOOM_TO,
     &CAMERA_SET,
+    &PROFILE_VIEW,
+    &PROFILE_SET,
     &RENDERER_CONFIGURE,
     &UI_OPEN,
     &EVIDENCE_CAPTURE,

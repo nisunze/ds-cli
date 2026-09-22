@@ -927,6 +927,16 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::camera_set::render,
     },
     Entry {
+        command: &ds_cli_map::profile::VIEW,
+        handler: ds_cli_map::profile::view,
+        render: ds_cli_map::profile::render,
+    },
+    Entry {
+        command: &ds_cli_map::profile::SET,
+        handler: ds_cli_map::profile::set,
+        render: ds_cli_map::profile::render,
+    },
+    Entry {
         command: &ds_cli_map::renderer_configure::COMMAND,
         handler: ds_cli_map::renderer_configure::run,
         render: ds_cli_map::renderer_configure::render,

@@ -5871,6 +5871,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.data.remove",
         "map.view",
         "map.camera.set",
+        "map.profile.view",
+        "map.profile.set",
         "map.renderer.configure",
         "map.draw",
         "map.remove",
