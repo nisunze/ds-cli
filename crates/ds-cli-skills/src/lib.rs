@@ -194,13 +194,13 @@ fn verdict_from_candidates(candidates: &[PathBuf], expected_cli_sha: &str) -> Bu
                 candidates,
             };
         }
+        let reason = invalid.into_iter().next();
+        let remedy = Some(invalid_remedy(reason.as_deref().unwrap_or_default()));
         return BundleVerdict {
             status: "invalid",
             bundle: None,
-            reason: invalid.into_iter().next(),
-            remedy: Some(format!(
-                "restore the named file from the same release package's ds-cli-skills directory, or set {BUNDLE_ENV} to an intact copy of the bundle; the executable and the rest of the installation are unaffected"
-            )),
+            reason,
+            remedy,
             candidates,
         };
     };
@@ -374,7 +374,7 @@ fn user_home() -> Option<PathBuf> {
         }
     }
     if let (Some(drive), Some(path)) = (nonempty_env("HOMEDRIVE"), nonempty_env("HOMEPATH")) {
-        let mut home = OsString::from(drive);
+        let mut home = drive;
         home.push(path);
         return Some(PathBuf::from(home));
     }
@@ -707,6 +707,27 @@ fn collect_files_at(
     Ok(())
 }
 
+/// What to do about an invalid bundle: as narrow as the reason allows, and
+/// never a whole-application reinstall.
+fn invalid_remedy(reason: &str) -> String {
+    if reason.contains("targets ds-cli") {
+        return format!(
+            "this bundle belongs to another ds build; install the ds-cli-skills bundle packaged with this exact executable, or set {BUNDLE_ENV} to it; the executable itself is unaffected"
+        );
+    }
+    if reason.contains("differs from its receipt digest")
+        || reason.contains("which the bundle lacks")
+        || reason.contains("which its receipt does not list")
+    {
+        return format!(
+            "restore the named file from the same release package's ds-cli-skills directory, or set {BUNDLE_ENV} to an intact copy of the bundle; the executable and the rest of the installation are unaffected"
+        );
+    }
+    format!(
+        "restore the ds-cli-skills directory beside this executable from the same release package, or set {BUNDLE_ENV} to an intact copy; the executable and the rest of the installation are unaffected"
+    )
+}
+
 /// The first way the bundle on disk disagrees with its receipt, named so an
 /// operator can restore ONE file rather than a whole installation.
 fn first_disagreement(
@@ -938,7 +959,7 @@ mod tests {
         let temp = TestDir::new();
         let cli_sha = "2222222222222222222222222222222222222222";
         write_bundle(&temp.0, cli_sha);
-        let verdict = verdict_from_candidates(&[temp.0.clone()], cli_sha);
+        let verdict = verdict_from_candidates(std::slice::from_ref(&temp.0), cli_sha);
         assert_eq!(verdict.status, "ready");
         let indexed = verdict.bundle.expect("verified bundle");
         assert!(indexed.read_skill("ds").is_ok());
@@ -954,14 +975,14 @@ mod tests {
         let temp = TestDir::new();
         let cli_sha = "2222222222222222222222222222222222222222";
         write_bundle(&temp.0, cli_sha);
-        let ready = verdict_from_candidates(&[temp.0.clone()], cli_sha);
+        let ready = verdict_from_candidates(std::slice::from_ref(&temp.0), cli_sha);
         assert_eq!(ready.status, "ready");
         assert_eq!(ready.json()["verification"], VERIFICATION);
         assert_eq!(ready.json()["count"], 1);
         assert!(ready.reason.is_none() && ready.remedy.is_none());
 
         fs::write(temp.0.join("skills/ds/SKILL.md"), "changed\n").unwrap();
-        let invalid = verdict_from_candidates(&[temp.0.clone()], cli_sha);
+        let invalid = verdict_from_candidates(std::slice::from_ref(&temp.0), cli_sha);
         assert_eq!(invalid.status, "invalid");
         assert!(invalid.bundle.is_none());
         let reason = invalid.reason.clone().expect("reason");
@@ -981,7 +1002,7 @@ mod tests {
         fs::copy(temp.0.join("receipt.json"), temp.0.join("receipt.bak")).unwrap();
         write_bundle(&temp.0, cli_sha);
         fs::remove_file(temp.0.join("skills/ds/extra.md")).unwrap();
-        let lacking = verdict_from_candidates(&[temp.0.clone()], cli_sha);
+        let lacking = verdict_from_candidates(std::slice::from_ref(&temp.0), cli_sha);
         assert_eq!(lacking.status, "invalid");
         assert!(
             lacking
@@ -996,6 +1017,17 @@ mod tests {
         let missing = verdict_from_candidates(&[temp.0.join("nowhere")], cli_sha);
         assert_eq!(missing.status, "missing");
         assert!(missing.remedy.clone().unwrap().contains(BUNDLE_ENV));
+
+        // A bundle from another build is not a broken file; the remedy says
+        // which bundle to install rather than which file to restore.
+        let other_build = verdict_from_candidates(
+            std::slice::from_ref(&temp.0),
+            "3333333333333333333333333333333333333333",
+        );
+        assert_eq!(other_build.status, "invalid");
+        let remedy = other_build.remedy.clone().unwrap();
+        assert!(remedy.contains("another ds build"), "{remedy}");
+        assert!(!remedy.to_lowercase().contains("reinstall"), "{remedy}");
     }
 
     /// A machine whose `HOME` is empty but whose `USERPROFILE` is set — a
