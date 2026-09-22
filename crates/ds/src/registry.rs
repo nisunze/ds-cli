@@ -248,6 +248,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::structure::retype::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::structure::staking_enrich::COMMAND,
+        handler: ds_cli_dsgrid::structure::staking_enrich::run,
+        render: ds_cli_dsgrid::structure::staking_enrich::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::report::structures::COMMAND,
         handler: ds_cli_dsgrid::report::structures::run,
         render: ds_cli_dsgrid::report::structures::render,
