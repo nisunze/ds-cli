@@ -9,6 +9,12 @@ use serde_json::{Map, Value, json};
 use crate::tools::{self, CONFIRM_PROPERTY, Tool};
 
 pub const EXPOSURES: &[&str] = &["chapters", "commands"];
+
+// MCP never asks an operator for a password. The protected device-link commands
+// remain the only sign-in path this surface advertises.
+const DEVICE_LINK_GUIDANCE: &str = "If signed out, call auth.link.begin on this host, approve its request from the signed-in Desktop, then call auth.link.complete. Keep the same lane and principal throughout. Never collect an email or password through MCP.";
+const DEVICE_LINK_REMEDY: &str = "Use the protected device link: auth.link.begin, approval from the signed-in Desktop, then auth.link.complete on this host.";
+const PASSWORD_ONLY_REMEDY: &str = "This command currently requires a password session and cannot run with a device-linked MCP identity; report this command as a device-link coverage gap.";
 pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
     "admin-bounds",
@@ -914,7 +920,7 @@ impl Surface {
     }
 
     pub fn instructions(&self) -> String {
-        match (self.exposure, self.profile) {
+        let instructions = match (self.exposure, self.profile) {
             (Exposure::Chapters, None) => "Use ds_catalog for bounded discovery, call the selected chapter with operation=describe, then operation=invoke. The canonical command descriptor governs arguments, authority, effect, confirmation and refusals; branch on the returned DS envelope.".to_string(),
             (Exposure::Commands, Some(profile)) => format!(
                 "This is the typed `{}` profile. Use ds_catalog for bounded discovery, then call the advertised command tool directly. Pass confirm=true only when the command declares it and the user's intent authorizes that exact effect and scope. Branch on the returned DS envelope.",
@@ -922,7 +928,8 @@ impl Surface {
             ),
             (Exposure::Commands, None) => "Compatibility command exposure: every advertised tool is one canonical ds command generated from its live descriptor. Pass confirm=true only when declared, branch on the returned DS envelope, and follow typed remedies.".to_string(),
             (Exposure::Chapters, Some(_)) => unreachable!("invalid surface is refused"),
-        }
+        };
+        format!("{instructions} {DEVICE_LINK_GUIDANCE}")
     }
 
     pub fn tool_list(&self) -> Vec<Value> {
@@ -1292,10 +1299,55 @@ fn invoke_leaf(
     invoke_argv(&argv, executable)
 }
 
+// The CLI retains its trusted-terminal login contract. MCP cannot collect
+// credentials, so translate only advice that would send an MCP caller there.
+// A password-only command stays an explicit coverage gap instead of pretending
+// that device linking will make it work.
+fn mcp_device_link_guidance(value: &mut Value) {
+    match value {
+        Value::Object(fields) => {
+            let password_only = fields
+                .get("message")
+                .or_else(|| fields.get("when"))
+                .and_then(Value::as_str)
+                .is_some_and(|message| {
+                    message.contains("needs the password session")
+                        || message.contains("requires a password session")
+                });
+            for (name, child) in fields.iter_mut() {
+                if matches!(name.as_str(), "remedy" | "next")
+                    && child
+                        .as_str()
+                        .is_some_and(|advice| advice.contains("auth login"))
+                {
+                    *child = Value::String(
+                        match (name.as_str(), password_only) {
+                            ("next", true) => "ds auth status",
+                            ("next", false) => "auth.link.begin",
+                            (_, true) => PASSWORD_ONLY_REMEDY,
+                            _ => DEVICE_LINK_REMEDY,
+                        }
+                        .to_string(),
+                    );
+                } else {
+                    mcp_device_link_guidance(child);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                mcp_device_link_guidance(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn failure_result(tool: &Tool, failure: &Failure) -> Value {
     let contract = tool.descriptor["contract"].as_u64().unwrap_or(1) as u32;
-    let envelope = serde_json::to_value(error_envelope(&tool.id, contract, failure))
+    let mut envelope = serde_json::to_value(error_envelope(&tool.id, contract, failure))
         .unwrap_or_else(|_| json!({ "status": "error" }));
+    mcp_device_link_guidance(&mut envelope);
     let text = serde_json::to_string(&envelope).unwrap_or_else(|_| "{}".to_string());
     json!({
         "content": [{ "type": "text", "text": text }],
@@ -1307,18 +1359,26 @@ fn failure_result(tool: &Tool, failure: &Failure) -> Value {
 fn invoke_argv(argv: &[String], executable: &PathBuf) -> Result<Value, (i64, String)> {
     let (code, stdout, stderr) =
         tools::run_cli(executable, argv).map_err(|message| (-32000, message))?;
-    let envelope: Option<Value> = serde_json::from_str(stdout.trim()).ok();
+    let mut envelope: Option<Value> = serde_json::from_str(stdout.trim()).ok();
     let is_error = code != 0
         || envelope
             .as_ref()
             .and_then(|value| value.get("status"))
             .and_then(Value::as_str)
             != Some("ok");
-    let text = if stdout.trim().is_empty() {
-        stderr.trim().to_string()
-    } else {
-        stdout.trim().to_string()
-    };
+    if let Some(envelope) = &mut envelope {
+        mcp_device_link_guidance(envelope);
+    }
+    let text = envelope.as_ref().map_or_else(
+        || {
+            if stdout.trim().is_empty() {
+                stderr.trim().to_string()
+            } else {
+                stdout.trim().to_string()
+            }
+        },
+        |value| serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string()),
+    );
     let mut result = json!({
         "content": [{ "type": "text", "text": text }],
         "isError": is_error,
@@ -1525,6 +1585,66 @@ const PRINTING_COMMANDS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcp_advertises_device_link_for_every_exposure() {
+        for (exposure, profile) in [
+            (Exposure::Chapters, None),
+            (Exposure::Commands, None),
+            (Exposure::Commands, Some(Profile::AuthContext)),
+        ] {
+            let surface = Surface::new(exposure, profile, vec![]).expect("surface");
+            let instructions = surface.instructions();
+            assert!(instructions.contains("auth.link.begin"));
+            assert!(instructions.contains("auth.link.complete"));
+            assert!(!instructions.contains("auth login"));
+        }
+    }
+
+    #[test]
+    fn mcp_signed_out_guidance_replaces_password_advice_in_both_shapes() {
+        let mut descriptor = json!({
+            "data": {"command": {"refusals": [{
+                "code": "headless_signed_out",
+                "remedy": "run ds auth login --email <address>"
+            }]}}
+        });
+        mcp_device_link_guidance(&mut descriptor);
+        assert_eq!(
+            descriptor["data"]["command"]["refusals"][0]["remedy"],
+            DEVICE_LINK_REMEDY
+        );
+
+        let mut error = json!({
+            "error": {
+                "code": "headless_signed_out",
+                "message": "no native user is signed in",
+                "remedy": "run ds auth login --email <address>",
+                "next": "ds auth login --email <address>"
+            }
+        });
+        mcp_device_link_guidance(&mut error);
+        assert_eq!(error["error"]["remedy"], DEVICE_LINK_REMEDY);
+        assert_eq!(error["error"]["next"], "auth.link.begin");
+        assert!(!error.to_string().contains("auth login"));
+    }
+
+    #[test]
+    fn mcp_password_only_gap_is_truthful_and_unrelated_remedies_survive() {
+        let mut error = json!({
+            "error": {
+                "code": "headless_signed_out",
+                "message": "this command needs the password session",
+                "remedy": "run ds auth login --email <address>",
+                "next": "ds auth status"
+            },
+            "unrelated": {"remedy": "repair the package"}
+        });
+        mcp_device_link_guidance(&mut error);
+        assert_eq!(error["error"]["remedy"], PASSWORD_ONLY_REMEDY);
+        assert_eq!(error["error"]["next"], "ds auth status");
+        assert_eq!(error["unrelated"]["remedy"], "repair the package");
+    }
     use ds_cli_contract::spec::Authority;
 
     fn tool(id: &str, chapter: Chapter, confirmation_required: bool) -> Tool {

@@ -53,6 +53,14 @@ digest nor product root, so its auth surface is typed unavailable. The desktop
 packaging owner must generate/stage the catalog and inject both compile-time
 values before an installable release may claim native auth is configured.
 
+MCP publishes `auth.link.begin`, `auth.link.status`, and
+`auth.link.complete` for sign-in. The person approves the request on the
+signed-in Desktop; the MCP host never receives a password or approval
+authority. MCP omits `auth.login` and `auth.link.approve` as tools and
+projects signed-out remedies to the device-link sequence. A command that
+still requires a password-only native session reports that device-link
+coverage gap instead of advising credential entry through MCP.
+
 `auth login` defaults exactly to Stable and reads a hidden controlling-TTY
 password. `--password-stdin` explicitly reads one line, bounded to 4096 bytes.
 Passwords and tokens are never accepted in argv or environment variables.

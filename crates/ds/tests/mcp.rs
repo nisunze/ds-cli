@@ -184,6 +184,61 @@ fn response(responses: &[Value], id: i64) -> &Value {
         .unwrap_or_else(|| panic!("no response for id {id}: {responses:?}"))
 }
 
+// MCP preserves every CLI descriptor field except the signed-out advice that
+// would ask an MCP caller to enter an email/password. That one field names the
+// protected device-link route instead.
+fn assert_mcp_descriptor_with_device_link(actual: &Value, cli_descriptor: Value) {
+    let mut expected = cli_descriptor;
+    let actual_refusals = actual["data"]["command"]["refusals"]
+        .as_array()
+        .expect("MCP refusals");
+    let expected_refusals = expected["data"]["command"]["refusals"]
+        .as_array_mut()
+        .expect("CLI refusals");
+    assert_eq!(actual_refusals.len(), expected_refusals.len());
+    for (actual_refusal, expected_refusal) in
+        actual_refusals.iter().zip(expected_refusals.iter_mut())
+    {
+        if expected_refusal["remedy"]
+            .as_str()
+            .is_some_and(|remedy| remedy.contains("auth login"))
+        {
+            let advice = actual_refusal["remedy"].as_str().expect("MCP advice");
+            assert!(advice.contains("auth.link.begin"), "{advice}");
+            assert!(!advice.contains("auth login"), "{advice}");
+            expected_refusal["remedy"] = actual_refusal["remedy"].clone();
+        }
+    }
+    assert_eq!(actual, &expected);
+}
+
+#[test]
+fn auth_mcp_profile_advertises_only_device_link_sign_in() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "auth-context"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+        ],
+    );
+    let instructions = response(&responses, 1)["result"]["instructions"]
+        .as_str()
+        .expect("MCP instructions");
+    assert!(instructions.contains("auth.link.begin"));
+    assert!(instructions.contains("auth.link.complete"));
+    assert!(!instructions.contains("auth login"));
+    let names = response(&responses, 2)["result"]["tools"]
+        .as_array()
+        .expect("MCP tools")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(names.contains("auth_link_begin"));
+    assert!(names.contains("auth_link_complete"));
+    assert!(!names.contains("auth_login"));
+    assert!(!names.contains("auth_link_approve"));
+}
+
 #[test]
 fn broad_server_has_declared_stable_tools_and_reports_build_identity() {
     let (responses, stderr) = mcp(
@@ -992,16 +1047,14 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
         "the assets chapter must project exactly the registered assets commands"
     );
 
-    // The one rule this whole suite exists to hold: MCP is a projection of the
-    // live CLI, so `describe` is byte-for-byte the descriptor `ds capabilities`
-    // prints.
-    assert_eq!(
-        response(&responses, 3)["result"]["structuredContent"],
-        cli(&["capabilities", "assets.list", "--output", "json"])
+    // The live descriptor is unchanged apart from MCP's device-link advice.
+    assert_mcp_descriptor_with_device_link(
+        &response(&responses, 3)["result"]["structuredContent"],
+        cli(&["capabilities", "assets.list", "--output", "json"]),
     );
-    assert_eq!(
-        response(&responses, 4)["result"]["structuredContent"],
-        cli(&["capabilities", "assets.backup.plan", "--output", "json"])
+    assert_mcp_descriptor_with_device_link(
+        &response(&responses, 4)["result"]["structuredContent"],
+        cli(&["capabilities", "assets.backup.plan", "--output", "json"]),
     );
 }
 
@@ -1085,9 +1138,9 @@ fn exact_admin_boundaries_are_projected_by_catalog_chapter_and_typed_profile() {
         response(&responses, 1)["result"]["structuredContent"]["next"]["tool"],
         "ds_data"
     );
-    assert_eq!(
-        response(&responses, 2)["result"]["structuredContent"],
-        cli(&["capabilities", "data.admin-bounds.list", "--output", "json",])
+    assert_mcp_descriptor_with_device_link(
+        &response(&responses, 2)["result"]["structuredContent"],
+        cli(&["capabilities", "data.admin-bounds.list", "--output", "json"]),
     );
 
     let (profile, _) = mcp(
