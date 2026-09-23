@@ -1702,6 +1702,16 @@ pub fn verify_result(
     })
 }
 
+/// The warnings that are engineering findings. Each is a row on the workbook's
+/// Engineering Review sheet, and a report that carries one was generated but is
+/// not ready for approval. Every other print warning is cartographic and never
+/// blocks a submission.
+pub const ENGINEERING_REVIEW_CODES: [&str; 3] = [
+    "lv_pole_line_cable_conflict",
+    "transformer_protection_mismatch",
+    "lv_span_exceeds_max_length",
+];
+
 /// Is this one of the print warnings the kernel's own tables and diagnostics
 /// can raise, placed on this run? Every host that reads an engine result
 /// asks here, so the desktop shell and `ds` accept the same warnings.
@@ -3548,6 +3558,32 @@ mod tests {
                 verify(&changed).is_err(),
                 "accepted an engineering audit row with invalid {key}"
             );
+        }
+    }
+
+    /// Every code the notification digest counts as approval-blocking is one
+    /// the validator admits as an Engineering Review row on the workbook, so
+    /// the list cannot name a finding no engine is allowed to raise.
+    #[test]
+    fn every_engineering_review_code_is_a_workbook_row_the_validator_admits() {
+        let formats = vec!["xlsx".to_string()];
+        for code in ENGINEERING_REVIEW_CODES {
+            let element_id = match code {
+                "transformer_protection_mismatch" => "tr",
+                "lv_span_exceeds_max_length" => "spans",
+                _ => "LV_Line_01",
+            };
+            let warning = PrintWarning {
+                code: code.into(),
+                transformer: "TX_A".into(),
+                output_id: "xlsx".into(),
+                layout_id: String::new(),
+                element_id: element_id.into(),
+                total_rows: 0,
+                omitted_rows: 0,
+                message: "finding".into(),
+            };
+            assert!(valid_print_warning(&warning, "tx_a", &formats), "{code}");
         }
     }
 

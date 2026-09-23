@@ -300,6 +300,42 @@ enum Command {
         #[serde(default)]
         prefix: String,
     },
+    /// One run's warnings, bounded for a notification: the engineering
+    /// findings that stop approval apart from the cartographic ones, and the
+    /// context notes, each as a count and a few examples.
+    WarningDigest {
+        #[serde(default)]
+        warnings: Vec<serde_json::Value>,
+        #[serde(default)]
+        context: Vec<String>,
+    },
+}
+
+/// Examples a digest keeps per group; the count is always exact.
+const DIGEST_EXAMPLES: usize = 3;
+
+fn warning_digest(warnings: &[serde_json::Value], context: &[String]) -> serde_json::Value {
+    let (engineering, cartographic): (Vec<&serde_json::Value>, Vec<&serde_json::Value>) =
+        warnings.iter().partition(|warning| {
+            crate::report_export::ENGINEERING_REVIEW_CODES
+                .contains(&warning["code"].as_str().unwrap_or(""))
+        });
+    fn group<'a>(messages: impl ExactSizeIterator<Item = &'a str>) -> serde_json::Value {
+        let count = messages.len();
+        serde_json::json!({
+            "count": count,
+            "examples": messages.take(DIGEST_EXAMPLES).collect::<Vec<_>>(),
+        })
+    }
+    fn message<'a>(warning: &&'a serde_json::Value) -> &'a str {
+        warning["message"].as_str().unwrap_or("")
+    }
+    serde_json::json!({
+        "engineering": group(engineering.iter().map(message)),
+        "cartographic": group(cartographic.iter().map(message)),
+        "context": group(context.iter().map(String::as_str)),
+        "approval_ready": engineering.is_empty(),
+    })
 }
 
 /// The archive layout as a registry entry or a dialog carries it.
@@ -743,6 +779,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             );
             serde_json::json!({"label": label, "folder": folder, "archive_name": archive_name})
         }
+        Command::WarningDigest { warnings, context } => warning_digest(&warnings, &context),
     };
     serde_json::to_string(&serde_json::json!({"schema":"ds.report.command/v1","result":result}))
         .map_err(|e| e.to_string())
@@ -755,6 +792,40 @@ pub fn report_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 1849f4a3: 189 rows dumped into one notification hid the one finding
+    /// that stops approval. The digest keeps every count exact, a few
+    /// examples each, and says approval is not ready only for engineering.
+    #[test]
+    fn a_warning_digest_separates_what_stops_approval_and_stays_bounded() {
+        let conflict = |n: usize| serde_json::json!({"code": "lv_pole_line_cable_conflict", "message": format!("P{n:02} cable differs")});
+        let mut warnings: Vec<serde_json::Value> = (1..=83).map(conflict).collect();
+        warnings.push(serde_json::json!({"code": "lv_span_exceeds_max_length", "message": "span_22 58.9 m > 44 m"}));
+        warnings.extend((1..=9).map(|n| {
+            serde_json::json!({"code": "print_label_omissions", "message": format!("{n} labels omitted")})
+        }));
+        let input = serde_json::json!({"command": "warning_digest", "warnings": warnings,
+            "context": ["buildings context omitted"]});
+        let out: serde_json::Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
+        let digest = &out["result"];
+        assert_eq!(digest["engineering"]["count"], 84);
+        assert_eq!(
+            digest["engineering"]["examples"].as_array().unwrap().len(),
+            3
+        );
+        assert_eq!(digest["cartographic"]["count"], 9);
+        assert_eq!(digest["context"]["count"], 1);
+        assert_eq!(digest["approval_ready"], false);
+
+        let cosmetic = serde_json::json!({"command": "warning_digest",
+            "warnings": [{"code": "print_label_omissions", "message": "2 labels omitted"}]});
+        let out: serde_json::Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&cosmetic).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(out["result"]["approval_ready"], true);
+        assert_eq!(out["result"]["engineering"]["count"], 0);
+    }
 
     /// The whole persisted queue vocabulary maps onto a stage, and nothing is
     /// invented. This matters because the blocker was three surfaces answering
