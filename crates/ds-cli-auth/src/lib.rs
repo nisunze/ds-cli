@@ -5972,16 +5972,29 @@ pub fn design_tags(
 pub use ds_client_core::design_tags::Command as DesignTagsCommand;
 
 /// Cross-project design migration — ONE endpoint, `kind` transformer|dsgrid.
-/// The TARGET is the caller's selected project; the source is the operand.
-pub fn design_migration(
-    lane: &str,
+/// Migration is stateless: a source project INTO an explicit destination. The
+/// destination is an operand the caller names, never the saved selection, so
+/// the same call means the same thing on every machine and in every session.
+pub fn design_migration_for_project(
+    lane_value: &str,
+    project: &str,
     command: &ds_client_core::design_migration::Command,
-) -> Result<HeadlessProjectReport<Value>, Failure> {
-    headless_project_report(
-        lane,
-        |device, project| device.design_migration(project, command),
-        |client, project| client.design_migration(project, command, now()),
-    )
+) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    command.validate(&project).map_err(map_client)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device
+            .design_migration(&project, command)
+            .map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .design_migration(&project, command, now())
+        .map_err(map_client)
 }
 pub use ds_client_core::design_migration::Command as DesignMigrationCommand;
 

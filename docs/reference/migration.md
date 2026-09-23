@@ -15,6 +15,7 @@ operator or agent who learned one drives the other (feedback fb90a0a5).
 | Concept | Name, both verbs | Design | Solar |
 |---|---|---|---|
 | where the objects come from | `--source-project <project-id>` | required | required |
+| where they go | `--project <project-id>` | required | required |
 | which object type | `--kind` | required, `transformer` or `dsgrid`, no default | required, `city` or `portfolio`, no default |
 | which objects | `--item <name>`, repeated, one object each | 1–200, required | 0–64; omitted means every source object of the kind |
 | may an existing target change | `--overwrite` | switch | switch |
@@ -24,8 +25,8 @@ An `--item` is never split, so a name holding a comma is still one name. The
 kind decides what an item names: a transformer name or DS Grid model id; a
 Solar city id or portfolio name.
 
-Still different, and not a vocabulary question: design migrates into the
-**selected** project, Solar into the explicit `--project`. Solar's apply also
+Migration is stateless: `--source-project` INTO `--project`, both named on every
+call, never the saved selection (owner ruling 2026-09-23). Solar's apply also
 takes the plan's `--migrate-digest` (see "Deliberately different" below).
 
 ## The receipt

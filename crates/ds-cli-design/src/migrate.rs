@@ -1,4 +1,4 @@
-//! `ds design migrate` — move designs from one project into the selected one.
+//! `ds design migrate` — move designs from a source project into a destination project.
 //!
 //! ```text
 //!   plan → apply
@@ -31,8 +31,9 @@
 //!   `empty_state` key and the service's own statement in `warnings`. `ds`
 //!   refuses a receipt that omits one rather than printing a confident zero.
 //!
-//! The TARGET is the selected project. The source is the only project operand,
-//! so one confirmation covers one decision.
+//! Migration is stateless: `--source-project` INTO `--project`, both named on
+//! every call. Neither is the saved selection, so one call means the same
+//! thing on every machine and in every session, and the CLI drives it.
 
 use ds_cli_auth::DesignMigrationCommand;
 use ds_cli_contract::outcome::Failure;
@@ -52,8 +53,17 @@ const SOURCE_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "Migrate designs FROM this project INTO the selected project.",
+    summary: "Migrate designs FROM this project.",
 };
+
+/// The destination, named like every other migration's: explicit and
+/// required, never the saved selection.
+const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<id>",
+    "Explicit authorized DESTINATION project — the project being migrated into.",
+)
+.required();
 
 /// Required, as Solar's is: a transformer and a DS Grid model are different
 /// objects, so a caller who did not say which is refused, never guessed at.
@@ -85,14 +95,14 @@ const OVERWRITE_ARG: Arg = Arg::switch(
 
 const INVALID_PROJECT: Refusal = Refusal {
     code: "invalid_project",
-    when: "the source project id is empty, padded, too long, or not canonical",
+    when: "the source or destination project id is empty, padded, too long, or not canonical",
     remedy: "pass the exact Data Solutions project id shown by project discovery",
 };
 
 const SAME_PROJECT: Refusal = Refusal {
     code: "same_project",
-    when: "the source project is also the selected target project",
-    remedy: "select the intended target project, then run the plan again",
+    when: "--source-project names the destination --project",
+    remedy: "pass a source project that is not the destination",
 };
 
 const UNKNOWN_KIND: Refusal = Refusal {
@@ -140,22 +150,37 @@ fn kind(inputs: &Inputs) -> Result<Kind, Failure> {
     })
 }
 
-fn source_project(inputs: &Inputs) -> Result<String, Failure> {
-    let source = inputs.require("source-project")?;
-    let canonical = !source.is_empty()
-        && source.len() <= 160
-        && source.trim() == source
-        && source
+fn canonical_project(inputs: &Inputs, flag: &str) -> Result<String, Failure> {
+    let project = inputs.require(flag)?;
+    let canonical = !project.is_empty()
+        && project.len() <= 160
+        && project.trim() == project
+        && project
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'));
     if !canonical {
         return Err(Failure::invalid(
             "invalid_project",
-            "--source-project is not a canonical project id",
+            format!("--{flag} is not a canonical project id"),
         )
         .remedy(INVALID_PROJECT.remedy));
     }
-    Ok(source.to_owned())
+    Ok(project.to_owned())
+}
+
+/// Source and destination, both explicit, refused locally when they are the
+/// same project so no request is sent for a migration that cannot happen.
+fn projects(inputs: &Inputs) -> Result<(String, String), Failure> {
+    let source = canonical_project(inputs, "source-project")?;
+    let destination = canonical_project(inputs, "project")?;
+    if source == destination {
+        return Err(Failure::invalid(
+            "same_project",
+            "--source-project names the destination --project",
+        )
+        .remedy(SAME_PROJECT.remedy));
+    }
+    Ok((source, destination))
 }
 
 fn items(inputs: &Inputs) -> Result<Vec<String>, Failure> {
@@ -171,7 +196,7 @@ fn items(inputs: &Inputs) -> Result<Vec<String>, Failure> {
 
 fn run_mode(inputs: &Inputs, mode: Mode) -> Result<Value, Failure> {
     let kind = kind(inputs)?;
-    let source = source_project(inputs)?;
+    let (source, destination) = projects(inputs)?;
     let items = items(inputs)?;
     let overwrite_existing = inputs.switch("overwrite");
     let command = DesignMigrationCommand {
@@ -181,17 +206,12 @@ fn run_mode(inputs: &Inputs, mode: Mode) -> Result<Value, Failure> {
         items,
         overwrite_existing,
     };
-    let headless = ds_cli_auth::design_migration(inputs.require("lane")?, &command)
-        .map_err(classify_same_project)?;
-    let project_id = headless.project_id().to_owned();
-    let project_name = headless.project_name().to_owned();
-    let lane = headless.lane();
-    let data = headless.into_result();
+    let lane = inputs.require("lane")?;
+    let data = ds_cli_auth::design_migration_for_project(lane, &destination, &command)?;
     Ok(receipt(
         &data,
         lane,
-        &project_id,
-        &project_name,
+        &destination,
         &source,
         kind,
         mode,
@@ -199,39 +219,10 @@ fn run_mode(inputs: &Inputs, mode: Mode) -> Result<Value, Failure> {
     ))
 }
 
-/// The service refuses a same-project migration too; this names it with the
-/// CLI's own code so a caller reads one refusal rather than two spellings.
-///
-/// Two refusals arrive here, and both must land on the declared code. The
-/// service's travels in `detail.detail`; the client's own pre-check never
-/// reaches the service at all and arrives as the message of a generic
-/// `auth_input_invalid`, which carries no remedy. Reading only the detail let
-/// the local path — the one a caller hits first — lose both.
-fn classify_same_project(failure: Failure) -> Failure {
-    let detail = failure
-        .detail_value()
-        .and_then(|value| value["detail"].as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let message = failure.message().to_ascii_lowercase();
-    let says_same_project =
-        |text: &str| text.contains("same project") || text.contains("must be different");
-    if !says_same_project(&detail) && !says_same_project(&message) {
-        return failure;
-    }
-    Failure::invalid(
-        "same_project",
-        "the design migration source and the selected target are the same project",
-    )
-    .remedy(SAME_PROJECT.remedy)
-}
-
-#[allow(clippy::too_many_arguments)]
 fn receipt(
     data: &Value,
-    lane: &'static str,
+    lane: &str,
     project_id: &str,
-    project_name: &str,
     source: &str,
     kind: Kind,
     mode: Mode,
@@ -251,7 +242,7 @@ fn receipt(
         .collect();
     json!({
         "lane": lane,
-        "project": {"ds_project": project_id, "project_name": project_name},
+        "project": {"ds_project": project_id},
         "source_project": source,
         "kind": kind.wire(),
         "mode": mode.wire(),
@@ -285,12 +276,11 @@ fn render_receipt(data: &Value) -> String {
         "migrated"
     };
     let mut output = format!(
-        "{verb} {} {} design object(s)  {} -> {} ({})\n  requested {}  ·  identical {}  ·  blocked {}  ·  failed {}  ·  {} bytes\n  collision policy: {}\n",
+        "{verb} {} {} design object(s)  {} -> {}\n  requested {}  ·  identical {}  ·  blocked {}  ·  failed {}  ·  {} bytes\n  collision policy: {}\n",
         data["moving"].as_u64().unwrap_or(0),
         data["kind"].as_str().unwrap_or("?"),
         data["source_project"].as_str().unwrap_or("?"),
         data["project"]["ds_project"].as_str().unwrap_or("?"),
-        data["project"]["project_name"].as_str().unwrap_or("?"),
         data["requested"].as_u64().unwrap_or(0),
         data["identical"].as_u64().unwrap_or(0),
         data["blocked"].as_u64().unwrap_or(0),
@@ -336,7 +326,7 @@ pub mod plan {
         id: "design.migrate.plan",
         path: &["design", "migrate", "plan"],
         contract: 1,
-        summary: "Preview migrating designs from another project into this one.",
+        summary: "Preview migrating designs from a source project into a destination project.",
         purpose: "\
 States what a migration would move, by name and byte size, and what would be \
 SKIPPED and why. It writes nothing and is gated exactly as the apply is, so \
@@ -348,7 +338,14 @@ reason is not reported as a success. The reference explains each kind.",
         effect: Effect::ReadOnly,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[SOURCE_ARG, KIND_ARG, ITEM_ARG, OVERWRITE_ARG, LANE_ARG],
+        args: &[
+            SOURCE_ARG,
+            PROJECT_ARG,
+            KIND_ARG,
+            ITEM_ARG,
+            OVERWRITE_ARG,
+            LANE_ARG,
+        ],
         output: "The shared migration receipt (see reference): per-object outcomes, totals, empty_state and warnings; plus collision policy and bytes.",
         examples: &[
             Example {
@@ -385,7 +382,7 @@ pub mod apply {
         id: "design.migrate.apply",
         path: &["design", "migrate", "apply"],
         contract: 1,
-        summary: "Migrate designs from another project into this one.",
+        summary: "Migrate designs from a source project into a destination project.",
         purpose: "\
 Executes the migration `ds design migrate plan` previewed. It is idempotent: \
 an object whose content the target already holds is reported as identical and \
@@ -398,12 +395,19 @@ storage prefixes and derived fields are rewritten for the destination, and \
 what was rewritten or dropped is stated per object.",
         chapter: Chapter::Design,
         effect: Effect::GlobalWrite,
-        // The TARGET is the session's own selected project and no window is
+        // Both projects are explicit operands and no window is
         // involved, so the authority is the headless one the rest of the
         // native design spine uses.
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[SOURCE_ARG, KIND_ARG, ITEM_ARG, OVERWRITE_ARG, LANE_ARG],
+        args: &[
+            SOURCE_ARG,
+            PROJECT_ARG,
+            KIND_ARG,
+            ITEM_ARG,
+            OVERWRITE_ARG,
+            LANE_ARG,
+        ],
         output: "The same receipt the plan returns, with the committed per-object outcomes.",
         examples: &[Example {
             command: "ds design migrate apply --source-project arjgpydw_aderm --kind transformer --item TX-1 --item TX-2 --yes --output json",
@@ -430,33 +434,52 @@ what was rewritten or dropped is stated per object.",
 mod tests {
     use super::*;
 
-    /// The local pre-check refuses before a request is ever sent, and it must
-    /// reach the caller under the code this command declares — not as the
-    /// generic `auth_input_invalid`, which carries no remedy at all.
-    #[test]
-    fn the_local_same_project_check_surfaces_under_the_declared_code() {
-        let local = Failure::invalid(
-            "auth_input_invalid",
-            "design migration source and target are the same project",
-        );
-        let named = classify_same_project(local);
-        assert_eq!(named.code(), SAME_PROJECT.code);
-        assert_eq!(named.remedy_text(), Some(SAME_PROJECT.remedy));
+    fn parse(tokens: &[&str]) -> Result<Inputs, Failure> {
+        let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_owned()).collect();
+        ds_cli_contract::parse(&plan::COMMAND, &tokens)
     }
 
-    /// The service's own refusal still names the same code, from its detail.
+    /// Migration is stateless: both projects are operands, and a destination
+    /// that is the source is refused under the declared code before any
+    /// request is sent.
     #[test]
-    fn the_service_same_project_refusal_keeps_the_same_code() {
-        let remote = Failure::invalid("migration_refused", "the service refused the migration")
-            .detail(json!({ "detail": "source and target must be different" }));
-        assert_eq!(classify_same_project(remote).code(), SAME_PROJECT.code);
-    }
-
-    /// Nothing else is rewritten: an unrelated refusal passes through whole.
-    #[test]
-    fn an_unrelated_refusal_is_left_exactly_as_it_arrived() {
-        let other = Failure::invalid("auth_input_invalid", "--item is empty");
-        assert_eq!(classify_same_project(other).code(), "auth_input_invalid");
+    fn both_projects_are_explicit_and_the_same_one_is_refused_locally() {
+        const { assert!(SOURCE_ARG.required && PROJECT_ARG.required) };
+        let missing = parse(&[
+            "--source-project",
+            "a",
+            "--kind",
+            "transformer",
+            "--item",
+            "T",
+        ]);
+        assert!(missing.is_err(), "a destination is never implied");
+        let same = parse(&[
+            "--source-project",
+            "a",
+            "--project",
+            "a",
+            "--kind",
+            "transformer",
+            "--item",
+            "T",
+        ])
+        .expect("declared tokens parse");
+        let refused = projects(&same).unwrap_err();
+        assert_eq!(refused.code(), SAME_PROJECT.code);
+        assert_eq!(refused.remedy_text(), Some(SAME_PROJECT.remedy));
+        let distinct = parse(&[
+            "--source-project",
+            "a",
+            "--project",
+            "b",
+            "--kind",
+            "dsgrid",
+            "--item",
+            "m",
+        ])
+        .expect("declared tokens parse");
+        assert_eq!(projects(&distinct).unwrap(), ("a".into(), "b".into()));
     }
 
     #[test]
@@ -476,6 +499,8 @@ mod tests {
         let tokens: Vec<String> = [
             "--source-project",
             "source_one",
+            "--project",
+            "target_one",
             "--kind",
             "transformer",
             "--item",
@@ -497,10 +522,17 @@ mod tests {
     /// A kind that was not stated is refused at the door, never defaulted.
     #[test]
     fn an_unstated_kind_is_refused_before_anything_runs() {
-        let tokens: Vec<String> = ["--source-project", "source_one", "--item", "TX-1"]
-            .iter()
-            .map(|token| (*token).to_owned())
-            .collect();
+        let tokens: Vec<String> = [
+            "--source-project",
+            "source_one",
+            "--project",
+            "target_one",
+            "--item",
+            "TX-1",
+        ]
+        .iter()
+        .map(|token| (*token).to_owned())
+        .collect();
         assert!(ds_cli_contract::parse(&plan::COMMAND, &tokens).is_err());
     }
 
@@ -524,7 +556,7 @@ mod tests {
             "mode": "plan",
             "kind": "transformer",
             "source_project": "source_one",
-            "project": {"ds_project": "target_one", "project_name": "Target"},
+            "project": {"ds_project": "target_one"},
             "collision_policy": "skip_existing",
             "requested": 2, "moving": 0, "identical": 2, "blocked": 0, "failed": 0, "bytes": 0,
             "empty_state": "mig_empty_all_identical",
@@ -549,7 +581,7 @@ mod tests {
             "mode": "apply",
             "kind": "dsgrid",
             "source_project": "source_one",
-            "project": {"ds_project": "target_one", "project_name": "Target"},
+            "project": {"ds_project": "target_one"},
             "collision_policy": "revise_existing",
             "requested": 1, "moving": 1, "identical": 0, "blocked": 0, "failed": 0, "bytes": 4096,
             "empty_state": Value::Null,
@@ -574,7 +606,6 @@ mod tests {
             &data,
             "canary",
             "target_one",
-            "Target",
             "source_one",
             Kind::Transformer,
             Mode::Plan,
@@ -601,7 +632,6 @@ mod tests {
             &json!({"items": []}),
             "stable",
             "target_one",
-            "Target",
             "source_one",
             Kind::Dsgrid,
             Mode::Apply,
