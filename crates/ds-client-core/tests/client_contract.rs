@@ -8715,6 +8715,46 @@ fn headless_feedback_says_nothing_changed_without_the_caller_holding_anything() 
 }
 
 #[test]
+fn headless_feedback_open_is_what_waits_on_nothing_and_the_backlog_decides_it() {
+    use ds_client_core::feedback::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    for _ in 0..2 {
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .feedback
+            .push_back(project_response(serde_json::json!({
+                "reports":[],"count":0,"matched":0,"complete":true,"changed":false,
+                "scanned":0,"cursor":"fb1.abc.def","cursor_source":"reader"
+            })));
+    }
+    for view in ["open", "waiting"] {
+        let request = Command::List {
+            view: view.into(),
+            component: None,
+            query: None,
+            limit: 20,
+            detail: false,
+            cursor: None,
+            all: false,
+        };
+        let result = client.feedback(&request, NOW + 1).unwrap();
+        // The caller keeps the name it asked for; the backlog got its own view
+        // plus the blocked filter, so each half drains under its own watermark.
+        assert_eq!(result["view"], view);
+    }
+    let sent = transport.0.lock().unwrap().feedback_bodies.clone();
+    assert_eq!(sent.len(), 2);
+    for (body, blocked) in sent.iter().zip([false, true]) {
+        assert_eq!(body["filter"]["view"], "not_addressed");
+        assert_eq!(body["filter"]["blocked"], blocked);
+        assert_eq!(body["use_watermark"], true);
+    }
+}
+
+#[test]
 fn headless_feedback_separates_a_drain_from_a_read_of_the_top() {
     use ds_client_core::feedback::Command;
     let transport = FixtureTransport::with_sign_in(SIGN_IN);

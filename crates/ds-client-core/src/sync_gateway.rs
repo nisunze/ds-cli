@@ -247,8 +247,7 @@ impl NativeSyncRequest {
                     "input_base_fingerprint",
                     "outputs",
                 ];
-                if object.len() != KEYS.len() || !KEYS.iter().all(|key| object.contains_key(*key))
-                {
+                if object.len() != KEYS.len() || !KEYS.iter().all(|key| object.contains_key(*key)) {
                     return Err(invalid());
                 }
                 artifact_id(text("client_run_id")?)?;
@@ -446,7 +445,10 @@ mod tests {
                 "sha256": "a".repeat(64), "size_bytes": 28469}],
         });
         let request = NativeSyncRequest::report_publication("project-a", &open).unwrap();
-        assert_eq!(request.operation(), SyncGatewayOperation::ComputeArtifactsOpen);
+        assert_eq!(
+            request.operation(),
+            SyncGatewayOperation::ComputeArtifactsOpen
+        );
         assert_eq!(request.body(), &open);
         let finalize = json!({"action": "finalize", "project_id": "project-a",
             "work_id": "work_abc", "client_run_id": "publish-76ab72a6-6b1d-4095-a54e-139232b5152c"});

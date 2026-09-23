@@ -76,6 +76,20 @@ fn text(s: &str, max: usize) -> bool {
             .chars()
             .any(|c| c.is_control() && !matches!(c, '\n' | '\t'))
 }
+/// The backlog's own view and blocked filter behind each view a caller names.
+///
+/// `open` is what is legitimately open: unsettled and waiting on nothing. A
+/// report parked on a release, a deploy or a ruling names that blocker, and a
+/// sweep that re-read it every time would pay for a report nobody can act on.
+/// `waiting` is the other half. Both are the backlog's filter, never a
+/// narrowing here, so its watermark stays truthful per view.
+fn backlog_view(view: &str) -> (&str, Option<bool>) {
+    match view {
+        "open" => ("not_addressed", Some(false)),
+        "waiting" => ("not_addressed", Some(true)),
+        other => (other, None),
+    }
+}
 fn date(s: &str) -> Option<time::OffsetDateTime> {
     time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
 }
@@ -91,7 +105,7 @@ impl Command {
                 cursor,
                 ..
             } => {
-                ["not_addressed", "addressed", "all"].contains(&view.as_str())
+                ["open", "waiting", "not_addressed", "addressed", "all"].contains(&view.as_str())
                     && optional(component, 200)
                     && optional(query, 200)
                     && (1..=50).contains(limit)
@@ -343,16 +357,20 @@ pub(crate) fn run<T: AuthorizedTransport>(
             // the answer arrives. That is what makes the watermark it returns
             // truthful: a row this client hid would still have been counted as
             // read, and would never appear in a difference again.
+            let (backlog, blocked) = backlog_view(view);
             let mut payload = json!({
                 "action": "list",
                 "limit": limit,
                 "filter": {
-                    "view": view,
+                    "view": backlog,
                     "component_contains": component.clone().unwrap_or_default(),
                     "query": query.clone().unwrap_or_default(),
                     "limit": limit,
                 },
             });
+            if let Some(blocked) = blocked {
+                payload["filter"]["blocked"] = json!(blocked);
+            }
             // A read that participates in the watermark DRAINS: the backlog
             // hands over the matching reports this account has gone longest
             // without seeing, and a limited answer means the next call carries
