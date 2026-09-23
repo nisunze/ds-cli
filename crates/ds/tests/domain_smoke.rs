@@ -5059,7 +5059,14 @@ fn design_migrate_carries_both_design_kinds_on_one_verb_and_refuses_locally() {
             .collect::<BTreeSet<_>>();
         assert_eq!(
             inputs,
-            BTreeSet::from(["source-project", "kind", "item", "overwrite", "lane"]),
+            BTreeSet::from([
+                "source-project",
+                "project",
+                "kind",
+                "item",
+                "overwrite",
+                "lane"
+            ]),
             "{id}"
         );
         // Both design kinds are one flag on one verb, not two command families.
@@ -5087,6 +5094,8 @@ fn design_migrate_carries_both_design_kinds_on_one_verb_and_refuses_locally() {
         "plan",
         "--source-project",
         "source_one",
+        "--project",
+        "target_one",
         "--kind",
         "transformer",
     ];
@@ -5115,6 +5124,8 @@ fn design_migrate_carries_both_design_kinds_on_one_verb_and_refuses_locally() {
         "plan",
         "--source-project",
         "source_one",
+        "--project",
+        "target_one",
         "--kind",
         "city",
         "--item",
@@ -5130,6 +5141,25 @@ fn design_migrate_carries_both_design_kinds_on_one_verb_and_refuses_locally() {
         "a Solar kind must be refused by the design migration, not answered: {:?}",
         foreign_kind.envelope["error"]
     );
+
+    // Migration is stateless: the destination is an operand, and naming the
+    // source as the destination is refused before any credential is used.
+    let same = native_ds(&[
+        "design",
+        "migrate",
+        "plan",
+        "--source-project",
+        "source_one",
+        "--project",
+        "source_one",
+        "--kind",
+        "transformer",
+        "--item",
+        "TX-1",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(same.envelope["error"]["code"], "same_project");
 }
 
 /// The headless Design read spine: `ds design status` answers from the native

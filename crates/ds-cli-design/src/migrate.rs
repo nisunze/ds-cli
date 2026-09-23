@@ -326,7 +326,7 @@ pub mod plan {
         id: "design.migrate.plan",
         path: &["design", "migrate", "plan"],
         contract: 1,
-        summary: "Preview migrating designs from a source project into a destination project.",
+        summary: "Preview a design migration from a source into a destination project.",
         purpose: "\
 States what a migration would move, by name and byte size, and what would be \
 SKIPPED and why. It writes nothing and is gated exactly as the apply is, so \
