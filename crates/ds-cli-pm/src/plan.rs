@@ -60,6 +60,7 @@ and closeout states this project's engine accepts.",
     refusals: &crate::read_refusals::<17>(&[crate::INVALID_NUMBER]),
     reference: Some("docs/reference/pm.md"),
     search: &[
+        "project management",
         "schedule",
         "gantt",
         "wbs",

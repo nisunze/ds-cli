@@ -62,6 +62,7 @@ record touches.",
     refusals: &crate::read_refusals::<17>(&[crate::INVALID_NUMBER]),
     reference: Some("docs/reference/pm.md"),
     search: &[
+        "project management",
         "correspondence",
         "rfi",
         "instruction",

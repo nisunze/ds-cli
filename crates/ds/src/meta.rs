@@ -959,6 +959,11 @@ mod tests {
             ("install reference data", "desktop.data.rwanda.install"),
             ("ground data", "desktop.data.rwanda.install"),
             ("add all datasets", "desktop.data.rwanda.install"),
+            // The product calls it Project Management; an engineer briefed
+            // with those words must land on the plan, not on auth.project
+            // (feedback 8a15ecf2).
+            ("project management", "pm.plan"),
+            ("pm", "pm.plan"),
         ] {
             assert_eq!(
                 top_hit(query),
