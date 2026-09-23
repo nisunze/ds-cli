@@ -69,8 +69,9 @@ ds feedback list --component <repo-or-area> --detail --output json
 ds feedback list --query '<words from the work>' --detail --output json
 ```
 
-`--view` is `not_addressed` by default; pass `addressed` or `all` to see what
-is already closed. Match reports to the work by component and by what the
+`--view` is `open` by default: unsettled and waiting on nothing. A report noted
+`--blocked-on` something is `waiting`; pass `waiting`, `addressed` or `all` to
+see those. Match reports to the work by component and by what the
 report actually describes — never by title resemblance alone.
 
 Keep every report's returned `version`, and record `reporters`,

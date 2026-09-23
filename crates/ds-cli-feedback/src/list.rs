@@ -34,9 +34,13 @@ latest note, and the id and version a close must carry.",
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
-        Arg::value("view", "<view>", "Which half of the backlog to return.")
-            .choices(&["not_addressed", "addressed", "all"])
-            .default("not_addressed"),
+        Arg::value(
+            "view",
+            "<view>",
+            "open: waiting on nothing; waiting: blocked on a named dependency.",
+        )
+        .choices(&["open", "waiting", "not_addressed", "addressed", "all"])
+        .default("open"),
         Arg::value(
             "component",
             "<repository[/area]>",

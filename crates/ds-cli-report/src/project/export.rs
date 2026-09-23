@@ -844,11 +844,9 @@ fn complete_proof_print_styles(
         let document = catalogue["styles"][reference.as_str()].clone();
         if let Some(icon) = document["layout"]["icon-image"]
             .as_str()
-            .filter(|icon| !icon.is_empty())
+            .filter(|icon| !icon.is_empty() && !sealed_symbols[*icon].is_object())
         {
-            if !sealed_symbols[icon].is_object() {
-                unsealed_symbols.push(format!("{icon} (bound by {reference})"));
-            }
+            unsealed_symbols.push(format!("{icon} (bound by {reference})"));
         }
         if !sheets["printing_styles"].is_object() {
             sheets["printing_styles"] = json!({});
@@ -1746,7 +1744,13 @@ fn selected_contexts(
     lane: &str,
     receipt: &InputReceipt,
     online: bool,
-) -> Result<(Vec<ds_command_kernel::printing::PrintContextLayer>, Vec<Value>), Failure> {
+) -> Result<
+    (
+        Vec<ds_command_kernel::printing::PrintContextLayer>,
+        Vec<Value>,
+    ),
+    Failure,
+> {
     let invalid = |message: String| {
         Failure::invalid("report_inputs_invalid", message).remedy(INPUTS_INVALID.remedy)
     };

@@ -42,7 +42,7 @@ The backlog remembers how far this account has read. A visit where nothing
 moved answers:
 
 ```json
-{ "view": "not_addressed", "total": 0, "count": 0, "reports": [],
+{ "view": "open", "total": 0, "count": 0, "reports": [],
   "changed": false, "complete": true, "cursor": "fb1.…", "cursor_source": "reader" }
 ```
 
@@ -67,10 +67,14 @@ token the caller had to keep.
   the same rows. The way to see every matching report is the drain below. It is
   also what an older client does implicitly: opting into the watermark is an
   explicit flag on the wire, so a client that predates it sees no change.
-* `--view not_addressed` (the default), `addressed`, or `all`, narrowed by
-  `--component` or `--query`. Every filter goes to the backlog — nothing is
-  narrowed after the answer arrives, because a row hidden here would still have
-  been counted as read.
+* `--view open` (the default) is what is legitimately open: unsettled and
+  waiting on nothing. A report noted `--blocked-on` a release, a deploy or a
+  ruling is `waiting` and stops coming back in every sweep; it returns to `open`
+  when a note unblocks it. `not_addressed` is both halves, then `addressed` and
+  `all`. Each view drains under its own watermark, narrowed by `--component` or
+  `--query`. Every filter goes to the backlog — nothing is narrowed after the
+  answer arrives, because a row hidden here would still have been counted as
+  read.
 
 `--since` is gone. It took an RFC3339 timestamp the CALLER had to remember,
 which meant a state file on one machine and a full rescan on every other one.

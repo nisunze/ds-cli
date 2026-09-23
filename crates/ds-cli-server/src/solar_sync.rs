@@ -37,6 +37,10 @@ use ds_sync_runtime::{
 use crate::{auth, server_sync::sessions::ServerSessions};
 use serde_json::Value;
 
+/// What the Solar producer retired (job, bytes freed) and what it offered.
+#[cfg(test)]
+type SolarObservation = (Vec<(String, u64)>, Vec<LocalRow>);
+
 /// One page of the durable queue, the store's own maximum.
 const PAGE: usize = 1000;
 
@@ -353,10 +357,7 @@ impl SolarActivity {
     /// proof: what it retired (jobs completed with no row, with the bytes
     /// freed) and what it offered (always nothing).
     #[cfg(test)]
-    pub(crate) fn observe_for_test(
-        &self,
-        project: &str,
-    ) -> Result<(Vec<(String, u64)>, Vec<LocalRow>), String> {
+    pub(crate) fn observe_for_test(&self, project: &str) -> Result<SolarObservation, String> {
         let producer = SolarProducer {
             database: &self.database,
             identity: self.sessions.identity(),

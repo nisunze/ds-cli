@@ -472,6 +472,9 @@ mod tests {
         });
         let rendered = render(&data);
         assert!(rendered.contains("Combined Report"), "{rendered}");
-        assert!(!rendered.to_lowercase().contains("compounded"), "{rendered}");
+        assert!(
+            !rendered.to_lowercase().contains("compounded"),
+            "{rendered}"
+        );
     }
 }

@@ -343,23 +343,20 @@ fn geometry_evidence(geometry: &Value) -> Value {
     let mut bounds = [f64::MAX, f64::MAX, f64::MIN, f64::MIN];
     let mut positions = 0usize;
     fn walk(value: &Value, bounds: &mut [f64; 4], positions: &mut usize) {
-        match value {
-            Value::Array(items) => {
-                if items.len() >= 2 && items[0].is_number() && items[1].is_number() {
-                    let (x, y) = (
-                        items[0].as_f64().unwrap_or(0.0),
-                        items[1].as_f64().unwrap_or(0.0),
-                    );
-                    bounds[0] = bounds[0].min(x);
-                    bounds[1] = bounds[1].min(y);
-                    bounds[2] = bounds[2].max(x);
-                    bounds[3] = bounds[3].max(y);
-                    *positions += 1;
-                } else {
-                    items.iter().for_each(|item| walk(item, bounds, positions));
-                }
+        if let Value::Array(items) = value {
+            if items.len() >= 2 && items[0].is_number() && items[1].is_number() {
+                let (x, y) = (
+                    items[0].as_f64().unwrap_or(0.0),
+                    items[1].as_f64().unwrap_or(0.0),
+                );
+                bounds[0] = bounds[0].min(x);
+                bounds[1] = bounds[1].min(y);
+                bounds[2] = bounds[2].max(x);
+                bounds[3] = bounds[3].max(y);
+                *positions += 1;
+            } else {
+                items.iter().for_each(|item| walk(item, bounds, positions));
             }
-            _ => {}
         }
     }
     walk(&geometry["coordinates"], &mut bounds, &mut positions);

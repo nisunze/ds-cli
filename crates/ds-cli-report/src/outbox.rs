@@ -174,7 +174,9 @@ so. An offline pass changes nothing and says so.",
     }],
     refusals: DRAIN_REFUSALS,
     reference: Some("docs/reference/report.md"),
-    search: &["flush", "push", "retry", "unstick", "sync now", "send", "pull", "download"],
+    search: &[
+        "flush", "push", "retry", "unstick", "sync now", "send", "pull", "download",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -348,9 +350,8 @@ pub fn drain(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut passes = Vec::new();
     // The store's projects under this fence, plus any project whose batches
     // are on disk with no row yet, so the pass adopts them.
-    let mut projects =
-        ds_cli_server::server_reports::projects_with_publications(&database, &fence)
-            .map_err(unreadable)?;
+    let mut projects = ds_cli_server::server_reports::projects_with_publications(&database, &fence)
+        .map_err(unreadable)?;
     // Naming a project is "Sync now" for it: the pass runs even with nothing
     // queued here, reads the record and pulls what this machine lacks.
     if let Some(wanted) = &wanted {
