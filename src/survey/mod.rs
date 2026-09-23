@@ -11,7 +11,7 @@ mod policy;
 pub mod project_forms;
 mod read;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 pub const MAX_SURVEY_INPUT_BYTES: usize = 1024 * 1024;
 pub const MAX_SURVEY_FIELDS: usize = 512;
 
@@ -57,6 +57,7 @@ pub fn survey_evaluate(bytes: &[u8]) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     #[test]
     fn field_visibility_validation_and_hidden_values_share_one_pass() {
         let result = survey_evaluate(&serde_json::to_vec(&json!({"operation":"fields", "fields":[
