@@ -1,9 +1,9 @@
 //! The shared native sync runtime, driven end to end through the real
 //! [`StoreHost`] over a real `ds_sync_store` on disk, against deterministic
-//! fakes for the record, the grant issuer, the storage sessions and the bytes.
+//! fakes for the record and its door, the storage sessions and the bytes.
 //!
 //! These are the acceptance behaviours the assignment names: an authenticated
-//! open/upload/publish that commits exactly once; an unauthorized identity
+//! open/upload/finalize that commits exactly once; an unauthorized identity
 //! that moves no byte; restart and reopen from the durable store; a lease held
 //! by a second host; a transfer failure; and a cancellation. They run the same
 //! `run()` every host runs, so a drift between hosts is a drift here.
@@ -152,7 +152,6 @@ fn solar_row() -> LocalRow {
         readable: true,
         engine_release: "ds-solar-engine@1.2.3".into(),
         engine_build_manifest_sha256: "a".repeat(64),
-        grant_engine: "solar".into(),
         resource: "city-1".into(),
         client_publish_id: "solar-job-1".into(),
         outputs: vec![output],
@@ -361,26 +360,28 @@ fn open_upload_publish_commits_exactly_once_and_replan_is_in_sync() {
 
     assert_eq!(
         outcomes(&outcome),
-        vec!["open_grant:granted", "upload:published"],
+        vec!["upload:published"],
         "the plan's order is the run's order",
     );
 
     let world = fakes::lock(&harness.world);
     assert_eq!(world.commits, 1, "the record advanced exactly once");
-    assert_eq!(world.declarations.len(), 2, "declare, then restate");
+    assert_eq!(world.declarations.len(), 2, "open, then finalize");
+    assert_eq!(world.declarations[0]["action"], "open");
+    assert_eq!(world.declarations[1]["action"], "finalize");
     assert_eq!(
-        world.declarations[0], world.declarations[1],
-        "the restated declaration is byte-identical",
+        world.declarations[0]["client_run_id"], world.declarations[1]["client_run_id"],
+        "one run, named by the publish id, from open to finalize",
     );
     assert_eq!(
-        world.declarations[0]["base_revisions"]["export-tx_1"],
+        world.declarations[0]["input_base_fingerprint"],
         fakes::FINGERPRINT,
-        "base_revisions is what the snapshot pinned",
+        "the declaration names the inputs the report was computed from",
     );
     assert_eq!(
-        world.declarations[0]["artifacts"][0]["attribution"]["engine_build_manifest_sha256"],
+        world.declarations[0]["engine_build_manifest_sha256"],
         fakes::BUILD_MANIFEST,
-        "every artifact names the build that produced it",
+        "the build that produced it travels as provenance",
     );
     assert_eq!(world.head_reads, 1, "startup reads the record once");
     assert_eq!(world.transfers.len(), 1, "one output, one transfer");
@@ -421,82 +422,70 @@ fn open_upload_publish_commits_exactly_once_and_replan_is_in_sync() {
 #[test]
 fn an_unauthorized_identity_moves_no_byte_and_advances_nothing() {
     let harness = Harness::new();
-    fakes::lock(&harness.world).refuse_open = Some("the gateway answered 403".to_string());
+    fakes::lock(&harness.world).refuse_open =
+        Some("Publishing reports on this project requires the design.report capability".into());
     let bytes = vec![1_u8; 2048];
-    let outcome = harness.run(vec![local_row(&bytes)], sync::Trigger::Startup);
+    let row = local_row(&bytes);
+    let outcome = harness.run(vec![row.clone()], sync::Trigger::Startup);
 
     assert_eq!(
         outcomes(&outcome),
-        vec!["open_grant:failed", "upload:grant_open_failed"],
-        "no grant, so no publication — and the row says the grant request failed",
+        vec!["upload:refused", "reclaimed:refused"],
+        "the record refused this account, so the publication is settled and its bytes leave",
     );
     let world = fakes::lock(&harness.world);
-    assert_eq!(world.grants_minted, 0, "no grant was minted");
-    assert!(world.declarations.is_empty(), "nothing was declared");
+    assert_eq!(world.opens, 1, "the door was asked once");
+    assert_eq!(world.declarations.len(), 1, "nothing was finalized");
     assert_eq!(world.commits, 0, "the record did not advance");
     assert!(world.transfers.is_empty(), "not one byte left this machine");
+    drop(world);
+    // The cause, not its consequence: the authority's own words reach the
+    // row the operator reads.
     let upload = outcome
         .receipts
         .iter()
         .find(|receipt| receipt.action == "upload")
         .expect("an upload receipt");
-    // The cause, not its consequence: the authority's own 403 reaches the row
-    // the operator reads, so a refusal of access is distinguishable from an
-    // unreachable signer or a grant nobody asked for.
     let detail = upload.detail.clone().expect("the row states a cause");
     assert!(
-        detail.contains("the gateway answered 403"),
+        detail.contains("design.report"),
         "the row must carry what the authority answered: {detail}"
     );
-    assert!(
-        detail.contains("asked for on this run"),
-        "and that a request WAS attempted: {detail}"
+    assert_eq!(
+        stored_rows(&harness, PROJECT)[0].state,
+        ds_sync_runtime::store::ArtifactState::Refused
     );
 }
 
-/// The other way a row can end a run uncovered: the request SUCCEEDED and the
-/// authority issued a grant for a scope nobody asked about. The row must say
-/// that, not "none was asked for on this run" — which would put a second
-/// guess exactly where the first one was removed.
+/// A lane whose authority predates the report door answers 403
+/// `WORK_GRANT_REQUIRED`. That is a statement about the server's version,
+/// not about this account, so the publication is held — never refused, never
+/// reclaimed — and publishes on the first pass after the lane opens the door.
 #[test]
-fn a_grant_issued_for_another_scope_is_not_reported_as_no_request() {
+fn a_lane_whose_authority_predates_the_door_holds_the_row_until_it_opens() {
+    use ds_sync_runtime::store::ArtifactState;
     let harness = Harness::new();
+    fakes::lock(&harness.world).door_closed = true;
     let row = local_row(b"first report");
-    {
-        let mut world = fakes::lock(&harness.world);
-        world.issue_release = Some("ds-network-reporter@9.9.9+beef".into());
-    }
 
-    let outcome = harness.run(vec![row], sync::Trigger::Startup);
+    let outcome = harness.run(vec![row.clone()], sync::Trigger::Startup);
+    assert_eq!(outcomes(&outcome), vec!["upload:failed"]);
+    let detail = outcome.receipts[0].detail.clone().expect("a cause");
+    assert!(
+        detail.contains("does not open the report door yet"),
+        "the row says why it is held: {detail}"
+    );
+    assert_eq!(stored_rows(&harness, PROJECT)[0].state, ArtifactState::Held);
+    assert!(fakes::lock(&harness.world).reclaims.is_empty(), "nothing was freed");
 
-    assert_eq!(
-        outcomes(&outcome),
-        vec!["open_grant:granted", "upload:grant_open_failed"],
-        "the door answered, and what it answered does not cover this row",
-    );
-    let upload = outcome
-        .receipts
-        .iter()
-        .find(|receipt| receipt.action == "upload")
-        .expect("an upload receipt");
-    let detail = upload.detail.clone().expect("the row states a cause");
-    assert!(
-        detail.contains("ds-network-reporter@9.9.9+beef") && detail.contains("issued instead"),
-        "the row must name the scope that was issued: {detail}"
-    );
-    assert!(
-        !detail.contains("none was asked for"),
-        "a request WAS made this run: {detail}"
-    );
-    let world = fakes::lock(&harness.world);
-    assert_eq!(
-        world.commits, 0,
-        "nothing publishes under a grant for another release"
-    );
+    fakes::lock(&harness.world).door_closed = false;
+    let opened = harness.run(vec![row], sync::Trigger::Manual);
+    assert_eq!(outcomes(&opened), vec!["upload:published"]);
+    assert_eq!(fakes::lock(&harness.world).commits, 1);
 }
 
 #[test]
-fn one_failed_resource_grant_does_not_refuse_other_uploads_in_the_batch() {
+fn one_unreachable_open_does_not_hold_other_uploads_in_the_batch() {
     let harness = Harness::new();
     let first = local_row(b"first report");
     let mut second = local_row(b"second report");
@@ -507,25 +496,17 @@ fn one_failed_resource_grant_does_not_refuse_other_uploads_in_the_batch() {
     {
         let mut world = fakes::lock(&harness.world);
         world
-            .snapshot_base
+            .current_base
             .insert("export-tx_2".into(), "source-2".into());
         world.refuse_open_resource = Some("tx_2".into());
     }
 
     let outcome = harness.run(vec![first, second], sync::Trigger::Startup);
 
-    assert_eq!(
-        outcomes(&outcome),
-        vec![
-            "open_grant:granted",
-            "open_grant:failed",
-            "upload:published",
-            "upload:grant_open_failed",
-        ]
-    );
+    assert_eq!(outcomes(&outcome), vec!["upload:published", "upload:failed"]);
     let world = fakes::lock(&harness.world);
-    assert_eq!(world.grants_minted, 1);
-    assert_eq!(world.commits, 1, "the covered publication advances");
+    assert_eq!(world.opens, 2);
+    assert_eq!(world.commits, 1, "the reachable publication advances");
     assert_eq!(world.transfers.len(), 1, "only its bytes move");
     drop(world);
     let failed = outcome
@@ -538,42 +519,35 @@ fn one_failed_resource_grant_does_not_refuse_other_uploads_in_the_batch() {
                     .as_ref()
                     .is_some_and(|identity| identity.operation == "export-tx_2")
         })
-        .expect("the uncovered upload receipt");
-    // This row names the resource whose grant failed and the words the
-    // authority used, so an operator reading the Sync Center is not told that
-    // tx_2 lacks a grant when the truth is that asking for it did not work.
+        .expect("the held upload receipt");
+    // No verdict was reached, so the row is held with the authority's words.
     let detail = failed.detail.clone().expect("the held row states a cause");
     assert!(
-        detail.contains("tx_2") && detail.contains("temporarily unreachable"),
+        detail.contains("temporarily unreachable"),
         "unexpected detail: {detail}"
     );
-    assert_eq!(failed.outcome, "grant_open_failed");
+    assert_eq!(failed.outcome, "failed");
 }
 
+/// A locally built engine — a "+development" release no installer ever
+/// registered — publishes like any other: the record asks who the account is,
+/// never which binary computed the bytes, and the build is kept as provenance.
 #[test]
-fn a_publication_from_an_unregistered_build_never_moves_bytes() {
+fn a_locally_built_engine_publishes_and_its_build_travels_as_provenance() {
     let harness = Harness::new();
-    // A release that registers a different build of the same engine release.
-    fakes::lock(&harness.world).admitted_builds = vec!["f".repeat(64)];
-    let bytes = vec![2_u8; 4096];
-    let outcome = harness.run(vec![local_row(&bytes)], sync::Trigger::Startup);
+    let mut row = local_row(&[2_u8; 4096]);
+    row.engine_release = "ds-network-reporter@0.1.0+development".into();
+    row.engine_build_manifest_sha256 = "f".repeat(64);
+    let outcome = harness.run(vec![row], sync::Trigger::Startup);
 
-    assert_eq!(
-        outcomes(&outcome),
-        vec!["open_grant:granted", "upload:engine_build_not_admitted"],
-    );
+    assert_eq!(outcomes(&outcome), vec!["upload:published"]);
     let world = fakes::lock(&harness.world);
-    assert!(world.declarations.is_empty(), "nothing was declared");
-    assert_eq!(world.commits, 0);
-    assert!(world.transfers.is_empty(), "not one byte left this machine");
-    drop(world);
-    let upload = outcome
-        .receipts
-        .iter()
-        .find(|receipt| receipt.action == "upload")
-        .expect("an upload receipt");
-    let detail = upload.detail.clone().expect("a reason");
-    assert!(detail.contains(fakes::BUILD_MANIFEST) && detail.contains(&"f".repeat(64)));
+    assert_eq!(world.commits, 1);
+    assert_eq!(
+        world.declarations[0]["engine_version"],
+        "ds-network-reporter@0.1.0+development"
+    );
+    assert_eq!(world.declarations[0]["engine_build_manifest_sha256"], "f".repeat(64));
 }
 
 #[test]
@@ -583,12 +557,12 @@ fn restart_reopens_the_store_and_never_recomputes_a_committed_publish() {
     let first = harness.run(vec![local_row(&bytes)], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&first),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     assert_eq!(fakes::lock(&harness.world).commits, 1);
 
     // A restart: a brand-new host on the same durable store, same producer
-    // rows still present. It must not re-open a grant, re-upload or re-commit.
+    // rows still present. It must not re-open, re-upload or re-commit.
     let second = harness.run(vec![local_row(&bytes)], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&second),
@@ -597,7 +571,7 @@ fn restart_reopens_the_store_and_never_recomputes_a_committed_publish() {
     );
     let world = fakes::lock(&harness.world);
     assert_eq!(world.commits, 1, "the record still advanced exactly once");
-    assert_eq!(world.grants_minted, 1, "no second grant was minted");
+    assert_eq!(world.opens, 1, "the record was not asked twice");
     assert!(world.transfers.len() == 1, "no second transfer");
     // Startup re-reads the record (once per startup); what makes the restart
     // in_sync without a recompute is the durable head, not a skipped read.
@@ -675,7 +649,7 @@ fn invariant_3_two_hosts_one_store_one_project_one_holds_the_lease_the_other_rec
     );
     let world = fakes::lock(&harness.world);
     assert_eq!(world.commits, 0, "nothing was published under a held lease");
-    assert_eq!(world.grants_minted, 0);
+    assert_eq!(world.opens, 0);
     assert!(world.transfers.is_empty());
     // The plan itself is still the honest answer to "what would happen".
     assert_eq!(outcome.plan.summary.uploads, 1);
@@ -699,9 +673,8 @@ fn a_transfer_failure_holds_the_work_and_never_reports_a_commit() {
     let bytes = vec![9_u8; 4096];
     let outcome = harness.run(vec![local_row(&bytes)], sync::Trigger::Startup);
 
-    // The grant opened and the transport tried, but the object never committed,
-    // so the restated publish still answers upload_required and the run stops
-    // at the bounded round ceiling without a commit.
+    // The record asked for the bytes and the transport tried, but they never
+    // committed, so the record is not asked to publish and the work is held.
     assert_eq!(
         outcome
             .receipts
@@ -709,8 +682,8 @@ fn a_transfer_failure_holds_the_work_and_never_reports_a_commit() {
             .filter(|r| r.action == "upload")
             .map(|r| r.outcome.clone())
             .collect::<Vec<_>>(),
-        vec!["upload_required"],
-        "a weak link leaves the work incomplete, not committed",
+        vec!["failed"],
+        "a weak link leaves the work held, not committed",
     );
     let world = fakes::lock(&harness.world);
     assert_eq!(world.commits, 0, "the record did not advance");
@@ -871,8 +844,8 @@ fn a_server_host_executes_the_loop_and_refuses_to_upload_without_a_gateway() {
     let online = || true;
     let host = server_host(&harness, &gateway, &producer, &reads, &online);
     // A local change is answered from held heads (no record read), so the loop
-    // runs end to end and reaches the upload, where the missing gateway makes
-    // opening a grant fail — nothing is invented, nothing is committed.
+    // runs end to end and reaches the upload, where the missing gateway holds
+    // the publication — nothing is invented, nothing is committed.
     let outcome = run(&host, PROJECT, sync::Trigger::LocalChange).expect("the server loop runs");
 
     assert_eq!(
@@ -881,12 +854,12 @@ fn a_server_host_executes_the_loop_and_refuses_to_upload_without_a_gateway() {
             .iter()
             .map(|receipt| format!("{}:{}", receipt.action, receipt.outcome))
             .collect::<Vec<_>>(),
-        vec!["open_grant:failed", "upload:grant_open_failed"],
-        "a server with no gateway refuses cleanly, in order, naming the gateway",
+        vec!["upload:failed"],
+        "a server with no gateway holds the row, naming the gateway",
     );
     let world = fakes::lock(&harness.world);
     assert_eq!(world.commits, 0, "the server moved no bytes");
-    assert_eq!(world.grants_minted, 0);
+    assert_eq!(world.opens, 0);
 }
 
 #[test]
@@ -1072,9 +1045,10 @@ fn the_store_read_projection_hides_transfer_state_and_carries_receipts() {
             "the transport's in-flight state never leaves the store read",
         );
     }
-    assert!(read["grants"]
-        .as_array()
-        .is_some_and(|rows| !rows.is_empty()));
+    assert!(
+        read["grants"].as_array().is_some_and(Vec::is_empty),
+        "no grant is held: a publication asks the session's own authority"
+    );
 }
 
 #[test]
@@ -1242,7 +1216,7 @@ fn downloaded_replicas_survive_restart_and_never_become_publications() {
     let removed = h.run(vec![], sync::Trigger::Startup);
     assert_eq!(removed.plan.summary.uploads, 0);
     let world = fakes::lock(&h.world);
-    assert_eq!(world.grants_minted, 0);
+    assert_eq!(world.opens, 0);
     assert_eq!(
         world.commits, 0,
         "removed remote data must not be republished from a cache"
@@ -1274,7 +1248,7 @@ fn a_corrupted_replica_is_fetched_again_without_publishing_it() {
 }
 
 #[test]
-fn report_pass_does_not_send_solar_through_the_work_grant_protocol() {
+fn report_pass_does_not_send_solar_through_the_report_door() {
     let harness = Harness::new();
     let gateway = FakeGateway {
         world: harness.world.clone(),
@@ -1321,7 +1295,7 @@ fn report_pass_does_not_send_solar_through_the_work_grant_protocol() {
         let world = fakes::lock(&harness.world);
         (
             world.head_reads,
-            world.grants_minted,
+            world.opens,
             world.commits,
             world.transfers.len(),
         )
@@ -1335,7 +1309,7 @@ fn report_pass_does_not_send_solar_through_the_work_grant_protocol() {
     assert_eq!(
         (
             world.head_reads,
-            world.grants_minted,
+            world.opens,
             world.commits,
             world.transfers.len()
         ),
@@ -1393,33 +1367,30 @@ fn a_report_from_current_inputs_replaces_an_older_output_after_admission() {
     let result = h.run(vec![local_row(b"new output")], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&result),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     assert_eq!(fakes::lock(&h.world).commits, 1);
 }
 
 #[test]
-fn stale_report_inputs_are_refused_after_fresh_admission_before_any_upload() {
+fn stale_report_inputs_are_refused_by_the_record_before_any_upload() {
     let h = Harness::new();
     {
         let mut world = fakes::lock(&h.world);
         world
-            .snapshot_base
+            .current_base
             .insert("export-tx_1".into(), "source-changed".into());
     }
     let stale = local_row(b"stale output");
     let result = h.run(vec![stale.clone()], sync::Trigger::Startup);
-    // The verdict is kept, then the bytes go: online overwrites local, and a
-    // lost batch left on disk is the 350-batch, 2.08 GB, seven-day queue.
+    // The record's verdict is kept, then the bytes go: online overwrites
+    // local, and a lost batch left on disk is the 350-batch, 2.08 GB,
+    // seven-day queue.
     assert_eq!(
         outcomes(&result),
-        vec![
-            "open_grant:granted",
-            "conflict:source_base_moved",
-            "reclaimed:source_base_moved"
-        ]
+        vec!["upload:conflict", "reclaimed:conflict"]
     );
-    assert_eq!(result.receipts[2].bytes, Some(stale.size_bytes));
+    assert_eq!(result.receipts[1].bytes, Some(stale.size_bytes));
     assert_eq!(
         result.reclaimed,
         ds_sync_runtime::Reclaimed {
@@ -1428,13 +1399,10 @@ fn stale_report_inputs_are_refused_after_fresh_admission_before_any_upload() {
         }
     );
     let world = fakes::lock(&h.world);
-    assert_eq!(world.grants_minted, 1);
+    assert_eq!(world.opens, 1);
     assert_eq!(world.commits, 0);
-    assert!(world.transfers.is_empty());
-    assert!(
-        world.declarations.is_empty(),
-        "stale inputs must never be relabelled with the new grant"
-    );
+    assert!(world.transfers.is_empty(), "no byte moved for stale inputs");
+    assert_eq!(world.declarations.len(), 1, "the record was never asked to publish");
     assert_eq!(
         world.reclaims,
         vec![(stale.client_publish_id.clone(), stale.size_bytes)]
@@ -1443,7 +1411,7 @@ fn stale_report_inputs_are_refused_after_fresh_admission_before_any_upload() {
 
     // A fresh producer presents the same sealed bytes again (a machine whose
     // store already holds the verdict while the batch is still on disk): the
-    // observation itself frees them, once, and no grant is reopened.
+    // observation itself frees them, once, and the record is not asked again.
     let recovery = h.run(vec![stale.clone()], sync::Trigger::LocalChange);
     assert_eq!(
         outcomes(&recovery),
@@ -1452,10 +1420,80 @@ fn stale_report_inputs_are_refused_after_fresh_admission_before_any_upload() {
     );
     assert_eq!(recovery.reclaimed.batches, 1);
     assert_eq!(
-        fakes::lock(&h.world).grants_minted,
+        fakes::lock(&h.world).opens,
         1,
-        "background recovery must not reopen authority for stale bytes"
+        "background recovery must not re-declare stale bytes"
     );
+}
+
+/// The record re-checks the source inside the transaction that advances the
+/// head. A publication whose source moved between `open` and `finalize` is
+/// `stored_stale`: settled, and its bytes leave.
+#[test]
+fn a_source_that_moves_between_open_and_finalize_is_stored_stale_and_reclaimed() {
+    let h = Harness::new();
+    fakes::lock(&h.world).publish_state = Some("stored_stale".into());
+    let row = local_row(b"overtaken at finalize");
+    let result = h.run(vec![row.clone()], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&result),
+        vec!["upload:stored_stale", "reclaimed:stored_stale"]
+    );
+    assert!(result.receipts[0]
+        .detail
+        .as_deref()
+        .is_some_and(|detail| detail.contains("changed before finalization")));
+    assert_eq!(
+        stored_rows(&h, PROJECT)[0].state,
+        ds_sync_runtime::store::ArtifactState::Conflict
+    );
+    assert_eq!(fakes::lock(&h.world).commits, 0);
+}
+
+/// A report that names no source inputs can never be fenced against the
+/// record; it is refused locally and never declared.
+#[test]
+fn a_report_with_no_source_fingerprint_is_refused_without_asking_the_record() {
+    let h = Harness::new();
+    let mut row = local_row(b"unfenceable");
+    row.input_base_fingerprint = None;
+    let result = h.run(vec![row], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&result),
+        vec!["upload:refused", "reclaimed:refused"]
+    );
+    assert!(result.receipts[0]
+        .detail
+        .as_deref()
+        .is_some_and(|detail| detail.contains("names no source inputs")));
+    assert_eq!(fakes::lock(&h.world).opens, 0, "the record was not asked");
+}
+
+/// A declaration the project's current inputs do not produce is refused on
+/// arrival; a 400 at `finalize` — bytes the record has not seen yet — never
+/// settles anything.
+#[test]
+fn an_unproducible_declaration_is_refused_and_an_unfinished_upload_is_held() {
+    use ds_sync_runtime::store::ArtifactState;
+    let h = Harness::new();
+    fakes::lock(&h.world).invalid_declaration =
+        Some("Network Reporter output xlsx does not match project settings".into());
+    let result = h.run(vec![local_row(b"not producible")], sync::Trigger::Startup);
+    assert_eq!(
+        outcomes(&result),
+        vec!["upload:refused", "reclaimed:refused"]
+    );
+    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Refused);
+
+    let h = Harness::new();
+    fakes::lock(&h.world).never_commit = true;
+    let result = h.run(vec![local_row(b"bytes not yet stored")], sync::Trigger::Startup);
+    assert_eq!(outcomes(&result), vec!["upload:failed"]);
+    assert!(result.receipts[0]
+        .detail
+        .as_deref()
+        .is_some_and(|detail| detail.contains("has not finished uploading")));
+    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Held);
 }
 
 /// A host over a producer the caller keeps, so what a pass freed stays
@@ -1490,7 +1528,7 @@ fn a_row_the_store_already_holds_as_lost_is_reclaimed_on_observation_once_and_no
     {
         let mut world = fakes::lock(&h.world);
         world
-            .snapshot_base
+            .current_base
             .insert("export-tx_1".into(), "source-changed".into());
     }
     let stale = local_row(b"stale output");
@@ -1591,7 +1629,7 @@ fn a_published_batch_is_this_machines_copy_of_the_head_and_is_never_reclaimed() 
     let first = run(&host, PROJECT, sync::Trigger::Startup).expect("the loop runs");
     assert_eq!(
         outcomes(&first),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     let second = run(&host, PROJECT, sync::Trigger::Manual).expect("the loop runs");
     assert_eq!(outcomes(&second), vec!["nothing:in_sync"]);
@@ -1639,25 +1677,24 @@ fn a_reclaim_the_producer_cannot_perform_is_reported_and_never_silent() {
     {
         let mut world = fakes::lock(&h.world);
         world
-            .snapshot_base
+            .current_base
             .insert("export-tx_1".into(), "source-changed".into());
         world.refuse_reclaim = Some("the pending-upload lock is held by pid 7".into());
     }
     let stale = local_row(b"stale output");
     let result = h.run(vec![stale.clone()], sync::Trigger::Startup);
-    // The action's reclaim fails; the closing observation of the inventory
+    // The verdict's reclaim fails; the closing observation of the inventory
     // meets the same row under the store's verdict and tries again, in the
     // open. Two attempts, two receipts, nothing hidden.
     assert_eq!(
         outcomes(&result),
         vec![
-            "open_grant:granted",
-            "conflict:source_base_moved",
-            "reclaim_failed:source_base_moved",
+            "upload:conflict",
+            "reclaim_failed:conflict",
             "reclaim_failed:conflict"
         ]
     );
-    assert!(result.receipts[2]
+    assert!(result.receipts[1]
         .detail
         .as_deref()
         .unwrap()
@@ -1862,11 +1899,11 @@ fn host_receipt_actions(h: &Harness) -> Vec<String> {
 }
 
 #[test]
-fn a_changed_source_reopens_a_held_grant_before_publishing_new_reports() {
+fn a_changed_source_publishes_the_report_computed_from_it() {
     let h = Harness::new();
     h.run(vec![local_row(b"first output")], sync::Trigger::Startup);
     fakes::lock(&h.world)
-        .snapshot_base
+        .current_base
         .insert("export-tx_1".into(), "new-source".into());
     let mut next = local_row(b"next output");
     next.input_base_fingerprint = Some("new-source".into());
@@ -1874,10 +1911,10 @@ fn a_changed_source_reopens_a_held_grant_before_publishing_new_reports() {
     let result = h.run(vec![next], sync::Trigger::LocalChange);
     assert_eq!(
         outcomes(&result),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     assert_eq!(fakes::lock(&h.world).commits, 2);
-    assert_eq!(fakes::lock(&h.world).grants_minted, 2);
+    assert_eq!(fakes::lock(&h.world).opens, 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -1915,7 +1952,7 @@ fn invariant_1_a_pass_killed_after_seal_after_transfer_or_before_ack_resumes_wit
     let resumed = h.run(vec![row.clone()], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&resumed),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     assert_eq!(fakes::lock(&h.world).commits, 1);
 
@@ -1928,7 +1965,7 @@ fn invariant_1_a_pass_killed_after_seal_after_transfer_or_before_ack_resumes_wit
     let first = h.run(vec![row.clone()], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&first),
-        vec!["open_grant:granted", "upload:failed"]
+        vec!["upload:failed"]
     );
     {
         let world = fakes::lock(&h.world);
@@ -1994,7 +2031,7 @@ fn invariant_2_the_same_publish_id_published_twice_is_one_row_and_in_sync() {
     let first = h.run(vec![row.clone()], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&first),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     let second = h.run(vec![row.clone()], sync::Trigger::Manual);
     assert_eq!(outcomes(&second), vec!["nothing:in_sync"]);
@@ -2002,7 +2039,7 @@ fn invariant_2_the_same_publish_id_published_twice_is_one_row_and_in_sync() {
     assert_eq!(stored_rows(&h, PROJECT).len(), 1);
     let world = fakes::lock(&h.world);
     assert_eq!(world.commits, 1);
-    assert_eq!(world.grants_minted, 1);
+    assert_eq!(world.opens, 1);
     assert_eq!(world.transfers.len(), 1);
 }
 
@@ -2043,7 +2080,7 @@ fn invariant_4_two_projects_rows_interleave_and_each_publishes_under_its_own_sco
     let ours = h.run(vec![mine.clone()], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&ours),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Published);
     assert_eq!(stored_rows(&h, OTHER)[0].state, ArtifactState::Held);
@@ -2054,7 +2091,7 @@ fn invariant_4_two_projects_rows_interleave_and_each_publishes_under_its_own_sco
             world
                 .declarations
                 .iter()
-                .all(|declaration| { declaration["client_publish_id"] == mine.client_publish_id }),
+                .all(|declaration| { declaration["client_run_id"] == mine.client_publish_id }),
             "only our publication was declared"
         );
     }
@@ -2085,7 +2122,7 @@ fn invariant_4_two_projects_rows_interleave_and_each_publishes_under_its_own_sco
     let theirs_run = run(&host, OTHER, sync::Trigger::Startup).unwrap();
     assert_eq!(
         outcomes(&theirs_run),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     assert_eq!(stored_rows(&h, OTHER)[0].state, ArtifactState::Published);
     assert_eq!(
@@ -2098,7 +2135,7 @@ fn invariant_4_two_projects_rows_interleave_and_each_publishes_under_its_own_sco
     assert!(world
         .declarations
         .iter()
-        .all(|declaration| { declaration["client_publish_id"] == theirs.client_publish_id }));
+        .all(|declaration| { declaration["client_run_id"] == theirs.client_publish_id }));
     drop(world);
     let queue = h
         .store
@@ -2203,8 +2240,8 @@ fn invariant_7_transfer_success_without_a_commit_receipt_leaves_the_row_held() {
     let result = h.run(vec![row.clone()], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&result),
-        vec!["open_grant:granted", "upload:upload_required"],
-        "the run stops at its bounded round ceiling without a commit"
+        vec!["upload:failed"],
+        "the record refuses to publish bytes it does not hold, and the row stays held"
     );
     {
         let world = fakes::lock(&h.world);
@@ -2262,7 +2299,7 @@ fn invariant_1_killed_between_seal_and_acknowledgement_the_reopened_store_holds_
     let resumed = h.run(vec![row.clone()], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&resumed),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     assert_eq!(fakes::lock(&h.world).commits, 1);
 
@@ -2275,7 +2312,7 @@ fn invariant_1_killed_between_seal_and_acknowledgement_the_reopened_store_holds_
     let first = h.run(vec![row.clone()], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&first),
-        vec!["open_grant:granted", "upload:failed"]
+        vec!["upload:failed"]
     );
     h.reopen_after_kill();
     let rows = stored_rows(&h, PROJECT);
@@ -2384,7 +2421,7 @@ fn invariant_5_a_host_under_another_fence_drains_nothing_and_leaves_this_fences_
         assert_eq!(pass.plan.summary.uploads, 0, "{foreign:?} plans no upload");
         let world = fakes::lock(&world);
         assert_eq!(world.commits, 0, "{foreign:?} published nothing");
-        assert_eq!(world.grants_minted, 0);
+        assert_eq!(world.opens, 0);
         assert!(world.transfers.is_empty());
     }
     // This fence's row is still queued, untouched, and the file's whole
@@ -2403,7 +2440,7 @@ fn invariant_5_a_host_under_another_fence_drains_nothing_and_leaves_this_fences_
     let mine = h.run(vec![row], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&mine),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     assert_eq!(fakes::lock(&h.world).commits, 1);
 }
@@ -2426,12 +2463,12 @@ fn invariant_6_cancel_retires_queued_work_frees_its_bytes_and_never_undoes_publi
     queued.client_publish_id = "publish-22222222-2222-4222-8222-222222222222".into();
     queued.bytes_locator = "fake:batch:publish-22222222-2222-4222-8222-222222222222".into();
     fakes::lock(&h.world)
-        .snapshot_base
+        .current_base
         .insert("export-tx_2".into(), "source-2".into());
     let first = h.run(vec![published.clone()], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&first),
-        vec!["open_grant:granted", "upload:published"]
+        vec!["upload:published"]
     );
     h.seal(std::slice::from_ref(&queued));
     assert_eq!(
@@ -2572,7 +2609,6 @@ fn a_batch_the_store_does_not_know_is_adopted_once_with_a_receipt() {
         outcomes(&first),
         vec![
             "adopted:from_producer",
-            "open_grant:granted",
             "upload:published"
         ]
     );

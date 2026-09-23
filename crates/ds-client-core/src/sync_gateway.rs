@@ -2,8 +2,8 @@
 //!
 //! This is deliberately a closed-operation door. A host can submit the runtime's
 //! already-typed JSON declaration, but cannot select an origin, route, method,
-//! bearer, or another project for reads and grant admission. Publication is
-//! scoped by the server-owned grant, not a client-supplied project field.
+//! bearer, or another project. Every read and every publication is fenced to
+//! the selected project; the record asks the session's own authority.
 
 use serde_json::{json, Value};
 
@@ -17,8 +17,6 @@ pub enum SyncGatewayOperation {
     ComputeArtifacts,
     ComputeArtifactsOpen,
     ComputeArtifactsFinalize,
-    WorkOpen,
-    WorkPublish,
 }
 
 impl SyncGatewayOperation {
@@ -28,8 +26,6 @@ impl SyncGatewayOperation {
             Self::ComputeArtifacts => "domains.compute_artifacts.list",
             Self::ComputeArtifactsOpen => "domains.compute_artifacts.open",
             Self::ComputeArtifactsFinalize => "domains.compute_artifacts.finalize",
-            Self::WorkOpen => "domains.work.open",
-            Self::WorkPublish => "domains.work.publish",
         }
     }
 }
@@ -50,10 +46,9 @@ pub struct InstallHeartbeat<'a> {
     pub addition_state: &'a str,
 }
 
-/// Build-pinned installation facts for a heartbeat that intentionally reports
-/// no optional engine additions. A native host uses this only while reading
-/// the shared record before it knows which sealed report release needs a
-/// work grant; `work/open` then registers that exact release atomically.
+/// Build-pinned installation facts for a heartbeat that reports no optional
+/// engine additions: the installation's lease, and nothing about which build
+/// will compute what.
 pub struct InstallHeartbeatWithoutAddition<'a> {
     pub install_id: &'a str,
     pub device: &'a str,
@@ -122,10 +117,8 @@ impl NativeSyncRequest {
         })
     }
 
-    /// The existing app-install heartbeat contract permits an empty additions
-    /// map. This preserves the installation/lease authority for record reads
-    /// without claiming a reporter release before a sealed `work/open`
-    /// declaration selects one.
+    /// The app-install heartbeat contract permits an empty additions map: the
+    /// installation's lease without an engine claim.
     pub fn heartbeat_without_addition(
         identity: InstallHeartbeatWithoutAddition<'_>,
     ) -> Result<Self, ClientError> {
@@ -225,32 +218,92 @@ impl NativeSyncRequest {
         })
     }
 
-    /// Declare outputs against a server-owned work grant. The deployed publish
-    /// contract has no project field: the authority resolves the grant and
-    /// checks its principal, installation, project entitlement and attribution.
-    pub fn work_publish(body: &Value) -> Result<Self, ClientError> {
+    /// One report publication on the shared record's door, exactly as the
+    /// sync runtime declares it: `open` of one `export-<transformer>` run, or
+    /// `finalize` of the run `open` answered with. The shape is closed here and
+    /// fenced to the selected project; the engine build it names is provenance
+    /// the record keeps, never a credential this request carries.
+    pub fn report_publication(selected_project: &str, body: &Value) -> Result<Self, ClientError> {
+        bounded(selected_project)?;
         let object = body.as_object().ok_or_else(invalid)?;
-        if object.len() != 4
-            || !object.contains_key("client_publish_id")
-            || !object.contains_key("grant_id")
-            || !object.get("artifacts").is_some_and(Value::is_array)
-            || !object.get("base_revisions").is_some_and(Value::is_object)
-        {
-            return Err(invalid());
+        let text = |key: &str| object.get(key).and_then(Value::as_str).ok_or_else(invalid);
+        if text("project_id")? != selected_project {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "sync request project is not the selected project",
+            ));
         }
-        for key in ["client_publish_id", "grant_id"] {
-            artifact_id(
-                object
-                    .get(key)
-                    .and_then(Value::as_str)
-                    .ok_or_else(invalid)?,
-            )?;
-        }
+        let operation = match text("action")? {
+            "open" => {
+                const KEYS: [&str; 10] = [
+                    "action",
+                    "project_id",
+                    "client_run_id",
+                    "engine",
+                    "operation",
+                    "variant",
+                    "engine_version",
+                    "engine_build_manifest_sha256",
+                    "input_base_fingerprint",
+                    "outputs",
+                ];
+                if object.len() != KEYS.len() || !KEYS.iter().all(|key| object.contains_key(*key))
+                {
+                    return Err(invalid());
+                }
+                artifact_id(text("client_run_id")?)?;
+                let operation = text("operation")?;
+                artifact_id(operation)?;
+                if text("engine")? != "network_reporter"
+                    || text("variant")? != "default"
+                    || !operation.starts_with("export-")
+                {
+                    return Err(invalid());
+                }
+                bounded(text("engine_version")?)?;
+                let build = text("engine_build_manifest_sha256")?;
+                if !build.is_empty() {
+                    sha256(build)?;
+                }
+                sha256(text("input_base_fingerprint")?)?;
+                let outputs = object
+                    .get("outputs")
+                    .and_then(Value::as_array)
+                    .filter(|outputs| (1..=32).contains(&outputs.len()))
+                    .ok_or_else(invalid)?;
+                for output in outputs {
+                    let output = output.as_object().ok_or_else(invalid)?;
+                    let field = |key: &str| output.get(key).and_then(Value::as_str);
+                    if output.len() != 5
+                        || output
+                            .get("size_bytes")
+                            .and_then(Value::as_u64)
+                            .is_none_or(|size| size == 0)
+                    {
+                        return Err(invalid());
+                    }
+                    artifact_id(field("output_id").ok_or_else(invalid)?)?;
+                    bounded(field("format").ok_or_else(invalid)?)?;
+                    bounded(field("content_type").ok_or_else(invalid)?)?;
+                    sha256(field("sha256").ok_or_else(invalid)?)?;
+                }
+                SyncGatewayOperation::ComputeArtifactsOpen
+            }
+            "finalize" => {
+                if object.len() != 4 {
+                    return Err(invalid());
+                }
+                artifact_id(text("work_id")?)?;
+                artifact_id(text("client_run_id")?)?;
+                SyncGatewayOperation::ComputeArtifactsFinalize
+            }
+            _ => return Err(invalid()),
+        };
         if serde_json::to_vec(body).map_err(|_| invalid())?.len() > MAX_BODY_BYTES {
             return Err(invalid());
         }
         Ok(Self {
-            operation: SyncGatewayOperation::WorkPublish,
+            operation,
             body: body.clone(),
         })
     }
@@ -263,26 +316,12 @@ impl NativeSyncRequest {
         selected_project: &str,
         body: &Value,
     ) -> Result<Self, ClientError> {
-        if matches!(
-            operation,
-            SyncGatewayOperation::InstallHeartbeat
-                | SyncGatewayOperation::WorkPublish
-                | SyncGatewayOperation::ComputeArtifactsOpen
-                | SyncGatewayOperation::ComputeArtifactsFinalize
-        ) {
+        if operation != SyncGatewayOperation::ComputeArtifacts {
             return Err(invalid());
         }
         bounded(selected_project)?;
         let object = body.as_object().ok_or_else(invalid)?;
-        let key = match operation {
-            SyncGatewayOperation::ComputeArtifacts => "project_id",
-            SyncGatewayOperation::WorkOpen => "ds_project",
-            SyncGatewayOperation::InstallHeartbeat
-            | SyncGatewayOperation::WorkPublish
-            | SyncGatewayOperation::ComputeArtifactsOpen
-            | SyncGatewayOperation::ComputeArtifactsFinalize => unreachable!(),
-        };
-        if object.get(key).and_then(Value::as_str) != Some(selected_project) {
+        if object.get("project_id").and_then(Value::as_str) != Some(selected_project) {
             return Err(ClientError::new(
                 ErrorKind::InvalidInput,
                 "sync request project is not the selected project",
@@ -394,46 +433,49 @@ mod tests {
     }
 
     #[test]
-    fn work_routes_require_the_ds_project_fence() {
-        let open =
-            json!({"ds_project":"project-a", "install_id":"550e8400-e29b-41d4-a716-446655440000"});
-        assert!(
-            NativeSyncRequest::for_project(SyncGatewayOperation::WorkOpen, "project-a", &open)
-                .is_ok()
-        );
-        assert!(NativeSyncRequest::for_project(
-            SyncGatewayOperation::WorkPublish,
-            "project-b",
-            &open
-        )
-        .is_err());
-    }
-
-    #[test]
-    fn publication_uses_the_authority_grant_contract_without_an_invented_project() {
-        let publish = json!({
-            "client_publish_id":"publish-a", "grant_id":"grant_a",
-            "artifacts":[], "base_revisions":{}
+    fn a_report_publication_is_closed_to_its_declaration_and_its_project() {
+        let open = json!({
+            "action": "open", "project_id": "project-a",
+            "client_run_id": "publish-76ab72a6-6b1d-4095-a54e-139232b5152c",
+            "engine": "network_reporter", "operation": "export-agatare_1", "variant": "default",
+            "engine_version": "ds-network-reporter@0.1.0+development",
+            "engine_build_manifest_sha256": "5".repeat(64),
+            "input_base_fingerprint": "b".repeat(64),
+            "outputs": [{"output_id": "xlsx", "format": "xlsx",
+                "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "sha256": "a".repeat(64), "size_bytes": 28469}],
         });
-        let request = NativeSyncRequest::work_publish(&publish).unwrap();
-        assert_eq!(request.body(), &publish);
-        assert_eq!(request.operation(), SyncGatewayOperation::WorkPublish);
-        for key in [
-            "grant_id",
-            "client_publish_id",
-            "artifacts",
-            "base_revisions",
-        ] {
-            let mut missing = publish.clone();
-            missing.as_object_mut().unwrap().remove(key);
-            assert!(NativeSyncRequest::work_publish(&missing).is_err());
+        let request = NativeSyncRequest::report_publication("project-a", &open).unwrap();
+        assert_eq!(request.operation(), SyncGatewayOperation::ComputeArtifactsOpen);
+        assert_eq!(request.body(), &open);
+        let finalize = json!({"action": "finalize", "project_id": "project-a",
+            "work_id": "work_abc", "client_run_id": "publish-76ab72a6-6b1d-4095-a54e-139232b5152c"});
+        assert_eq!(
+            NativeSyncRequest::report_publication("project-a", &finalize)
+                .unwrap()
+                .operation(),
+            SyncGatewayOperation::ComputeArtifactsFinalize
+        );
+
+        assert!(NativeSyncRequest::report_publication("project-b", &open).is_err());
+        let mut solar = open.clone();
+        solar["engine"] = json!("solar");
+        let mut extra = open.clone();
+        extra["authority_grant_id"] = json!("grant_a");
+        let mut unfenced = open.clone();
+        unfenced["input_base_fingerprint"] = json!("");
+        let mut aggregate = open.clone();
+        aggregate["operation"] = json!("calculate-kigali");
+        let mut empty = open.clone();
+        empty["outputs"] = json!([]);
+        let mut list = open.clone();
+        list["action"] = json!("list");
+        for refused in [solar, extra, unfenced, aggregate, empty, list] {
+            assert!(
+                NativeSyncRequest::report_publication("project-a", &refused).is_err(),
+                "{refused}"
+            );
         }
-        let mut injected = publish.clone();
-        injected["ds_project"] = json!("project-b");
-        assert!(NativeSyncRequest::work_publish(&injected).is_err());
-        injected = publish;
-        injected["grant_id"] = json!("../other-grant");
-        assert!(NativeSyncRequest::work_publish(&injected).is_err());
     }
 
     #[test]

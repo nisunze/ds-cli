@@ -5,8 +5,9 @@
 //! same code against the same seam. It holds no notion of freshness,
 //! ownership, retries or ordering:
 //!
-//! * what a publication does once it is admitted is `work/publish`'s two-phase
-//!   declaration, restated verbatim from the authority contract;
+//! * what a publication does is the shared record's own door —
+//!   `compute_artifacts` `open`, the bytes it asks for, `finalize` — and what
+//!   it may lose on is the record's verdict, never a local guess;
 //! * how bytes move — every resume point, retry, backoff and terminal verdict —
 //!   is `ds_command_kernel::transfer`, driven through each host's one native
 //!   transport host behind [`SyncHost::transfer`];
@@ -20,24 +21,18 @@
 //! whether that trigger needs the remote heads re-read. The only timed wake a
 //! host may honour is the one the plan names in `wake`.
 
-use std::collections::BTreeMap;
-
 use ds_command_kernel::sync;
-use serde_json::{json, Value};
+use serde_json::Value;
 
+use crate::gateway::GatewayError;
 use crate::rows::{
-    kernel_grant, kernel_local, kernel_remote, HeldGrant, LocalRow, PublishOutcome, Receipt,
-    Reclaimed, RemoteRow, SyncRun, TransferReceipt, WorkOpen, MAX_ROWS, SCHEMA,
+    finalize_declaration, kernel_local, kernel_remote, open_declaration, LocalRow, Receipt,
+    Reclaimed, RecordAnswer, RemoteRow, SyncRun, TransferReceipt, MAX_ROWS, SCHEMA,
 };
 
-/// How many times one publication may restate the same declaration.
-///
-/// Not a retry budget: §1.3.1 prescribes exactly two rounds — declare, upload
-/// what the server says is missing, restate the *same* declaration. The third
-/// is a bound against a server that keeps answering `upload_required`, in the
-/// spirit of the transport host's step ceiling. Beyond it the run records what
-/// it saw and stops; it never invents a different door.
-const MAX_PUBLISH_ROUNDS: u32 = 3;
+/// The engine whose publications this loop performs. Every other engine's
+/// rows are published by that engine's own pump over the same store.
+pub const REPORT_ENGINE: &str = "network_reporter";
 
 /// The trigger a caller that names none is taken to mean.
 ///
@@ -88,13 +83,11 @@ pub trait SyncHost {
     fn release_lease(&self, project: &str) {
         let _ = project;
     }
-    /// The grants this install already holds for the project, from memory and
-    /// from the host's durable store.
-    fn grants(&self, project: &str) -> Result<Vec<HeldGrant>, String>;
-    /// §1.2. The host persists what it obtained before returning it.
-    fn open_work(&self, request: &WorkOpen) -> Result<HeldGrant, String>;
-    /// §1.3. The same declaration is restated verbatim after the uploads.
-    fn publish_work(&self, declaration: &Value) -> Result<PublishOutcome, String>;
+    /// Declare one publication on the shared record's door
+    /// (`compute_artifacts` `open`). The answer is the record's own.
+    fn open_publication(&self, declaration: &Value) -> Result<RecordAnswer, GatewayError>;
+    /// Ask the record to publish the run `open` answered with (`finalize`).
+    fn finalize_publication(&self, declaration: &Value) -> Result<RecordAnswer, GatewayError>;
     /// Resumable bytes for one declared object, any size.
     fn transfer(
         &self,
@@ -127,8 +120,10 @@ pub trait SyncHost {
 /// Observe what the host holds and ask the kernel.
 ///
 /// Everything the plan needs is an observation: the two inventories, the
-/// credential, the clock, why the host is asking, and when the held heads were
-/// last read. Nothing is derived here.
+/// clock, why the host is asking, and when the held heads were last read.
+/// Nothing is derived here. A publication needs no credential beyond the
+/// session the host's door already carries, so no grant is shown to the plan
+/// and any `open_grant` it answers is not performed.
 pub fn plan_once(
     host: &dyn SyncHost,
     project: &str,
@@ -136,7 +131,6 @@ pub fn plan_once(
     remote_read_at_ms: Option<u64>,
     local: &[LocalRow],
     remote: &[RemoteRow],
-    grants: &[HeldGrant],
 ) -> Result<sync::Plan, String> {
     if local.len() > MAX_ROWS || remote.len() > MAX_ROWS {
         return Err("this project's sync inventories exceed their bound".to_string());
@@ -151,13 +145,9 @@ pub fn plan_once(
         online: host.online(),
         trigger,
         remote_read_at_ms,
-        // Coverage is decided over the whole held set: each grant covers one
-        // `(engine release, resource)` scope and this project publishes one
-        // row per transformer, so showing the kernel a single grant let one
-        // covered scope answer for every other row.
-        grant: grants.last().map(kernel_grant),
-        grants: grants.iter().map(kernel_grant).collect(),
-        source_grants: grants.iter().map(kernel_grant).collect(),
+        grant: None,
+        grants: Vec::new(),
+        source_grants: Vec::new(),
         local: local.iter().map(kernel_local).collect(),
         remote: remote.iter().map(kernel_remote).collect(),
     };
@@ -175,8 +165,7 @@ pub fn plan(
 ) -> Result<sync::Plan, String> {
     let mut local = host.local(project)?;
     let (mut remote, mut read_at) = host.held_heads(project)?;
-    let grants = host.grants(project)?;
-    let mut plan = plan_once(host, project, trigger, read_at, &local, &remote, &grants)?;
+    let mut plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
     if plan.refresh_remote.needed {
         remote = host.heads(project)?;
         let at = host.server_now_ms();
@@ -185,7 +174,7 @@ pub fn plan(
         // Re-observe after refresh so an older cache cannot become an upload.
         local = host.local(project)?;
         read_at = Some(at);
-        plan = plan_once(host, project, trigger, read_at, &local, &remote, &grants)?;
+        plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
     }
     Ok(plan)
 }
@@ -203,15 +192,15 @@ pub fn run(host: &dyn SyncHost, project: &str, trigger: sync::Trigger) -> Result
     run_scoped(host, project, trigger, None)
 }
 
-/// Drive the report work-grant protocol without submitting Solar rows through
-/// it. Both protocols retain the same project store and lease. Remote head
-/// observations remain complete; only the input to this pass is scoped.
+/// Drive report publication without submitting Solar rows through it. Both
+/// pumps retain the same project store and lease. Remote head observations
+/// remain complete; only the input to this pass is scoped.
 pub fn run_reports(
     host: &dyn SyncHost,
     project: &str,
     trigger: sync::Trigger,
 ) -> Result<SyncRun, String> {
-    run_scoped(host, project, trigger, Some("network_reporter"))
+    run_scoped(host, project, trigger, Some(REPORT_ENGINE))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -222,7 +211,6 @@ fn scoped_plan(
     read_at: Option<u64>,
     local: &[LocalRow],
     remote: &[RemoteRow],
-    grants: &[HeldGrant],
     engine: Option<&str>,
 ) -> Result<sync::Plan, String> {
     let local: Vec<_> = local
@@ -235,7 +223,7 @@ fn scoped_plan(
         .filter(|row| engine.is_none_or(|engine| row.identity.engine == engine))
         .cloned()
         .collect();
-    plan_once(host, project, trigger, read_at, &local, &remote, grants)
+    plan_once(host, project, trigger, read_at, &local, &remote)
 }
 
 fn run_scoped(
@@ -251,13 +239,8 @@ fn run_scoped(
         let mut receipts = host.take_receipts(project);
         receipts.push(Receipt::new("lease", "held").detail(holder));
         let (remote, read_at) = host.held_heads(project)?;
-        let grants = host.grants(project)?;
-        let plan = scoped_plan(
-            host, project, trigger, read_at, &local, &remote, &grants, engine,
-        )?;
-        let replanned = scoped_plan(
-            host, project, trigger, read_at, &local, &remote, &grants, engine,
-        )?;
+        let plan = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
+        let replanned = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
         let reclaimed = Reclaimed::from_receipts(&receipts);
         return Ok(SyncRun {
             schema: SCHEMA,
@@ -303,10 +286,7 @@ fn run_leased(
     // effect of reading the inventory.
     let mut receipts: Vec<Receipt> = host.take_receipts(project);
     let (mut remote, mut read_at) = host.held_heads(project)?;
-    let mut grants = host.grants(project)?;
-    let mut plan = scoped_plan(
-        host, project, trigger, read_at, &local, &remote, &grants, engine,
-    )?;
+    let mut plan = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
 
     // The plan decides whether this trigger needs the record; it is honoured
     // exactly once per run, because a second read in the same pass could only
@@ -320,49 +300,29 @@ fn run_leased(
         local = host.local(project)?;
         receipts.extend(host.take_receipts(project));
         read_at = Some(at);
-        plan = scoped_plan(
-            host, project, trigger, read_at, &local, &remote, &grants, engine,
-        )?;
+        plan = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
     }
 
-    let mut grant_failures: BTreeMap<String, String> = BTreeMap::new();
-    if plan
-        .actions
-        .iter()
-        .any(|action| matches!(action, sync::Action::OpenGrant { .. }))
-    {
-        let (opened, failures) = open_grants(host, project, &plan, &local, &mut grants);
-        grant_failures = failures;
-        for receipt in opened {
-            keep(host, project, &mut receipts, receipt);
-        }
-        // A newly issued grant is new authority evidence. Ask the kernel again
-        // before moving bytes; it may now identify stale computed inputs.
-        plan = scoped_plan(
-            host,
-            project,
-            sync::Trigger::GrantOpened,
-            read_at,
-            &local,
-            &remote,
-            &grants,
-            engine,
-        )?;
-    }
     for action in &plan.actions {
         match action {
             sync::Action::Offline => {
                 receipts.push(Receipt::new("offline", "noted"));
             }
+            // The record's door asks the session's own authority; there is
+            // no second credential to obtain first.
             sync::Action::OpenGrant { .. } => {}
             sync::Action::Upload { identity, .. } => {
-                // Grants are scoped to one resource. A transient failure to
-                // open one grant must hold that publication alone, rather
-                // than poisoning every covered upload in the project plan.
-                // `upload` resolves and validates the exact row scope before
-                // declaring or moving any bytes.
-                let receipt = upload(host, project, &local, &grants, &grant_failures, identity);
+                // One publication's verdict holds or settles that row alone;
+                // it never stops the rest of the batch.
+                let receipt = upload(host, project, &local, identity);
+                let settled = settled_verdict(&receipt);
                 keep(host, project, &mut receipts, receipt);
+                // A verdict the record passed on this publication is final:
+                // the bytes leave this machine in the pass that heard it.
+                if let Some(verdict) = settled {
+                    let receipt = reclaim(host, project, &local, identity, verdict);
+                    keep(host, project, &mut receipts, receipt);
+                }
             }
             sync::Action::Download { identity, .. } => {
                 let receipt = download(host, project, &remote, identity);
@@ -419,10 +379,7 @@ fn run_leased(
     local = host.local(project)?;
     receipts.extend(host.take_receipts(project));
     let (remote, read_at) = host.held_heads(project)?;
-    let grants = host.grants(project)?;
-    let replanned = scoped_plan(
-        host, project, trigger, read_at, &local, &remote, &grants, engine,
-    )?;
+    let replanned = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
     let reclaimed = Reclaimed::from_receipts(&receipts);
     Ok(SyncRun {
         schema: SCHEMA,
@@ -482,145 +439,23 @@ fn batch_name(row: &LocalRow) -> String {
     }
 }
 
-/// Ask §1.2 for a grant covering every upload this plan holds.
+/// Publish one local report on the shared record's door: declare it, move
+/// exactly the bytes the record says it lacks, then ask it to publish.
 ///
-/// The kernel emits one `open_grant`; the edge lane scopes a grant to one
-/// engine release and one resource, so this opens one per distinct scope the
-/// pending uploads need. Which uploads are pending is the plan's answer, not
-/// this function's.
-fn open_grants(
-    host: &dyn SyncHost,
-    project: &str,
-    plan: &sync::Plan,
-    local: &[LocalRow],
-    grants: &mut Vec<HeldGrant>,
-) -> (Vec<Receipt>, BTreeMap<String, String>) {
-    let mut receipts: Vec<Receipt> = Vec::new();
-    // Scope → what the door answered when this run asked for it. Kept so the
-    // rows that wanted that scope can state the cause rather than its
-    // consequence: the reason a publication is held is a certificate timeout
-    // or an archived project, never "no grant covers this".
-    let mut failures: BTreeMap<String, String> = BTreeMap::new();
-    let mut wanted: BTreeMap<String, &LocalRow> = BTreeMap::new();
-    for action in &plan.actions {
-        if let sync::Action::Upload { identity, .. } = action {
-            if let Some(row) = local.iter().find(|row| &row.identity == identity) {
-                wanted.insert(row.scope(), row);
-            }
-        }
-    }
-    for (scope, row) in wanted {
-        let request = WorkOpen {
-            client_request_id: format!("open-{}", uuid::Uuid::new_v4()),
-            install_id: host.install_id(),
-            project: project.to_string(),
-            engine: row.grant_engine.clone(),
-            engine_release: row.engine_release.clone(),
-            resource: row.resource.clone(),
-        };
-        match host.open_work(&request) {
-            Ok(grant) => {
-                // A grant that came back for a different scope than the one
-                // asked for covers nothing here. Recording it keeps the row
-                // honest: without this the row would say no request was made
-                // this run, which would be a second guess in place of the
-                // first one this slice removed.
-                if grant.scope() != scope {
-                    failures.insert(
-                        scope.clone(),
-                        format!(
-                            "a grant for {} of {} was issued instead, which covers no publication of this one",
-                            grant.engine_release,
-                            if grant.resource.is_empty() {
-                                "no named resource"
-                            } else {
-                                &grant.resource
-                            }
-                        ),
-                    );
-                }
-                let mut receipt = Receipt::new("open_grant", "granted").about(&row.identity);
-                receipt.grant_id = Some(grant.grant_id.clone());
-                grants.retain(|held| held.scope() != grant.scope());
-                grants.push(grant);
-                receipts.push(receipt);
-            }
-            Err(error) => {
-                failures.insert(scope, error.clone());
-                receipts.push(
-                    Receipt::new("open_grant", "failed")
-                        .about(&row.identity)
-                        .detail(error),
-                );
-            }
-        }
-    }
-    (receipts, failures)
-}
-
-/// The receipt for a publication no grant in hand covers.
-///
-/// It states the CAUSE. Where this run asked for the scope and the authority
-/// refused, the row carries that answer verbatim — a signer certificate
-/// timeout, an archived project, a capability the account does not hold are
-/// each the authority's own words, so none of them has to be guessed at from a
-/// downstream symptom. Where no request was made, the kernel says which fact
-/// about the grants in hand refused the row, in its own closed vocabulary,
-/// with the remedy it names for that code.
-fn ungranted(
-    host: &dyn SyncHost,
-    project: &str,
-    grants: &[HeldGrant],
-    grant_failures: &BTreeMap<String, String>,
-    row: &LocalRow,
-) -> Receipt {
-    let scope = row.scope();
-    if let Some(error) = grant_failures.get(&scope) {
-        return Receipt::new("upload", "grant_open_failed")
-            .about(&row.identity)
-            .detail(format!(
-                "a work grant for {} of {} was asked for on this run and the authority answered: {error}. {}",
-                row.engine_release,
-                resource_name(row),
-                sync::scope_remedy("grant_open_failed"),
-            ));
-    }
-    let held: Vec<sync::Grant> = grants.iter().map(kernel_grant).collect();
-    let problem = sync::scope_problem(
-        project,
-        &host.install_id(),
-        host.server_now_ms(),
-        &held,
-        &scope,
-    )
-    .unwrap_or("no_grant");
-    Receipt::new("upload", problem)
-        .about(&row.identity)
-        .detail(format!(
-            "no work grant in hand covers {} of {}, and none was asked for on this run. {}",
-            row.engine_release,
-            resource_name(row),
-            sync::scope_remedy(problem),
-        ))
-}
-
-/// The resource a row spends grant scope on, named for a reader.
-fn resource_name(row: &LocalRow) -> &str {
-    if row.resource.is_empty() {
-        "no named resource"
-    } else {
-        &row.resource
-    }
-}
-
-/// Publish one local publication, uploading exactly the objects §1.3 declares
-/// missing, then restating the same declaration.
+/// The record decides everything a publication can lose on. `open` refuses a
+/// declaration whose source inputs moved (409), that the project's current
+/// inputs do not produce (400), or that the account may not publish (403);
+/// `finalize` re-checks the source inside the transaction that advances the
+/// head and answers `stored_stale` when it lost. A verdict settles the row —
+/// `conflict` or `refused`, and the bytes leave this machine on the next
+/// observation — while anything that never reached a verdict (offline, a 5xx,
+/// a transfer that did not complete) keeps it held for the next trigger, with
+/// the cause on the row. `finalize` is asked only once every byte it needs
+/// has committed.
 fn upload(
     host: &dyn SyncHost,
     project: &str,
     local: &[LocalRow],
-    grants: &[HeldGrant],
-    grant_failures: &BTreeMap<String, String>,
     identity: &sync::Identity,
 ) -> Receipt {
     let Some(row) = local.iter().find(|row| &row.identity == identity) else {
@@ -628,119 +463,139 @@ fn upload(
             .about(identity)
             .detail("the planned row is no longer in the local inventory");
     };
-    let scope = row.scope();
-    let Some(grant) = grants.iter().rev().find(|grant| grant.scope() == scope) else {
-        return ungranted(host, project, grants, grant_failures, row);
-    };
-
-    // The grant names the exact builds ds-brain admitted for this release; the
-    // row names the build that actually produced its bytes. Checking that here
-    // costs nothing and spends nothing: the server refuses the same mismatch,
-    // but only after a multi-megabyte upload has crossed the wire.
-    if !grant
-        .admitted_builds
-        .iter()
-        .any(|admitted| admitted == &row.engine_build_manifest_sha256)
-    {
-        let mut receipt = Receipt::new("upload", "engine_build_not_admitted")
+    if row.identity.engine != REPORT_ENGINE {
+        return Receipt::new("upload", "failed")
             .about(identity)
-            .detail(format!(
-                "this publication was produced by {} build {}, which this release does not register (admitted: {})",
-                row.engine_release,
-                if row.engine_build_manifest_sha256.is_empty() {
-                    "«unrecorded»"
-                } else {
-                    &row.engine_build_manifest_sha256
-                },
-                if grant.admitted_builds.is_empty() {
-                    "none".to_string()
-                } else {
-                    grant.admitted_builds.join(", ")
-                },
-            ));
-        receipt.grant_id = Some(grant.grant_id.clone());
-        return receipt;
+            .detail("this pass publishes reports; the row's own engine pump publishes it");
     }
-
-    let declaration = declaration(row, grant);
+    // The fence is the source the report was computed from. A row that names
+    // none can never be checked against the record, so it is refused here,
+    // before it asks anything of the record.
+    if row
+        .input_base_fingerprint
+        .as_deref()
+        .is_none_or(str::is_empty)
+    {
+        return Receipt::new("upload", "refused")
+            .about(identity)
+            .detail("this report names no source inputs, so the record cannot tell whether it is current; export it again");
+    }
+    let mut answer = match host.open_publication(&open_declaration(project, row)) {
+        Ok(answer) => answer,
+        Err(error) => return record_refusal(identity, Stage::Open, error, None, Vec::new()),
+    };
     let mut transfers: Vec<TransferReceipt> = Vec::new();
-    let mut rounds = 0;
-    loop {
-        rounds += 1;
-        let outcome = match host.publish_work(&declaration) {
-            Ok(outcome) => outcome,
-            Err(error) => {
+    if answer.state == "pending" {
+        for (output_id, session_uri) in &answer.uploads {
+            let transferred = match host.transfer(row, output_id, session_uri) {
+                Ok(receipt) => receipt,
+                Err(error) => {
+                    let mut receipt = Receipt::new("upload", "failed")
+                        .about(identity)
+                        .detail(error);
+                    receipt.work_id = Some(answer.work_id.clone());
+                    receipt.transfers = transfers;
+                    return receipt;
+                }
+            };
+            let complete = transferred.outcome == "done"
+                && transferred.committed_bytes == transferred.total_bytes;
+            if !complete {
                 let mut receipt = Receipt::new("upload", "failed")
                     .about(identity)
-                    .detail(error);
-                receipt.grant_id = Some(grant.grant_id.clone());
+                    .detail(format!(
+                        "the bytes of {output_id} did not finish moving ({}, {} of {} bytes); the record was not asked to publish",
+                        transferred.outcome, transferred.committed_bytes, transferred.total_bytes
+                    ));
+                receipt.work_id = Some(answer.work_id.clone());
+                transfers.push(transferred);
                 receipt.transfers = transfers;
                 return receipt;
             }
-        };
-        if outcome.state == "upload_required" && rounds < MAX_PUBLISH_ROUNDS {
-            for (output_id, session_uri) in &outcome.uploads {
-                match host.transfer(row, output_id, session_uri) {
-                    Ok(receipt) => transfers.push(receipt),
-                    Err(error) => {
-                        let mut receipt = Receipt::new("upload", "failed")
-                            .about(identity)
-                            .detail(error);
-                        receipt.grant_id = Some(grant.grant_id.clone());
-                        receipt.work_id = outcome.work_id.clone();
-                        receipt.transfers = transfers;
-                        return receipt;
-                    }
-                }
+            transfers.push(transferred);
+        }
+        let work_id = answer.work_id.clone();
+        answer = match host.finalize_publication(&finalize_declaration(project, row, &work_id)) {
+            Ok(answer) => answer,
+            Err(error) => {
+                return record_refusal(identity, Stage::Finalize, error, Some(work_id), transfers)
             }
-            continue;
+        };
+    }
+    let mut receipt = match answer.state.as_str() {
+        "published" => {
+            // A completed publish advances the held head from its own
+            // receipt, so the next trigger never re-reads what this run did.
+            let mut receipt = Receipt::new("upload", "published").about(identity);
+            receipt.revision = Some(published_revision(answer.head_revision));
+            receipt.head_revision = answer.head_revision;
+            receipt
         }
-        // A completed publish advances the held head from its own receipt, so
-        // the next trigger never pays for a re-read to learn what this run did.
-        let mut receipt = Receipt::new("upload", outcome.state.clone()).about(identity);
-        if outcome.state == "published" {
-            receipt.revision = Some(published_revision(outcome.head_revision));
-        }
-        receipt.grant_id = Some(grant.grant_id.clone());
-        receipt.work_id = outcome.work_id;
-        receipt.head_revision = outcome.head_revision;
-        receipt.transfers = transfers;
-        return receipt;
+        "stored_stale" => Receipt::new("upload", "stored_stale")
+            .about(identity)
+            .detail(answer.conflict.clone().unwrap_or_else(|| {
+                "the record moved past the inputs this report was computed from".to_string()
+            })),
+        other => Receipt::new("upload", "failed")
+            .about(identity)
+            .detail(format!("the record left this publication {other}")),
+    };
+    receipt.work_id = Some(answer.work_id);
+    receipt.transfers = transfers;
+    receipt
+}
+
+/// The verdict an upload receipt settled its row with, when it settled it.
+fn settled_verdict(receipt: &Receipt) -> Option<&'static str> {
+    match receipt.outcome.as_str() {
+        "conflict" => Some("conflict"),
+        "stored_stale" => Some("stored_stale"),
+        "refused" => Some("refused"),
+        _ => None,
     }
 }
 
-/// The §1.3 declaration. Every attributed field is the grant's own: ds-brain
-/// compares them field for field against what it signed.
+#[derive(Clone, Copy, PartialEq)]
+enum Stage {
+    Open,
+    Finalize,
+}
+
+/// The receipt for a call the record answered with no `data`.
 ///
-/// `engine_build_manifest_sha256` is the one exception, and deliberately so:
-/// it names the build that PRODUCED these bytes, which only the local receipt
-/// knows. The grant is what makes it publishable, not what supplies it — so it
-/// is checked against the grant's admitted set before this is ever assembled.
-pub fn declaration(row: &LocalRow, grant: &HeldGrant) -> Value {
-    let attribution = json!({
-        "engine": grant.engine,
-        "engine_release": grant.engine_release,
-        "engine_build_manifest_sha256": row.engine_build_manifest_sha256,
-        "grant_id": grant.grant_id,
-        "snapshot_base": grant.snapshot_base,
-    });
-    json!({
-        "client_publish_id": row.client_publish_id,
-        "grant_id": grant.grant_id,
-        "artifacts": row
-            .outputs
-            .iter()
-            .map(|output| json!({
-                "kind": output.output_id,
-                "format": output.format,
-                "content_type": output.content_type,
-                "sha256": output.sha256,
-                "size_bytes": output.size_bytes,
-                "attribution": attribution,
-            }))
-            .collect::<Vec<_>>(),
-        "base_revisions": grant.snapshot_base,
-    })
+/// A verdict about THIS publication settles it: 409 (its source moved, or it
+/// conflicts with what the record holds) is a conflict; 403 (the account may
+/// not publish reports here, or the project is closed) and a 400 at `open`
+/// (the project's inputs do not produce this declaration) are refusals. Every
+/// other answer is about the moment, not the publication — a lane whose
+/// server predates this door, an expired session, a 5xx, no network, or a 400
+/// at `finalize` for bytes the record has not seen yet — and holds the row.
+fn record_refusal(
+    identity: &sync::Identity,
+    stage: Stage,
+    error: GatewayError,
+    work_id: Option<String>,
+    transfers: Vec<TransferReceipt>,
+) -> Receipt {
+    let predates_door = error.code.as_deref() == Some("WORK_GRANT_REQUIRED");
+    let outcome = match error.status {
+        Some(409) => "conflict",
+        Some(403) if !predates_door => "refused",
+        Some(400) if stage == Stage::Open => "refused",
+        _ => "failed",
+    };
+    let detail = if predates_door {
+        format!(
+            "{}; this lane's authority does not open the report door yet, so the publication is held until it does",
+            error.detail
+        )
+    } else {
+        error.detail
+    };
+    let mut receipt = Receipt::new("upload", outcome).about(identity).detail(detail);
+    receipt.work_id = work_id;
+    receipt.transfers = transfers;
+    receipt
 }
 
 /// The output head identity that stands after a publish. The source-input

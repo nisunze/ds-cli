@@ -4,12 +4,11 @@
 //! Nothing here decides: every function is a projection of one shape onto
 //! another, in the vocabulary the authority already uses.
 
-use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ds_command_kernel::sync;
 use ds_command_kernel::sync_store as store;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Value};
 
 /// The plan-and-receipts envelope this runtime answers with.
@@ -46,10 +45,8 @@ pub struct LocalRow {
     /// artifact's own property, never the installed engine's current one: a
     /// row committed by an earlier build stays attributed to that build.
     pub engine_build_manifest_sha256: String,
-    /// The engine name the **edge lane** spells, which is what a grant scopes.
-    pub grant_engine: String,
-    /// The resource this grant is scoped to. §1.3.1: the implemented Network
-    /// Reporter slice admits exactly one canonical transformer per grant.
+    /// The one resource this publication is about — for a report, its
+    /// transformer. The plan keys a row's scope on it.
     pub resource: String,
     pub client_publish_id: String,
     pub outputs: Vec<LocalOutput>,
@@ -99,73 +96,18 @@ pub struct RemoteOutput {
     pub size_bytes: u64,
 }
 
-/// The work grant in hand, as §1.2 minted it.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HeldGrant {
-    pub grant_id: String,
-    pub install_id: String,
-    pub project: String,
-    pub engine: String,
-    pub engine_release: String,
-    /// The exact engine builds ds-brain admitted for this release when it
-    /// minted the grant — `scope.engines[].manifest_sha256`, §2.5. Admission
-    /// is decided once, at `work/open`; this is that decision, carried.
-    /// Empty is not "any": it is a grant that admits nothing.
-    #[serde(default)]
-    pub admitted_builds: Vec<String>,
-    pub resource: String,
-    pub expires_at_ms: u64,
-    /// What the snapshot pinned. Both `base_revisions` and every artifact's
-    /// attribution are copied from here verbatim: ds-brain compares them field
-    /// for field against the grant it signed, so a locally derived value is
-    /// not a fallback, it is a refusal.
-    pub snapshot_base: BTreeMap<String, String>,
-}
-
-impl HeldGrant {
-    /// The scope this grant covers: engine release plus the single resource
-    /// §1.3.1 admits per grant. Same constructor as [`LocalRow::scope`].
-    pub fn scope(&self) -> String {
-        sync::scope_key(&self.engine_release, &self.resource)
-    }
-}
-
-/// The request §1.2 takes.
-#[derive(Clone, Debug, PartialEq)]
-pub struct WorkOpen {
-    pub client_request_id: String,
-    pub install_id: String,
-    pub project: String,
-    pub engine: String,
-    pub engine_release: String,
-    pub resource: String,
-}
-
-impl WorkOpen {
-    pub fn body(&self) -> Value {
-        json!({
-            "client_request_id": self.client_request_id,
-            "install_id": self.install_id,
-            "ds_project": self.project,
-            "engine": self.engine,
-            "engine_release": self.engine_release,
-            "resources": {
-                "task": "export_transformer_report",
-                "transformer_names": [self.resource],
-            },
-        })
-    }
-}
-
-/// What §1.3 answered.
-#[derive(Clone, Debug, PartialEq)]
-pub struct PublishOutcome {
-    /// `published` | `upload_required` | a typed conflict state.
+/// What the shared record's door answered for one publication — `open` or
+/// `finalize` on `compute_artifacts`. `uploads` names each output the record
+/// still lacks and the storage session that takes its bytes; an output the
+/// record already holds is absent from it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RecordAnswer {
+    pub work_id: String,
+    /// `pending` | `published` | `stored_stale`, verbatim.
     pub state: String,
-    pub work_id: Option<String>,
     pub head_revision: Option<i64>,
-    /// `(output id, session uri)` for every object the server says is missing.
+    /// Why a `stored_stale` run lost, in the record's words.
+    pub conflict: Option<String>,
     pub uploads: Vec<(String, String)>,
 }
 
@@ -202,8 +144,6 @@ pub struct Receipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub grant_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub work_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub head_revision: Option<i64>,
@@ -225,7 +165,6 @@ impl Receipt {
             identity: None,
             outcome: outcome.into(),
             detail: None,
-            grant_id: None,
             work_id: None,
             head_revision: None,
             revision: None,
@@ -380,38 +319,6 @@ pub(crate) fn kernel_remote(row: &RemoteRow) -> sync::RemoteHead {
     }
 }
 
-/// The grant as the kernel's plan reads it.
-pub fn kernel_grant(grant: &HeldGrant) -> sync::Grant {
-    sync::Grant {
-        grant_id: grant.grant_id.clone(),
-        install_id: grant.install_id.clone(),
-        project: grant.project.clone(),
-        // One entry per admitted digest, the way ds-brain registers them. A
-        // grant that carries none is shown as it is — the kernel matches on
-        // the release, and the digest is the server's per-row claim.
-        engines: if grant.admitted_builds.is_empty() {
-            vec![sync::EngineRelease {
-                name: grant.engine.clone(),
-                release: grant.engine_release.clone(),
-                manifest_sha256: None,
-            }]
-        } else {
-            grant
-                .admitted_builds
-                .iter()
-                .map(|digest| sync::EngineRelease {
-                    name: grant.engine.clone(),
-                    release: grant.engine_release.clone(),
-                    manifest_sha256: Some(digest.clone()),
-                })
-                .collect()
-        },
-        resource: grant.resource.clone(),
-        expires_at_ms: grant.expires_at_ms,
-        snapshot_base: grant.snapshot_base.clone(),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Gateway answers → rows
 // ---------------------------------------------------------------------------
@@ -460,67 +367,77 @@ pub fn remote_row(head: &Value) -> RemoteRow {
     }
 }
 
-/// The grant §1.2 minted, read from the `work/open` data envelope. The
-/// resource is the request's: a grant is scoped to the one transformer the
-/// host asked for.
-pub fn parse_work_open(answer: &Value, request: &WorkOpen) -> Result<HeldGrant, String> {
-    let payload = answer.get("grant").cloned().unwrap_or(Value::Null);
-    let scope = payload.get("scope").cloned().unwrap_or(Value::Null);
-    let engines = scope
-        .get("engines")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let engine = engines.first().cloned().unwrap_or(Value::Null);
-    // One release can resolve to several registered builds (one per
-    // platform asset), so the claim is the whole list, not the first.
-    let admitted_builds: Vec<String> = engines
-        .iter()
-        .map(|entry| text(entry, "manifest_sha256"))
-        .filter(|digest| !digest.is_empty())
-        .collect();
-    let expires_at_ms = server_time_ms(&text(&payload, "expires_at"))
-        .ok_or_else(|| "the work grant has no readable expiry".to_string())?;
-    let grant = HeldGrant {
-        grant_id: text(&payload, "grant_id"),
-        install_id: text(&payload, "install_id"),
-        project: text(&scope, "ds_project"),
-        engine: text(&engine, "name"),
-        engine_release: text(&engine, "release"),
-        admitted_builds,
-        resource: request.resource.clone(),
-        expires_at_ms,
-        snapshot_base: payload
-            .get("snapshot_base")
-            .and_then(|base| serde_json::from_value(base.clone()).ok())
-            .unwrap_or_default(),
-    };
-    if grant.grant_id.is_empty() || grant.project.is_empty() || grant.engine_release.is_empty() {
-        return Err("the work grant is incomplete".to_string());
-    }
-    Ok(grant)
-}
-
-/// What §1.3 answered, read from the `work/publish` data envelope.
-pub fn parse_publish(answer: &Value) -> PublishOutcome {
-    PublishOutcome {
+/// The record's answer to `open` or `finalize`, read from its data envelope.
+pub fn parse_record_answer(answer: &Value) -> Result<RecordAnswer, String> {
+    let parsed = RecordAnswer {
+        work_id: text(answer, "work_id"),
         state: text(answer, "state"),
-        work_id: Some(text(answer, "work_id")).filter(|value| !value.is_empty()),
         head_revision: answer.get("head_revision").and_then(Value::as_i64),
+        conflict: Some(text(answer, "conflict")).filter(|value| !value.is_empty()),
         uploads: answer
-            .get("uploads")
+            .get("outputs")
             .and_then(Value::as_array)
-            .map(|uploads| {
-                uploads
+            .map(|outputs| {
+                outputs
                     .iter()
-                    .filter_map(|upload| {
-                        let session = text(upload, "session_uri");
-                        (!session.is_empty()).then(|| (text(upload, "kind"), session))
-                    })
+                    .filter(|output| text(output, "status") == "upload")
+                    .map(|output| (text(output, "output_id"), text(output, "session_uri")))
                     .collect()
             })
             .unwrap_or_default(),
+    };
+    if parsed.work_id.is_empty() || parsed.state.is_empty() {
+        return Err("the record's answer names no work or state".to_string());
     }
+    if parsed
+        .uploads
+        .iter()
+        .any(|(output, session)| output.is_empty() || session.is_empty())
+    {
+        return Err("the record asked for bytes without a storage session".to_string());
+    }
+    Ok(parsed)
+}
+
+/// The `open` declaration of one report publication on the shared record's
+/// door. Everything in it is the row's own, as the seal recorded it: which
+/// transformer export, which source inputs it was computed from, what it
+/// produced, and — as provenance, never as a credential — the engine release
+/// and build that produced it. The publish id is the run's idempotency key, so
+/// a retry after any crash names the same run.
+pub fn open_declaration(project: &str, row: &LocalRow) -> Value {
+    json!({
+        "action": "open",
+        "project_id": project,
+        "client_run_id": row.client_publish_id,
+        "engine": row.identity.engine,
+        "operation": row.identity.operation,
+        "variant": row.identity.variant,
+        "engine_version": row.engine_release,
+        "engine_build_manifest_sha256": row.engine_build_manifest_sha256,
+        "input_base_fingerprint": row.input_base_fingerprint.clone().unwrap_or_default(),
+        "outputs": row
+            .outputs
+            .iter()
+            .map(|output| json!({
+                "output_id": output.output_id,
+                "format": output.format,
+                "content_type": output.content_type,
+                "sha256": output.sha256,
+                "size_bytes": output.size_bytes,
+            }))
+            .collect::<Vec<_>>(),
+    })
+}
+
+/// The `finalize` of the run `open` answered with.
+pub fn finalize_declaration(project: &str, row: &LocalRow, work_id: &str) -> Value {
+    json!({
+        "action": "finalize",
+        "project_id": project,
+        "work_id": work_id,
+        "client_run_id": row.client_publish_id,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -547,7 +464,7 @@ pub fn store_row(project: &str, row: &LocalRow, now: u64) -> store::ArtifactRow 
         engine_release: row.engine_release.clone(),
         engine_build_manifest_sha256: Some(row.engine_build_manifest_sha256.clone())
             .filter(|digest| !digest.is_empty()),
-        grant_engine: Some(row.grant_engine.clone()),
+        grant_engine: None,
         resource: Some(row.resource.clone()),
         client_publish_id: row.client_publish_id.clone(),
         outputs: row
@@ -581,18 +498,13 @@ pub fn local_row_from_store(row: &store::ArtifactRow) -> LocalRow {
         input_base_fingerprint: row.input_base_fingerprint.clone().or_else(|| {
             // Additive migration for report rows written before the store
             // gained the explicit source-input field.
-            (row.grant_engine.as_deref() == Some("ds-network-reporter")
-                || row.identity.engine == "network_reporter")
+            (row.identity.engine == "network_reporter")
                 .then(|| row.base_revision.clone())
                 .flatten()
         }),
         readable: row.readable,
         engine_release: row.engine_release.clone(),
         engine_build_manifest_sha256: row.engine_build_manifest_sha256.clone().unwrap_or_default(),
-        grant_engine: row
-            .grant_engine
-            .clone()
-            .unwrap_or_else(|| row.identity.engine.clone()),
         resource: row.resource.clone().unwrap_or_default(),
         client_publish_id: row.client_publish_id.clone(),
         outputs: row
@@ -680,7 +592,7 @@ pub fn receipt_row(project: &str, receipt: &Receipt, now: u64) -> store::Receipt
         identity: receipt.identity.clone(),
         outcome,
         detail,
-        grant_id: receipt.grant_id.clone(),
+        grant_id: None,
         work_id: receipt.work_id.clone(),
         head_revision: receipt.revision.clone(),
         head_sha256: None,
@@ -690,15 +602,3 @@ pub fn receipt_row(project: &str, receipt: &Receipt, now: u64) -> store::Receipt
     }
 }
 
-/// The grant as the store keeps it: the public scope beside the opaque
-/// document the host holds.
-pub fn grant_row(project: &str, grant: &HeldGrant) -> Result<store::GrantRow, String> {
-    Ok(store::GrantRow {
-        scope: store_scope(project),
-        grant_id: grant.grant_id.clone(),
-        install_id: grant.install_id.clone(),
-        engines: kernel_grant(grant).engines,
-        expires_at_ms: grant.expires_at_ms,
-        raw: serde_json::to_value(grant).map_err(|error| error.to_string())?,
-    })
-}

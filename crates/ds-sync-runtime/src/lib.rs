@@ -51,7 +51,7 @@ pub mod fakes;
 
 pub use ds_command_kernel::sync::{self as kernel_sync, Trigger};
 pub use ds_command_kernel::sync_store as store;
-pub use gateway::{BearerGateway, Gateway, UnavailableGateway};
+pub use gateway::{BearerGateway, Gateway, GatewayError, UnavailableGateway};
 pub use guard::run_contained;
 pub use host::{
     open_store, projects_of_fence, ActivityRow, Producer, Producers, Reads, SharedStore,
@@ -64,12 +64,11 @@ pub use native_transfer::{
     NativeTransferOutcome, NativeTransferProgress, NativeTransferResult, SessionRefusal,
 };
 pub use reads::VerifiedReads;
-pub use routes::{Route, SyncRoute, COMPUTE_ARTIFACTS, WORK_OPEN, WORK_PUBLISH};
+pub use routes::{Route, SyncRoute, COMPUTE_ARTIFACTS};
 pub use rows::{
-    inventory_digest, now_ms, server_time_ms, HeldGrant, LocalOutput, LocalRow, PublishOutcome,
-    Receipt, Reclaimed, RemoteOutput, RemoteRow, SyncRun, TransferReceipt, WorkOpen, MAX_ROWS,
-    SCHEMA,
+    inventory_digest, now_ms, server_time_ms, LocalOutput, LocalRow, Receipt, Reclaimed,
+    RecordAnswer, RemoteOutput, RemoteRow, SyncRun, TransferReceipt, MAX_ROWS, SCHEMA,
 };
-pub use run::{plan, plan_once, run, SyncHost, DEFAULT_TRIGGER};
+pub use run::{plan, plan_once, run, SyncHost, DEFAULT_TRIGGER, REPORT_ENGINE};
 
 pub mod reports;

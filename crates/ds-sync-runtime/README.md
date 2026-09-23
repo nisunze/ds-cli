@@ -2,14 +2,24 @@
 
 `ds-command-kernel::sync` owns the plan, conflicts and wake decisions. This
 crate executes that plan through three host adapters: `Gateway`, `Producer`
-and `Reads`. `StoreHost` keeps rows, grants, receipts and project leases in
+and `Reads`. `StoreHost` keeps rows, heads, receipts and project leases in
 `ds-sync-store`, fenced by account, deployment and installation.
 
 Desktop's `src-tauri/src/sync_loop.rs` consumes this runtime. Linux Server's
 `ds-cli-server` also consumes it directly, using native user authentication,
-registered installation identity and sealed prepared Solar jobs. Solar publishes
-through its existing Compute Artifacts protocol under the same StoreHost lease,
-rows and receipts. It does not use Network Reporter's work-grant protocol.
+registered installation identity and sealed prepared Solar jobs.
+
+A report publishes on the shared record's one door, `compute_artifacts`:
+`open` declares the row as the seal recorded it (inputs fingerprint, outputs,
+and the engine release and build as provenance), the transfer moves exactly the
+bytes the record asks for, and `finalize` is asked only once they committed.
+The record passes every verdict: a 409 or `stored_stale` settles the row as a
+conflict, a 403 or a 400 at `open` as refused, and the bytes leave in the same
+pass; anything that reached no verdict keeps the row held with its cause.
+There is no grant to obtain first — the session's own authority is asked,
+on the one JWT (owner ruling 2026-09-18). Solar publishes through the same
+door under the same StoreHost lease, rows and receipts, with its own
+declaration.
 The sync store is the queue (owner, 2026-09-20). `reports::seal` writes a
 report batch's bytes and integrity receipts through `ds-report-artifacts` and
 records its `held` row in the store in the same acknowledged step — a seal the
@@ -19,9 +29,8 @@ store's rows name (`LocalRow::bytes_locator`); its inventory is read only to
 adopt a batch sealed before the seal wrote its row (`adopted` receipt, once)
 and to free a batch the store has settled as lost (`reclaimed`). Nothing
 enumerates the artifact directory to decide what is queued;
-`sync_store::queue_status` reads the rows. Server drains sealed exports through
-`run_reports`, registering the exact reporter release before each work grant.
-That scoped pass never submits Solar rows to the report protocol.
+`sync_store::queue_status` reads the rows. Server and desktop drain sealed
+exports through `run_reports`, a scoped pass that never submits Solar rows.
 
 Solar seals the same way. `solar::seal` records a completed prepared job's
 `held` row at the job's completion, under the host's local fence, with no
@@ -90,7 +99,8 @@ client-core can require a receipt-sealed seekable handle.
 
 The shared tests cover durable reopen, duplicate worker exclusion, lease
 renewal and ownership loss, interrupted transfer, cancellation, revocation
-before publication, admission failures and verified downloads. Desktop tests
+before publication, the record's verdicts (stale, refused, held) and verified
+downloads. Desktop tests
 also drive its real resumable transfer adapter through this loop.
 
 ```sh

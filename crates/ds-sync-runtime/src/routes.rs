@@ -1,4 +1,6 @@
-//! The three gateway routes the sync loop may address — and no other.
+//! The one gateway route the sync loop may address — the shared record's
+//! door — and no other. Publication asks the session's own authority there;
+//! there is no grant route to reach.
 //!
 //! `domains.compute_artifacts.*` is transcribed from the reviewed descriptor
 //! (`ds-web/routing/operations.json`, as `ds-client-core/src/gateway/registry.rs`
@@ -17,7 +19,8 @@ pub struct Route {
     pub response_cap_bytes: u64,
 }
 
-/// `POST /api/v1/compute_artifacts` — actions `list`, `read`, `download`.
+/// `POST /api/v1/compute_artifacts` — actions `list`, `read`, `download`,
+/// and a report publication's `open` and `finalize`.
 pub const COMPUTE_ARTIFACTS: Route = Route {
     path: "/api/v1/compute_artifacts",
     method: "POST",
@@ -25,32 +28,12 @@ pub const COMPUTE_ARTIFACTS: Route = Route {
     response_cap_bytes: 4 * 1024 * 1024,
 };
 
-/// `POST /api/v1/work/open` — §1.2. The response carries a snapshot manifest
-/// ds-brain itself caps at 24 MiB.
-pub const WORK_OPEN: Route = Route {
-    path: "/api/v1/work/open",
-    method: "POST",
-    timeout_s: 120,
-    response_cap_bytes: 24 * 1024 * 1024,
-};
-
-/// `POST /api/v1/work/publish` — §1.3.
-pub const WORK_PUBLISH: Route = Route {
-    path: "/api/v1/work/publish",
-    method: "POST",
-    timeout_s: 120,
-    response_cap_bytes: 1024 * 1024,
-};
-
 /// The closed set of routes the loop addresses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SyncRoute {
-    /// The shared record: list heads, mint a download ticket.
+    /// The shared record: list heads, mint a download ticket, open and
+    /// finalize a publication.
     ComputeArtifacts,
-    /// Mint a work grant and pin a snapshot.
-    WorkOpen,
-    /// Declare a publication; restate it after the uploads.
-    WorkPublish,
 }
 
 impl SyncRoute {
@@ -58,17 +41,13 @@ impl SyncRoute {
     pub const fn declared(self) -> Route {
         match self {
             SyncRoute::ComputeArtifacts => COMPUTE_ARTIFACTS,
-            SyncRoute::WorkOpen => WORK_OPEN,
-            SyncRoute::WorkPublish => WORK_PUBLISH,
         }
     }
 
-    /// The `action` values the multiplexed record route may carry; grant
-    /// routes multiplex nothing.
+    /// The `action` values the multiplexed record route may carry.
     pub const fn actions(self) -> &'static [&'static str] {
         match self {
             SyncRoute::ComputeArtifacts => &["list", "read", "download", "open", "finalize"],
-            SyncRoute::WorkOpen | SyncRoute::WorkPublish => &[],
         }
     }
 }
@@ -101,23 +80,6 @@ mod tests {
                 entry.response_cap_bytes <= COMPUTE_ARTIFACTS.response_cap_bytes,
                 "{action} answers within the ceiling this loop enforces"
             );
-        }
-    }
-
-    /// Grant routes are descriptor-backed too, so runtime timeouts and body
-    /// caps cannot quietly drift from their native transport declaration.
-    #[test]
-    fn the_grant_routes_match_their_descriptor_declarations() {
-        for (route, id) in [
-            (WORK_OPEN, "domains.work.open"),
-            (WORK_PUBLISH, "domains.work.publish"),
-        ] {
-            let entry = registry(id);
-            assert_eq!(route.path, entry.path);
-            assert_eq!(route.method, entry.method);
-            assert_eq!(route.timeout_s, u64::from(entry.timeout_s));
-            assert_eq!(route.response_cap_bytes, entry.response_cap_bytes);
-            assert!(entry.carries_user_bearer());
         }
     }
 }

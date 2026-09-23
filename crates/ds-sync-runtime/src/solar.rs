@@ -99,7 +99,6 @@ pub fn row_of(request: &SealRequest<'_>) -> Result<LocalRow, String> {
         readable: true,
         engine_release: request.engine_release.to_string(),
         engine_build_manifest_sha256: request.engine_build_manifest_sha256.to_string(),
-        grant_engine: ENGINE.into(),
         resource: request.city_id.to_string(),
         client_publish_id: request.job_id.to_string(),
         outputs,

@@ -16,13 +16,13 @@ use ds_command_kernel::sync_store as store;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::gateway::Gateway;
+use crate::gateway::{Gateway, GatewayError};
 use crate::lease::LeaseKeeper;
 use crate::routes::SyncRoute;
 use crate::rows::{
-    grant_row, head_from_remote, local_row_from_store, now_ms, parse_publish, parse_work_open,
-    receipt_row, remote_row, remote_row_from_head, store_row, store_scope, text, HeldGrant,
-    LocalRow, PublishOutcome, Receipt, RemoteRow, TransferReceipt, WorkOpen, MAX_ROWS,
+    head_from_remote, local_row_from_store, now_ms, parse_record_answer, receipt_row, remote_row,
+    remote_row_from_head, store_row, store_scope, text, LocalRow, Receipt, RecordAnswer, RemoteRow,
+    TransferReceipt, MAX_ROWS,
 };
 use crate::run::SyncHost;
 
@@ -276,16 +276,6 @@ impl<'a> StoreHost<'a> {
                 .artifacts_of_fence(&self.fence)
                 .map_err(|error| error.to_string())
         })
-    }
-
-    pub fn remember_grant(&self, grant: &HeldGrant) -> Result<(), String> {
-        let transition = self.apply(store::Event::GrantOpened {
-            grant: grant_row(&self.project, grant)?,
-        })?;
-        if let Some(refusal) = transition.refusals.first() {
-            return Err(format!("the work grant was not kept: {}", refusal.detail));
-        }
-        Ok(())
     }
 
     /// Cancel one held or uploading publication. Committed work is never
@@ -724,7 +714,6 @@ impl SyncHost for StoreHost<'_> {
                 readable: true,
                 engine_release: String::new(),
                 engine_build_manifest_sha256: String::new(),
-                grant_engine: String::new(),
                 resource: String::new(),
                 client_publish_id: String::new(),
                 outputs: Vec::new(),
@@ -862,30 +851,17 @@ impl SyncHost for StoreHost<'_> {
         Ok(rows)
     }
 
-    fn grants(&self, _project: &str) -> Result<Vec<HeldGrant>, String> {
-        self.snapshot()?
-            .grants
-            .iter()
-            .map(|grant| {
-                serde_json::from_value::<HeldGrant>(grant.raw.clone())
-                    .map_err(|_| "stored sync grant is unreadable".to_string())
-            })
-            .collect()
+    fn open_publication(&self, declaration: &Value) -> Result<RecordAnswer, GatewayError> {
+        self.ensure_active()?;
+        let answer = self.gateway.post(SyncRoute::ComputeArtifacts, declaration)?;
+        self.ensure_active()?;
+        Ok(parse_record_answer(&answer)?)
     }
 
-    fn open_work(&self, request: &WorkOpen) -> Result<HeldGrant, String> {
+    fn finalize_publication(&self, declaration: &Value) -> Result<RecordAnswer, GatewayError> {
         self.ensure_active()?;
-        let answer = self.gateway.post(SyncRoute::WorkOpen, &request.body())?;
-        self.ensure_active()?;
-        let grant = parse_work_open(&answer, request)?;
-        self.remember_grant(&grant)?;
-        Ok(grant)
-    }
-
-    fn publish_work(&self, declaration: &Value) -> Result<PublishOutcome, String> {
-        self.ensure_active()?;
-        let answer = self.gateway.post(SyncRoute::WorkPublish, declaration)?;
-        Ok(parse_publish(&answer))
+        let answer = self.gateway.post(SyncRoute::ComputeArtifacts, declaration)?;
+        Ok(parse_record_answer(&answer)?)
     }
 
     fn transfer(

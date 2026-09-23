@@ -23,8 +23,6 @@ pub type ArtifactTransfer<'a> =
 
 /// The engine name the compute-artifact record keys report heads by.
 pub const ENGINE: &str = "network_reporter";
-/// The engine name the edge lane spells, which is what a grant scopes.
-pub const GRANT_ENGINE: &str = "ds-network-reporter";
 /// The locator a report row's bytes live at: `network_reporter:batch:<id>`.
 /// The id is the committed batch's own (64 hex) for rows sealed through
 /// [`seal`]; rows recorded before 2026-09-20 carry the publish id instead
@@ -100,7 +98,6 @@ fn row_of(batch: &LocalPublicationBatch) -> LocalRow {
         readable: true,
         engine_release: batch.engine_release.clone(),
         engine_build_manifest_sha256: batch.engine_build_manifest_sha256.clone(),
-        grant_engine: GRANT_ENGINE.to_string(),
         resource: batch.transformer.clone(),
         client_publish_id: batch.client_publish_id.clone(),
         outputs,

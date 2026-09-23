@@ -18,7 +18,7 @@ use ds_command_kernel::sync;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::gateway::Gateway;
+use crate::gateway::{Gateway, GatewayError};
 use crate::host::{Producer, Reads};
 use crate::reads::place_verified;
 use crate::routes::SyncRoute;
@@ -47,33 +47,35 @@ pub enum TransferMode {
 
 #[derive(Debug)]
 pub struct FakeWorld {
-    /// `scope.engines[].manifest_sha256` the minted grant carries.
-    pub admitted_builds: Vec<String>,
-    pub snapshot_base: BTreeMap<String, String>,
-    /// RFC 3339, as ds-brain spells `expires_at`.
-    pub grant_expires_at: String,
-    /// Refuse `work/open` with this message (an unauthorized identity, a
-    /// blocked install, a missing membership).
+    /// The record's current input base per operation: what ds-brain would
+    /// derive from the project's documents right now. An `open` whose
+    /// declared fingerprint differs is answered 409.
+    pub current_base: BTreeMap<String, String>,
+    /// Refuse every `open` with 403 and this message — an account without
+    /// the project capability, a closed project, a missing membership.
     pub refuse_open: Option<String>,
-    /// Refuse only the grant for this resource. This exercises independent
-    /// resource authority inside one concurrent project batch.
+    /// Answer `open` for this one transformer with a 503. This exercises
+    /// independent verdicts inside one concurrent project batch.
     pub refuse_open_resource: Option<String>,
-    /// Mint the grant for this engine release instead of the one asked for.
-    /// A door that answers about a scope nobody asked about is the one way a
-    /// row can be uncovered after a request that reported success.
-    pub issue_release: Option<String>,
+    /// Refuse every `open` with a 400 and this message — a declaration the
+    /// project's inputs do not produce.
+    pub invalid_declaration: Option<String>,
+    /// Answer every `open` with 403 `WORK_GRANT_REQUIRED`, the way a lane
+    /// whose authority predates the report door does.
+    pub door_closed: bool,
+    /// Refuse every `finalize` with this message, no verdict.
     pub refuse_publish: Option<String>,
-    /// Refuse the n-th declaration (0-based) and every later one — a gateway
-    /// that goes away after the uploads and before the restated declaration
-    /// is acknowledged, which is what a crash between transfer and commit
-    /// looks like from the edge.
+    /// Refuse the n-th record call (0-based, opens and finalizes counted
+    /// together) and every later one — a gateway that goes away after the
+    /// uploads and before the publication is acknowledged, which is what a
+    /// crash between transfer and commit looks like from the edge.
     pub refuse_publish_from: Option<usize>,
-    /// Never commit: every declaration answers `upload_required` naming every
-    /// artifact, committed or not. Transport succeeds, the record never
-    /// advances.
+    /// Never hold the bytes: every `open` asks for every output and every
+    /// `finalize` answers that they have not finished uploading. Transport
+    /// succeeds, the record never advances.
     pub never_commit: bool,
     pub refuse_list: Option<String>,
-    /// Answer every publish with this state instead of the two-phase flow.
+    /// Answer every `finalize` with this state instead of publishing.
     pub publish_state: Option<String>,
     /// Heads the record holds when it is read, as `compute_artifacts` list rows.
     pub record: Vec<Value>,
@@ -82,10 +84,11 @@ pub struct FakeWorld {
     pub transfer_mode: TransferMode,
     // -- evidence -----------------------------------------------------------
     pub committed_sessions: BTreeSet<String>,
+    /// Every `open` and `finalize` body, in order.
     pub declarations: Vec<Value>,
     pub commits: u32,
     pub head_reads: u32,
-    pub grants_minted: u32,
+    pub opens: u32,
     pub transfers: Vec<(String, String)>,
     pub downloads: Vec<String>,
     pub next_head_revision: i64,
@@ -100,12 +103,11 @@ pub struct FakeWorld {
 impl Default for FakeWorld {
     fn default() -> Self {
         FakeWorld {
-            admitted_builds: vec![BUILD_MANIFEST.to_string()],
-            snapshot_base: BTreeMap::from([("export-tx_1".to_string(), FINGERPRINT.to_string())]),
-            grant_expires_at: "2100-01-01T00:00:00Z".to_string(),
+            current_base: BTreeMap::from([("export-tx_1".to_string(), FINGERPRINT.to_string())]),
             refuse_open: None,
             refuse_open_resource: None,
-            issue_release: None,
+            invalid_declaration: None,
+            door_closed: false,
             refuse_publish: None,
             refuse_publish_from: None,
             never_commit: false,
@@ -118,7 +120,7 @@ impl Default for FakeWorld {
             declarations: Vec::new(),
             commits: 0,
             head_reads: 0,
-            grants_minted: 0,
+            opens: 0,
             transfers: Vec::new(),
             downloads: Vec::new(),
             next_head_revision: 8,
@@ -170,7 +172,6 @@ pub fn local_row(bytes: &[u8]) -> LocalRow {
         readable: true,
         engine_release: RELEASE.into(),
         engine_build_manifest_sha256: BUILD_MANIFEST.into(),
-        grant_engine: "ds-network-reporter".into(),
         resource: "tx_1".into(),
         client_publish_id: "publish-11111111-1111-4111-8111-111111111111".into(),
         outputs,
@@ -195,8 +196,8 @@ pub fn record_head(bytes: &[u8], head_revision: i64, fingerprint: &str) -> Value
     })
 }
 
-fn session_uri(publish_id: &str, kind: &str) -> String {
-    format!("https://storage.googleapis.com/upload/storage/v1/b/fake/o?uploadType=resumable&upload_id={publish_id}-{kind}")
+pub fn session_uri(publish_id: &str, output_id: &str) -> String {
+    format!("https://storage.googleapis.com/upload/storage/v1/b/fake/o?uploadType=resumable&upload_id={publish_id}-{output_id}")
 }
 
 pub fn download_url(operation: &str, output_id: &str) -> String {
@@ -208,174 +209,229 @@ pub struct FakeGateway {
     pub world: SharedWorld,
 }
 
-impl Gateway for FakeGateway {
-    fn post(&self, route: SyncRoute, body: &Value) -> Result<Value, String> {
-        let mut world = lock(&self.world);
-        match route {
-            SyncRoute::ComputeArtifacts => match body["action"].as_str().unwrap_or_default() {
-                "list" => {
-                    if let Some(reason) = &world.refuse_list {
-                        return Err(reason.clone());
-                    }
-                    let limit = body["limit"]
-                        .as_u64()
-                        .filter(|n| (1..=100).contains(n))
-                        .ok_or("compute artifact list limit must be between 1 and 100")?
-                        as usize;
-                    let offset = body["cursor"]
-                        .as_str()
-                        .unwrap_or("0")
-                        .parse::<usize>()
-                        .map_err(|_| "invalid fake cursor")?;
-                    if offset > world.record.len() {
-                        return Err("fake cursor is outside inventory".into());
-                    }
-                    world.head_reads += 1;
-                    let end = (offset + limit).min(world.record.len());
-                    let next = if end < world.record.len() {
-                        end.to_string()
-                    } else {
-                        String::new()
-                    };
-                    Ok(json!({"heads": world.record[offset..end], "next_cursor": next}))
+fn refused(status: u16, code: &str, message: impl Into<String>) -> GatewayError {
+    GatewayError::refused(status, Some(code.to_string()), message.into())
+}
+
+impl FakeWorld {
+    fn head_of(&self, operation: &str) -> Option<&Value> {
+        self.record.iter().find(|head| {
+            head["engine"] == "network_reporter"
+                && head["operation"] == operation
+                && head["variant"] == "default"
+        })
+    }
+
+    /// `open`: the declaration is judged on arrival, then the record names
+    /// the bytes it still lacks.
+    fn open(&mut self, body: &Value) -> Result<Value, GatewayError> {
+        self.opens += 1;
+        if self.door_closed {
+            return Err(refused(
+                403,
+                "WORK_GRANT_REQUIRED",
+                "Network Reporter publication requires /api/v1/work/open and /api/v1/work/publish",
+            ));
+        }
+        if let Some(reason) = &self.refuse_open {
+            return Err(refused(403, "INSUFFICIENT_PERMISSIONS", reason.clone()));
+        }
+        let operation = body["operation"].as_str().unwrap_or_default().to_string();
+        if self.refuse_open_resource.as_deref() == operation.strip_prefix("export-") {
+            return Err(refused(
+                503,
+                "SERVICE_UNAVAILABLE",
+                "the authentication or project service is temporarily unreachable",
+            ));
+        }
+        if let Some(reason) = &self.invalid_declaration {
+            return Err(refused(400, "VALIDATION_FAILED", reason.clone()));
+        }
+        let run = body["client_run_id"].as_str().unwrap_or_default().to_string();
+        // A replay of a run the record already published is that result.
+        if let Some(head) = self
+            .record
+            .iter()
+            .find(|head| head["client_publish_id"] == run.as_str())
+        {
+            return Ok(json!({
+                "work_id": format!("work-{run}"),
+                "state": "published",
+                "head_revision": head["head_revision"],
+                "outputs": [],
+            }));
+        }
+        let declared = body["input_base_fingerprint"].as_str().unwrap_or_default();
+        if self.current_base.get(&operation).map(String::as_str) != Some(declared) {
+            return Err(refused(
+                409,
+                "CONFLICT",
+                "compute artifact conflict: network reporter input receipt is stale",
+            ));
+        }
+        let head_revision = self
+            .head_of(&operation)
+            .and_then(|head| head["head_revision"].as_i64())
+            .unwrap_or_default();
+        let never_commit = self.never_commit;
+        let outputs: Vec<Value> = body["outputs"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .map(|output| {
+                let output_id = output["output_id"].as_str().unwrap_or_default();
+                let uri = session_uri(&run, output_id);
+                if never_commit || !self.committed_sessions.contains(&uri) {
+                    json!({"output_id": output_id, "status": "upload", "session_uri": uri})
+                } else {
+                    json!({"output_id": output_id, "status": "already_exists", "object_generation": 1})
                 }
-                "download" => {
-                    let operation = body["operation"].as_str().unwrap_or_default().to_string();
-                    let output_id = body["output_id"].as_str().unwrap_or_default().to_string();
-                    world.downloads.push(operation.clone());
-                    Ok(json!({"download_url": download_url(&operation, &output_id)}))
-                }
-                other => Err(format!("the fake record does not answer `{other}`")),
-            },
-            SyncRoute::WorkOpen => {
-                if let Some(reason) = &world.refuse_open {
-                    return Err(reason.clone());
-                }
-                let resource = body["resources"]["transformer_names"]
-                    .as_array()
-                    .and_then(|resources| resources.first())
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                if world.refuse_open_resource.as_deref() == Some(resource) {
-                    return Err(
-                        "the authentication or project service is temporarily unreachable"
-                            .to_string(),
-                    );
-                }
-                world.grants_minted += 1;
-                let engine = body["engine"].as_str().unwrap_or_default();
-                let release = world
-                    .issue_release
-                    .clone()
-                    .unwrap_or_else(|| body["engine_release"].as_str().unwrap_or_default().into());
-                let engines: Vec<Value> = world
-                    .admitted_builds
-                    .iter()
-                    .map(|digest| json!({"name": engine, "release": &release, "manifest_sha256": digest}))
-                    .collect();
-                Ok(json!({
-                    "grant": {
-                        "grant_id": format!("grant-{}", world.grants_minted),
-                        "install_id": body["install_id"],
-                        "scope": {"ds_project": body["ds_project"], "engines": engines},
-                        "expires_at": world.grant_expires_at,
-                        "snapshot_base": world.snapshot_base,
-                    }
-                }))
+            })
+            .collect();
+        Ok(json!({
+            "work_id": format!("work-{run}"),
+            "state": "pending",
+            "head_revision": head_revision,
+            "outputs": outputs,
+        }))
+    }
+
+    /// `finalize`: every declared object must be stored, then the head
+    /// advances once per run.
+    fn finalize(&mut self, body: &Value) -> Result<Value, GatewayError> {
+        if let Some(reason) = &self.refuse_publish {
+            return Err(reason.clone().into());
+        }
+        let work_id = body["work_id"].as_str().unwrap_or_default().to_string();
+        let run = body["client_run_id"].as_str().unwrap_or_default().to_string();
+        if let Some(state) = &self.publish_state {
+            return Ok(json!({"work_id": work_id, "state": state, "head_revision": 0,
+                "conflict": "the Network Reporter input base changed before finalization"}));
+        }
+        let Some(opened) = self
+            .declarations
+            .iter()
+            .rev()
+            .find(|declaration| {
+                declaration["action"] == "open" && declaration["client_run_id"] == run.as_str()
+            })
+            .cloned()
+        else {
+            return Err(refused(404, "NOT_FOUND", "Compute artifact work not found"));
+        };
+        let outputs = opened["outputs"].as_array().cloned().unwrap_or_default();
+        for output in &outputs {
+            let output_id = output["output_id"].as_str().unwrap_or_default();
+            if self.never_commit || !self.committed_sessions.contains(&session_uri(&run, output_id))
+            {
+                return Err(refused(
+                    400,
+                    "VALIDATION_FAILED",
+                    format!("compute artifact validation failed: output {output_id} has not finished uploading"),
+                ));
             }
-            SyncRoute::WorkPublish => {
-                world.declarations.push(body.clone());
-                if let Some(reason) = &world.refuse_publish {
-                    return Err(reason.clone());
+        }
+        let operation = opened["operation"].as_str().unwrap_or_default().to_string();
+        if let Some(head) = self
+            .record
+            .iter()
+            .find(|head| head["client_publish_id"] == run.as_str())
+        {
+            return Ok(json!({"work_id": work_id, "state": "published", "head_revision": head["head_revision"]}));
+        }
+        // The fence again, inside the transaction that would advance the head.
+        let declared = opened["input_base_fingerprint"].as_str().unwrap_or_default();
+        if self.current_base.get(&operation).map(String::as_str) != Some(declared) {
+            return Ok(json!({"work_id": work_id, "state": "stored_stale", "head_revision": 0,
+                "conflict": "the Network Reporter input base changed before finalization"}));
+        }
+        self.commits += 1;
+        let revision = self.next_head_revision;
+        self.next_head_revision += 1;
+        let head_outputs: Vec<Value> = outputs
+            .iter()
+            .map(|output| {
+                json!({
+                    "output_id": output["output_id"],
+                    "sha256": output["sha256"],
+                    "size_bytes": output["size_bytes"],
+                })
+            })
+            .collect();
+        self.record.retain(|head| {
+            !(head["engine"] == "network_reporter"
+                && head["operation"] == operation.as_str()
+                && head["variant"] == "default")
+        });
+        self.record.push(json!({
+            "engine": "network_reporter",
+            "operation": operation,
+            "variant": "default",
+            "head_revision": revision,
+            "input_base_fingerprint": declared,
+            "updated_at": "2026-09-11T10:00:00Z",
+            "outputs": head_outputs,
+            "client_publish_id": run,
+        }));
+        Ok(json!({"work_id": work_id, "state": "published", "head_revision": revision}))
+    }
+}
+
+impl Gateway for FakeGateway {
+    fn post(&self, route: SyncRoute, body: &Value) -> Result<Value, GatewayError> {
+        let mut world = lock(&self.world);
+        let SyncRoute::ComputeArtifacts = route;
+        match body["action"].as_str().unwrap_or_default() {
+            "list" => {
+                if let Some(reason) = &world.refuse_list {
+                    return Err(reason.clone().into());
                 }
+                let limit = body["limit"]
+                    .as_u64()
+                    .filter(|n| (1..=100).contains(n))
+                    .ok_or("compute artifact list limit must be between 1 and 100")?
+                    as usize;
+                let offset = body["cursor"]
+                    .as_str()
+                    .unwrap_or("0")
+                    .parse::<usize>()
+                    .map_err(|_| "invalid fake cursor")?;
+                if offset > world.record.len() {
+                    return Err("fake cursor is outside inventory".into());
+                }
+                world.head_reads += 1;
+                let end = (offset + limit).min(world.record.len());
+                let next = if end < world.record.len() {
+                    end.to_string()
+                } else {
+                    String::new()
+                };
+                Ok(json!({"heads": world.record[offset..end], "next_cursor": next}))
+            }
+            "download" => {
+                let operation = body["operation"].as_str().unwrap_or_default().to_string();
+                let output_id = body["output_id"].as_str().unwrap_or_default().to_string();
+                world.downloads.push(operation.clone());
+                Ok(json!({"download_url": download_url(&operation, &output_id)}))
+            }
+            action @ ("open" | "finalize") => {
+                world.declarations.push(body.clone());
                 if world
                     .refuse_publish_from
                     .is_some_and(|from| world.declarations.len() > from)
                 {
                     return Err(
-                        "the gateway went away before the declaration was acknowledged".into(),
+                        "the gateway went away before the publication was acknowledged".into(),
                     );
                 }
-                if let Some(state) = &world.publish_state {
-                    return Ok(json!({"state": state, "work_id": "work-1"}));
-                }
-                let publish_id = body["client_publish_id"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                let artifacts = body["artifacts"].as_array().cloned().unwrap_or_default();
-                let never_commit = world.never_commit;
-                let missing: Vec<Value> = artifacts
-                    .iter()
-                    .filter_map(|artifact| {
-                        let kind = artifact["kind"].as_str().unwrap_or_default().to_string();
-                        let uri = session_uri(&publish_id, &kind);
-                        (never_commit || !world.committed_sessions.contains(&uri))
-                            .then(|| json!({"kind": kind, "session_uri": uri}))
-                    })
-                    .collect();
-                if !missing.is_empty() {
-                    return Ok(json!({
-                        "state": "upload_required",
-                        "work_id": "work-1",
-                        "uploads": missing,
-                    }));
-                }
-                // The record advances once per publication. A repeat of the
-                // same declaration replays the durable result.
-                let already = world
-                    .record
-                    .iter()
-                    .any(|head| head["client_publish_id"] == publish_id);
-                let head_revision = if already {
-                    world
-                        .record
-                        .iter()
-                        .find(|head| head["client_publish_id"] == publish_id)
-                        .and_then(|head| head["head_revision"].as_i64())
-                        .unwrap_or_default()
+                if action == "open" {
+                    world.open(body)
                 } else {
-                    world.commits += 1;
-                    let revision = world.next_head_revision;
-                    world.next_head_revision += 1;
-                    let outputs: Vec<Value> = artifacts
-                        .iter()
-                        .map(|artifact| {
-                            json!({
-                                "output_id": artifact["kind"],
-                                "sha256": artifact["sha256"],
-                                "size_bytes": artifact["size_bytes"],
-                            })
-                        })
-                        .collect();
-                    let base = body["base_revisions"]["export-tx_1"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_string();
-                    world.record.retain(|head| {
-                        !(head["engine"] == "network_reporter"
-                            && head["operation"] == "export-tx_1"
-                            && head["variant"] == "default")
-                    });
-                    world.record.push(json!({
-                        "engine": "network_reporter",
-                        "operation": "export-tx_1",
-                        "variant": "default",
-                        "head_revision": revision,
-                        "input_base_fingerprint": base,
-                        "updated_at": "2026-09-11T10:00:00Z",
-                        "outputs": outputs,
-                        "client_publish_id": publish_id,
-                    }));
-                    revision
-                };
-                Ok(json!({
-                    "state": "published",
-                    "work_id": "work-1",
-                    "head_revision": head_revision,
-                    "uploads": [],
-                }))
+                    world.finalize(body)
+                }
             }
+            other => Err(format!("the fake record does not answer `{other}`").into()),
         }
     }
 }

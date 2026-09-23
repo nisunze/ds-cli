@@ -1527,7 +1527,7 @@ fn signed_in(
 }
 
 #[test]
-fn closed_sync_gateway_executes_record_and_work_variants_through_the_transport() {
+fn closed_sync_gateway_executes_record_reads_and_report_publication_through_the_transport() {
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     for _ in 0..3 {
         transport.push_sync_gateway(200, br#"{"data":{}}"#);
@@ -1539,18 +1539,19 @@ fn closed_sync_gateway_executes_record_and_work_variants_through_the_transport()
         "limit": 200,
     });
     let open = serde_json::json!({
-        "client_request_id": "open-a",
-        "install_id": "550e8400-e29b-41d4-a716-446655440000",
-        "ds_project": "project-a",
-        "engine": "ds-network-reporter",
-        "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567",
-        "resources": {"task": "export_transformer_report", "transformer_names": ["tx-a"]},
+        "action": "open", "project_id": "project-a",
+        "client_run_id": "publish-76ab72a6-6b1d-4095-a54e-139232b5152c",
+        "engine": "network_reporter", "operation": "export-tx-a", "variant": "default",
+        "engine_version": "ds-network-reporter@0.1.0+development",
+        "engine_build_manifest_sha256": "5".repeat(64),
+        "input_base_fingerprint": "b".repeat(64),
+        "outputs": [{"output_id": "xlsx", "format": "xlsx",
+            "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "sha256": "a".repeat(64), "size_bytes": 9}],
     });
-    let publish = serde_json::json!({
-        "client_publish_id": "publish-a",
-        "grant_id": "grant_0123456789abcdef0123456789abcdef01234567",
-        "artifacts": [],
-        "base_revisions": {},
+    let finalize = serde_json::json!({
+        "action": "finalize", "project_id": "project-a", "work_id": "work_a",
+        "client_run_id": "publish-76ab72a6-6b1d-4095-a54e-139232b5152c",
     });
     for request in [
         NativeSyncRequest::for_project(
@@ -1559,8 +1560,8 @@ fn closed_sync_gateway_executes_record_and_work_variants_through_the_transport()
             &record,
         )
         .unwrap(),
-        NativeSyncRequest::for_project(SyncGatewayOperation::WorkOpen, "project-a", &open).unwrap(),
-        NativeSyncRequest::work_publish(&publish).unwrap(),
+        NativeSyncRequest::report_publication("project-a", &open).unwrap(),
+        NativeSyncRequest::report_publication("project-a", &finalize).unwrap(),
     ] {
         assert_eq!(
             client.sync_gateway(&request, NOW).unwrap(),
@@ -1573,15 +1574,14 @@ fn closed_sync_gateway_executes_record_and_work_variants_through_the_transport()
         .filter(|call| call.starts_with("sync_gateway "))
         .collect();
     assert_eq!(sync.len(), 3);
-    assert!(sync[0].contains("method=POST path=/api/v1/compute_artifacts bearer=true"));
+    for call in &sync {
+        assert!(call.contains("method=POST path=/api/v1/compute_artifacts bearer=true"));
+    }
     assert!(sync[0].contains("\"action\":\"list\""));
-    assert!(sync[1].contains("method=POST path=/api/v1/work/open bearer=true"));
-    assert!(sync[1].contains(
-        "\"engine_release\":\"ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567\""
-    ));
-    assert!(sync[2].contains("method=POST path=/api/v1/work/publish bearer=true"));
-    assert!(!sync[2].contains("ds_project"));
-    assert!(sync[2].contains("\"grant_id\":\"grant_0123456789abcdef0123456789abcdef01234567\""));
+    assert!(sync[1].contains("\"action\":\"open\""));
+    assert!(sync[1].contains("\"engine_version\":\"ds-network-reporter@0.1.0+development\""));
+    assert!(!sync[1].contains("grant"));
+    assert!(sync[2].contains("\"action\":\"finalize\""));
 }
 
 #[test]
