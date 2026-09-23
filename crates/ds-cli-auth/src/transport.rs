@@ -867,6 +867,41 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    /// `POST /api/v1/projects` — create a project or edit its properties.
+    /// Without this the trait's default answered `Unreachable`, which reads as
+    /// `auth_transient`, so `ds auth project create|update` could never
+    /// succeed from a native session and never said why.
+    fn project_properties(
+        &mut self,
+        call: ds_client_core::ProjectPropertiesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let result = ureq::post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
     fn design_migration(
         &mut self,
         call: ds_client_core::DesignMigrationCall<'_>,
