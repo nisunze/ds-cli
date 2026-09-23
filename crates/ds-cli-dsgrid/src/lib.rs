@@ -50,6 +50,7 @@ pub mod project;
 pub mod report;
 pub mod run;
 pub mod structure;
+pub mod template;
 pub mod validate;
 
 use ds_cli_contract::spec::Domain;
@@ -62,6 +63,8 @@ pub static DOMAIN: Domain = Domain {
         &project::LIST,
         &project::DOWNLOAD,
         &create::COMMAND,
+        &template::COMMAND,
+        &template::APPLY,
         &import_structure::COMMAND,
         &inspect::COMMAND,
         &validate::COMMAND,

@@ -28,7 +28,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ds_grid_engine::{CommandEnvelope, GridCommand, GridSession};
-use ds_grid_exchange::{parse_standards_library_manifest, unpack, unpack_library};
+use ds_grid_exchange::{parse_standards_library_manifest, unpack, unpack_model_template};
 use serde_json::{Value, json};
 
 /// Whether a command can be DISCOVERED without a window paired. A server
@@ -1174,12 +1174,13 @@ fn library_seed_materializes_two_native_families_idempotently() {
     let native_path = manifest.members[0].pls_cadd_path.clone();
     assert_eq!(native_path, "pls-cadd/structures/pole.012");
     assert!(version.join(&native_path).is_file());
-    let release =
-        unpack_library(&std::fs::read(version.join("dsgrid/library.dsgrid-library")).unwrap())
-            .unwrap();
+    let release = unpack_model_template(
+        &std::fs::read(version.join("dsgrid/library.dsgrid-template")).unwrap(),
+    )
+    .unwrap();
     assert!(
-        release.assets.is_empty(),
-        "DS Grid seed must not embed PLS bytes"
+        !release.assets.is_empty(),
+        "the template must embed its exact engineering resource bytes"
     );
 
     let second = ok(&args);

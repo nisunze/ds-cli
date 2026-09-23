@@ -1047,6 +1047,7 @@ dependencies = [
  "ds-client-core",
  "ds-grid-exchange",
  "ds-grid-model",
+ "ds-io",
  "ds-sync-runtime",
  "serde_json",
  "sha2",

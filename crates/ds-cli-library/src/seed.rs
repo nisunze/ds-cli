@@ -6,8 +6,12 @@ use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::{
     StandardsLibrarySeedOptions, plan_standards_library_seed, portable_backup_seed_members,
 };
+use ds_io::{
+    PlsCaddAvailableStructureSpottingEdit, pls_cadd_parse_available_structure_list,
+    pls_cadd_patch_available_structure_spotting,
+};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -55,6 +59,11 @@ pub static COMMAND: Command = Command {
             "Compatibility token; repeat as needed.",
         ),
         Arg::value("schema", "<n>", "Manifest schema; only 1 is accepted.").default("1"),
+        Arg::value(
+            "spotting-price-rules",
+            "<json-path>",
+            "Versioned price-factor rule. Derives the native STR and its DS Grid catalog together; the source is unchanged.",
+        ),
     ],
     output: "Immutable local prefix, manifest/content digests, object/byte counts, loss rollup, execution owner, native-tool handoff and remaining engineer decision.",
     examples: &[Example {
@@ -228,6 +237,141 @@ fn sources(inputs: &Inputs) -> Result<Vec<(String, Vec<u8>)>, Failure> {
     Ok(out)
 }
 
+fn apply_spotting_price_rules(
+    members: &mut [(String, Vec<u8>)],
+    rule_path: &str,
+) -> Result<String, Failure> {
+    let rule_bytes = read(rule_path)?;
+    let rule: Value = serde_json::from_slice(&rule_bytes)
+        .map_err(|error| Failure::invalid("spotting_price_rules_invalid", error.to_string()))?;
+    let field = |name: &str| {
+        rule.get(name).and_then(Value::as_str).ok_or_else(|| {
+            Failure::invalid(
+                "spotting_price_rules_invalid",
+                format!("missing string {name}"),
+            )
+        })
+    };
+    if field("schema")? != "ds.spotting-price-factors/v1" {
+        return Err(Failure::invalid(
+            "spotting_price_rules_invalid",
+            "unsupported rule schema",
+        ));
+    }
+    let _version = field("version")?;
+    let catalog_name = field("catalog_name")?;
+    let expected_sha = field("source_catalog_sha256")?;
+    let factor = rule
+        .get("nonpreferred_price_factor")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 1.0 && *value <= 100.0)
+        .ok_or_else(|| {
+            Failure::invalid(
+                "spotting_price_rules_invalid",
+                "nonpreferred_price_factor must be between 1 and 100",
+            )
+        })?;
+    let names = |key: &str| -> Result<BTreeSet<String>, Failure> {
+        let values = rule.get(key).and_then(Value::as_array).ok_or_else(|| {
+            Failure::invalid(
+                "spotting_price_rules_invalid",
+                format!("missing array {key}"),
+            )
+        })?;
+        let mut names = BTreeSet::new();
+        for value in values {
+            let name = value
+                .as_str()
+                .filter(|name| !name.is_empty())
+                .ok_or_else(|| {
+                    Failure::invalid(
+                        "spotting_price_rules_invalid",
+                        format!("invalid name in {key}"),
+                    )
+                })?;
+            if !names.insert(name.to_ascii_lowercase()) {
+                return Err(Failure::invalid(
+                    "spotting_price_rules_invalid",
+                    format!("duplicate name {name} in {key}"),
+                ));
+            }
+        }
+        Ok(names)
+    };
+    let preferred = names("preferred_structure_names")?;
+    let enable = names("enable_automatic_spotting_names")?;
+    if preferred.is_empty() || !enable.is_subset(&preferred) {
+        return Err(Failure::invalid(
+            "spotting_price_rules_invalid",
+            "enabled structures must be a nonempty subset of preferred structures",
+        ));
+    }
+    let matches = members
+        .iter()
+        .enumerate()
+        .filter(|(_, (path, _))| {
+            path.rsplit('/')
+                .next()
+                .is_some_and(|leaf| leaf.eq_ignore_ascii_case(catalog_name))
+        })
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [catalog_index] = matches.as_slice() else {
+        return Err(Failure::invalid(
+            "spotting_price_rules_invalid",
+            "the rule must select exactly one native STR",
+        ));
+    };
+    let original = &members[*catalog_index].1;
+    if format!("sha256:{}", sha256(original)) != expected_sha {
+        return Err(Failure::invalid(
+            "spotting_price_rules_invalid",
+            "source STR digest differs from the versioned rule",
+        ));
+    }
+    let catalog = pls_cadd_parse_available_structure_list(original)
+        .map_err(|error| Failure::invalid("spotting_price_rules_invalid", error))?;
+    let mut found = BTreeSet::new();
+    let edits = catalog
+        .rows
+        .iter()
+        .map(|row| {
+            let name = row
+                .authored_path
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(&row.authored_path)
+                .to_ascii_lowercase();
+            found.insert(name.clone());
+            let price = if preferred.contains(&name) {
+                row.cost_for_optimization
+            } else {
+                ((row.cost_for_optimization * factor) * 100.0).round() / 100.0
+            };
+            PlsCaddAvailableStructureSpottingEdit {
+                sequence: row.sequence,
+                cost_for_optimization: price,
+                use_for_automatic_spotting: row.use_for_automatic_spotting
+                    || enable.contains(&name),
+                automatic_spotting_min_line_angle_deg: row.automatic_spotting_min_line_angle_deg,
+                automatic_spotting_set: row.automatic_spotting_set,
+            }
+        })
+        .collect::<Vec<_>>();
+    if !preferred.is_subset(&found) {
+        return Err(Failure::invalid(
+            "spotting_price_rules_invalid",
+            "one or more preferred structures are absent from the source STR",
+        ));
+    }
+    members[*catalog_index].1 = pls_cadd_patch_available_structure_spotting(original, &edits)
+        .map_err(|error| Failure::invalid("spotting_price_rules_invalid", error))?;
+    Ok(format!(
+        "spotting-price-rules-sha256:{}",
+        sha256(&rule_bytes)
+    ))
+}
+
 fn existing_matches(
     target: &Path,
     files: &BTreeMap<String, Vec<u8>>,
@@ -247,7 +391,7 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .unwrap_or("1")
         .parse::<u32>()
         .map_err(|_| Failure::invalid("invalid_schema", "--schema must be 1"))?;
-    let compatibility = {
+    let mut compatibility = {
         let values = inputs.repeated("compatibility");
         if values.is_empty() {
             vec!["dsgrid-schema-v1".to_string(), "pls-cadd-16.81".to_string()]
@@ -255,6 +399,10 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             values.iter().map(|s| s.to_string()).collect()
         }
     };
+    let mut source_members = sources(inputs)?;
+    if let Some(rule_path) = inputs.value("spotting-price-rules") {
+        compatibility.push(apply_spotting_price_rules(&mut source_members, rule_path)?);
+    }
     let options = StandardsLibrarySeedOptions {
         library_id: inputs.require("library-id")?.to_string(),
         version: inputs.require("library-version")?.to_string(),
@@ -270,7 +418,7 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         source_provenance: inputs.require("provenance")?.to_string(),
         compatibility,
     };
-    let plan = plan_standards_library_seed(schema, &sources(inputs)?, &options)
+    let plan = plan_standards_library_seed(schema, &source_members, &options)
         .map_err(|error| engine_failure("library_seed_failed", error))?;
     let receipt_bytes = serde_json::to_vec_pretty(&plan.receipt)
         .map_err(|error| Failure::internal("receipt_encode_failed", error.to_string()))?;
