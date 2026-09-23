@@ -5059,7 +5059,7 @@ fn design_migrate_carries_both_design_kinds_on_one_verb_and_refuses_locally() {
             .collect::<BTreeSet<_>>();
         assert_eq!(
             inputs,
-            BTreeSet::from(["source-project", "kind", "items", "overwrite", "lane"]),
+            BTreeSet::from(["source-project", "kind", "item", "overwrite", "lane"]),
             "{id}"
         );
         // Both design kinds are one flag on one verb, not two command families.
@@ -5078,21 +5078,23 @@ fn design_migrate_carries_both_design_kinds_on_one_verb_and_refuses_locally() {
 
     // A selection larger than one transaction's batch is refused here, with a
     // remedy, rather than half-applied by the service.
-    let too_many = (0..201)
+    let names = (0..201)
         .map(|index| format!("tx{index}"))
-        .collect::<Vec<_>>()
-        .join(",");
-    let refusal = native_ds(&[
+        .collect::<Vec<_>>();
+    let mut too_many = vec![
         "design",
         "migrate",
         "plan",
         "--source-project",
         "source_one",
-        "--items",
-        &too_many,
-        "--output",
-        "json",
-    ]);
+        "--kind",
+        "transformer",
+    ];
+    for name in &names {
+        too_many.extend(["--item", name.as_str()]);
+    }
+    too_many.extend(["--output", "json"]);
+    let refusal = native_ds(&too_many);
     assert_eq!(refusal.envelope["error"]["code"], "invalid_selection");
     assert!(
         refusal.envelope["error"]["remedy"]
@@ -5115,7 +5117,7 @@ fn design_migrate_carries_both_design_kinds_on_one_verb_and_refuses_locally() {
         "source_one",
         "--kind",
         "city",
-        "--items",
+        "--item",
         "TX-1",
         "--output",
         "json",
@@ -11660,7 +11662,7 @@ fn solar_migration_is_one_solar_verb_with_a_kind_inside_it() {
         let command = &value["command"];
         assert_eq!(command["authority"], "headless_project");
         let inputs = command["inputs"].as_array().unwrap();
-        for name in ["project", "from", "kind"] {
+        for name in ["project", "source-project", "kind"] {
             assert!(
                 inputs
                     .iter()
@@ -11690,6 +11692,72 @@ fn solar_migration_is_one_solar_verb_with_a_kind_inside_it() {
     );
 }
 
+/// Design and Solar migration are two verbs in two domains, never one
+/// registry — but they SPEAK alike, so an operator or agent who learned one
+/// drives the other (feedback fb90a0a5). The same concept carries the same
+/// argument name, the same shape (value / repeated / switch) and the same
+/// obligation (a kind is always stated, never defaulted), and both point at
+/// the one reference that documents their shared receipt vocabulary.
+#[test]
+fn design_and_solar_migration_declare_one_argument_vocabulary() {
+    let shape = |id: &str, name: &str| {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let input = descriptor["command"]["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .find(|input| input["name"] == name)
+            .unwrap_or_else(|| panic!("`{id}` must declare --{name}"))
+            .clone();
+        (
+            input["kind"].clone(),
+            input["required"].clone(),
+            input.get("default").cloned(),
+            descriptor["command"]["reference"].clone(),
+        )
+    };
+    for (design, solar) in [
+        ("design.migrate.plan", "solar.migrate.plan"),
+        ("design.migrate.apply", "solar.migrate.apply"),
+    ] {
+        for name in ["source-project", "kind", "overwrite", "lane"] {
+            let (design_kind, design_required, design_default, design_reference) =
+                shape(design, name);
+            let (solar_kind, solar_required, _, solar_reference) = shape(solar, name);
+            assert_eq!(design_kind, solar_kind, "--{name} shape");
+            assert_eq!(
+                design_reference, solar_reference,
+                "one documented vocabulary"
+            );
+            if name != "lane" {
+                assert_eq!(design_required, solar_required, "--{name} obligation");
+            }
+            if name == "kind" {
+                assert_eq!(design_required, true, "a kind is always stated");
+                assert_eq!(design_default, None, "a kind is never defaulted");
+            }
+        }
+        // One object per repeated --item on both. Design requires at least one
+        // (it has no "every object" read); Solar's omission means every source
+        // object of the kind — the one difference, stated in each summary.
+        assert_eq!(shape(design, "item").0, "repeated");
+        assert_eq!(shape(solar, "item").0, "repeated");
+        for retired in ["from", "items", "city", "portfolio"] {
+            for id in [design, solar] {
+                let descriptor = ok(&["capabilities", id, "--output", "json"]);
+                assert!(
+                    !descriptor["command"]["inputs"]
+                        .as_array()
+                        .expect("inputs")
+                        .iter()
+                        .any(|input| input["name"] == retired),
+                    "`{id}` must not keep the retired --{retired}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn a_design_kind_never_reaches_the_solar_migration_door() {
     // Refused locally, before any credential is touched: the kind vocabulary
@@ -11701,7 +11769,7 @@ fn a_design_kind_never_reaches_the_solar_migration_door() {
             "plan",
             "--project",
             "chad_test",
-            "--from",
+            "--source-project",
             "aderm",
             "--kind",
             "transformer",
@@ -11713,9 +11781,9 @@ fn a_design_kind_never_reaches_the_solar_migration_door() {
 }
 
 #[test]
-fn a_solar_migration_refuses_the_other_kinds_selection_instead_of_dropping_it() {
-    // Answering successfully having quietly migrated something other than what
-    // was asked for is the confident empty answer in miniature.
+fn a_solar_migration_refuses_a_repeated_item_instead_of_collapsing_it() {
+    // A plan describing fewer rows than the caller named is the confident
+    // empty answer in miniature, so a repeat is refused, locally.
     assert_eq!(
         refusal(&[
             "solar",
@@ -11723,11 +11791,13 @@ fn a_solar_migration_refuses_the_other_kinds_selection_instead_of_dropping_it() 
             "plan",
             "--project",
             "chad_test",
-            "--from",
+            "--source-project",
             "aderm",
             "--kind",
-            "city",
-            "--portfolio",
+            "portfolio",
+            "--item",
+            "North",
+            "--item",
             "North",
             "--output",
             "json",
@@ -11745,7 +11815,7 @@ fn a_solar_migration_refuses_a_project_migrating_into_itself() {
             "plan",
             "--project",
             "chad_test",
-            "--from",
+            "--source-project",
             "chad_test",
             "--kind",
             "city",

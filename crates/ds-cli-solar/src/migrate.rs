@@ -9,13 +9,22 @@
 //! This is not a general migration command. `ds map survey migrate` moves
 //! survey data and the design domain owns its own; an abstraction over all
 //! three would describe none of them.
+//!
+//! It SPEAKS as `ds design migrate` speaks without being merged with it:
+//! `--source-project`, a required `--kind`, repeated `--item`, and one receipt
+//! vocabulary and refusal shape (`docs/reference/migration.md`). The kinds stay
+//! Solar's; only the words a receipt uses for an outcome are shared, and they
+//! are the kernel's `design_migration::Outcome` words, projected here from the
+//! Solar service's own row actions. The service's plan is kept verbatim under
+//! `plan`, because that is the document `migrate_digest` binds.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::Value;
+use ds_command_kernel::design_migration::{Mode, Outcome, empty_state, read_items, totals};
+use serde_json::{Value, json};
 
 pub use ds_command_kernel::solar_migration::{
     KIND_CITY, KIND_PORTFOLIO, KINDS, MAX_ID_CHARS, MAX_PROJECT_CHARS, MAX_SELECTION,
@@ -85,10 +94,12 @@ const PROJECT_ARG: Arg = Arg::value(
 )
 .required();
 
-const FROM_ARG: Arg = Arg::value(
-    "from",
+/// `--source-project`, as `ds design migrate` and `ds map survey migrate` name
+/// it, and as both services' receipts spell it (`source_project`).
+const SOURCE_ARG: Arg = Arg::value(
+    "source-project",
     "<project-id>",
-    "Authorized SOURCE project to read from. You must be a member of it too.",
+    "Authorized SOURCE project to migrate from. You must be a member of it too.",
 )
 .required();
 
@@ -99,16 +110,13 @@ const KIND_ARG: Arg = Arg::value(
 )
 .required();
 
-const CITY_ARG: Arg = Arg::repeated(
-    "city",
-    "<id>",
-    "Migrate only this source city. Repeat, up to 64. Omit for every live source city. kind=city only.",
-);
-
-const PORTFOLIO_ARG: Arg = Arg::repeated(
-    "portfolio",
+/// ONE selection flag whose meaning the kind decides, as design's `--item`
+/// is. A flag per kind could only ever be refused as "the other kind's
+/// selection"; one flag cannot be sent to the wrong kind at all.
+const ITEM_ARG: Arg = Arg::repeated(
+    "item",
     "<name>",
-    "Migrate only this source portfolio, BY NAME. Repeat, up to 64. Omit for every source portfolio. kind=portfolio only.",
+    "One source city id (kind city) or portfolio NAME (kind portfolio). Repeat, up to 64. Omit for every source object of the kind.",
 );
 
 const OVERWRITE_ARG: Arg = Arg::switch(
@@ -131,17 +139,17 @@ static MIGRATE_REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "solar_migrate_selection_invalid",
-        when: "a --city or --portfolio value is blank, padded, repeated, or belongs to the other kind",
-        remedy: "name each object once, unpadded, and use --city with kind=city and --portfolio with kind=portfolio",
+        when: "an --item value is blank, padded, over 128 characters, or named twice",
+        remedy: "name each object once, unpadded, with one --item per object",
     },
     Refusal {
         code: "solar_migrate_bounded",
-        when: "more than 64 objects were named in one migration",
-        remedy: "migrate in smaller sets",
+        when: "more than 64 --item values were named in one migration",
+        remedy: "migrate at most 64 objects per request: 64 is the Solar seed writer's per-request bound, which a migration apply writes through",
     },
     Refusal {
         code: "solar_migrate_source_invalid",
-        when: "--from is blank, names the destination project, or names the governed catalog",
+        when: "--source-project is blank, names the destination project, or names the governed catalog",
         remedy: "pass one exact source project id that is not the destination",
     },
     Refusal {
@@ -166,7 +174,7 @@ static APPLY_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "solar_migrate_digest_required",
         when: "--migrate-digest is not the exact 64-character lowercase digest a plan returned",
-        remedy: "run `ds solar migrate plan --project <exact-id> --from <exact-id> --kind <kind>` and pass that plan's exact migrate_digest",
+        remedy: "run `ds solar migrate plan --project <exact-id> --source-project <exact-id> --kind <kind>` and pass that plan's exact migrate_digest",
     },
     Refusal {
         code: "solar_migrate_digest_mismatch",
@@ -180,17 +188,17 @@ static APPLY_REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "solar_migrate_selection_invalid",
-        when: "a --city or --portfolio value is blank, padded, repeated, or belongs to the other kind",
-        remedy: "name each object once, unpadded, and use --city with kind=city and --portfolio with kind=portfolio",
+        when: "an --item value is blank, padded, over 128 characters, or named twice",
+        remedy: "name each object once, unpadded, with one --item per object",
     },
     Refusal {
         code: "solar_migrate_bounded",
-        when: "more than 64 objects were named in one migration",
-        remedy: "migrate in smaller sets",
+        when: "more than 64 --item values were named in one migration",
+        remedy: "migrate at most 64 objects per request: 64 is the Solar seed writer's per-request bound, which a migration apply writes through",
     },
     Refusal {
         code: "solar_migrate_source_invalid",
-        when: "--from is blank, names the destination project, or names the governed catalog",
+        when: "--source-project is blank, names the destination project, or names the governed catalog",
         remedy: "pass one exact source project id that is not the destination",
     },
     Refusal {
@@ -242,7 +250,7 @@ portfolio each portfolio definition and its ordered member cities. It writes \
 nothing — the plan carries the server's own `mutated: false`. COMPUTATION \
 RESULTS NEVER MIGRATE: the plan names the result collections it leaves behind \
 and the destination recomputes. A portfolio whose member cities are absent \
-there is reported `blocked`, naming them, never written as a definition that \
+there is reported `refused`, naming them, never written as a definition that \
 would read back empty. Confirm the returned `migrate_digest` with `ds solar \
 migrate apply` to write it.",
     chapter: Chapter::Solar,
@@ -251,34 +259,30 @@ migrate apply` to write it.",
     execution: Execution::Sync,
     args: &[
         PROJECT_ARG,
-        FROM_ARG,
+        SOURCE_ARG,
         KIND_ARG,
-        CITY_ARG,
-        PORTFOLIO_ARG,
+        ITEM_ARG,
         OVERWRITE_ARG,
         LANE_ARG,
     ],
     output: "\
-ds-brain's SolarMigrationPlan verbatim: the kind, both projects and roots, the \
-`migrate_digest` binding this plan to its apply, the declared travel policy \
-(`travels`: fields and documents that move, destination-authored documents, \
-and every excluded path with its reason), one row per object with its action \
-(create/replace/skip/changed/missing/blocked), digests, documents, excluded \
-documents, assets and warnings, plus the class counts and `mutated`.",
+The shared migration receipt (see reference): per-object outcomes, totals, \
+empty_state and warnings; plus the `migrate_digest` binding this plan to its \
+apply and ds-brain's plan verbatim under `plan` (travel policy, excluded paths).",
     examples: &[
         Example {
-            command: "ds solar migrate plan --project chad-test --from aderm --kind city --output json",
+            command: "ds solar migrate plan --project chad-test --source-project aderm --kind city --output json",
             note: "Plans every live source city into the destination. Writes nothing; no computed value moves.",
             runnable: false,
         },
         Example {
-            command: "ds solar migrate plan --project chad-test --from aderm --kind portfolio --output json",
-            note: "Read the `blocked` rows first: a portfolio whose member cities are not in the destination is refused, not written empty.",
+            command: "ds solar migrate plan --project chad-test --source-project aderm --kind portfolio --item North --output json",
+            note: "Read the `refused` items first: a portfolio whose member cities are not in the destination is refused, not written empty.",
             runnable: false,
         },
     ],
     refusals: &PLAN_ALL_REFUSALS,
-    reference: Some("docs/reference/solar.md"),
+    reference: Some("docs/reference/migration.md"),
     search: &[],
     requires: Requires::Server,
     availability: native_available,
@@ -310,26 +314,24 @@ shell is created by the first calculation in the destination.",
         )
         .required(),
         PROJECT_ARG,
-        FROM_ARG,
+        SOURCE_ARG,
         KIND_ARG,
-        CITY_ARG,
-        PORTFOLIO_ARG,
+        ITEM_ARG,
         OVERWRITE_ARG,
         LANE_ARG,
     ],
     output: "\
-ds-brain's SolarMigrationApplyResult verbatim: the re-planned plan, the \
-confirmed `migrate_digest`, the kind, applied / skipped / blocked object \
-identities with their counts, `documents_written`, `idempotent`, and \
-`computation_results_migrated` — which is always false and is on the wire so a \
-receipt states the contract without anyone having to know it.",
+The same receipt the plan returns, with committed outcomes, the confirmed \
+`migrate_digest`, `documents_written`, `idempotent`, and \
+`computation_results_migrated` — always false, on the wire so a receipt states \
+the contract — plus the re-planned ds-brain plan verbatim under `plan`.",
     examples: &[Example {
-        command: "ds solar migrate apply --project chad-test --from aderm --kind city --migrate-digest <64-hex from plan> --yes --output json",
+        command: "ds solar migrate apply --project chad-test --source-project aderm --kind city --migrate-digest <64-hex from plan> --yes --output json",
         note: "Confirms exactly the planned migration; a moved source or destination is refused, not re-planned.",
         runnable: false,
     }],
     refusals: &APPLY_ALL_REFUSALS,
-    reference: Some("docs/reference/solar.md"),
+    reference: Some("docs/reference/migration.md"),
     search: &[],
     requires: Requires::Server,
     availability: native_available,
@@ -340,8 +342,9 @@ receipt states the contract without anyone having to know it.",
 ///
 /// Pure, and separate from the handlers, so the properties that matter are
 /// testable without authentication or transport: that `--kind` is one of two
-/// exact values, that a selection belonging to the other kind is refused rather
-/// than dropped, and that a duplicate is refused rather than deduplicated.
+/// exact values and that a duplicate is refused rather than deduplicated. The
+/// kind decides what an `--item` names; the native client sends the selection
+/// under that kind's own wire key, so no selection can reach the other kind.
 fn envelope(inputs: &Inputs) -> Result<(String, Vec<String>, String), Failure> {
     let kind = inputs.require("kind")?.to_string();
     if !KINDS.contains(&kind.as_str()) {
@@ -352,25 +355,8 @@ fn envelope(inputs: &Inputs) -> Result<(String, Vec<String>, String), Failure> {
         .remedy("pass --kind city or --kind portfolio; design objects migrate through the design domain"));
     }
 
-    let cities = inputs.repeated("city");
-    let portfolios = inputs.repeated("portfolio");
-    // The other kind's selection is REFUSED, never ignored: quietly dropping
-    // it would answer successfully having migrated something other than what
-    // the caller asked for.
-    let (selection, wrong, wrong_flag) = if kind == KIND_PORTFOLIO {
-        (portfolios, cities, "--city")
-    } else {
-        (cities, portfolios, "--portfolio")
-    };
-    if !wrong.is_empty() {
-        return Err(Failure::invalid(
-            "solar_migrate_selection_invalid",
-            format!("{wrong_flag} does not belong to --kind {kind}"),
-        )
-        .remedy("use --city with --kind city and --portfolio with --kind portfolio"));
-    }
-
-    let from = inputs.require("from")?.to_string();
+    let selection = inputs.repeated("item");
+    let from = inputs.require("source-project")?.to_string();
     let context = ds_command_kernel::solar_migration::Context {
         kind: kind.clone(),
         root: String::new(),
@@ -387,10 +373,12 @@ fn envelope(inputs: &Inputs) -> Result<(String, Vec<String>, String), Failure> {
                     selection.len()
                 ),
             )
-            .remedy("migrate in smaller sets of at most 64 objects"),
+            .remedy(format!(
+                "migrate at most {MAX_SELECTION} objects per request: the Solar seed writer's per-request bound, which a migration apply writes through"
+            )),
             "SOLAR_MIGRATE_SOURCE_INVALID" => Failure::invalid(
                 "solar_migrate_source_invalid",
-                "--from must be one exact unpadded source project id",
+                "--source-project must be one exact unpadded source project id",
             )
             .remedy("pass one exact source project id that is not the destination"),
             _ => Failure::invalid(
@@ -404,7 +392,7 @@ fn envelope(inputs: &Inputs) -> Result<(String, Vec<String>, String), Failure> {
     if from == inputs.require("project")? {
         return Err(Failure::invalid(
             "solar_migrate_source_invalid",
-            "--from names the destination project",
+            "--source-project names the destination project",
         )
         .remedy("pass a source project that is not the destination"));
     }
@@ -422,7 +410,7 @@ fn validate_digest(raw: &str) -> Result<&str, Failure> {
             "--migrate-digest must be the exact 64-character lowercase migrate_digest of a plan",
         )
         .remedy("run `ds solar migrate plan` and pass that plan's exact migrate_digest")
-        .next("ds solar migrate plan --project <exact-id> --from <exact-id> --kind <kind> --output json"));
+        .next("ds solar migrate plan --project <exact-id> --source-project <exact-id> --kind <kind> --output json"));
     }
     Ok(raw)
 }
@@ -440,7 +428,7 @@ pub fn plan(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "a migration plan reported that it mutated",
         ));
     }
-    Ok(result)
+    Ok(receipt(&result, Mode::Plan, lane(inputs)))
 }
 
 pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -466,7 +454,133 @@ pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "the receipt claims computation results migrated",
         ));
     }
-    Ok(result)
+    Ok(receipt(&result, Mode::Apply, lane(inputs)))
+}
+
+fn lane(inputs: &Inputs) -> &str {
+    inputs.value("lane").unwrap_or("stable")
+}
+
+/// What one planned row amounts to, in the ONE receipt vocabulary.
+///
+/// The Solar service plans with the seeding words (create / replace / skip /
+/// changed / missing, plus blocked for a portfolio); the receipt speaks the
+/// words `ds design migrate` speaks, so a reader learns one set. A word this
+/// table does not know is an error row, never a dropped one.
+fn planned(action: &str) -> Outcome {
+    match action {
+        "create" => Outcome::WouldCopy,
+        "replace" => Outcome::WouldReplace,
+        "skip" => Outcome::Identical,
+        "changed" => Outcome::TargetExists,
+        "missing" => Outcome::MissingSource,
+        "blocked" => Outcome::Refused,
+        _ => Outcome::Error,
+    }
+}
+
+/// What one row became once the apply ran, read from the service's own
+/// applied / skipped lists — never inferred from the plan alone.
+fn committed(action: &str, name: &str, result: &Value) -> Outcome {
+    let listed = |field: &str| {
+        result[field]
+            .as_array()
+            .is_some_and(|names| names.iter().any(|held| held.as_str() == Some(name)))
+    };
+    if listed("applied") {
+        return if action == "replace" {
+            Outcome::Replaced
+        } else {
+            Outcome::Copied
+        };
+    }
+    match planned(action) {
+        // Planned to move and skipped: the destination gained it between the
+        // plan and the write.
+        Outcome::WouldCopy | Outcome::WouldReplace if listed("skipped") => Outcome::TargetExists,
+        // Planned to move, neither written nor skipped: never reported moved.
+        Outcome::WouldCopy | Outcome::WouldReplace => Outcome::Error,
+        settled => settled,
+    }
+}
+
+/// The shared receipt, from a reply `migration_plan` already accepted.
+///
+/// The fields both migration domains carry come first, under one name each
+/// (docs/reference/migration.md); the Solar-only evidence follows, and the
+/// service's plan travels verbatim under `plan` because `migrate_digest`
+/// binds that document, not this projection.
+fn receipt(result: &Value, mode: Mode, lane: &str) -> Value {
+    let plan = if result["plan"].is_object() {
+        &result["plan"]
+    } else {
+        result
+    };
+    let rows = plan["cities"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|row| (row, "city_id", KIND_CITY))
+        .chain(
+            plan["portfolios"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|row| (row, "name", KIND_PORTFOLIO)),
+        );
+    let items: Vec<Value> = rows
+        .map(|(row, id_field, kind)| {
+            let name = row[id_field].as_str().unwrap_or_default();
+            let action = row["action"].as_str().unwrap_or_default();
+            let outcome = match mode {
+                Mode::Plan => planned(action),
+                Mode::Apply => committed(action, name, result),
+            };
+            json!({"name": name, "kind": kind, "status": outcome.wire(), "reason": row["reason"]})
+        })
+        .collect();
+    let items = Value::Array(items);
+    let outcomes = read_items(&items);
+    let folded = totals(&outcomes);
+    let empty = empty_state(&folded, &outcomes);
+    // Plan warnings first, then each row's, de-duplicated — the kernel's fold.
+    let parsed: ds_command_kernel::solar_migration::Plan =
+        serde_json::from_value(plan.clone()).unwrap_or_default();
+    let warnings = ds_command_kernel::solar_migration::summarize(Some(&parsed)).warnings;
+    let mut receipt = json!({
+        "lane": lane,
+        "project": {"ds_project": plan["ds_project"]},
+        "source_project": plan["source_project"],
+        "kind": plan["kind"],
+        "mode": mode.wire(),
+        "requested": folded.requested,
+        "moving": folded.moving,
+        "identical": folded.identical,
+        "blocked": folded.blocked,
+        "failed": folded.failed,
+        "empty_state": empty.as_ref().map(|state| state.key),
+        "empty_breakdown": empty.as_ref().map(|state| {
+            state
+                .breakdown
+                .iter()
+                .map(|row| json!({"outcome": row.outcome.wire(), "count": row.count}))
+                .collect::<Vec<_>>()
+        }),
+        "warnings": warnings,
+        "items": items,
+        "migrate_digest": plan["migrate_digest"],
+    });
+    if mode == Mode::Apply {
+        for field in [
+            "documents_written",
+            "idempotent",
+            "computation_results_migrated",
+        ] {
+            receipt[field] = result[field].clone();
+        }
+    }
+    receipt["plan"] = plan.clone();
+    receipt
 }
 
 fn invoke(
@@ -476,10 +590,8 @@ fn invoke(
     source_project: String,
     digest: Option<String>,
 ) -> Result<Value, Failure> {
-    let mut session = ds_cli_auth::solar_project_session_for_project(
-        inputs.value("lane").unwrap_or("stable"),
-        inputs.require("project")?,
-    )?;
+    let mut session =
+        ds_cli_auth::solar_project_session_for_project(lane(inputs), inputs.require("project")?)?;
     session
         .execute(&ds_cli_auth::SolarProjectCommand::Migrate {
             kind,
@@ -582,55 +694,49 @@ fn mismatch(operation: &'static str, detail: &str) -> Failure {
     .remedy("update ds and its native client core to matching releases")
 }
 
-/// The human tier. Every class of row is named, because the whole value of a
-/// plan is the rows nobody planned for: a `blocked` portfolio whose members are
-/// absent, a `changed` destination that will not be overwritten, a `missing`
-/// source object, and the documents a migrated city will not have.
+/// The human tier. Every item that does not move is named, because the whole
+/// value of a plan is the rows nobody planned for: a `refused` portfolio whose
+/// members are absent, a `target_exists` destination that will not be
+/// overwritten, a `missing_source` object, and the documents a migrated city
+/// will not have. The totals line is the one `ds design migrate` prints.
 pub fn render(data: &Value) -> String {
-    let plan = if data["plan"].is_object() {
-        &data["plan"]
-    } else {
-        data
-    };
-    let count = |field: &str| plan[field].as_u64().unwrap_or(0);
-    let mut out = String::new();
+    let plan = &data["plan"];
+    let count = |field: &str| data[field].as_u64().unwrap_or(0);
+    let mut out = format!(
+        "kind      {}\nsource    {}\ninto      {}\ndigest    {}\n",
+        data["kind"].as_str().unwrap_or("?"),
+        data["source_project"].as_str().unwrap_or("?"),
+        data["project"]["ds_project"].as_str().unwrap_or("?"),
+        data["migrate_digest"].as_str().unwrap_or("?"),
+    );
     out.push_str(&format!(
-        "kind      {}\nfrom      {}\ninto      {}\ndigest    {}\n",
-        plan["kind"].as_str().unwrap_or("?"),
-        plan["source_project"].as_str().unwrap_or("?"),
-        plan["ds_project"].as_str().unwrap_or("?"),
-        plan["migrate_digest"].as_str().unwrap_or("?"),
+        "{:<9} requested {}  ·  moving {}  ·  identical {}  ·  blocked {}  ·  failed {}  ({} documents, {} excluded)\n",
+        data["mode"].as_str().unwrap_or("?"),
+        count("requested"),
+        count("moving"),
+        count("identical"),
+        count("blocked"),
+        count("failed"),
+        plan["document_count"].as_u64().unwrap_or(0),
+        plan["excluded_document_count"].as_u64().unwrap_or(0),
     ));
-    out.push_str(&format!(
-        "plan      create {}, replace {}, skip {}, changed {}, missing {}, blocked {} ({} documents, {} excluded)\n",
-        count("create_count"),
-        count("replace_count"),
-        count("skip_count"),
-        count("changed_count"),
-        count("missing_count"),
-        count("blocked_count"),
-        count("document_count"),
-        count("excluded_document_count"),
-    ));
-
-    for row in plan["cities"].as_array().into_iter().flatten() {
-        let action = row["action"].as_str().unwrap_or("?");
-        if action == "create" {
-            continue;
-        }
-        out.push_str(&format!(
-            "{action:<9} {}  {}\n",
-            row["city_id"].as_str().unwrap_or("?"),
-            row["reason"].as_str().unwrap_or(""),
-        ));
+    if let Some(state) = data["empty_state"].as_str() {
+        out.push_str(&format!("nothing moved: {state}\n"));
     }
-    for row in plan["portfolios"].as_array().into_iter().flatten() {
-        let action = row["action"].as_str().unwrap_or("?");
-        if action == "create" {
+
+    for item in data["items"].as_array().into_iter().flatten() {
+        let status = item["status"].as_str().unwrap_or("?");
+        if Outcome::parse(status).is_some_and(Outcome::moves) {
             continue;
         }
-        let missing = row["missing_cities"]
+        let name = item["name"].as_str().unwrap_or("?");
+        // A refused portfolio names the member cities the destination lacks.
+        let missing = plan["portfolios"]
             .as_array()
+            .into_iter()
+            .flatten()
+            .find(|row| item["kind"] == KIND_PORTFOLIO && row["name"].as_str() == Some(name))
+            .and_then(|row| row["missing_cities"].as_array())
             .map(|values| {
                 values
                     .iter()
@@ -638,16 +744,12 @@ pub fn render(data: &Value) -> String {
                     .collect::<Vec<_>>()
                     .join(", ")
             })
+            .filter(|joined| !joined.is_empty())
+            .map(|joined| format!(" [{joined}]"))
             .unwrap_or_default();
         out.push_str(&format!(
-            "{action:<9} {}  {}{}\n",
-            row["name"].as_str().unwrap_or("?"),
-            row["reason"].as_str().unwrap_or(""),
-            if missing.is_empty() {
-                String::new()
-            } else {
-                format!(" [{missing}]")
-            },
+            "{status:<14} {name}  {}{missing}\n",
+            item["reason"].as_str().unwrap_or(""),
         ));
     }
 
@@ -661,11 +763,11 @@ pub fn render(data: &Value) -> String {
         ));
     }
 
-    if data["plan"].is_object() {
+    if data["mode"] == Mode::Apply.wire() {
         out.push_str(&format!(
             "applied   {} objects, {} documents{}\n",
-            data["applied_count"].as_u64().unwrap_or(0),
-            data["documents_written"].as_u64().unwrap_or(0),
+            count("moving"),
+            count("documents_written"),
             if data["idempotent"] == Value::Bool(true) {
                 " (idempotent; nothing was written)"
             } else {
@@ -681,7 +783,7 @@ pub fn render(data: &Value) -> String {
             },
         ));
     }
-    for warning in plan["warnings"].as_array().into_iter().flatten() {
+    for warning in data["warnings"].as_array().into_iter().flatten() {
         out.push_str(&format!("warning   {}\n", warning.as_str().unwrap_or("?")));
     }
     out
@@ -697,7 +799,7 @@ mod tests {
         tokens.extend([
             "--project".to_owned(),
             "chad-test".to_owned(),
-            "--from".to_owned(),
+            "--source-project".to_owned(),
             "aderm".to_owned(),
         ]);
         ds_cli_contract::parse(command, &tokens).expect("declared tokens parse")
@@ -710,25 +812,25 @@ mod tests {
         assert_eq!(failure.code(), "solar_migrate_kind_invalid");
     }
 
+    /// One `--item` flag for both kinds: the kind decides what it names, so a
+    /// portfolio name on a portfolio migration and a city id on a city
+    /// migration travel through the same flag.
     #[test]
-    fn a_portfolio_selection_on_a_city_migration_is_refused_not_dropped() {
-        let parsed = inputs(&PLAN_COMMAND, &["--kind", "city", "--portfolio", "North"]);
-        let failure = envelope(&parsed).expect_err("the other kind's selection must be refused");
-        assert_eq!(failure.code(), "solar_migrate_selection_invalid");
-    }
-
-    #[test]
-    fn a_city_selection_on_a_portfolio_migration_is_refused_not_dropped() {
-        let parsed = inputs(&PLAN_COMMAND, &["--kind", "portfolio", "--city", "fianga"]);
-        let failure = envelope(&parsed).expect_err("the other kind's selection must be refused");
-        assert_eq!(failure.code(), "solar_migrate_selection_invalid");
+    fn one_item_flag_carries_either_kinds_selection() {
+        for (kind, item) in [("city", "fianga"), ("portfolio", "North, phase 1")] {
+            let parsed = inputs(&PLAN_COMMAND, &["--kind", kind, "--item", item]);
+            let (resolved, selection, _) = envelope(&parsed).expect("envelope resolves");
+            assert_eq!(resolved, kind);
+            // A name holding a comma stays one name.
+            assert_eq!(selection, vec![item.to_string()]);
+        }
     }
 
     #[test]
     fn a_repeated_object_is_refused_rather_than_deduplicated() {
         let parsed = inputs(
             &PLAN_COMMAND,
-            &["--kind", "city", "--city", "fianga", "--city", "fianga"],
+            &["--kind", "city", "--item", "fianga", "--item", "fianga"],
         );
         let failure = envelope(&parsed).expect_err("a repeated object must be refused");
         assert_eq!(failure.code(), "solar_migrate_selection_invalid");
@@ -738,13 +840,19 @@ mod tests {
     fn a_selection_beyond_the_shared_bound_is_refused_locally() {
         let mut tokens = vec!["--kind".to_owned(), "city".to_owned()];
         for index in 0..=MAX_SELECTION {
-            tokens.push("--city".to_owned());
+            tokens.push("--item".to_owned());
             tokens.push(format!("city-{index}"));
         }
         let borrowed: Vec<&str> = tokens.iter().map(String::as_str).collect();
         let parsed = inputs(&PLAN_COMMAND, &borrowed);
         let failure = envelope(&parsed).expect_err("an over-large selection must be refused");
         assert_eq!(failure.code(), "solar_migrate_bounded");
+        // The bound is named with its basis, as design's is.
+        let remedy = failure.remedy_text().unwrap_or_default();
+        assert!(
+            remedy.contains("64") && remedy.contains("seed writer"),
+            "{remedy}"
+        );
     }
 
     #[test]
@@ -754,7 +862,7 @@ mod tests {
             "city",
             "--project",
             "chad-test",
-            "--from",
+            "--source-project",
             "chad-test",
         ];
         let tokens: Vec<String> = tokens.iter().map(|t| (*t).to_string()).collect();
@@ -765,7 +873,7 @@ mod tests {
 
     #[test]
     fn a_well_formed_city_migration_resolves_its_envelope() {
-        let parsed = inputs(&PLAN_COMMAND, &["--kind", "city", "--city", "fianga"]);
+        let parsed = inputs(&PLAN_COMMAND, &["--kind", "city", "--item", "fianga"]);
         let (kind, selection, from) = envelope(&parsed).expect("a well-formed envelope resolves");
         assert_eq!(kind, KIND_CITY);
         assert_eq!(selection, vec!["fianga".to_string()]);
@@ -813,9 +921,146 @@ mod tests {
         assert!(migration_plan(&plan, PLAN_OPERATION).is_err());
     }
 
+    /// Every Solar row action lands on the ONE receipt vocabulary design
+    /// speaks, in both tenses, and nothing is dropped.
+    #[test]
+    fn the_plan_speaks_the_shared_outcome_vocabulary() {
+        let mut plan = valid_plan();
+        plan["cities"] = json!([
+            {"city_id": "a", "action": "create"},
+            {"city_id": "b", "action": "replace"},
+            {"city_id": "c", "action": "skip", "reason": "already_migrated"},
+            {"city_id": "d", "action": "changed", "reason": "destination_differs"},
+            {"city_id": "e", "action": "missing"},
+        ]);
+        plan["warnings"] = json!(["computation_results_are_not_migrated"]);
+        let shaped = receipt(&json!({"plan": plan}), Mode::Plan, "stable");
+        let statuses: Vec<&str> = shaped["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["status"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            statuses,
+            [
+                "would_copy",
+                "would_replace",
+                "identical",
+                "target_exists",
+                "missing_source"
+            ]
+        );
+        assert_eq!(shaped["requested"], 5);
+        assert_eq!(shaped["moving"], 2);
+        assert_eq!(shaped["identical"], 1);
+        assert_eq!(shaped["blocked"], 2);
+        assert_eq!(shaped["failed"], 0);
+        assert!(shaped["empty_state"].is_null());
+        assert_eq!(
+            shaped["warnings"],
+            json!(["computation_results_are_not_migrated"])
+        );
+        assert_eq!(shaped["items"][2]["reason"], "already_migrated");
+        // The digest-bound document is kept verbatim beside the projection.
+        assert_eq!(shaped["plan"]["cities"][0]["action"], "create");
+        assert_eq!(shaped["migrate_digest"], "a".repeat(64));
+    }
+
+    /// The apply reads the service's own lists: a written row is `copied`, a
+    /// row the destination gained since the plan is `target_exists`, a
+    /// refused portfolio stays `refused`.
+    #[test]
+    fn the_apply_reports_committed_outcomes_from_the_service_lists() {
+        let mut plan = valid_plan();
+        plan["kind"] = json!("portfolio");
+        plan["portfolios"] = json!([
+            {"name": "North", "action": "create"},
+            {"name": "South", "action": "create"},
+            {"name": "East", "action": "blocked", "reason": "member_cities_missing_in_destination",
+             "missing_cities": ["x"]},
+        ]);
+        let result = json!({
+            "plan": plan,
+            "migrate_digest": "a".repeat(64),
+            "applied": ["North"],
+            "skipped": ["South"],
+            "blocked": ["East"],
+            "documents_written": 1,
+            "idempotent": false,
+            "computation_results_migrated": false,
+        });
+        let shaped = receipt(&result, Mode::Apply, "canary");
+        let statuses: Vec<&str> = shaped["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["status"].as_str().unwrap())
+            .collect();
+        assert_eq!(statuses, ["copied", "target_exists", "refused"]);
+        assert_eq!(shaped["mode"], "apply");
+        assert_eq!(shaped["moving"], 1);
+        // `blocked` is the shared COUNT, never the service's name list.
+        assert_eq!(shaped["blocked"], 2);
+        assert_eq!(shaped["documents_written"], 1);
+        assert_eq!(shaped["computation_results_migrated"], false);
+        let rendered = render(&shaped);
+        assert!(rendered.contains("refused"), "{rendered}");
+        assert!(rendered.contains("[x]"), "{rendered}");
+    }
+
+    /// A run that moves nothing says why in the shape design uses.
+    #[test]
+    fn an_empty_plan_states_why_nothing_moved() {
+        let mut plan = valid_plan();
+        plan["warnings"] = json!(["nothing_was_selected_to_migrate"]);
+        let shaped = receipt(&json!({"plan": plan}), Mode::Plan, "stable");
+        assert_eq!(shaped["empty_state"], "mig_empty_nothing_requested");
+        let rendered = render(&shaped);
+        assert!(
+            rendered.contains("nothing moved: mig_empty_nothing_requested"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("nothing_was_selected_to_migrate"),
+            "{rendered}"
+        );
+    }
+
+    /// The fields both migration domains' receipts carry, under one name each
+    /// (docs/reference/migration.md). `ds-cli-design` pins the same list.
+    #[test]
+    fn the_receipt_carries_the_shared_migration_fields() {
+        let shaped = receipt(&json!({"plan": valid_plan()}), Mode::Plan, "stable");
+        for field in [
+            "lane",
+            "project",
+            "source_project",
+            "kind",
+            "mode",
+            "requested",
+            "moving",
+            "identical",
+            "blocked",
+            "failed",
+            "empty_state",
+            "empty_breakdown",
+            "warnings",
+            "items",
+        ] {
+            assert!(
+                shaped.get(field).is_some(),
+                "missing shared field `{field}`"
+            );
+        }
+        assert_eq!(shaped["project"]["ds_project"], "chad-test");
+        assert!(shaped["warnings"].is_array());
+    }
+
     #[test]
     fn a_receipt_claiming_results_migrated_never_renders_as_success() {
         let receipt = json!({
+            "mode": "apply",
             "plan": valid_plan(),
             "migrate_digest": "a".repeat(64),
             "computation_results_migrated": true,
@@ -830,7 +1075,7 @@ mod tests {
         plan["travels"]["excluded"] = json!([
             {"path": "02_site_prep", "reason": "computation_result"},
         ]);
-        let rendered = render(&plan);
+        let rendered = render(&receipt(&json!({"plan": plan}), Mode::Plan, "stable"));
         assert!(rendered.contains("excluded  02_site_prep"), "{rendered}");
     }
 }

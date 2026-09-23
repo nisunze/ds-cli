@@ -320,6 +320,7 @@ Contributor workspace hygiene and knowledge ownership:
 | [`docs/reference/pls.md`](docs/reference/pls.md) | digest pinning, task bounds, why a task's code stays in `detail` |
 | [`docs/reference/report.md`](docs/reference/report.md) | why it calls a binary; the must-not-exist and blockers rules |
 | [`docs/reference/solar.md`](docs/reference/solar.md) | the two-phase split, and why the token is never a flag |
+| [`docs/reference/migration.md`](docs/reference/migration.md) | the one argument, receipt and refusal vocabulary design and Solar migration share |
 | [`docs/reference/map.md`](docs/reference/map.md) | local map layers, vector tools, and staged design-layer edits |
 | [`docs/reference/desktop.status.md`](docs/reference/desktop.status.md) | pairing, discovery, what is never printed |
 | [`docs/reference/shell.md`](docs/reference/shell.md) | this shell versus a new one, what `register` writes, who runs it |
