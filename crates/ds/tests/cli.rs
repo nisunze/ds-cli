@@ -687,6 +687,24 @@ fn near_misses_are_suggested() {
             .expect("remedy")
             .contains("inspect")
     );
+
+    // An unknown leaf of a real group names the leaf and the group. It said
+    // "`project` is not a command of `ds report`" — false, and an agent
+    // reading it would conclude the whole group was gone.
+    let run = ds(&["report", "project", "combnied", "--yes", "--output", "json"]);
+    assert_eq!(run.envelope["error"]["code"], "unknown_command");
+    assert_eq!(
+        run.envelope["error"]["message"],
+        "`combnied` is not a command of `ds report project`"
+    );
+    assert!(
+        run.envelope["error"]["remedy"]
+            .as_str()
+            .expect("remedy")
+            .contains("ds report project combined"),
+        "{}",
+        run.envelope
+    );
 }
 
 // ---------------------------------------------------------------------------

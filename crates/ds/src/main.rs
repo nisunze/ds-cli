@@ -292,7 +292,7 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
             "ds",
             1,
             &[],
-            &unknown_command(registered.domain, second),
+            &unknown_command(registered.domain, &rest),
         );
     };
 
@@ -353,7 +353,7 @@ fn show_help(
                             "ds",
                             1,
                             &[],
-                            &unknown_command(registered.domain, two),
+                            &unknown_command(registered.domain, path),
                         );
                     }
                     output
@@ -495,28 +495,45 @@ fn unknown_domain(name: &str, domains: &[&'static Domain]) -> Failure {
     }))
 }
 
-fn unknown_command(domain: &'static Domain, name: &str) -> Failure {
-    // The first token after the domain, which is what the caller got wrong.
-    // For a nested command that is its group name, not its leaf — suggesting
-    // the leaf would send them to a path that does not start where they are.
+fn unknown_command(domain: &'static Domain, path: &[String]) -> Failure {
+    // `path` starts with the domain. The caller got wrong the first token
+    // after the deepest group some command starts with: `report project zzz`
+    // is an unknown leaf of `report project`, not an unknown `project`.
+    let path: Vec<&str> = path.iter().map(String::as_str).collect();
+    let starts = |command_path: &[&str], depth: usize| {
+        command_path.len() > depth && command_path[..depth] == path[..depth]
+    };
+    let depth = (1..path.len())
+        .rev()
+        .find(|&depth| {
+            domain
+                .commands
+                .iter()
+                .any(|command| starts(command.path, depth))
+        })
+        .unwrap_or(1);
+    let group = path[..depth].join(" ");
+    let name = path.get(depth).copied().unwrap_or_default();
     let mut names: Vec<&str> = domain
         .commands
         .iter()
-        .filter_map(|command| command.path.get(1).copied())
+        .filter(|command| starts(command.path, depth))
+        .filter_map(|command| command.path.get(depth).copied())
         .collect();
+    names.sort_unstable();
     names.dedup();
     let mut failure = Failure::invalid(
         "unknown_command",
-        format!("`{name}` is not a command of `ds {}`", domain.id),
+        format!("`{name}` is not a command of `ds {group}`"),
     );
     match ds_cli_contract::args::nearest(name, names.iter().copied()) {
         Some(suggestion) => {
-            failure = failure.remedy(format!("did you mean `ds {} {suggestion}`?", domain.id));
+            failure = failure.remedy(format!("did you mean `ds {group} {suggestion}`?"));
         }
-        None => failure = failure.remedy(format!("run `ds {} --help`", domain.id)),
+        None => failure = failure.remedy(format!("run `ds {group} --help`")),
     }
     failure
-        .next(format!("ds {} --help", domain.id))
+        .next(format!("ds {group} --help"))
         .detail(serde_json::json!({ "commands": names }))
 }
 
