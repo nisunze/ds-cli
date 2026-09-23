@@ -1767,6 +1767,26 @@ pub fn valid_print_warning(warning: &PrintWarning, transformer: &str, formats: &
                 && warning.total_rows == 0
                 && warning.message.len() <= 2048
         }
+        // ds-network's LV engineering audits, re-run by the reporter over
+        // the saved layers (network::audit_transformer_protection and
+        // audit_lv_span_lengths), one Engineering Review row each. They
+        // ride the xlsx output like the cable conflicts; the element is the
+        // audited layer. No table rows stand behind them.
+        "transformer_protection_mismatch" | "lv_span_exceeds_max_length" => {
+            let layer = if warning.code == "transformer_protection_mismatch" {
+                "tr"
+            } else {
+                "spans"
+            };
+            warning.transformer.eq_ignore_ascii_case(plan_transformer)
+                && warning.output_id == "xlsx"
+                && formats.contains(&warning.output_id)
+                && warning.layout_id.is_empty()
+                && warning.element_id == layer
+                && warning.omitted_rows == 0
+                && warning.total_rows == 0
+                && warning.message.len() <= 2048
+        }
         _ => false,
     };
     valid
@@ -3481,6 +3501,52 @@ mod tests {
             assert!(
                 verify(&changed).is_err(),
                 "accepted a cable-conflict row with invalid {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn lv_engineering_audit_rows_ride_the_workbook_on_their_layer() {
+        // 4070556f / 8b2d9545: the reporter re-runs ds-network's transformer
+        // protection and span-length audits over the saved layers and names
+        // each finding on the Engineering Review sheet.
+        let plan = plan_transformer_export(
+            "proj-1",
+            &simple_receipt("Benin"),
+            "tx_a",
+            7,
+            &layers(),
+            None,
+        )
+        .unwrap();
+        let out_dir = PathBuf::from("/tmp/run/out");
+        let mut document = result_document(&plan, &out_dir);
+        let verify = |document: &Value| {
+            verify_result(&serde_json::to_vec(document).unwrap(), &plan, &out_dir)
+        };
+        let row = |code: &str, layer: &str| {
+            json!({"code":code, "transformer":"TX_A", "output_id":"xlsx", "layout_id":"",
+                "element_id":layer, "total_rows":0, "omitted_rows":0, "message":"finding"})
+        };
+        document["warnings"] = json!([
+            row("transformer_protection_mismatch", "tr"),
+            row("lv_span_exceeds_max_length", "spans"),
+        ]);
+        assert_eq!(verify(&document).unwrap().warnings.len(), 2);
+        for (index, key, invalid) in [
+            (0, "element_id", json!("spans")),
+            (1, "element_id", json!("tr")),
+            (0, "output_id", json!("shp")),
+            (1, "layout_id", json!("detail")),
+            (0, "transformer", json!("tx_b")),
+            (1, "total_rows", json!(1)),
+            (0, "message", json!("m".repeat(2049))),
+        ] {
+            let mut changed = document.clone();
+            changed["warnings"][index][key] = invalid;
+            assert!(
+                verify(&changed).is_err(),
+                "accepted an engineering audit row with invalid {key}"
             );
         }
     }
