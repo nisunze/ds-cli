@@ -315,8 +315,7 @@ impl NativeSyncSession {
                 })?;
                 let receipt = transfer(&session_uri).map_err(SolarPublicationError::Retryable)?;
                 if receipt.output_id != "report-input"
-                    || receipt.outcome != "completed"
-                    || receipt.committed_bytes != receipt.total_bytes
+                    || !receipt.committed()
                     || receipt.total_bytes != output_size_bytes
                 {
                     return Err(SolarPublicationError::Blocked(
