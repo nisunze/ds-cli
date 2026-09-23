@@ -11,6 +11,9 @@ mod policy;
 pub mod project_forms;
 mod read;
 
+/// Project-to-project survey-data migration's one receipt, for native hosts.
+pub use bridge::{migration_receipt, MIGRATION_RECEIPT_ROWS};
+
 use serde_json::Value;
 pub const MAX_SURVEY_INPUT_BYTES: usize = 1024 * 1024;
 pub const MAX_SURVEY_FIELDS: usize = 512;

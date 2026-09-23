@@ -237,6 +237,11 @@ pub mod design_tags;
 pub use transport::DesignMigrationCall;
 pub use transport::DesignTagsCall;
 
+/// Project-to-project survey-data migration, both projects explicit —
+/// reachable without a window.
+pub mod survey_migration;
+pub use transport::SurveyMigrationCall;
+
 /// Tags, groups, consumer groupings, enrichment and comment threads on the
 /// design annotations route — reachable without a window.
 pub mod design_annotations;

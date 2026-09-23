@@ -1542,6 +1542,66 @@ impl DesignMigrationCall<'_> {
     }
 }
 
+/// `POST /api/v1/pipeline` `action=migrate` — survey data from a source
+/// project into an explicit destination.
+///
+/// Hard-coded like `/api/v1/pm`: the profile supplies the gateway origin and
+/// the credentials, not the route, and a path in the profile would bump
+/// `CLIENT_PROFILE_SCHEMA`. The only body is the one
+/// `crate::survey_migration::Command` writes.
+pub struct SurveyMigrationCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl SurveyMigrationCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        "/api/v1/pipeline".into()
+    }
+    pub fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        crate::survey_migration::MAX_RESPONSE_BYTES
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        crate::survey_migration::TIMEOUT_SECONDS
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(
+            serde_json::to_vec(&self.payload).expect("closed survey migration request"),
+        )
+    }
+}
+
 pub struct ReportArtifactCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: serde_json::Value,
@@ -2753,6 +2813,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn survey_migration(
+        &mut self,
+        _call: SurveyMigrationCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
 
     fn report_artifact(
         &mut self,
@@ -3036,6 +3102,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn survey_migration(
+        &mut self,
+        _call: SurveyMigrationCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
 
     fn report_artifact(
         &mut self,
@@ -3299,6 +3371,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: DesignMigrationCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::design_migration(self, call)
+    }
+    fn survey_migration(
+        &mut self,
+        call: SurveyMigrationCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::survey_migration(self, call)
     }
 
     fn report_artifact(

@@ -207,6 +207,8 @@ struct TransportState {
     asset_bodies: Vec<serde_json::Value>,
     feedback: VecDeque<TransportResponse>,
     feedback_bodies: Vec<serde_json::Value>,
+    survey_migration: VecDeque<TransportResponse>,
+    survey_migration_bodies: Vec<serde_json::Value>,
     shared_assets: VecDeque<TransportResponse>,
     shared_bytes: VecDeque<TransportResponse>,
     design_tags: VecDeque<TransportResponse>,
@@ -474,6 +476,21 @@ impl Transport for FixtureTransport {
             .feedback_bodies
             .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
         Ok(state.feedback.pop_front().unwrap())
+    }
+    fn survey_migration(
+        &mut self,
+        call: ds_client_core::SurveyMigrationCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/pipeline");
+        assert_eq!(call.method(), "POST");
+        assert_eq!(call.timeout_seconds(), 600);
+        assert_eq!(call.response_limit(), 1024 * 1024);
+        assert!(!call.bearer_token().is_empty());
+        let mut state = self.0.lock().unwrap();
+        state
+            .survey_migration_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        Ok(state.survey_migration.pop_front().unwrap())
     }
     fn shared_assets(
         &mut self,
@@ -8619,6 +8636,92 @@ fn shared_map_replacement_refuses_wrong_scope_before_mutating_and_keeps_old_on_f
             .iter()
             .all(|body| matches!(body["action"].as_str(), Some("get" | "list"))));
     }
+}
+
+/// Survey-data migration is stateless: both projects travel on every call, the
+/// body is exactly the four keys of the copy-everything policy, and a receipt
+/// for the other mode is refused rather than rendered.
+#[test]
+fn headless_survey_migration_names_both_projects_and_asks_only_to_copy() {
+    use ds_client_core::survey_migration::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let service = |dry_run: bool| {
+        project_response(json!({
+            "dry_run": dry_run, "total_matched": 14, "total_migrated": 12, "total_skipped": 2,
+            "per_form": {"customers": 12}, "skip_reasons": {"existing": 2}
+        }))
+    };
+    {
+        let mut state = transport.0.lock().unwrap();
+        state.survey_migration.push_back(service(true));
+        state.survey_migration.push_back(service(false));
+        // An apply answered as if it had been a plan.
+        state.survey_migration.push_back(service(true));
+        state.survey_migration.push_back(TransportResponse::new(
+            403,
+            br#"{"success":false,"error":"missing pipeline.migrate capability"}"#.to_vec(),
+        ));
+    }
+    let plan = Command {
+        source_project: "source_one".into(),
+        dry_run: true,
+    };
+    let apply = Command {
+        source_project: "source_one".into(),
+        dry_run: false,
+    };
+
+    let planned = client
+        .survey_migration("target_one", &plan, NOW + 1)
+        .unwrap();
+    assert_eq!(planned["total_migrated"], 12);
+    let applied = client
+        .survey_migration("target_one", &apply, NOW + 1)
+        .unwrap();
+    assert_eq!(applied["dry_run"], false);
+    let bodies = transport.0.lock().unwrap().survey_migration_bodies.clone();
+    assert_eq!(
+        bodies[0],
+        json!({"action":"migrate","eds_project_id":"source_one",
+            "target_project_id":"target_one","dry_run":true})
+    );
+    assert_eq!(
+        bodies[1],
+        json!({"action":"migrate","eds_project_id":"source_one",
+            "target_project_id":"target_one","dry_run":false})
+    );
+
+    let mismatched = client
+        .survey_migration("target_one", &apply, NOW + 1)
+        .unwrap_err();
+    assert_eq!(mismatched.kind(), ErrorKind::UnreadableResponse);
+
+    let refused = client
+        .survey_migration("target_one", &plan, NOW + 1)
+        .unwrap_err();
+    let refusal = refused.service_refusal().expect("the route's own refusal");
+    assert_eq!(refusal.status(), 403);
+    assert_eq!(
+        refusal.message(),
+        Some("missing pipeline.migrate capability")
+    );
+
+    // A destination that is its own source, or a path, never leaves the client.
+    for destination in ["source_one", "../target_one"] {
+        assert_eq!(
+            client
+                .survey_migration(destination, &plan, NOW + 1)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InvalidInput
+        );
+    }
+    assert_eq!(
+        transport.0.lock().unwrap().survey_migration_bodies.len(),
+        4,
+        "a refused request reached the transport"
+    );
 }
 
 fn feedback_row(status: &str, version: u64) -> serde_json::Value {
