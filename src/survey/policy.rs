@@ -33,7 +33,6 @@ pub(super) fn evaluate(r: &Value) -> Result<Value, String> {
                         .is_some_and(|(a, b)| a >= 0. && a <= b)
             )
         }
-        Some("allows_pick") => json!(bool_setting(r, "allow_location_picking")),
         Some("pick_reason") => {
             if r["form"].is_null() {
                 json!("Form schema is not available offline.")
@@ -43,7 +42,6 @@ pub(super) fn evaluate(r: &Value) -> Result<Value, String> {
                 Value::Null
             }
         }
-        Some("max_pick_distance") => json!(max_distance(r)),
         Some("distance_reason") => match max_distance(r).zip(r["distanceM"].as_f64()) {
             Some((max, distance)) if distance > max => json!(format!(
                 "Picked point is {} m from your location (max {} m). Move closer or capture your current GPS position.",

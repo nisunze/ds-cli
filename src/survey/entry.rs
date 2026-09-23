@@ -141,3 +141,76 @@ pub(super) fn encode(request: &Value) -> Result<Value, String> {
     }
     Ok(Value::Object(doc))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn schema(keys: &[&str]) -> Value {
+        json!({"top_level_keys": keys.iter().map(|k| json!({"key":k})).collect::<Vec<_>>()})
+    }
+    fn node() -> Value {
+        schema(&[
+            "data",
+            "metadata",
+            "geometry",
+            "connectivity",
+            "detailed_location",
+        ])
+    }
+    fn doc(request: Value) -> Value {
+        let mut r = json!({"schema":node(),"userEmail":"A@B.c","now":"2026-09-23T00:00:00Z","data":{"name":"Test"}});
+        r.as_object_mut()
+            .unwrap()
+            .extend(request.as_object().unwrap().clone());
+        encode(&r).unwrap()
+    }
+    const LINE: &str = r#"{"type":"LineString","coordinates":[[29.87,-1.94],[29.88,-1.95]]}"#;
+    #[test]
+    fn only_canonical_top_level_keys_and_metadata_are_emitted() {
+        let d = doc(json!({"location":{"latitude":-1.94,"longitude":29.87}}));
+        let mut keys = d.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+        keys.sort();
+        assert_eq!(keys, ["data", "geometry", "metadata"]);
+        assert_eq!(
+            d["metadata"],
+            json!({"created_by":"a@b.c","created_at":"2026-09-23T00:00:00Z","is_deleted":false})
+        );
+        assert_eq!(d["geometry"]["type"], "Point");
+    }
+    #[test]
+    fn a_node_carries_distance_and_an_edge_carries_only_its_own_length() {
+        let n = doc(
+            json!({"location":{"latitude":-1.94,"longitude":29.87},"connectivity":{"precedentDocId":"p1","precedentFormId":"lv_poles","precedentCoordinates":[29.86,-1.93]}}),
+        );
+        assert_eq!(n["connectivity"]["precedent"], "p1");
+        assert_eq!(n["connectivity"]["precedent_form_id"], "lv_poles");
+        assert!(n["connectivity"]["distance_m"].as_f64().unwrap() > 0.);
+        assert!(n["connectivity"].get("length_m").is_none());
+        let line: Value = serde_json::from_str(LINE).unwrap();
+        let e = doc(
+            json!({"geometry":line,"connectivity":{"precedentDocId":"node-a","antecedentDocId":"node-b","antecedentFormId":"transformers","precedentCoordinates":[29.87,-1.94],"distanceM":42}}),
+        );
+        assert_eq!(e["geometry"], line);
+        assert_eq!(e["connectivity"]["antecedent"], "node-b");
+        assert!(e["connectivity"]["length_m"].as_f64().unwrap() > 100.);
+        assert!(e["connectivity"].get("distance_m").is_none());
+        let a = point(&json!([29.87, -1.94])).unwrap();
+        let b = point(&json!([29.88, -1.95])).unwrap();
+        let direct = ds_geo_lite::haversine_m(a.0, a.1, b.0, b.1);
+        assert!((direct - length(&line).unwrap()).abs() < 0.001);
+    }
+    #[test]
+    fn detailed_location_is_flat_and_a_leaf_form_drops_connectivity() {
+        let d = doc(
+            json!({"location":{"latitude":-1.941,"longitude":29.871},"detailedLocation":{"device_lat":-1.941,"device_lng":29.871,"accuracy_m":4.2,"altitude_m":1463.5,"speed_mps":1.7}}),
+        );
+        assert_eq!(
+            d["detailed_location"],
+            json!({"device_lat":-1.941,"device_lng":29.871,"accuracy_m":4.2,"altitude_m":1463.5,"speed_mps":1.7})
+        );
+        let leaf = doc(
+            json!({"schema":schema(&["data","metadata","geometry"]),"location":{"latitude":-1.94,"longitude":29.87},"connectivity":{"precedentDocId":"p1"}}),
+        );
+        assert!(leaf.get("connectivity").is_none());
+    }
+}

@@ -323,9 +323,7 @@ pub(super) fn evaluate(r: &Value) -> Result<Value, String> {
         Some("normalize") => normalize(r),
         Some("capture") => capture(r),
         Some("mutate") => mutate(r),
-        Some("optimistic") => optimistic(r),
         Some("patch") => patch(r),
-        Some("created_by") => Ok(json!(created_by(&r["feature"]))),
         Some("authorize") => {
             authorize(r, text(&r["mutation_operation"]))?;
             Ok(Value::Null)
@@ -364,6 +362,26 @@ mod tests {
         assert_eq!(result["payload"]["operation"], "create");
         assert_eq!(result["payload"]["data"]["name"], "Pole");
         assert_eq!(result["feature"]["properties"]["doc_id"], "d");
+    }
+    #[test]
+    fn the_optimistic_feature_nests_data_and_keeps_line_geometry_and_connectivity() {
+        let line = json!({"type":"LineString","coordinates":[[29.87,-1.94],[29.88,-1.95]]});
+        let r = json!({"params":{"data":{"name":"Test","count":10},"geometry":line,"precedentDocId":"node-123",
+            "entryDocumentSchema":{"top_level_keys":[{"key":"data"},{"key":"metadata"},{"key":"geometry"},{"key":"connectivity"}]}},
+            "identity":{"project_id":"p","form_id":"test_form","doc_id":"d"},"grants":{"entries.create":true},
+            "user_email":"test@example.com","mutation_id":"key","now":"2026-04-17T12:00:00.000Z"});
+        let feature = &capture(&r).unwrap()["feature"];
+        let p = &feature["properties"];
+        assert_eq!(feature["id"], "d");
+        assert_eq!(feature["geometry"], line);
+        assert_eq!(p["form_slug"], "test_form");
+        assert_eq!(p["data"], json!({"name":"Test","count":10}));
+        assert_eq!(p["connectivity"]["precedent"], "node-123");
+        assert_eq!(p["metadata"]["created_by"], "test@example.com");
+        assert_eq!(p["metadata"]["created_at"], "2026-04-17T12:00:00.000Z");
+        for legacy in ["id", "table_name", "name", "count"] {
+            assert!(p.get(legacy).is_none(), "{legacy} leaked into properties");
+        }
     }
     #[test]
     fn restore_clears_legacy_tombstones_and_retains_location_delta() {

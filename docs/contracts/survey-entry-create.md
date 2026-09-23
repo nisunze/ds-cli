@@ -22,7 +22,8 @@ the stable identity, idempotency key, and a millisecond `created_at` fallback;
 every duplicate identity or idempotency value must agree. It never generates
 an identity or replay key. Empty legacy `context_key` becomes absent.
 
-`surveyEntryGeometryValidate` accepts
+`evaluate_geometry` accepts
 `{ "schema": "ds.survey-entry-geometry/v1", "geometry": ... }` and returns
 the accepted GeoJSON object. It shares the exact strict GeoJSON grammar used
-by create, so browser update adapters do not reimplement it.
+by create; the survey mutation `normalize` applies it to every retained
+update row, so no host validates geometry on its own.

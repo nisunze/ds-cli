@@ -1181,7 +1181,9 @@ mod export_tests {
             hiding
                 .style_refs
                 .insert(id.into(), format!("print_context/{id}_print"));
-            hiding.style_overrides.insert(id.into(), hidden_style.clone());
+            hiding
+                .style_overrides
+                .insert(id.into(), hidden_style.clone());
         }
         let prepare = |layouts: Vec<crate::printing::Layout>, formats: serde_json::Value| {
             let setups: Vec<serde_json::Value> = layouts
@@ -1202,7 +1204,11 @@ mod export_tests {
             output["result"].clone()
         };
         let result = prepare(vec![hiding.clone()], json!(["pdf__a0"]));
-        assert_eq!(result["contexts"], json!([]), "a hidden source is not acquired");
+        assert_eq!(
+            result["contexts"],
+            json!([]),
+            "a hidden source is not acquired"
+        );
         assert_eq!(result["hidden"][0]["context"], "elevation_contours");
         assert_eq!(result["hidden"][0]["layout"], "a0");
         assert_eq!(
@@ -1218,9 +1224,13 @@ mod export_tests {
         assert_eq!(result["hidden"], json!([]));
 
         // Hidden on one selected sheet, shown on another: acquired once.
-        let mut showing =
-            crate::printing::context::toggle(crate::printing::default_layout(), contours, true, None)
-                .unwrap();
+        let mut showing = crate::printing::context::toggle(
+            crate::printing::default_layout(),
+            contours,
+            true,
+            None,
+        )
+        .unwrap();
         showing.id = "a3".into();
         let result = prepare(vec![hiding, showing], json!(["pdf__a0", "pdf__a3"]));
         assert_eq!(result["contexts"].as_array().unwrap().len(), 1);

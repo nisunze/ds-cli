@@ -39,14 +39,6 @@ pub fn survey_evaluate(bytes: &[u8]) -> Result<Value, String> {
         Some("defaults") => factory::default_values(&request["fields"]),
         Some("new_field") => factory::create_field(&request),
         Some("settings") => factory::settings(&request),
-        Some("encode") => entry::encode(&request),
-        Some("geometry") => entry::geometry(&request),
-        Some("distance") => {
-            let a = entry::point(&request["a"])?;
-            let b = entry::point(&request["b"])?;
-            Ok(json!(ds_geo_lite::haversine_m(a.0, a.1, b.0, b.1)))
-        }
-        Some("length") => Ok(json!(entry::length(&request["geometry"])?)),
         Some("project_forms") => project_forms::evaluate(&request),
         Some("project_plan") => {
             let changes: Vec<project_forms::ProjectFormChange> =
@@ -83,6 +75,29 @@ mod tests {
             result["errors"]["s"],
             "Invalid validation pattern in form schema"
         );
+    }
+    #[test]
+    fn media_counts_bind_singular_and_plural_fields_and_an_empty_list_is_missing() {
+        let field = |kind: &str, extra: Value| {
+            let mut f = json!({"key":kind,"label":"Photo","type":kind});
+            f.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            f
+        };
+        let result = fields::evaluate(&json!({"fields":[
+            field("photo", json!({"required":true})),
+            field("photos", json!({"required":true})),
+            field("video", json!({"minCount":2})),
+            field("videos", json!({"maxCount":1})),
+            field("document", json!({"maxCount":1})),
+        ],"values":{"photo":[],"photos":[],"video":["a"],"videos":["a","b"],"document":"a"}}))
+        .unwrap();
+        assert_eq!(result["errors"]["photo"], "Photo is required");
+        assert_eq!(result["errors"]["photos"], "Photo is required");
+        assert_eq!(result["errors"]["video"], "At least 2 required");
+        assert_eq!(result["errors"]["videos"], "Maximum 1 allowed");
+        assert!(result["errors"]["document"].is_null());
     }
     #[test]
     fn a_bounded_update_can_carry_its_prior_entry_without_halving_the_entry_limit() {
