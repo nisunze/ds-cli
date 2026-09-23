@@ -1,8 +1,9 @@
 //! Cross-project design migration — ONE endpoint, `kind` transformer|dsgrid.
 //!
-//! The source project and the objects to move are the ONLY operands. The
-//! target is the caller's selected project; a migration that could also choose
-//! its destination would be two decisions behind one confirmation.
+//! Migration is stateless: the source project, the explicit destination the
+//! caller names (`project`), and the objects to move are the operands. The
+//! destination is never the saved selection, so one call means the same thing
+//! on every machine and in every session (owner ruling 2026-09-23).
 //!
 //! Plan and apply share one wire shape and one receipt shape, so a plan can be
 //! compared with the apply that followed it. The response is verified here
