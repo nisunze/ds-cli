@@ -112,10 +112,9 @@ pub fn drain(
         match result {
             Ok(run) => Ok(pass(inventory(session)?, run)),
             Err(error) => {
-                // A failed heartbeat/head read happens before a planned action.
-                // Keep that failure beside each queued row in the existing
-                // store, with the same held/retry semantics as Desktop
-                // work-grant errors.
+                // A failed heartbeat or head read happens before any
+                // publication is attempted. Each queued row stays held and
+                // carries that cause, so the reader sees why it did not move.
                 host.local(session.project())?;
                 for row in session.rows()?.iter().filter(|row| {
                     row.identity.engine == ds_sync_runtime::reports::ENGINE
@@ -123,7 +122,7 @@ pub fn drain(
                 }) {
                     host.record_receipt(
                         session.project(),
-                        &Receipt::new("open_grant", "failed")
+                        &Receipt::new("upload", "failed")
                             .about(&row.identity)
                             .detail(error.clone()),
                     )?;

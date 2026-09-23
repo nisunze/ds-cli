@@ -2,7 +2,7 @@
 //!
 //! The session owns the restored native provider, persistent installation UUID
 //! and signed install lease. Callers receive only `Gateway::post` over the
-//! three Sync Center routes; they never receive a bearer or HTTP handle.
+//! shared record's one route; they never receive a bearer or HTTP handle.
 
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,7 +16,7 @@ use ds_edge_authority::{
     AuthorityPins, AuthorityVerifier, ExpectedInstall, InstallLeaseCapability,
     VerifiedInstallStatus, VerifyInstallRequest, load_or_create_install_id,
 };
-use ds_sync_runtime::{Gateway, SyncRoute, TransferReceipt};
+use ds_sync_runtime::{Gateway, GatewayError, SyncRoute, TransferReceipt};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -533,11 +533,11 @@ impl NativeSyncSession {
         }
     }
 
-    fn execute(&self, request: NativeSyncRequest) -> Result<Value, String> {
+    fn execute(&self, request: NativeSyncRequest) -> Result<Value, GatewayError> {
         let mut state = self
             .state
             .lock()
-            .map_err(|_| "native Sync Center session is unavailable")?;
+            .map_err(|_| GatewayError::from("native Sync Center session is unavailable"))?;
         // Renew/verify the selected native provider before every operation.
         // Fail closed for revocation, principal drift, lane drift, or a
         // blocked install instead of relying on an old local lease.
@@ -545,29 +545,7 @@ impl NativeSyncSession {
         state
             .client
             .sync_gateway(&request, now())
-            .map_err(client_error)
-    }
-
-    /// A report grant is admitted with the engine release in its sealed
-    /// `work/open` declaration. Keep the registration heartbeat and that
-    /// exact request under one session lock, so a second report release cannot
-    /// replace the installation addition between admission and the call.
-    fn execute_reporter_work_open(
-        &self,
-        addition: NativeEngineAddition,
-        request: NativeSyncRequest,
-    ) -> Result<Value, String> {
-        validate_addition(&addition)?;
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| "native Sync Center session is unavailable")?;
-        state.addition = Some(addition);
-        self.heartbeat_locked(&mut state)?;
-        state
-            .client
-            .sync_gateway(&request, now())
-            .map_err(client_error)
+            .map_err(gateway_error)
     }
 
     fn execute_solar(&self, request: NativeSyncRequest) -> Result<Value, SolarPublicationError> {
@@ -581,66 +559,41 @@ impl NativeSyncSession {
             .map_err(classify_solar_error)
     }
 
-    fn post(&self, route: SyncRoute, body: &Value) -> Result<Value, String> {
-        match route {
-            SyncRoute::ComputeArtifacts => {
-                let request = NativeSyncRequest::for_project(
-                    SyncGatewayOperation::ComputeArtifacts,
-                    &self.project,
-                    body,
-                )
-                .map_err(client_error)?;
-                self.execute(request)
-            }
-            SyncRoute::WorkOpen => {
-                let addition = reporter_addition_for_work_open(body)?;
-                let request = NativeSyncRequest::for_project(
-                    SyncGatewayOperation::WorkOpen,
-                    &self.project,
-                    body,
-                )
-                .map_err(client_error)?;
-                self.execute_reporter_work_open(addition, request)
-            }
-            // A publish is authorized by the signed grant minted above. It
-            // never accepts a release from this untrusted declaration, so one
-            // report cannot steal another release's installation admission.
-            SyncRoute::WorkPublish => {
-                let request = NativeSyncRequest::work_publish(body).map_err(client_error)?;
-                self.execute(request)
-            }
+    /// One call on the shared record, fenced to this session's project. A
+    /// report publication's `open` and `finalize` take their own closed shape;
+    /// every other action is a read. The refusal keeps the route's status, so
+    /// the loop can tell a verdict on the publication from an outage.
+    fn post(&self, route: SyncRoute, body: &Value) -> Result<Value, GatewayError> {
+        let SyncRoute::ComputeArtifacts = route;
+        let request = match body.get("action").and_then(Value::as_str) {
+            Some("open" | "finalize") => NativeSyncRequest::report_publication(&self.project, body),
+            _ => NativeSyncRequest::for_project(
+                SyncGatewayOperation::ComputeArtifacts,
+                &self.project,
+                body,
+            ),
         }
+        .map_err(gateway_error)?;
+        self.execute(request)
     }
-}
-
-fn reporter_addition_for_work_open(body: &Value) -> Result<NativeEngineAddition, String> {
-    let object = body
-        .as_object()
-        .ok_or("native Sync Center report work declaration is invalid")?;
-    if object.get("engine").and_then(Value::as_str) != Some("ds-network-reporter") {
-        return Err("native Sync Center report work declaration is invalid".into());
-    }
-    let release = object
-        .get("engine_release")
-        .and_then(Value::as_str)
-        .ok_or("native Sync Center report work declaration is invalid")?;
-    let version = release
-        .strip_prefix("ds-network-reporter@")
-        .filter(|version| !version.is_empty())
-        .ok_or("native Sync Center report work declaration is invalid")?;
-    let addition = NativeEngineAddition {
-        name: "ds-network-reporter".into(),
-        version: version.into(),
-        release: release.into(),
-    };
-    validate_addition(&addition)
-        .map_err(|_| "native Sync Center report work declaration is invalid".to_string())?;
-    Ok(addition)
 }
 
 impl Gateway for NativeSyncSession {
-    fn post(&self, route: SyncRoute, body: &Value) -> Result<Value, String> {
+    fn post(&self, route: SyncRoute, body: &Value) -> Result<Value, GatewayError> {
         self.post(route, body)
+    }
+}
+
+/// A client error as the sync loop reads it: the route's status and code when
+/// it refused, so a verdict is never mistaken for an outage.
+fn gateway_error(error: ClientError) -> GatewayError {
+    let refusal = error
+        .service_refusal()
+        .map(|refusal| (refusal.status(), refusal.code().map(str::to_owned)));
+    let detail = client_error(error);
+    match refusal {
+        Some((status, code)) => GatewayError::refused(status, code, detail),
+        None => detail.into(),
     }
 }
 
@@ -809,31 +762,6 @@ mod tests {
         assert!(validate_addition(&addition).is_err());
         addition.name = "unregistered-engine".into();
         assert!(validate_addition(&addition).is_err());
-    }
-
-    #[test]
-    fn work_open_selects_only_its_exact_reporter_release() {
-        let release = "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567";
-        let body = serde_json::json!({
-            "ds_project": "project-a",
-            "engine": "ds-network-reporter",
-            "engine_release": release,
-        });
-        let addition = reporter_addition_for_work_open(&body).unwrap();
-        assert_eq!(addition.name, "ds-network-reporter");
-        assert_eq!(addition.release, release);
-        assert_eq!(
-            addition.version,
-            "0.1.0+0123456789abcdef0123456789abcdef01234567"
-        );
-
-        for invalid in [
-            serde_json::json!({"engine":"solar", "engine_release": release}),
-            serde_json::json!({"engine":"ds-network-reporter", "engine_release":"ds-network-reporter@0.1.0+wrong"}),
-            serde_json::json!({"engine":"ds-network-reporter"}),
-        ] {
-            assert!(reporter_addition_for_work_open(&invalid).is_err());
-        }
     }
 
     #[test]
