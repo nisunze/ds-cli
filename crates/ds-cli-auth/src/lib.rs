@@ -5998,6 +5998,72 @@ pub fn design_migration_for_project(
 }
 pub use ds_client_core::design_migration::Command as DesignMigrationCommand;
 
+/// The pipeline route refused a survey-data migration by its own rule.
+pub const SURVEY_MIGRATION_REFUSED_REFUSAL: Refusal = Refusal {
+    code: "migration_refused",
+    when: "the service refused: no access or no pipeline.migrate capability on either project, or an archived destination",
+    remedy: "read detail.service_message; it names the refusal",
+};
+/// The service answered, but not with a receipt for the mode that was asked.
+pub const SURVEY_MIGRATION_UNVERIFIED_REFUSAL: Refusal = Refusal {
+    code: "unverified_receipt",
+    when: "the receipt is not for the plan or apply that was asked for",
+    remedy: "re-run the plan; a receipt for the other mode is never reported as a success",
+};
+
+/// Survey-data migration: every entry of the command's source INTO the
+/// explicit destination `project`. Stateless, like design's: neither project
+/// is the saved selection. The door's two own outcomes cross under the codes
+/// `ds survey migrate` declares; everything else keeps the shared mapping.
+pub fn survey_migration_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &ds_client_core::survey_migration::Command,
+) -> Result<Value, Failure> {
+    let convert = |error: ds_client_core::ClientError| {
+        let message = error.to_string();
+        match error.service_refusal() {
+            // 401 is the credential, 5xx/429 a retry: the shared mapping says
+            // those. Anything else is the route's own rule.
+            Some(refusal)
+                if message == ds_client_core::survey_migration::REFUSED
+                    && error.kind() != ErrorKind::Transient
+                    && refusal.status() != 401 =>
+            {
+                let sentence = refusal.message().unwrap_or("no reason given");
+                Failure::failed(
+                    SURVEY_MIGRATION_REFUSED_REFUSAL.code,
+                    format!("{message} (HTTP {}): {sentence}", refusal.status()),
+                )
+                .detail(json!({
+                    "http_status": refusal.status(),
+                    "service_message": refusal.message(),
+                }))
+                .remedy(SURVEY_MIGRATION_REFUSED_REFUSAL.remedy)
+            }
+            None if message == ds_client_core::survey_migration::UNVERIFIED => {
+                Failure::failed(SURVEY_MIGRATION_UNVERIFIED_REFUSAL.code, message)
+                    .remedy(SURVEY_MIGRATION_UNVERIFIED_REFUSAL.remedy)
+            }
+            _ => map_client(error),
+        }
+    };
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    command.validate(&project).map_err(map_client)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.survey_migration(&project, command).map_err(convert);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .survey_migration(&project, command, now())
+        .map_err(convert)
+}
+pub use ds_client_core::survey_migration::Command as SurveyMigrationCommand;
+
 pub use ds_client_core::shared_assets::Command as SharedAssetsCommand;
 
 /// Shared product feedback is user scoped, independent of project selection.

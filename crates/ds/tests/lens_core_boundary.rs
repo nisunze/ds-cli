@@ -282,7 +282,9 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // The lens crate. Window commands are its purpose; its server commands
     // (the machine-local layer catalogue) are not counted here.
     // Profile view/set are display controls in the paired window.
-    ("ds-cli-map", 41),
+    // 41 → 39 on 2026-09-23: survey migrate plan/apply left for the headless
+    // `ds survey migrate` (both projects explicit).
+    ("ds-cli-map", 39),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
     // command headless (contract 01 of the dsgrid-authority program).
@@ -526,7 +528,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // `dsgrid.model.prepare-project` is headless; `dsgrid.profile.open` is
     // the one window command admitted on 2026-09-22.
     ("dsgrid", 1),
-    ("map", 41),
+    // 41 → 39 on 2026-09-23: survey migrate plan/apply run headless as
+    // `ds survey migrate`, both projects explicit.
+    ("map", 39),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
@@ -538,10 +542,11 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 /// domain cannot be quietly dropped from the ledger to hide its commands.
 /// 131 → 123 on 2026-09-20 (`pm`), 123 → 114 the same day (`assets`),
 /// 114 → 86 the same day (`design`), 86 → 85 the same day (`dsgrid`),
-/// then 85 → 88 on 2026-09-22 when three shipped Profile controls were admitted.
+/// then 85 → 88 on 2026-09-22 when three shipped Profile controls were admitted,
+/// and 88 → 86 on 2026-09-23 (survey migration, headless).
 // The 2026-09-22 audit admits three existing Profile window commands that
 // landed after the prior snapshot: dsgrid.profile.open and map.profile.view/set.
-const WINDOW_BACKLOG_TOTAL: u64 = 88;
+const WINDOW_BACKLOG_TOTAL: u64 = 86;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {

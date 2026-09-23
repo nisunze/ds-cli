@@ -6,7 +6,7 @@
 //! result, so a migrated city arrives able to be computed and holding nothing
 //! that was computed. The destination recomputes.
 //!
-//! This is not a general migration command. `ds map survey migrate` moves
+//! This is not a general migration command. `ds survey migrate` moves
 //! survey data and the design domain owns its own; an abstraction over all
 //! three would describe none of them.
 //!
@@ -94,8 +94,8 @@ const PROJECT_ARG: Arg = Arg::value(
 )
 .required();
 
-/// `--source-project`, as `ds design migrate` and `ds map survey migrate` name
-/// it, and as both services' receipts spell it (`source_project`).
+/// `--source-project`, as `ds design migrate` and `ds survey migrate` name it,
+/// and as every migration receipt spells it (`source_project`).
 const SOURCE_ARG: Arg = Arg::value(
     "source-project",
     "<project-id>",

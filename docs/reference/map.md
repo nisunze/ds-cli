@@ -93,9 +93,9 @@ refuses a room operation without a registered headless owner.
 | `map design layer-to-local` / `upload-to-local` | `design project read` + `map local register` |
 
 `map survey download` warms the window's survey cache (`survey entries select`
-is the headless read). `map survey migrate plan|apply` is the one governed
-operation here with no headless owner yet: a cloud-to-cloud survey migration
-that only the window's session calls today — deferred whole, see decision 18.
+is the headless read). Survey migration left the window on 2026-09-23: it is
+`survey migrate plan|apply`, headless, with `--source-project` and the
+destination `--project` both explicit (`migration.md`).
 
 ## Two tiers, and why they are not one
 
@@ -323,26 +323,6 @@ source has been confirmed. Available source inventories are bounded by
 `--limit` (20 by default) and report omitted counts; selected sources and
 effective settings are never truncated.
 
-## Survey migration is an API operation
-
-Survey migration does not manipulate the map or drive the UI. It calls the
-same governed `domains.network.report` migration API the application uses,
-under the signed-in desktop session:
-
-```bash
-ds map survey migrate plan --source-project arjgpydw_huye2 --output json
-ds map survey migrate apply --source-project arjgpydw_huye2 --yes --output json
-```
-
-The target is always the active project, never a caller-provided id. `plan`
-uses the API's real dry run. `apply` is `global_write` and is stopped by
-dispatch unless `--yes` is present. Both commands have one fixed policy: copy
-all survey data, preserve the source, and skip ids already present in the
-target. Form-template materialization, project settings and network
-relationships remain the migration API's responsibility. There are no
-caller-controlled delete/move, overwrite, filter, form, or alternate-target
-flags. The receipt returns only bounded counts, never survey rows.
-
 ## Survey Working Area materialization
 
 `ds map survey download --entire-project` applies the paired desktop's
@@ -358,9 +338,10 @@ the command switches that UI to the target before loading, preserving cached
 rooms under their project keys. Both providers must have the same UID, lane
 and credential audience. Background headless commands never switch the UI.
 
-This is distinct from `map survey migrate` above: migration copies governed
-survey records between projects, while download materializes the *active*
-project's records into its local desktop cache for map and WASM processing.
+This is distinct from `survey migrate` (`migration.md`): migration copies
+governed survey records between two named projects, while download
+materializes the *active* project's records into its local desktop cache for
+map and WASM processing.
 
 ## Explicit upload, cleaning, process and save batches
 

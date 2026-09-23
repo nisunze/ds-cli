@@ -850,7 +850,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
     assert_eq!(window["tier"], "requires");
     assert_eq!(window["requires"], "window");
     assert_eq!(window["domain"], "map");
-    assert_eq!(window["matched"], 41, "map's window commands");
+    assert_eq!(window["matched"], 39, "map's window commands");
     let ids: Vec<&str> = window["results"]
         .as_array()
         .expect("results")
@@ -863,7 +863,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
         "moving the camera is the window's own work: {ids:?}"
     );
     assert_eq!(window["more"]["shown"], 5);
-    assert_eq!(window["more"]["matched"], 41);
+    assert_eq!(window["more"]["matched"], 39);
 
     // Survey moved to the server. If a survey command ever needs the window
     // again, this is where it is noticed.
@@ -5162,6 +5162,89 @@ fn design_migrate_carries_both_design_kinds_on_one_verb_and_refuses_locally() {
     assert_eq!(same.envelope["error"]["code"], "same_project");
 }
 
+/// Survey-data migration is stateless and headless: `--source-project` INTO
+/// `--project`, both required, on a server with no window. The paired-Desktop
+/// command that took the destination from the window's active project is
+/// gone, and the local refusals answer before any credential is restored.
+#[test]
+fn survey_migrate_names_both_projects_and_needs_no_window() {
+    for (id, path, effect) in [
+        (
+            "survey.migrate.plan",
+            ["survey", "migrate", "plan"],
+            "read_only",
+        ),
+        (
+            "survey.migrate.apply",
+            ["survey", "migrate", "apply"],
+            "global_write",
+        ),
+    ] {
+        let command = &ok(&["capabilities", id, "--output", "json"])["command"];
+        assert_eq!(command["path"], serde_json::json!(path));
+        assert_eq!(command["effect"], effect, "{id}");
+        assert_eq!(command["authority"], "headless_project", "{id}");
+        assert_eq!(command["requires"], "server", "{id}");
+        assert_eq!(command["reference"], "docs/reference/migration.md", "{id}");
+        let inputs = command["inputs"].as_array().expect("inputs");
+        let names: BTreeSet<&str> = inputs
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect();
+        assert_eq!(
+            names,
+            BTreeSet::from(["source-project", "project", "lane"]),
+            "{id}"
+        );
+        for name in ["source-project", "project"] {
+            assert!(
+                inputs
+                    .iter()
+                    .any(|input| input["name"] == name && input["required"] == true),
+                "`{id}` must require --{name}"
+            );
+        }
+    }
+    for retired in ["map.survey.migrate.plan", "map.survey.migrate.apply"] {
+        assert_eq!(
+            refusal(&["capabilities", retired, "--output", "json"]),
+            "unknown_selector",
+            "{retired} survives beside its headless replacement"
+        );
+    }
+
+    let plan = |source: &str, destination: &str| {
+        native_refusal(&[
+            "survey",
+            "migrate",
+            "plan",
+            "--source-project",
+            source,
+            "--project",
+            destination,
+            "--output",
+            "json",
+        ])
+    };
+    assert_eq!(plan("source_one", "source_one"), "same_project");
+    assert_eq!(plan("source_one", "../target"), "invalid_project");
+    assert_eq!(
+        refusal(&[
+            "survey",
+            "migrate",
+            "apply",
+            "--source-project",
+            "source_one",
+            "--project",
+            "target_one",
+            "--output",
+            "json",
+        ]),
+        "confirmation_required",
+        "the copy writes, so it waits for --yes"
+    );
+}
+
 /// The headless Design read spine: `ds design status` answers from the native
 /// credential and the selected project, or it refuses in words. It never
 /// reaches for a browser, a map, a Desktop descriptor, or a project override.
@@ -5922,8 +6005,6 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.outliers",
         "map.line-difference",
         "map.survey.download",
-        "map.survey.migrate.plan",
-        "map.survey.migrate.apply",
         "map.design.open",
         "map.design.read",
         "map.design.discard",

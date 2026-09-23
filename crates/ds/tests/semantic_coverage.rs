@@ -663,8 +663,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.random-points", "local_ui", "desktop_pairing"),
     ("map.remove", "local_ui", "desktop_pairing"),
     ("map.survey.download", "local_ui", "project"),
-    ("map.survey.migrate.apply", "global_write", "project"),
-    ("map.survey.migrate.plan", "read_only", "project"),
     ("map.ui.open", "local_ui", "desktop_pairing"),
     ("map.view", "read_only", "desktop_pairing"),
     ("map.camera.set", "local_ui", "desktop_pairing"),
@@ -921,6 +919,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("survey.entries.create", "global_write", "headless_project"),
     ("survey.entries.import", "global_write", "headless_project"),
+    // Stateless project-to-project copy: both projects are explicit operands.
+    ("survey.migrate.apply", "global_write", "headless_project"),
+    ("survey.migrate.plan", "read_only", "headless_project"),
     ("survey.template.apply", "global_write", "headless_project"),
     ("survey.template.create", "global_write", "headless_project"),
     ("survey.template.lifecycle", "global_write", "headless_user"),

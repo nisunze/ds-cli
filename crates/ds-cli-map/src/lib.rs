@@ -84,8 +84,6 @@ pub static DOMAIN: Domain = Domain {
         &outliers::COMMAND,
         &line_difference::COMMAND,
         &survey::download::COMMAND,
-        &survey::plan::COMMAND,
-        &survey::apply::COMMAND,
         &design::open::COMMAND,
         &design::read::COMMAND,
         &design::discard::COMMAND,
@@ -363,14 +361,6 @@ pub const DESIGN_UPLOAD_STAGE_BATCH: BridgeOp = BridgeOp {
         "replaceLocal",
     ],
 };
-pub const SURVEY_MIGRATE_PLAN: BridgeOp = BridgeOp {
-    operation: "survey.migrate.plan",
-    arguments: &["sourceProject"],
-};
-pub const SURVEY_MIGRATE_APPLY: BridgeOp = BridgeOp {
-    operation: "survey.migrate.apply",
-    arguments: &["sourceProject"],
-};
 pub const SURVEY_WORKING_AREA_DOWNLOAD: BridgeOp = BridgeOp {
     operation: "survey.working_area.download",
     arguments: &["entireProject"],
@@ -417,8 +407,6 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &DESIGN_ATTACH_PRINT,
     &DESIGN_UPLOAD_INSPECT,
     &DESIGN_UPLOAD_STAGE_BATCH,
-    &SURVEY_MIGRATE_PLAN,
-    &SURVEY_MIGRATE_APPLY,
     &SURVEY_WORKING_AREA_DOWNLOAD,
 ];
 
@@ -548,9 +536,6 @@ pub const DESIGN_STAGE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// purpose: `ds` gives up first, with a typed refusal naming the operation,
 /// rather than waiting for the bridge's bare gateway timeout.
 pub const DESIGN_PROCESS_TIMEOUT: Duration = Duration::from_secs(30 * 60);
-/// The survey migration API has a ten-minute server timeout. Give the
-/// frontend enough time to invalidate affected local caches before answering.
-pub const SURVEY_MIGRATION_TIMEOUT: Duration = Duration::from_secs(11 * 60);
 /// A full-project Working Area refresh walks every survey form sequentially.
 pub const SURVEY_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 

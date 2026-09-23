@@ -936,6 +936,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, design_migration, project, command)
     }
+    pub fn survey_migration(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::survey_migration::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, survey_migration, project, command)
+    }
     pub fn report_artifact(
         &mut self,
         project: &str,

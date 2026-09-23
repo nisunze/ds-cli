@@ -968,22 +968,47 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .expect("survey-migration tools");
     assert_eq!(
         migration.len(),
-        3,
-        "catalog and diagnostics plus bounded import; native Survey workspace is retired"
+        5,
+        "catalog and diagnostics plus bounded import and the project-to-project \
+         plan/apply; native Survey workspace is retired"
     );
     assert_eq!(migration[0]["name"], "ds_catalog");
     assert_eq!(migration[1]["name"], "ds_diagnostics");
-    assert_eq!(migration[2]["name"], "survey_entries_import");
-    assert_eq!(migration[2]["title"], "survey.entries.import");
+    let tool = |name: &str| {
+        migration
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap_or_else(|| panic!("survey-migration publishes {name}"))
+    };
+    let import = tool("survey_entries_import");
+    assert_eq!(import["title"], "survey.entries.import");
     assert_eq!(
-        migration[2]["inputSchema"]["properties"]["confirm"]["type"],
+        import["inputSchema"]["properties"]["confirm"]["type"],
         "boolean"
     );
-    assert!(
-        migration[2]["inputSchema"]["properties"]
-            .get("project")
-            .is_none()
-    );
+    assert!(import["inputSchema"]["properties"].get("project").is_none());
+    // Migration is stateless: both projects are required operands of both
+    // steps, and only the apply writes.
+    for (name, writes) in [
+        ("survey_migrate_plan", false),
+        ("survey_migrate_apply", true),
+    ] {
+        let step = tool(name);
+        let required = step["inputSchema"]["required"]
+            .as_array()
+            .expect("required inputs");
+        for input in ["source-project", "project"] {
+            assert!(
+                required.iter().any(|entry| entry == input),
+                "{name} requires --{input}"
+            );
+        }
+        assert_eq!(
+            step["inputSchema"]["properties"].get("confirm").is_some(),
+            writes,
+            "{name}"
+        );
+    }
     let creation = survey_projects
         .iter()
         .find(|tool| tool["name"] == "survey_project_create-from-template")

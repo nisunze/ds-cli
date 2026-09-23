@@ -1111,16 +1111,6 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::survey::download::render,
     },
     Entry {
-        command: &ds_cli_map::survey::plan::COMMAND,
-        handler: ds_cli_map::survey::plan::run,
-        render: ds_cli_map::survey::plan::render,
-    },
-    Entry {
-        command: &ds_cli_map::survey::apply::COMMAND,
-        handler: ds_cli_map::survey::apply::run,
-        render: ds_cli_map::survey::apply::render,
-    },
-    Entry {
         command: &ds_cli_map::design::open::COMMAND,
         handler: ds_cli_map::design::open::run,
         render: ds_cli_map::design::open::render,
@@ -1352,6 +1342,16 @@ static SURVEY_ENTRIES: &[Entry] = &[
         command: &ds_cli_survey::import::COMMAND,
         handler: ds_cli_survey::import::run,
         render: ds_cli_survey::import::render,
+    },
+    Entry {
+        command: &ds_cli_survey::migrate::plan::COMMAND,
+        handler: ds_cli_survey::migrate::plan::run,
+        render: ds_cli_survey::migrate::plan::render,
+    },
+    Entry {
+        command: &ds_cli_survey::migrate::apply::COMMAND,
+        handler: ds_cli_survey::migrate::apply::run,
+        render: ds_cli_survey::migrate::apply::render,
     },
     Entry {
         command: &ds_cli_survey::templates::LIST_COMMAND,

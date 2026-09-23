@@ -446,9 +446,11 @@ from a cached form, or make template management conditional on an unavailable
 form.
 
 Commands under `ds map` remain reserved for operations that genuinely consume
-map-owned local state, such as Working Area transfer or survey-data migration.
-Form Factory, project-form settings, project templates, and project creation
-are API control-plane operations and stay usable with no map open.
+map-owned local state, such as the Working Area transfer. Form Factory,
+project-form settings, project templates, project creation and survey-data
+migration between two named projects (`ds survey migrate`, see
+`migration.md`) are API control-plane operations and stay usable with no map
+open.
 
 ### Survey moments and the one rotation
 

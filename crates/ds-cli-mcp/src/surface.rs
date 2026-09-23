@@ -637,8 +637,6 @@ const SURVEY_MAP_COMMANDS: &[&str] = &[
     "map.outliers",
     "map.line-difference",
     "map.survey.download",
-    "map.survey.migrate.plan",
-    "map.survey.migrate.apply",
 ];
 
 const LAYER_COMMANDS: &[&str] = &[
@@ -705,8 +703,13 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.project.create-from-template",
 ];
 
-// Canonical NDJSON import is the supported Survey migration workflow.
-const SURVEY_MIGRATION_COMMANDS: &[&str] = &["survey.entries.import"];
+// Getting survey data into a project: canonical NDJSON import, or a
+// project-to-project copy planned then applied (both projects explicit).
+const SURVEY_MIGRATION_COMMANDS: &[&str] = &[
+    "survey.entries.import",
+    "survey.migrate.plan",
+    "survey.migrate.apply",
+];
 
 const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "design.features.select",

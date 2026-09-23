@@ -1,25 +1,27 @@
-# `ds design migrate` and `ds solar migrate` — one vocabulary
+# `ds design migrate`, `ds solar migrate` and `ds survey migrate` — one vocabulary
 
-Tier-4 reference for both migration verbs. Each command's `--help` is its
-contract; this document is what is true of both.
+Tier-4 reference for the migration verbs. Each command's `--help` is its
+contract; this document is what is true of all of them.
 
-They are two verbs in two domains on two endpoints (ds-brain `POST
-/api/v1/data action=migrate_design`, and `POST /api/v1/solar
-action=migrate_plan|migrate_apply`). Kinds stay inside their own domain —
-`transformer|dsgrid` for design, `city|portfolio` for Solar — and there is no
-cross-domain migration registry. What they share is how they **speak**, so an
-operator or agent who learned one drives the other (feedback fb90a0a5).
+They are verbs in their own domains on their own endpoints (ds-brain `POST
+/api/v1/data action=migrate_design`, `POST /api/v1/solar
+action=migrate_plan|migrate_apply`, and `POST /api/v1/pipeline
+action=migrate` for survey data). Kinds stay inside their own domain —
+`transformer|dsgrid` for design, `city|portfolio` for Solar, none for survey
+data, which copies everything — and there is no cross-domain migration
+registry. What they share is how they **speak**, so an operator or agent who
+learned one drives the others (feedback fb90a0a5).
 
 ## Arguments
 
-| Concept | Name, both verbs | Design | Solar |
-|---|---|---|---|
-| where the objects come from | `--source-project <project-id>` | required | required |
-| where they go | `--project <project-id>` | required | required |
-| which object type | `--kind` | required, `transformer` or `dsgrid`, no default | required, `city` or `portfolio`, no default |
-| which objects | `--item <name>`, repeated, one object each | 1–200, required | 0–64; omitted means every source object of the kind |
-| may an existing target change | `--overwrite` | switch | switch |
-| deployment lane | `--lane` | `stable` default | `stable` default |
+| Concept | Name, every verb | Design | Solar | Survey |
+|---|---|---|---|---|
+| where the objects come from | `--source-project <project-id>` | required | required | required |
+| where they go | `--project <project-id>` | required | required | required |
+| which object type | `--kind` | required, `transformer` or `dsgrid`, no default | required, `city` or `portfolio`, no default | — (every entry) |
+| which objects | `--item <name>`, repeated, one object each | 1–200, required | 0–64; omitted means every source object of the kind | — (every entry) |
+| may an existing target change | `--overwrite` | switch | switch | — (never) |
+| deployment lane | `--lane` | `stable` default | `stable` default | `stable` default |
 
 An `--item` is never split, so a name holding a comma is still one name. The
 kind decides what an item names: a transformer name or DS Grid model id; a
@@ -48,6 +50,28 @@ Domain evidence follows the shared fields. Design adds `collision_policy`,
 `documents_written`, `idempotent` and `computation_results_migrated` (always
 `false`); ds-brain's plan travels verbatim under `plan`, because that is the
 document the digest binds.
+
+### Survey data
+
+Survey migration names no objects, so its receipt carries the "what was asked"
+fields (`lane`, `project.ds_project`, `source_project`, `mode`) and then the
+service's own totals, shaped once by the kernel
+(`ds_command_kernel::survey::migration_receipt`):
+
+| Field | Meaning |
+|---|---|
+| `total_matched`, `total_migrated`, `total_skipped` | entries found, copied (or copyable, in a plan), skipped |
+| `skip_reasons` | why entries were skipped; `existing` is an entry id the destination already holds |
+| `total_target_written`, `total_source_deleted` | what the apply wrote; deletion is never requested |
+| `per_form` | entries per form |
+| `more` | rows beyond the first 100 of `per_form` or `skip_reasons`, counted |
+| `source_preserved` | read from the service's deletion count, not asserted |
+| `overwrite_existing` | always `false` |
+
+The request is exactly `{"action":"migrate","eds_project_id":<source>,
+"target_project_id":<destination>,"dry_run":<plan>}`: the service's deletion,
+overwrite and filter keys are never sent. A zero is explained by the counts —
+nothing matched, or every entry was skipped for the reasons listed.
 
 ### Outcome words
 
@@ -105,10 +129,16 @@ The numbers differ because the write paths differ. Changing either number
 changes what one request can do, which is an owner decision rather than a
 vocabulary one.
 
+Survey data has no selection to bound: one request copies the whole source,
+and the pipeline route's 600-second deadline is its limit.
+
 ## Deliberately different (owner rulings)
 
 * Solar's apply is fenced by the plan's `migrate_digest` and refuses drift with
-  `409`; design has no plan→apply digest fence.
+  `409`; design and survey have no plan→apply digest fence.
 * Design refuses a **plan** on an archived target; Solar treats a plan as a
   read.
-* Each domain keeps its own kinds.
+* Each domain keeps its own kinds. Survey data has none: it copies every
+  entry, never deletes the source and never overwrites a destination entry;
+  a filter, a move or an overwrite would be a new reviewed contract, not a
+  flag.

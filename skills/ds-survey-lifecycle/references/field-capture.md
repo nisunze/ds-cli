@@ -44,7 +44,8 @@ For an already prepared online document, use the existing governed
 `survey.entries.create` operation. Canonical NDJSON migration uses
 `survey.entries.import` with its retained checkpoint and receipt. Read the live
 contract for the operation needed; import is not a CSV/Survey123 parser.
-Project-to-project map migration is a separate explicit copy workflow.
+Project-to-project copy is `survey.migrate.plan` then `survey.migrate.apply`,
+with the source and destination projects both named on every call.
 
 If the user has files from the retired native workspace, preserve them. Removal
 of the command does not delete or publish those files. Treat recovery as a

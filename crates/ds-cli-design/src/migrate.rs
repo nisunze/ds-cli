@@ -8,7 +8,7 @@
 //! domain — a design authored in a project — so migrating either is the same
 //! command with a different kind, not a second family. This is deliberately
 //! NOT a general migration verb: survey data has its own endpoint
-//! (`ds map survey migrate`) and Solar has its own.
+//! (`ds survey migrate`) and Solar has its own.
 //!
 //! It SPEAKS as `ds solar migrate` speaks without being merged with it:
 //! `--source-project`, a required `--kind`, repeated `--item`, and one receipt
@@ -108,7 +108,7 @@ const SAME_PROJECT: Refusal = Refusal {
 const UNKNOWN_KIND: Refusal = Refusal {
     code: "unknown_kind",
     when: "--kind is neither transformer nor dsgrid",
-    remedy: "this is the DESIGN migration; survey data uses `ds map survey migrate` and Solar has its own",
+    remedy: "this is the DESIGN migration; survey data uses `ds survey migrate` and Solar has its own",
 };
 
 /// The bound's basis is the owner's write path, stated once for both domains
@@ -349,12 +349,12 @@ reason is not reported as a success. The reference explains each kind.",
         output: "The shared migration receipt (see reference): per-object outcomes, totals, empty_state and warnings; plus collision policy and bytes.",
         examples: &[
             Example {
-                command: "ds design migrate plan --source-project arjgpydw_aderm --kind transformer --item TX-1 --item TX-2 --output json",
+                command: "ds design migrate plan --source-project arjgpydw_aderm --project <destination-id> --kind transformer --item TX-1 --item TX-2 --output json",
                 note: "Writes nothing.",
                 runnable: false,
             },
             Example {
-                command: "ds design migrate plan --source-project arjgpydw_aderm --kind dsgrid --item huye_mv",
+                command: "ds design migrate plan --source-project arjgpydw_aderm --project <destination-id> --kind dsgrid --item huye_mv",
                 note: "An MV model is the same domain under another kind.",
                 runnable: false,
             },
@@ -410,7 +410,7 @@ what was rewritten or dropped is stated per object.",
         ],
         output: "The same receipt the plan returns, with the committed per-object outcomes.",
         examples: &[Example {
-            command: "ds design migrate apply --source-project arjgpydw_aderm --kind transformer --item TX-1 --item TX-2 --yes --output json",
+            command: "ds design migrate apply --source-project arjgpydw_aderm --project <destination-id> --kind transformer --item TX-1 --item TX-2 --yes --output json",
             note: "Migrate only after reviewing the plan receipt.",
             runnable: false,
         }],
