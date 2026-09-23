@@ -755,14 +755,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "artifact_write",
         "headless_project",
     ),
-    // The retired spelling, kept as a deprecated alias for one release. It
-    // shares the Combined Report's exact effect/authority because it IS that
-    // command; a divergence here would mean the alias had become a fork.
-    (
-        "report.project.compounded",
-        "artifact_write",
-        "headless_project",
-    ),
     (
         "report.project.archives",
         "local_auth_state",

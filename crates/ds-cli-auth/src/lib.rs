@@ -3037,7 +3037,7 @@ fn headless_project_report<T>(
     })
 }
 
-/// Request one compounded report deliverable for only the saved,
+/// Request one Combined Report for only the saved,
 /// audience-fenced selected project. ds-brain owns scope, freshness,
 /// composition, and publication.
 pub fn compounded_report(
@@ -3066,7 +3066,7 @@ pub fn export_reports(
     )
 }
 
-/// List the published compounded archives of only the saved,
+/// List the published Combined Report archives of only the saved,
 /// audience-fenced selected project.
 pub fn compounded_report_list(
     lane_value: &str,
@@ -4787,7 +4787,7 @@ fn now() -> u64 {
 ///
 /// The route is the only place these causes exist, and the status code cannot
 /// separate them: `409` carries two unrelated causes and `424` is the one a
-/// whole compounded run ends on. Before this they all reached the caller as
+/// whole combined run ends on. Before this they all reached the caller as
 /// `auth_input_invalid` with no detail and no remedy, so a blocked reporting
 /// session was unreadable from the headless lane while the desktop lane showed
 /// the cause plainly.

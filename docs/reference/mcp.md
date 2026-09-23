@@ -64,7 +64,7 @@ project ordering and desktop-local remote overlays; `tiling` owns governed
 tile generation and catalogue membership; `project-operations` owns
 map-independent background work — paired local-room materialization plus
 headless transformer inventory, reversible retirement/restoration, and the
-compounded report deliverable. Room materialization uses the paired visible
+Combined Report deliverable. Room materialization uses the paired visible
 project because the application owns the cache, but never opens a map or edit
 context; the remaining commands use the CLI-selected project. Each includes `ds_catalog`,
 `ds_diagnostics`, and a bounded leaf set. `survey-migration` deliberately

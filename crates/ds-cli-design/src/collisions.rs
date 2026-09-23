@@ -4,7 +4,7 @@
 //! clashing identity, and a combined report cannot be produced while one
 //! stands. Until now no `ds` command modelled one — the crate's own test said
 //! so, and asserted the word "collision" was ABSENT from a refusal, which
-//! pinned the gap in place. An operator whose compounded run was going to fail
+//! pinned the gap in place. An operator whose combined run was going to fail
 //! had no way to be told why without opening the application.
 //!
 //! Detection itself is a governed report action the cloud reporter serves from
@@ -58,7 +58,7 @@ detection run would cover.",
         },
         Example {
             command: "ds design collisions",
-            note: "Read before `ds report project compounded`: a collision blocks it.",
+            note: "Read before `ds report project combined`: a collision blocks it.",
             runnable: false,
         },
     ],

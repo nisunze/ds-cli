@@ -1,6 +1,6 @@
-# Compounded drawing delivery
+# Combined drawing delivery
 
-Discover the governed compounded report command for sector or project delivery.
+Discover the governed Combined Report command for sector or project delivery.
 Verify its multipage A0 and A3 collections against the member inventory: page
 count, source order, paper sizes and complete-project sheet numbering.
 

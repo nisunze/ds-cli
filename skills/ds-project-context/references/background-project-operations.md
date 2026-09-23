@@ -1,7 +1,7 @@
 # Background project operations
 
 Use this workflow when the user wants project-wide work done without opening a
-map or entering a transformer room: the compounded report deliverable, or
+map or entering a transformer room: the Combined Report, or
 reversible transformer retirement. Every command here declares
 `authority: headless_project` and uses the CLI-selected project. Never switch
 that context merely to make a refusal disappear. (There is no cache to
@@ -29,7 +29,7 @@ prepare: the native report path reads rooms from the service, and the former
 5. Plan the deliverable: `ds report project scope --output json` shows the
    exact participating set and every excluded name with its state. Report
    `compounded_ready` and the exclusions to the user before generating.
-6. Publish: `ds report project compounded [--transformer …] --file-level
+6. Publish: `ds report project combined [--transformer …] --file-level
    <transformer|sector|district|root> [--combine-per-group] [--force]
    --yes --output json`. The call blocks until the service answers (up to
    ten minutes). Return `status`, `prefix`, the archive locators, individual
@@ -39,8 +39,8 @@ prepare: the native report path reads rooms from the service, and the former
 7. Hand over: `ds report project archives --output json` lists the registry
    newest first; `download_url` is a short-lived signed link when present.
 
-Do not loop single-transformer report commands and then request a compounded
+Do not loop single-transformer report commands and then request a Combined Report
 archive; the service reuses fresh individual artifacts itself. Do not mix the
 paired and headless contexts in one delivery: the paired
-`map design batch report` and the headless `report project compounded` produce
+`map design batch report` and the headless `report project combined` produce
 the same deliverable from their own project context.

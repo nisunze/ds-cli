@@ -5,8 +5,9 @@
 //! had two names — the governed service already titled it "Combined Report"
 //! for humans while every id, receipt key and help screen said "compounded" —
 //! and an operator cannot ask a question about a thing whose name changes
-//! between the screen and the command line. [`super::compounded`] keeps the
-//! old id working, deprecated, for one release.
+//! between the screen and the command line. The old id worked, deprecated,
+//! for one release (stable 487c432 and canary 5318beb both carried it) and is
+//! gone; `compounded` stays a search word so an agent using it lands here.
 //!
 //! The other change is that this command REFUSES.
 //!
@@ -98,18 +99,7 @@ pub static COMMAND: Command = Command {
     availability: ds_cli_auth::native_availability,
 };
 
-pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-    execute(inputs, context, None)
-}
-
-/// The one implementation both ids run. `deprecated_alias` is the old command
-/// id when this was reached through [`super::compounded`], so the receipt says
-/// so instead of leaving a script to discover the rename at removal time.
-pub(super) fn execute(
-    inputs: &Inputs,
-    _context: &Context,
-    deprecated_alias: Option<&'static str>,
-) -> Result<Value, Failure> {
+pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformers = super::transformer_set(inputs)?;
     let file_level = ReportFileLevel::parse(inputs.require("file-level")?)
         .expect("the command parser enforces the file-level choices");
@@ -153,9 +143,6 @@ pub(super) fn execute(
         .as_object_mut()
         .expect("receipt is an object")
         .extend(fields.as_object().expect("fields are an object").clone());
-    if let Some(alias) = deprecated_alias {
-        output["deprecated"] = deprecation_notice(alias);
-    }
 
     // The receipt is read for what it does NOT contain. A published archive
     // with missing rooms is not a Combined Report an operator may hand over;
@@ -164,16 +151,6 @@ pub(super) fn execute(
         return Err(failure);
     }
     Ok(output)
-}
-
-/// What a caller sees when it reached this through the retired id.
-pub(super) fn deprecation_notice(alias: &'static str) -> Value {
-    json!({
-        "command": alias,
-        "superseded_by": COMMAND.id,
-        "note": "`compounded` is the previous name for the Combined Report. \
-    This id keeps working for one release; move scripts to `ds report project combined`.",
-    })
 }
 
 /// Turn the service's per-room causes into the kernel's readiness question.
@@ -304,12 +281,6 @@ pub(super) fn archive_layout(file_level: &str, combine_per_group: bool) -> Value
 
 pub fn render(data: &Value) -> String {
     let mut out = String::new();
-    if let Some(alias) = data["deprecated"]["command"].as_str() {
-        out.push_str(&format!(
-            "`{alias}` is deprecated; use `{}`\n",
-            COMMAND.path.join(" ")
-        ));
-    }
     out.push_str(&format!(
         "project {} ({}) · {} · {} · Combined Report {} · {} individual artifact(s), {} missing\n",
         data["project"]["project_name"].as_str().unwrap_or("?"),
@@ -492,9 +463,8 @@ mod tests {
 
     /// The refusal a reader sees first is the one line the render prints.
     #[test]
-    fn the_render_says_combined_report_and_flags_the_retired_id() {
+    fn the_render_says_combined_report_and_never_the_retired_name() {
         let data = json!({
-            "deprecated": deprecation_notice("report.project.compounded"),
             "project": {"project_name": "p", "ds_project": "p1"},
             "lane": "stable", "status": "success", "prefix": "run-1",
             "individual_artifact_transformer_count": 2,
@@ -502,7 +472,6 @@ mod tests {
         });
         let rendered = render(&data);
         assert!(rendered.contains("Combined Report"), "{rendered}");
-        assert!(rendered.contains("is deprecated"), "{rendered}");
-        assert!(rendered.contains("report project combined"), "{rendered}");
+        assert!(!rendered.to_lowercase().contains("compounded"), "{rendered}");
     }
 }

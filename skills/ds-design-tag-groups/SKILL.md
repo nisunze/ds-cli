@@ -143,7 +143,7 @@ ds design consumer-grouping archive --purpose report_archive --yes
 ```
 
 - **`--purpose` is a closed set.** `solar_report` binds each group to a governed
-  Solar city id; `report_archive` binds nothing and is what a compounded
+  Solar city id; `report_archive` binds nothing and is what a Combined Report
   archive's folders follow. Nothing else is a purpose.
 - **Order is identity.** `--definition-ids city,phase` and `phase,city` are
   different plans with different digests. Pass the order the user asked.
@@ -155,7 +155,7 @@ ds design consumer-grouping archive --purpose report_archive --yes
   UI, CLI, report receipt and archive manifest state the same numbers because
   exactly one authority decides them.
 - Solar seeding/reporting consumes the applied `solar_report` plan. A combined
-  or compounded report archive consumes the applied `report_archive` plan and
+  or Combined Report archive consumes the applied `report_archive` plan and
   the exact digest-pinned tag document for the same transformer inventory.
   Refuse publication when either projection coverage or its digest is stale;
   never regroup from administrative columns inside transformer data.

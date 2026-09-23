@@ -28,7 +28,7 @@ does.",
     output: "The stored plan: purpose, definition_ids, groups, counts, plan_digest, revision, lifecycle.",
     examples: &[Example {
         command: "ds design consumer-grouping read --purpose report_archive --output json",
-        note: "This is the grouping a compounded archive files its folders by.",
+        note: "This is the grouping a Combined Report archive files its folders by.",
         runnable: false,
     }],
     refusals: &crate::headless_refusals!(crate::NOT_PERMITTED,),

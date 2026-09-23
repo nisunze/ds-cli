@@ -1017,7 +1017,7 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
         fixed_device_call!(self, compounded_report_list, project)
     }
     /// The cloud individual-report computation: server-side like the
-    /// compounded deliverable, admitted under the same device credential.
+    /// Combined Report, admitted under the same device credential.
     pub fn export_reports(
         &mut self,
         project: &str,

@@ -25,7 +25,7 @@ Uploads one operator-reviewed cartographic output and attaches its immutable \
 digest, LV-atlas/MV-map/custom-map family, layout, paper size, orientation and page role to an individual \
 transformer or the combined report. Repeat the command for multiple paper \
 sizes or image variants. It never renders a page and never enters report \
-compute. A later compounded report includes individual pages beside each \
+compute. A later Combined Report includes individual pages beside each \
 transformer's files and combined atlas/joined pages at archive root.",
     chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
@@ -91,7 +91,7 @@ transformer's files and combined atlas/joined pages at archive root.",
         },
         Example {
             command: "ds map design attach-print --path '/deliverables/project-mv-A1.pdf' --scope combined --map-family mv-map --layout 'Project MV A1' --paper-size A1 --orientation landscape --page-role joined --yes --output json",
-            note: "Attach a multipage MV PDF that compounded archives place at top level.",
+            note: "Attach a multipage MV PDF that Combined Report archives place at top level.",
             runnable: false,
         },
     ],

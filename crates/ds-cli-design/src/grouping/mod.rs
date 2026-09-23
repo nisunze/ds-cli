@@ -13,7 +13,7 @@
 //!   A tag tuple is not a Solar city, so the binding is explicit and refused
 //!   when missing.
 //! * `report_archive` binds nothing. It is the folder and section authority for
-//!   combined and compounded reports, which used to group privately on a Rwanda
+//!   Combined Reports, which used to group privately on a Rwanda
 //!   administrative column.
 //!
 //! The ORDER of `--definition-ids` is identity: `city,phase` and `phase,city`

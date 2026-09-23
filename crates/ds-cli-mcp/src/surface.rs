@@ -746,9 +746,6 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "report.project.settings",
     "report.project.outputs.set",
     "report.project.combined",
-    // The retired id, reachable for one release so an agent holding the old
-    // name still finds the Combined Report.
-    "report.project.compounded",
     "report.project.archives",
     "report.project.export",
     // The cloud twin of `export`: the same individual report, computed and
@@ -1663,7 +1660,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Prepare, run, inspect, publish, and export Solar work. Describe a command before invoking it."
         }
         Chapter::Reports => {
-            "Discover report tasks, export or bundle verified report artifacts, and produce the selected project's compounded deliverable in the background. Describe a command before invoking it."
+            "Discover report tasks, export or bundle verified report artifacts, and publish the selected project's Combined Report in the background. Describe a command before invoking it."
         }
         Chapter::Operations => {
             "Inspect platform health, manage shell reachability, and report product gaps. Describe a command before invoking it."

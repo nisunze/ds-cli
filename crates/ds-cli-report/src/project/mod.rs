@@ -1,4 +1,4 @@
-//! `ds report project` — the project's compounded deliverable, produced by
+//! `ds report project` — the project's Combined Report, produced by
 //! the governed report service in the background.
 //!
 //! These commands need no map, no room, no Desktop and no local reporter
@@ -11,7 +11,7 @@
 //! replays those phases and never holds a token.
 //!
 //! ```text
-//!   scope → compounded → archives
+//!   scope → combined → archives
 //!   scope → compute            (individual reports, computed in the cloud)
 //! ```
 //!
@@ -22,7 +22,6 @@
 
 pub mod archives;
 pub mod combined;
-pub mod compounded;
 pub mod compute;
 pub mod export;
 pub mod map_inputs;
@@ -327,7 +326,7 @@ pub fn transformer_set(inputs: &ds_cli_contract::Inputs) -> Result<TransformerSe
         Failure::invalid("invalid_transformer_scope", error.to_string())
             .remedy(INVALID_SCOPE.remedy)
     })?;
-    // The reserved identities are what a compounded run produces, not who it
+    // The reserved identities are what a combined run produces, not who it
     // runs over. The offline lane already refuses them, so the same kernel
     // predicate answers here and the plan cannot admit a participant the
     // publish would have to invent. Both the name as given and its canonical
@@ -364,7 +363,7 @@ pub fn project_receipt<T>(headless: &HeadlessProjectReport<T>) -> Value {
     })
 }
 
-/// The exact scope a compounded run would use, derived from the lifecycle
+/// The exact scope a combined run would use, derived from the lifecycle
 /// inventory: active ordinary transformers participate; retired, deleted and
 /// missing names are excluded with their state, and `mv_data` is reported as
 /// the project-level input the service folds in on its own.
@@ -404,7 +403,7 @@ pub fn scope_json(requested: &TransformerSet, inventory: &TransformerInventory) 
     })
 }
 
-/// How a compounded archive is laid out, in the report layer's own vocabulary.
+/// How a Combined Report archive is laid out, in the report layer's own vocabulary.
 ///
 /// Two spellings describe one choice — `file_level` is current and
 /// `transformer_grouping` is the legacy twin older archives were written with —
@@ -469,7 +468,7 @@ mod tests {
         );
     }
 
-    /// Both lanes carry it, so `scope`, `compounded` and `archives` all state
+    /// Both lanes carry it, so `scope`, `combined` and `archives` all state
     /// the same prerequisite.
     #[test]
     fn auth_input_reaches_every_report_project_help_screen() {

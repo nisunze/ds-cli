@@ -4599,19 +4599,6 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
                 "transformer",
             ]),
         ),
-        // The retired id takes the SAME flags. An alias whose flags drifted
-        // would be a second command wearing the old name.
-        (
-            "report.project.compounded",
-            "artifact_write",
-            BTreeSet::from([
-                "combine-per-group",
-                "file-level",
-                "force",
-                "lane",
-                "transformer",
-            ]),
-        ),
         // The cloud twin of `report.project.export`: the same three inputs
         // as the Combined Report's scope — the names, the lane, and the
         // framework's `--yes` — and not one option more.
@@ -4760,20 +4747,6 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             headless(&[
                 "report",
                 "project",
-                "compounded",
-                "--transformer",
-                reserved,
-                "--yes",
-                "--output",
-                "json"
-            ]),
-            "reserved_transformer_identity",
-            "`compounded --transformer {reserved}` must refuse locally"
-        );
-        assert_eq!(
-            headless(&[
-                "report",
-                "project",
                 "compute",
                 "--transformer",
                 reserved,
@@ -4848,10 +4821,6 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             "--output",
             "json"
         ]),
-        "confirmation_required"
-    );
-    assert_eq!(
-        refusal(&["report", "project", "compounded", "--output", "json"]),
         "confirmation_required"
     );
 }

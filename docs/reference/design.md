@@ -211,7 +211,7 @@ ds design status --project <id> --findings --output json | jq -r '.data.findings
 ```
 
 Two different bounds apply, and they are different on purpose. A request names
-at most 500 transformers — the same bound retirement and compounded reports
+at most 500 transformers — the same bound retirement and Combined Reports
 use. An answer carries at most 2,000 rows, which is the bound on one project's
 own transformer collection: an unnamed read asks for the whole project, so it
 can legitimately answer more rows than any single request could have named.
@@ -403,7 +403,7 @@ There is no `--project`, Desktop descriptor, URL, body or action override.
 paired) archives and destroys its artifacts. Retiring it flips the one
 soft-delete bit every consumer already honours and records who, when and why:
 the transformer leaves Transformer Status, every listing, combined and
-compounded reports, design tile runs and layer counts, while its document,
+Combined Reports, design tile runs and layer counts, while its document,
 layers, versions, attachments, uploads and cached artifacts stay exactly where
 they are. `restore` clears the bit and keeps the record as history. ds-brain
 decides per name — membership and project lifecycle, `design.edit` or
@@ -740,8 +740,8 @@ ds design collisions --output json
 ```
 
 A collision means two or more transformers claim overlapping ground or a
-clashing identity, and a compounded report cannot be produced while one
-stands — so this is the read to make before `ds report project compounded`
+clashing identity, and a Combined Report cannot be produced while one
+stands — so this is the read to make before `ds report project combined`
 fails.
 
 It reads the project-wide collisions document the report owner writes. The
@@ -1098,7 +1098,7 @@ this family does not claim a cross-client editing lock.
 ## Download coverage
 
 `design.download.plan` includes PDF/PNG prints, combined report records and
-current relevant compounded bundles. Source `report_status` is independent
+current relevant Combined Report bundles. Source `report_status` is independent
 of `download_state`. `available_in_archive` names verified ZIP members and
 the containing download URL; it never invents standalone member URLs.
 `--format pdf` includes a ZIP when its indexed members contain matching PDFs.

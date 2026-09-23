@@ -97,7 +97,7 @@ Follow these printing contracts:
 
 Individual sheets and exceptions: [transformer sheets](../../ds-map-composition/references/transformer-sheets.md),
 [outlier adjustments](../../ds-map-composition/references/outlier-transformers.md);
-compounded A0/A3 sets and numbering: [drawing collections](references/drawing-collections.md).
+combined A0/A3 sets and numbering: [drawing collections](references/drawing-collections.md).
 
 ## Render, inspect, refine
 

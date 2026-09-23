@@ -73,7 +73,7 @@ const CONFIRM: Refusal = Refusal {
 };
 
 /// The refusals a configuration read or write can actually answer with. The
-/// transformer-scope codes of the compounded family cannot occur here, so
+/// transformer-scope codes of the combined family cannot occur here, so
 /// they are not advertised: a refusal list is a promise about what may happen.
 const CONFIG_REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE,
@@ -676,7 +676,7 @@ mod tests {
         assert!(codes(WRITE_REFUSALS).contains(&"confirmation_required"));
         assert!(codes(WRITE_REFUSALS).contains(&SELECTION_INVALID.code));
         // The write's confirmation remedy sends the operator to the read, not
-        // to the compounded family's scope command.
+        // to the combined family's scope command.
         assert!(CONFIRM.remedy.contains("ds report project settings"));
     }
 

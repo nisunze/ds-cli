@@ -424,7 +424,7 @@ Repeat for every required map family, layout and paper size. Families are
 `lv-atlas`, `mv-map` (single- or multi-page), and `custom-map`.
 `--scope combined` targets the combined report; `--page-role atlas|joined`
 marks an atlas or top-level joined PDF. A later `design batch report` includes
-the attached variants in the new compounded archive. It never modifies an
+the attached variants in the new Combined Report archive. It never modifies an
 existing archive.
 
 ## The two identifiers

@@ -91,7 +91,7 @@ documents. The reporter performs no download.
 
 ## Background project reports
 
-`ds report project scope|compounded|archives` is the other door of this
+`ds report project scope|combined|archives` is the other door of this
 domain: no local engine, no map, no Desktop. The commands restore the native
 user for `--lane stable|canary`, load only its audience-fenced selected project
 (`ds auth project use`), and call the governed report service's fixed
@@ -103,12 +103,12 @@ streams one ZIP with its manifest and writes a registry row. Retired
 transformers (`ds design transformer retire`) are never in scope. The reserved
 computed identities — `collisions`, `combined_transformer` and its aliases
 (`all_transformers`, `combined_transformers`) — are report output, never
-participants: `scope` and `compounded` refuse them locally with
+participants: `scope` and `combined` refuse them locally with
 `reserved_transformer_identity` before any credential is restored.
 
 ```bash
 ds report project scope --output json                      # the plan: who participates, who is excluded and why
-ds report project compounded --file-level sector --yes     # publish; blocks until the service answers (≤ 10 min)
+ds report project combined --file-level sector --yes     # publish; blocks until the service answers (≤ 10 min)
 ds report project archives --output json                   # the registry, newest first: achieved foldering and short-lived signed downloads
 ```
 
@@ -129,7 +129,7 @@ ds report project compute --transformer akagerero --lane canary --yes --output j
 ds design status --project it_rwanda --transformer akagerero --lane canary --output json   # the report the cloud stamped
 ```
 
-`compounded` is `artifact_write` and needs `--yes`: it publishes a durable
+`combined` is `artifact_write` and needs `--yes`: it publishes a durable
 archive of record. Its receipt carries `status` (`success` or `partial`), the
 archive `prefix` (the registry stem), cloud locators, individual artifact
 coverage, the missing individuals with typed causes, bounded errors and
@@ -198,7 +198,7 @@ decides whether this request is allowed.
 }
 ```
 
-A compounded archive consumes the project's applied `report_archive` consumer
+A Combined Report archive consumes the project's applied `report_archive` consumer
 grouping: that plan, not this request, is the folder and section authority.
 `ds design consumer-grouping read|preview|apply --purpose report_archive` is
 where it is inspected, re-planned and applied, and a project without it is one
@@ -234,7 +234,7 @@ fetching, and list again for a fresh signature.
 `ds report project combined` packages one archive out of the rooms' own
 reports, so a room whose report is not current can only contribute an
 out-of-date file. It used to be dropped from the archive without a word —
-that is how one project's archive compounded nothing and another's carried
+that is how one project's archive combined nothing and another's carried
 June's files. The run now refuses instead, and the refusal names every room
 it will not package plus the one command that fixes them:
 
@@ -251,7 +251,7 @@ the queue exists to end. The room list is bounded, and the reply says how
 many more rooms there are and whether the printed command reaches all of
 them.
 
-## Compounded desktop reports
+## Combined desktop reports
 
 `ds report bundle --request <file>` invokes the reporter-owned
 `export_compounded_report` task. The request lists transformer and combined
@@ -299,7 +299,7 @@ for the full table.
 assembles a ZIP at a path the caller names, from local documents whose digests
 it verifies, and contacts nothing.
 
-`report project compounded` is the contrast: `artifact_write`, because the ZIP
+`report project combined` is the contrast: `artifact_write`, because the ZIP
 it publishes lands in the project's cloud registry where every member reads it
 as the delivery. `scope`, `settings` and `archives` are `local_auth_state` like
 every headless read — they may rotate the native credential, and write nothing
@@ -449,7 +449,7 @@ Neither command opens or switches the map.
 `ds report plan --action export --request export.json --output json` evaluates
 an export request without running it. The file contains `project`,
 `transformer`, optional `transformers`, `force`, `report_type`, `selection`,
-and the host's `active_project`. A combined or compounded overview requires
+and the host's `active_project`. A combined overview requires
 that last fact to match `project`; an individual transformer does not.
 The GUI asks again after preparation to detect a project switch during IO.
 The input is a fact document, not an authorization grant.
@@ -691,7 +691,7 @@ project-wide sheet number. Keep A0 and A3 in separate collections. Source hashes
 are checked before the archive is published; a missing or invalid source refuses
 the collection rather than silently dropping a drawing.
 
-The governed `report.project.compounded` workflow adds one collection per named
+The governed `report.project.combined` workflow adds one collection per named
 PDF layout to the overall archive and each requested grouping slice. Selected
 sector exports keep the complete project's original drawing numbers.
 

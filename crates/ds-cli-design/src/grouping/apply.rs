@@ -16,7 +16,7 @@ Commits the plan `ds design consumer-grouping preview` returned, fenced by its \
 plan digest: stale definitions, assignments or Solar inventory refuse rather \
 than landing against a state nobody previewed. The purpose says which consumer \
 the plan binds — `solar_report` to governed Solar cities, `report_archive` to \
-the folder and section authority a compounded archive files by.",
+the folder and section authority a Combined Report archive files by.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,

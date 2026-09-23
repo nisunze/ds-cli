@@ -461,7 +461,7 @@ fn emit_failure(
 /// that knows which command answered.
 ///
 /// A shared mapper cannot do this join. `auth_input_invalid` comes out of one
-/// function in `ds-cli-auth` that serves `report project compounded` and
+/// function in `ds-cli-auth` that serves `report project combined` and
 /// the terminal sign-in alike, and the two need different sentences — so no
 /// construction site can make that code truthful, and the declaration is the
 /// only text that is right for the caller who met it.

@@ -34,10 +34,10 @@ archives to clean, save, and report as one project delivery.
 5. Read the descriptor for `map.design.batch.report`. Submit the full explicit
    scope once with the requested `--file-level` and `--yes`.
 
-The batch report command is declarative. A compounded delivery reuses fresh
+The batch report command is declarative. A Combined Report delivery reuses fresh
 individual artifacts, regenerates only missing or stale individuals, creates
 the combined set for that exact scope, and packages them. Do not loop the
-single-transformer report command and then request compounded output: that
+single-transformer report command and then request Combined Report output: that
 duplicates work and loses one composition receipt.
 
 Return the save counts and versions, then the report status, individual
