@@ -498,9 +498,7 @@ fn upload(
                     return receipt;
                 }
             };
-            let complete = transferred.outcome == "done"
-                && transferred.committed_bytes == transferred.total_bytes;
-            if !complete {
+            if !transferred.committed() {
                 let mut receipt = Receipt::new("upload", "failed")
                     .about(identity)
                     .detail(format!(

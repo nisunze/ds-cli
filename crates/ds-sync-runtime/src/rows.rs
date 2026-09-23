@@ -122,6 +122,17 @@ pub struct TransferReceipt {
     pub total_bytes: u64,
 }
 
+impl TransferReceipt {
+    /// The transport host's one verdict for bytes that are all in the session.
+    pub const COMPLETED: &'static str = "completed";
+
+    /// Every byte is in the storage session and the transport says so. The
+    /// record is asked to publish on nothing less.
+    pub fn committed(&self) -> bool {
+        self.outcome == Self::COMPLETED && self.committed_bytes == self.total_bytes
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Receipts
 // ---------------------------------------------------------------------------

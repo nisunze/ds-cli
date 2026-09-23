@@ -481,7 +481,7 @@ impl Producer for FakeProducer {
                 world.committed_sessions.insert(session_uri.to_string());
                 Ok(TransferReceipt {
                     output_id: output_id.to_string(),
-                    outcome: "done".into(),
+                    outcome: TransferReceipt::COMPLETED.into(),
                     committed_bytes: total,
                     total_bytes: total,
                 })

@@ -664,7 +664,7 @@ pub fn transfer_verified_output<R: Read + Seek>(
     Ok(TransferReceipt {
         output_id: output_id.to_owned(),
         outcome: if result.outcome == NativeTransferOutcome::Done {
-            "completed"
+            TransferReceipt::COMPLETED
         } else {
             "not_committed"
         }
