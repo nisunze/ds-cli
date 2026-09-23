@@ -53,6 +53,15 @@ const PROJECT_ARG: Arg = Arg::value(
     "Narrow to one exact ds_project id; omit for every project queued on this machine.",
 );
 
+/// On a drain, naming a project is "Sync now" for it: the pass also runs on
+/// a machine that has published nothing for that project, so a second
+/// machine pulls what the first one published.
+const DRAIN_PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Sync this exact ds_project id now: publish its queued reports and pull what the shared record holds that this machine lacks; omit for every project queued on this machine.",
+);
+
 const QUEUE_UNREADABLE: Refusal = Refusal {
     code: "report_outbox_unreadable",
     when: "the lane's sync store or artifact root cannot be read on this machine",
@@ -148,24 +157,33 @@ One publication pass over this machine's queued reports, through the same \
 runner the Server's pump uses — never a second pump or queue. Safe to run \
 twice: a publication already in the shared record is recognised by its \
 client publish id. A row that lost has its bytes freed by the pass and says \
-so. An offline pass changes nothing and says so.",
+so. An offline pass changes nothing and says so. With --project the pass \
+runs for that project even when nothing is queued for it here, so a machine \
+pulls the reports another machine published, verified by digest.",
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PROJECT_ARG, SERVER_STATE_DIR_ARG, LANE_ARG],
+    args: &[DRAIN_PROJECT_ARG, SERVER_STATE_DIR_ARG, LANE_ARG],
     output: "\
 `before` and `after` queue readings, `drained`, and `projects[]`: per project \
 `offline`, `retry_eligible`, `wake_at_ms`, `summary` (after the pass), \
 `reclaimed` (batches, bytes), `idle` (why nothing moved) and `receipts`.",
-    examples: &[Example {
-        command: "ds report outbox drain --yes --output json",
-        note: "`.data.drained` says what moved; `.data.projects[].receipts` what each row did.",
-        runnable: false,
-    }],
+    examples: &[
+        Example {
+            command: "ds report outbox drain --yes --output json",
+            note: "`.data.drained` says what moved; `.data.projects[].receipts` what each row did.",
+            runnable: false,
+        },
+        Example {
+            command: "ds report outbox drain --project <exact-id> --yes --output json",
+            note: "Pulls that project's published reports onto this machine; `download` receipts name each.",
+            runnable: false,
+        },
+    ],
     refusals: DRAIN_REFUSALS,
     reference: Some("docs/reference/report.md"),
-    search: &["flush", "push", "retry", "unstick", "sync now", "send"],
+    search: &["flush", "push", "retry", "unstick", "sync now", "send", "pull", "download"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -339,8 +357,14 @@ pub fn drain(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut passes = Vec::new();
     // The store's projects under this fence, plus any project whose batches
     // are on disk with no row yet, so the pass adopts them.
-    let projects = ds_cli_server::server_reports::projects_with_publications(&database, &fence)
-        .map_err(unreadable)?;
+    let mut projects =
+        ds_cli_server::server_reports::projects_with_publications(&database, &fence)
+            .map_err(unreadable)?;
+    // Naming a project is "Sync now" for it: the pass runs even with nothing
+    // queued here, reads the record and pulls what this machine lacks.
+    if let Some(wanted) = &wanted {
+        projects.insert(wanted.clone());
+    }
     for project_id in projects {
         if wanted.as_ref().is_some_and(|wanted| *wanted != project_id) {
             continue;

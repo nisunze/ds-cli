@@ -1133,8 +1133,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // acquisition may happen. Nothing selected means nothing is read.
     // A preview's context layers are the draft's own, decided inside
     // `execute`; nothing is selected, projected or acquired for it here.
-    let contexts = if local_context.is_some() || preview_request.is_some() {
-        Vec::new()
+    let (contexts, hidden_contexts) = if local_context.is_some() || preview_request.is_some() {
+        (Vec::new(), Vec::new())
     } else {
         selected_contexts(lane, &receipt, seed)?
     };
@@ -1203,6 +1203,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut provider = ds_cli_data::project_cache::CliProvider { lane };
     let mut bundle_fetch = ds_cli_data::project_cache::bundle_fetch(lane);
     let mut transformer_context_notes: Vec<Value> = Vec::new();
+    // A source a selected layout hides entirely prints nothing and is not
+    // acquired; the receipt says so rather than counting it as printed.
+    for hidden in &hidden_contexts {
+        transformer_context_notes.push(json!({"note": hidden["note"]}));
+    }
 
     // Number the complete active inventory even for an explicitly selected subset.
     let complete_inventory = if requested.is_empty() {
@@ -1550,6 +1555,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "seeded": seed,
         "catalog_resources": catalog.len(),
         "warnings": context_warnings,
+        "hidden": hidden_contexts,
         "notes": transformer_context_notes,
     });
     Ok(output)
@@ -1740,7 +1746,7 @@ fn selected_contexts(
     lane: &str,
     receipt: &InputReceipt,
     online: bool,
-) -> Result<Vec<ds_command_kernel::printing::PrintContextLayer>, Failure> {
+) -> Result<(Vec<ds_command_kernel::printing::PrintContextLayer>, Vec<Value>), Failure> {
     let invalid = |message: String| {
         Failure::invalid("report_inputs_invalid", message).remedy(INPUTS_INVALID.remedy)
     };
@@ -1764,8 +1770,13 @@ fn selected_contexts(
     let answer: Value =
         serde_json::from_str(&ds_command_kernel::report::evaluate(&bytes).map_err(invalid)?)
             .map_err(|error| invalid(error.to_string()))?;
-    serde_json::from_value(answer["result"]["contexts"].clone())
-        .map_err(|error| invalid(format!("selected context layers: {error}")))
+    let contexts = serde_json::from_value(answer["result"]["contexts"].clone())
+        .map_err(|error| invalid(format!("selected context layers: {error}")))?;
+    let hidden = answer["result"]["hidden"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    Ok((contexts, hidden))
 }
 
 /// The printing setup ids the stored output selection names, read with the
