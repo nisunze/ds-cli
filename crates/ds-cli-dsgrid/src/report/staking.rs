@@ -159,6 +159,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .to_string();
     let options_bytes = serde_json::to_vec(&options)
         .map_err(|error| Failure::internal("staking_options_invalid", error.to_string()))?;
+    let policy_identity = options.policy.as_ref().map(|policy| {
+        json!({
+            "id": policy.id,
+            "version": policy.version,
+            "source_sha256": policy.source_sha256,
+            "type_bom_count": policy.type_bom.len(),
+            "site_rule_count": policy.site.len(),
+            "protection_rule_count": policy.transformer_protection.len(),
+            "intermediate_dof_count": policy.intermediate_dof.len(),
+        })
+    });
     let table = build_staking_table(&package.snapshot, &options).map_err(|detail| {
         Failure::failed(
             "staking_projection_failed",
@@ -189,6 +200,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "admin_by_structure": options.admin_by_structure.len(),
             "location_from_comments": options.location_from_comments,
             "conductor_length_factor": options.conductor_length_factor,
+            "conductor_quantity_factors": options.conductor_quantity_factors,
+            "policy": policy_identity,
             "strut_allowance_fraction": options.strut_allowance_fraction,
             "flying_allowance_fraction": options.flying_allowance_fraction,
         },
