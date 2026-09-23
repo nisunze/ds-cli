@@ -608,9 +608,17 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             let layouts = crate::report_formats::named_layouts(sheets)?;
             let mut seen = BTreeSet::new();
             let mut contexts = Vec::new();
+            let mut hidden = Vec::new();
             for output in outputs {
                 if let Some((_, id)) = crate::report_formats::named_print_output(&output.format) {
-                    for context in &layouts[id].context_layers {
+                    let layout = &layouts[id];
+                    for context in &layout.context_layers {
+                        // A source the layout hides entirely prints nothing:
+                        // it is named, never acquired and never counted.
+                        if !crate::printing::context::prints_in(layout, context) {
+                            hidden.push(crate::printing::context::hidden_context(id, context));
+                            continue;
+                        }
                         let value = serde_json::to_value(context).map_err(|e| e.to_string())?;
                         if seen.insert(serde_json::to_string(&value).map_err(|e| e.to_string())?) {
                             contexts.push(value);
@@ -620,7 +628,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             }
             // Every export ensures its selected inputs. Acquisition happens
             // before the renderer; offline hosts can only inspect held data.
-            serde_json::json!({"contexts": contexts, "acquire_missing": online})
+            serde_json::json!({"contexts": contexts, "acquire_missing": online, "hidden": hidden})
         }
         Command::Publication {
             engine,
@@ -1149,6 +1157,76 @@ mod export_tests {
         )
         .is_err());
     }
+    /// The published Gisagara CJIC samples select elevation contours and hide
+    /// both layers they print as. Every project that copied them acquired
+    /// contours, counted them as printed, and drew nothing. A source the
+    /// layout hides entirely is named and never acquired; a layout that shows
+    /// it elsewhere still gets it.
+    #[test]
+    fn a_context_the_layout_hides_entirely_is_named_never_acquired() {
+        let contours = crate::printing::context::derived_layers().remove(2);
+        let hidden_style = crate::printing::PrintStyleOverride {
+            visible: Some(false),
+            ..Default::default()
+        };
+        let mut hiding = crate::printing::context::toggle(
+            crate::printing::default_layout(),
+            contours.clone(),
+            true,
+            None,
+        )
+        .unwrap();
+        hiding.id = "a0".into();
+        for id in ["contours_index", "contours_intermediate"] {
+            hiding
+                .style_refs
+                .insert(id.into(), format!("print_context/{id}_print"));
+            hiding.style_overrides.insert(id.into(), hidden_style.clone());
+        }
+        let prepare = |layouts: Vec<crate::printing::Layout>, formats: serde_json::Value| {
+            let setups: Vec<serde_json::Value> = layouts
+                .into_iter()
+                .map(|layout| json!({"id":layout.id,"revision":"a".repeat(64),"layout":layout}))
+                .collect();
+            let sheets = json!({"project_settings":[{"parameter":"design_export_format","value":formats}], "printing_setups":setups});
+            let output: serde_json::Value = serde_json::from_str(
+                &evaluate(
+                    &serde_json::to_vec(
+                        &json!({"command":"context_preparation","sheets":sheets,"online":true}),
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            output["result"].clone()
+        };
+        let result = prepare(vec![hiding.clone()], json!(["pdf__a0"]));
+        assert_eq!(result["contexts"], json!([]), "a hidden source is not acquired");
+        assert_eq!(result["hidden"][0]["context"], "elevation_contours");
+        assert_eq!(result["hidden"][0]["layout"], "a0");
+        assert_eq!(
+            result["hidden"][0]["hidden_layers"],
+            json!(["contours_intermediate", "contours_index"])
+        );
+
+        // One layer still shown is enough: the source prints.
+        let mut index_only = hiding.clone();
+        index_only.style_overrides.remove("contours_index");
+        let result = prepare(vec![index_only], json!(["pdf__a0"]));
+        assert_eq!(result["contexts"][0]["id"], "elevation_contours");
+        assert_eq!(result["hidden"], json!([]));
+
+        // Hidden on one selected sheet, shown on another: acquired once.
+        let mut showing =
+            crate::printing::context::toggle(crate::printing::default_layout(), contours, true, None)
+                .unwrap();
+        showing.id = "a3".into();
+        let result = prepare(vec![hiding, showing], json!(["pdf__a0", "pdf__a3"]));
+        assert_eq!(result["contexts"].as_array().unwrap().len(), 1);
+        assert_eq!(result["hidden"].as_array().unwrap().len(), 1);
+    }
+
     #[test]
     fn gui_and_cli_export_selection_use_the_same_closed_command() {
         let value = json!({"command":"export","project":"p","transformer":"agatare"});

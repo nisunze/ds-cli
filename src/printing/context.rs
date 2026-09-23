@@ -263,6 +263,43 @@ pub fn expanded_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
     }
 }
 
+/// Whether a context source prints anything on this layout: at least one of
+/// the layers it expands into is not hidden by the layout's own style
+/// override.
+///
+/// A source can be selected (it is in `context_layers`) while every layer it
+/// prints as is hidden (`style_overrides[..].visible == false`). Those are two
+/// switches for one intent, and when they disagree the source is selected in
+/// name only: acquiring it costs the provider and the sheet shows nothing,
+/// while a receipt that counted it as printed would claim a deliverable that
+/// is not on the page. Every decision about what to acquire and what to
+/// report asks this one question.
+pub fn prints_in(layout: &Layout, layer: &PrintContextLayer) -> bool {
+    expanded_layer_ids(layer).iter().any(|id| {
+        layout
+            .style_overrides
+            .get(id)
+            .and_then(|style| style.visible)
+            != Some(false)
+    })
+}
+
+/// A context source the layout selects but hides entirely, named for the
+/// reader: which source, and which of its layers the layout hides.
+pub fn hidden_context(layout_id: &str, layer: &PrintContextLayer) -> Value {
+    serde_json::json!({
+        "layout": layout_id,
+        "context": layer.id,
+        "label": layer.label,
+        "hidden_layers": expanded_layer_ids(layer),
+        "note": format!(
+            "{} is selected on layout {layout_id}, but the layout hides every layer it prints as ({}); it is not acquired and does not print. Switch it on again to show it.",
+            layer.label,
+            expanded_layer_ids(layer).join(", ")
+        ),
+    })
+}
+
 /// What the host knows about one catalogue dataset on this machine.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -371,7 +408,9 @@ pub fn default_selection(
 /// dataset held or fetchable — unless it is already selected, in which case
 /// the operator may always switch it off and on again without losing it.
 /// Enabling a derived source seeds the fallback styles of the layers it
-/// prints as.
+/// prints as. Enabling also shows those layers: an explicit `visible: false`
+/// the layout carried is cleared, because switching a source on means the
+/// operator wants to see it — otherwise it is acquired and never drawn.
 pub fn toggle(
     mut layout: Layout,
     layer: PrintContextLayer,
@@ -389,6 +428,13 @@ pub fn toggle(
     layout.context_layers.retain(|row| row.id != layer.id);
     if enabled {
         seed_styles(&mut layout, &layer);
+        for id in expanded_layer_ids(&layer) {
+            if let Some(style) = layout.style_overrides.get_mut(&id) {
+                if style.visible == Some(false) {
+                    style.visible = None;
+                }
+            }
+        }
         layout.context_layers.push(layer);
     }
     super::validate(&layout)?;
@@ -744,6 +790,40 @@ mod tests {
             1,
             "already selected stays togglable"
         );
+    }
+
+    /// Switching contours on is one intent: the source is selected AND its
+    /// layers are shown. A layout that hid them (the Gisagara CJIC samples)
+    /// no longer keeps them acquired-but-invisible after the operator asks
+    /// for them.
+    #[test]
+    fn enabling_a_source_shows_the_layers_the_layout_had_hidden() {
+        let contours = derived_layers().remove(2);
+        let mut layout = toggle(default_layout(), contours.clone(), true, None).unwrap();
+        for id in ["contours_index", "contours_intermediate"] {
+            layout
+                .style_refs
+                .insert(id.into(), format!("print_context/{id}_print"));
+            layout.style_overrides.insert(
+                id.into(),
+                super::super::PrintStyleOverride {
+                    visible: Some(false),
+                    color: Some("#123456".into()),
+                    ..Default::default()
+                },
+            );
+        }
+        assert!(!prints_in(&layout, &contours), "selected in name only");
+        let on = toggle(layout, contours.clone(), true, None).unwrap();
+        assert!(prints_in(&on, &contours));
+        assert_eq!(on.style_overrides["contours_index"].visible, None);
+        assert_eq!(
+            on.style_overrides["contours_index"].color.as_deref(),
+            Some("#123456"),
+            "only the hide is cleared; the rest of the override stays"
+        );
+        let off = toggle(on, contours.clone(), false, None).unwrap();
+        assert!(!off.context_layers.iter().any(|row| row.id == contours.id));
     }
 
     #[test]

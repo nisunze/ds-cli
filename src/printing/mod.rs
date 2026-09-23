@@ -2431,7 +2431,15 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::ContextStatus { omitted } => json!(sheet_status::context_status(omitted)?),
         Command::PreviewContextPreparation { layout, online } => {
             let layout = upgrade(layout)?;
-            json!({"contexts":layout.context_layers,"acquire_missing":online})
+            let (shown, hidden): (Vec<_>, Vec<_>) = layout
+                .context_layers
+                .iter()
+                .partition(|layer| context::prints_in(&layout, layer));
+            let hidden: Vec<Value> = hidden
+                .into_iter()
+                .map(|layer| context::hidden_context(&layout.id, layer))
+                .collect();
+            json!({"contexts":shown,"acquire_missing":online,"hidden":hidden})
         }
         Command::SetFocusVisibility { layout, visible } => {
             let mut layout = upgrade(layout)?;
