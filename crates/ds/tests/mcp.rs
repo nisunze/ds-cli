@@ -1570,6 +1570,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "printing",
         "grid",
         "grid-native",
+        "grid-corrections",
         "grid-local-model",
         "clearance",
         "pls",
@@ -1737,11 +1738,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "dsgrid_describe",
         "dsgrid_run",
         "dsgrid_apply",
-        "dsgrid_apply-batch",
         "dsgrid-exchange_inspect",
         "dsgrid-exchange_plan",
         "dsgrid-exchange_convert",
-        "dsgrid-exchange_sync",
     ] {
         assert!(
             published["grid-native"].contains(native),
@@ -1750,6 +1749,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     }
     assert!(!published["grid-native"].contains("dsgrid_model_create-local"));
     assert!(!published["grid-native"].contains("dsgrid_publish-version"));
+    assert!(!published["grid-native"].contains("dsgrid_apply-batch"));
+    assert!(!published["grid-native"].contains("dsgrid-exchange_sync"));
+    assert!(published["grid-corrections"].contains("dsgrid_apply-correction"));
+    assert!(!published["grid-corrections"].contains("dsgrid_apply-batch"));
     assert!(
         published["grid-local-model"].contains("dsgrid_model_list")
             && published["grid-local-model"].contains("dsgrid_model_show")

@@ -31,6 +31,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "admin-bounds",
     "grid",
     "grid-native",
+    "grid-corrections",
     "printing",
     "grid-local-model",
     "clearance",
@@ -92,6 +93,7 @@ pub enum Profile {
     Installations,
     Grid,
     GridNative,
+    GridCorrections,
     Printing,
     GridLocalModel,
     GridClearance,
@@ -131,6 +133,7 @@ impl Profile {
             "installations" => Some(Self::Installations),
             "grid" => Some(Self::Grid),
             "grid-native" => Some(Self::GridNative),
+            "grid-corrections" => Some(Self::GridCorrections),
             "printing" => Some(Self::Printing),
             "grid-local-model" => Some(Self::GridLocalModel),
             "clearance" => Some(Self::GridClearance),
@@ -171,6 +174,7 @@ impl Profile {
             Self::Installations => "installations",
             Self::Grid => "grid",
             Self::GridNative => "grid-native",
+            Self::GridCorrections => "grid-corrections",
             Self::Printing => "printing",
             Self::GridLocalModel => "grid-local-model",
             Self::GridClearance => "clearance",
@@ -218,8 +222,8 @@ impl Profile {
             // record, its pin to a live PLS-CADD workspace, and the write
             // back into that workspace. Without them the broad router could
             // import from PLS-CADD but never deliver to it.
-            // 2026-09-21: immutable native structure import and atomic
-            // apply-batch add two file-authoring leaves to this same workflow.
+            // Reviewed batch corrections and native sync now have separate
+            // routes, keeping this broad typed profile within its budget.
             Self::Grid => 27,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
@@ -304,6 +308,11 @@ impl Profile {
             Self::GridNative => {
                 tool.authority == ds_cli_contract::spec::Authority::None
                     && (tool.id.starts_with("dsgrid.") || tool.id.starts_with("dsgrid-exchange."))
+                    // Reviewed corrections have their own mandatory-guard
+                    // profile. Native sync is an exchange delivery act, not
+                    // part of the bounded native-model reading/editing set.
+                    && !matches!(tool.id.as_str(),
+                        "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
                     // The working-copy family became authority-free on
                     // 2026-09-18 when it stopped asking an application for
                     // this machine's catalogue. It is still a different job
@@ -315,8 +324,11 @@ impl Profile {
                     // and keeps its own profile, like the local-model family.
                     && !GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str())
             }
+            Self::GridCorrections => GRID_CORRECTION_COMMANDS.contains(&tool.id.as_str()),
             Self::Grid => {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
+                    && !matches!(tool.id.as_str(),
+                        "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
                     // Printing has its own workflow profile and Reports router;
                     // changing that profile must not expand the Grid surface.
@@ -401,6 +413,7 @@ impl Profile {
             Self::Printing => PRINTING_COMMANDS,
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
             Self::GridClearance => GRID_CLEARANCE_COMMANDS,
+            Self::GridCorrections => GRID_CORRECTION_COMMANDS,
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
@@ -440,7 +453,9 @@ impl Profile {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::GridNative => chapter == Chapter::GridModel,
             Self::Printing => matches!(chapter, Chapter::Reports | Chapter::MapPresentation),
-            Self::GridLocalModel | Self::GridClearance => chapter == Chapter::GridModel,
+            Self::GridLocalModel | Self::GridClearance | Self::GridCorrections => {
+                chapter == Chapter::GridModel
+            }
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
             Self::Survey
             | Self::FormFactory
@@ -601,6 +616,22 @@ const GRID_CLEARANCE_COMMANDS: &[&str] = &[
     "dsgrid.criteria.show",
     "dsgrid.criteria.clearance.set",
     "dsgrid.analyse.clearance",
+];
+
+/// One spotted-model correction workflow, kept below the typed MCP tool
+/// ceiling even when the broad grid profiles grow. Native sync and final PLS
+/// acceptance remain separate operator steps.
+const GRID_CORRECTION_COMMANDS: &[&str] = &[
+    "dsgrid-exchange.inspect",
+    "dsgrid-exchange.plan",
+    "dsgrid-exchange.convert",
+    "dsgrid.inspect",
+    "dsgrid.validate",
+    "dsgrid.describe",
+    "dsgrid.run",
+    "dsgrid.report.structures",
+    "dsgrid.analyse.clearance",
+    "dsgrid.apply-correction",
 ];
 
 const PLS_LIBRARY_COMMANDS: &[&str] = &[
@@ -1911,6 +1942,35 @@ mod tests {
         );
         let error = Surface::new(Exposure::Chapters, Some(Profile::Pls), tools).unwrap_err();
         assert_eq!(error.code(), "mcp_profile_exposure_invalid");
+    }
+
+    #[test]
+    fn correction_profile_exposes_guarded_batch_and_review_reads_only() {
+        let tools = vec![
+            tool("dsgrid.inspect", Chapter::GridModel, false),
+            tool("dsgrid.run", Chapter::GridModel, false),
+            tool("dsgrid.apply-correction", Chapter::GridModel, false),
+            tool("dsgrid.apply-batch", Chapter::GridModel, false),
+            tool("dsgrid.apply", Chapter::GridModel, false),
+            tool("dsgrid-exchange.sync", Chapter::GridModel, false),
+        ];
+        let surface = Surface::new(Exposure::Commands, Some(Profile::GridCorrections), tools)
+            .expect("bounded correction profile");
+        let names: Vec<_> = surface
+            .tool_list()
+            .into_iter()
+            .map(|value| value["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "ds_catalog",
+                "ds_diagnostics",
+                "dsgrid_apply-correction",
+                "dsgrid_inspect",
+                "dsgrid_run"
+            ]
+        );
     }
 
     #[test]

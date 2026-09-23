@@ -49,7 +49,7 @@ Specialized profiles publish conventional typed leaf tools for one workflow:
 ds mcp serve --exposure commands --profile pls
 ```
 
-Profiles are `auth-context`, `grid`, `grid-native`, `pls`, `pls-library`, `library-governance`, `survey`,
+Profiles include `auth-context`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-media`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
 `tiling`, `project`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
 `solar-portfolio-batch`, `solar-migration`, `design-migration`,
@@ -85,13 +85,17 @@ all-command publication temporarily for compatibility.
 
 `grid-native` contains only native `.dsgrid` file creation, inspection,
 validation, command discovery, reads/solves, revision-gated edits and exchange.
-Its nine command leaves require no desktop, TypeScript runtime or signed-in
+Its command leaves require no desktop, TypeScript runtime or signed-in
 project. `grid-local-model` retains the paired application lifecycle and
 project publication; `clearance` is the feature-code and clearance
 workflow over one working copy (`dsgrid feature-codes report|import|migrate|
 export`, `dsgrid criteria show|clearance set`, `dsgrid analyse clearance`);
 the broad `grid` router keeps its budget and leaves the typed edits and the
-clearance workflow to those two profiles.
+clearance workflow to those two profiles. `grid-corrections` is the bounded
+typed surface for review comments on an already spotted model: exact package
+inspection, command discovery, graph and report reads, clearance analysis,
+and mandatory-guard `dsgrid.apply-correction`. It admits native conversion into a `.dsgrid`
+working copy, while native PLS-CADD delivery remains the owner's separate gate.
 
 The `design-edit` profile includes the same canonical `map.design.open`,
 map-owned `map.design.pin` Working-set operation, and

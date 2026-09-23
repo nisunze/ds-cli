@@ -186,6 +186,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         handler: ds_cli_dsgrid::apply_batch::run,
         render: ds_cli_dsgrid::apply_batch::render,
     },
+    Entry {
+        command: &ds_cli_dsgrid::apply_batch::CORRECTION,
+        handler: ds_cli_dsgrid::apply_batch::run_correction,
+        render: ds_cli_dsgrid::apply_batch::render,
+    },
     // The application-local model family. Registered after the file commands
     // and before the one project act, so domain help reads in the order the
     // work happens: know a package, hold a model, publish a revision.
