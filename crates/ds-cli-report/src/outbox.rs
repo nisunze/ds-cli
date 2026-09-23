@@ -59,7 +59,7 @@ const PROJECT_ARG: Arg = Arg::value(
 const DRAIN_PROJECT_ARG: Arg = Arg::value(
     "project",
     "<exact-id>",
-    "Sync this exact ds_project id now: publish its queued reports and pull what the shared record holds that this machine lacks; omit for every project queued on this machine.",
+    "Sync this ds_project id now, pulling what others published; omit for every queued project.",
 );
 
 const QUEUE_UNREADABLE: Refusal = Refusal {
@@ -157,9 +157,7 @@ One publication pass over this machine's queued reports, through the same \
 runner the Server's pump uses — never a second pump or queue. Safe to run \
 twice: a publication already in the shared record is recognised by its \
 client publish id. A row that lost has its bytes freed by the pass and says \
-so. An offline pass changes nothing and says so. With --project the pass \
-runs for that project even when nothing is queued for it here, so a machine \
-pulls the reports another machine published, verified by digest.",
+so. An offline pass changes nothing and says so.",
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -169,18 +167,11 @@ pulls the reports another machine published, verified by digest.",
 `before` and `after` queue readings, `drained`, and `projects[]`: per project \
 `offline`, `retry_eligible`, `wake_at_ms`, `summary` (after the pass), \
 `reclaimed` (batches, bytes), `idle` (why nothing moved) and `receipts`.",
-    examples: &[
-        Example {
-            command: "ds report outbox drain --yes --output json",
-            note: "`.data.drained` says what moved; `.data.projects[].receipts` what each row did.",
-            runnable: false,
-        },
-        Example {
-            command: "ds report outbox drain --project <exact-id> --yes --output json",
-            note: "Pulls that project's published reports onto this machine; `download` receipts name each.",
-            runnable: false,
-        },
-    ],
+    examples: &[Example {
+        command: "ds report outbox drain --yes --output json",
+        note: "`.data.drained` says what moved; `.data.projects[].receipts` what each row did.",
+        runnable: false,
+    }],
     refusals: DRAIN_REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &["flush", "push", "retry", "unstick", "sync now", "send", "pull", "download"],

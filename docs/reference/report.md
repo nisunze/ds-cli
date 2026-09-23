@@ -755,7 +755,23 @@ receipt). One shared runner drains the queue — the Server's pump, or
 ds report outbox status --output json          # every project queued on this machine
 ds report outbox status --project <exact-id>   # one project's queued reports
 ds report outbox drain --yes --output json     # publish what is queued, now
+ds report outbox drain --project <exact-id> --yes --output json   # sync one project: publish and pull
 ```
+
+A report publishes on the shared record's one door, `compute_artifacts`
+(`open`, the bytes the record asks for, `finalize`), under the signed-in
+account's `design.report` capability on the project; the engine build that
+produced it travels as provenance and is never an admission question
+(owner ruling 2026-09-18, one JWT). The record passes every verdict: a moved
+source is a `conflict`, a refused declaration or capability is `refused`, and
+both free the bytes in the same pass; anything without a verdict stays held
+with its cause.
+
+Naming `--project` on a drain is "Sync now" for that project: the pass runs
+even when nothing is queued for it on this machine, reads the record, and
+downloads every published head this machine lacks, each output verified by
+its SHA-256 before it is placed. That is how a second machine receives what
+the first published.
 
 `status` reads the store read-only — no gateway session, no project
 selection, no running Server; it needs only the native identity on this
