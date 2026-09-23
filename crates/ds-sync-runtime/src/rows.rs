@@ -612,4 +612,3 @@ pub fn receipt_row(project: &str, receipt: &Receipt, now: u64) -> store::Receipt
         at_ms: now,
     }
 }
-

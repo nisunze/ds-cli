@@ -247,7 +247,10 @@ impl FakeWorld {
         if let Some(reason) = &self.invalid_declaration {
             return Err(refused(400, "VALIDATION_FAILED", reason.clone()));
         }
-        let run = body["client_run_id"].as_str().unwrap_or_default().to_string();
+        let run = body["client_run_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         // A replay of a run the record already published is that result.
         if let Some(head) = self
             .record
@@ -304,10 +307,15 @@ impl FakeWorld {
             return Err(reason.clone().into());
         }
         let work_id = body["work_id"].as_str().unwrap_or_default().to_string();
-        let run = body["client_run_id"].as_str().unwrap_or_default().to_string();
+        let run = body["client_run_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         if let Some(state) = &self.publish_state {
-            return Ok(json!({"work_id": work_id, "state": state, "head_revision": 0,
-                "conflict": "the Network Reporter input base changed before finalization"}));
+            return Ok(
+                json!({"work_id": work_id, "state": state, "head_revision": 0,
+                "conflict": "the Network Reporter input base changed before finalization"}),
+            );
         }
         let Some(opened) = self
             .declarations
@@ -323,7 +331,10 @@ impl FakeWorld {
         let outputs = opened["outputs"].as_array().cloned().unwrap_or_default();
         for output in &outputs {
             let output_id = output["output_id"].as_str().unwrap_or_default();
-            if self.never_commit || !self.committed_sessions.contains(&session_uri(&run, output_id))
+            if self.never_commit
+                || !self
+                    .committed_sessions
+                    .contains(&session_uri(&run, output_id))
             {
                 return Err(refused(
                     400,
@@ -338,13 +349,19 @@ impl FakeWorld {
             .iter()
             .find(|head| head["client_publish_id"] == run.as_str())
         {
-            return Ok(json!({"work_id": work_id, "state": "published", "head_revision": head["head_revision"]}));
+            return Ok(
+                json!({"work_id": work_id, "state": "published", "head_revision": head["head_revision"]}),
+            );
         }
         // The fence again, inside the transaction that would advance the head.
-        let declared = opened["input_base_fingerprint"].as_str().unwrap_or_default();
+        let declared = opened["input_base_fingerprint"]
+            .as_str()
+            .unwrap_or_default();
         if self.current_base.get(&operation).map(String::as_str) != Some(declared) {
-            return Ok(json!({"work_id": work_id, "state": "stored_stale", "head_revision": 0,
-                "conflict": "the Network Reporter input base changed before finalization"}));
+            return Ok(
+                json!({"work_id": work_id, "state": "stored_stale", "head_revision": 0,
+                "conflict": "the Network Reporter input base changed before finalization"}),
+            );
         }
         self.commits += 1;
         let revision = self.next_head_revision;

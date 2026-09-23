@@ -590,7 +590,9 @@ fn record_refusal(
     } else {
         error.detail
     };
-    let mut receipt = Receipt::new("upload", outcome).about(identity).detail(detail);
+    let mut receipt = Receipt::new("upload", outcome)
+        .about(identity)
+        .detail(detail);
     receipt.work_id = work_id;
     receipt.transfers = transfers;
     receipt

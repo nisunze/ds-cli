@@ -238,7 +238,9 @@ mod tests {
         assert_eq!(
             refusal_detail(
                 403,
-                Some(r#"{"success":false,"error":{"code":"INSUFFICIENT_PERMISSIONS","message":"needs design.report"}}"#)
+                Some(
+                    r#"{"success":false,"error":{"code":"INSUFFICIENT_PERMISSIONS","message":"needs design.report"}}"#
+                )
             ),
             "the gateway answered 403 INSUFFICIENT_PERMISSIONS: needs design.report"
         );

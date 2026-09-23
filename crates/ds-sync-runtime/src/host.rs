@@ -853,14 +853,18 @@ impl SyncHost for StoreHost<'_> {
 
     fn open_publication(&self, declaration: &Value) -> Result<RecordAnswer, GatewayError> {
         self.ensure_active()?;
-        let answer = self.gateway.post(SyncRoute::ComputeArtifacts, declaration)?;
+        let answer = self
+            .gateway
+            .post(SyncRoute::ComputeArtifacts, declaration)?;
         self.ensure_active()?;
         Ok(parse_record_answer(&answer)?)
     }
 
     fn finalize_publication(&self, declaration: &Value) -> Result<RecordAnswer, GatewayError> {
         self.ensure_active()?;
-        let answer = self.gateway.post(SyncRoute::ComputeArtifacts, declaration)?;
+        let answer = self
+            .gateway
+            .post(SyncRoute::ComputeArtifacts, declaration)?;
         Ok(parse_record_answer(&answer)?)
     }
 
