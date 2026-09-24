@@ -43,6 +43,13 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "headless_project",
     ),
+    (
+        "dsgrid.project.versions",
+        "local_auth_state",
+        "headless_project",
+    ),
+    ("dsgrid.project.retire", "global_write", "headless_project"),
+    ("dsgrid.project.restore", "global_write", "headless_project"),
     ("server.engine", "read_only", "none"),
     // The native server requires its owner's headless identity. The control
     // credential only connects to that host; it grants no Desktop authority.

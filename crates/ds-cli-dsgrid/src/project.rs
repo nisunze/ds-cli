@@ -144,7 +144,7 @@ pub static VERSIONS: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["model history", "older MV model versions"],
+    search: &["model history", "older mv model versions"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -152,7 +152,7 @@ pub static DOWNLOAD: Command = Command {
     id: "dsgrid.project.download",
     path: &["dsgrid", "project", "download"],
     contract: 1,
-    summary: "Download and verify one explicitly named project MV model without a Desktop.",
+    summary: "Download and verify one project MV model without a Desktop.",
     purpose: "Resolve an exact governed revision under the selected project, download its immutable .dsgrid bytes and verify the declared SHA-256 and byte count before creating a new local file. Use the resulting package for model inspection, tagged MV quantities and map composition. No storage URL or project override is accepted.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
