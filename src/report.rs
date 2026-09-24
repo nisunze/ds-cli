@@ -222,11 +222,6 @@ enum Command {
         transformers: Vec<String>,
         #[serde(default)]
         selection: Option<crate::report_formats::DesignOutputSelection>,
-        /// The project the host has open. A project overview (combined or
-        /// compounded) is drawn from that project's rooms, so it must be the
-        /// one asked for; a single transformer export is not so bound.
-        #[serde(default)]
-        active_project: Option<String>,
     },
     /// The outcome of a batch of exports, in a stable order with its failure
     /// count — the shaping every batch host repeated.
@@ -583,7 +578,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             report_type,
             transformers,
             selection,
-            active_project,
         } => {
             if project.is_empty()
                 || project.len() > 128
@@ -609,9 +603,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             };
             if names(transformers.clone())?.len() != transformers.len() {
                 return Err("Report scope repeats a transformer.".into());
-            }
-            if kind != "transformer" && active_project.as_deref() != Some(project.as_str()) {
-                return Err("Project overview requires the matching active project.".into());
             }
             let label = match kind {
                 "combined" => "Combined report".into(),
@@ -1338,17 +1329,14 @@ mod export_tests {
     }
 
     #[test]
-    fn a_project_overview_needs_the_matching_open_project_and_a_batch_reports_in_order() {
-        let overview = |active: serde_json::Value| {
-            evaluate(&serde_json::to_vec(&serde_json::json!({"command":"export","project":"p1","transformer":"combined_transformer","transformers":["a","b"],"active_project":active})).unwrap())
-        };
-        assert!(overview(serde_json::json!("p1")).is_ok());
-        assert_eq!(
-            overview(serde_json::json!("p2")).unwrap_err(),
-            "Project overview requires the matching active project."
-        );
-        assert!(overview(serde_json::Value::Null).is_err());
-        // A single transformer export is not bound to the open project.
+    fn a_project_overview_uses_only_the_request_project_and_a_batch_reports_in_order() {
+        for project in ["p1", "p2"] {
+            let request = serde_json::json!({"command":"export","project":project,"transformer":"combined_transformer","transformers":["a","b"]});
+            let output = evaluate(&serde_json::to_vec(&request).unwrap()).unwrap();
+            let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+            assert_eq!(value["result"]["project"], project);
+            assert_eq!(value["result"]["kind"], "combined");
+        }
         assert!(evaluate(br#"{"command":"export","project":"p1","transformer":"tx_a"}"#).is_ok());
         let out = evaluate(br#"{"command":"batch_outcome","results":[{"transformer":"tx_b","status":"error","error":"x"},{"transformer":"tx_a","status":"ok"},{"transformer":"TX_C","status":"error"}]}"#).unwrap();
         let out: serde_json::Value = serde_json::from_str(&out).unwrap();
