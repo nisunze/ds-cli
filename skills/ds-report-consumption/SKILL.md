@@ -41,10 +41,10 @@ ones this skill was written against.
   archives --project <exact-id>`; read the
   archive locator, individual coverage, missing and error counts from the
   receipt exactly as below.
-- `ds map design batch report --transformer A --transformer B … --file-level
-  transformer|sector|district|root --yes --output json` — 2 to 200
-  transformers; one archive holding `transformers/<name>/<name>.xlsx` (nested
-  by the chosen level) and `combined/combined_transformer.xlsx`. Read the
+- `ds map design batch report --transformer A --transformer B … --yes --output
+  json` — 2 to 200 transformers; one archive holding
+  `transformers/<name>/<name>.xlsx` and `combined/combined_transformer.xlsx`,
+  filed by the project's applied `report_archive` grouping (flat without one). Read the
   archive URL, individual coverage, missing and error counts from the
   receipt; download the archive with an ordinary HTTP client.
 - `ds report export --task transformer|combined … --out-dir <dir> --output

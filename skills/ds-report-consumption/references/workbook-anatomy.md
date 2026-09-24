@@ -97,9 +97,10 @@ derived from the customers, even when a size was chosen.
 
 ## Archives
 
-`ds map design batch report` delivers `transformers/<name>/<name>.xlsx`
-(nested under sector or district folders when `--file-level` says so) and
-`combined/combined_transformer.xlsx`; with `--combine-per-group true`
-each district folder also carries its own combined set. `ds report bundle`
+`ds map design batch report` delivers `transformers/<name>/<name>.xlsx` and
+`combined/combined_transformer.xlsx`, filed by the project's applied
+`report_archive` grouping (flat without one). `ds report project combined`
+nests them by `--file-level`, and with `--combine-per-group` each district
+folder also carries its own combined set. `ds report bundle`
 produces the same layout from digest-pinned local artifacts and embeds a
 `manifest.json` listing every entry with its SHA-256.
