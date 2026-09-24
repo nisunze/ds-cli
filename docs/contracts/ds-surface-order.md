@@ -196,7 +196,7 @@ host and every surface:
 
 | Surface | How the project arrives |
 |---|---|
-| `ds` CLI | `--project <p>` on every project-scoped command; a saved selection is a **client-side default that is sent explicitly**, never an ambient value the host reads |
+| `ds` CLI | required `--project <p>` on every project-scoped command; no saved selection supplies it. A sealed input may name its project instead. |
 | MCP | the project is an argument of the invoked descriptor, every call |
 | Kernel | takes the project as an input fact; owns no "current project"; `execution_context::admit` decides *under which project* from the carried bytes, never from a host |
 | Server | keyed by (principal, project) per request; no project at `serve` start |

@@ -162,18 +162,14 @@ impl HostIdentity {
 
 /// Everything a submission needs that is not the bytes.
 ///
-/// `requested_project` is what the caller named; `saved_project` is the
-/// caller's own default (the Server passes `None` — a saved selection is the
-/// *client's* default and reaches the Server as a named project, never as
-/// host state). The kernel decides between them, and that a sealed input's own
-/// project outranks both. Nothing is fetched to allow any of them.
+/// `requested_project` is what the caller named. A sealed input's own project
+/// outranks it. No host selection or directory is consulted.
 pub struct Admission<'a> {
     pub identity: &'a HostIdentity,
     /// Who asked, e.g. `server-connection:9f2c`. Bounded at 120 characters.
     pub client: &'a str,
     pub key: &'a str,
     pub requested_project: Option<&'a str>,
-    pub saved_project: Option<&'a str>,
     pub limits: Limits,
     pub now_ms: u64,
 }
@@ -336,7 +332,6 @@ fn submit_validated(
         client,
         key,
         requested_project,
-        saved_project,
         limits,
         now_ms,
     } = *admission;
@@ -351,8 +346,8 @@ fn submit_validated(
         ));
     }
     // The project decides the id, so it is resolved first — by the kernel, from
-    // the same three inputs `admit` will read again and answer identically.
-    let project = execution_context::project_for(requested_project, saved_project, sealed_project)?;
+    // the same two inputs `admit` will read again and answer identically.
+    let project = execution_context::project_for(requested_project, sealed_project)?;
     let id = job_id(&identity.owner, identity.lane(), &project, key);
     let mut store = open(path).map_err(SubmitError::Host)?;
     // Read the key's existing row through the whole connection, never through
@@ -371,7 +366,6 @@ fn submit_validated(
         idempotency_key: key.to_owned(),
         input_sha256: digest(input),
         requested_project: requested_project.map(str::to_owned),
-        saved_project: saved_project.map(str::to_owned),
         sealed_project: sealed_project.map(str::to_owned),
         existing: existing.as_ref().and_then(|job| job.context.clone()),
     })?;
@@ -1208,7 +1202,6 @@ mod tests {
             idempotency_key: "key-a".into(),
             input_sha256: input.to_owned(),
             requested_project: Some("project-a".into()),
-            saved_project: None,
             sealed_project: None,
             existing: Some(stored.clone()),
         };

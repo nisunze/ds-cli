@@ -34,9 +34,8 @@
 //!
 //! Rules worth stating up front:
 //!
-//! - **A named project is the operation's project.** `saved_project` is the
-//!   caller's own default, used exactly like a name it typed. A sealed input
-//!   that already names its project (Solar) outranks both; an explicit request
+//! - **A named project is the operation's project.** A sealed input
+//!   that already names its project (Solar) outranks it; an explicit request
 //!   that contradicts the bytes is `scope_mismatch`. Naming a project is not
 //!   being entitled to it: that is the gateway's answer on the effect that
 //!   leaves the machine, at publication and at sync.
@@ -562,7 +561,7 @@ const DEVICE_NAMES: [&str; 22] = [
 /// directory), carries a character that draws nothing ([`renders_as_nothing`])
 /// or is a device (`NUL`, `con.json`). Each of those is a path expression
 /// rather than a name, and each is `context_corrupt` wherever it appears:
-/// named by a caller, sealed in the bytes, defaulted from a saved selection,
+/// named by a caller, sealed in the bytes,
 /// counted in a census or stored in a record. One rule, one answer, at every
 /// door — a host may then use the id in a path without asking again what it
 /// might be.
@@ -637,9 +636,6 @@ pub struct AdmitRequest {
     /// The project the caller named explicitly, if any.
     #[serde(default)]
     pub requested_project: Option<String>,
-    /// The caller's saved selection — a default, verified like any other.
-    #[serde(default)]
-    pub saved_project: Option<String>,
     /// The project the sealed input itself names (Solar). Authoritative.
     #[serde(default)]
     pub sealed_project: Option<String>,
@@ -761,27 +757,19 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
 fn resolve_project(request: &AdmitRequest) -> Result<String, Fault> {
     project_for(
         request.requested_project.as_deref(),
-        request.saved_project.as_deref(),
         request.sealed_project.as_deref(),
     )
 }
 
 /// Which project one operation is about: sealed bytes outrank an explicit
-/// request, which outranks the caller's saved default. A saved default that
-/// disagrees with the bytes is simply not used — only a caller who *named* a
-/// contradicting project is refused.
+/// request. A caller who names a contradicting project is refused.
 ///
 /// Public because a host must know the project before it can derive the
 /// durable job id it then hands to [`admit`]: the id digests the project, so
 /// the same key in two projects is two pieces of work rather than a collision.
 /// `admit` asks this again and gets the same answer; nothing decides twice.
-pub fn project_for(
-    requested: Option<&str>,
-    saved: Option<&str>,
-    sealed: Option<&str>,
-) -> Result<String, Fault> {
+pub fn project_for(requested: Option<&str>, sealed: Option<&str>) -> Result<String, Fault> {
     let requested = optional_project(requested, "requested_project")?;
-    let saved = optional_project(saved, "saved_project")?;
     let sealed = optional_project(sealed, "sealed_project")?;
     if let Some(sealed) = sealed {
         if let Some(requested) = requested {
@@ -796,10 +784,10 @@ pub fn project_for(
         }
         return Ok(sealed.to_owned());
     }
-    requested.or(saved).map(str::to_owned).ok_or_else(|| {
+    requested.map(str::to_owned).ok_or_else(|| {
         refused(
             PROJECT_REQUIRED,
-            "no project was named for this request; name one, or select one first",
+            "no project was named for this request; pass --project or submit sealed input that names its project",
         )
     })
 }
@@ -1264,7 +1252,6 @@ mod tests {
             idempotency_key: "key-a".into(),
             input_sha256: DIGEST_A.into(),
             requested_project: None,
-            saved_project: None,
             sealed_project: None,
             existing: None,
         }
@@ -1396,22 +1383,12 @@ mod tests {
         assert_eq!(
             code(&admit(&request()).unwrap_err()),
             PROJECT_REQUIRED,
-            "no requested, saved or sealed project is not a default"
+            "no requested or sealed project is not a default"
         );
-        let mut saved = request();
-        saved.saved_project = Some("project-a".into());
-        assert_eq!(
-            admit(&saved).unwrap().context().project,
-            "project-a",
-            "a saved selection is a usable default"
-        );
-        // An explicit request outranks the saved default.
-        let mut both = saved.clone();
-        both.requested_project = Some("project-b".into());
-        assert_eq!(admit(&both).unwrap().context().project, "project-b");
-        // The sealed bytes outrank both, and a saved default that disagrees is
-        // simply not used.
-        let mut sealed = saved.clone();
+        let mut named = request();
+        named.requested_project = Some("project-a".into());
+        assert_eq!(admit(&named).unwrap().context().project, "project-a");
+        let mut sealed = request();
         sealed.sealed_project = Some("project-b".into());
         assert_eq!(admit(&sealed).unwrap().context().project, "project-b");
         // But a caller who NAMES a project the bytes contradict is refused.
@@ -1436,9 +1413,6 @@ mod tests {
             let mut named = request();
             named.requested_project = Some(project.into());
             assert_eq!(admit(&named).unwrap().context().project, project);
-            let mut defaulted = request();
-            defaulted.saved_project = Some(project.into());
-            assert_eq!(admit(&defaulted).unwrap().context().project, project);
             let mut sealed = request();
             sealed.sealed_project = Some(project.into());
             assert_eq!(admit(&sealed).unwrap().context().project, project);
@@ -1515,14 +1489,6 @@ mod tests {
                     && refused.message.contains("one path segment"),
                 "{shape:?}: {}",
                 refused.message
-            );
-            // …defaulted from the caller's own saved selection…
-            let mut defaulted = request();
-            defaulted.saved_project = Some(shape.into());
-            assert_eq!(
-                code(&admit(&defaulted).unwrap_err()),
-                CONTEXT_CORRUPT,
-                "{shape:?}"
             );
             // …sealed in the bytes…
             let mut sealed = request();
@@ -1667,12 +1633,12 @@ mod tests {
             |r: &mut AdmitRequest| r.requested_project = Some(" p".into()),
         ] {
             let mut broken = request();
-            broken.saved_project = Some("project-a".into());
+            broken.requested_project = Some("project-a".into());
             break_it(&mut broken);
             assert_eq!(code(&admit(&broken).unwrap_err()), CONTEXT_CORRUPT);
         }
         let mut clockless = request();
-        clockless.saved_project = Some("project-a".into());
+        clockless.requested_project = Some("project-a".into());
         clockless.now_ms = 0;
         assert!(matches!(admit(&clockless).unwrap_err(), Fault::Hard(_)));
     }
@@ -2292,7 +2258,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             refused,
-            json!({"outcome": "refused", "refusal": {"code": PROJECT_REQUIRED, "message": "no project was named for this request; name one, or select one first"}})
+            json!({"outcome": "refused", "refusal": {"code": PROJECT_REQUIRED, "message": "no project was named for this request; pass --project or submit sealed input that names its project"}})
         );
         assert_eq!(
             wire(json!({"kind": "visible", "caller": caller(), "context": context("project-a")}))
@@ -2351,14 +2317,14 @@ mod tests {
         assert_eq!(refused.code(), Some(PROJECT_REQUIRED));
         assert_eq!(
             refused.message(),
-            "no project was named for this request; name one, or select one first"
+            "no project was named for this request; pass --project or submit sealed input that names its project"
         );
         assert_eq!(
             refused.to_string(),
-            "project_required: no project was named for this request; name one, or select one first"
+            "project_required: no project was named for this request; pass --project or submit sealed input that names its project"
         );
         let mut clockless = request();
-        clockless.saved_project = Some("project-a".into());
+        clockless.requested_project = Some("project-a".into());
         clockless.now_ms = 0;
         let bug = admit(&clockless).unwrap_err();
         assert_eq!(bug.code(), None, "a host bug has nothing to relay");

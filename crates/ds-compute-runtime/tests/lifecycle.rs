@@ -64,7 +64,6 @@ fn admission<'a>(
         client: "test:1",
         key,
         requested_project: project,
-        saved_project: None,
         limits: limits(),
         now_ms: runtime::now_ms(),
     }

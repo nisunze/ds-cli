@@ -260,7 +260,7 @@ fn every_returned_context_is_the_one_that_went_in() {
 /// would refuse them — so this is the statement that they stay deleted, in the
 /// file a reader of the contract actually opens.
 #[test]
-fn no_recorded_case_offers_a_membership_or_a_selection_to_recover_into() {
+fn no_recorded_case_offers_ambient_project_selection() {
     let corpus = corpus();
     for case in corpus["cases"].as_array().expect("cases") {
         let id = case["id"].as_str().expect("case id");
@@ -269,10 +269,10 @@ fn no_recorded_case_offers_a_membership_or_a_selection_to_recover_into() {
             request.get("membership").is_none(),
             "{id}: admission takes no membership snapshot; the gateway decides entitlement"
         );
-        if request["kind"] == "recover" {
+        if id != "admit-saved-project-field-is-not-admitted" {
             assert!(
                 request.get("saved_project").is_none(),
-                "{id}: a legacy row is recovered from its own bytes or not at all"
+                "{id}: no operation accepts an ambient project selection"
             );
         }
     }

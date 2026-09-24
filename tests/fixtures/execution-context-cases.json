@@ -41,8 +41,8 @@
       }
     },
     {
-      "id": "admit-saved-selection-is-a-default",
-      "why": "A saved selection is the caller's own default, used exactly like a name it typed; it is a client-side convenience and never Server state.",
+      "id": "admit-saved-project-field-is-not-admitted",
+      "why": "A legacy saved-project field is rejected as an unknown input, so no host can silently substitute an active selection.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -60,25 +60,12 @@
         "saved_project": "project-a"
       },
       "expected": {
-        "outcome": "admitted",
-        "context": {
-          "principal_uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1",
-          "project": "project-a",
-          "client": "cli:4711",
-          "operation": "solar_processing",
-          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-          "idempotency_key": "key-a",
-          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "admitted_at_ms": 2000
-        }
+        "error": "invalid execution context request: unknown field `saved_project`, expected one of `now_ms`, `principal`, `client`, `operation`, `job_id`, `idempotency_key`, `input_sha256`, `requested_project`, `sealed_project`, `existing` at line 1 column 443"
       }
     },
     {
-      "id": "admit-requested-outranks-saved",
-      "why": "When the caller names a project explicitly, its own saved default is not consulted at all - a stale default can never redirect an explicit request.",
+      "id": "admit-explicit-project-needs-no-selection",
+      "why": "An explicit project names the request without consulting any saved selection or process-wide active project.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -93,8 +80,7 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "requested_project": "project-b",
-        "saved_project": "project-a"
+        "requested_project": "project-b"
       },
       "expected": {
         "outcome": "admitted",
@@ -114,8 +100,8 @@
       }
     },
     {
-      "id": "admit-sealed-input-outranks-saved",
-      "why": "A Solar submission's sealed input already names its project, so it needs no selection and a disagreeing selection is simply not used rather than refused.",
+      "id": "admit-sealed-input-needs-no-selection",
+      "why": "A sealed Solar submission names its own project, so admission needs no saved selection or active host project.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -130,8 +116,7 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "sealed_project": "project-b",
-        "saved_project": "project-a"
+        "sealed_project": "project-b"
       },
       "expected": {
         "outcome": "admitted",
@@ -237,7 +222,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "project_required",
-          "message": "no project was named for this request; name one, or select one first"
+          "message": "no project was named for this request; pass --project or submit sealed input that names its project"
         }
       }
     },
@@ -525,7 +510,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "project_required",
-          "message": "no project was named for this request; name one, or select one first"
+          "message": "no project was named for this request; pass --project or submit sealed input that names its project"
         }
       }
     },
@@ -1042,33 +1027,6 @@
       }
     },
     {
-      "id": "admit-saved-selection-that-is-not-one-segment",
-      "why": "A saved default is verified exactly like a name the caller typed: the client's own selection cannot smuggle a path into the record either.",
-      "request": {
-        "kind": "admit",
-        "now_ms": 2000,
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "client": "cli:4711",
-        "operation": "solar_processing",
-        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-        "idempotency_key": "key-a",
-        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "saved_project": "../project-a"
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "context_corrupt",
-          "message": "execution context field saved_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
-        }
-      }
-    },
-    {
       "id": "admit-sealed-project-that-is-not-one-segment",
       "why": "Sealed bytes outrank a request, so they are held to the same grammar; a prepared input naming a path is refused rather than trusted because it arrived as bytes.",
       "request": {
@@ -1243,7 +1201,7 @@
         "job_id": "2222222222222222222222222222222222222222222222222222222222222222",
         "idempotency_key": "lv-batch-1",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "saved_project": "project-a"
+        "requested_project": "project-a"
       },
       "expected": {
         "outcome": "admitted",
@@ -1279,7 +1237,7 @@
         "job_id": "6666666666666666666666666666666666666666666666666666666666666666",
         "idempotency_key": "tile-key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "saved_project": "project-a"
+        "requested_project": "project-a"
       },
       "expected": {
         "outcome": "admitted",

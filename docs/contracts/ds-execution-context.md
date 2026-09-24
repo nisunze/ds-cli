@@ -89,8 +89,8 @@ directories and two sets of report names that every screen an operator has —
 the CLI, the activity list, the refusal itself — draws as the same word. That
 list is named rather than derived, since the kernel carries no Unicode tables;
 it is the whole invisible surface, not a sample, and a name written in another
-script is refused by none of it. Every door: named by the caller, defaulted
-from a saved selection, sealed in the bytes, offered to a legacy row on
+script is refused by none of it. Every door: named by the caller,
+sealed in the bytes, offered to a legacy row on
 recovery, stored in a record, or counted in a census (there it is the host's
 own bug, a hard fault). The refusal states the grammar, so an operator
 reads the rule rather than guessing which character was the problem. The
@@ -128,8 +128,8 @@ and a code nothing can raise is not one. The bearer itself is `ds-cli-server`'s
 that its refusal vocabulary stays at the nine codes below.
 
 What that means here, concretely: `admit` takes the connection identity, the
-project the work names (`requested_project`, the caller's own `saved_project`
-default, and `sealed_project` from the bytes), and the key with its input
+project the work names (`requested_project` or `sealed_project` from the
+bytes), and the key with its input
 digest. There is no membership input, no TTL and no freshness rule, and
 `project_not_visible` is not in the vocabulary. "Verified project membership at
 admission" is satisfied **at the ds-brain boundary** — the same boundary the
@@ -138,11 +138,10 @@ is a decision to challenge, not an omission.
 
 ## 3. The rules
 
-- **A named project is the operation's project.** `saved_project` is the
-  caller's own default, used exactly like a name it typed; it is a client-side
-  convenience and never Server state.
-- **Sealed bytes outrank a request, which outranks a default.** A prepared Solar
-  input names its own project; a disagreeing default is not used, a caller who
+- **A named project is the operation's project.** The kernel has no saved
+  selection, even as a fallback supplied by a client.
+- **Sealed bytes outrank a request.** A prepared Solar
+  input names its own project; a caller who
   *names* a contradicting project is `scope_mismatch`. Bytes name a project;
   entitlement to it is the gateway's answer on the effect that leaves the
   machine, never this owner's.
