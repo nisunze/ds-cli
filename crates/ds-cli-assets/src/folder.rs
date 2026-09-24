@@ -17,7 +17,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{CatalogueCommand, LANE_ARG};
+use crate::{CatalogueCommand, LANE_ARG, PROJECT_ARG};
 
 const PATH_ARG: Arg = Arg::value(
     "path",
@@ -103,7 +103,7 @@ new name. A folder is a document, not a path derived from its children, so it \
 can be empty and can be renamed without touching them. Loosening a folder \
 default needs the same capability as loosening an asset. System folders are \
 projected, not declared, and are refused by name. Headless: writes the \
-selected project's catalogue under the signed-in native credential, no window.",
+named project's catalogue under the signed-in native credential, no window.",
     chapter: Chapter::Assets,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -114,12 +114,13 @@ selected project's catalogue under the signed-in native credential, no window.",
         STATUS_ARG,
         RENAME_TO_ARG,
         LANE_ARG,
+        PROJECT_ARG,
     ],
     output: "\
 `folder` — the declared folder with `folder_id`, `path`, `name`, `parent`, \
 `default_sensitivity`, `default_status` and `counts`.",
     examples: &[Example {
-        command: "ds assets folder --path contracts/2026/epc --sensitivity confidential --yes",
+        command: "ds assets folder --project <exact-id> --path contracts/2026/epc --sensitivity confidential --yes",
         note: "Every asset ingested into it afterwards is confidential unless a stricter class is named.",
         runnable: false,
     }],
@@ -186,6 +187,7 @@ fn new_name(raw: &str) -> Result<String, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
+    let project = inputs.require("project")?;
     let path = arguments["path"].as_str().unwrap_or_default().to_owned();
     let text = |key: &str| arguments[key].as_str().map(str::to_owned);
     // A rename or a default change is an update of the folder that exists;
@@ -198,7 +200,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             default_status: text("status"),
         },
         Some(rename_to) => {
-            let existing = crate::folder_at(lane, &path)?;
+            let existing = crate::folder_at(lane, project, &path)?;
             CatalogueCommand::FolderUpdate {
                 folder_id: existing["folder_id"]
                     .as_str()
@@ -211,7 +213,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
         }
     };
-    crate::catalogue(lane, &command)
+    crate::catalogue(lane, project, &command)
 }
 
 pub fn render(data: &Value) -> String {
@@ -238,7 +240,8 @@ mod tests {
     use ds_cli_contract::spec::ArgKind;
 
     fn parse(tokens: &[&str]) -> Inputs {
-        let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        let mut tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         ds_cli_contract::parse(&COMMAND, &tokens).expect("declared inputs")
     }
 

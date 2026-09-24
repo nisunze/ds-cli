@@ -3513,6 +3513,24 @@ pub fn project_assets(
     )
 }
 
+/// One asset catalogue action scoped to the project named on this request.
+pub fn project_assets_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &ds_client_core::project_assets::Command,
+    reader: Option<&mut dyn std::io::Read>,
+) -> Result<HeadlessNamedProject<Value>, Failure> {
+    let reader = std::cell::RefCell::new(reader);
+    headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.project_assets(project, command, reader.borrow_mut().take()),
+        |client, project| {
+            client.project_assets(project, command, reader.borrow_mut().take(), now())
+        },
+    )
+}
+
 /// One governed design annotation action — a tag, a group, a consumer
 /// grouping, an administrative enrichment or a comment thread — for only the
 /// saved, audience-fenced selected project.
@@ -3583,6 +3601,20 @@ pub fn read_asset_bytes(
 ) -> Result<HeadlessProjectReport<(Value, Vec<u8>)>, Failure> {
     headless_project_report(
         lane_value,
+        |device, project| device.read_asset_bytes(project, asset_id),
+        |client, project| client.read_asset_bytes(project, asset_id, now()),
+    )
+}
+
+/// Read verified asset bytes for the project named on this request.
+pub fn read_asset_bytes_for_project(
+    lane_value: &str,
+    project: &str,
+    asset_id: &str,
+) -> Result<HeadlessNamedProject<(Value, Vec<u8>)>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
         |device, project| device.read_asset_bytes(project, asset_id),
         |client, project| client.read_asset_bytes(project, asset_id, now()),
     )

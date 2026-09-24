@@ -11,7 +11,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{CURSOR_ARG, CatalogueCommand, FOLDER_ARG, LANE_ARG, LIMIT_ARG};
+use crate::{CURSOR_ARG, CatalogueCommand, FOLDER_ARG, LANE_ARG, LIMIT_ARG, PROJECT_ARG};
 
 const KIND_ARG: Arg =
     Arg::value("kind", "<kind>", "Only this kind of asset.").choices(crate::KINDS);
@@ -48,13 +48,13 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "List the project's assets, one bounded page at a time.",
     purpose: "\
-Names the assets the signed-in user may see in the selected project, newest \
+Names the assets the signed-in user may see in the named project, newest \
 first, with each one's folder, kind, format, size, status and sensitivity. \
 This is where an assets session starts: every other `ds assets` command needs \
 an asset_id from here or from `ds assets tree`. A restricted or confidential \
 asset the caller cannot read has no row, no name and no count — absence is \
 the answer, never a placeholder. Reads the same catalogue the Assets tab \
-renders and changes nothing. Headless: the selected project of the signed-in \
+renders and changes nothing. Headless: the named project of the signed-in \
 native credential, no window.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
@@ -69,6 +69,7 @@ native credential, no window.",
         LIMIT_ARG,
         CURSOR_ARG,
         LANE_ARG,
+        PROJECT_ARG,
     ],
     output: "\
 `assets` rows of `asset_id`, `folder`, `name`, `kind`, `format`, `bytes`, \
@@ -76,7 +77,7 @@ native credential, no window.",
 `links`; then `next_cursor` and `more` for the next page, `scanned` for how many \
 rows the read considered, and `truncated` when a scan bound stopped it early.",
     examples: &[Example {
-        command: "ds assets list --folder contracts --status durable --output json",
+        command: "ds assets list --project <exact-id> --folder contracts --status durable --output json",
         note: "Read .data.assets[].asset_id to feed read, preview, classify, promote or attach.",
         runnable: false,
     }],
@@ -134,10 +135,11 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
+    let project = inputs.require("project")?;
     let text = |key: &str| arguments[key].as_str().map(str::to_owned);
     let folder_id = match text("folder") {
         Some(path) => Some(
-            crate::folder_at(lane, &path)?["folder_id"]
+            crate::folder_at(lane, project, &path)?["folder_id"]
                 .as_str()
                 .unwrap_or_default()
                 .to_owned(),
@@ -146,6 +148,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let page = crate::catalogue(
         lane,
+        project,
         &CatalogueCommand::List {
             folder_id,
             kind: text("kind"),
@@ -215,7 +218,8 @@ mod tests {
     use super::*;
 
     fn inputs(tokens: &[&str]) -> Inputs {
-        let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        let mut tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         parse(&COMMAND, &tokens).expect("declared tokens parse")
     }
 

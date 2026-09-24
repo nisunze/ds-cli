@@ -21,7 +21,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_layer_store::prepared::{self, GeometryType, Host, Op, Register, Scope, StoreError};
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG};
+use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG, PROJECT_ARG};
 
 /// The prepared layer store's own refusals, in the words `ds map local`
 /// declares them, so a caller who planned for them there has planned for
@@ -62,12 +62,12 @@ is refused with the reason. A projected sys: row is refused by name.",
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[ASSET_ARG, MEMBER_ARG, AS_LAYER_ARG, LANE_ARG],
+    args: &[ASSET_ARG, MEMBER_ARG, AS_LAYER_ARG, LANE_ARG, PROJECT_ARG],
     output: "\
 `layer_id` of the prepared local layer, its `feature_count`, `geometry_type`, \
 `source_name` (the asset's name, its provenance) and the copied `payload`.",
     examples: &[Example {
-        command: "ds assets promote --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --as-layer Lot3-poles --output json",
+        command: "ds assets promote --project <exact-id> --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --as-layer Lot3-poles --output json",
         note: "The layer then appears in `ds map local list`; the asset is untouched.",
         runnable: false,
     }],
@@ -139,6 +139,7 @@ fn layer_name(raw: &str) -> Result<String, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
+    let project = inputs.require("project")?;
     let asset_id = arguments["asset"].as_str().unwrap_or_default().to_owned();
     let member = arguments["member"].as_str().map(str::to_owned);
     let as_layer = arguments["as_layer"]
@@ -146,7 +147,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .unwrap_or_default()
         .to_owned();
 
-    let report = ds_cli_auth::read_asset_bytes(lane, &asset_id)?;
+    let report = ds_cli_auth::read_asset_bytes_for_project(lane, project, &asset_id)?;
     let uid = report.identity().uid().to_owned();
     let (row, bytes) = report.into_result();
     if member.is_none() && row["kind"] != "geo" {
@@ -301,7 +302,8 @@ mod tests {
     use super::*;
 
     fn parse(tokens: &[&str]) -> Inputs {
-        let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        let mut tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         ds_cli_contract::parse(&COMMAND, &tokens).expect("declared inputs")
     }
 

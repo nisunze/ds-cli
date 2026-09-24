@@ -4,7 +4,7 @@
 //! indexed under `Assets › Correspondence`. The index is the kernel's own
 //! system-folder projection (`ds_command_kernel::assets::tree`), fed here
 //! with what it needs and nothing more — the catalogue rows, the records and
-//! the parties of the selected project, each read through the native
+//! the parties of the named project, each read through the native
 //! credential — so the answer is the same bytes the desktop's Assets tab
 //! would render, computed by the same kernel, on a host with no window.
 //!
@@ -37,7 +37,7 @@ const _: () = assert!(
 
 pub const PROJECT_NOT_VISIBLE: Refusal = Refusal {
     code: "project_not_visible",
-    when: "the selected project is not one this account is a member of",
+    when: "the named project is not one this account is a member of",
     remedy: "choose an exact id from `ds auth project list`",
 };
 
@@ -53,13 +53,14 @@ fn page_rows(answer: &Value, key: &str) -> Vec<Value> {
 }
 
 /// Every catalogue row the caller may read, up to the bound.
-fn catalogue_rows(lane: &str) -> Result<(Vec<Value>, bool), Failure> {
+fn catalogue_rows(lane: &str, project: &str) -> Result<(Vec<Value>, bool), Failure> {
     let mut rows = Vec::new();
     let mut cursor: Option<String> = None;
     let mut truncated = false;
     for _ in 0..MAX_CATALOGUE_PAGES {
         let page = crate::catalogue(
             lane,
+            project,
             &Catalogue::List {
                 limit: 200,
                 cursor: cursor.clone(),
@@ -84,11 +85,12 @@ fn catalogue_rows(lane: &str) -> Result<(Vec<Value>, bool), Failure> {
 }
 
 /// Every record the caller may read, raw as the door answers them.
-fn record_rows(lane: &str) -> Result<(Vec<Value>, bool), Failure> {
+fn record_rows(lane: &str, project: &str) -> Result<(Vec<Value>, bool), Failure> {
     let mut rows = Vec::new();
     for page in 1..=MAX_RECORD_PAGES {
         let answer = crate::correspondence_door(
             lane,
+            project,
             &Action::RecordList(RecordFilters {
                 limit: Some(100),
                 page: Some(page),
@@ -108,11 +110,12 @@ fn record_rows(lane: &str) -> Result<(Vec<Value>, bool), Failure> {
     Ok((rows, true))
 }
 
-fn party_rows(lane: &str) -> Result<Vec<Value>, Failure> {
+fn party_rows(lane: &str, project: &str) -> Result<Vec<Value>, Failure> {
     let mut rows = Vec::new();
     for page in 1..=MAX_RECORD_PAGES {
         let answer = crate::correspondence_door(
             lane,
+            project,
             &Action::PartyList(PartyFilters {
                 include_archived: true,
                 limit: Some(100),
@@ -150,11 +153,11 @@ fn kernel_row(row: &Value) -> Option<Value> {
 }
 
 /// The index, rooted at `--folder`.
-pub fn tree(lane: &str, arguments: &Value) -> Result<Value, Failure> {
-    let folders = crate::catalogue(lane, &Catalogue::Folders)?;
-    let (assets, assets_truncated) = catalogue_rows(lane)?;
-    let (records, records_truncated) = record_rows(lane)?;
-    let parties = party_rows(lane)?;
+pub fn tree(lane: &str, project: &str, arguments: &Value) -> Result<Value, Failure> {
+    let folders = crate::catalogue(lane, project, &Catalogue::Folders)?;
+    let (assets, assets_truncated) = catalogue_rows(lane, project)?;
+    let (records, records_truncated) = record_rows(lane, project)?;
+    let parties = party_rows(lane, project)?;
 
     let mut rows = Vec::with_capacity(assets.len());
     let mut dropped = 0usize;

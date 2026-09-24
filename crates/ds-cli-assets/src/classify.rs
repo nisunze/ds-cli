@@ -19,7 +19,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, CatalogueCommand, FOLDER_ARG, LANE_ARG};
+use crate::{ASSET_ARG, CatalogueCommand, FOLDER_ARG, LANE_ARG, PROJECT_ARG};
 
 const KIND_ARG: Arg =
     Arg::value("kind", "<kind>", "Override the kind the kernel inferred.").choices(crate::KINDS);
@@ -101,7 +101,7 @@ capability for the class being left, and a person's override is never \
 re-inferred away. Nothing given, nothing sent — a flag you omit is untouched. \
 Projected sys: rows are read-only and refused by name. The change is pinned to \
 the row's current version, so a row that moved is refused rather than \
-overwritten. Headless: the selected project of the signed-in native \
+overwritten. Headless: the named project of the signed-in native \
 credential, no window.",
     chapter: Chapter::Assets,
     effect: Effect::GlobalWrite,
@@ -119,12 +119,13 @@ credential, no window.",
         DOCUMENT_STATE_ARG,
         REASON_ARG,
         LANE_ARG,
+        PROJECT_ARG,
     ],
     output: "\
 `asset` — the row after the change — the `audit_id` recorded for it, and \
 `changed`: the names of the fields that actually moved.",
     examples: &[Example {
-        command: "ds assets classify --asset a_7kq3nr2v0b1c --document-number GTP-001 --document-revision B --document-state issued --yes",
+        command: "ds assets classify --project <exact-id> --asset a_7kq3nr2v0b1c --document-number GTP-001 --document-revision B --document-state issued --yes",
         note: "The asset is now a registered document a transmittal record can carry.",
         runnable: false,
     }],
@@ -245,31 +246,37 @@ fn audit_reason(raw: &str) -> Result<String, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let (asset_id, mut patch, folder) = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
+    let project = inputs.require("project")?;
     if let Some(path) = folder {
-        patch.insert("folder_id".into(), json!(crate::folder_id(lane, &path)?));
+        patch.insert(
+            "folder_id".into(),
+            json!(crate::folder_id(lane, project, &path)?),
+        );
     }
     // The row's current version pins the change: a row that moved between
     // this read and the write is refused by the catalogue, never overwritten.
     let current = crate::catalogue(
         lane,
+        project,
         &CatalogueCommand::Get {
             asset_id: asset_id.clone(),
         },
     )?;
     if patch.contains_key("document") {
-        return Ok(ds_cli_auth::shared_assets(
+        return ds_cli_auth::shared_assets_for_project(
             lane,
+            project,
             &ds_cli_auth::SharedAssetsCommand::Classify {
                 asset_id,
                 expected_version: current["version"].as_i64().unwrap_or(1),
                 patch,
             },
-        )?
-        .into_result());
+        );
     }
     let text = |key: &str| patch.get(key).and_then(Value::as_str).map(str::to_owned);
     crate::catalogue(
         lane,
+        project,
         &CatalogueCommand::Classify {
             asset_id,
             kind: text("kind"),
@@ -323,7 +330,8 @@ mod tests {
     use ds_cli_contract::spec::ArgKind;
 
     fn parse(tokens: &[&str]) -> Inputs {
-        let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        let mut tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         ds_cli_contract::parse(&COMMAND, &tokens).expect("declared inputs")
     }
 

@@ -15,7 +15,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG};
+use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG, PROJECT_ARG};
 
 const OUT_ARG: Arg = Arg::value(
     "out",
@@ -46,12 +46,12 @@ name. Headless: no window.",
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[ASSET_ARG, MEMBER_ARG, OUT_ARG, LANE_ARG],
+    args: &[ASSET_ARG, MEMBER_ARG, OUT_ARG, LANE_ARG, PROJECT_ARG],
     output: "\
 The `path` written, its `bytes` and `digest` (sha256), and the `asset_id` and \
 `member` it came from.",
     examples: &[Example {
-        command: "ds assets read --asset a_7kq3nr2v0b1c --out /home/me/Downloads/EPC-Lot3-signed.pdf --output json",
+        command: "ds assets read --project <exact-id> --asset a_7kq3nr2v0b1c --out /home/me/Downloads/EPC-Lot3-signed.pdf --output json",
         note: "Compare .data.digest with the catalogue row's before trusting the file.",
         runnable: false,
     }],
@@ -93,11 +93,12 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
+    let project = inputs.require("project")?;
     let asset_id = arguments["asset"].as_str().unwrap_or_default().to_owned();
     let member = arguments["member"].as_str().map(str::to_owned);
     let out = arguments["out"].as_str().unwrap_or_default().to_owned();
 
-    let (row, bytes) = crate::bytes(lane, &asset_id)?;
+    let (row, bytes) = crate::bytes(lane, project, &asset_id)?;
     let (payload, digest) = match member.as_deref() {
         None => {
             let digest = row["digest"]
@@ -290,7 +291,8 @@ mod tests {
     }
 
     fn refusal(flags: &[&str]) -> String {
-        let tokens: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
+        let mut tokens: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
         arguments(&inputs)
             .expect_err("a malformed read is refused before any round trip")
@@ -335,6 +337,7 @@ mod tests {
                 .map(str::to_string)
                 .to_vec();
             tokens.extend(unpaired());
+            tokens.extend(["--project".to_string(), "test_project".to_string()]);
             let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
             arguments(&inputs).expect_err("an existing file is never overwritten")
         };
@@ -381,6 +384,8 @@ mod tests {
             "Lot3/gis/poles.shp",
             "--out",
             &out,
+            "--project",
+            "test_project",
         ]
         .map(str::to_string)
         .to_vec();
@@ -405,6 +410,7 @@ mod tests {
         .map(str::to_string)
         .to_vec();
         tokens.extend(unpaired());
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
         let payload = arguments(&inputs).expect("valid");
         let mut keys: Vec<&str> = payload
@@ -429,6 +435,7 @@ mod tests {
         .map(str::to_string)
         .to_vec();
         tokens.extend(unpaired());
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
         let whole = arguments(&inputs).expect("valid");
         assert!(whole.get("member").is_none());

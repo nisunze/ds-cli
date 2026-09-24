@@ -11,12 +11,12 @@ Project Assets is one catalogue with two halves: folders a person declared and
 filed documents into, plus system folders projected at read time from
 inventories the project already holds — transformer designs and versions, MV
 models, survey media, project-work attachments, reports, Solar results, local
-rooms and prints. Everything goes through `ds assets`, which asks the paired
-DS GridDesign application to act under the session it already holds. There is
-no `--project` flag: the destination is the project the application has open.
+rooms and prints. Use headless `ds assets` with the exact `--project <id>` on
+every project command. The native credential authenticates the call; the
+Server does not consult a window or saved project selection.
 
-1. Find the document. `ds assets tree --depth 2 --output json` gives the
-   folders and their counts; `ds assets list --folder <path> --status durable
+1. Find the document. `ds assets tree --project <id> --depth 2 --output json` gives the
+   folders and their counts; `ds assets list --project <id> --folder <path> --status durable
    --output json` gives one bounded page of rows. Both answer only what this
    user may see. A class they cannot read has no row at all, so an empty
    answer is the answer — never a reason to retry with a wider flag.
@@ -24,28 +24,28 @@ no `--project` flag: the destination is the project the application has open.
    and on `tree` a `--query <text>` or `--link pm_task:<id>` /
    `--link ds_object:<type>:<id>`. When `.data.more` is true, continue with
    `--cursor <.data.next_cursor>`; never re-read from the top.
-3. Walk a container in place: `ds assets tree --into <asset-id> --output json`
+3. Walk a container in place: `ds assets tree --project <id> --into <asset-id> --output json`
    lists its members, with a shapefile arriving as one `geo` member and its
    companions resolved. Nothing is unpacked to disk.
-4. Look before you copy: `ds assets preview --asset <id> [--member <path>]
+4. Look before you copy: `ds assets preview --project <id> --asset <id> [--member <path>]
    --output json` returns a bounded document — text blocks, a grid, mail
    headers, features, or a metadata card — never an image. Respect the
    `truncated` counts, and read a bound refusal as final: it carries the
    actual number, and the honest alternatives are `read` and `promote`.
-5. Take a copy only when a real file is needed: `ds assets read --asset <id>
+5. Take a copy only when a real file is needed: `ds assets read --project <id> --asset <id>
    --out <new absolute path>`. The destination must be new; an existing file
    is never overwritten. Compare the returned `digest` with the catalogue
    row's before trusting the bytes.
-6. Put geometry on the map durably with `ds assets promote --asset <id>
+6. Put geometry on the map durably with `ds assets promote --project <id> --asset <id>
    [--member <path>] --as-layer <name>`. Promotion is local, never an upload,
    and it cannot widen the source's sensitivity. It is not cleaning: canonical
    column mapping stays in `ds map design upload inspect` and `stage`.
 7. Change shared state only on the user's explicit intent, always with
-   `--yes`: `ds assets classify --asset <id> --status durable --reason <why>
-   --yes`; `ds assets attach --asset <id> --task <id> --yes` (or
+   `--yes`: `ds assets classify --project <id> --asset <id> --status durable --reason <why>
+   --yes`; `ds assets attach --project <id> --asset <id> --task <id> --yes` (or
    `--object-type` with `--entity-id`, and `--detach` to remove);
-   `ds assets ingest --path <absolute file> --folder <path> --sensitivity
-   <class> --yes`; `ds assets folder --path <path> --sensitivity <class>
+   `ds assets ingest --project <id> --path <absolute file> --folder <path> --sensitivity
+   <class> --yes`; `ds assets folder --project <id> --path <path> --sensitivity <class>
    --yes`.
 
 Sensitivity never loosens implicitly. A new asset takes its folder's default
@@ -72,9 +72,8 @@ Read the live contract before inventing flags:
 - Tiles, styling, or anything about how the map draws — `ds-tiling`,
   `ds-style-composite`.
 
-If `ds assets` answers `desktop_not_paired` or `desktop_signed_out`, the
-document surface is unavailable in this session. Say so and stop; do not look
-for the bytes by another route.
+If `ds assets` answers `headless_signed_out`, follow the native account-link
+contract. A project access refusal is final for that account and project.
 
 Stops at: the document's own application — `ds` lists, previews, classifies and
 links the bytes; opening or editing them is the operator's tool.

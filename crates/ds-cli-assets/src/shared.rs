@@ -55,6 +55,7 @@ const ARGS: &[Arg] = &[
         "<name>",
         "Transformer identity instead of a tag.",
     ),
+    crate::PROJECT_ARG,
 ];
 const REFERENCE_ARGS: &[Arg] = &[
     ARGS[0],
@@ -122,6 +123,7 @@ const REFERENCE_ARGS: &[Arg] = &[
         "External form: inferred from the host when absent.",
     )
     .choices(&["google_drive", "other"]),
+    crate::PROJECT_ARG,
 ];
 pub static RESOLVE: Command = Command {
     id: "assets.resolve",
@@ -154,6 +156,7 @@ pub static MAPS: Command = Command {
     execution: Execution::Sync,
     args: &[
         ARGS[0],
+        ARGS[5],
         Arg::value(
             "limit",
             "<count>",
@@ -186,6 +189,7 @@ pub static PUBLISH_MAP: Command = Command {
     execution: Execution::Sync,
     args: &[
         ARGS[0],
+        ARGS[5],
         Arg::value(
             "file",
             "<path>",
@@ -248,16 +252,16 @@ pub fn publish_map(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             })
         })
         .collect::<Result<Vec<_>, Failure>>()?;
-    Ok(ds_cli_auth::shared_assets(
+    ds_cli_auth::shared_assets_for_project(
         i.value("lane").unwrap_or("stable"),
+        i.require("project")?,
         &ds_cli_auth::SharedAssetsCommand::PublishMap {
             name: name.into(),
             bytes,
             tags,
             replaces: i.repeated("replaces").to_vec(),
         },
-    )?
-    .into_result())
+    )
 }
 pub fn maps(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let limit = i
@@ -269,14 +273,14 @@ pub fn maps(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             Failure::invalid("auth_input_invalid", "limit must be 1..200")
                 .remedy("Choose one bounded catalogue page.")
         })?;
-    Ok(ds_cli_auth::shared_assets(
+    ds_cli_auth::shared_assets_for_project(
         i.value("lane").unwrap_or("stable"),
+        i.require("project")?,
         &ds_cli_auth::SharedAssetsCommand::Maps {
             limit,
             cursor: i.value("cursor").map(str::to_string),
         },
-    )?
-    .into_result())
+    )
 }
 const fn reference_refusals() -> [Refusal; 29] {
     crate::refusals::<29>(&[
@@ -310,7 +314,7 @@ producer's existing object. Neither form stores bytes. Headless; no window.",
     args: REFERENCE_ARGS,
     output: "The `asset` row with its identity, link (`external.url`, `bytes_held: false`) or reference and links, and storage_copied=false.",
     examples: &[Example {
-        command: "ds assets reference --url \"https://drive.google.com/file/d/abc/view\" --digest 9f2c…e1 --size 18033672 --kind pack --folder correspondence/2026-09 --sensitivity confidential --yes",
+        command: "ds assets reference --project <exact-id> --url \"https://drive.google.com/file/d/abc/view\" --digest 9f2c…e1 --size 18033672 --kind pack --folder correspondence/2026-09 --sensitivity confidential --yes",
         note: "The row lists under the folder with bytes_held=false; attach it to a record with `ds assets attach --record`.",
         runnable: false,
     }],
@@ -349,14 +353,14 @@ pub fn link(inputs: &Inputs) -> Result<Link, Failure> {
     }
 }
 pub fn resolve(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    Ok(ds_cli_auth::shared_assets(
+    ds_cli_auth::shared_assets_for_project(
         i.value("lane").unwrap_or("stable"),
+        i.require("project")?,
         &ds_cli_auth::SharedAssetsCommand::Resolve {
             link: link(i)?,
             role: i.require("role")?.into(),
         },
-    )?
-    .into_result())
+    )
 }
 pub fn reference(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let lane = i.value("lane").unwrap_or("stable");
@@ -381,6 +385,7 @@ pub fn reference(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             let folder_id = match i.value("folder") {
                 Some(path) => Some(crate::folder_id(
                     lane,
+                    i.require("project")?,
                     &crate::folder_path(path, "folder")?,
                 )?),
                 None => None,
@@ -399,8 +404,9 @@ pub fn reference(i: &Inputs, _: &Context) -> Result<Value, Failure> {
                     .remedy(crate::INVALID_EXTERNAL_REFERENCE.remedy)
                     .detail(serde_json::json!({ "field": "size" }))
                 })?;
-            Ok(ds_cli_auth::shared_assets(
+            ds_cli_auth::shared_assets_for_project(
                 lane,
+                i.require("project")?,
                 &ds_cli_auth::SharedAssetsCommand::External {
                     url: i.require("url")?.trim().into(),
                     sha256: crate::digest(i.require("digest")?, "digest")?,
@@ -412,11 +418,11 @@ pub fn reference(i: &Inputs, _: &Context) -> Result<Value, Failure> {
                     provider: i.value("provider").map(str::to_owned),
                     name: i.value("name").map(str::to_owned),
                 },
-            )?
-            .into_result())
+            )
         }
-        (0, 3) => Ok(ds_cli_auth::shared_assets(
+        (0, 3) => ds_cli_auth::shared_assets_for_project(
             lane,
+            i.require("project")?,
             &ds_cli_auth::SharedAssetsCommand::Reference {
                 link: link(i)?,
                 reference: ReportReference {
@@ -425,8 +431,7 @@ pub fn reference(i: &Inputs, _: &Context) -> Result<Value, Failure> {
                     role: i.require("role")?.into(),
                 },
             },
-        )?
-        .into_result()),
+        ),
         _ => Err(form()),
     }
 }

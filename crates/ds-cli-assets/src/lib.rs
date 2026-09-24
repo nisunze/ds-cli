@@ -11,7 +11,7 @@
 //! storage behind short-lived signed reads the same route mints, and enter
 //! through the same resumable uploader. So every command here is one governed
 //! action the native client sends under the restored user or device
-//! credential, for the audience-fenced project `ds auth project use` selected;
+//! credential, for the audience-fenced project named on each command;
 //! what the bytes ARE — their format, their members, their preview, the folder
 //! tree — is the kernel's decision (`ds_command_kernel::assets`), made here on
 //! the host that fetched them. Until 2026-09-20 these nine commands relayed
@@ -99,6 +99,8 @@ pub static DOMAIN: Domain = Domain {
 pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
     .choices(&["stable", "canary"])
     .default("stable");
+pub const PROJECT_ARG: Arg =
+    Arg::value("project", "<ds-project>", "Project named for this request.").required();
 
 /// The refusals the headless project client can answer with, for every
 /// command of this domain: profile, state, session, identity, transport and
@@ -145,23 +147,23 @@ pub const fn refusals<const TOTAL: usize>(own: &[Refusal]) -> [Refusal; TOTAL] {
     out
 }
 
-/// One governed catalogue action on the selected project.
-pub fn catalogue(lane: &str, command: &CatalogueCommand) -> Result<Value, Failure> {
-    Ok(ds_cli_auth::project_assets(lane, command, None)?.into_result())
+/// One governed catalogue action on the named project.
+pub fn catalogue(lane: &str, project: &str, command: &CatalogueCommand) -> Result<Value, Failure> {
+    Ok(ds_cli_auth::project_assets_for_project(lane, project, command, None)?.into_result())
 }
 
 /// One asset's row and its verified bytes. A projected `sys:` id has no
 /// stored bytes the catalogue serves; it is refused by name here.
-pub fn bytes(lane: &str, asset_id: &str) -> Result<(Value, Vec<u8>), Failure> {
+pub fn bytes(lane: &str, project: &str, asset_id: &str) -> Result<(Value, Vec<u8>), Failure> {
     if is_projected(asset_id) {
         return Err(projected_unavailable(asset_id));
     }
-    Ok(ds_cli_auth::read_asset_bytes(lane, asset_id)?.into_result())
+    Ok(ds_cli_auth::read_asset_bytes_for_project(lane, project, asset_id)?.into_result())
 }
 
 /// The declared folder at `path`, from the one folder authority.
-pub fn folder_at(lane: &str, path: &str) -> Result<Value, Failure> {
-    let folders = catalogue(lane, &CatalogueCommand::Folders)?;
+pub fn folder_at(lane: &str, project: &str, path: &str) -> Result<Value, Failure> {
+    let folders = catalogue(lane, project, &CatalogueCommand::Folders)?;
     folders["folders"]
         .as_array()
         .into_iter()
@@ -172,7 +174,7 @@ pub fn folder_at(lane: &str, path: &str) -> Result<Value, Failure> {
             Failure::invalid("unknown_folder", format!("No declared folder at {path}."))
                 .remedy(UNKNOWN_FOLDER.remedy)
                 .detail(json!({ "path": path }))
-                .next("ds assets tree --output json")
+                .next(format!("ds assets tree --project {project} --output json"))
         })
 }
 
@@ -342,13 +344,17 @@ pub const DOCUMENT_STATES: &[&str] = &[
 
 pub fn correspondence_door(
     lane: &str,
+    project: &str,
     action: &ds_client_core::project_correspondence::Action,
 ) -> Result<Value, Failure> {
-    Ok(ds_cli_auth::correspondence::project_correspondence(lane, action)?.into_result())
+    Ok(
+        ds_cli_auth::correspondence::project_correspondence_for_project(lane, project, action)?
+            .into_result(),
+    )
 }
 
-pub fn folder_id(lane: &str, path: &str) -> Result<String, Failure> {
-    folder_at(lane, path)?["folder_id"]
+pub fn folder_id(lane: &str, project: &str, path: &str) -> Result<String, Failure> {
+    folder_at(lane, project, path)?["folder_id"]
         .as_str()
         .map(str::to_owned)
         .ok_or_else(|| Failure::internal("assets_unreadable", "folder row has no folder_id"))

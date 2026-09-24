@@ -9347,6 +9347,7 @@ fn assets_validates_its_own_inputs_before_any_round_trip() {
 
     for (args, expected) in cases {
         let mut argv = args.clone();
+        argv.extend(["--project", "test_project"]);
         argv.extend(["--output", "json"]);
         assert_eq!(
             native_refusal(&argv),
@@ -9384,6 +9385,7 @@ fn every_assets_write_refuses_without_confirmation() {
         vec!["assets", "folder", "--path", "contracts/2026"],
     ] {
         let mut argv = args.clone();
+        argv.extend(["--project", "test_project"]);
         argv.extend(["--output", "json"]);
         assert_eq!(
             refusal(&argv),
@@ -9417,6 +9419,7 @@ fn every_assets_write_refuses_without_confirmation() {
         ],
     ] {
         let mut argv = args.clone();
+        argv.extend(["--project", "test_project"]);
         argv.extend(["--output", "json"]);
         assert_ne!(
             refusal(&argv),
@@ -9439,6 +9442,8 @@ fn shared_network_commands_expose_tag_identity_and_manual_entry() {
             "publish",
             "--file",
             "/missing-map.pdf",
+            "--project",
+            "test_project",
             "--yes",
             "--output",
             "json"
@@ -9454,7 +9459,14 @@ fn shared_network_commands_expose_tag_identity_and_manual_entry() {
             .contains("tag-group-map")
     );
     assert_eq!(
-        refusal(&["assets", "maps", "--output", "json"]),
+        refusal(&[
+            "assets",
+            "maps",
+            "--project",
+            "test_project",
+            "--output",
+            "json"
+        ]),
         "native_profile_not_configured"
     );
     let resolved = ok(&["capabilities", "assets.resolve", "--output", "json"]);
@@ -9616,7 +9628,22 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
             "`{}` still claims a window",
             command["id"]
         );
+        if command["id"] != "assets.backup.plan" {
+            let id = command["id"].as_str().expect("id");
+            let descriptor = ok(&["capabilities", id, "--output", "json"]);
+            let project = descriptor["command"]["inputs"]
+                .as_array()
+                .and_then(|inputs| inputs.iter().find(|input| input["name"] == "project"))
+                .unwrap_or_else(|| panic!("{id} lacks --project"));
+            assert_eq!(project["required"], true, "{id} allows an implicit project");
+            assert!(project["default"].is_null(), "{id} defaults its project");
+        }
     }
+    assert_eq!(
+        refusal(&["assets", "list", "--output", "json"]),
+        "missing_input",
+        "an asset read without --project must refuse before credential access"
+    );
     // The effect class is what decides whether an unattended session may run
     // the command at all, and it is invisible until one does. `read` writes
     // one local file, `promote` adds a layer to this machine's prepared local
@@ -9786,6 +9813,7 @@ fn a_well_formed_assets_call_ends_at_the_native_credential_and_never_at_a_window
     ];
     for args in &calls {
         let mut argv = args.clone();
+        argv.extend(["--project", "test_project"]);
         argv.extend(["--output", "json"]);
         assert_eq!(
             native_refusal(&argv),
@@ -9798,6 +9826,7 @@ fn a_well_formed_assets_call_ends_at_the_native_credential_and_never_at_a_window
     // is retired, by name — before any credential is consulted.
     for args in &calls {
         let mut argv = args.clone();
+        argv.extend(["--project", "test_project"]);
         argv.extend([
             "--desktop-descriptor",
             "/nowhere/session.json",

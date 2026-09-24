@@ -16,7 +16,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::assets::{Asset, Folder, Link, TreeRequest};
 use serde_json::{Map, Value, json};
 
-use crate::{CatalogueCommand, DEPTH_ARG, FOLDER_ARG, LANE_ARG};
+use crate::{CatalogueCommand, DEPTH_ARG, FOLDER_ARG, LANE_ARG, PROJECT_ARG};
 
 const INTO_ARG: Arg = Arg::value(
     "into",
@@ -58,7 +58,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Show the folder tree, or walk inside a pack or a mail asset.",
     purpose: "\
-Projects the selected project's folder tree: the declared folders and the \
+Projects the named project's folder tree: the declared folders and the \
 catalogued assets in them, with counts, expanded to --depth, by the same \
 kernel the Assets tab uses. The system folders that tab also shows are \
 projected over inventories the application holds and render `not loaded` \
@@ -71,7 +71,14 @@ no window.",
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
-        FOLDER_ARG, DEPTH_ARG, INTO_ARG, QUERY_ARG, LINK_ARG, KIND_ARG, LANE_ARG,
+        FOLDER_ARG,
+        DEPTH_ARG,
+        INTO_ARG,
+        QUERY_ARG,
+        LINK_ARG,
+        KIND_ARG,
+        LANE_ARG,
+        PROJECT_ARG,
     ],
     output: "\
 `ds.assets.tree/v1`: `folders` nested to `depth`, each with `path`, `kind` \
@@ -80,7 +87,7 @@ no window.",
 `members` of one pack with `path`, `bytes`, `kind`, `format` and shapefile \
 `companions`, plus `walked` and `truncated` (5,000 members, 8 levels).",
     examples: &[Example {
-        command: "ds assets tree --into a_7kq3nr2v0b1c --output json",
+        command: "ds assets tree --project <exact-id> --into a_7kq3nr2v0b1c --output json",
         note: "Read .data.members[].path to feed `preview --member` or `read --member`.",
         runnable: false,
     }],
@@ -137,8 +144,9 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
+    let project = inputs.require("project")?;
     if let Some(into) = arguments["into"].as_str() {
-        let (row, bytes) = crate::bytes(lane, into)?;
+        let (row, bytes) = crate::bytes(lane, project, into)?;
         let mut container = crate::with_bytes(
             &bytes,
             &json!({
@@ -154,16 +162,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .as_str()
         .is_some_and(crate::correspondence::is_correspondence_folder)
     {
-        return crate::correspondence::tree(lane, &arguments);
+        return crate::correspondence::tree(lane, project, &arguments);
     }
 
     // One read per authority, both bounded: the declared folders, and the
     // first page of the catalogue (everything but archive, newest first).
     // The projection is the kernel's; the application's own inventories are
     // not loaded here and their roots say so.
-    let folders = crate::catalogue(lane, &CatalogueCommand::Folders)?;
+    let folders = crate::catalogue(lane, project, &CatalogueCommand::Folders)?;
     let page = crate::catalogue(
         lane,
+        project,
         &CatalogueCommand::List {
             folder_id: None,
             kind: None,
@@ -439,7 +448,8 @@ mod tests {
     }
 
     fn refusal(flags: &[&str]) -> String {
-        let tokens: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
+        let mut tokens: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
         arguments(&inputs)
             .expect_err("a malformed read is refused before any round trip")
@@ -479,6 +489,8 @@ mod tests {
             "ds_object:transformer:TX-104",
             "--kind",
             "system",
+            "--project",
+            "test_project",
         ]
         .map(str::to_string)
         .to_vec();
@@ -508,6 +520,7 @@ mod tests {
         .map(str::to_string)
         .to_vec();
         tokens.extend(unpaired());
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
         let payload = arguments(&inputs).expect("valid");
         let mut keys: Vec<&str> = payload
@@ -522,7 +535,11 @@ mod tests {
         assert_eq!(payload["query"], json!("poles"));
 
         // The parser fills `--depth` from its default, and nothing else.
-        let inputs = parse(&COMMAND, &unpaired()).expect("declared tokens parse");
+        let inputs = parse(
+            &COMMAND,
+            &["--project".to_string(), "test_project".to_string()],
+        )
+        .expect("declared tokens parse");
         assert_eq!(
             arguments(&inputs).expect("valid"),
             json!({ "depth": 3 }),
@@ -540,6 +557,7 @@ mod tests {
             " ds_object:transformer:TX-104 ".to_string(),
         ];
         tokens.extend(unpaired());
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
         assert_eq!(
             link_filter(&inputs).expect("valid link"),
@@ -548,13 +566,18 @@ mod tests {
 
         let mut tokens = vec!["--link".to_string(), "pm_task:t_4812".to_string()];
         tokens.extend(unpaired());
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         let inputs = parse(&COMMAND, &tokens).expect("declared tokens parse");
         assert_eq!(
             link_filter(&inputs).expect("valid link"),
             Some(json!("pm_task:t_4812"))
         );
 
-        let inputs = parse(&COMMAND, &unpaired()).expect("declared tokens parse");
+        let inputs = parse(
+            &COMMAND,
+            &["--project".to_string(), "test_project".to_string()],
+        )
+        .expect("declared tokens parse");
         assert_eq!(link_filter(&inputs).expect("no link"), None);
     }
 

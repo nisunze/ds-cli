@@ -10,7 +10,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG, PAGES_ARG, ROWS_ARG, SHEET_ARG};
+use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG, PAGES_ARG, PROJECT_ARG, ROWS_ARG, SHEET_ARG};
 
 /// Rows of one grid a human projection prints. The document carries what the
 /// §4 bounds allowed; this is the terminal's own bound on top of it, and it
@@ -40,14 +40,20 @@ by name. Headless: no window.",
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
-        ASSET_ARG, MEMBER_ARG, SHEET_ARG, PAGES_ARG, ROWS_ARG, LANE_ARG,
+        ASSET_ARG,
+        MEMBER_ARG,
+        SHEET_ARG,
+        PAGES_ARG,
+        ROWS_ARG,
+        LANE_ARG,
+        PROJECT_ARG,
     ],
     output: "\
 `ds.assets.preview_doc/v1`: `asset_id`, `member`, `kind`, `format`, a `note`, \
 and — as the format allows — `blocks`, `grid`, `headers`, `features` or `meta`, \
 each with its own `truncated` count.",
     examples: &[Example {
-        command: "ds assets preview --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --output json",
+        command: "ds assets preview --project <exact-id> --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --output json",
         note: "A geo member answers features; `ds assets promote` turns them into a local layer.",
         runnable: false,
     }],
@@ -110,8 +116,9 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
+    let project = inputs.require("project")?;
     let asset_id = arguments["asset"].as_str().unwrap_or_default().to_owned();
-    let (row, bytes) = crate::bytes(lane, &asset_id)?;
+    let (row, bytes) = crate::bytes(lane, project, &asset_id)?;
     // The kernel previews a member in the MEMBER's format: it is read off the
     // container's own directory walk (one more kernel call over the same
     // bytes, no round trip), never guessed from the pack.
@@ -138,7 +145,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                         format!("`{member}` is not a member of {asset_id}"),
                     )
                     .remedy(crate::INVALID_MEMBER.remedy)
-                    .next(format!("ds assets tree --into {asset_id} --output json"))
+                    .next(format!(
+                        "ds assets tree --project {project} --into {asset_id} --output json"
+                    ))
                 })?
         }
     };
@@ -454,6 +463,7 @@ mod tests {
     fn inputs(flags: &[&str]) -> Inputs {
         let mut tokens: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
         tokens.extend(unpaired());
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         parse(&COMMAND, &tokens).expect("declared tokens parse")
     }
 

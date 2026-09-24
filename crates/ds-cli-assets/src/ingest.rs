@@ -25,7 +25,7 @@ use ds_client_core::project_assets::{IngestRequest, MAX_INGEST_BYTES, RECOGNISE_
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{CatalogueCommand, FOLDER_ARG, LANE_ARG};
+use crate::{CatalogueCommand, FOLDER_ARG, LANE_ARG, PROJECT_ARG};
 
 const PATH_ARG: Arg = Arg::value(
     "path",
@@ -59,12 +59,12 @@ window is involved. Files up to 256 MiB.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PATH_ARG, FOLDER_ARG, SENSITIVITY_ARG, LANE_ARG],
+    args: &[PATH_ARG, FOLDER_ARG, SENSITIVITY_ARG, LANE_ARG, PROJECT_ARG],
     output: "\
 `asset` — the created row, with its `asset_id`, `digest`, `kind`, `format`, \
 `folder` and `sensitivity`.",
     examples: &[Example {
-        command: "ds assets ingest --path /home/me/Documents/EPC-Lot3-signed.pdf --folder contracts/2026/epc --sensitivity confidential --yes",
+        command: "ds assets ingest --project <exact-id> --path /home/me/Documents/EPC-Lot3-signed.pdf --folder contracts/2026/epc --sensitivity confidential --yes",
         note: "The row's asset_id feeds classify, attach and read from here on.",
         runnable: false,
     }],
@@ -133,6 +133,7 @@ fn source_file(raw: &str) -> Result<String, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
+    let project = inputs.require("project")?;
     let path = Path::new(arguments["path"].as_str().unwrap_or_default());
     let name = path
         .file_name()
@@ -145,7 +146,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .to_owned();
     let folder_id = match arguments["folder"].as_str() {
         Some(folder) => Some(
-            crate::folder_at(lane, folder)?["folder_id"]
+            crate::folder_at(lane, project, folder)?["folder_id"]
                 .as_str()
                 .unwrap_or_default()
                 .to_owned(),
@@ -208,8 +209,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         kind: crate::enum_token(&recognised.kind),
         format: crate::enum_token(&recognised.format),
     };
-    let report =
-        ds_cli_auth::project_assets(lane, &CatalogueCommand::Ingest(request), Some(&mut file))?;
+    let report = ds_cli_auth::project_assets_for_project(
+        lane,
+        project,
+        &CatalogueCommand::Ingest(request),
+        Some(&mut file),
+    )?;
     let mut answer = report.into_result();
     answer["bytes"] = json!(size);
     answer["digest"] = json!(format!("sha256:{digest}"));
@@ -244,7 +249,8 @@ mod tests {
     }
 
     fn parse(tokens: &[&str]) -> Inputs {
-        let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        let mut tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         ds_cli_contract::parse(&COMMAND, &tokens).expect("declared inputs")
     }
 

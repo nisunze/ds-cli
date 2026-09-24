@@ -18,7 +18,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, CatalogueCommand, LANE_ARG};
+use crate::{ASSET_ARG, CatalogueCommand, LANE_ARG, PROJECT_ARG};
 
 const TASK_ARG: Arg = Arg::value(
     "task",
@@ -56,7 +56,7 @@ Records the link on the asset through the catalogue's own attach action: \
 exactly one of --task, --record, or --object-type with --entity-id. The link \
 points from the asset to the work; nothing is ever written onto the task, the \
 record or the DS object. --detach removes the same link. Projected sys: rows \
-are refused by name. Headless: the selected project of the signed-in native \
+are refused by name. Headless: the named project of the signed-in native \
 credential, no window.",
     chapter: Chapter::Assets,
     effect: Effect::GlobalWrite,
@@ -70,10 +70,11 @@ credential, no window.",
         ENTITY_ID_ARG,
         DETACH_ARG,
         LANE_ARG,
+        PROJECT_ARG,
     ],
     output: "`asset` — the row with its `links` after the change — and the `project`.",
     examples: &[Example {
-        command: "ds assets attach --asset a_7kq3nr2v0b1c --record R-0031 --yes",
+        command: "ds assets attach --project <exact-id> --asset a_7kq3nr2v0b1c --record R-0031 --yes",
         note: "The record's own `ds pm record read` then lists the asset among its attachments.",
         runnable: false,
     }],
@@ -163,6 +164,7 @@ fn attachment(why: &str) -> Failure {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
+    let project = inputs.require("project")?;
     let link = if let Some(task) = arguments["task"].as_str() {
         json!({ "kind": "pm_task", "id": task })
     } else if let Some(record) = arguments["record"].as_str() {
@@ -176,6 +178,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     crate::catalogue(
         lane,
+        project,
         &CatalogueCommand::Attach {
             asset_id: arguments["asset"].as_str().unwrap_or_default().to_owned(),
             link,
@@ -212,7 +215,8 @@ mod tests {
     use super::*;
 
     fn parse(tokens: &[&str]) -> Inputs {
-        let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        let mut tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        tokens.extend(["--project".to_string(), "test_project".to_string()]);
         ds_cli_contract::parse(&COMMAND, &tokens).expect("declared inputs")
     }
 

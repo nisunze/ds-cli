@@ -31,9 +31,10 @@ The bytes are somewhere else again — project storage, behind a fresh
 short-lived signed read minted per access after an authority check. Nothing
 here hands out a durable link to anything above `open`.
 
-Every command runs headless, under the restored native user or device
-credential, against the project `ds auth project use` selected, on `--lane`.
-No command accepts a project ID as authority, and none needs a window: until
+Every project command runs headless, under the restored native user or device
+credential, against the explicit `--project <id>` on that call, on `--lane`.
+The ID is an address to authorize, never proof of authority. The local-only
+`assets.backup.plan` needs no project or credential. No command needs a window: until
 2026-09-20 nine of them relayed through the paired desktop (`requires:
 window`); that path is retired, `--desktop-descriptor` is no longer an input,
 and a caller that still passes it is told `requires_window_retired`.
@@ -71,26 +72,26 @@ never archives a predecessor. A partial archive failure can be retried with the
 same declaration. Renaming does not require retaining duplicate current maps.
 
 ```bash
-ds assets map publish --file /prints/Kyabe-A3.pdf --tag city=kyabe \
+ds assets map publish --project <exact-id> --file /prints/Kyabe-A3.pdf --tag city=kyabe \
   --replaces a_123456789abc --yes --output json
 ```
 
 ## The shape of a session
 
 ```bash
-ds assets tree --depth 2                          # what does this project hold
-ds assets list --folder contracts/2026 --status durable   # find the document
-ds assets preview --asset a_7kq3nr2v0b1c --output json    # look at it, cheaply
-ds assets read --asset a_7kq3nr2v0b1c --out /home/me/Downloads/EPC-Lot3.pdf
+ds assets tree --project <exact-id> --depth 2                          # what does this project hold
+ds assets list --project <exact-id> --folder contracts/2026 --status durable   # find the document
+ds assets preview --project <exact-id> --asset a_7kq3nr2v0b1c --output json    # look at it, cheaply
+ds assets read --project <exact-id> --asset a_7kq3nr2v0b1c --out /home/me/Downloads/EPC-Lot3.pdf
 ```
 
 `tree` and `list` are the two doors in: every other command needs an
 `asset_id`, and this is where one comes from. A container is walked in place —
 
 ```bash
-ds assets tree --into a_7kq3nr2v0b1c --output json                    # its members
-ds assets preview --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp  # one member
-ds assets promote --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --as-layer Lot3-poles
+ds assets tree --project <exact-id> --into a_7kq3nr2v0b1c --output json                    # its members
+ds assets preview --project <exact-id> --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp  # one member
+ds assets promote --project <exact-id> --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --as-layer Lot3-poles
 ```
 
 — by reading the archive's central directory only. Nothing is unpacked to
@@ -217,14 +218,13 @@ digest, no positive size; `detail.field` says which),
 `invalid_document_registration` (a partial `--document-*` set) and
 `invalid_reference_form` (neither form of `ds assets reference` given whole).
 `ds assets attach` and `ds assets classify` are headless now and answer the
-native client's refusals (`headless_signed_out`,
-`headless_project_not_selected`, `project_not_visible`) beside the
+native client's refusals (`headless_signed_out`, `project_not_visible`) beside the
 catalogue's.
 
 | Code | Means |
 |---|---|
 | `headless_signed_out` | no credential is connected on this lane — `ds account connect`, approved in the Desktop |
-| `headless_project_not_selected` | no project selected for this credential and lane — `ds auth project use --project <id>` |
+| `missing_input` | a project command omitted `--project <id>`; name the exact project on this call |
 | `projected_asset_read_only` | a `sys:` row or a system folder was named by `classify`, `attach` or `folder` |
 | `nothing_to_update` | a `classify` with no change flag — refused before a round trip |
 | `invalid_asset_id` | not a minted `a_…` id and not a projected `sys:…` one; usually a truncated paste |
@@ -301,14 +301,14 @@ the native credential — and reports `indexed_from` (how many rows it read
 and whether any were cut); every other folder still needs the paired window.
 
 ```bash
-ds assets ingest --path ./review.eml --folder correspondence/2026-09 --sensitivity internal --yes   # → a_mail
-ds assets tree --into a_mail --output json            # part-1-1.txt, picture.png, drawing.pdf …
-ds assets preview --asset a_mail --member picture.png
-ds assets classify --asset a_gtp --document-number GTP-001 --document-revision B --document-state issued --yes
-ds assets reference --url "https://drive.google.com/file/d/abc/view" --digest <sha256> --size 18033672 \
+ds assets ingest --project <exact-id> --path ./review.eml --folder correspondence/2026-09 --sensitivity internal --yes   # → a_mail
+ds assets tree --project <exact-id> --into a_mail --output json            # part-1-1.txt, picture.png, drawing.pdf …
+ds assets preview --project <exact-id> --asset a_mail --member picture.png
+ds assets classify --project <exact-id> --asset a_gtp --document-number GTP-001 --document-revision B --document-state issued --yes
+ds assets reference --project <exact-id> --url "https://drive.google.com/file/d/abc/view" --digest <sha256> --size 18033672 \
   --kind pack --folder correspondence/2026-09 --sensitivity confidential --yes    # → a_drive, bytes_held false
-ds assets attach --asset a_drive --record R1 --yes
-ds assets tree --folder Correspondence --output json  # one folder per thread; a_mail (+parts), a_gtp, a_drive under R1's
+ds assets attach --project <exact-id> --asset a_drive --record R1 --yes
+ds assets tree --project <exact-id> --folder Correspondence --output json  # one folder per thread; a_mail (+parts), a_gtp, a_drive under R1's
 ```
 
 ## Shared reporter outputs
