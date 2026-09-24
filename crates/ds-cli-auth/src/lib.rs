@@ -5389,10 +5389,12 @@ pub fn design_attachments_for_project(
 }
 pub fn design_tags(
     lane: &str,
+    project: &str,
     command: &ds_client_core::design_tags::Command,
 ) -> Result<HeadlessProjectReport<Value>, Failure> {
-    headless_project_report(
+    headless_named_report(
         lane,
+        project,
         |device, project| device.design_tags(project, command),
         |client, project| client.design_tags(project, command, now()),
     )

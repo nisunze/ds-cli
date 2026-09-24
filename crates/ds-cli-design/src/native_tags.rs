@@ -12,12 +12,12 @@ pub static DEFINITIONS: Command = Command {
     path: &["design", "tag", "project-list"],
     contract: 1,
     summary: "Read project tag definitions for city and phase selection.",
-    purpose: "Discover exact definition IDs, semantic roles and allowed values under the native selected project before obtaining a report projection. No Desktop or map is needed. Does not infer assignments from transformer names.",
+    purpose: "Discover exact definition IDs, semantic roles and allowed values for the project named by --project before obtaining a report projection. No Desktop or map is needed. Does not infer assignments from transformer names.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE],
+    args: &[crate::PROJECT_ARG, LANE],
     output: "Selected project and active tag definitions; no mutation.",
     examples: &[],
     refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
@@ -37,6 +37,7 @@ pub static PROJECTION: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        crate::PROJECT_ARG,
         LANE,
         Arg::repeated(
             "transformer",
@@ -61,6 +62,7 @@ pub static PROJECTION: Command = Command {
 pub fn definitions(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     Ok(ds_cli_auth::design_tags(
         i.require("lane")?,
+        i.require("project")?,
         &ds_cli_auth::DesignTagsCommand::Definitions,
     )?
     .into_result())
@@ -68,6 +70,7 @@ pub fn definitions(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn projection(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     Ok(ds_cli_auth::design_tags(
         i.require("lane")?,
+        i.require("project")?,
         &ds_cli_auth::DesignTagsCommand::Projection {
             transformers: i
                 .repeated("transformer")
@@ -103,6 +106,7 @@ const fn batch_refusals() -> [Refusal; 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.r
 }
 const BATCH_REFUSALS: &[Refusal] = &batch_refusals();
 const BATCH_ARGS: &[Arg] = &[
+    crate::PROJECT_ARG,
     LANE,
     Arg::value("definition", "<id>", "Exact writable tag definition.").required(),
     Arg::value(
@@ -142,6 +146,7 @@ pub static APPLY: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        crate::PROJECT_ARG,
         LANE,
         Arg::value("definition", "<id>", "Exact previewed definition.").required(),
         Arg::value(
@@ -211,6 +216,7 @@ fn batch(i: &Inputs, apply: bool) -> Result<Value, Failure> {
     }
     Ok(ds_cli_auth::design_tags(
         i.require("lane")?,
+        i.require("project")?,
         &ds_cli_auth::DesignTagsCommand::Batch {
             group: i.require("definition")?.into(),
             entries,
