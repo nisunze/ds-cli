@@ -25,6 +25,11 @@ const REFUSALS: &[Refusal] = &[
         remedy: "Correct the named field against report.layout.schema; if it is valid, the deployed print validator is older than this client and must be redeployed",
     },
     Refusal {
+        code: "project_required",
+        when: "The call addresses a project printing library without --project",
+        remedy: "Pass --project <exact-id>; the saved selection is never read",
+    },
+    Refusal {
         code: "print_setup_not_found",
         when: "The named printing setup does not exist in the addressed scope",
         remedy: "List the scope with report.layout.list, or copy a setup into it with report.layout.copy",
@@ -39,10 +44,15 @@ const REQUEST: Arg = Arg::value("request", "<json-file>", "Bounded typed request
 const SCOPE: Arg = Arg::value(
     "scope",
     "<scope>",
-    "Global published samples or selected project customizations.",
+    "Global published samples, or customizations of the project named by --project.",
 )
 .choices(&["global", "project"])
 .required();
+const PROJECT: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project for --scope project, or for a copy whose source or destination is a project; the saved selection is never read.",
+);
 const LANE: Arg = Arg::value("lane", "<lane>", "Native credential lane.")
     .choices(&["canary", "stable"])
     .default("canary");
@@ -70,7 +80,7 @@ pub static NEW: Command = Command {
     path: &["report", "layout", "new"],
     contract: 1,
     summary: "Create an A3 vector map layout.",
-    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope requires a held selected-project context. Geometry stays in ds-network and document validation in ds-command-kernel.",
+    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -121,7 +131,7 @@ pub static SCHEMA: Command = Command {
     path: &["report", "layout", "schema"],
     contract: 1,
     summary: "Describe the exact print document and editing grammar.",
-    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope requires a held selected-project context. Geometry stays in ds-network and document validation in ds-command-kernel.",
+    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -507,12 +517,12 @@ pub static LIST: Command = Command {
     path: &["report", "layout", "list"],
     contract: 1,
     summary: "List published global samples or project printing setups.",
-    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope requires a held selected-project context. Geometry stays in ds-network and document validation in ds-command-kernel.",
+    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[SCOPE, LANE],
+    args: &[SCOPE, PROJECT, LANE],
     output: "The authoritative layout, schema, shared setup receipt or artifact manifest.",
     examples: &[Example {
         command: "ds report layout list --output json",
@@ -530,13 +540,14 @@ pub static GET: Command = Command {
     path: &["report", "layout", "get"],
     contract: 1,
     summary: "Read one shared printing setup and its revision.",
-    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope requires a held selected-project context. Geometry stays in ds-network and document validation in ds-command-kernel.",
+    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         SCOPE,
+        PROJECT,
         LANE,
         Arg::value("id", "<id>", "Setup id.").required(),
     ],
@@ -557,12 +568,12 @@ pub static SAVE: Command = Command {
     path: &["report", "layout", "save"],
     contract: 1,
     summary: "Publish a printing setup; with a revision it updates, else creates.",
-    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope requires a held selected-project context. Geometry stays in ds-network and document validation in ds-command-kernel.",
+    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[SCOPE, LANE, REQUEST],
+    args: &[SCOPE, PROJECT, LANE, REQUEST],
     output: "The authoritative layout, schema, shared setup receipt or artifact manifest.",
     examples: &[Example {
         command: "ds report layout save --output json",
@@ -580,12 +591,12 @@ pub static CREATE: Command = Command {
     path: &["report", "layout", "create"],
     contract: 1,
     summary: "Create one global or project printing setup.",
-    purpose: "Publishes a validated layout as a new stable setup ID. Project scope is the held selected project; global scope requires global printing authority.",
+    purpose: "Publishes a validated layout as a new stable setup ID. Project scope is the project named by --project; global scope requires global printing authority.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[SCOPE, LANE, REQUEST],
+    args: &[SCOPE, PROJECT, LANE, REQUEST],
     output: "The created setup, including its stable ID and first revision.",
     examples: &[],
     refusals: REFUSALS,
@@ -604,7 +615,7 @@ pub static UPDATE: Command = Command {
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[SCOPE, LANE, REQUEST],
+    args: &[SCOPE, PROJECT, LANE, REQUEST],
     output: "The updated setup and its new revision.",
     examples: &[],
     refusals: REFUSALS,
@@ -625,6 +636,7 @@ pub static DELETE: Command = Command {
     execution: Execution::Sync,
     args: &[
         SCOPE,
+        PROJECT,
         LANE,
         Arg::value("id", "<id>", "Stable setup ID returned by layout list.").required(),
         Arg::value(
@@ -647,12 +659,12 @@ pub static COPY: Command = Command {
     path: &["report", "layout", "copy"],
     contract: 1,
     summary: "Copy an exact printing revision between libraries.",
-    purpose: "Performs global adoption, global promotion or same-library duplication as one Brain transaction. Project locations always mean the held selected project. The source remains unchanged.",
+    purpose: "Performs global adoption, global promotion or same-library duplication as one Brain transaction. Project locations mean the project named by --project. The source remains unchanged.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[LANE, REQUEST],
+    args: &[PROJECT, LANE, REQUEST],
     output: "The independent destination setup, its revision and pinned source lineage.",
     examples: &[],
     refusals: REFUSALS,
@@ -898,6 +910,7 @@ pub fn list(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     ds_cli_auth::printing(
         i.require("lane")?,
         i.require("scope")? == "global",
+        i.value("project"),
         &ds_cli_auth::PrintingRequest::List {},
     )
 }
@@ -905,6 +918,7 @@ pub fn get(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     ds_cli_auth::printing(
         i.require("lane")?,
         i.require("scope")? == "global",
+        i.value("project"),
         &ds_cli_auth::PrintingRequest::Get {
             id: i.require("id")?.into(),
         },
@@ -985,7 +999,7 @@ pub fn save(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             ));
         }
     };
-    ds_cli_auth::printing(i.require("lane")?, global, &request)
+    ds_cli_auth::printing(i.require("lane")?, global, i.value("project"), &request)
 }
 fn typed_request(i: &Inputs) -> Result<ds_cli_auth::PrintingRequest, Failure> {
     serde_json::from_slice(&bytes(i.require("request")?, 800_000)?).map_err(invalid)
@@ -999,7 +1013,12 @@ fn scoped(i: &Inputs, request: &ds_cli_auth::PrintingRequest) -> Result<Value, F
         }
         _ => {}
     }
-    ds_cli_auth::printing(i.require("lane")?, i.require("scope")? == "global", request)
+    ds_cli_auth::printing(
+        i.require("lane")?,
+        i.require("scope")? == "global",
+        i.value("project"),
+        request,
+    )
 }
 pub fn create(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let request = typed_request(i)?;
@@ -1027,7 +1046,7 @@ pub fn copy(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     if !matches!(request, ds_cli_auth::PrintingRequest::Copy { .. }) {
         return Err(invalid("copy requires a copy request"));
     }
-    ds_cli_auth::printing(i.require("lane")?, true, &request)
+    ds_cli_auth::printing(i.require("lane")?, true, i.value("project"), &request)
 }
 pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     // Copy input to a private scratch file so the bytes cannot change between validation and dispatch.

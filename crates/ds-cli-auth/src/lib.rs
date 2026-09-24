@@ -4854,7 +4854,7 @@ fn map_service_refusal(
             .next("ds report layout schema --output json"),
         Some("print_setup_not_found") => Failure::invalid("print_setup_not_found", message)
             .remedy("name a setup this scope holds, or copy one into it")
-            .next("ds report layout list --scope project --output json"),
+            .next("ds report layout list --scope project --project <exact-id> --output json"),
         Some("print_validator_unavailable") => {
             Failure::unavailable("print_validator_unavailable", message).remedy(
                 "retry without changing the layout; a repeated refusal means the deployed print \
@@ -5687,38 +5687,41 @@ fn open_bundle_destination(dest: &Path) -> io::Result<std::fs::File> {
 }
 
 pub use ds_client_core::PrintingRequest;
-/// Global templates need identity but no selected project. Project requests
-/// can only address the principal's held, verified project context.
+/// Global templates need identity but no project. Project requests address
+/// exactly the project the caller names; the saved selection is never read.
 pub fn printing(
     lane_value: &str,
     global: bool,
+    project: Option<&str>,
     request: &PrintingRequest,
 ) -> Result<serde_json::Value, Failure> {
     request.validate().map_err(map_client)?;
     let lane = Lane::parse(lane_value)?;
-    let needs_project = request.needs_project(global);
-    if needs_project {
-        if let Some((mut device, selected)) = restored_device_project(lane)? {
-            return device
-                .printing(selected.project_id(), request)
-                .map_err(map_client);
-        }
-    } else {
-        let _ = probe_headless_identity(lane.token())?;
-        if let Some(mut device) = device::restore_session(lane)? {
-            return device.printing("", request).map_err(map_client);
-        }
+    if request.needs_project(global) {
+        let project = project.ok_or_else(|| {
+            Failure::invalid(
+                "project_required",
+                "a project printing library is addressed by --project; the saved selection is never read",
+            )
+            .remedy("pass --project <exact-id> for project scope or a copy that touches a project")
+        })?;
+        return headless_named_project(
+            lane_value,
+            project,
+            |device, project| device.printing(project, request),
+            |client, project| client.printing(project, request, now()),
+        )
+        .map(HeadlessNamedProject::into_result);
+    }
+    let _ = probe_headless_identity(lane.token())?;
+    if let Some(mut device) = device::restore_session(lane)? {
+        return device.printing("", request).map_err(map_client);
     }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    if !needs_project {
-        return client.printing("", request, now()).map_err(map_client);
-    }
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.printing(selected.project_id(), request, now());
-    with_released_context_disposition(client.profile(), &selected, result)
+    require_restore_before_context(&mut client)?;
+    client.printing("", request, now()).map_err(map_client)
 }
 
 /// Resolve models only inside the restored user's selected project.

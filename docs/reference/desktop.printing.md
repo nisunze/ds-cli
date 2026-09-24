@@ -5,12 +5,14 @@ It reads project settings and reports the saved selection, planned output IDs
 and the actual selected template papers. It never infers paper from a filename.
 The same leaf is exposed by `ds mcp serve --exposure commands --profile printing`.
 
-Named setups are read and published natively, with no paired application:
-`ds report layout list --scope project --output json` inspects the selected
-project's catalog (`--scope global` for the shared samples), `ds report layout
-get --scope project --id <id> --output json` reads one authored document with
-its current optimistic revision, and `ds report layout save --scope project
---request setup-save.json --yes --output json` publishes one — the kernel
+Named setups are read and published natively, with no paired application.
+Project scope always names its project; the saved selection is never read.
+`ds report layout list --scope project --project <id> --output json` inspects
+the named project's catalog (`--scope global` for the shared samples),
+`ds report layout get --scope project --project <id> --id <setup> --output json`
+reads one authored document with its current optimistic revision, and
+`ds report layout save --scope project --project <id> --request
+setup-save.json --yes --output json` publishes one — the kernel
 decides from the request's `expected_revision` whether that is a create or an
 update, the same decision the Printing setup page makes.
 

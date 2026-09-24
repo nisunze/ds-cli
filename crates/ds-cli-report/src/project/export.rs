@@ -1137,7 +1137,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let (contexts, hidden_contexts) = if local_context.is_some() || preview_request.is_some() {
         (Vec::new(), Vec::new())
     } else {
-        selected_contexts(lane, &receipt, seed)?
+        selected_contexts(lane, &project_id, &receipt, seed)?
     };
     let mv_buffer = contexts
         .iter()
@@ -1752,6 +1752,7 @@ fn held_catalog_rooms(
 /// over the same documents the engine will print with.
 fn selected_contexts(
     lane: &str,
+    project: &str,
     receipt: &InputReceipt,
     online: bool,
 ) -> Result<
@@ -1773,6 +1774,7 @@ fn selected_contexts(
             let setup = ds_cli_auth::printing(
                 lane,
                 false,
+                Some(project),
                 &ds_cli_auth::PrintingRequest::Get { id: id.clone() },
             )?;
             setups.push(json!({"id": setup["id"], "revision": setup["revision"], "layout": setup["layout"]}));

@@ -232,7 +232,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let configuration =
         ds_cli_auth::feeder_configuration_for_project(lane, inputs.require("project")?)?
             .into_result();
-    let sheets = sheets_with_printing_catalogue(lane, &configuration.document["sheets"], None)?;
+    let sheets = sheets_with_printing_catalogue(
+        lane,
+        inputs.require("project")?,
+        &configuration.document["sheets"],
+        None,
+    )?;
     // The native read always refreshes: this client substitutes no cached
     // configuration, so the mode the kernel names its refusal with is not a
     // guess.
@@ -300,6 +305,7 @@ fn with_receipt_readiness(output: &mut Value, document: &Value) {
 /// sheet the configuration does serve is kept as served.
 fn sheets_with_printing_catalogue(
     lane: &str,
+    project: &str,
     sheets: &Value,
     selection: Option<&DesignOutputSelection>,
 ) -> Result<Value, Failure> {
@@ -318,7 +324,12 @@ fn sheets_with_printing_catalogue(
     if wanted.is_empty() {
         return Ok(with_printing_setups(sheets, Vec::new()));
     }
-    let catalogue = ds_cli_auth::printing(lane, false, &ds_cli_auth::PrintingRequest::List {})?;
+    let catalogue = ds_cli_auth::printing(
+        lane,
+        false,
+        Some(project),
+        &ds_cli_auth::PrintingRequest::List {},
+    )?;
     let held = catalogue["setups"]
         .as_array()
         .map(|rows| {
@@ -335,6 +346,7 @@ fn sheets_with_printing_catalogue(
         let setup = ds_cli_auth::printing(
             lane,
             false,
+            Some(project),
             &ds_cli_auth::PrintingRequest::Get { id: id.clone() },
         )?;
         setups
@@ -403,7 +415,7 @@ fn adoption(sheets: &Value, selection: &DesignOutputSelection) -> Result<(), Fai
             ),
         )
         .remedy(SETUP_NOT_ADOPTED.remedy)
-        .next("ds report layout copy --request <copy.json> --output json"),
+        .next("ds report layout copy --project <exact-id> --request <copy.json> --output json"),
     )
 }
 
@@ -413,8 +425,12 @@ pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let configuration =
         ds_cli_auth::feeder_configuration_for_project(lane, inputs.require("project")?)?
             .into_result();
-    let sheets =
-        sheets_with_printing_catalogue(lane, &configuration.document["sheets"], Some(&selection))?;
+    let sheets = sheets_with_printing_catalogue(
+        lane,
+        inputs.require("project")?,
+        &configuration.document["sheets"],
+        Some(&selection),
+    )?;
     // A selection that cannot execute must not be saved as if it could.
     adoption(&sheets, &selection)?;
     let mut rows = configuration.document["sheets"]["project_settings"]
