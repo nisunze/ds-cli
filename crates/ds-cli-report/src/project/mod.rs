@@ -3,7 +3,7 @@
 //!
 //! These commands need no map, no room, no Desktop and no local reporter
 //! engine. They restore the native user and act only on that user's
-//! audience-fenced selected project through the fixed `/report` contract:
+//! audience-fenced named project through the fixed `/report` contract:
 //! ds-brain resolves the exact scope (every active saved transformer, or the
 //! explicit names given), reuses fresh individual artifacts, regenerates the
 //! missing or stale ones through the cloud reporter, composes the scope-correct
@@ -30,8 +30,8 @@ pub mod scope;
 pub mod settings;
 
 use ds_cli_auth::{
-    HeadlessProjectReport, PROJECT_REPORT_MAX_TRANSFORMERS, TransformerInventory,
-    TransformerLifecycle, TransformerSet,
+    HeadlessNamedProject, HeadlessProjectReport, PROJECT_REPORT_MAX_TRANSFORMERS,
+    TransformerInventory, TransformerLifecycle, TransformerSet,
 };
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
@@ -49,6 +49,8 @@ pub const LANE_ARG: Arg = Arg::value(
 )
 .default("stable")
 .choices(&["stable", "canary"]);
+pub const PROJECT_ARG: Arg =
+    Arg::value("project", "<ds-project>", "Project named for this request.").required();
 
 macro_rules! refusal {
     ($name:ident, $code:literal, $when:literal, $remedy:literal) => {
@@ -79,18 +81,17 @@ refusal!(
     "reinstall one complete ds release"
 );
 pub const HEADLESS_SIGNED_OUT: Refusal = ds_cli_auth::SIGNED_OUT_REFUSAL;
-refusal!(
-    HEADLESS_NO_PROJECT,
-    "headless_project_not_selected",
-    "the user has no audience-fenced selected project",
-    "run ds auth project use --project <exact-id>"
-);
-refusal!(
-    PROJECT_CONTEXT_STALE,
-    "project_context_stale",
-    "the saved project belongs to another identity, lane, or audience",
-    "select the project again with ds auth project use"
-);
+// Legacy planning commands still use saved context until their domain migrates.
+pub const HEADLESS_NO_PROJECT: Refusal = Refusal {
+    code: "headless_project_not_selected",
+    when: "the user has no audience-fenced selected project",
+    remedy: "run ds auth project use --project <exact-id>",
+};
+pub const PROJECT_CONTEXT_STALE: Refusal = Refusal {
+    code: "project_context_stale",
+    when: "the saved project belongs to another identity, lane, or audience",
+    remedy: "select the project again with ds auth project use",
+};
 refusal!(
     NATIVE_STATE_UNSAFE,
     "native_state_unsafe",
@@ -130,7 +131,7 @@ refusal!(
 refusal!(
     AUTH_CONTEXT_MISMATCH,
     "auth_context_mismatch",
-    "the protected native providers disagree on identity or selected project",
+    "the protected native providers disagree on identity or named project",
     "sign out or revoke the unintended provider before retrying"
 );
 refusal!(
@@ -173,7 +174,7 @@ refusal!(
     NOT_FOUND,
     "transformer_not_found",
     "the service found no such project",
-    "select the project again with ds auth project use"
+    "check the exact --project ID and this account's access"
 );
 refusal!(
     INVALID_SCOPE,
@@ -199,8 +200,6 @@ pub const NATIVE_READ_REFUSALS: &[Refusal] = &[
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,
     HEADLESS_SIGNED_OUT,
-    HEADLESS_NO_PROJECT,
-    PROJECT_CONTEXT_STALE,
     NATIVE_STATE_UNSAFE,
     NATIVE_STATE_UNAVAILABLE,
     NATIVE_STATE_PROTECTION,
@@ -285,8 +284,6 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,
     HEADLESS_SIGNED_OUT,
-    HEADLESS_NO_PROJECT,
-    PROJECT_CONTEXT_STALE,
     NATIVE_STATE_UNSAFE,
     NATIVE_STATE_UNAVAILABLE,
     NATIVE_STATE_PROTECTION,
@@ -352,7 +349,44 @@ pub fn transformer_set(inputs: &ds_cli_contract::Inputs) -> Result<TransformerSe
     Ok(requested)
 }
 
-pub fn project_receipt<T>(headless: &HeadlessProjectReport<T>) -> Value {
+pub trait ProjectReceipt {
+    fn lane(&self) -> &'static str;
+    fn project_id(&self) -> &str;
+    fn project_name(&self) -> Option<&str>;
+    fn project_status(&self) -> Option<&str>;
+}
+
+impl<T> ProjectReceipt for HeadlessProjectReport<T> {
+    fn lane(&self) -> &'static str {
+        self.lane()
+    }
+    fn project_id(&self) -> &str {
+        self.project_id()
+    }
+    fn project_name(&self) -> Option<&str> {
+        Some(self.project_name())
+    }
+    fn project_status(&self) -> Option<&str> {
+        Some(self.project_status())
+    }
+}
+
+impl<T> ProjectReceipt for HeadlessNamedProject<T> {
+    fn lane(&self) -> &'static str {
+        self.lane()
+    }
+    fn project_id(&self) -> &str {
+        self.project_id()
+    }
+    fn project_name(&self) -> Option<&str> {
+        None
+    }
+    fn project_status(&self) -> Option<&str> {
+        None
+    }
+}
+
+pub fn project_receipt(headless: &impl ProjectReceipt) -> Value {
     json!({
         "lane": headless.lane(),
         "project": {
@@ -431,6 +465,31 @@ pub fn archive_layout_vocabulary(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_project_report_command_names_its_project() {
+        for command in [
+            &scope::COMMAND,
+            &combined::COMMAND,
+            &compute::COMMAND,
+            &archives::COMMAND,
+            &settings::COMMAND,
+            &settings::OUTPUTS_SET,
+            &export::COMMAND,
+            &publish::COMMAND,
+            &map_inputs::COMMAND,
+        ] {
+            let project = command
+                .arg("project")
+                .expect("report command lacks --project");
+            assert!(project.required, "{} defaults its project", command.id);
+            assert!(
+                project.default.is_none(),
+                "{} has a project default",
+                command.id
+            );
+        }
+    }
 
     /// The refusal every `report project` help screen carries has to name
     /// causes an operator can reach through `ds`. A blocked collision policy

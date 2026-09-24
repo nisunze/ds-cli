@@ -30,18 +30,18 @@ answer arrives (a reply from the owing side) or is waived; nothing else \
 clears it silently, and `ds pm task unblock` clears it by hand with a \
 reason. The plan's attention and the task's blocker count update in the \
 same commit. A record that owes no answer cannot be waited on. Headless: \
-commits to the selected project of the signed-in native credential, no \
+commits to the named project of the signed-in native credential, no \
 window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, ON_RECORD_ARG, LANE_ARG],
+    args: &[TASK_ARG, ON_RECORD_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "\
 The project, `taskId`, `recordId`, the `committedRevision` the plan moved \
 to, and the engine's `result` (`applied`, `warnings`).",
     examples: &[Example {
-        command: "ds pm task block --task T-0012 --on-record R-0031 --yes",
+        command: "ds pm task block --task T-0012 --on-record R-0031 --yes --project <exact-id>",
         note: "Blocked until R-0031 is answered from the side that owes it, or waived.",
         runnable: false,
     }],
@@ -56,10 +56,10 @@ to, and the engine's `result` (`applied`, `warnings`).",
         "correspondence",
         "blocked on",
         "waiting on",
-        "waiting for answer",
+        "awaiting answer",
         "blocker",
         "dependency",
-        "ball in court",
+        "ball court",
         "hold",
     ],
     requires: Requires::Server,
@@ -74,7 +74,7 @@ pub fn blocker(inputs: &Inputs, unblock: bool) -> Result<Value, Failure> {
         .require(if unblock { "record" } else { "on-record" })?
         .to_owned();
     let lane = inputs.value("lane").unwrap_or("stable");
-    let read = crate::graph(lane)?;
+    let read = crate::graph(lane, inputs.require("project")?)?;
     if !read.graph.tasks.iter().any(|task| task.id == task_id) {
         return Err(Failure::invalid(
             crate::TASK_NOT_FOUND.code,
@@ -101,7 +101,7 @@ pub fn blocker(inputs: &Inputs, unblock: bool) -> Result<Value, Failure> {
             record_id: record_id.clone(),
         }
     };
-    let report = crate::correspondence(lane, &action)?;
+    let report = crate::correspondence(lane, inputs.require("project")?, &action)?;
     let result = ds_command_kernel::project_management::writes::decode_operation_result(
         &report.into_result(),
     );

@@ -26,9 +26,9 @@ confirms.
    numbers a consultant writes; an ambiguous number is refused with the
    candidates and their ids — use the id, never a guess.
 3. Propose, and show it. `ds pm task create --title "<what the comment
-   asks>" --kind inbox --geometry-from <reference> --dry-run --lane <lane>
+   asks>" --kind inbox --geometry-from <reference> --dry-run --project <exact-id> --lane <lane>
    --output json` (or `ds pm task geometry set --task <id> --from
-   <reference> --dry-run …` for a task that exists). Read
+   <reference> --project <exact-id> --dry-run …` for a task that exists). Read
    `.data.proposal`: `rule.kind` (`point`, `buffered_hull`, `alignment_line`,
    `alignment_range`), `objects[]` (each with its number, id and model
    revision) and `links[]`. Put that in front of the person. Nothing was
@@ -37,13 +37,13 @@ confirms.
    `--dry-run`. One revision carries the geometry and one `ds_object` link
    per structure. `work_revision_conflict` means the plan moved — re-read,
    propose again.
-5. Prove it: `ds pm task geometry read --task <id> --lane <lane> --output
-   json` shows `geometry` and `objectLinks[]`; `ds pm plan` and the map's
+5. Prove it: `ds pm task geometry read --task <id> --project <exact-id> --lane <lane> --output
+   json` shows `geometry` and `objectLinks[]`; `ds pm plan --project <exact-id>` and the map's
    tasks layer paint from the same value.
 
 `--buffer-m` (default 25 m, 1..500) is the margin that turns several
 structures into an area; say what you chose. `ds pm task geometry clear
---task <id> --yes` removes the geometry and only the DS Grid object links.
+--task <id> --project <exact-id> --yes` removes the geometry and only the DS Grid object links.
 
 Read the live contract before inventing flags: `ds capabilities pm --output
 json`, then `ds capabilities pm.task.geometry.set --output json`.
@@ -58,9 +58,9 @@ json`, then `ds capabilities pm.task.geometry.set --output json`.
 - Reading or changing the model itself — `ds-grid-project-model`,
   `ds-grid-plscadd`.
 
-If `ds pm …` answers a native auth code (`headless_signed_out`,
-`headless_project_not_selected`), the session is not signed in or has no
-project selected: say so and stop.
+If `ds pm …` answers `headless_signed_out`, the native session is not signed
+in. If it answers `missing_input` for `--project`, name the exact project on
+the request. Do not switch a saved selection to resolve either refusal.
 
 Stops at: the proposal is the person's to confirm. Never pass `--yes` on a
 proposal nobody read.

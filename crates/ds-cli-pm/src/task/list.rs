@@ -75,11 +75,11 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "List the project's work items with state and who holds them.",
     purpose: "\
-Names every task and milestone in the active project's plan, in WBS order, \
+Names every task and milestone in the named project's plan, in WBS order, \
 with its delivery state, progress and responsible person. This is where a \
 Project Work session starts: every other `ds pm task` command needs an id \
 from here. Reads the same canonical graph the Plan and Table surfaces render \
-and changes nothing. Headless: the selected project of the signed-in native \
+and changes nothing. Headless: the named project of the signed-in native \
 credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
@@ -95,6 +95,7 @@ credential, no window.",
         LIMIT_ARG,
         PAGE_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "\
 The project, its graph revision, the matched total, the page bounds, and rows \
@@ -103,7 +104,7 @@ of `wbs`, `id`, `title`, `type`, `delivery`, `review`, `closeout`, `progress`, \
 `start`, `finish`, `responsible`, `discipline`, `priority`, `blockers` and \
 `assignmentOpen` — true while a request is waiting for an answer.",
     examples: &[Example {
-        command: "ds pm task list --state blocked --output json",
+        command: "ds pm task list --state blocked --output json --project <exact-id>",
         note: "Read .data.tasks[].id to feed read, update, assign or respond.",
         runnable: false,
     }],
@@ -150,7 +151,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             None => 0,
         },
     };
-    let read = crate::graph(inputs.value("lane").unwrap_or("stable"))?;
+    let read = crate::graph(
+        inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
+    )?;
     crate::data(&ds_command_kernel::project_management::reads::task_list(
         &read.graph,
         &filter,

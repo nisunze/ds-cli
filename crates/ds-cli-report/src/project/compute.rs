@@ -23,7 +23,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use super::{LANE_ARG, TRANSFORMER_ARG};
+use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
 
 /// The report service refuses this action on its own terms: the write
 /// governance lock is the one refusal `export_reports_only` alone emits, so
@@ -66,8 +66,6 @@ const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE_DIGEST,
     super::NATIVE_PROFILE_UNSAFE,
     super::HEADLESS_SIGNED_OUT,
-    super::HEADLESS_NO_PROJECT,
-    super::PROJECT_CONTEXT_STALE,
     super::NATIVE_STATE_UNSAFE,
     super::NATIVE_STATE_UNAVAILABLE,
     super::NATIVE_STATE_PROTECTION,
@@ -97,7 +95,7 @@ pub static COMMAND: Command = Command {
     purpose: "\
 After CLI confirmation, restores the native user and asks the governed report \
 service to compute the named transformers' individual reports in the cloud \
-and publish them to its audience-fenced selected project — what the \
+and publish them to its audience-fenced named project — what the \
 application's \"Export reports\" button asks. Without --transformer every \
 active saved transformer is named, from the inventory `ds report project \
 scope` shows. The service owns write governance, freshness (a fresh report \
@@ -107,14 +105,14 @@ the edge twin. Blocks until the service answers (up to ten minutes).",
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, LANE_ARG],
+    args: &[TRANSFORMER_ARG, LANE_ARG, PROJECT_ARG],
     output: "\
-Lane and selected-project identity/status, the `scope` sent, `partial`, the \
+Lane and named-project identity/status, the `scope` sent, `partial`, the \
 `computed`, `skipped` and `failed` names, and `results`: one row per \
 requested transformer in request order with `outcome` (`success`; `skipped` \
 with `reason`; `error` with `error`).",
     examples: &[Example {
-        command: "ds report project compute --transformer akagerero --lane canary --yes --output json",
+        command: "ds report project compute --transformer akagerero --lane canary --yes --output json --project <exact-id>",
         note: "`ds design status --transformer akagerero` then shows the cloud's report stamp.",
         runnable: false,
     }],
@@ -131,7 +129,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The route needs exact names — an empty list there is not "every active"
     // — so the omitted form is resolved from the same inventory `scope` reads.
     let (mode, scope) = if requested.is_empty() {
-        let inventory = ds_cli_auth::transformer_inventory(lane, &requested)?;
+        let inventory = ds_cli_auth::transformer_inventory_for_project(
+            lane,
+            inputs.require("project")?,
+            &requested,
+        )?;
         let names = active_names(&super::scope_json(&requested, inventory.result()));
         if names.is_empty() {
             return Err(Failure::conflict(
@@ -149,7 +151,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         ("explicit", requested)
     };
-    let headless = ds_cli_auth::export_reports(lane, &scope)?;
+    let headless =
+        ds_cli_auth::export_reports_for_project(lane, inputs.require("project")?, &scope)?;
     let mut output = super::project_receipt(&headless);
     output["scope"] = json!({"mode": mode, "requested": scope.names()});
     output
@@ -279,17 +282,17 @@ pub fn render(data: &Value) -> String {
 mod tests {
     use super::*;
 
-    /// One operation, one command, the three inputs and nothing else: the
-    /// scope, the lane, and the framework's `--yes` for an artifact write.
+    /// One operation carries scope, project and credential lane; the
+    /// framework adds `--yes` for an artifact write.
     #[test]
-    fn the_command_is_the_cloud_twin_of_export_with_three_inputs() {
+    fn the_command_is_the_cloud_twin_of_export_with_named_project() {
         assert_eq!(COMMAND.id, "report.project.compute");
         assert_eq!(COMMAND.path, &["report", "project", "compute"]);
         assert_eq!(COMMAND.effect, Effect::ArtifactWrite);
         assert_eq!(COMMAND.authority, Authority::HeadlessProject);
         assert_eq!(COMMAND.requires, Requires::Server);
         let args: Vec<&str> = COMMAND.args.iter().map(|arg| arg.name).collect();
-        assert_eq!(args, ["transformer", "lane"]);
+        assert_eq!(args, ["transformer", "lane", "project"]);
         assert!(COMMAND.effect.needs_confirmation());
         assert!(COMMAND.summary.contains("cloud"), "{}", COMMAND.summary);
         assert!(

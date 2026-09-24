@@ -19,18 +19,18 @@ Every record sharing one thread — name any record of it — in the order the \
 exchanges happened, each with its response status, who owes the answer, its \
 attachments and registered documents, the tasks blocked on it and the tasks \
 made from it. A record the signed-in user may not read has no row; the total \
-still counts it. Headless: the selected project of the signed-in native \
+still counts it. Headless: the named project of the signed-in native \
 credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[RECORD_ARG, LANE_ARG],
+    args: &[RECORD_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "\
 The project, `threadId`, `total`, `truncated`, `asOf` and `records` — each \
 the view `ds pm record read` answers — in happened-at order.",
     examples: &[Example {
-        command: "ds pm record thread --record R-0031 --output json",
+        command: "ds pm record thread --record R-0031 --output json --project <exact-id>",
         note: "Read .data.records[].record.responseStatus to see whose move it is.",
         runnable: false,
     }],
@@ -41,14 +41,13 @@ the view `ds pm record read` answers — in happened-at order.",
     reference: Some("docs/reference/pm.md"),
     search: &[
         "correspondence",
-        "thread",
         "conversation",
         "history",
         "exchange",
         "letter",
         "email",
         "who owes",
-        "ball in court",
+        "ball court",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -57,6 +56,7 @@ the view `ds pm record read` answers — in happened-at order.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let report = crate::correspondence(
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
         &Action::RecordThread {
             record_id: inputs.require("record")?.to_owned(),
         },

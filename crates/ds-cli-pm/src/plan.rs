@@ -45,7 +45,7 @@ vocabulary the write commands take their state values from.",
     // `ds_cli_auth::project_management` and needs no paired application.
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LIMIT_ARG, crate::LANE_ARG],
+    args: &[LIMIT_ARG, crate::LANE_ARG, crate::PROJECT_ARG],
     output: "\
 `project`, `revision`, `today`, `dashboard` with the rollups, `phases` by \
 discipline, `attention` rows with their magnitude, `recent` task changes, \
@@ -58,7 +58,7 @@ counters `recordsOutstanding`, `recordsOverdue`, `tasksAwaitingCorrespondence` \
 and the attention rows grouped by the party the answer is owed to (`null` on \
 a server that predates the contract).",
     examples: &[Example {
-        command: "ds pm plan --output json",
+        command: "ds pm plan --output json --project <exact-id>",
         note: "Read .data.vocabulary before calling `ds pm task update --delivery`.",
         runnable: false,
     }],
@@ -77,7 +77,7 @@ a server that predates the contract).",
         "late",
         "blocked",
         "who owes",
-        "ball in court",
+        "ball court",
         "correspondence",
         "overdue",
     ],
@@ -90,7 +90,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Some(value) => crate::integer(value, "limit", 1, 100)?,
         None => 10,
     };
-    let read = crate::graph(inputs.value("lane").unwrap_or("stable"))?;
+    let read = crate::graph(
+        inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
+    )?;
     // The graph is the SERVER's answer; what it MEANS is the kernel's. The
     // browser folded it for itself, which is why the dashboard and the
     // attention list could disagree about the same task — one answer now, for

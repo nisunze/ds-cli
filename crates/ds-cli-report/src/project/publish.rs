@@ -74,7 +74,7 @@ const RECEIPT_INVALID: Refusal = Refusal {
 const FOREIGN_PROJECT: Refusal = Refusal {
     code: "report_publish_foreign_project",
     when: "a run receipt names a different project from the selected one",
-    remedy: "select that project with `ds auth project use`, then publish again",
+    remedy: "check the exact --project ID and this account's access, then publish again",
 };
 const DIGEST_MISMATCH: Refusal = Refusal {
     code: "report_artifact_digest_mismatch",
@@ -107,8 +107,6 @@ const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE_DIGEST,
     super::NATIVE_PROFILE_UNSAFE,
     super::HEADLESS_SIGNED_OUT,
-    super::HEADLESS_NO_PROJECT,
-    super::PROJECT_CONTEXT_STALE,
     super::NATIVE_STATE_UNSAFE,
     super::NATIVE_STATE_UNAVAILABLE,
     super::NATIVE_STATE_PROTECTION,
@@ -151,7 +149,13 @@ without publishing them.",
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[FROM_ARG, TRANSFORMER_ARG, SERVER_STATE_DIR_ARG, LANE_ARG],
+    args: &[
+        FROM_ARG,
+        TRANSFORMER_ARG,
+        SERVER_STATE_DIR_ARG,
+        LANE_ARG,
+        super::PROJECT_ARG,
+    ],
     output: "\
 Lane, project, the source directory, and one row per run: transformer, \
 `state` (`queued` or `already_recorded`), artifact count, bytes and the \
@@ -159,12 +163,12 @@ batch identity it was sealed under. Totals name what entered the queue and \
 what the store already held.",
     examples: &[
         Example {
-            command: "ds report project publish --from ./reports --yes --output json",
+            command: "ds report project publish --from ./reports --yes --output json --project <exact-id>",
             note: "Publishes every run in that export directory; `ds report outbox status` then shows the queue.",
             runnable: false,
         },
         Example {
-            command: "ds report project publish --from ./reports --transformer tx_a --yes",
+            command: "ds report project publish --from ./reports --transformer tx_a --yes --project <exact-id>",
             note: "One room's held artifacts, verified and queued.",
             runnable: false,
         },
@@ -378,8 +382,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The same identity fence an export publishes under. A rescue publishes
     // durable bytes and therefore proves the account, lane, audience and
     // project exactly as the producing command did.
-    let fence = ds_cli_auth::capture_layer_scope_fence(lane)?;
-    let inventory = ds_cli_auth::transformer_inventory(lane, &requested)?;
+    let project = inputs.require("project")?;
+    let fence = ds_cli_auth::capture_layer_scope_fence_for_project(lane, project)?;
+    let inventory = ds_cli_auth::transformer_inventory_for_project(lane, project, &requested)?;
     let project_id = inventory.project_id().to_string();
     verify_scope(lane, &fence, &project_id)?;
     let queue = PublicationQueue::open(lane, inputs.value("server-state-dir").map(Path::new))?;
@@ -409,7 +414,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         };
         if run.project_id != project_id {
             return Err(foreign_project(format!(
-                "{} was exported for project {}; the selected project is {project_id}",
+                "{} was exported for project {}; this request names {project_id}",
                 directory.display(),
                 run.project_id
             )));
@@ -508,13 +513,15 @@ fn verify_scope(
     fence: &ds_cli_auth::LayerScopeFence,
     project_id: &str,
 ) -> Result<(), Failure> {
-    ds_cli_auth::verify_layer_scope_fence(lane, fence, fence.uid(), project_id).map_err(|_| {
-        Failure::conflict(
-            SCOPE_CHANGED.code,
-            "the native publication scope changed before held artifacts could be sealed",
-        )
-        .remedy(SCOPE_CHANGED.remedy)
-    })
+    ds_cli_auth::verify_layer_scope_fence_for_project(lane, fence, fence.uid(), project_id).map_err(
+        |_| {
+            Failure::conflict(
+                SCOPE_CHANGED.code,
+                "the native publication scope changed before held artifacts could be sealed",
+            )
+            .remedy(SCOPE_CHANGED.remedy)
+        },
+    )
 }
 
 /// Seal one held run into the publication queue.

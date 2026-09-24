@@ -23,12 +23,12 @@ revision; a task with nothing to clear is answered, not refused.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, LANE_ARG],
+    args: &[TASK_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "\
 `taskId`, `committedRevision`, `warnings`, `link`, and `cleared` — whether a \
 geometry was removed and how many object links went with it.",
     examples: &[Example {
-        command: "ds pm task geometry clear --task T4 --yes",
+        command: "ds pm task geometry clear --task T4 --yes --project <exact-id>",
         note: "Without --yes dispatch refuses before anything is sent.",
         runnable: false,
     }],
@@ -47,7 +47,7 @@ geometry was removed and how many object links went with it.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let task_id = inputs.require("task")?.to_owned();
     let lane = inputs.value("lane").unwrap_or("stable");
-    let read = crate::graph(lane)?;
+    let read = crate::graph(lane, inputs.require("project")?)?;
     let task = read
         .raw_task(&task_id)
         .ok_or_else(|| crate::refused(writes::Refusal::TaskNotFound(task_id.clone())))?;
@@ -77,7 +77,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ..UpdateTask::default()
     };
     let (prepared, kinds) = writes::update_task(&read.graph, &update).map_err(crate::refused)?;
-    let result = crate::commit_batch(lane, &prepared)?;
+    let result = crate::commit_batch(lane, inputs.require("project")?, &prepared)?;
     let mut extra = Map::new();
     extra.insert("commands".into(), json!(kinds));
     extra.insert(

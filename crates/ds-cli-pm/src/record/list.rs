@@ -76,7 +76,7 @@ newest first, with what each one is waiting on and who owes it. `--awaiting` \
 answers \"who owes us an answer\" and `--overdue` \"what is late\"; `--party` \
 narrows to one counterparty and `--thread` to one exchange. Bodies are not \
 returned here — one row is a subject line, and `ds pm record read` opens \
-the one you chose. Headless: the selected project of the signed-in native \
+the one you chose. Headless: the named project of the signed-in native \
 credential, no window. The server scans at most 1000 records; past that \
 the list says `truncated: true`.",
     chapter: Chapter::Project,
@@ -96,6 +96,7 @@ the list says `truncated: true`.",
         LIMIT_ARG,
         PAGE_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "\
 The project, the matched `total`, the page bounds, `scanned`, `truncated` \
@@ -105,7 +106,7 @@ when the server stopped at its scan cap, `asOf`, and rows of `id`, \
 `responseOwnerPartyId`/`responseOwnerId`, `partyIds`, `sensitivity`, \
 `threadId` and the count of tasks each record touches.",
     examples: &[Example {
-        command: "ds pm record list --awaiting --output json",
+        command: "ds pm record list --awaiting --output json --project <exact-id>",
         note: "Every record whose answer is still owed; .data.records[].responseOwnerPartyId says by whom.",
         runnable: false,
     }],
@@ -121,11 +122,10 @@ when the server stopped at its scan cap, `asOf`, and rows of `id`, \
         "submission",
         "decision",
         "who owes",
-        "ball in court",
+        "ball court",
         "overdue",
         "outstanding",
         "awaiting",
-        "thread",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -146,6 +146,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .transpose()?;
     let report = crate::correspondence(
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
         &Action::RecordList(RecordFilters {
             query: inputs.value("query").map(str::to_owned),
             category: inputs.value("category").map(str::to_owned),

@@ -33,11 +33,12 @@ ones this skill was written against.
   gate holds back says so instead of regenerating. The application keeps the
   artifact and syncs it to the project; take the file from the project's
   report artifacts and check its SHA-256 against the receipt before reading.
-- `ds report project combined [--transformer …] --file-level
+- `ds report project combined --project <exact-id> [--transformer …] --file-level
   transformer|sector|district|root [--combine-per-group] --yes --output json`
   — the same Combined Report archive without a map or paired application, against
-  the project selected by `ds auth project use`. Plan with `ds report project
-  scope` and list the registry with `ds report project archives`; read the
+  the project named on this request. Plan with `ds report project
+  scope --project <exact-id>` and list the registry with `ds report project
+  archives --project <exact-id>`; read the
   archive locator, individual coverage, missing and error counts from the
   receipt exactly as below.
 - `ds map design batch report --transformer A --transformer B … --file-level

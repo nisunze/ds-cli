@@ -71,19 +71,26 @@ Sends an assignment request to everyone named, leaving the current holder in \
 place until somebody accepts — the engine, not this CLI, decides who wins when \
 two people answer at once. Use --owner instead to transfer accountability \
 directly, or --withdraw to cancel an open request. Every person named must be \
-an active member of the project. Headless: commits to the selected project \
+an active member of the project. Headless: commits to the named project \
 of the signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, REQUEST_ARG, OWNER_ARG, WITHDRAW_ARG, LANE_ARG],
+    args: &[
+        TASK_ARG,
+        REQUEST_ARG,
+        OWNER_ARG,
+        WITHDRAW_ARG,
+        LANE_ARG,
+        crate::PROJECT_ARG,
+    ],
     output: "\
 The project, the `taskId`, the `mode` that was applied — `request`, `owner` or \
 `withdraw` — who is `responsible` afterwards, who is still being `requested`, \
 the `committedRevision`, and any `warnings`.",
     examples: &[Example {
-        command: "ds pm task assign --task T-0007 --request pilot@example.com --request field@example.com --yes",
+        command: "ds pm task assign --task T-0007 --request pilot@example.com --request field@example.com --yes --project <exact-id>",
         note: "Both are asked; the first to run `ds pm task respond --response accept` holds it.",
         runnable: false,
     }],
@@ -145,11 +152,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let task_id = inputs.require("task")?.to_owned();
     let lane = inputs.value("lane").unwrap_or("stable");
-    let read = crate::graph(lane)?;
+    let read = crate::graph(lane, inputs.require("project")?)?;
     let (prepared, mode) =
         writes::assign_task(&read.graph, &task_id, &assignment).map_err(crate::refused)?;
     let before = read.graph.tasks.iter().find(|task| task.id == task_id);
-    let result = crate::commit(lane, &prepared)?;
+    let result = crate::commit(lane, inputs.require("project")?, &prepared)?;
     let (responsible, requested) = writes::assignment_after(&result, &task_id, before);
     let mut extra = Map::new();
     extra.insert("mode".into(), json!(mode));

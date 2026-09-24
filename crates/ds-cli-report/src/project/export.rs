@@ -2,7 +2,7 @@
 //! included, from the governed inputs and the installed engine.
 //!
 //! No map, no room cache, no Desktop. The native user's audience-fenced
-//! selected project supplies two things through fixed doors: the Network
+//! named project supplies two things through fixed doors: the Network
 //! Reporter input receipt ds-brain mints beside the project configuration
 //! (country, the exact settings sheets, the reference snapshot), and each
 //! transformer's exact saved layers with their revision. The installed
@@ -160,7 +160,7 @@ const CONCURRENCY: Refusal = Refusal {
 };
 const BATCH_EMPTY: Refusal = Refusal {
     code: "report_batch_empty",
-    when: "the selected project has no active transformer to report",
+    when: "the named project has no active transformer to report",
     remedy: "save a transformer first; `ds report project scope` lists the inventory",
 };
 const BATCH_FAILED: Refusal = Refusal {
@@ -229,8 +229,6 @@ pub(super) const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE_DIGEST,
     super::NATIVE_PROFILE_UNSAFE,
     super::HEADLESS_SIGNED_OUT,
-    super::HEADLESS_NO_PROJECT,
-    super::PROJECT_CONTEXT_STALE,
     super::NATIVE_STATE_UNSAFE,
     super::NATIVE_STATE_UNAVAILABLE,
     super::NATIVE_STATE_PROTECTION,
@@ -280,7 +278,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and named print outputs with project-wide numbering, and PUBLISH them: every artifact enters the one publication queue. --dry-run is the only unpublished mode; its receipt says so. Setups use held context; --seed acquires missing context. Photos require a media grant.",
+    purpose: "Export active transformers and print outputs with project numbering; enqueue every artifact. --dry-run skips publication. Use held context or --seed to acquire it. Photos need a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -309,6 +307,7 @@ pub static COMMAND: Command = Command {
         DRY_RUN_ARG,
         SERVER_STATE_DIR_ARG,
         LANE_ARG,
+        super::PROJECT_ARG,
     ],
     output: "\
 Lane, project, scope, engine identity, publication state, batch counts and receipt \
@@ -318,22 +317,22 @@ overflow/panels/row_mm), or typed error. `publication.stage` is `queued`, or \
 `nothing_published` for a dry run.",
     examples: &[
         Example {
-            command: "ds report project export --out-dir ./reports --output json",
+            command: "ds report project export --out-dir ./reports --output json --project <exact-id>",
             note: "Every active transformer, published; `.data.results[]` says what each did.",
             runnable: false,
         },
         Example {
-            command: "ds report project export --transformer tx_a --transformer tx_b --out-dir ./reports --concurrency 2",
+            command: "ds report project export --transformer tx_a --transformer tx_b --out-dir ./reports --concurrency 2 --project <exact-id>",
             note: "Two named transformers, two engines at once.",
             runnable: false,
         },
         Example {
-            command: "ds report project export --transformer tx_a --out-dir ./reports --dry-run --output json",
+            command: "ds report project export --transformer tx_a --out-dir ./reports --dry-run --output json --project <exact-id>",
             note: "Local files only; `.data.publication.published_nothing` is true.",
             runnable: false,
         },
         Example {
-            command: "ds report project export --transformer tx_a --preview-layout ./draft.json --out-dir ./preview --output json",
+            command: "ds report project export --transformer tx_a --preview-layout ./draft.json --out-dir ./preview --output json --project <exact-id>",
             note: "tx_a's sheet as the draft composes it, with its pens, as one SVG page; `.data.preview` names the output.",
             runnable: false,
         },
@@ -556,7 +555,7 @@ fn require_same_context(
     if expected_identity != actual_identity || expected_project != actual_project {
         return Err(HostFailure::new(
             INPUTS_INVALID.code,
-            "account, deployment audience or selected project changed while fetching report inputs; start a new batch",
+            "account, deployment audience or named project changed while fetching report inputs; start a new batch",
         ));
     }
     Ok(())
@@ -895,13 +894,15 @@ fn verify_publish_scope(
     owner_uid: &str,
     project_id: &str,
 ) -> Result<(), Failure> {
-    ds_cli_auth::verify_layer_scope_fence(lane, fence, owner_uid, project_id).map_err(|_| {
-        Failure::conflict(
-            PUBLISH_SCOPE_CHANGED.code,
-            "the native publication scope changed before report artifacts could be sealed",
-        )
-        .remedy(PUBLISH_SCOPE_CHANGED.remedy)
-    })
+    ds_cli_auth::verify_layer_scope_fence_for_project(lane, fence, owner_uid, project_id).map_err(
+        |_| {
+            Failure::conflict(
+                PUBLISH_SCOPE_CHANGED.code,
+                "the native publication scope changed before report artifacts could be sealed",
+            )
+            .remedy(PUBLISH_SCOPE_CHANGED.remedy)
+        },
+    )
 }
 
 /// What `--preview-layout` asks for, read and bounded before any state is
@@ -979,8 +980,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy("choose existing verified city vectors or project context seeding"));
     }
+    let project = inputs.require("project")?;
     let publish_scope = publish
-        .then(|| ds_cli_auth::capture_layer_scope_fence(lane))
+        .then(|| ds_cli_auth::capture_layer_scope_fence_for_project(lane, project))
         .transpose()?;
     let publish_queue = if publish {
         Some(PublicationQueue::open(
@@ -1001,7 +1003,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The lifecycle inventory is both the project identity and the scope:
     // every active saved transformer, or the exact names given with the state
     // each one is in.
-    let inventory = ds_cli_auth::transformer_inventory(lane, &requested)?;
+    let inventory = ds_cli_auth::transformer_inventory_for_project(lane, project, &requested)?;
     let project_id = inventory.project_id().to_string();
     if let Some(fence) = publish_scope.as_ref() {
         verify_publish_scope(lane, fence, fence.uid(), &project_id)?;
@@ -1032,7 +1034,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if names.is_empty() {
         return Err(Failure::conflict(
             "report_batch_empty",
-            "the selected project has no active transformer to report",
+            "the named project has no active transformer to report",
         )
         .remedy(BATCH_EMPTY.remedy)
         .next("ds report project scope"));
@@ -1040,7 +1042,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     // The project-wide input base: the receipt ds-brain mints beside the
     // fresh configuration. The kernel proves it before anything is staged.
-    let configuration = ds_cli_auth::feeder_configuration_receipt(lane, None)?;
+    let configuration = ds_cli_auth::feeder_configuration_for_project(lane, project)?;
     require_same_context(
         inventory.identity(),
         &project_id,
@@ -1211,8 +1213,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let complete_inventory = if requested.is_empty() {
         None
     } else {
-        let full =
-            ds_cli_auth::transformer_inventory(lane, &ds_cli_auth::TransformerSet::default())?;
+        let full = ds_cli_auth::transformer_inventory_for_project(
+            lane,
+            project,
+            &ds_cli_auth::TransformerSet::default(),
+        )?;
         require_same_context(
             inventory.identity(),
             &project_id,
@@ -1253,7 +1258,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // the CLI's own class, code and remedy: a preview ends with it as the
     // command's answer, a delivery records it as one row of the batch.
     let fetch_room =
-        |name: &str| -> Result<(ds_cli_auth::HeadlessTransformerContext, i64), Failure> {
+        |name: &str| -> Result<(ds_cli_auth::HeadlessNamedTransformerContext, i64), Failure> {
             match lifecycle.get(name).map(String::as_str) {
                 Some("active") => {}
                 Some(state) => {
@@ -1274,7 +1279,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             // A weak link blinks; a room fetch that was refused by an outage is
             // asked again before the row is written off.
             let context = with_weak_network(WEAK_NETWORK_DELAYS, || {
-                ds_cli_auth::transformer_context(lane, name)
+                ds_cli_auth::transformer_context_for_project(lane, project, name)
             })?;
             require_same_context(
                 inventory.identity(),
@@ -1583,7 +1588,7 @@ fn preview_pages(
     holdings_scope: &ds_command_kernel::project_dataset_cache::Scope,
     sheet_positions: &BTreeMap<String, (u32, u32)>,
     out_dir: &Path,
-    fetch_room: impl Fn(&str) -> Result<(ds_cli_auth::HeadlessTransformerContext, i64), Failure>,
+    fetch_room: impl Fn(&str) -> Result<(ds_cli_auth::HeadlessNamedTransformerContext, i64), Failure>,
     facts: PreviewFacts<'_>,
 ) -> Result<Value, Failure> {
     // The rooms this machine holds are read, never acquired: without a
@@ -2322,7 +2327,11 @@ mod tests {
         assert_eq!(COMMAND.authority, Authority::HeadlessProject);
         assert_eq!(COMMAND.effect, Effect::LocalFileWrite);
         assert!(COMMAND.summary.len() <= 70);
-        assert!(COMMAND.args.iter().all(|arg| arg.name != "project"));
+        assert!(
+            COMMAND
+                .arg("project")
+                .is_some_and(|arg| arg.required && arg.default.is_none())
+        );
         // Acceptance B: there is no `--publish`. An export publishes, and the
         // only way to publish nothing is to ask for a dry run. If this switch
         // ever comes back, every run that forgets it strands its artifacts
@@ -2341,7 +2350,7 @@ mod tests {
                 .iter()
                 .any(|arg| arg.name == "server-state-dir")
         );
-        assert!(COMMAND.purpose.contains("named print output"));
+        assert!(COMMAND.purpose.contains("print outputs"));
     }
 
     #[test]

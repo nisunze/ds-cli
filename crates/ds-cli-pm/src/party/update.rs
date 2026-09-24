@@ -34,7 +34,7 @@ pub static COMMAND: Command = Command {
 Corrects one party in place — the same fields `ds pm party create` takes — or \
 archives it so it drops out of lists while every record that names it keeps \
 naming it. The current version is read first and the change is refused \
-if the party moved in between. Headless: writes to the selected project of \
+if the party moved in between. Headless: writes to the named project of \
 the signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
@@ -52,10 +52,11 @@ the signed-in native credential, no window.",
         ARCHIVE_ARG,
         UNARCHIVE_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "The project and `party` — the row as the server now holds it.",
     examples: &[Example {
-        command: "ds pm party update --party p_acme --role contractor --yes",
+        command: "ds pm party update --party p_acme --role contractor --yes --project <exact-id>",
         note: "Repeat --email to replace the whole list of addresses.",
         runnable: false,
     }],
@@ -67,13 +68,7 @@ the signed-in native credential, no window.",
         NOTHING_TO_UPDATE,
     ]),
     reference: Some("docs/reference/pm.md"),
-    search: &[
-        "correspondence",
-        "counterparty",
-        "archive",
-        "contact",
-        "rename",
-    ],
+    search: &["correspondence", "counterparty", "contact", "rename"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -94,7 +89,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         );
     }
     let lane = inputs.value("lane").unwrap_or("stable");
-    let Some((_, current)) = super::find(lane, party_id)? else {
+    let Some((_, current)) = super::find(lane, inputs.require("project")?, party_id)? else {
         return Err(Failure::invalid(
             crate::PARTY_NOT_FOUND.code,
             format!("No party {party_id} in this project."),
@@ -105,6 +100,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let report = crate::correspondence(
         lane,
+        inputs.require("project")?,
         &Action::PartyUpdate {
             id: party_id.to_owned(),
             expected_version: current["version"].as_i64().unwrap_or(1).max(1),

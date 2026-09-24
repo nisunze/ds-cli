@@ -23,12 +23,12 @@ sequence, cache, IndexedDB, Svelte, WASM, or backend implementation.
 
 Two project contexts exist and they are not the same thing. The paired
 application's visible project (`ds desktop status`) governs every `map.*`
-command that needs a rendered map. The CLI-selected project (`ds auth project use`,
-`ds auth project status`) governs selected-project `headless_project` commands — tiling,
-background reports, transformer inventory and retirement, tags, groups,
-comments, assets and project management — with no map, room or Desktop.
+command that needs a rendered map. Project Management and `ds report project`
+commands take required `--project` on every request and ignore the CLI's saved
+selection. Other headless commands may still use `ds auth project use`; read
+their live descriptor before calling them.
 Switching one context never switches the other; read the descriptor's
-`authority` and check the matching context before a durable operation. For the
+`authority` and project argument before a durable operation. For the
 background family, read
 [references/background-project-operations.md](references/background-project-operations.md).
 

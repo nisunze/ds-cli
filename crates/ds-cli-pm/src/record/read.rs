@@ -21,13 +21,13 @@ whether it is outstanding, overdue, answered or waived — what it affects, \
 what it was authored against, and, projected beside it, its `attachments` \
 (the .eml with its parts, screenshots, external links), its registered \
 `documents`, the tasks blocked on it and the tasks made from it. The body \
-is bounded, and a body that was cut says so. Headless: the selected project \
+is bounded, and a body that was cut says so. Headless: the named project \
 of the signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[RECORD_ARG, LANE_ARG],
+    args: &[RECORD_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "\
 `record` with its canonical fields, `responseStatus`, `responseOwnerPartyId` \
 or `responseOwnerId`, `daysOverdue`/`daysUntilDue`, `sensitivity`, the \
@@ -35,7 +35,7 @@ bounded `body` and related-id collections; `attachments` with \
 `attachmentsTotal`, `documents`, `blockedTasks`, `resultingTasks`, \
 `threadTotal` and `asOf`.",
     examples: &[Example {
-        command: "ds pm record read --record R-0031 --output json",
+        command: "ds pm record read --record R-0031 --output json --project <exact-id>",
         note: "`.data.record.responseStatus` says whose move it is; `.data.attachments[].assetId` opens with `ds assets`.",
         runnable: false,
     }],
@@ -50,8 +50,7 @@ bounded `body` and related-id collections; `attachments` with \
         "submission",
         "decision",
         "who owes",
-        "ball in court",
-        "attachments",
+        "ball court",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -60,6 +59,7 @@ bounded `body` and related-id collections; `attachments` with \
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let report = crate::correspondence(
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
         &Action::RecordRead {
             record_id: inputs.require("record")?.to_owned(),
         },

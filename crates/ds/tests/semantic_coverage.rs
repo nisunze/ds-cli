@@ -1011,10 +1011,18 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // Every `pm` command is a headless project command since 2026-09-20:
     // `POST /api/v1/pm` under the native credential, folded by the kernel.
     ("pm.plan", "read_only", "headless_project"),
+    ("pm.party.create", "global_write", "headless_project"),
+    ("pm.party.list", "read_only", "headless_project"),
+    ("pm.party.update", "global_write", "headless_project"),
+    ("pm.record.create", "global_write", "headless_project"),
     ("pm.record.list", "read_only", "headless_project"),
     ("pm.record.read", "read_only", "headless_project"),
+    ("pm.record.reply", "global_write", "headless_project"),
+    ("pm.record.thread", "read_only", "headless_project"),
+    ("pm.record.update", "global_write", "headless_project"),
     ("pm.task.assign", "global_write", "headless_project"),
     ("pm.task.admit", "global_write", "headless_project"),
+    ("pm.task.block", "global_write", "headless_project"),
     ("pm.task.create", "global_write", "headless_project"),
     ("pm.task.decline", "global_write", "headless_project"),
     // Where the work is (task-geometry-from-objects.md, 2026-09-20).
@@ -1032,6 +1040,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("pm.task.respond", "global_write", "headless_project"),
     ("pm.task.update", "global_write", "headless_project"),
+    ("pm.task.unblock", "global_write", "headless_project"),
     ("workstation.components", "discovery", "none"),
     // What this machine holds for a project, off the Server's state root;
     // the clean removes replicas only and is gated by --yes.

@@ -949,6 +949,21 @@ pub struct HeadlessTransformerContext {
     snapshot: TransformerContext,
 }
 
+/// A transformer snapshot read for the project named on this request.
+pub struct HeadlessNamedTransformerContext {
+    identity: ProviderIdentity,
+    snapshot: TransformerContext,
+}
+
+impl HeadlessNamedTransformerContext {
+    pub const fn identity(&self) -> &ProviderIdentity {
+        &self.identity
+    }
+    pub const fn snapshot(&self) -> &TransformerContext {
+        &self.snapshot
+    }
+}
+
 impl HeadlessTransformerContext {
     pub const fn identity(&self) -> &ProviderIdentity {
         &self.identity
@@ -1619,6 +1634,23 @@ pub fn transformer_context(
         project_name: selected.project_name().to_owned(),
         project_status: selected.status().to_owned(),
         snapshot,
+    })
+}
+
+pub fn transformer_context_for_project(
+    lane_value: &str,
+    project: &str,
+    transformer: &str,
+) -> Result<HeadlessNamedTransformerContext, Failure> {
+    let report = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.transformer_context(project, transformer),
+        |client, project| client.transformer_context(project, transformer, now()),
+    )?;
+    Ok(HeadlessNamedTransformerContext {
+        identity: report.identity().clone(),
+        snapshot: report.into_result(),
     })
 }
 
@@ -2982,6 +3014,21 @@ pub fn design_output_rows(
     .map(|receipt| receipt.result)
 }
 
+pub fn design_output_rows_for_project(
+    lane: &str,
+    project: &str,
+    rows: Vec<serde_json::Value>,
+) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    let change = ds_client_core::ProjectConfigurationChange::DesignOutputs { rows };
+    headless_named_project(
+        lane,
+        project,
+        |device, project| device.feeder_configuration(project, Some(&change)),
+        |client, project| client.feeder_configuration(project, Some(&change), now()),
+    )
+    .map(HeadlessNamedProject::into_result)
+}
+
 pub fn customer_category_alias(
     lane: &str,
     alias: &str,
@@ -3075,6 +3122,20 @@ pub fn compounded_report(
     )
 }
 
+/// Publish a Combined Report for the project explicitly named on this call.
+pub fn compounded_report_for_project(
+    lane_value: &str,
+    project: &str,
+    request: &CompoundedReportRequest,
+) -> Result<HeadlessNamedProject<CompoundedReportReceipt>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.compounded_report(project, request),
+        |client, project| client.compounded_report(project, request, now()),
+    )
+}
+
 /// Ask the cloud to compute the individual reports of exact transformers of
 /// only the saved, audience-fenced selected project and publish them to it.
 /// ds-brain owns write governance, freshness, the claim and the fan-out to
@@ -3090,6 +3151,19 @@ pub fn export_reports(
     )
 }
 
+pub fn export_reports_for_project(
+    lane_value: &str,
+    project: &str,
+    request: &TransformerSet,
+) -> Result<HeadlessNamedProject<ExportReportsReceipt>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.export_reports(project, request),
+        |client, project| client.export_reports(project, request, now()),
+    )
+}
+
 /// List the published Combined Report archives of only the saved,
 /// audience-fenced selected project.
 pub fn compounded_report_list(
@@ -3097,6 +3171,18 @@ pub fn compounded_report_list(
 ) -> Result<HeadlessProjectReport<Vec<CompoundedArchive>>, Failure> {
     headless_project_report(
         lane_value,
+        |device, project| device.compounded_report_list(project),
+        |client, project| client.compounded_report_list(project, now()),
+    )
+}
+
+pub fn compounded_report_list_for_project(
+    lane_value: &str,
+    project: &str,
+) -> Result<HeadlessNamedProject<Vec<CompoundedArchive>>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
         |device, project| device.compounded_report_list(project),
         |client, project| client.compounded_report_list(project, now()),
     )
@@ -3183,6 +3269,7 @@ pub fn transformer_status(
 /// project here is the end of guessing, not a second authority.
 pub struct HeadlessNamedProject<T> {
     identity: ProviderIdentity,
+    user_email: String,
     lane: &'static str,
     project_id: String,
     result: T,
@@ -3191,6 +3278,9 @@ pub struct HeadlessNamedProject<T> {
 impl<T> HeadlessNamedProject<T> {
     pub const fn identity(&self) -> &ProviderIdentity {
         &self.identity
+    }
+    pub fn user_email(&self) -> &str {
+        &self.user_email
     }
     pub const fn lane(&self) -> &'static str {
         self.lane
@@ -3225,6 +3315,7 @@ fn headless_named_project<T>(
                 device.profile().credential_audience_sha256(),
                 device.context().uid(),
             )?,
+            user_email: device.context().email().to_owned(),
             lane: lane.token(),
             project_id: project,
             result,
@@ -3241,6 +3332,7 @@ fn headless_named_project<T>(
             client.profile().credential_audience_sha256(),
             user.uid(),
         )?,
+        user_email: user.email().to_owned(),
         lane: lane.token(),
         project_id: project,
         result,
@@ -3376,6 +3468,21 @@ pub fn project_management(
 ) -> Result<HeadlessProjectReport<serde_json::Value>, Failure> {
     headless_project_report(
         lane_value,
+        |device, project| device.project_management(project, command),
+        |client, project| client.project_management(project, command, now()),
+    )
+}
+
+/// One project-management command whose project is named by this request.
+/// The saved native selection is never observed or changed.
+pub fn project_management_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &ds_client_core::project_management::Command,
+) -> Result<HeadlessNamedProject<serde_json::Value>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
         |device, project| device.project_management(project, command),
         |client, project| client.project_management(project, command, now()),
     )

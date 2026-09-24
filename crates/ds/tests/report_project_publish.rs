@@ -24,11 +24,13 @@ fn ds(args: &[&str]) -> Value {
 /// native availability gate pass, and an empty config home holds no user. Any
 /// refusal that still arrives is therefore one decided locally.
 fn headless(args: &[&str]) -> Value {
+    let mut named = args.to_vec();
+    named.extend(["--project", "test-project"]);
     let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
     let config = tempfile::tempdir().expect("temp config home");
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
-        .args(args)
+        .args(named)
         .env("NO_COLOR", "1")
         .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
         .env("DS_CONFIG_HOME", config.path())
@@ -84,7 +86,7 @@ fn the_rescue_route_is_discoverable_and_states_what_it_will_not_do() {
         .collect();
     assert_eq!(
         inputs,
-        ["from", "transformer", "server-state-dir", "lane"],
+        ["from", "transformer", "server-state-dir", "lane", "project"],
         "the source directory is the whole request; nothing here re-runs a report"
     );
 }

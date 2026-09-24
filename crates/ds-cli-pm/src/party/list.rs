@@ -44,7 +44,7 @@ The counterparties a record can name — the client, the consultant reviewing \
 the design, the contractor, the supplier, the authority — with the ids \
 `ds pm record create --party` and `--response-owed-by` take. Parties are \
 per project. One bounded page in name order; archived parties are hidden \
-unless asked for. Headless: the selected project of the signed-in native \
+unless asked for. Headless: the named project of the signed-in native \
 credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
@@ -58,6 +58,7 @@ credential, no window.",
         LIMIT_ARG,
         PAGE_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "\
 The project, the matched `total`, the page bounds, `truncated` when the \
@@ -65,7 +66,7 @@ server stopped at its scan cap, and `parties` rows of `id`, `kind`, `name`, \
 `role`, `organisationPartyId`, `emails`, `phones`, `notes`, `archived` and \
 `version`.",
     examples: &[Example {
-        command: "ds pm party list --role consultant --output json",
+        command: "ds pm party list --role consultant --output json --project <exact-id>",
         note: "Read .data.parties[].id to name a party on a record.",
         runnable: false,
     }],
@@ -99,6 +100,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let report = crate::correspondence(
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
         &Action::PartyList(PartyFilters {
             query: inputs.value("query").map(str::to_owned),
             role: inputs.value("role").map(str::to_owned),

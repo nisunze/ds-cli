@@ -134,7 +134,7 @@ Creates one work item through the same governed command the Plan sheet uses, \
 so it lands with the sort key, schedule state and duration the surface would \
 have given it. A retry that passes the same --id is refused rather than \
 duplicated, which is what makes this safe to run again after a lost answer. \
-Headless: commits to the selected project of the signed-in native credential, \
+Headless: commits to the named project of the signed-in native credential, \
 no window. With --geometry-from the item is created carrying WHERE: the \
 geometry of the named DS Grid structures (an area around several, a point for \
 one, a line for an alignment or span range) and one ds_object link per \
@@ -159,6 +159,7 @@ nothing.",
         BUFFER_ARG,
         DRY_RUN_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "\
 The project, the minted `taskId`, the `committedRevision` the plan moved to, \
@@ -167,12 +168,12 @@ new item in the app. With --geometry-from, `proposal` (geometry, rule, \
 objects, links, sources); with --dry-run, only the proposal and no task.",
     examples: &[
         Example {
-            command: "ds pm task create --title \"Stake MV route\" --kind parent --start 2026-09-01 --finish 2026-09-12 --yes",
+            command: "ds pm task create --title \"Stake MV route\" --kind parent --start 2026-09-01 --finish 2026-09-12 --yes --project <exact-id>",
             note: "Without --yes dispatch refuses before anything is sent.",
             runnable: false,
         },
         Example {
-            command: "ds pm task create --title \"Swamp crossing at 74/76/77\" --kind inbox --geometry-from dsgrid:local-<id>:structure:74,76,77 --dry-run --output json",
+            command: "ds pm task create --title \"Swamp crossing at 74/76/77\" --kind inbox --geometry-from dsgrid:local-<id>:structure:74,76,77 --dry-run --output json --project <exact-id>",
             note: "The proposal a person confirms: an area around the three structures and three links; re-run with --yes to create.",
             runnable: false,
         },
@@ -236,7 +237,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
 
     let lane = inputs.value("lane").unwrap_or("stable");
-    let read = crate::graph(lane)?;
+    let read = crate::graph(lane, inputs.require("project")?)?;
     // WHERE the work is, resolved before the create is prepared so a
     // reference that does not resolve refuses the whole create by name.
     let proposal = if references.is_empty() {
@@ -281,7 +282,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "committedRevision": Value::Null,
         }));
     }
-    let result = crate::commit(lane, &prepared)?;
+    let result = crate::commit(lane, inputs.require("project")?, &prepared)?;
     let mut extra = Map::new();
     extra.insert("kind".into(), json!(kind.token()));
     if let Some(proposal) = proposal {

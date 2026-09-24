@@ -25,12 +25,12 @@ The whole canonical task: schedule, delivery, review and closeout state, who \
 holds it, who has been asked to take it, what it depends on, what is still \
 outstanding against it, and the records that reference it. Read this before \
 any write — the update, assign and respond commands all act on what is here. \
-Headless: the selected project of the signed-in native credential, no window.",
+Headless: the named project of the signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, TIMELINE_ARG, LANE_ARG],
+    args: &[TASK_ARG, TIMELINE_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "\
 `task` with the canonical fields — including `awaitingCorrespondence`, \
 `blockedRecordIds` and every `correspondenceBlockers` entry with who set \
@@ -40,7 +40,7 @@ collection; plus the project's `permissions`, graph `revision`, and `link`. \
 With --timeline, `timeline.entries` in time order with `total`, `truncated` \
 and per-source counts.",
     examples: &[Example {
-        command: "ds pm task read --task T-0007 --output json",
+        command: "ds pm task read --task T-0007 --output json --project <exact-id>",
         note: "`.data.task.assignmentOpen` tells you whether respond is available.",
         runnable: false,
     }],
@@ -68,12 +68,12 @@ and per-source counts.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let task_id = inputs.require("task")?;
     let lane = inputs.value("lane").unwrap_or("stable");
-    let read = crate::graph(lane)?;
+    let read = crate::graph(lane, inputs.require("project")?)?;
     // The records that reference a task are a separate server read the
     // browser never made; a project with none costs the same round trip as
     // one with a hundred, and an operator reading a task wants to know which
     // correspondence names it.
-    let (_, records, _) = crate::records(lane)?;
+    let (_, records, _) = crate::records(lane, inputs.require("project")?)?;
     match ds_command_kernel::project_management::reads::task_read(&read.graph, task_id, &records) {
         Some(reply) => {
             let mut data = crate::data(&reply)?;
@@ -82,6 +82,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 // the row itself is the graph's, read above.
                 let report = crate::correspondence(
                     lane,
+                    inputs.require("project")?,
                     &Action::TaskRead {
                         task_id: task_id.to_owned(),
                         timeline: true,

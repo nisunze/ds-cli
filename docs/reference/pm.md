@@ -14,10 +14,9 @@ people accepting the same assignment request in the same second, and it refuses
 a command authored against a revision that has since moved. `POST /api/v1/pm`
 is published on both gateway lanes and authenticates from the bearer alone, so
 every command here is one governed action the native client sends under the
-restored user or device credential, for the audience-fenced project
-`ds auth project use` selected. No pairing, no device link, no paired
-application — `ds pm` answers on a bare Server exactly as it answers beside a
-desktop (`ds auth status` shows the credential and the selected project).
+restored user or device credential, for the project named by this command's
+required `--project`. No pairing or paired application is needed. The gateway
+decides whether that credential may act on the named project.
 
 What the graph MEANS is not decided here either. The plan, a task list, one
 task, which project command a flag becomes and what the engine's answer
@@ -25,11 +24,10 @@ means are `ds_command_kernel::project_management` — one fold for the CLI,
 MCP, the Server and the page, so the dashboard and the attention list cannot
 disagree about the same task by host.
 
-That is also why there is no `--project` flag anywhere in this domain. The
-project is the one selected for this credential and lane; a project id passed
-as an argument would be a claim `ds` has no standing to make. `--lane`
-selects the native credential lane (`stable` by default, `canary` where the
-box is linked on canary).
+Every PM command requires `--project <exact-id>`. A saved CLI selection is
+never consulted, so two interleaved commands for different projects keep their
+own request context. `--lane` selects the native credential lane (`stable` by
+default, `canary` where the box is linked on canary).
 
 Until 2026-09-20 eight of these nine commands relayed through the paired
 desktop (`requires: window`). That path is retired: `--desktop-descriptor`
@@ -39,10 +37,10 @@ is no longer an input, and a caller that still passes it is told
 ## The shape of a session
 
 ```bash
-ds pm plan                                   # what is this project, and what needs attention
-ds pm task list --state blocked              # find the work item
-ds pm task read --task T-0007                # read it, with its residuals and records
-ds pm task update --task T-0007 --delivery in_progress --progress 40 --yes
+ds pm plan --project <exact-id>                                   # what needs attention
+ds pm task list --project <exact-id> --state blocked              # find the work item
+ds pm task read --project <exact-id> --task T-0007                # read it
+ds pm task update --project <exact-id> --task T-0007 --delivery in_progress --progress 40 --yes
 ```
 
 `ds pm plan` is the cheapest place to start and the one that makes the rest
@@ -53,7 +51,7 @@ is how a client once offered `task` for a node that was a milestone.
 
 ## Reads are one round trip each
 
-A read fetches the selected project's canonical graph (`get_graph`) once and
+A read fetches the named project's canonical graph (`get_graph`) once and
 folds it in the kernel; `ds pm task read` additionally fetches the project's
 context (`get_context`) for the records that reference the task. The record
 commands read through the correspondence contract's own actions
@@ -199,8 +197,8 @@ estimate and ask again. The estimate (`--hours`, `--days`) and the append-only
 hours log are the facts billing and duration learning read; nothing here
 edits or deletes an hours entry, and only an assignee writes one.
 
-These five commands run headless on the CLI-selected project (`ds auth project
-use`) and never through a window. Each takes `--id`: the same id replays the
+These five commands run headless on the project each request names and never
+through a window. Each takes `--id`: the same id replays the
 ledger rather than repeating the write, which is how a lost answer is retried
 safely — the minted id is in every receipt. `ds pm plan` flags a task whose
 logged hours pass its estimate (`over_estimate`) beside the late ones, and
@@ -223,19 +221,19 @@ see what it will be attached to — holds in a headless world too.
 **Setting `responded` by hand.** It is derived from a reply in the thread;
 what a person may set is a waiver, with a reason, and it is not withdrawn.
 
-**A project id argument, a token, a window and a Firestore path.** See above.
+**A token, a window and a Firestore path.** See above.
 
 ## Refusals worth planning for
 
 | Code | Means |
 |---|---|
 | `headless_signed_out` | no credential is connected on this lane — `ds account connect`, approved in the Desktop |
-| `headless_project_not_selected` | no project selected for this credential and lane — `ds auth project use --project <id>` |
-| `project_not_visible` | the selected project is not one this account is a member of |
+| `missing_input` | `--project` was omitted; name the exact project on this call |
+| `project_not_visible` | the named project is not one this account may access |
 | `pm_refused` | ds-brain or the engine declined the command by name; `detail.service_message` says what |
 | `work_not_permitted` | this user may read the plan but not change it |
 | `work_revision_conflict` | the plan moved; re-read and decide again |
-| `task_not_found` / `record_not_found` | no such id in the selected project |
+| `task_not_found` / `record_not_found` | no such id in the named project |
 | `invalid_choice` | a state, priority, type, placement or scheduling value outside the vocabulary `ds pm plan` publishes |
 | `requires_window_retired` | `--desktop-descriptor` was passed; drop it |
 | `nothing_to_update` | an update with no change flag — refused before a round trip |

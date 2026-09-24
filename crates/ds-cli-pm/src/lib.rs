@@ -10,8 +10,8 @@
 //! `POST /api/v1/pm` is published on both gateway lanes and authenticates from
 //! the bearer alone — no pairing, no device, no window. So every command here
 //! is one governed action the native client sends under the restored user or
-//! device credential, for the audience-fenced project `ds auth project use`
-//! selected. Until 2026-09-20 eight of the nine relayed through the paired
+//! device credential, for the project named by this command's required
+//! `--project`. Until 2026-09-20 eight of the nine relayed through the paired
 //! desktop to the page's own adapters instead; on a server with no window the
 //! owner could file nothing. The window was habit, never contract.
 //!
@@ -135,6 +135,9 @@ pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credenti
     .choices(&["stable", "canary"])
     .default("stable");
 
+pub const PROJECT_ARG: Arg =
+    Arg::value("project", "<ds-project>", "Project named for this request.").required();
+
 /// The refusals the headless project client can answer with, for every
 /// command of this domain: profile, state, session, identity, transport and
 /// project-context conditions. Declared once in `ds auth`.
@@ -167,7 +170,7 @@ pub const CONFLICT: Refusal = Refusal {
 };
 pub const TASK_NOT_FOUND: Refusal = Refusal {
     code: "task_not_found",
-    when: "no task or milestone in the selected project's plan carries this id",
+    when: "no task or milestone in the named project's plan carries this id",
     remedy: "check the id with `ds pm task list`",
 };
 pub const RECORD_NOT_FOUND: Refusal = Refusal {
@@ -254,7 +257,7 @@ pub const ASSET_NOT_FOUND: Refusal = Refusal {
 };
 pub const PROJECT_NOT_VISIBLE: Refusal = Refusal {
     code: "project_not_visible",
-    when: "the selected project is not one this account is a member of",
+    when: "the named project is not one this account is a member of",
     remedy: "choose an exact id from `ds auth project list`",
 };
 pub const INVALID_STAMP: Refusal = Refusal {
@@ -332,9 +335,11 @@ pub const CORRESPONDENCE_READ: usize = 16 + 5;
 /// this domain.
 pub fn correspondence(
     lane: &str,
+    project: &str,
     action: &ds_client_core::project_correspondence::Action,
-) -> Result<ds_cli_auth::HeadlessProjectReport<Value>, Failure> {
-    ds_cli_auth::correspondence::project_correspondence(lane, action).map_err(classify)
+) -> Result<ds_cli_auth::HeadlessNamedProject<Value>, Failure> {
+    ds_cli_auth::correspondence::project_correspondence_for_project(lane, project, action)
+        .map_err(classify)
 }
 
 /// Attach this domain's remedy to a relayed token, and rename a token this
@@ -551,11 +556,10 @@ pub const fn write_refusals<const TOTAL: usize>(own: &[Refusal]) -> [Refusal; TO
 // The door and the folds
 // ---------------------------------------------------------------------------
 
-/// The selected project's graph, decoded, with the lane's project id and name.
+/// The named project's graph, decoded, with its exact project id.
 pub struct Graph {
     pub lane: &'static str,
     pub project_id: String,
-    pub project_name: String,
     /// The signed-in account that read it — the DS Grid catalogue on this
     /// machine is scoped by lane and account, so a `dsgrid:local-…`
     /// reference resolves under the same identity that will write the task.
@@ -567,12 +571,14 @@ pub struct Graph {
     pub raw: Value,
 }
 
-/// Read the selected project's canonical graph through the native client.
-pub fn graph(lane: &str) -> Result<Graph, Failure> {
-    let report =
-        ds_cli_auth::project_management(lane, &ds_client_core::project_management::Command::Graph)?;
+/// Read the named project's canonical graph through the native client.
+pub fn graph(lane: &str, project: &str) -> Result<Graph, Failure> {
+    let report = ds_cli_auth::project_management_for_project(
+        lane,
+        project,
+        &ds_client_core::project_management::Command::Graph,
+    )?;
     let project_id = report.project_id().to_owned();
-    let project_name = report.project_name().to_owned();
     let lane = report.lane();
     let uid = report.identity().uid().to_owned();
     let raw = report.into_result();
@@ -580,7 +586,6 @@ pub fn graph(lane: &str) -> Result<Graph, Failure> {
     Ok(Graph {
         lane,
         project_id,
-        project_name,
         uid,
         graph,
         raw,
@@ -599,11 +604,15 @@ impl Graph {
     }
 }
 
-/// The selected project's context records — every readable record, up to the
+/// The named project's context records — every readable record, up to the
 /// server's bound per collection — and whether the server cut the page.
-pub fn records(lane: &str) -> Result<(String, Vec<reads::ContextRecord>, bool), Failure> {
-    let report = ds_cli_auth::project_management(
+pub fn records(
+    lane: &str,
+    project: &str,
+) -> Result<(String, Vec<reads::ContextRecord>, bool), Failure> {
+    let report = ds_cli_auth::project_management_for_project(
         lane,
+        project,
         &ds_client_core::project_management::Command::Context {
             limit: Some(MAX_CONTEXT_ROWS),
         },
@@ -622,10 +631,12 @@ pub fn records(lane: &str) -> Result<(String, Vec<reads::ContextRecord>, bool), 
 /// Commit one prepared command and fold the engine's answer.
 pub fn commit(
     lane: &str,
+    project: &str,
     prepared: &writes::PreparedCommand,
 ) -> Result<writes::OperationResult, Failure> {
-    let report = ds_cli_auth::project_management(
+    let report = ds_cli_auth::project_management_for_project(
         lane,
+        project,
         &ds_client_core::project_management::Command::Commit {
             command_id: command_id()?,
             base_revision: prepared.base_revision,
@@ -638,10 +649,12 @@ pub fn commit(
 /// Commit one prepared draft and fold the engine's answer.
 pub fn commit_batch(
     lane: &str,
+    project: &str,
     prepared: &writes::PreparedBatch,
 ) -> Result<writes::OperationResult, Failure> {
-    let report = ds_cli_auth::project_management(
+    let report = ds_cli_auth::project_management_for_project(
         lane,
+        project,
         &ds_client_core::project_management::Command::CommitBatch {
             command_id: command_id()?,
             base_revision: prepared.base_revision,
@@ -841,6 +854,23 @@ pub fn data<T: serde::Serialize>(reply: &T) -> Result<Value, Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_pm_command_requires_the_project_on_its_own_request() {
+        for command in DOMAIN.commands {
+            let project = command.arg("project").expect("PM command lacks --project");
+            assert!(
+                project.required,
+                "{} permits an omitted project",
+                command.id
+            );
+            assert!(
+                project.default.is_none(),
+                "{} defaults a project",
+                command.id
+            );
+        }
+    }
 
     #[test]
     fn a_date_flag_is_refused_before_it_can_schedule_the_wrong_week() {

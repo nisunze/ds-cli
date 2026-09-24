@@ -93,8 +93,8 @@ documents. The reporter performs no download.
 
 `ds report project scope|combined|archives` is the other door of this
 domain: no local engine, no map, no Desktop. The commands restore the native
-user for `--lane stable|canary`, load only its audience-fenced selected project
-(`ds auth project use`), and call the governed report service's fixed
+user for `--lane stable|canary`, use the required `--project <exact-id>` on
+each request, and call the governed report service's fixed
 contract. ds-brain owns everything that follows — it resolves the exact scope
 (every active saved transformer, or the `--transformer` names given), reuses
 fresh individual report artifacts, regenerates missing or stale ones with the
@@ -107,9 +107,9 @@ participants: `scope` and `combined` refuse them locally with
 `reserved_transformer_identity` before any credential is restored.
 
 ```bash
-ds report project scope --output json                      # the plan: who participates, who is excluded and why
-ds report project combined --file-level sector --yes     # publish; blocks until the service answers (≤ 10 min)
-ds report project archives --output json                   # the registry, newest first: achieved foldering and short-lived signed downloads
+ds report project scope --project <exact-id> --output json                      # the plan
+ds report project combined --project <exact-id> --file-level sector --yes      # publish
+ds report project archives --project <exact-id> --output json                   # the registry
 ```
 
 `ds report project compute` is the cloud twin of `ds report project export`:
@@ -147,11 +147,11 @@ are its headless door; the Settings page in the application is the other, and
 both get the same answer because neither computes it.
 
 ```bash
-ds report project settings --output json                                  # what this project produces, and whether it can
-ds report project outputs set --selection outputs.json --yes              # save a selection authored as a document
+ds report project settings --project <exact-id> --output json                 # output policy and readiness
+ds report project outputs set --project <exact-id> --selection outputs.json --yes
 ```
 
-`settings` reads the selected project's fresh configuration and hands its
+`settings` reads the named project's fresh configuration and hands its
 sheets to the kernel. The reply is the kernel's, unedited: `source` (the
 project's own export row, or the report defaults when it has none), the stored
 `setting` row exactly as saved, the `outputs` it resolves to with their formats
@@ -543,13 +543,13 @@ publication pipeline still perform the desktop IO. Full IO unification is
 pending.
 
 ```bash
-ds report project export --out-dir ./reports --output json                        # every active saved transformer
-ds report project export --transformer tx_a --out-dir ./reports --concurrency 2  # named scope, two engines at once
-ds report project export --transformer tx_a --out-dir ./reports --publish         # seal for the matching native Server sync pump
+ds report project export --project <exact-id> --out-dir ./reports --output json
+ds report project export --project <exact-id> --transformer tx_a --out-dir ./reports --concurrency 2
+ds report project publish --project <exact-id> --from ./reports --yes
 ```
 
 The inputs are the governed ones, fetched under the native user for its
-audience-fenced selected project: the Network Reporter input receipt ds-brain
+audience-fenced named project: the Network Reporter input receipt ds-brain
 mints beside the fresh configuration (country, the exact settings sheets, the
 reference snapshot) and each transformer's exact saved layers with their
 revision. From them the kernel decides the formats (the project's output

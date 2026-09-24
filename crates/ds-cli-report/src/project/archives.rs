@@ -7,13 +7,13 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use super::LANE_ARG;
+use super::{LANE_ARG, PROJECT_ARG};
 
 pub static COMMAND: Command = Command {
     id: "report.project.archives",
     path: &["report", "project", "archives"],
     contract: 1,
-    summary: "List the selected project's published Combined Report archives.",
+    summary: "List the named project's published Combined Report archives.",
     purpose: "\
 Restores the native user and reads only its audience-fenced selected \
 project's Combined Report archive registry, newest first, through the fixed list \
@@ -24,9 +24,9 @@ override is accepted.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE_ARG],
+    args: &[LANE_ARG, PROJECT_ARG],
     output: "\
-Lane and selected-project identity/status, `count`, and `archives`: stem, \
+Lane and named-project identity/status, `count`, and `archives`: stem, \
 filename, cloud locator, creation actor and time, status, transformer and \
 district counts and names, artifact coverage, bounded errors, the requested \
 layout, and two derivations — `layout_collapsed` (folders asked for, no \
@@ -35,7 +35,7 @@ district resolved, everything filed under `_unassigned/`) and the signed \
 spent: `download_url_expires_at`, `download_url_seconds_remaining`, \
 `download_url_expired`.",
     examples: &[Example {
-        command: "ds report project archives --output json",
+        command: "ds report project archives --output json --project <exact-id>",
         note: "Check `.data.archives[0].download_url_seconds_remaining` before fetching it.",
         runnable: false,
     }],
@@ -47,7 +47,10 @@ spent: `download_url_expires_at`, `download_url_seconds_remaining`, \
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let headless = ds_cli_auth::compounded_report_list(inputs.require("lane")?)?;
+    let headless = ds_cli_auth::compounded_report_list_for_project(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+    )?;
     let now = unix_now();
     let archives = headless
         .result()

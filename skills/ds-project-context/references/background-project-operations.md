@@ -26,17 +26,17 @@ prepare: the native report path reads rooms from the service, and the former
    back. Never use `map design delete` for a reversible intent. Read every
    per-name result; a `refusal` (`not_owner`, `governance_locked`,
    `special_document`, …) is the service's decision, not a retry prompt.
-5. Plan the deliverable: `ds report project scope --output json` shows the
+5. Plan the deliverable: `ds report project scope --project <exact-id> --output json` shows the
    exact participating set and every excluded name with its state. Report
    `compounded_ready` and the exclusions to the user before generating.
-6. Publish: `ds report project combined [--transformer …] --file-level
+6. Publish: `ds report project combined --project <exact-id> [--transformer …] --file-level
    <transformer|sector|district|root> [--combine-per-group] [--force]
    --yes --output json`. The call blocks until the service answers (up to
    ten minutes). Return `status`, `prefix`, the archive locators, individual
    coverage, the missing individuals with their causes, and
    `registry_write_failed`. A `partial` status is a delivery with named gaps,
    not a failure to hide.
-7. Hand over: `ds report project archives --output json` lists the registry
+7. Hand over: `ds report project archives --project <exact-id> --output json` lists the registry
    newest first; `download_url` is a short-lived signed link when present.
 
 Do not loop single-transformer report commands and then request a Combined Report

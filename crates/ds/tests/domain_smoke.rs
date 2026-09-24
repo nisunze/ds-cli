@@ -470,6 +470,24 @@ fn native_refusal(args: &[&str]) -> String {
         .unwrap_or_default()
         .to_owned()
 }
+
+fn named_pm_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
+    let mut named = args.to_vec();
+    named.extend(["--project", "test-project"]);
+    named
+}
+
+fn native_pm_refusal(args: &[&str]) -> String {
+    native_refusal(&named_pm_args(args))
+}
+
+fn native_pm_ds(args: &[&str]) -> Run {
+    native_ds(&named_pm_args(args))
+}
+
+fn pm_refusal(args: &[&str]) -> String {
+    refusal(&named_pm_args(args))
+}
 fn run_ds(args: &[&str], native: bool) -> Run {
     let config = temp_root("native-smoke-auth");
     // The development catalogue is the reviewed action vocabulary written out
@@ -4620,7 +4638,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         (
             "report.project.scope",
             "local_auth_state",
-            BTreeSet::from(["lane", "transformer"]),
+            BTreeSet::from(["lane", "project", "transformer"]),
         ),
         (
             "report.project.combined",
@@ -4630,6 +4648,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
                 "file-level",
                 "force",
                 "lane",
+                "project",
                 "transformer",
             ]),
         ),
@@ -4639,22 +4658,22 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         (
             "report.project.compute",
             "artifact_write",
-            BTreeSet::from(["lane", "transformer"]),
+            BTreeSet::from(["lane", "project", "transformer"]),
         ),
         (
             "report.project.archives",
             "local_auth_state",
-            BTreeSet::from(["lane"]),
+            BTreeSet::from(["lane", "project"]),
         ),
         (
             "report.project.settings",
             "local_auth_state",
-            BTreeSet::from(["lane"]),
+            BTreeSet::from(["lane", "project"]),
         ),
         (
             "report.project.outputs.set",
             "global_write",
-            BTreeSet::from(["lane", "selection"]),
+            BTreeSet::from(["lane", "project", "selection"]),
         ),
     ] {
         let descriptor = ok(&["capabilities", id, "--output", "json"]);
@@ -4668,12 +4687,11 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, inputs, "{id}");
-        // `design.status` and `design.dashboard` NAME their project since
-        // 2026-09-18; the rest still act on the saved selection, and a project
-        // flag appearing on one of those would be a silent override.
+        // Design status/dashboard and project reports name their project.
+        // Transformer lifecycle commands still use the saved selection.
         assert_eq!(
             actual.contains("project"),
-            matches!(id, "design.status" | "design.dashboard"),
+            matches!(id, "design.status" | "design.dashboard") || id.starts_with("report.project."),
             "{id} disagrees with how it is meant to reach a project"
         );
         assert!(
@@ -4688,8 +4706,12 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
     let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
     let headless = |args: &[&str]| -> String {
+        let mut named = args.to_vec();
+        if args.starts_with(&["report", "project"]) {
+            named.extend(["--project", "test-project"]);
+        }
         let output = Command::new(env!("CARGO_BIN_EXE_ds"))
-            .args(args)
+            .args(named)
             .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
             .env("NO_COLOR", "1")
             .output()
@@ -8218,14 +8240,14 @@ fn pm_validates_its_own_inputs_before_any_round_trip() {
     // The development catalogue makes the native availability gate pass so
     // the command's own input validation is what answers.
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm", "task", "update", "--task", "T-1", "--output", "json", "--yes"
         ]),
         "nothing_to_update",
         "an update with no change must be refused before a project round trip"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm",
             "task",
             "create",
@@ -8241,7 +8263,7 @@ fn pm_validates_its_own_inputs_before_any_round_trip() {
         "a transposed day and month must be refused locally; the engine would accept it"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm", "task", "create", "--title", "Orphan", "--kind", "child", "--output", "json",
             "--yes",
         ]),
@@ -8249,7 +8271,7 @@ fn pm_validates_its_own_inputs_before_any_round_trip() {
         "a child with no parent must be refused before any round trip"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm",
             "task",
             "update",
@@ -8265,14 +8287,14 @@ fn pm_validates_its_own_inputs_before_any_round_trip() {
         "progress is a percent and must be held to 0..100"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm", "task", "assign", "--task", "T-1", "--output", "json", "--yes"
         ]),
         "invalid_assignment",
         "an assign that names nobody has no intent to send"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm",
             "task",
             "assign",
@@ -8290,7 +8312,7 @@ fn pm_validates_its_own_inputs_before_any_round_trip() {
         "asking and transferring are two different intents"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm",
             "task",
             "assign",
@@ -8306,12 +8328,12 @@ fn pm_validates_its_own_inputs_before_any_round_trip() {
         "a person flag that is not an address must be refused locally"
     );
     assert_eq!(
-        native_refusal(&["pm", "task", "list", "--limit", "500", "--output", "json"]),
+        native_pm_refusal(&["pm", "task", "list", "--limit", "500", "--output", "json"]),
         "invalid_number",
         "a page larger than the kernel returns must be refused by the bound it names"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm",
             "task",
             "respond",
@@ -8376,7 +8398,7 @@ fn every_work_write_refuses_without_confirmation() {
         let mut argv = args.clone();
         argv.extend(["--output", "json"]);
         assert_eq!(
-            refusal(&argv),
+            pm_refusal(&argv),
             "confirmation_required",
             "`ds {}` reached past the confirmation gate",
             args.join(" ")
@@ -8427,21 +8449,21 @@ fn the_proposal_loop_is_server_native_and_refuses_its_inputs_before_the_round_tr
     // named before the owner is asked; a well-formed call ends at the
     // signed-out gate, never at a window.
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm", "task", "propose", "--hours", "12", "--output", "json", "--yes"
         ]),
         "missing_input",
         "a proposal without a title is refused before the native owner is asked"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm", "task", "admit", "--task", "T-1", "--output", "json", "--yes"
         ]),
         "missing_input",
         "an admission names where the task lands"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm",
             "task",
             "admit",
@@ -8460,7 +8482,7 @@ fn the_proposal_loop_is_server_native_and_refuses_its_inputs_before_the_round_tr
     );
     let long_note = "n".repeat(301);
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm",
             "task",
             "request-admission",
@@ -8476,7 +8498,7 @@ fn the_proposal_loop_is_server_native_and_refuses_its_inputs_before_the_round_tr
         "a note over the contract's 300 characters is refused locally"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm",
             "task",
             "log-hours",
@@ -8494,13 +8516,13 @@ fn the_proposal_loop_is_server_native_and_refuses_its_inputs_before_the_round_tr
         "a command id is shaped for the ledger before it is sent"
     );
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm", "task", "decline", "--task", "T-1", "--reason", "  ", "--output", "json", "--yes"
         ]),
         "reason_required",
         "a blank reason is no reason"
     );
-    let well_formed = native_refusal(&[
+    let well_formed = native_pm_refusal(&[
         "pm",
         "task",
         "log-hours",
@@ -8545,8 +8567,17 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.task.geometry.read",
         "pm.task.geometry.set",
         "pm.task.geometry.clear",
+        "pm.task.block",
+        "pm.task.unblock",
         "pm.record.list",
         "pm.record.read",
+        "pm.record.thread",
+        "pm.record.create",
+        "pm.record.reply",
+        "pm.record.update",
+        "pm.party.list",
+        "pm.party.create",
+        "pm.party.update",
     ]
     .into_iter()
     .collect();
@@ -8584,6 +8615,13 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
                 | "pm.task.log-hours"
                 | "pm.task.geometry.set"
                 | "pm.task.geometry.clear"
+                | "pm.task.block"
+                | "pm.task.unblock"
+                | "pm.record.create"
+                | "pm.record.reply"
+                | "pm.record.update"
+                | "pm.party.create"
+                | "pm.party.update"
         );
         assert_eq!(
             effect,
@@ -8634,7 +8672,7 @@ fn task_geometry_resolves_typed_references_and_previews_without_confirmation() {
         ] {
             let mut argv = args.clone();
             argv.extend(["--output", "json"]);
-            let run = native_ds(&argv);
+            let run = native_pm_ds(&argv);
             assert_eq!(
                 run.envelope["error"]["code"],
                 "reference_invalid",
@@ -8651,7 +8689,7 @@ fn task_geometry_resolves_typed_references_and_previews_without_confirmation() {
     }
     // A buffer outside 1..500 m is refused locally under the kernel's name.
     assert_eq!(
-        native_refusal(&[
+        native_pm_refusal(&[
             "pm",
             "task",
             "geometry",
@@ -8686,7 +8724,7 @@ fn task_geometry_resolves_typed_references_and_previews_without_confirmation() {
         "--output",
         "json",
     ];
-    let code = native_refusal(&proposal);
+    let code = native_pm_refusal(&proposal);
     assert!(
         NATIVE_AUTH_CODES.contains(&code.as_str()),
         "a dry run ended in `{code}`, not a native authentication outcome"
@@ -8718,7 +8756,7 @@ fn task_geometry_resolves_typed_references_and_previews_without_confirmation() {
         let mut argv = args.clone();
         argv.extend(["--output", "json"]);
         assert_eq!(
-            refusal(&argv),
+            pm_refusal(&argv),
             "confirmation_required",
             "`ds {}` reached past the confirmation gate",
             args.join(" ")
@@ -9052,7 +9090,7 @@ fn a_well_formed_pm_call_ends_at_the_native_credential_and_never_at_a_window() {
         let mut argv = args.clone();
         argv.extend(["--output", "json"]);
         assert_eq!(
-            native_refusal(&argv),
+            native_pm_refusal(&argv),
             "headless_signed_out",
             "`ds {}` must end at the native credential, not before and not at a window",
             args.join(" ")
@@ -9069,7 +9107,7 @@ fn a_well_formed_pm_call_ends_at_the_native_credential_and_never_at_a_window() {
             "json",
         ]);
         assert_eq!(
-            native_refusal(&argv),
+            native_pm_refusal(&argv),
             "requires_window_retired",
             "`ds {}` must refuse the retired window path by name",
             args.join(" ")

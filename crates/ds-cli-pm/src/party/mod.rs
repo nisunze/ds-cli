@@ -23,11 +23,12 @@ pub const PARTY_ARG: Arg = Arg::value(
 
 /// One party row by id, found by walking the list — the door has no read
 /// by id, and a page of 100 name-ordered rows is what it answers.
-pub fn find(lane: &str, party_id: &str) -> Result<Option<(String, Value)>, Failure> {
+pub fn find(lane: &str, project: &str, party_id: &str) -> Result<Option<(String, Value)>, Failure> {
     let mut page = 1;
     loop {
         let report = crate::correspondence(
             lane,
+            project,
             &Action::PartyList(PartyFilters {
                 include_archived: true,
                 limit: Some(100),
@@ -42,7 +43,7 @@ pub fn find(lane: &str, party_id: &str) -> Result<Option<(String, Value)>, Failu
             return Ok(Some((project, row.clone())));
         }
         let total = answer["total"].as_i64().unwrap_or(0);
-        if rows.is_empty() || (page * 100) as i64 >= total || page >= 10 {
+        if rows.is_empty() || page * 100 >= total || page >= 10 {
             return Ok(None);
         }
         page += 1;

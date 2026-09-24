@@ -52,6 +52,7 @@ duplicated. Headless; no window.",
         DOCUMENT_ARG,
         ID_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "\
 The project and `record` — id, thread, category, channel, direction, subject, \
@@ -59,7 +60,7 @@ The project and `record` — id, thread, category, channel, direction, subject, 
 authored against — plus `attachments`, `documents`, `blockedTasks`, \
 `resultingTasks` and `threadTotal`, exactly what `ds pm record read` answers.",
     examples: &[Example {
-        command: "ds pm record create --category review --channel email --direction inbound --subject \"MV plan and profile — not approved\" --happened-at 2026-09-14 --party p_acme --source-asset a_1x2y3z4a5b6c --affects scope,schedule --yes",
+        command: "ds pm record create --category review --channel email --direction inbound --subject \"MV plan and profile — not approved\" --happened-at 2026-09-14 --party p_acme --source-asset a_1x2y3z4a5b6c --affects scope,schedule --yes --project <exact-id>",
         note: "The .eml was ingested first with `ds assets ingest`; read .data.record.id to reply or to make a task --from-record.",
         runnable: false,
     }],
@@ -80,20 +81,16 @@ authored against — plus `attachments`, `documents`, `blockedTasks`, \
     reference: Some("docs/reference/pm.md"),
     search: &[
         "correspondence",
-        "letter",
-        "email",
         "mail",
-        "file a letter",
-        "log a call",
+        "file letter",
+        "call log",
         "minutes",
-        "meeting",
         "rfi",
         "instruction",
         "submission",
-        "transmittal",
         "review",
         "who owes",
-        "ball in court",
+        "ball court",
         "response due",
     ],
     requires: Requires::Server,
@@ -104,6 +101,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let data = super::fields(inputs, true)?;
     let report = crate::correspondence(
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
         &Action::RecordCreate {
             id: inputs.value("id").map(str::to_owned),
             data,

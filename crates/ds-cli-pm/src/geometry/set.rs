@@ -33,6 +33,7 @@ one revision. --dry-run answers the proposal without writing; --yes writes it.",
         BUFFER_ARG,
         DRY_RUN_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "\
 `proposal` — the `geometry`, the shaping `rule`, the resolved `objects`, the \
@@ -40,12 +41,12 @@ new `links` and the model `sources` — plus, when written, `taskId`, \
 `committedRevision`, `warnings` and `link`; `dry_run: true` when not.",
     examples: &[
         Example {
-            command: "ds pm task geometry set --task T4 --from dsgrid:local-<id>:structure:74,76,77 --dry-run --output json",
+            command: "ds pm task geometry set --task T4 --from dsgrid:local-<id>:structure:74,76,77 --dry-run --output json --project <exact-id>",
             note: "The proposal: a polygon around the three structures and three links. Nothing is written.",
             runnable: false,
         },
         Example {
-            command: "ds pm task geometry set --task T4 --from dsgrid:local-<id>:alignment:aln-1:74..77 --yes",
+            command: "ds pm task geometry set --task T4 --from dsgrid:local-<id>:alignment:aln-1:74..77 --yes --project <exact-id>",
             note: "A line along the alignment between structures 74 and 77.",
             runnable: false,
         },
@@ -69,7 +70,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let task_id = inputs.require("task")?.to_owned();
     crate::geometry::check(inputs, inputs.repeated("from"))?;
     let lane = inputs.value("lane").unwrap_or("stable");
-    let read = crate::graph(lane)?;
+    let read = crate::graph(lane, inputs.require("project")?)?;
     let task = read
         .raw_task(&task_id)
         .ok_or_else(|| crate::refused(writes::Refusal::TaskNotFound(task_id.clone())))?;
@@ -97,7 +98,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ..UpdateTask::default()
     };
     let (prepared, kinds) = writes::update_task(&read.graph, &update).map_err(crate::refused)?;
-    let result = crate::commit_batch(lane, &prepared)?;
+    let result = crate::commit_batch(lane, inputs.require("project")?, &prepared)?;
     let mut extra = Map::new();
     extra.insert("commands".into(), json!(kinds));
     extra.insert("dry_run".into(), json!(false));

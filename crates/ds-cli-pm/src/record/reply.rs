@@ -36,7 +36,7 @@ parent, or the project when the project owed it — the parent's response \
 becomes `responded` and every task blocked on it is cleared in the same \
 commit. The reply may itself owe an answer (--response-owed-by) and may be \
 authored against its own asset (--source-asset). Headless: writes to the \
-selected project of the signed-in native credential, no window.",
+named project of the signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -60,12 +60,13 @@ selected project of the signed-in native credential, no window.",
         DOCUMENT_ARG,
         ID_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "\
 The project and the new `record` with its projections, exactly what \
 `ds pm record read` answers; `threadTotal` counts the thread it joined.",
     examples: &[Example {
-        command: "ds pm record reply --reply-to R-0031 --category response --direction inbound --subject \"Re: Questions on spans\" --party p_acme --source-asset a_2x3y4z5a6b7c --yes",
+        command: "ds pm record reply --reply-to R-0031 --category response --direction inbound --subject \"Re: Questions on spans\" --party p_acme --source-asset a_2x3y4z5a6b7c --yes --project <exact-id>",
         note: "An inbound reply from the party that owed the answer clears every task blocked on R-0031.",
         runnable: false,
     }],
@@ -87,14 +88,11 @@ The project and the new `record` with its projections, exactly what \
     reference: Some("docs/reference/pm.md"),
     search: &[
         "correspondence",
-        "reply",
-        "answer",
         "respond",
-        "thread",
         "letter",
         "email",
         "who owes",
-        "ball in court",
+        "ball court",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -104,6 +102,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let data = super::fields(inputs, false)?;
     let report = crate::correspondence(
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
         &Action::RecordReply {
             record_id: inputs.require("reply-to")?.to_owned(),
             id: inputs.value("id").map(str::to_owned),

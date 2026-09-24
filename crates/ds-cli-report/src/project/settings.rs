@@ -80,8 +80,6 @@ const CONFIG_REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE_DIGEST,
     super::NATIVE_PROFILE_UNSAFE,
     super::HEADLESS_SIGNED_OUT,
-    super::HEADLESS_NO_PROJECT,
-    super::PROJECT_CONTEXT_STALE,
     super::NATIVE_STATE_UNSAFE,
     super::NATIVE_STATE_UNAVAILABLE,
     super::NATIVE_STATE_PROTECTION,
@@ -106,8 +104,6 @@ const WRITE_REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE_DIGEST,
     super::NATIVE_PROFILE_UNSAFE,
     super::HEADLESS_SIGNED_OUT,
-    super::HEADLESS_NO_PROJECT,
-    super::PROJECT_CONTEXT_STALE,
     super::NATIVE_STATE_UNSAFE,
     super::NATIVE_STATE_UNAVAILABLE,
     super::NATIVE_STATE_PROTECTION,
@@ -130,7 +126,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Read the project's printing outputs and whether they are ready.",
     purpose: "\
-Restores the native user and reads its audience-fenced selected project's \
+Restores the native user and reads its audience-fenced named project's \
 fresh configuration, then asks ds-command-kernel what that project's export \
 setting means: the outputs it will produce, the paper each named printout \
 prints on, whether the selected printing setups are actually held, whether \
@@ -138,21 +134,21 @@ the input receipt every local export reads was minted, and — when one is \
 not — the refusal by message key with the server's reason and remedy, so \
 `ds` and the GUI refuse in the same words. Reads whatever shape the setting \
 was stored in, including every legacy one. Nothing is generated or saved. \
-No project, Desktop descriptor, URL, body or action override is accepted.",
+A project is required; no Desktop descriptor, URL, body or action override is accepted.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE_ARG],
+    args: &[LANE_ARG, super::PROJECT_ARG],
     output: "\
-Lane and selected-project identity, the settings `source` (the project's own \
+Lane and named-project identity, the settings `source` (the project's own \
 row or the report defaults), the stored `setting` row, the resolved `outputs` \
 with their formats and suffixes, the `papers` of the named printouts, \
 `ready`, any `issues`, the `refusal` with its code, message key and mode \
 (with the server's `reason_key`, `detail`, `remedy` and \
 `missing_print_styles` when the receipt was refused), and `input_receipt`.",
     examples: &[Example {
-        command: "ds report project settings --output json",
+        command: "ds report project settings --output json --project <exact-id>",
         note: "`.data.refusal` names why an unready project cannot export, by key; `.remedy` names the repair.",
         runnable: false,
     }],
@@ -170,7 +166,7 @@ pub static OUTPUTS_SET: Command = Command {
     summary: "Save the project's design output selection.",
     purpose: "\
 Validates the selection document against the kernel's closed schema before \
-any network call, reads the selected project's fresh configuration, and lets \
+any network call, reads the named project's fresh configuration, and lets \
 ds-command-kernel write the selection into the settings sheet — under \
 whichever of the five export-row aliases the project already uses, or a new \
 `design_export_format` row when it has none. The patched sheet is saved \
@@ -182,13 +178,13 @@ saved as authored and remains what ds-brain admits an export against. Requires \
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[SELECTION_ARG, LANE_ARG],
+    args: &[SELECTION_ARG, LANE_ARG, super::PROJECT_ARG],
     output: "\
-Lane and selected-project identity, the export row `parameter` the selection \
+Lane and named-project identity, the export row `parameter` the selection \
 was written to, whether the row was created, the saved `selection`, the \
 outputs it resolves to and their placements, and `saved`.",
     examples: &[Example {
-        command: "ds report project outputs set --selection outputs.json --yes --output json",
+        command: "ds report project outputs set --selection outputs.json --yes --output json --project <exact-id>",
         note: "`.data.parameter` names the row the project actually stores its selection in.",
         runnable: false,
     }],
@@ -233,7 +229,9 @@ fn receipt(lane: &str, summary: &Value) -> Value {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
-    let configuration = ds_cli_auth::feeder_configuration(lane, None)?;
+    let configuration =
+        ds_cli_auth::feeder_configuration_for_project(lane, inputs.require("project")?)?
+            .into_result();
     let sheets = sheets_with_printing_catalogue(lane, &configuration.document["sheets"], None)?;
     // The native read always refreshes: this client substitutes no cached
     // configuration, so the mode the kernel names its refusal with is not a
@@ -412,7 +410,9 @@ fn adoption(sheets: &Value, selection: &DesignOutputSelection) -> Result<(), Fai
 pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let selection = selection(inputs)?;
     let lane = inputs.require("lane")?;
-    let configuration = ds_cli_auth::feeder_configuration(lane, None)?;
+    let configuration =
+        ds_cli_auth::feeder_configuration_for_project(lane, inputs.require("project")?)?
+            .into_result();
     let sheets =
         sheets_with_printing_catalogue(lane, &configuration.document["sheets"], Some(&selection))?;
     // A selection that cannot execute must not be saved as if it could.
@@ -427,7 +427,8 @@ pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let parameter = apply_output_selection(&mut rows, &selection)
         .map_err(|_| unreadable("the project's settings rows cannot carry an output selection"))?;
     let created = rows.len() > held;
-    let saved = ds_cli_auth::design_output_rows(lane, rows)?;
+    let saved =
+        ds_cli_auth::design_output_rows_for_project(lane, inputs.require("project")?, rows)?;
     let mut output = receipt(lane, &saved.summary);
     output["parameter"] = json!(parameter);
     output["created"] = json!(created);
@@ -625,17 +626,21 @@ mod tests {
     }
 
     /// Both commands are background project work: no map, no room, no Desktop
-    /// descriptor, and no project override — the selected project is the one
-    /// the native user holds. The write is a write and says so.
+    /// descriptor; each request names its own project. The write says so.
     #[test]
-    fn both_commands_declare_background_project_authority_and_no_override() {
+    fn both_commands_declare_background_project_authority_and_explicit_scope() {
         for command in [&COMMAND, &OUTPUTS_SET] {
             assert_eq!(command.authority, Authority::HeadlessProject);
             assert_eq!(command.chapter, Chapter::Reports);
             assert!(matches!(command.execution, Execution::Sync));
             let names = command.args.iter().map(|arg| arg.name).collect::<Vec<_>>();
             assert!(names.contains(&"lane"), "{} lost its lane", command.id);
-            for forbidden in ["project", "desktop-descriptor", "url", "action", "body"] {
+            assert!(
+                command
+                    .arg("project")
+                    .is_some_and(|arg| arg.required && arg.default.is_none())
+            );
+            for forbidden in ["desktop-descriptor", "url", "action", "body"] {
                 assert!(
                     !names.contains(&forbidden),
                     "{} accepts a {forbidden} override",
@@ -662,7 +667,7 @@ mod tests {
         };
         for refusals in [CONFIG_REFUSALS, WRITE_REFUSALS] {
             let codes = codes(refusals);
-            assert!(codes.contains(&"headless_project_not_selected"));
+            assert!(!codes.contains(&"headless_project_not_selected"));
             assert!(codes.contains(&SETTINGS_UNREADABLE.code));
             for phantom in [
                 "invalid_transformer_scope",
@@ -732,7 +737,12 @@ mod tests {
             path.to_string_lossy().into_owned()
         };
         let inputs = |path: &str| {
-            let tokens = vec!["--selection".to_owned(), path.to_owned()];
+            let tokens = vec![
+                "--selection".to_owned(),
+                path.to_owned(),
+                "--project".to_owned(),
+                "project-a".to_owned(),
+            ];
             ds_cli_contract::parse(&OUTPUTS_SET, &tokens).expect("declared inputs")
         };
         let valid = write(

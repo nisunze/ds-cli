@@ -61,7 +61,7 @@ A record names its counterparties by party id and the party that owes the \
 next answer is one of these, so a party is created once and referenced \
 everywhere. A duplicate name of the same kind is refused rather than \
 doubled; a retry with the same --id is refused rather than duplicated. \
-Headless: writes to the selected project of the signed-in native \
+Headless: writes to the named project of the signed-in native \
 credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
@@ -77,10 +77,11 @@ credential, no window.",
         NOTES_ARG,
         ID_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "The project and `party` — the row as the server holds it, with its `id` and `version`.",
     examples: &[Example {
-        command: "ds pm party create --name \"Acme Consultancy\" --kind organisation --role consultant --email review@acme.example --yes",
+        command: "ds pm party create --name \"Acme Consultancy\" --kind organisation --role consultant --email review@acme.example --yes --project <exact-id>",
         note: "Read .data.party.id to name the party on a record.",
         runnable: false,
     }],
@@ -139,6 +140,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let data = fields(inputs)?;
     let report = crate::correspondence(
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
         &Action::PartyCreate {
             id: inputs.value("id").map(str::to_owned),
             data,

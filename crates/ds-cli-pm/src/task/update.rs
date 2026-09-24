@@ -61,7 +61,7 @@ Applies every flag given as one atomic saved draft against a single base \
 revision, exactly as the Plan sheet's own save does. Nothing given, nothing \
 sent: a flag you omit is untouched, never reset. The engine owns the schedule \
 consequences — moving a date may move dependants, and the warnings it returns \
-are reported rather than swallowed. Headless: commits to the selected project \
+are reported rather than swallowed. Headless: commits to the named project \
 of the signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
@@ -83,12 +83,13 @@ of the signed-in native credential, no window.",
         START_ARG,
         FINISH_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "\
 The project, the `taskId`, `applied`, the `committedRevision`, the list of \
 `commands` the flags became, and any `warnings` the engine returned.",
     examples: &[Example {
-        command: "ds pm task update --task T-0007 --delivery in_progress --progress 40 --yes",
+        command: "ds pm task update --task T-0007 --delivery in_progress --progress 40 --yes --project <exact-id>",
         note: "Delivery and progress land together or not at all.",
         runnable: false,
     }],
@@ -179,9 +180,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
 
     let lane = inputs.value("lane").unwrap_or("stable");
-    let read = crate::graph(lane)?;
+    let read = crate::graph(lane, inputs.require("project")?)?;
     let (prepared, kinds) = writes::update_task(&read.graph, &update).map_err(crate::refused)?;
-    let result = crate::commit_batch(lane, &prepared)?;
+    let result = crate::commit_batch(lane, inputs.require("project")?, &prepared)?;
     let mut extra = Map::new();
     extra.insert("commands".into(), json!(kinds));
     Ok(writes::write_outcome(

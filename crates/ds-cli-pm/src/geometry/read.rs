@@ -23,13 +23,13 @@ nothing else.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, LANE_ARG],
+    args: &[TASK_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "\
 `taskId`, `title`, `geometry` (or null), `positions`, `links` (all), \
 `objectLinks` (the ds_object ones with `subject_state`), the plan `revision` \
 and `link`.",
     examples: &[Example {
-        command: "ds pm task geometry read --task T4 --output json",
+        command: "ds pm task geometry read --task T4 --output json --project <exact-id>",
         note: "`.data.geometry` is the GeoJSON the map draws; `.data.objectLinks[]` names the structures.",
         runnable: false,
     }],
@@ -49,7 +49,7 @@ and `link`.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let task_id = inputs.require("task")?.to_owned();
     let lane = inputs.value("lane").unwrap_or("stable");
-    let read = crate::graph(lane)?;
+    let read = crate::graph(lane, inputs.require("project")?)?;
     let task = read
         .raw_task(&task_id)
         .ok_or_else(|| crate::refused(writes::Refusal::TaskNotFound(task_id.clone())))?;

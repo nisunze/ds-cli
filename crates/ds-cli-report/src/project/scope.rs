@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
-use super::{LANE_ARG, TRANSFORMER_ARG};
+use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
 
 pub static COMMAND: Command = Command {
     id: "report.project.scope",
@@ -14,7 +14,7 @@ pub static COMMAND: Command = Command {
     summary: "Show which transformers a Combined Report would include.",
     purpose: "\
 Start here. Restores the native user and reads only its audience-fenced \
-selected project's transformer lifecycle inventory. Without --transformer the \
+named project's transformer lifecycle inventory. Without --transformer the \
 scope is every active saved transformer, which is exactly what `combined` \
 resolves; with names it checks each one, so a retired, deleted or missing \
 name is reported before any artifact is produced. A reserved computed \
@@ -26,14 +26,14 @@ accepted.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, LANE_ARG],
+    args: &[TRANSFORMER_ARG, LANE_ARG, PROJECT_ARG],
     output: "\
-Lane and selected-project identity/status, the scope `mode`, the participating \
+Lane and named-project identity/status, the scope `mode`, the participating \
 transformers and count, the excluded names with their lifecycle state and \
 retirement reason, the project-level `mv_data` row, and `combined_ready` \
 (at least two participants).",
     examples: &[Example {
-        command: "ds report project scope --output json",
+        command: "ds report project scope --output json --project <exact-id>",
         note: "`.data.excluded` lists what a Combined Report run would leave out, and why.",
         runnable: false,
     }],
@@ -46,7 +46,11 @@ retirement reason, the project-level `mv_data` row, and `combined_ready` \
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let requested = super::transformer_set(inputs)?;
-    let headless = ds_cli_auth::transformer_inventory(inputs.require("lane")?, &requested)?;
+    let headless = ds_cli_auth::transformer_inventory_for_project(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &requested,
+    )?;
     let mut output = super::project_receipt(&headless);
     output["scope"] = super::scope_json(&requested, headless.result());
     Ok(output)

@@ -1,5 +1,5 @@
 //! `ds report project combined` — publish one **Combined Report** archive in
-//! the background against the CLI-selected project.
+//! the background against the CLI-named project.
 //!
 //! This is the command that used to be called `compounded`. One deliverable
 //! had two names — the governed service already titled it "Combined Report"
@@ -31,7 +31,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::combined_readiness::{self, RoomInput};
 use serde_json::{Value, json};
 
-use super::{LANE_ARG, TRANSFORMER_ARG};
+use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
 
 pub(super) const FILE_LEVEL_ARG: Arg = Arg::value(
     "file-level",
@@ -55,20 +55,20 @@ pub(super) const ARGS: &[Arg] = &[
     COMBINE_PER_GROUP_ARG,
     FORCE_ARG,
     LANE_ARG,
+    PROJECT_ARG,
 ];
 
 pub(super) const PURPOSE: &str = "\
-After CLI confirmation, restores the native user and asks the governed report \
-service for one Combined Report archive over its audience-fenced selected \
-project: it resolves the scope, composes the combined sets and publishes one \
+After confirmation, asks the governed report service for a Combined Report \
+archive over the named project: it resolves the scope, composes the sets and publishes one \
 ZIP with a registry row. District and sector folders come from the project's \
 applied `report_archive` grouping, not from this request. Retired \
 transformers are never in scope. Rooms not current refuse the run. Blocks \
 until the service answers \
-(up to ten minutes). No project, URL, body or action override is accepted.";
+(up to ten minutes). A project is required; no URL, body or action override is accepted.";
 
 pub(super) const OUTPUT: &str = "\
-Lane and selected-project identity/status, the requested scope, and \
+Lane, named project ID, requested scope, and \
 `archive_layout` — the layout asked for, never the tree achieved: \
 unresolved administrative values collapse to `_unassigned/`, and `ds report \
 project archives` confirms the tree built. Then the receipt: status, \
@@ -88,7 +88,7 @@ pub static COMMAND: Command = Command {
     args: ARGS,
     output: OUTPUT,
     examples: &[Example {
-        command: "ds report project combined --file-level sector --yes --output json",
+        command: "ds report project combined --file-level sector --yes --output json --project <exact-id>",
         note: "`ds report project archives` then confirms the foldering built.",
         runnable: false,
     }],
@@ -106,7 +106,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let combine_per_group = inputs.switch("combine-per-group");
     let force = inputs.switch("force");
     let request = CompoundedReportRequest::new(transformers, file_level, combine_per_group, force);
-    let headless = ds_cli_auth::compounded_report(inputs.require("lane")?, &request)?;
+    let headless = ds_cli_auth::compounded_report_for_project(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &request,
+    )?;
     let receipt = headless.result();
     let mut output = super::project_receipt(&headless);
     let causes: Vec<Value> = receipt

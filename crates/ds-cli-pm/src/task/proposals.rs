@@ -222,13 +222,14 @@ billing and duration learning read.",
         NOTE_ARG,
         ID_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "\
 `project`, the minted `taskId`, `commandId`, `committedRevision`, `admission` \
 (`requested`), `estimatedHours`, `estimatedDays`, `responsible`, any engine \
 `warnings`, and `link`.",
     examples: &[Example {
-        command: "ds pm task propose --title \"Survey the Kabuga feeder extension\" --hours 12 --days 3 --note \"site visit + as-built sketch\" --yes",
+        command: "ds pm task propose --title \"Survey the Kabuga feeder extension\" --hours 12 --days 3 --note \"site visit + as-built sketch\" --yes --project <exact-id>",
         note: "Without --yes dispatch refuses before anything is sent.",
         runnable: false,
     }],
@@ -268,10 +269,10 @@ is already open, and on a task already placed in the plan.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, NOTE_ARG, ID_ARG, LANE_ARG],
+    args: &[TASK_ARG, NOTE_ARG, ID_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "`project`, `taskId`, `commandId`, `committedRevision`, `admission` (`requested`), `warnings`, `link`.",
     examples: &[Example {
-        command: "ds pm task request-admission --task T-0031 --note \"revised to 6 h\" --yes",
+        command: "ds pm task request-admission --task T-0031 --note \"revised to 6 h\" --yes --project <exact-id>",
         note: "The PM answers with `ds pm task admit` or `ds pm task decline`.",
         runnable: false,
     }],
@@ -303,10 +304,17 @@ schedule-editor access.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, UNDER_ARG, POSITION_ARG, ID_ARG, LANE_ARG],
+    args: &[
+        TASK_ARG,
+        UNDER_ARG,
+        POSITION_ARG,
+        ID_ARG,
+        LANE_ARG,
+        crate::PROJECT_ARG,
+    ],
     output: "`project`, `taskId`, `parent` (empty for root), `commandId`, `committedRevision`, `admission` (`admitted`), `warnings`, `link`.",
     examples: &[Example {
-        command: "ds pm task admit --task T-0031 --under T-0004 --yes",
+        command: "ds pm task admit --task T-0031 --under T-0004 --yes --project <exact-id>",
         note: "`--under root` admits it as a top-level task.",
         runnable: false,
     }],
@@ -335,10 +343,10 @@ estimate and ask again. Requires schedule-editor access.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, REASON_ARG, ID_ARG, LANE_ARG],
+    args: &[TASK_ARG, REASON_ARG, ID_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "`project`, `taskId`, `commandId`, `committedRevision`, `admission` (`declined`), `warnings`, `link`.",
     examples: &[Example {
-        command: "ds pm task decline --task T-0031 --reason \"out of scope this phase\" --yes",
+        command: "ds pm task decline --task T-0031 --reason \"out of scope this phase\" --yes --project <exact-id>",
         note: "The proposer sees the reason on the task.",
         runnable: false,
     }],
@@ -369,10 +377,17 @@ lost answer without logging twice.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, HOURS_ARG, NOTE_ARG, ID_ARG, LANE_ARG],
+    args: &[
+        TASK_ARG,
+        HOURS_ARG,
+        NOTE_ARG,
+        ID_ARG,
+        LANE_ARG,
+        crate::PROJECT_ARG,
+    ],
     output: "`project`, `taskId`, `commandId` (also the entry id), `committedRevision`, `hours`, `actualHours`, `estimatedHours`, `warnings`, `link`.",
     examples: &[Example {
-        command: "ds pm task log-hours --task T-0031 --hours 4 --note \"first day on site\" --yes",
+        command: "ds pm task log-hours --task T-0031 --hours 4 --note \"first day on site\" --yes --project <exact-id>",
         note: "`ds pm plan` flags the task once the sum passes its estimate.",
         runnable: false,
     }],
@@ -406,8 +421,8 @@ struct Head {
     max_hours_per_entry: i64,
 }
 
-fn head(lane: &str) -> Result<Head, Failure> {
-    let report = ds_cli_auth::project_management(lane, &PmCommand::Graph)?;
+fn head(lane: &str, project: &str) -> Result<Head, Failure> {
+    let report = ds_cli_auth::project_management_for_project(lane, project, &PmCommand::Graph)?;
     let project = report.project_id().to_owned();
     let user_email = report.user_email().to_owned();
     let graph = report.into_result();
@@ -530,8 +545,9 @@ fn bounded_text(inputs: &Inputs, flag: &str) -> Result<Option<String>, Failure> 
 /// {result}` for an applied command AND for an engine refusal (`applied:
 /// false` with `violations`); a named refusal arrives as a non-200 the auth
 /// crate turned into a failure carrying `service_code`.
-fn send(lane: &str, command: &PmCommand) -> Result<Value, Failure> {
-    let report = ds_cli_auth::project_management(lane, command).map_err(classify)?;
+fn send(lane: &str, project: &str, command: &PmCommand) -> Result<Value, Failure> {
+    let report =
+        ds_cli_auth::project_management_for_project(lane, project, command).map_err(classify)?;
     let data = report.into_result();
     let result = data.get("result").cloned().unwrap_or(data);
     if result["applied"] == false {
@@ -667,7 +683,7 @@ fn receipt(head: &Head, task_id: &str, command_id: &str, result: &Value) -> Valu
 
 pub fn run_propose(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.value("lane").unwrap_or("stable");
-    let head = head(lane)?;
+    let head = head(lane, inputs.require("project")?)?;
     let title = inputs.require("title")?.trim().to_owned();
     if title.is_empty() {
         return Err(
@@ -688,6 +704,7 @@ pub fn run_propose(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
     let task_id = command_id.clone();
     let created = send(
         lane,
+        inputs.require("project")?,
         &PmCommand::Propose {
             command_id: command_id.clone(),
             base_revision: head.revision,
@@ -705,6 +722,7 @@ pub fn run_propose(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
         .unwrap_or(head.revision + 1);
     let requested = send(
         lane,
+        inputs.require("project")?,
         &PmCommand::RequestAdmission {
             command_id: format!("{command_id}-request"),
             base_revision: after_create,
@@ -742,9 +760,10 @@ pub fn run_request_admission(inputs: &Inputs, _context: &Context) -> Result<Valu
     let task_id = inputs.require("task")?.trim().to_owned();
     let note = bounded_text(inputs, "note")?;
     let command_id = command_id(inputs, "request")?;
-    let head = head(lane)?;
+    let head = head(lane, inputs.require("project")?)?;
     let result = send(
         lane,
+        inputs.require("project")?,
         &PmCommand::RequestAdmission {
             command_id: command_id.clone(),
             base_revision: head.revision,
@@ -769,9 +788,10 @@ pub fn run_admit(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
         None => None,
     };
     let command_id = command_id(inputs, "admit")?;
-    let head = head(lane)?;
+    let head = head(lane, inputs.require("project")?)?;
     let result = send(
         lane,
+        inputs.require("project")?,
         &PmCommand::Admit {
             command_id: command_id.clone(),
             base_revision: head.revision,
@@ -793,9 +813,10 @@ pub fn run_decline(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
             .remedy(REASON_REQUIRED.remedy)
     })?;
     let command_id = command_id(inputs, "decline")?;
-    let head = head(lane)?;
+    let head = head(lane, inputs.require("project")?)?;
     let result = send(
         lane,
+        inputs.require("project")?,
         &PmCommand::DeclineAdmission {
             command_id: command_id.clone(),
             base_revision: head.revision,
@@ -811,10 +832,11 @@ pub fn run_log_hours(inputs: &Inputs, _context: &Context) -> Result<Value, Failu
     let task_id = inputs.require("task")?.trim().to_owned();
     let note = bounded_text(inputs, "note")?;
     let command_id = command_id(inputs, "hours")?;
-    let head = head(lane)?;
+    let head = head(lane, inputs.require("project")?)?;
     let logged = hours(inputs.require("hours")?, "hours", head.max_hours_per_entry)?;
     let result = send(
         lane,
+        inputs.require("project")?,
         &PmCommand::LogHours {
             command_id: command_id.clone(),
             base_revision: head.revision,

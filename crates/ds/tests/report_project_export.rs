@@ -20,12 +20,14 @@ fn ds(args: &[&str]) -> Value {
 /// A `ds` that can restore nothing: the development native catalogue makes
 /// the native availability gate pass, and an empty config home holds no user.
 fn headless(args: &[&str], engine: Option<&str>) -> Value {
+    let mut named = args.to_vec();
+    named.extend(["--project", "test-project"]);
     let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
     let config = tempfile::tempdir().expect("temp config home");
     let mut command = Command::new(env!("CARGO_BIN_EXE_ds"));
     command
-        .args(args)
+        .args(named)
         .env("NO_COLOR", "1")
         .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
         .env("DS_CONFIG_HOME", config.path())
@@ -78,12 +80,12 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
             // publishable, and it says so on its receipt.
             "dry-run",
             "server-state-dir",
-            "lane"
+            "lane",
+            "project"
         ]
     );
-    // No project override, no Desktop, no URL: the selected project is the
-    // native user's own, and the browser is never in the path.
-    for forbidden in ["project", "desktop-descriptor", "url", "request"] {
+    // A project is required; no Desktop, URL or arbitrary request is used.
+    for forbidden in ["desktop-descriptor", "url", "request"] {
         assert!(!inputs.contains(&forbidden), "{forbidden}");
     }
     let refusals: Vec<&str> = command["refusals"]
@@ -94,7 +96,6 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
         .collect();
     for expected in [
         "headless_signed_out",
-        "headless_project_not_selected",
         "reporter_engine_missing",
         "export_blocked",
         "engine_refused",
@@ -119,7 +120,7 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
         command["purpose"]
             .as_str()
             .expect("purpose")
-            .contains("named print output")
+            .contains("print outputs")
     );
     assert!(!command["confirmation_required"].as_bool().unwrap_or(false));
 }

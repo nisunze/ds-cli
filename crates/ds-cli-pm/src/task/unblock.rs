@@ -32,18 +32,24 @@ A correspondence blocker normally clears itself when the record is answered \
 or waived. This clears it by hand — the answer came another way, the task \
 no longer depends on it — and keeps the reason on the blocker as \
 `cleared_by: manual`. The record's own response status is untouched. \
-Headless: commits to the selected project of the signed-in native \
+Headless: commits to the named project of the signed-in native \
 credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, RECORD_ARG, REASON_ARG, LANE_ARG],
+    args: &[
+        TASK_ARG,
+        RECORD_ARG,
+        REASON_ARG,
+        LANE_ARG,
+        crate::PROJECT_ARG,
+    ],
     output: "\
 The project, `taskId`, `recordId`, the `committedRevision` the plan moved \
 to, and the engine's `result`.",
     examples: &[Example {
-        command: "ds pm task unblock --task T-0012 --record R-0031 --reason \"agreed by phone on 22 Sep\" --yes",
+        command: "ds pm task unblock --task T-0012 --record R-0031 --reason \"agreed by phone on 22 Sep\" --yes --project <exact-id>",
         note: "To settle the record itself, file the reply or waive it instead.",
         runnable: false,
     }],
@@ -57,7 +63,6 @@ to, and the engine's `result`.",
     search: &[
         "correspondence",
         "blocked on",
-        "unblock",
         "clear blocker",
         "release",
         "waiting on",

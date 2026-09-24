@@ -162,9 +162,9 @@ impl ServerSessions {
     /// publication and sync.
     pub fn admit(&self, request: &Request<'_>) -> Result<ExecutionContext, Failure> {
         // The project decides the durable id, so the kernel resolves it first
-        // and answers the same way when it reads the three names again.
+        // and answers the same way when it reads the two project inputs again.
         let project =
-            execution_context::project_for(request.requested_project, None, request.sealed_project)
+            execution_context::project_for(request.requested_project, request.sealed_project)
                 .map_err(fault_failure)?;
         let job_id = runtime::job_id(
             &self.identity.owner,
@@ -181,7 +181,6 @@ impl ServerSessions {
             idempotency_key: request.key.to_owned(),
             input_sha256: request.input_sha256.clone(),
             requested_project: request.requested_project.map(str::to_owned),
-            saved_project: None,
             sealed_project: request.sealed_project.map(str::to_owned),
             existing: None,
         })
@@ -303,11 +302,11 @@ impl ServerSessions {
 /// same `project_for` here, on the caller's field alone: a caller who named a
 /// project is told the rule, in the one shape every door answers with, and
 /// nothing is opened to decide it. Naming nothing is still naming nothing —
-/// the client sends the saved selection explicitly, so the host defaults no
-/// read.
+/// the client supplies any narrowing project explicitly, so the host
+/// defaults no read.
 pub fn narrowing_project(requested: Option<&str>) -> Result<Option<String>, Failure> {
     requested
-        .map(|named| execution_context::project_for(Some(named), None, None).map_err(fault_failure))
+        .map(|named| execution_context::project_for(Some(named), None).map_err(fault_failure))
         .transpose()
 }
 
@@ -569,7 +568,6 @@ mod tests {
                     client: &client,
                     key,
                     requested_project: Some(project),
-                    saved_project: None,
                     limits: sessions.limits(),
                     now_ms: now,
                 },

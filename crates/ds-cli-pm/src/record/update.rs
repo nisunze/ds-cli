@@ -50,7 +50,7 @@ every task blocked on it in the same commit. What the record was authored \
 against, its category, direction and time are fixed at creation; a waiver \
 is not withdrawn; `responded` is never set by hand. The current version is \
 read first and the change is refused if the record moved in between. \
-Headless: writes to the selected project of the signed-in native \
+Headless: writes to the named project of the signed-in native \
 credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
@@ -70,10 +70,11 @@ credential, no window.",
         BODY_FILE_ARG,
         REFERENCE_ARG,
         LANE_ARG,
+        crate::PROJECT_ARG,
     ],
     output: "The project and the `record` as the server now holds it, with its projections.",
     examples: &[Example {
-        command: "ds pm record update --record R-0031 --response waived --reason \"answered in the site meeting of 22 Sep\" --yes",
+        command: "ds pm record update --record R-0031 --response waived --reason \"answered in the site meeting of 22 Sep\" --yes --project <exact-id>",
         note: "A waiver clears the tasks blocked on R-0031 in the same commit.",
         runnable: false,
     }],
@@ -92,11 +93,10 @@ credential, no window.",
     reference: Some("docs/reference/pm.md"),
     search: &[
         "correspondence",
-        "waive",
         "waiver",
         "close",
         "who owes",
-        "ball in court",
+        "ball court",
         "response due",
         "reassign answer",
     ],
@@ -171,6 +171,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.value("lane").unwrap_or("stable");
     let current = crate::correspondence(
         lane,
+        inputs.require("project")?,
         &Action::RecordRead {
             record_id: record_id.to_owned(),
         },
@@ -181,6 +182,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .max(1);
     let report = crate::correspondence(
         lane,
+        inputs.require("project")?,
         &Action::RecordUpdate {
             id: record_id.to_owned(),
             expected_version,

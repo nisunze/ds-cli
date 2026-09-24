@@ -194,7 +194,7 @@ pub fn fields(inputs: &Inputs, source: bool) -> Result<Map<String, Value>, Failu
 }
 
 /// Fold one record view the door answered into `ds pm record read`'s shape.
-pub fn view(report: ds_cli_auth::HeadlessProjectReport<Value>) -> Result<Value, Failure> {
+pub fn view(report: ds_cli_auth::HeadlessNamedProject<Value>) -> Result<Value, Failure> {
     let project = report.project_id().to_owned();
     let folded = ds_command_kernel::project_management::correspondence::record_view(
         &project,
