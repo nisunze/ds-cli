@@ -1643,8 +1643,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
             // admin-refresh`, `dsgrid profile labels set|show`) were routed
             // here on 2026-09-22 from the broad `grid` router they had pushed
-            // past its budget.
-            "grid-local-model" => 19,
+            // past its budget. The governed head's versions, retire and
+            // restore joined on 2026-09-24 for the same reason (e62edf85).
+            "grid-local-model" => 22,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,

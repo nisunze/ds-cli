@@ -90,8 +90,9 @@ all-command publication temporarily for compatibility.
 `grid-native` contains only native `.dsgrid` file creation, inspection,
 validation, command discovery, reads/solves, revision-gated edits and exchange.
 Its command leaves require no desktop, TypeScript runtime or signed-in
-project. `grid-local-model` retains the paired application lifecycle and
-project publication; `clearance` is the feature-code and clearance
+project. `grid-local-model` retains the paired application lifecycle,
+project publication and the governed head's lifecycle (`dsgrid project
+versions|retire|restore`); `clearance` is the feature-code and clearance
 workflow over one working copy (`dsgrid feature-codes report|import|migrate|
 export`, `dsgrid criteria show|clearance set`, `dsgrid analyse clearance`);
 the broad `grid` router keeps its budget and leaves the typed edits and the

@@ -298,8 +298,10 @@ impl Profile {
             // from the default on 2026-09-22 when the four 2026-09-21 leaves
             // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
             // `dsgrid profile labels set|show`) were routed here from the
-            // broad `grid` router they had pushed past its own budget.
-            Self::GridLocalModel => 19,
+            // broad `grid` router they had pushed past its own budget. Raised
+            // to 22 on 2026-09-24 for the governed head's versions, retire and
+            // restore, routed here for the same reason (e62edf85).
+            Self::GridLocalModel => 22,
             _ => 16,
         }
     }
@@ -354,6 +356,10 @@ impl Profile {
                     // outside this engineering-model profile. The global
                     // catalogue and Grid Model chapter retain its command.
                     && tool.id != "dsgrid.backup.preview"
+                    // The governed head lifecycle (versions, retire, restore)
+                    // lives with publication in `grid-local-model`.
+                    && !matches!(tool.id.as_str(),
+                        "dsgrid.project.versions" | "dsgrid.project.retire" | "dsgrid.project.restore")
             }
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
@@ -592,6 +598,13 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.model.forget",
     "dsgrid.structure.admin-refresh",
     "dsgrid.profile.labels.set",
+    // The governed head's own lifecycle beside its publication (2026-09-24):
+    // `dsgrid project versions|retire|restore` (918a3b6) pushed the broad
+    // `grid` router to 31 against 28; they live here with `publish-version`
+    // and `prepare-project`, and the chapter router carries them regardless.
+    "dsgrid.project.versions",
+    "dsgrid.project.retire",
+    "dsgrid.project.restore",
     "dsgrid.profile.labels.show",
 ];
 
