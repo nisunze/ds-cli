@@ -399,8 +399,8 @@ pub fn project_receipt(headless: &impl ProjectReceipt) -> Value {
 
 /// The exact scope a combined run would use, derived from the lifecycle
 /// inventory: active ordinary transformers participate; retired, deleted and
-/// missing names are excluded with their state, and `mv_data` is reported as
-/// the project-level input the service folds in on its own.
+/// missing names are excluded with their state. Project-level documents are
+/// shown for inventory context; they never participate in the LV report.
 pub fn scope_json(requested: &TransformerSet, inventory: &TransformerInventory) -> Value {
     let mut participating = Vec::new();
     let mut excluded = Vec::new();
@@ -432,8 +432,8 @@ pub fn scope_json(requested: &TransformerSet, inventory: &TransformerInventory) 
         // The deliverable is the Combined Report. `compounded_ready` is the
         // retired spelling of the same boolean, kept beside it for one release
         // so a consumer reading the old key is not broken by the rename.
-        "combined_ready": participating.len() >= 2,
-        "compounded_ready": participating.len() >= 2,
+        "combined_ready": !participating.is_empty(),
+        "compounded_ready": !participating.is_empty(),
     })
 }
 

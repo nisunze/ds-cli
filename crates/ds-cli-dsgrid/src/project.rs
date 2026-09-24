@@ -23,17 +23,44 @@ const REFUSALS: &[Refusal] = &refusals();
 const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
     .default("stable")
     .choices(&["stable", "canary"]);
+const PROJECT: Arg = Arg::value("project", "<ds-project>", "Exact project for this request.").required();
+pub static RETIRE: Command = Command {
+    id: "dsgrid.project.retire",
+    path: &["dsgrid", "project", "retire"],
+    contract: 1,
+    summary: "Retire one superseded project DS Grid model (needs --yes).",
+    purpose: "Retires the exact model head in the explicitly named project after comparing its revision and digest. Immutable revisions and model bytes remain available for lineage. A changed head is refused.",
+    chapter: Chapter::GridModel,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        PROJECT, LANE,
+        Arg::value("model", "<id>", "Exact project model ID.").required(),
+        Arg::value("expected-head", "<revision-id>", "Head revision inspected before retirement.").required(),
+        Arg::value("expected-digest", "<sha256>", "64-character head model digest inspected before retirement.").required(),
+        Arg::value("reason", "<text>", "Why this model is superseded.").required(),
+    ],
+    output: "The retired model and pinned head, deletion time, and confirmation that immutable revisions and model bytes were retained.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/dsgrid.md"),
+    search: &["delete project model", "superseded MV model"],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
 pub static LIST: Command = Command {
     id: "dsgrid.project.list",
     path: &["dsgrid", "project", "list"],
     contract: 1,
-    summary: "List the selected project's saved MV models headlessly.",
+    summary: "List one explicitly named project's saved MV models headlessly.",
     purpose: "Discover governed DS Grid model heads for MV maps and Solar network seeding without a Desktop. Returns exact revision and digest identifiers. Follow next_cursor when more is true, including an empty page. Local unpublished Desktop models are outside this inventory.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        PROJECT,
         LANE,
         Arg::value("limit", "<1..100>", "Maximum catalog rows scanned.").default("50"),
         Arg::value(
@@ -54,13 +81,14 @@ pub static DOWNLOAD: Command = Command {
     id: "dsgrid.project.download",
     path: &["dsgrid", "project", "download"],
     contract: 1,
-    summary: "Download and verify one saved project MV model without a Desktop.",
+    summary: "Download and verify one explicitly named project MV model without a Desktop.",
     purpose: "Resolve an exact governed revision under the selected project, download its immutable .dsgrid bytes and verify the declared SHA-256 and byte count before creating a new local file. Use the resulting package for model inspection, tagged MV quantities and map composition. No storage URL or project override is accepted.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        PROJECT,
         LANE,
         Arg::value("model", "<id>", "Exact model ID from project list.").required(),
         Arg::value("revision", "<id>", "Exact immutable revision ID.").required(),
@@ -79,28 +107,30 @@ fn failure(e: impl std::fmt::Display) -> Failure {
 }
 pub fn list(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let limit = i.require("limit")?.parse::<u16>().map_err(failure)?;
-    let r = ds_cli_auth::grid_models(
+    let r = ds_cli_auth::grid_models_for_project(
         i.require("lane")?,
+        i.require("project")?,
         &ds_cli_auth::GridModelsCommand::List {
             limit,
             cursor: i.value("cursor").map(str::to_owned),
         },
     )?;
-    Ok(r.into_result().data)
+    Ok(r.data)
 }
 pub fn download(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let out = std::path::Path::new(i.require("out")?);
     if std::fs::symlink_metadata(out).is_ok() {
         return Err(failure("destination already exists"));
     }
-    let r = ds_cli_auth::grid_models(
+    let r = ds_cli_auth::grid_models_for_project(
         i.require("lane")?,
+        i.require("project")?,
         &ds_cli_auth::GridModelsCommand::Download {
             model: i.require("model")?.into(),
             revision: i.require("revision")?.into(),
         },
     )?;
-    let mut r = r.into_result();
+    let mut r = r;
     let bytes = r
         .bytes
         .take()
@@ -116,6 +146,20 @@ pub fn download(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     staged.persist_noclobber(out).map_err(failure)?;
     r.data["out"] = serde_json::json!(out);
     Ok(r.data)
+}
+pub fn retire(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let project = i.require("project")?;
+    let receipt = ds_cli_auth::grid_models_for_project(
+        i.require("lane")?,
+        project,
+        &ds_cli_auth::GridModelsCommand::Delete {
+            model: i.require("model")?.into(),
+            expected_revision: i.require("expected-head")?.into(),
+            expected_digest: i.require("expected-digest")?.into(),
+            reason: i.require("reason")?.into(),
+        },
+    )?;
+    Ok(receipt.data)
 }
 pub fn render(v: &Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()

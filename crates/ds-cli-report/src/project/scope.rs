@@ -30,8 +30,8 @@ accepted.",
     output: "\
 Lane and named-project identity/status, the scope `mode`, the participating \
 transformers and count, the excluded names with their lifecycle state and \
-retirement reason, the project-level `mv_data` row, and `combined_ready` \
-(at least two participants).",
+retirement reason, project-level inventory rows (which are never Combined \
+Report inputs), and `combined_ready` (at least one active LV transformer).",
     examples: &[Example {
         command: "ds report project scope --output json --project <exact-id>",
         note: "`.data.excluded` lists what a Combined Report run would leave out, and why.",

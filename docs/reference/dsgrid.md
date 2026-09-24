@@ -45,6 +45,7 @@ These words are deliberately not interchangeable:
 | `ds dsgrid model import-external` | Acquire one external `.dsgrid`; it does not become active. | none |
 | `ds dsgrid model set-active` | Open one existing working copy as the active one; idempotent when already active. | none |
 | `ds dsgrid model prepare-project` | Show which exact governed MV heads of the selected project this machine holds and, with `--download-missing`, fill the rest as project-pinned working copies. | headless_project |
+| `ds dsgrid project retire` | Retire one superseded project model with explicit project, head revision, digest and reason; immutable revisions remain. | headless_project + `--yes` |
 | `ds dsgrid publish-version` | Register one immutable revision in a project's catalogue; never changes local activity. | project + `--yes` |
 
 The local commands never accept a project. Publication never accepts arbitrary
