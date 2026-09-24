@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{FORCE_ARG, LANE_ARG, TYPE_ARG};
+use crate::{FORCE_ARG, LANE_ARG, PROJECT_ARG, TYPE_ARG};
 
 pub static COMMAND: Command = Command {
     id: "tile.plan",
@@ -13,17 +13,17 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Decide whether a run is needed and preflight it, without running.",
     purpose: "\
-Restores the native user and reads the fixed status for its audience-fenced \
-selected project. It applies the Pipeline staleness rule — never built, dirty \
+Restores the native user and reads the fixed status for the project \
+--project names. It applies the Pipeline staleness rule — never built, dirty \
 or --force means a run; current and clean means no run — then calls the fixed \
 preflight only when work would dispatch. It verifies both reads name the same \
-selected project and never calls generation. No project, Desktop descriptor, \
+project and never calls generation. No Desktop descriptor, \
 URL, body or action override is accepted.",
     chapter: Chapter::VectorTiles,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TYPE_ARG, FORCE_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, TYPE_ARG, FORCE_ARG, LANE_ARG],
     output: "\
 Lane and selected-project identity/status, `type`, `force`, `dispatched: \
 false`, `wouldDispatch`, `reason`, the status used for the decision, and \
@@ -44,13 +44,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
     let kind = crate::tile_type(inputs.require("type")?);
     let force = inputs.switch("force");
-    let status = ds_cli_auth::tile_status(lane, kind)?;
+    let status = ds_cli_auth::tile_status(lane, inputs.require("project")?, kind)?;
     let project = crate::operation_project(&status);
     let result = status.result();
     let (would_dispatch, reason) =
         crate::plan_decision(result.status(), result.tiled_at(), result.dirty(), force);
     let preflight = if would_dispatch {
-        let preflight = ds_cli_auth::tile_preflight(lane, kind)?;
+        let preflight = ds_cli_auth::tile_preflight(lane, inputs.require("project")?, kind)?;
         crate::require_same_project(&project, &crate::preflight_project(&preflight))?;
         crate::preflight_json(preflight.result())
     } else {

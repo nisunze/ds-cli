@@ -68,7 +68,7 @@ ds map design upload inspect --path ./water-network.shp.zip --output json
 ds map design upload stage --source WATER-01=./water-network.shp.zip --output json
 
 # "Reference a neighbouring project's published design tiles." This is not a URL overlay.
-ds tile add --type design --source-project neighbouring-project --yes
+ds tile add --project <id> --type design --source-project neighbouring-project --yes
 ```
 
 Stops at: third-party GIS — interactive geometry authoring and editing belong

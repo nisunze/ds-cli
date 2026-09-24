@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value};
 
-use crate::{LANE_ARG, OPTIONAL_TYPE_ARG};
+use crate::{LANE_ARG, OPTIONAL_TYPE_ARG, PROJECT_ARG};
 
 pub static COMMAND: Command = Command {
     id: "tile.status",
@@ -13,17 +13,17 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "The published state of the survey and design tile outputs.",
     purpose: "\
-Start here. Restores the native user and reads only its audience-fenced \
-selected project through the fixed tile status call. For each requested \
+Start here. Restores the native user and reads only the project \
+--project names through the fixed tile status call. For each requested \
 output it reports whether it is published, running, failed or never built; \
 when it was tiled; how many features it holds; and whether its sources \
-changed since. No project, Desktop descriptor, URL, body or action override \
+changed since. No Desktop descriptor, URL, body or action override \
 is accepted.",
     chapter: Chapter::VectorTiles,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[OPTIONAL_TYPE_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, OPTIONAL_TYPE_ARG, LANE_ARG],
     output: "\
 Lane and selected-project identity/status, plus `tiles` keyed by type with \
 the fixed backend status, timestamps, feature count, dirty/progress/cache \
@@ -53,7 +53,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut project = None;
     let mut tiles = Map::new();
     for kind in types {
-        let headless = ds_cli_auth::tile_status(lane, *kind)?;
+        let headless = ds_cli_auth::tile_status(lane, inputs.require("project")?, *kind)?;
         let current = crate::operation_project(&headless);
         if let Some(expected) = &project {
             crate::require_same_project(expected, &current)?;

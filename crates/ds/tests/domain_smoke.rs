@@ -4374,22 +4374,22 @@ fn tile_managed_outputs_are_headless_and_catalogue_are_headless() {
         (
             "tile.status",
             "local_auth_state",
-            BTreeSet::from(["lane", "type"]),
+            BTreeSet::from(["lane", "project", "type"]),
         ),
         (
             "tile.preflight",
             "local_auth_state",
-            BTreeSet::from(["lane", "type"]),
+            BTreeSet::from(["lane", "project", "type"]),
         ),
         (
             "tile.plan",
             "local_auth_state",
-            BTreeSet::from(["force", "lane", "type"]),
+            BTreeSet::from(["force", "lane", "project", "type"]),
         ),
         (
             "tile.generate",
             "global_write",
-            BTreeSet::from(["force", "lane", "type"]),
+            BTreeSet::from(["force", "lane", "project", "type"]),
         ),
     ] {
         let descriptor = ok(&["capabilities", id, "--output", "json"]);
@@ -4403,10 +4403,9 @@ fn tile_managed_outputs_are_headless_and_catalogue_are_headless() {
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, inputs, "{id}");
-        assert!(
-            !actual.contains("project"),
-            "{id} gained a project override"
-        );
+        // Every tile operation names its project; none reads the saved
+        // selection (the Server has no active project).
+        assert!(actual.contains("project"), "{id} must name its project");
         assert!(
             !actual.contains("desktop-descriptor"),
             "{id} still depends on Desktop"
@@ -4417,6 +4416,14 @@ fn tile_managed_outputs_are_headless_and_catalogue_are_headless() {
         let descriptor = ok(&["capabilities", id, "--output", "json"]);
         let command = &descriptor["command"];
         assert_eq!(command["authority"], "headless_project", "{id}");
+        assert!(
+            command["inputs"]
+                .as_array()
+                .expect("inputs")
+                .iter()
+                .any(|input| input["name"] == "project"),
+            "{id} must name its project"
+        );
         assert!(
             !command["inputs"]
                 .as_array()
@@ -4429,7 +4436,16 @@ fn tile_managed_outputs_are_headless_and_catalogue_are_headless() {
 
     assert_eq!(
         refusal(&[
-            "tile", "generate", "--type", "design", "--lane", "stable", "--output", "json",
+            "tile",
+            "generate",
+            "--project",
+            "test-project",
+            "--type",
+            "design",
+            "--lane",
+            "stable",
+            "--output",
+            "json",
         ]),
         "confirmation_required"
     );

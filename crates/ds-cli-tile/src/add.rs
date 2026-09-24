@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{LANE_ARG, TYPE_ARG};
+use crate::{LANE_ARG, PROJECT_ARG, TYPE_ARG};
 
 const SOURCE_PROJECT_ARG: Arg = Arg {
     name: "source-project",
@@ -26,13 +26,13 @@ pub static COMMAND: Command = Command {
     summary: "Add another project's published tiles to this project (needs --yes).",
     purpose: "\
 Imports another project's published output into destination-owned tile storage. \
-Restores the native user and selected project; ds-brain checks access to both \
+Restores the native user for the project --project names; ds-brain checks access to both \
 projects and performs the copy. No desktop is required.",
     chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TYPE_ARG, SOURCE_PROJECT_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, TYPE_ARG, SOURCE_PROJECT_ARG, LANE_ARG],
     output: "`project`, `type`, `sourceProject`, `added: true`.",
     examples: &[Example {
         command: "ds tile add --type design --source-project neighbouring-district --yes",
@@ -49,6 +49,7 @@ projects and performs the copy. No desktop is required.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let result = ds_cli_auth::tile_add(
         inputs.require("lane")?,
+        inputs.require("project")?,
         crate::tile_type(inputs.require("type")?),
         inputs.require("source-project")?,
     )?;

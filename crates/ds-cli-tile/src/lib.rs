@@ -6,7 +6,7 @@
 //! A tile run is a governed project output: ds-brain owns preflight,
 //! dispatch, the lease and the publish behind one fixed endpoint. Status,
 //! preflight, plan and generate restore the native user and use only that
-//! user's audience-fenced selected project. Catalogue list/add/remove use that same protected native authority. `ds`
+//! project each call names with --project (never a saved selection). Catalogue list/add/remove use that same protected native authority. `ds`
 //! carries no token and no second tiling model.
 //!
 //! ## Why tiling belongs next to styling
@@ -335,6 +335,12 @@ pub const FORCE_ARG: Arg = Arg {
     choices: &[],
     summary: "Run even when the published output is current (a restyle or a vocabulary change needs this).",
 };
+pub const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project this call is about; the saved selection is never read.",
+)
+.required();
 pub const LANE_ARG: Arg = Arg::value(
     "lane",
     "<stable|canary>",
@@ -362,14 +368,15 @@ pub fn project_receipt(
     project_name: &str,
     project_status: &str,
 ) -> Value {
-    json!({
-        "lane": lane,
-        "project": {
-            "ds_project": project_id,
-            "project_name": project_name,
-            "status": project_status,
-        },
-    })
+    // A named read carries the id it was given and nothing it did not read.
+    let mut project = json!({ "ds_project": project_id });
+    if !project_name.is_empty() {
+        project["project_name"] = json!(project_name);
+    }
+    if !project_status.is_empty() {
+        project["status"] = json!(project_status);
+    }
+    json!({ "lane": lane, "project": project })
 }
 
 pub fn operation_project(headless: &HeadlessTileOperation) -> Value {

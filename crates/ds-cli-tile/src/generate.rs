@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
-use crate::{FORCE_ARG, LANE_ARG, TYPE_ARG};
+use crate::{FORCE_ARG, LANE_ARG, PROJECT_ARG, TYPE_ARG};
 
 pub static COMMAND: Command = Command {
     id: "tile.generate",
@@ -14,16 +14,16 @@ pub static COMMAND: Command = Command {
     summary: "Regenerate one output's vector tiles (needs --yes).",
     purpose: "\
 After CLI confirmation, restores the native user and calls the fixed tile \
-generation operation for only its audience-fenced selected project. ds-brain \
+generation operation for the project --project names (the saved selection is never read). ds-brain \
 owns the staleness decision, preflight, lease and dispatch. Returns as soon as \
 the backend answers; follow it with `ds tile status`. Use --force after a \
-restyle or Data-cleaning catalog change. No project, Desktop descriptor, URL, \
+restyle or Data-cleaning catalog change. No Desktop descriptor, URL, \
 body or action override is accepted.",
     chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TYPE_ARG, FORCE_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, TYPE_ARG, FORCE_ARG, LANE_ARG],
     output: "\
 Lane and selected-project identity/status, `type`, `force`, whether work was \
 dispatched, and the fixed backend result including status, decision, \
@@ -43,7 +43,12 @@ timestamps and bounded diagnostics.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let kind = crate::tile_type(inputs.require("type")?);
     let force = inputs.switch("force");
-    let headless = ds_cli_auth::tile_generate(inputs.require("lane")?, kind, force)?;
+    let headless = ds_cli_auth::tile_generate(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        kind,
+        force,
+    )?;
     let result = headless.result();
     let mut output = crate::operation_project(&headless);
     output["type"] = Value::String(kind.token().to_owned());

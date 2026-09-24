@@ -11,12 +11,12 @@ ds-brain builds with ds-vector-tiler, publishes under a lease, and records with
 its layers, feature counts and **tilestats** — the per-field values the tiles
 actually hold. The native client owns authentication; tiling remains server-owned.
 
-Status, preflight, plan and generate are headless selected-project commands.
-They restore the native user for `--lane stable|canary` (Stable by default),
-load only its UID/email/lane/audience-fenced project selection, and call the
-fixed ds-brain tile contracts. There is no `--project`, URL, body, action or
-Desktop descriptor override. Each receipt includes the lane and selected
-project id, name and lifecycle status.
+Every tile command names its project with `--project`; the saved selection is
+never read (the Server has no active project). Status, preflight, plan and
+generate restore the native user for `--lane stable|canary` (Stable by
+default) and call the fixed ds-brain tile contracts for that exact project.
+There is no URL, body, action or Desktop descriptor override. Each receipt
+names the lane and the project id it was given.
 
 List, add and remove also execute through the native selected-project client.
 They require no desktop. Add asks the backend to copy a published source into
@@ -33,11 +33,11 @@ layer. Neither makes the output *dirty* (dirty tracks source data), which is
 what `--force` is for:
 
 ```bash
-ds tile status --lane stable                                  # what is published, dirty, running
-ds tile preflight --type design --lane stable                 # the sources a run would read
-ds tile plan --type design --force --lane stable              # status + preflight, nothing started
-ds tile generate --type design --force --lane stable --yes    # fixed backend generation call
-ds tile status --type design --lane stable                    # follow the run
+ds tile status --project <id> --lane stable                                  # what is published, dirty, running
+ds tile preflight --project <id> --type design --lane stable                 # the sources a run would read
+ds tile plan --project <id> --type design --force --lane stable              # status + preflight, nothing started
+ds tile generate --project <id> --type design --force --lane stable --yes    # fixed backend generation call
+ds tile status --project <id> --type design --lane stable                    # follow the run
 ```
 
 `plan` never dispatches. It reads status, applies the same conservative
@@ -54,9 +54,9 @@ default), so the tilestats it records are presence, not a spelling census.
 
 ## The catalogue
 
-With DS GridDesign paired, `ds tile list` shows every archive the project's map can mount: its own
-outputs, outputs `ds tile add` referenced from other projects, and with
-`--global` the platform's reference tiles. `ds tile remove` takes ids from that
+With DS GridDesign paired, `ds tile list --project <id>` shows every archive the project's map can mount: its own
+outputs, outputs `ds tile add --project <id>` referenced from other projects, and with
+`--global` the platform's reference tiles. `ds tile remove --project <id>` takes ids from that
 list; removing an owned output reclaims its storage, removing a reference only
 unlinks it.
 
@@ -85,7 +85,7 @@ the publication, its archive and its styles intact and stops every project
 mounting it; a later `--mode all` puts it back. What the call carries becomes
 the whole policy, so an allowed reader left out of it loses the grant.
 
-`ds tile remove --tile-id <id> --scope global --yes` is the irreversible one.
+`ds tile remove --project <id> --tile-id <id> --scope global --yes` is the irreversible one.
 It retires the row, reclaims the archive, and deletes the style documents of
 every layer no other live publication exposes — naming the ones it keeps and
 who keeps them. When it cannot reclaim an archive, it removes nothing and says

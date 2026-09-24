@@ -1710,103 +1710,69 @@ pub fn transformer_contexts(
     Ok(contexts)
 }
 
-/// Read the current managed tile state for only the saved, audience-fenced
-/// selected project. There is no project, URL, or action override.
-pub fn tile_list(lane_value: &str, include_global: bool) -> Result<HeadlessTileCatalog, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .tile_list(selected.project_id(), include_global)
-            .map_err(map_client)?;
-        return Ok(HeadlessTileCatalog {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.tile_list(selected.project_id(), include_global, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+/// Read the managed tile state of the caller's explicit project. The saved
+/// native selection is never read; there is no URL or action override.
+pub fn tile_list(
+    lane_value: &str,
+    project: &str,
+    include_global: bool,
+) -> Result<HeadlessTileCatalog, Failure> {
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.tile_list(project, include_global),
+        |client, project| client.tile_list(project, include_global, now()),
+    )?;
     Ok(HeadlessTileCatalog {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
     })
 }
 
+/// Add another project's published tiles to the caller's explicit project.
 pub fn tile_add(
     lane_value: &str,
+    project: &str,
     tile_type: TileType,
     source_project: &str,
 ) -> Result<HeadlessTileMutation, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .tile_add(selected.project_id(), tile_type, source_project)
-            .map_err(map_client)?;
-        return Ok(HeadlessTileMutation {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.tile_add(selected.project_id(), tile_type, source_project, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.tile_add(project, tile_type, source_project),
+        |client, project| client.tile_add(project, tile_type, source_project, now()),
+    )?;
     Ok(HeadlessTileMutation {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
     })
 }
 
+/// Remove one tile archive from the caller's explicit project catalogue.
 pub fn tile_remove(
     lane_value: &str,
+    project: &str,
     tile_id: &str,
     scope: crate::TileScope,
 ) -> Result<HeadlessTileMutation, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .tile_remove(selected.project_id(), tile_id, scope)
-            .map_err(map_client)?;
-        return Ok(HeadlessTileMutation {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.tile_remove(selected.project_id(), tile_id, scope, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.tile_remove(project, tile_id, scope),
+        |client, project| client.tile_remove(project, tile_id, scope, now()),
+    )?;
     Ok(HeadlessTileMutation {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
     })
 }
 
@@ -2812,107 +2778,67 @@ pub fn layer_default_visibility_fenced(
     })
 }
 
+/// Read one tile output's published state for the caller's explicit project.
 pub fn tile_status(
     lane_value: &str,
+    project: &str,
     tile_type: TileType,
 ) -> Result<HeadlessTileOperation, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .tile_status(selected.project_id(), tile_type)
-            .map_err(map_client)?;
-        return Ok(HeadlessTileOperation {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.tile_status(selected.project_id(), tile_type, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.tile_status(project, tile_type),
+        |client, project| client.tile_status(project, tile_type, now()),
+    )?;
     Ok(HeadlessTileOperation {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
     })
 }
 
-/// Inspect the bounded tile source shape for only the saved,
-/// audience-fenced selected project.
+/// Inspect the bounded tile source shape of the caller's explicit project.
 pub fn tile_preflight(
     lane_value: &str,
+    project: &str,
     tile_type: TileType,
 ) -> Result<HeadlessTilePreflight, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .tile_preflight(selected.project_id(), tile_type)
-            .map_err(map_client)?;
-        return Ok(HeadlessTilePreflight {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.tile_preflight(selected.project_id(), tile_type, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.tile_preflight(project, tile_type),
+        |client, project| client.tile_preflight(project, tile_type, now()),
+    )?;
     Ok(HeadlessTilePreflight {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
     })
 }
 
-/// Start one closed managed tile generation for only the saved,
-/// audience-fenced selected project.
+/// Start one closed managed tile generation for the caller's explicit project.
 pub fn tile_generate(
     lane_value: &str,
+    project: &str,
     tile_type: TileType,
     force: bool,
 ) -> Result<HeadlessTileOperation, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .tile_generate(selected.project_id(), tile_type, force)
-            .map_err(map_client)?;
-        return Ok(HeadlessTileOperation {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.tile_generate(selected.project_id(), tile_type, force, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.tile_generate(project, tile_type, force),
+        |client, project| client.tile_generate(project, tile_type, force, now()),
+    )?;
     Ok(HeadlessTileOperation {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
     })
 }
 
@@ -6463,10 +6389,12 @@ mod tests {
     }
 
     #[test]
-    fn tile_adapter_exposes_only_lane_kind_and_force_choices() {
-        let _: fn(&str, TileType) -> Result<HeadlessTileOperation, Failure> = tile_status;
-        let _: fn(&str, TileType) -> Result<HeadlessTilePreflight, Failure> = tile_preflight;
-        let _: fn(&str, TileType, bool) -> Result<HeadlessTileOperation, Failure> = tile_generate;
+    fn tile_adapter_exposes_only_lane_project_kind_and_force_choices() {
+        // The project is always named by the caller; no saved selection.
+        let _: fn(&str, &str, TileType) -> Result<HeadlessTileOperation, Failure> = tile_status;
+        let _: fn(&str, &str, TileType) -> Result<HeadlessTilePreflight, Failure> = tile_preflight;
+        let _: fn(&str, &str, TileType, bool) -> Result<HeadlessTileOperation, Failure> =
+            tile_generate;
         assert_eq!(TileType::Survey.token(), "survey");
         assert_eq!(TileType::Design.token(), "design");
     }

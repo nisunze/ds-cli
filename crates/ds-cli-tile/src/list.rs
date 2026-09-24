@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::LANE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 const GLOBAL_ARG: Arg = Arg {
     name: "global",
@@ -42,6 +42,7 @@ reference tiles. This is the catalogue `ds tile remove` takes ids from.",
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        PROJECT_ARG,
         GLOBAL_ARG,
         REFRESH_ARG,
         Arg::value(
@@ -68,7 +69,11 @@ reference tiles. This is the catalogue `ds tile remove` takes ids from.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let result = ds_cli_auth::tile_list(inputs.require("lane")?, inputs.switch("global"))?;
+    let result = ds_cli_auth::tile_list(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        inputs.switch("global"),
+    )?;
     let limit = ds_cli_contract::args::integer(inputs.require("limit")?, "limit", 1, 500)? as usize;
     let rows = &result.result().tiles;
     Ok(
