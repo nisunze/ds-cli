@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{LANE_ARG, PROJECT_ARG, REF_ARG};
 
 const FIELD_ARG: Arg = Arg {
     name: "field",
@@ -217,6 +217,7 @@ pub mod plan {
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: &[
+            PROJECT_ARG,
             REF_ARG,
             FIELD_ARG,
             VISIBLE_ARG,
@@ -303,7 +304,7 @@ pub mod plan {
         ],
         output: "The exact resulting document, `labelField`, `changed`, and `published: false`.",
         examples: &[Example {
-            command: "ds style label plan --ref gt/roads_print --field road_no --output json",
+            command: "ds style label plan --project <id> --ref gt/roads_print --field road_no --output json",
             note: "Refused when road_no is absent from the style's published fields.",
             runnable: false,
         }],
@@ -341,6 +342,7 @@ pub mod set {
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: &[
+            PROJECT_ARG,
             REF_ARG,
             FIELD_ARG,
             VISIBLE_ARG,
@@ -427,7 +429,7 @@ pub mod set {
         ],
         output: "The plan receipt with `published: true`, backend warnings, and the exact persisted document.",
         examples: &[Example {
-            command: "ds style label set --ref gt/roads_print --field road_no --yes --output json",
+            command: "ds style label set --project <id> --ref gt/roads_print --field road_no --yes --output json",
             note: "Labels roads with the published road number field while retaining the print style's other authorship.",
             runnable: false,
         }],

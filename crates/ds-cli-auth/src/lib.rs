@@ -2042,36 +2042,23 @@ where
 
 pub fn style_edit(
     lane_value: &str,
+    project: &str,
     reference: &str,
     instruction: &StyleInstruction,
     apply: bool,
 ) -> Result<HeadlessStyleEdit, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .style_edit(selected.project_id(), reference, instruction, apply)
-            .map_err(map_client)?;
-        return Ok(HeadlessStyleEdit {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.style_edit(selected.project_id(), reference, instruction, apply, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.style_edit(project, reference, instruction, apply),
+        |client, project| client.style_edit(project, reference, instruction, apply, now()),
+    )?;
     Ok(HeadlessStyleEdit {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
     })
 }
 
@@ -2629,33 +2616,19 @@ pub fn layer_config_fenced(
     })
 }
 
-pub fn style_catalog(lane_value: &str) -> Result<HeadlessStyleSnapshot, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .style_catalog(selected.project_id())
-            .map_err(map_client)?;
-        return Ok(HeadlessStyleSnapshot {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.style_catalog(selected.project_id(), now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+pub fn style_catalog(lane_value: &str, project: &str) -> Result<HeadlessStyleSnapshot, Failure> {
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.style_catalog(project),
+        |client, project| client.style_catalog(project, now()),
+    )?;
     Ok(HeadlessStyleSnapshot {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
     })
 }
 

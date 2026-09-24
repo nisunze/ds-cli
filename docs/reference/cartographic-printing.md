@@ -32,13 +32,13 @@ Run the matching `plan` first, inspect its document, then `set --yes` with the
 same arguments. Add `--host desktop --project <project>` to these examples.
 
 ```sh
-ds style appearance plan --ref master/lv_lines_print --size 2.3
-ds style label plan --ref master/lv_poles_print --field pole_number --visible on --size 8 --paper A0 --placement auto
-ds style label plan --ref master/customers_print --field house_number --visible on --size 8 --paper A0 --placement auto
-ds style label plan --ref master/tr_print --field transfo --visible on --size 10 --font 'Open Sans Bold' --color '#78350F' --paper all --placement auto
-ds style label plan --ref gt/rwanda_villages_print --field village --visible on --size 9 --font 'Open Sans Italic' --color '#64748B' --paper all --placement auto
-ds style cartography plan --ref gt/rwanda_villages_print --visible on --opacity 0 --boundary-color '#7C8792' --boundary-width 0.7 --boundary-opacity 0.5 --boundary-line-type dashed
-ds style cartography plan --ref gt/wetlands_print --fill-pattern diagonal-forward --pattern-color '#669C9B' --pattern-background '#EAF4F2' --pattern-spacing 16 --pattern-stroke 1
+ds style appearance plan --project <id> --ref master/lv_lines_print --size 2.3
+ds style label plan --project <id> --ref master/lv_poles_print --field pole_number --visible on --size 8 --paper A0 --placement auto
+ds style label plan --project <id> --ref master/customers_print --field house_number --visible on --size 8 --paper A0 --placement auto
+ds style label plan --project <id> --ref master/tr_print --field transfo --visible on --size 10 --font 'Open Sans Bold' --color '#78350F' --paper all --placement auto
+ds style label plan --project <id> --ref gt/rwanda_villages_print --field village --visible on --size 9 --font 'Open Sans Italic' --color '#64748B' --paper all --placement auto
+ds style cartography plan --project <id> --ref gt/rwanda_villages_print --visible on --opacity 0 --boundary-color '#7C8792' --boundary-width 0.7 --boundary-opacity 0.5 --boundary-line-type dashed
+ds style cartography plan --project <id> --ref gt/wetlands_print --fill-pattern diagonal-forward --pattern-color '#669C9B' --pattern-background '#EAF4F2' --pattern-spacing 16 --pattern-stroke 1
 ```
 
 The wetland example requires an actual published source and style; it does not

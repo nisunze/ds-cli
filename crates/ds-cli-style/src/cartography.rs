@@ -23,7 +23,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{LANE_ARG, PROJECT_ARG, REF_ARG};
 
 /// The one line type that draws markers instead of a dash pattern.
 const DIRECTIONAL: &str = "directional";
@@ -156,6 +156,7 @@ const PATTERN_STROKE_ARG: Arg = Arg {
 /// The declared inputs, in the order help prints them. One list, used by both
 /// commands, so the two cannot drift into accepting different flags.
 const ARGS: &[Arg] = &[
+    PROJECT_ARG,
     REF_ARG,
     crate::MIN_ZOOM_ARG,
     crate::MAX_ZOOM_ARG,
@@ -503,17 +504,17 @@ apply the reviewed flags with `set`.",
 `document`.",
         examples: &[
             Example {
-                command: "ds style cartography plan --ref master/water_mains --line-type directional --direction-size 14 --direction-spacing 140 --output json",
+                command: "ds style cartography plan --project <id> --ref master/water_mains --line-type directional --direction-size 14 --direction-spacing 140 --output json",
                 note: "Show water-flow direction without changing colour.",
                 runnable: false,
             },
             Example {
-                command: "ds style cartography plan --ref master/mv_lines --casing-color '#0F172A' --casing-width 2 --output json",
+                command: "ds style cartography plan --project <id> --ref master/mv_lines --casing-color '#0F172A' --casing-width 2 --output json",
                 note: "Keep a bright line legible over satellite imagery.",
                 runnable: false,
             },
             Example {
-                command: "ds style cartography plan --ref master/service_areas --fill-pattern crosshatch --pattern-color '#B45309' --pattern-background '#FFFFFF00' --pattern-spacing 8 --pattern-stroke 1 --output json",
+                command: "ds style cartography plan --project <id> --ref master/service_areas --fill-pattern crosshatch --pattern-color '#B45309' --pattern-background '#FFFFFF00' --pattern-spacing 8 --pattern-stroke 1 --output json",
                 note: "Crosshatch a proposed area over a transparent background.",
                 runnable: false,
             },
@@ -559,17 +560,17 @@ leave their properties unchanged.",
         output: "The plan receipt with `published: true`, ds-brain `warnings`, and the `document` as persisted.",
         examples: &[
             Example {
-                command: "ds style cartography set --ref master/water_mains --line-type directional --direction-size 14 --direction-spacing 140 --yes",
+                command: "ds style cartography set --project <id> --ref master/water_mains --line-type directional --direction-size 14 --direction-spacing 140 --yes",
                 note: "Publish water-flow markers instead of a dash preset.",
                 runnable: false,
             },
             Example {
-                command: "ds style cartography set --ref master/mv_lines --casing-color '#0F172A' --casing-width 2 --yes",
+                command: "ds style cartography set --project <id> --ref master/mv_lines --casing-color '#0F172A' --casing-width 2 --yes",
                 note: "Add contrast casing; width 0 removes it.",
                 runnable: false,
             },
             Example {
-                command: "ds style cartography set --ref master/service_areas --fill-pattern crosshatch --pattern-color '#B45309' --pattern-spacing 8 --yes",
+                command: "ds style cartography set --project <id> --ref master/service_areas --fill-pattern crosshatch --pattern-color '#B45309' --pattern-spacing 8 --yes",
                 note: "Crosshatch a proposed service area with a governed tile size.",
                 runnable: false,
             },

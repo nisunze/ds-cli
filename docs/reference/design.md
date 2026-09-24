@@ -1132,7 +1132,7 @@ revisions or its head. These are explicitly local, not server vN ordinals.
 
 A pinned transformer is READ-ONLY CONTEXT: dumb GeoJSON an operator glances at
 while working on something else. It is not editable, not a selection target and
-carries no session. `ds design pinned preview` answers what one costs, on a
+carries no session. `ds design pinned preview --project <id>` answers what one costs, on a
 Server, with no browser, using the same kernel decision (`ds.pinned-context/v1`)
 the map executes.
 

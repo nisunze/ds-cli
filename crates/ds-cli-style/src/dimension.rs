@@ -14,7 +14,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{LANE_ARG, PROJECT_ARG, REF_ARG};
 
 const FIELD_ARG: Arg = Arg {
     name: "field",
@@ -145,6 +145,7 @@ saving. Read it, then `ds style dimension set` with the same flags.",
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: &[
+            PROJECT_ARG,
             REF_ARG,
             FIELD_ARG,
             FIELD_TYPE_ARG,
@@ -164,7 +165,7 @@ saving. Read it, then `ds style dimension set` with the same flags.",
 `published: false` and the full `document`. Per-value counts are a property of \
 the project's data, not of an edit: read them from `ds style read --transformer`.",
         examples: &[Example {
-            command: "ds style dimension plan --ref master/lv_poles --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0 --output json",
+            command: "ds style dimension plan --project <id> --ref master/lv_poles --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0 --output json",
             note: "Draft poles in the bare Design GeoJSON layer get a 3px white ring; every other value gets none.",
             runnable: false,
         }],
@@ -206,6 +207,7 @@ second dimension on the ref is replaced; the colour dimension is untouched.",
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: &[
+            PROJECT_ARG,
             REF_ARG,
             FIELD_ARG,
             FIELD_TYPE_ARG,
@@ -223,7 +225,7 @@ second dimension on the ref is replaced; the colour dimension is untouched.",
 The plan receipt with `published: true`, ds-brain `warnings`, and the \
 `document` as persisted.",
         examples: &[Example {
-            command: "ds style dimension set --ref master/lv_poles --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0 --yes",
+            command: "ds style dimension set --project <id> --ref master/lv_poles --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0 --yes",
             note: "Symbol layers: the ring is baked into the raster icon by ds-brain.",
             runnable: false,
         }],
@@ -262,10 +264,10 @@ defaults apply again, and publishes. The colour dimension is untouched.",
         effect: Effect::GlobalWrite,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, LANE_ARG],
+        args: &[PROJECT_ARG, REF_ARG, LANE_ARG],
         output: "`ref`, `cleared` (what was removed), `properties`, `published: true`, `warnings`, `document`.",
         examples: &[Example {
-            command: "ds style dimension clear --ref master/lv_poles --yes",
+            command: "ds style dimension clear --project <id> --ref master/lv_poles --yes",
             note: "Refused with style_refused when no second dimension is authored.",
             runnable: false,
         }],

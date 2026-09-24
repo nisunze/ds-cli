@@ -10247,7 +10247,15 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
     for (case, args, expected) in [
         (
             "a call that asks for nothing",
-            vec!["style", "cartography", "plan", "--ref", "master/mv_lines"],
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--project",
+                "test-project",
+                "--ref",
+                "master/mv_lines",
+            ],
             "invalid_cartography",
         ),
         (
@@ -10256,6 +10264,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/mv_lines",
                 "--line-type",
@@ -10271,6 +10281,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/service_areas",
                 "--fill-pattern",
@@ -10286,6 +10298,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/water_mains",
                 "--line-type",
@@ -10301,6 +10315,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/water_mains",
                 "--line-type",
@@ -10316,6 +10332,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/mv_lines",
                 "--casing-width",
@@ -10329,6 +10347,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/service_areas",
                 "--pattern-stroke",
@@ -10342,6 +10362,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/mv_lines",
                 "--casing-color",
@@ -10355,6 +10377,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/mv_lines",
                 "--line-type",
@@ -10368,6 +10392,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/service_areas",
                 "--fill-pattern",
@@ -10383,6 +10409,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "plan",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/service_areas",
                 "--fill-pattern",
@@ -10398,6 +10426,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
                 "style",
                 "cartography",
                 "set",
+                "--project",
+                "test-project",
                 "--ref",
                 "master/mv_lines",
                 "--line-type",
@@ -10423,6 +10453,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
             "style",
             "cartography",
             "plan",
+            "--project",
+            "test-project",
             "--ref",
             "master/service_areas",
             "--fill-pattern",
@@ -10446,6 +10478,8 @@ fn style_cartography_validates_its_own_inputs_before_it_authenticates() {
         "style",
         "cartography",
         "plan",
+        "--project",
+        "test-project",
         "--ref",
         "master/water_mains",
         "--direction-spacing",
@@ -10472,6 +10506,8 @@ fn a_well_formed_cartography_call_stops_at_confirmation_or_authentication() {
             "style",
             "cartography",
             "plan",
+            "--project",
+            "test-project",
             "--ref",
             "master/water_mains",
             "--line-type",
@@ -10488,6 +10524,8 @@ fn a_well_formed_cartography_call_stops_at_confirmation_or_authentication() {
             "style",
             "cartography",
             "plan",
+            "--project",
+            "test-project",
             "--ref",
             "master/mv_lines",
             "--casing-color",
@@ -10503,6 +10541,8 @@ fn a_well_formed_cartography_call_stops_at_confirmation_or_authentication() {
             "style",
             "cartography",
             "plan",
+            "--project",
+            "test-project",
             "--ref",
             "master/service_areas",
             "--fill-pattern",
@@ -10523,6 +10563,8 @@ fn a_well_formed_cartography_call_stops_at_confirmation_or_authentication() {
             "style",
             "cartography",
             "set",
+            "--project",
+            "test-project",
             "--ref",
             "master/service_areas",
             "--fill-pattern",
@@ -10575,7 +10617,11 @@ fn ds_style_asks_no_host_question_and_refuses_without_a_window() {
             flags.contains(&"lane"),
             "`{id}` does not name the lane it authenticates on"
         );
-        for windowed in ["host", "project", "desktop-descriptor", "target"] {
+        assert!(
+            flags.contains(&"project"),
+            "`{id}` does not name the project it reads or writes"
+        );
+        for windowed in ["host", "desktop-descriptor", "target"] {
             assert!(
                 !flags.contains(&windowed),
                 "`{id}` still asks `--{windowed}`, which only a paired window needed"
@@ -10588,8 +10634,7 @@ fn ds_style_asks_no_host_question_and_refuses_without_a_window() {
             .filter_map(|refusal| refusal["code"].as_str())
             .collect();
         assert!(
-            codes.contains(&"headless_signed_out")
-                && codes.contains(&"headless_project_not_selected"),
+            codes.contains(&"headless_signed_out") && codes.contains(&"context_corrupt"),
             "`{id}` must document the two conditions its one route actually has: {codes:?}"
         );
         assert!(
@@ -10600,7 +10645,14 @@ fn ds_style_asks_no_host_question_and_refuses_without_a_window() {
 
     // And the behaviour, not only the descriptor: with no native profile the
     // refusal names the profile, never a missing window.
-    let code = native_refusal(&["style", "list", "--output", "json"]);
+    let code = native_refusal(&[
+        "style",
+        "list",
+        "--project",
+        "test-project",
+        "--output",
+        "json",
+    ]);
     assert!(
         code.is_empty() || NATIVE_AUTH_CODES.contains(&code.as_str()),
         "`ds style list` refused with `{code}`"
@@ -10613,6 +10665,8 @@ fn label_field_is_exact_and_a_valid_plan_reaches_project_authority() {
         "style",
         "label",
         "plan",
+        "--project",
+        "test-project",
         "--ref",
         "gt/roads_print",
         "--field",
@@ -10630,6 +10684,8 @@ fn label_field_is_exact_and_a_valid_plan_reaches_project_authority() {
             "style",
             "label",
             "plan",
+            "--project",
+            "test-project",
             "--ref",
             "gt/roads_print",
             "--field",
@@ -10645,6 +10701,8 @@ fn label_field_is_exact_and_a_valid_plan_reaches_project_authority() {
             "style",
             "label",
             "set",
+            "--project",
+            "test-project",
             "--ref",
             "gt/roads_print",
             "--field",
@@ -11878,6 +11936,8 @@ fn symbol_icon_collision_control_is_discoverable_without_print_screen_aliasing()
             "style",
             "appearance",
             "plan",
+            "--project",
+            "test-project",
             "--ref",
             "gt/primary_schools",
             "--icon-overlap",
@@ -13152,7 +13212,15 @@ fn pinned_preview_is_a_server_command_that_refuses_an_empty_pin_set() {
         "every refusal names what fixes it",
     );
 
-    let refused = native_ds(&["design", "pinned", "preview", "--output", "json"]);
+    let refused = native_ds(&[
+        "design",
+        "pinned",
+        "preview",
+        "--project",
+        "test-project",
+        "--output",
+        "json",
+    ]);
     assert_eq!(refused.envelope["error"]["code"], "pinned_set_empty");
     assert!(
         refused.envelope["error"]["remedy"]

@@ -60,7 +60,7 @@ Use the map commands as a sequence; none is a generic UI driver.
    edits under `ds map design select` / `ds map design set`.
 2. Open only a named application surface: `attribute-table`, `style-center`,
    or `selection-properties`. Pass a ref published by `ds map view`,
-   `ds style list`, or the design-selection receipt. Never invent a CSS
+   `ds style list --project <id>`, or the design-selection receipt. Never invent a CSS
    selector, click, script, coordinate, or keystroke.
 3. Let the paired application settle its own map and UI, then capture either
    `--scope map` or `--scope app` to an absolute `.png` path in an existing

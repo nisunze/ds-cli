@@ -15,7 +15,7 @@ not approved defaults; inspect the current user direction and accepted previews.
 - Geography: the district boundary (with its name), the sector **names without their
   lines**, the road network by class. Never cells, villages, contours or buildings at this
   scale. Admin names always carry their category — "Ndora sector", "Gisagara district",
-  "Munazi cell" — except provinces (governed labels: `ds style label set --ref
+  "Munazi cell" — except provinces (governed labels: `ds style label set --project <id> --ref
   gt/<rank>_boundaries_print --field <rank> --suffix " <rank>"`).
 - Places that matter, labelled by rank: district office, sector office, substation, health
   facility, university, secondary school, then primary school/training centre (on A3 the

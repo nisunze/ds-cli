@@ -38,7 +38,7 @@ use ds_command_kernel::pinned_context::{
 };
 use serde_json::{Map, Value, json};
 
-use super::transformer::LANE_ARG;
+use super::transformer::{LANE_ARG, PROJECT_ARG};
 
 /// How many pinned transformers one invocation will read. The kernel batches
 /// up to 500 for a browser executing one request per chunk; this host fetches
@@ -168,6 +168,7 @@ docs/reference/design.md#pinned-context has the rest.",
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        PROJECT_ARG,
         TRANSFORMER,
         FOCUS,
         HIDE,
@@ -178,19 +179,19 @@ docs/reference/design.md#pinned-context has the rest.",
         LANE_ARG,
     ],
     output: "\
-Lane and selected-project identity; `plan` (reused and fetched room counts, the \
+Lane and project identity; `plan` (reused and fetched room counts, the \
 layer-level fetches, the batched requests a browser would make, and the read \
 projection); and unless --plan-only, `merge` \u{2014} sources and layers before and \
 after the fold, the property keys the rooms carried and how many survive, and \
 one bounded row per merged class. Read failures are listed, never fatal.",
     examples: &[
         Example {
-            command: "ds design pinned preview --transformer AGASHARU --transformer GITEGA --plan-only --output json",
+            command: "ds design pinned preview --project <id> --transformer AGASHARU --transformer GITEGA --plan-only --output json",
             note: "`.data.plan.counts.rooms_fetched` is what a cold machine downloads.",
             runnable: false,
         },
         Example {
-            command: "ds design pinned preview --transformer AGASHARU --held ./held.json --output json",
+            command: "ds design pinned preview --project <id> --transformer AGASHARU --held ./held.json --output json",
             note: "`.data.merge.sources_before` vs `.sources_after` is the map-source saving.",
             runnable: false,
         },
@@ -204,6 +205,7 @@ one bounded row per merged class. Read failures are listed, never fatal.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
+    let project = inputs.require("project")?;
     let pins: Vec<String> = inputs.repeated("transformer").to_vec();
     if pins.is_empty() {
         return Err(Failure::invalid(NO_PINS.code, NO_PINS.when).remedy(NO_PINS.remedy));
@@ -222,8 +224,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     // The heads. `list_transformers_status` is the project's own register, and
     // a head that has MOVED is the one reason a held room is refetched whole.
-    let status = ds_cli_auth::transformer_status(
+    let status = ds_cli_auth::transformer_status_for_project(
         lane,
+        project,
         &TransformerSet::new(std::iter::empty::<String>())
             .map_err(|error| Failure::invalid("invalid_transformer_scope", error.to_string()))?,
     )?;
@@ -248,7 +251,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     )?)
     .map_err(refused)?;
 
-    let mut output = super::transformer::project_receipt(&status);
+    let mut output = super::transformer::named_project_receipt(status.lane(), status.project_id());
     let object = output.as_object_mut().expect("receipt is an object");
     object.insert("plan".into(), plan_projection(&plan));
     if inputs.switch("plan-only") {
@@ -265,7 +268,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .map(|item| &item.name)
         .chain(plan.fetch.iter().map(|item| &item.name))
     {
-        match ds_cli_auth::transformer_context(lane, name) {
+        match ds_cli_auth::transformer_context_for_project(lane, project, name) {
             Ok(context) => rooms.push(json!({
                 "name": context.snapshot().transformer_name(),
                 "layers": context.snapshot().layers(),
@@ -280,7 +283,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .flat_map(Map::keys)
         .cloned()
         .collect();
-    let catalog = ds_cli_auth::style_catalog(lane)?;
+    let catalog = ds_cli_auth::style_catalog(lane, project)?;
     if catalog.result().document().get("styles").is_none() {
         return Err(Failure::conflict(NO_STYLES.code, NO_STYLES.when).remedy(NO_STYLES.remedy));
     }
@@ -549,7 +552,11 @@ mod tests {
 
     #[test]
     fn an_empty_pin_set_refuses_with_a_remedy() {
-        let inputs = ds_cli_contract::args::parse(&COMMAND, &[]).expect("defaults parse");
+        let inputs = ds_cli_contract::args::parse(
+            &COMMAND,
+            &["--project".to_owned(), "test-project".to_owned()],
+        )
+        .expect("defaults parse");
         let failure = run(&inputs, &context()).expect_err("no pins is a refusal");
         assert_eq!(failure.code(), NO_PINS.code);
         assert!(

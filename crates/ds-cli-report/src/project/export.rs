@@ -819,6 +819,7 @@ fn unsealed_print_styles_refusal(held: &[&String], absent: &[&String], what: &st
 /// sealed (the engine needs the held vector asset, which only ds-brain seals).
 fn complete_proof_print_styles(
     lane: &str,
+    project: &str,
     proof: InputReceipt,
     layouts: &[ds_command_kernel::printing::Layout],
 ) -> Result<InputReceipt, Failure> {
@@ -829,7 +830,7 @@ fn complete_proof_print_styles(
     if unsealed.is_empty() {
         return Ok(proof);
     }
-    let snapshot = ds_cli_auth::style_catalog(lane)?;
+    let snapshot = ds_cli_auth::style_catalog(lane, project)?;
     let catalogue = snapshot.result().document();
     let (held, absent): (Vec<_>, Vec<_>) = unsealed
         .iter()
@@ -1076,7 +1077,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         let proof = ds_command_kernel::report_export::proof::with_layouts(&receipt, &layouts)
             .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
-        complete_proof_print_styles(lane, proof, &layouts)?
+        complete_proof_print_styles(lane, &project_id, proof, &layouts)?
     };
     if let Some(request) = &preview_request {
         // A draft may bind styles the sealed receipt never carried; the
@@ -1087,7 +1088,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
         let unsealed = unsealed_print_style_refs(&sheets, std::slice::from_ref(&request.layout));
         if !unsealed.is_empty() {
-            let snapshot = ds_cli_auth::style_catalog(lane)?;
+            let snapshot = ds_cli_auth::style_catalog(lane, &project_id)?;
             let catalogue = snapshot.result().document();
             let (held, absent): (Vec<_>, Vec<_>) = unsealed
                 .iter()

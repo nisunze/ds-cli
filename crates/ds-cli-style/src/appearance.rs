@@ -11,7 +11,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{LANE_ARG, PROJECT_ARG, REF_ARG};
 
 const COLOR_ARG: Arg = Arg {
     name: "color",
@@ -140,6 +140,7 @@ the fallback when size already carries the second dimension. Icon overlap change
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: &[
+            PROJECT_ARG,
             REF_ARG,
             COLOR_ARG,
             ICON_ARG,
@@ -149,7 +150,7 @@ the fallback when size already carries the second dimension. Icon overlap change
         ],
         output: "`requested`, the resolved guided `appearance`, whether base size updated an existing fallback, `dryRun: true`, `published: false`, and the exact `document`.",
         examples: &[Example {
-            command: "ds style appearance plan --ref gt/secondary_schools --color #008695 --icon school --size 1.2 --output json",
+            command: "ds style appearance plan --project <id> --ref gt/secondary_schools --color #008695 --icon school --size 1.2 --output json",
             note: "Plans a teal school icon without changing a second halo/opacity dimension.",
             runnable: false,
         }],
@@ -190,6 +191,7 @@ Flat colour or icon replaces a field-driven primary expression; plan first. Icon
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: &[
+            PROJECT_ARG,
             REF_ARG,
             COLOR_ARG,
             ICON_ARG,
@@ -199,7 +201,7 @@ Flat colour or icon replaces a field-driven primary expression; plan first. Icon
         ],
         output: "The plan receipt with `published: true`, ds-brain `warnings`, and the exact persisted `document`.",
         examples: &[Example {
-            command: "ds style appearance set --ref gt/secondary_schools --color #008695 --icon school --size 1.2 --yes",
+            command: "ds style appearance set --project <id> --ref gt/secondary_schools --color #008695 --icon school --size 1.2 --yes",
             note: "Publishes one governed base appearance; use `style dimension set` separately for a second field.",
             runnable: false,
         }],

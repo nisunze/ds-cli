@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::LANE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 const QUERY_ARG: Arg = Arg {
     name: "query",
@@ -33,15 +33,15 @@ pub static COMMAND: Command = Command {
     path: &["style", "list"],
     contract: 2,
     summary: "Loaded style refs, including present Notes/PM geometry children.",
-    purpose: "Reads a bounded backend catalogue of governed style editor refs for the selected project. Nothing is read from a window, so a server answers exactly as a desktop does.",
+    purpose: "Reads a bounded backend catalogue of governed style editor refs for the project named by --project; the saved selection is never read. Nothing is read from a window, so a server answers exactly as a desktop does.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[QUERY_ARG, LIMIT_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, QUERY_ARG, LIMIT_ARG, LANE_ARG],
     output: "Project, total, bounded styles with refs/type/target/colour field, and more.",
     examples: &[Example {
-        command: "ds style list --query lv_poles --output json",
+        command: "ds style list --project <id> --query lv_poles --output json",
         note: "Pick the ref whose target is design_vt for tiled design layers.",
         runnable: false,
     }],

@@ -1,7 +1,7 @@
 # Style authoring
 
 `ds style` reads and writes governed style documents through the native client.
-It requires a native sign-in and selected project; no desktop, window or map is
+It requires a native sign-in and `--project <exact-id>` on every call (the saved selection is never read); no desktop, window or map is
 involved. Use `--lane stable|canary` to choose the deployment. Catalogue reads and
 publication need the backend to be reachable.
 
@@ -10,7 +10,7 @@ Center in the application authors the same documents through the same Rust
 command kernel compiled to WASM; what differs is who is typing, not what is
 decided.
 
-Start with `ds style list`, then `ds style read --ref <returned-ref> --output json`.
+Start with `ds style list --project <id>`, then `ds style read --project <id> --ref <returned-ref> --output json`.
 Read returns the complete authored document, backend field vocabulary and domains,
 property bounds, a bounded icon list and supported second-dimension channels.
 `more` reports truncation; runtime feature counts and map visibility are not inferred.
@@ -25,14 +25,14 @@ Verify both the printed result and the unchanged screen counterpart after a
 print-only repair. The live-map canvas does not preview physical print output.
 
 Renderer-only buildings and contour sources are declared by the backend under the
-closed `print_context/*` family. `ds style seed plan --ref <declared-ref>` returns
+closed `print_context/*` family. `ds style seed plan --project <id> --ref <declared-ref>` returns
 that exact backend document and create-only payload; `ds style seed create
 --ref <declared-ref> --yes` publishes it once. Arbitrary refs and every other style
 target are refused by the shared Rust planner. After seeding, use the ordinary
 guided commands to edit the source and `ds style print` to create its `_print`
 variant.
 
-`ds style print plan --ref <screen-ref>` derives the predictable
+`ds style print plan --project <id> --ref <screen-ref>` derives the predictable
 `<screen-ref>_print` identity and shows the exact create-only clone. `ds style
 print create --ref <screen-ref> --yes` publishes it. Catalog sprite names are
 preserved; runtime image IDs are normalized back to their authored icon names.
@@ -45,9 +45,9 @@ attributes never need to carry it.
 For example, the same governed line can be 0.60 mm on A0 and 0.35 mm on A3:
 
 ```sh
-ds style dimension plan --ref master/lv_lines_print --field print_paper_size --channel size \
+ds style dimension plan --project <id> --ref master/lv_lines_print --field print_paper_size --channel size \
   --value print_a0=0.60 --value print_a3=0.35 --other 0.30 --output json
-ds style dimension set --ref master/lv_lines_print --field print_paper_size --channel size \
+ds style dimension set --project <id> --ref master/lv_lines_print --field print_paper_size --channel size \
   --value print_a0=0.60 --value print_a3=0.35 --other 0.30 --yes
 ```
 
@@ -76,7 +76,7 @@ placement tries the backend's point anchors and respects label collisions.
 Omitted options preserve existing settings. For example:
 
 ```sh
-ds style label plan --ref master/lv_poles_print --field pole_number --visible on --size 8 --paper A0 --placement auto
+ds style label plan --project <id> --ref master/lv_poles_print --field pole_number --visible on --size 8 --paper A0 --placement auto
 ```
 
 Geometry and label zooms are independent. Both `cartography plan/set` and
@@ -88,8 +88,8 @@ Polygon fills also accept `--boundary-min-zoom`, `--boundary-max-zoom` and
 controls are refused for other geometry types.
 
 ```sh
-ds style cartography plan --ref master/service_areas --min-zoom 8.5 --max-zoom 24 --boundary-visible off --output json
-ds style label plan --ref master/lv_poles_print --field pole_number --min-zoom 14 --max-zoom 24 --output json
+ds style cartography plan --project <id> --ref master/service_areas --min-zoom 8.5 --max-zoom 24 --boundary-visible off --output json
+ds style label plan --project <id> --ref master/lv_poles_print --field pole_number --min-zoom 14 --max-zoom 24 --output json
 ```
 
 After reviewing the plan, use the same arguments with `set --yes`. The live

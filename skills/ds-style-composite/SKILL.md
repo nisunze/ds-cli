@@ -44,10 +44,10 @@ Choosing wrong is the expensive mistake, because two of them cost a field.
 
 ## Always
 
-1. Find the ref: `ds style list --query <layer> --output json`. Tiled design
+1. Find the ref: `ds style list --project <id> --query <layer> --output json`. Tiled design
    layers are the `_vt` refs (`target: design_vt`); GeoJSON design layers are
    the bare `master/<layer>` refs. Select the ref for the requested output; verify its target before planning.
-2. Read it: `ds style read --ref <ref> --output json`. It reports the layer
+2. Read it: `ds style read --project <id> --ref <ref> --output json`. It reports the layer
    type, the fields, the published field domains and the channels this layer offers.
 3. `plan` with the flags you intend, read the result back to the user, then
    `set` with the *same flags* plus `--yes`. Plan and set are one operation
@@ -56,20 +56,20 @@ Choosing wrong is the expensive mistake, because two of them cost a field.
 4. `ds style <command> --help` is the contract: bounds, closed choices and
    refusals live there, not here.
 
-All operations use native sign-in and the selected project; no desktop is needed.
+All operations use native sign-in and name their project with `--project <id>`; no desktop is needed.
 Only backend-published editor refs can be authored. Reads and writes need the
 backend online. Use `--field-type` when a domain has no declared match-label type.
 
 ## Base appearance
 
-`ds style appearance plan --ref <ref> --color '<#hex>' [--icon <catalog-name>]
+`ds style appearance plan --project <id> --ref <ref> --color '<#hex>' [--icon <catalog-name>]
 [--size <number>]`. The application validates icon names and numeric bounds
 against the backend schema — do not guess icon names. A flat colour or icon
 replaces a field-driven colour expression, so plan first.
 
 ## Second dimension — a field
 
-`ds style dimension plan --ref <ref> --field <field> --channel halo --value
+`ds style dimension plan --project <id> --ref <ref> --field <field> --channel halo --value
 <highlight>=<px>:<#hex> --value <other>=0`. Take the field from
 `.data.fields`, never `.data.colorField`. Type the value labels the way
 the published field domains says the map carries them.
@@ -79,7 +79,7 @@ outline colour), `opacity` mutes, `size` scales. On raster symbol layers the
 ring is baked into the icon by the backend. Name only the values that must
 differ and route the rest through `--other` — an explicit `--other` is
 intentional fallback coverage, not an uncovered-value warning. To undo:
-`ds style dimension clear --ref <ref> --yes`.
+`ds style dimension clear --project <id> --ref <ref> --yes`.
 
 ## Cartography — no field
 

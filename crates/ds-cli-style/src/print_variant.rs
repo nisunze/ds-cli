@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{LANE_ARG, PROJECT_ARG, REF_ARG};
 
 fn run_with(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     crate::native::edit(
@@ -41,10 +41,10 @@ pub mod plan {
         effect: Effect::LocalAuthState,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, LANE_ARG],
+        args: &[PROJECT_ARG, REF_ARG, LANE_ARG],
         output: "Source ref, `_print` ref, exact cloned document, paper expression vocabulary and create-only payload receipt.",
         examples: &[Example {
-            command: "ds style print plan --ref master/lv_lines --output json",
+            command: "ds style print plan --project <id> --ref master/lv_lines --output json",
             note: "Review the exact clone before creating it.",
             runnable: false,
         }],
@@ -76,10 +76,10 @@ pub mod create {
         effect: Effect::GlobalWrite,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, LANE_ARG],
+        args: &[PROJECT_ARG, REF_ARG, LANE_ARG],
         output: "The print clone receipt with `published: true` and the exact persisted document.",
         examples: &[Example {
-            command: "ds style print create --ref master/lv_lines --yes --output json",
+            command: "ds style print create --project <id> --ref master/lv_lines --yes --output json",
             note: "Creates master/lv_lines_print once.",
             runnable: false,
         }],

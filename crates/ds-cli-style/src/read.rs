@@ -6,7 +6,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use crate::native::TRANSFORMER_ARG;
-use crate::{LANE_ARG, REF_ARG};
+use crate::{LANE_ARG, PROJECT_ARG, REF_ARG};
 
 pub static COMMAND: Command = Command {
     id: "style.read",
@@ -18,10 +18,10 @@ pub static COMMAND: Command = Command {
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[REF_ARG, TRANSFORMER_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, REF_ARG, TRANSFORMER_ARG, LANE_ARG],
     output: "Project, ref, type, target, document, fields, fieldValues, fieldDomains, propertySchema, icons, channels, second, colorField, more, observed (derived, or a named refusal saying why nothing was observed), and — when derived — fieldTypes, fieldTypeSource, fieldTypeConflicts, fieldCounts, fieldMatchLabels and fieldProvenance.",
     examples: &[Example {
-        command: "ds style read --ref master/lv_poles --transformer T-1042 --output json",
+        command: "ds style read --project <id> --ref master/lv_poles --transformer T-1042 --output json",
         note: "Read .data.channels and .data.observed.types before `ds style dimension plan`.",
         runnable: false,
     }],

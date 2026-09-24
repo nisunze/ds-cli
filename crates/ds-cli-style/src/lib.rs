@@ -1,8 +1,8 @@
-//! Guided native style authoring over the selected project's backend catalogue.
+//! Guided native style authoring over a named project's backend catalogue.
 //! The shared command kernel owns transformations; native auth owns transport.
 //! The visual Style Center uses the same transformations through WASM.
 
-pub use native::LANE_ARG;
+pub use native::{LANE_ARG, PROJECT_ARG};
 pub mod appearance;
 pub mod cartography;
 pub mod dimension;

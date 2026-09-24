@@ -19,6 +19,12 @@ pub const LANE_ARG: Arg = Arg::value(
 )
 .default("stable")
 .choices(&["stable", "canary"]);
+pub const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project whose style documents this call reads or writes; the saved selection is never read.",
+)
+.required();
 pub const TRANSFORMER_ARG: Arg = Arg::value(
     "transformer",
     "<name>",
@@ -53,29 +59,24 @@ pub const STYLE_REFUSED: Refusal = Refusal {
     when: "no such style ref, an unknown field or channel, a cartography property this layer type has no place for, or ds-brain declined the document",
     remedy: "check the ref with `ds style list`, and the fields, channels and layer type with `ds style read`",
 };
-pub const HEADLESS_NO_PROJECT: Refusal = Refusal {
-    code: "headless_project_not_selected",
-    when: "the user has no audience-fenced selected project",
-    remedy: "run ds auth project use --project <exact-id>",
-};
-pub const PROJECT_CONTEXT_STALE: Refusal = Refusal {
-    code: "project_context_stale",
-    when: "the saved project belongs to another identity, lane, or audience",
-    remedy: "select the project again with ds auth project use",
+pub const PROJECT_INVALID: Refusal = Refusal {
+    code: "context_corrupt",
+    when: "--project is not one exact DS project id: blank, untrimmed, too long, or a path",
+    remedy: "copy one exact ds_project value from ds auth project list",
 };
 pub const AUTH_CONTEXT_MISMATCH: Refusal = Refusal {
     code: "auth_context_mismatch",
-    when: "the protected native providers disagree on identity or selected project",
+    when: "the protected native providers disagree on identity",
     remedy: "sign out or revoke the unintended provider before retrying",
 };
 pub const AUTH_INPUT: Refusal = Refusal {
     code: "auth_input_invalid",
-    when: "the selected project identity violates the fixed request bound",
-    remedy: "select a freshly visible project again",
+    when: "the named project identity violates the fixed request bound",
+    remedy: "pass one exact ds_project value from ds auth project list",
 };
 pub const TRANSFORMER_NOT_FOUND: Refusal = Refusal {
     code: "transformer_not_found",
-    when: "the named canonical source does not exist in the selected project",
+    when: "the named canonical source does not exist in the named project",
     remedy: "pass one exact transformer name from that project, or omit --transformer",
 };
 pub const FIELD_DOMAIN_REFUSED: Refusal = Refusal {
@@ -89,8 +90,7 @@ pub const FIELD_DOMAIN_REFUSED: Refusal = Refusal {
 /// canonical observation `--transformer` asks for, the backend's own verdict on
 /// a document, and the five input grammars parsed here.
 const OWN: &[Refusal] = &[
-    HEADLESS_NO_PROJECT,
-    PROJECT_CONTEXT_STALE,
+    PROJECT_INVALID,
     AUTH_CONTEXT_MISMATCH,
     AUTH_INPUT,
     TRANSFORMER_NOT_FOUND,
@@ -149,7 +149,8 @@ pub const PUBLISH_REFUSALS: &[Refusal] = &PUBLISHING_SET;
 /// Read the project's governed style catalogue as the restored native user.
 pub fn read(inputs: &Inputs, action: Read, args: Value) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
-    let snapshot = ds_cli_auth::style_catalog(lane)?;
+    let project = inputs.require("project")?;
+    let snapshot = ds_cli_auth::style_catalog(lane, project)?;
     let result = match action {
         Read::List => ds_command_kernel::style_plan::list_styles(
             snapshot.result().document(),
@@ -158,8 +159,13 @@ pub fn read(inputs: &Inputs, action: Read, args: Value) -> Result<Value, Failure
         ),
         Read::Describe => {
             let reference = inputs.require("ref")?;
-            let observed =
-                observe_canonical(lane, snapshot.result().document(), reference, inputs)?;
+            let observed = observe_canonical(
+                lane,
+                project,
+                snapshot.result().document(),
+                reference,
+                inputs,
+            )?;
             ds_command_kernel::style_plan::describe_style(
                 snapshot.result().document(),
                 reference,
@@ -179,10 +185,11 @@ pub fn read(inputs: &Inputs, action: Read, args: Value) -> Result<Value, Failure
 /// Plan or publish one guided edit against the project's style document.
 pub fn edit(inputs: &Inputs, action: Edit, args: Value) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
+    let project = inputs.require("project")?;
     let reference = inputs.require("ref")?;
     let apply = args["apply"].as_bool().unwrap_or(false);
     let instruction = instruction(action, args, inputs)?;
-    let receipt = ds_cli_auth::style_edit(lane, reference, &instruction, apply)?;
+    let receipt = ds_cli_auth::style_edit(lane, project, reference, &instruction, apply)?;
     let mut data = receipt.result().data().clone();
     data["lane"] = json!(receipt.lane());
     Ok(data)
@@ -256,11 +263,12 @@ fn refused(message: impl Into<String>) -> Failure {
 /// so `ds` could never answer at all and `style read` reported `onMap: null`.
 ///
 /// `--transformer` names the canonical source: one exact transformer in the
-/// selected project, fetched through the same fixed gateway call
+/// project named by `--project`, fetched through the same fixed gateway call
 /// `ds design features select` uses. Without it nothing is observed, and the
 /// kernel says so by name rather than reporting a confidently empty answer.
 fn observe_canonical(
     lane: &str,
+    project: &str,
     snapshot: &Value,
     reference: &str,
     inputs: &Inputs,
@@ -275,7 +283,7 @@ fn observe_canonical(
         .find(|editor| editor["style_ref"] == reference)
         .ok_or_else(|| refused("style editor is missing"))?;
     let layer_name = editor["layer_name"].as_str().unwrap_or_default();
-    let context = ds_cli_auth::transformer_context(lane, transformer)?;
+    let context = ds_cli_auth::transformer_context_for_project(lane, project, transformer)?;
     let features = canonical_features(context.snapshot().layers(), layer_name);
     let request = json!({
         "schema": ds_command_kernel::field_domain::REQUEST_SCHEMA,
