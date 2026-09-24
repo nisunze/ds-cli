@@ -32,7 +32,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::LANE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 /// ds-brain's own bound: one apply is one Firestore transaction, and 50
 /// transformers × six administrative levels leaves room for the definition
@@ -101,13 +101,18 @@ unsupported_jurisdiction or refused — and the plan digest fences the apply.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMERS_ARG, REFERENCE_REVISION_ARG, LANE_ARG],
+    args: &[
+        TRANSFORMERS_ARG,
+        REFERENCE_REVISION_ARG,
+        PROJECT_ARG,
+        LANE_ARG,
+    ],
     output: "\
 The project, resolved jurisdiction and country, the reference revision (or \
 `unpinned`), the governed definitions the plan touches, one ordered outcome per \
 transformer and level, per-action counts, and the plan digest.",
     examples: &[Example {
-        command: "ds design tag enrich-preview --transformers kigali_a,kigali_b --output json",
+        command: "ds design tag enrich-preview --project <id> --transformers kigali_a,kigali_b --output json",
         note: "Read counts and outcomes before applying; `unsupported_jurisdiction` is a valid answer.",
         runnable: false,
     }],
@@ -138,11 +143,12 @@ fields, their codes and the geometry behind them — is never touched.",
         TRANSFORMERS_ARG,
         DIGEST_ARG,
         REFERENCE_REVISION_ARG,
+        PROJECT_ARG,
         LANE_ARG,
     ],
     output: "The same plan, with `applied` true and the counts that landed.",
     examples: &[Example {
-        command: "ds design tag enrich-apply --transformers kigali_a --digest <plan-digest>",
+        command: "ds design tag enrich-apply --project <id> --transformers kigali_a --digest <plan-digest>",
         note: "The digest comes from preview; ds carries it and never mints one.",
         runnable: false,
     }],
@@ -164,6 +170,7 @@ pub fn run_preview(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
         "design.tag.enrich-preview",
         arguments,
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 
@@ -174,6 +181,7 @@ pub fn run_apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
         "design.tag.enrich-apply",
         arguments,
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

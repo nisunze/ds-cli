@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
-use crate::{KIND_ARG, LANE_ARG, OBJECT_ARG, VERSION_ARG};
+use crate::{KIND_ARG, LANE_ARG, OBJECT_ARG, PROJECT_ARG, VERSION_ARG};
 
 pub static COMMAND: Command = Command {
     id: "design.tag.list",
@@ -26,13 +26,13 @@ scraping it out of a UI.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[KIND_ARG, OBJECT_ARG, VERSION_ARG, LANE_ARG],
+    args: &[KIND_ARG, OBJECT_ARG, VERSION_ARG, PROJECT_ARG, LANE_ARG],
     output: "\
 The project, anchored object, and rows of definition, value_type, input_control, \
 constraints, cardinality, state, allowed choice vocabulary, values, typed_values \
 and template origin.",
     examples: &[Example {
-        command: "ds design tag list --kind lv_transformer --object kigali_a --output json",
+        command: "ds design tag list --project <id> --kind lv_transformer --object kigali_a --output json",
         note: "Read value_type and allowed before choosing --values, --text, --integer or --number.",
         runnable: false,
     }],
@@ -49,6 +49,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.tag.list",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

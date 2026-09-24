@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{LANE_ARG, MAX_TAG_VALUES};
+use crate::{LANE_ARG, MAX_TAG_VALUES, PROJECT_ARG};
 
 pub const DEFINITION_ARG: Arg = Arg {
     name: "definition",
@@ -188,17 +188,18 @@ copy no longer says what that exact template version says.",
         SEMANTIC_NAMESPACE_ARG,
         SEMANTIC_KEY_ARG,
         JURISDICTION_ARG,
+        PROJECT_ARG,
         LANE_ARG,
     ],
     output: "The project, definition id, name, value type, input control, constraints, cardinality, version and stored exact-case choice vocabulary.",
     examples: &[
         Example {
-            command: "ds design tag define --definition transformer_scope --name \"Transformer scope\" --values initial_scope,additional_scope --yes",
+            command: "ds design tag define --project <id> --definition transformer_scope --name \"Transformer scope\" --values initial_scope,additional_scope --yes",
             note: "Legacy choice spelling stays valid; cardinality and value type default to single/choice.",
             runnable: false,
         },
         Example {
-            command: "ds design tag define --definition completion --name \"Completion percent\" --value-type number --min 0 --max 100 --yes",
+            command: "ds design tag define --project <id> --definition completion --name \"Completion percent\" --value-type number --min 0 --max 100 --yes",
             note: "A numeric definition has no --values vocabulary; the server stores its closed type and bounds.",
             runnable: false,
         },
@@ -313,6 +314,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.tag.define",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

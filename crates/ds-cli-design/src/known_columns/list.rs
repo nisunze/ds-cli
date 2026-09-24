@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::LANE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 pub static COMMAND: Command = Command {
     id: "design.known-columns.list",
@@ -17,10 +17,10 @@ pub static COMMAND: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE_ARG],
+    args: &[PROJECT_ARG, LANE_ARG],
     output: "The active project, authority=know_columns, revision, and allowed property names by layer.",
     examples: &[Example {
-        command: "ds design known-columns list",
+        command: "ds design known-columns list --project <id>",
         note: "An omitted tag field remains internal and is not emitted to external design surfaces.",
         runnable: false,
     }],
@@ -39,6 +39,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.known-columns.list",
         json!({}),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

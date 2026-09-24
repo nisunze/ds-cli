@@ -1,5 +1,5 @@
 //! Explicit, preview-pinned catalog replication through the governed owner.
-use crate::LANE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Requires,
@@ -53,7 +53,7 @@ pub static PREVIEW: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TEMPLATE, RULE, ROW, LANE_ARG],
+    args: &[TEMPLATE, RULE, ROW, PROJECT_ARG, LANE_ARG],
     output: "Source rows, selected targets with revisions and changes, skipped project IDs, digest and applied=false.",
     examples: &[],
     refusals: &crate::headless_refusals!(crate::NOT_PERMITTED, crate::CONFLICT,),
@@ -72,7 +72,7 @@ pub static APPLY: Command = Command {
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TEMPLATE, RULE, ROW, DIGEST, LANE_ARG],
+    args: &[TEMPLATE, RULE, ROW, DIGEST, PROJECT_ARG, LANE_ARG],
     output: "The committed plan with applied=true; no partial fanout and no transformer result save.",
     examples: &[],
     refusals: &crate::headless_refusals!(
@@ -98,6 +98,7 @@ fn run(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
         },
         args,
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 pub fn preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

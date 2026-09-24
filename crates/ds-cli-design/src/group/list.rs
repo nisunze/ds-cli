@@ -5,8 +5,8 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::LANE_ARG;
 use crate::group::LISTING_TRANSFORMERS_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 pub static COMMAND: Command = Command {
     id: "design.group.list",
@@ -25,13 +25,13 @@ state, not an error — it is defined in the application's Tags surface.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LISTING_TRANSFORMERS_ARG, LANE_ARG],
+    args: &[LISTING_TRANSFORMERS_ARG, PROJECT_ARG, LANE_ARG],
     output: "\
 The project and one row per group: `group`, `defined`, `cardinality`, the \
 `allowed` vocabulary, optional model-evidence state, and each named \
 transformer's current `value` and `modelState`.",
     examples: &[Example {
-        command: "ds design group list --transformers kigali_a,kigali_b --output json",
+        command: "ds design group list --project <id> --transformers kigali_a,kigali_b --output json",
         note: "Read .data.groups[].allowed before `ds design group preview`.",
         runnable: false,
     }],
@@ -56,6 +56,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.group.list",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

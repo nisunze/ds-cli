@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{KIND_ARG, LANE_ARG, OBJECT_ARG, VERSION_ARG};
+use crate::{KIND_ARG, LANE_ARG, OBJECT_ARG, PROJECT_ARG, VERSION_ARG};
 
 const RESOLVED_ARG: Arg = Arg {
     name: "resolved",
@@ -34,10 +34,17 @@ an id from here.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[KIND_ARG, OBJECT_ARG, VERSION_ARG, RESOLVED_ARG, LANE_ARG],
+    args: &[
+        KIND_ARG,
+        OBJECT_ARG,
+        VERSION_ARG,
+        RESOLVED_ARG,
+        PROJECT_ARG,
+        LANE_ARG,
+    ],
     output: "The project, the anchored object, the total, and rows of `thread`, `title`, `state`, `comments`, `version`, `anchor` and `task`.",
     examples: &[Example {
-        command: "ds design comment list --kind mv_model --object mv_line_a --resolved --output json",
+        command: "ds design comment list --project <id> --kind mv_model --object mv_line_a --resolved --output json",
         note: "Read .data.threads[].thread to open one with `ds design comment read`.",
         runnable: false,
     }],
@@ -57,6 +64,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.comment.list",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

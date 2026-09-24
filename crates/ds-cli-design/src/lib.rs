@@ -269,6 +269,14 @@ pub const LIMIT_ARG: Arg = Arg {
 pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
     .choices(&["stable", "canary"])
     .default("stable");
+/// The project a headless design command is about, always named: the saved
+/// selection is never read, so one host serves several projects at once.
+pub const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project this call is about; the saved selection is never read.",
+)
+.required();
 
 /// The refusals the headless project client can answer with, for every
 /// headless command of this domain. Declared once in `ds auth`.

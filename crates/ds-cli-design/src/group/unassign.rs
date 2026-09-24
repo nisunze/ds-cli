@@ -5,8 +5,8 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::LANE_ARG;
 use crate::group::{DIGEST_ARG, GROUP_ARG, TRANSFORMERS_ARG};
+use crate::{LANE_ARG, PROJECT_ARG};
 
 pub static COMMAND: Command = Command {
     id: "design.group.unassign",
@@ -24,10 +24,16 @@ must never be reachable by forgetting a flag.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[GROUP_ARG, TRANSFORMERS_ARG, DIGEST_ARG, LANE_ARG],
+    args: &[
+        GROUP_ARG,
+        TRANSFORMERS_ARG,
+        DIGEST_ARG,
+        PROJECT_ARG,
+        LANE_ARG,
+    ],
     output: "The same plan shape `preview` returns, with the committed `state` and per-entry outcomes.",
     examples: &[Example {
-        command: "ds design group unassign --group city --transformers kigali_a --digest <plan-digest> --yes",
+        command: "ds design group unassign --project <id> --group city --transformers kigali_a --digest <plan-digest> --yes",
         note: "Preview the same set with no --value to obtain the digest this expects.",
         runnable: false,
     }],
@@ -59,6 +65,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.group.unassign",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

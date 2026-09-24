@@ -8,7 +8,8 @@
 //! ds-brain is the only authority, so this module performs the same
 //! operations, with the same argument maps the commands already build and the
 //! same answer shapes they already document, under the native credential for
-//! the selected project. The argument keys are the adapter's own — one door,
+//! the project each call names with `--project` (the saved selection is never
+//! read). The argument keys are the adapter's own — one door,
 //! one spelling — and each function below names the adapter function it
 //! translates.
 //!
@@ -27,52 +28,66 @@ use crate::{
     TAG_VALUE_NOT_IN_VOCABULARY,
 };
 
+/// Where one collaboration operation runs: the lane selects the native
+/// credential and the project is the one the caller named. The saved selection
+/// is never read.
+#[derive(Clone, Copy)]
+struct Door<'a> {
+    lane: &'a str,
+    project: &'a str,
+}
+
 /// One collaboration operation, by the name the command declared, with the
-/// argument map it built. The lane selects the native credential.
-pub fn perform(operation: &str, arguments: Value, lane: &str) -> Result<Value, Failure> {
+/// argument map it built, against the project the caller named.
+pub fn perform(
+    operation: &str,
+    arguments: Value,
+    lane: &str,
+    project: &str,
+) -> Result<Value, Failure> {
     // The route's coarse codes are refined the way the paired answer was:
     // a case-mismatched tag value, an archived project and a missing
     // capability each keep their own code, remedy and next step.
-    dispatch(operation, arguments, lane).map_err(crate::classify_design_failure)
+    dispatch(operation, arguments, Door { lane, project }).map_err(crate::classify_design_failure)
 }
 
-fn dispatch(operation: &str, arguments: Value, lane: &str) -> Result<Value, Failure> {
+fn dispatch(operation: &str, arguments: Value, door: Door<'_>) -> Result<Value, Failure> {
     let args = arguments.as_object().cloned().unwrap_or_default();
     match operation {
-        "design.tag.list" => tag_list(lane, &args),
-        "design.tag.define" => tag_define(lane, &args),
-        "design.tag.set" => tag_set(lane, &args),
-        "design.tag.query" => tag_query(lane, &args),
-        "design.tag.enrich-preview" => enrichment(lane, &args, false),
-        "design.tag.enrich-apply" => enrichment(lane, &args, true),
-        "design.group.list" => group_list(lane, &args),
-        "design.group.preview" => group_plan(lane, &args, GroupPlan::Preview),
-        "design.group.apply" => group_plan(lane, &args, GroupPlan::Apply),
-        "design.group.unassign" => group_plan(lane, &args, GroupPlan::Unassign),
-        "design.group.export" => group_export(lane, &args),
-        "design.consumer-grouping.preview" => consumer_grouping(lane, &args, false),
-        "design.consumer-grouping.apply" => consumer_grouping(lane, &args, true),
+        "design.tag.list" => tag_list(door, &args),
+        "design.tag.define" => tag_define(door, &args),
+        "design.tag.set" => tag_set(door, &args),
+        "design.tag.query" => tag_query(door, &args),
+        "design.tag.enrich-preview" => enrichment(door, &args, false),
+        "design.tag.enrich-apply" => enrichment(door, &args, true),
+        "design.group.list" => group_list(door, &args),
+        "design.group.preview" => group_plan(door, &args, GroupPlan::Preview),
+        "design.group.apply" => group_plan(door, &args, GroupPlan::Apply),
+        "design.group.unassign" => group_plan(door, &args, GroupPlan::Unassign),
+        "design.group.export" => group_export(door, &args),
+        "design.consumer-grouping.preview" => consumer_grouping(door, &args, false),
+        "design.consumer-grouping.apply" => consumer_grouping(door, &args, true),
         "design.consumer-grouping.read" => annotate(
-            lane,
+            door,
             &Command::ReadConsumerGrouping {
                 purpose: text(&args, "purpose").unwrap_or_else(|| "solar_report".into()),
             },
         ),
         "design.consumer-grouping.archive" => annotate(
-            lane,
+            door,
             &Command::ArchiveConsumerGrouping {
                 purpose: text(&args, "purpose").unwrap_or_else(|| "solar_report".into()),
             },
         ),
-        "design.comment.list" => comment_list(lane, &args),
-        "design.comment.read" => comment_read(lane, &args),
-        "design.comment.post" => comment_post(lane, &args),
-        "design.comment.resolve" => comment_resolve(lane, &args),
-        "design.comment.promote" => comment_promote(lane, &args),
-        "design.known-columns.list" => known_columns_list(lane),
-        "design.known-columns.set" => known_columns_set(lane, &args),
-        "design.materials.preview" => materials(lane, &args, "preview"),
-        "design.materials.apply" => materials(lane, &args, "apply"),
+        "design.comment.list" => comment_list(door, &args),
+        "design.comment.read" => comment_read(door, &args),
+        "design.comment.post" => comment_post(door, &args),
+        "design.comment.resolve" => comment_resolve(door, &args),
+        "design.comment.promote" => comment_promote(door, &args),
+        "design.known-columns.list" => known_columns_list(door),
+        "design.known-columns.set" => known_columns_set(door, &args),
+        "design.materials.preview" => materials(door, &args, "preview"),
+        "design.materials.apply" => materials(door, &args, "apply"),
         other => Err(Failure::internal(
             "design_operation_unowned",
             format!("`{other}` has no headless owner"),
@@ -82,12 +97,12 @@ fn dispatch(operation: &str, arguments: Value, lane: &str) -> Result<Value, Fail
 
 // ── the door ────────────────────────────────────────────────────────────
 
-fn annotate(lane: &str, command: &Command) -> Result<Value, Failure> {
-    Ok(ds_cli_auth::design_annotations(lane, command)?.into_result())
+fn annotate(door: Door<'_>, command: &Command) -> Result<Value, Failure> {
+    Ok(ds_cli_auth::design_annotations(door.lane, door.project, command)?.into_result())
 }
 
-fn annotate_with_project(lane: &str, command: &Command) -> Result<(String, Value), Failure> {
-    let report = ds_cli_auth::design_annotations(lane, command)?;
+fn annotate_with_project(door: Door<'_>, command: &Command) -> Result<(String, Value), Failure> {
+    let report = ds_cli_auth::design_annotations(door.lane, door.project, command)?;
     let project = report.project_id().to_owned();
     Ok((project, report.into_result()))
 }
@@ -140,16 +155,16 @@ fn null_or(value: Option<&Value>) -> Value {
 // ── tags ────────────────────────────────────────────────────────────────
 
 /// `listCliDesignTags`.
-fn tag_list(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn tag_list(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let object = object_ref(args)?;
     let (project, definitions) = annotate_with_project(
-        lane,
+        door,
         &Command::ListTagDefinitions {
             include_archived: false,
         },
     )?;
     let assignments = annotate(
-        lane,
+        door,
         &Command::ListTags {
             object: object.clone(),
         },
@@ -212,10 +227,10 @@ fn tag_list(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
 /// `defineCliDesignTag`. The definition's admissibility was the kernel's
 /// verdict in the command (`admissible`); here the definition is read for
 /// its current version, refused when a governed authority owns it, and saved.
-fn tag_define(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn tag_define(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let definition_id = text(args, "definition").unwrap_or_default();
     let (project, definitions) = annotate_with_project(
-        lane,
+        door,
         &Command::ListTagDefinitions {
             include_archived: true,
         },
@@ -277,7 +292,7 @@ fn tag_define(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
     if let Some(version) = current.as_ref().and_then(|c| c["version"].as_i64()) {
         definition["expected_version"] = json!(version);
     }
-    let saved = annotate(lane, &Command::SaveTagDefinition { definition })?;
+    let saved = annotate(door, &Command::SaveTagDefinition { definition })?;
     Ok(json!({
         "project": project,
         "definition": saved["definition_id"],
@@ -297,11 +312,11 @@ fn tag_define(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
 }
 
 /// `setCliDesignTags`: read the current assignment for its version, then set.
-fn tag_set(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn tag_set(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let object = object_ref(args)?;
     let definition_id = text(args, "definition").unwrap_or_default();
     let (project, assignments) = annotate_with_project(
-        lane,
+        door,
         &Command::ListTags {
             object: object.clone(),
         },
@@ -319,7 +334,7 @@ fn tag_set(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
         Some(texts(args, "values"))
     };
     let saved = annotate(
-        lane,
+        door,
         &Command::SetTags {
             object: object.clone(),
             definition_id: definition_id.clone(),
@@ -339,7 +354,7 @@ fn tag_set(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
 }
 
 /// `assertChoiceValuesAreStored` + `queryCliDesignTags`.
-fn tag_query(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn tag_query(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let filters = args.get("filters").cloned().unwrap_or(json!([]));
     let match_all = text(args, "match").as_deref() != Some("any");
     let limit = args["limit"].as_i64().unwrap_or(2_000);
@@ -354,7 +369,8 @@ fn tag_query(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
         .collect();
     let (project, definitions) = if choice_filters.is_empty() {
         let report = ds_cli_auth::design_annotations(
-            lane,
+            door.lane,
+            door.project,
             &Command::QueryTags {
                 filters: filters.clone(),
                 match_all,
@@ -365,7 +381,7 @@ fn tag_query(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
         return Ok(query_result(&project, &report.into_result()));
     } else {
         annotate_with_project(
-            lane,
+            door,
             &Command::ListTagDefinitions {
                 include_archived: false,
             },
@@ -418,7 +434,7 @@ fn tag_query(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
         }
     }
     let result = annotate(
-        lane,
+        door,
         &Command::QueryTags {
             filters,
             match_all,
@@ -459,7 +475,7 @@ fn query_result(project: &str, result: &Value) -> Value {
 }
 
 /// `previewCliLocationEnrichment` / `applyCliLocationEnrichment`.
-fn enrichment(lane: &str, args: &Map<String, Value>, apply: bool) -> Result<Value, Failure> {
+fn enrichment(door: Door<'_>, args: &Map<String, Value>, apply: bool) -> Result<Value, Failure> {
     let transformers = texts(args, "transformers");
     let reference_revision = text(args, "reference-revision");
     let command = if apply {
@@ -474,7 +490,7 @@ fn enrichment(lane: &str, args: &Map<String, Value>, apply: bool) -> Result<Valu
             reference_revision,
         }
     };
-    let plan = annotate(lane, &command)?;
+    let plan = annotate(door, &command)?;
     Ok(json!({
         "project": plan["project_id"],
         "authority": plan["authority"],
@@ -492,9 +508,9 @@ fn enrichment(lane: &str, args: &Map<String, Value>, apply: bool) -> Result<Valu
 // ── groups ──────────────────────────────────────────────────────────────
 
 /// `listCliDesignTagGroups`.
-fn group_list(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn group_list(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let (project, summaries) = annotate_with_project(
-        lane,
+        door,
         &Command::ListTagGroups {
             transformers: texts(args, "transformers"),
         },
@@ -535,7 +551,11 @@ enum GroupPlan {
 
 /// `previewCliDesignTagGroup` / `applyCliDesignTagGroup` /
 /// `unassignCliDesignTagGroup`, shaped by `planResult`.
-fn group_plan(lane: &str, args: &Map<String, Value>, kind: GroupPlan) -> Result<Value, Failure> {
+fn group_plan(
+    door: Door<'_>,
+    args: &Map<String, Value>,
+    kind: GroupPlan,
+) -> Result<Value, Failure> {
     let group = text(args, "group").unwrap_or_default();
     let transformers = texts(args, "transformers");
     // The value is sent EXACTLY as given (trimmed, as the entry builder
@@ -564,7 +584,7 @@ fn group_plan(lane: &str, args: &Map<String, Value>, kind: GroupPlan) -> Result<
             plan_digest: digest,
         },
     };
-    let (project, plan) = annotate_with_project(lane, &command)?;
+    let (project, plan) = annotate_with_project(door, &command)?;
     Ok(plan_result(&project, &plan))
 }
 
@@ -604,9 +624,9 @@ fn plan_result(project: &str, plan: &Value) -> Value {
 }
 
 /// `exportCliDesignTagProjection`.
-fn group_export(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn group_export(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let (project, projection) = annotate_with_project(
-        lane,
+        door,
         &Command::ExportTagProjection {
             transformers: texts(args, "transformers"),
             definition_ids: texts(args, "definition-ids"),
@@ -632,7 +652,11 @@ fn group_export(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure>
 
 /// `previewCliConsumerGrouping` / `applyCliConsumerGrouping`. `bindings`
 /// arrive as the JSON text the command was given.
-fn consumer_grouping(lane: &str, args: &Map<String, Value>, apply: bool) -> Result<Value, Failure> {
+fn consumer_grouping(
+    door: Door<'_>,
+    args: &Map<String, Value>,
+    apply: bool,
+) -> Result<Value, Failure> {
     let purpose = text(args, "purpose").unwrap_or_else(|| "solar_report".into());
     let bindings: Value = match args.get("bindings") {
         Some(Value::String(raw)) => serde_json::from_str(raw).map_err(|_| {
@@ -673,16 +697,16 @@ fn consumer_grouping(lane: &str, args: &Map<String, Value>, apply: bool) -> Resu
             bindings,
         }
     };
-    annotate(lane, &command)
+    annotate(door, &command)
 }
 
 // ── comments ────────────────────────────────────────────────────────────
 
 /// `listCliDesignThreads`.
-fn comment_list(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn comment_list(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let object = object_ref(args)?;
     let (project, threads) = annotate_with_project(
-        lane,
+        door,
         &Command::ListThreads {
             object: object.clone(),
             include_resolved: args.get("resolved") == Some(&Value::Bool(true)),
@@ -740,9 +764,9 @@ fn thread_view(project: &str, resolved: &Value) -> Value {
 }
 
 /// `readCliDesignThread`.
-fn comment_read(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn comment_read(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let thread_id = text(args, "thread").unwrap_or_default();
-    let (project, resolved) = annotate_with_project(lane, &Command::GetThread { thread_id })?;
+    let (project, resolved) = annotate_with_project(door, &Command::GetThread { thread_id })?;
     Ok(thread_view(&project, &resolved))
 }
 
@@ -775,12 +799,12 @@ fn mint_id(prefix: &str, human_name: &str) -> Result<String, Failure> {
 }
 
 /// `postCliDesignComment`: append to a thread, or open one.
-fn comment_post(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn comment_post(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let body = text(args, "body").unwrap_or_default();
     if let Some(thread_id) = text(args, "thread") {
         let comment_id = mint_id("c", &body.chars().take(24).collect::<String>())?;
         let (project, resolved) = annotate_with_project(
-            lane,
+            door,
             &Command::AddComment {
                 thread_id: thread_id.clone(),
                 comment_id,
@@ -798,7 +822,7 @@ fn comment_post(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure>
     let title = text(args, "title").unwrap_or_default();
     let thread_id = mint_id("thread", &title)?;
     let (project, resolved) = annotate_with_project(
-        lane,
+        door,
         &Command::CreateThread {
             thread_id,
             object,
@@ -817,10 +841,10 @@ fn comment_post(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure>
 
 /// `resolveCliDesignThread`: read the thread for its version, then resolve
 /// or reopen it.
-fn comment_resolve(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn comment_resolve(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let thread_id = text(args, "thread").unwrap_or_default();
     let (project, current) = annotate_with_project(
-        lane,
+        door,
         &Command::GetThread {
             thread_id: thread_id.clone(),
         },
@@ -833,7 +857,7 @@ fn comment_resolve(lane: &str, args: &Map<String, Value>) -> Result<Value, Failu
         .remedy(DESIGN_RECORD_NOT_FOUND.remedy)
     })?;
     let resolved = annotate(
-        lane,
+        door,
         &Command::ResolveThread {
             thread_id: thread_id.clone(),
             expected_version,
@@ -850,10 +874,10 @@ fn comment_resolve(lane: &str, args: &Map<String, Value>) -> Result<Value, Failu
 
 /// `promoteCliDesignThread`: the thread's version and the plan's revision
 /// pin the promotion.
-fn comment_promote(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
+fn comment_promote(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
     let thread_id = text(args, "thread").unwrap_or_default();
     let (project, current) = annotate_with_project(
-        lane,
+        door,
         &Command::GetThread {
             thread_id: thread_id.clone(),
         },
@@ -865,9 +889,12 @@ fn comment_promote(lane: &str, args: &Map<String, Value>) -> Result<Value, Failu
         )
         .remedy(CONFLICT.remedy)
     })?;
-    let graph =
-        ds_cli_auth::project_management(lane, &ds_client_core::project_management::Command::Graph)?
-            .into_result();
+    let graph = ds_cli_auth::project_management_for_project(
+        door.lane,
+        door.project,
+        &ds_client_core::project_management::Command::Graph,
+    )?
+    .into_result();
     let base_revision = graph["revision"]
         .as_i64()
         .or_else(|| graph["graph_revision"].as_i64())
@@ -876,7 +903,7 @@ fn comment_promote(lane: &str, args: &Map<String, Value>) -> Result<Value, Failu
         .or_else(|| current["thread"]["title"].as_str().map(str::to_owned))
         .unwrap_or_default();
     let resolved = annotate(
-        lane,
+        door,
         &Command::PromoteThread {
             thread_id: thread_id.clone(),
             expected_version,
@@ -896,8 +923,9 @@ fn comment_promote(lane: &str, args: &Map<String, Value>) -> Result<Value, Failu
 // ── known columns ───────────────────────────────────────────────────────
 
 /// `listCliDesignKnownColumns`.
-fn known_columns_list(lane: &str) -> Result<Value, Failure> {
-    let report = ds_cli_auth::known_columns(lane, &known_columns::Command::List)?;
+fn known_columns_list(door: Door<'_>) -> Result<Value, Failure> {
+    let report =
+        ds_cli_auth::known_columns(door.lane, door.project, &known_columns::Command::List)?;
     let project = report.project_id().to_owned();
     let document = report.into_result();
     Ok(json!({
@@ -909,11 +937,14 @@ fn known_columns_list(lane: &str) -> Result<Value, Failure> {
 }
 
 /// `setCliDesignKnownColumn`: read for the revision, then patch against it.
-fn known_columns_set(lane: &str, args: &Map<String, Value>) -> Result<Value, Failure> {
-    let current = ds_cli_auth::known_columns(lane, &known_columns::Command::List)?.into_result();
+fn known_columns_set(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
+    let current =
+        ds_cli_auth::known_columns(door.lane, door.project, &known_columns::Command::List)?
+            .into_result();
     let expected_revision = current["revision"].as_i64().unwrap_or(0);
     let report = ds_cli_auth::known_columns(
-        lane,
+        door.lane,
+        door.project,
         &known_columns::Command::Set {
             layer: text(args, "layer").unwrap_or_default(),
             field: text(args, "field").unwrap_or_default(),
@@ -938,7 +969,7 @@ fn known_columns_set(lane: &str, args: &Map<String, Value>) -> Result<Value, Fai
 
 /// `propagateCliDesignMaterials`: the kernel builds the fenced request and
 /// judges the receipt; the report gate carries it.
-fn materials(lane: &str, args: &Map<String, Value>, mode: &str) -> Result<Value, Failure> {
+fn materials(door: Door<'_>, args: &Map<String, Value>, mode: &str) -> Result<Value, Failure> {
     let build = |input: Value| -> Result<Value, Failure> {
         let bytes = serde_json::to_vec(&input)
             .map_err(|error| Failure::internal("design_request_invalid", error.to_string()))?;
@@ -953,17 +984,18 @@ fn materials(lane: &str, args: &Map<String, Value>, mode: &str) -> Result<Value,
     // The source project is the selected one; the door hands it over once
     // the credential and its selection are restored, so the request is built
     // once and for the right project.
-    let (_, request, receipt) = ds_cli_auth::material_propagation(lane, |project| {
-        build(json!({
-            "schema": "ds.design.material-propagation/v1",
-            "source_project": project,
-            "template": args.get("template").cloned().unwrap_or(Value::Null),
-            "rule_set": args.get("rule-set").cloned().unwrap_or(Value::Null),
-            "rows": args.get("rows").cloned().unwrap_or(json!([])),
-            "mode": mode,
-            "expected_digest": text(args, "digest").unwrap_or_default(),
-        }))
-    })?;
+    let (_, request, receipt) =
+        ds_cli_auth::material_propagation(door.lane, door.project, |project| {
+            build(json!({
+                "schema": "ds.design.material-propagation/v1",
+                "source_project": project,
+                "template": args.get("template").cloned().unwrap_or(Value::Null),
+                "rule_set": args.get("rule-set").cloned().unwrap_or(Value::Null),
+                "rows": args.get("rows").cloned().unwrap_or(json!([])),
+                "mode": mode,
+                "expected_digest": text(args, "digest").unwrap_or_default(),
+            }))
+        })?;
     let judged = ds_command_kernel::design_config::material_propagation_receipt(
         &serde_json::to_vec(&json!({ "request": request, "receipt": receipt }))
             .map_err(|error| Failure::internal("design_request_invalid", error.to_string()))?,
@@ -1065,7 +1097,7 @@ mod tests {
     #[test]
     fn an_unowned_operation_is_a_defect_not_a_refusal() {
         assert_eq!(
-            perform("design.nothing", json!({}), "stable")
+            perform("design.nothing", json!({}), "stable", "test-project")
                 .expect_err("unowned")
                 .code(),
             "design_operation_unowned"

@@ -449,8 +449,8 @@ Since 2026-09-20 tags, groups, consumer grouping, comments, known columns and
 material propagation run headless too: each command is one closed kernel door
 (`ds_client_core::design_annotations`, `known_columns`, and the
 material-propagation report action) that `ds auth` runs under the restored
-native user and its audience-fenced selected project for `--lane
-stable|canary`. `ds` sends a request and receives an outcome. It never holds
+native user against the project named by `--project` (the saved selection
+is never read) for `--lane stable|canary`. `ds` sends a request and receives an outcome. It never holds
 a window, never receives a credential it did not mint, and answers the same
 on the Server and on the desktop. A caller who learned `--desktop-descriptor`
 from an older release is refused by name, `requires_window_retired`, before
@@ -497,38 +497,38 @@ ds design attachment list --project <project-id> --kind mv_model --object mv_lin
 ds design attachment publish --project <project-id> --kind mv_model --object mv_line_a \
   --path ./MV_LINE_A.bak --version rev_2 --yes
 
-ds design tag list --kind lv_transformer --object kigali_a
-ds design tag set --kind lv_transformer --object kigali_a \
+ds design tag list --project <id> --kind lv_transformer --object kigali_a
+ds design tag set --project <id> --kind lv_transformer --object kigali_a \
   --definition transformer_scope --values additional_scope --yes
 
 # Typed definitions and values retain their numeric/text identity.
-ds design tag define --definition completion --name "Completion percent" \
+ds design tag define --project <id> --definition completion --name "Completion percent" \
   --value-type number --min 0 --max 100 --yes
-ds design tag set --kind lv_transformer --object kigali_a \
+ds design tag set --project <id> --kind lv_transformer --object kigali_a \
   --definition completion --number 82.5 --yes
 
 # `know_columns` is the exact external property authority.
-ds design known-columns list
-ds design known-columns set --layer mv_lines --field tag_city \
+ds design known-columns list --project <id>
+ds design known-columns set --project <id> --layer mv_lines --field tag_city \
   --visibility published --yes
-ds design known-columns set --layer mv_lines --field tag_internal_review \
+ds design known-columns set --project <id> --layer mv_lines --field tag_internal_review \
   --visibility hidden --yes
 
 # Project-wide typed filters never require an open map.
-ds design tag query --choice city:any_of:huye,kigali --output json
-ds design tag query --choice phasing:equals:phase-1 \
+ds design tag query --project <id> --choice city:any_of:huye,kigali --output json
+ds design tag query --project <id> --choice phasing:equals:phase-1 \
   --number completion:gte:80 --output json
 
-ds design group list --transformers kigali_a,kigali_b            # allowed values
-ds design group preview --group city --transformers kigali_a,kigali_b \
+ds design group list --project <id> --transformers kigali_a,kigali_b            # allowed values
+ds design group preview --project <id> --group city --transformers kigali_a,kigali_b \
   --value kigali --output json                                   # plan + digest
-ds design group apply --group city --transformers kigali_a,kigali_b \
+ds design group apply --project <id> --group city --transformers kigali_a,kigali_b \
   --value kigali --digest <plan-digest> --yes
-ds design group export --transformers kigali_a,kigali_b \
+ds design group export --project <id> --transformers kigali_a,kigali_b \
   --output json | jq -r .data.document > tags.json               # for a report
 
-ds design comment list --kind lv_transformer --object kigali_a
-ds design comment post --thread thread-clearance --body "Agreed, re-spot it." --yes
+ds design comment list --project <id> --kind lv_transformer --object kigali_a
+ds design comment post --project <id> --thread thread-clearance --body "Agreed, re-spot it." --yes
 ```
 
 ## Batch-editing eligible tag definitions

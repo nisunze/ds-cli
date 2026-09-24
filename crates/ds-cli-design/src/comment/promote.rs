@@ -7,8 +7,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::LANE_ARG;
 use crate::comment::read::THREAD_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 const TITLE_ARG: Arg = Arg {
     name: "title",
@@ -35,10 +35,10 @@ two work items.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[THREAD_ARG, TITLE_ARG, LANE_ARG],
+    args: &[THREAD_ARG, TITLE_ARG, PROJECT_ARG, LANE_ARG],
     output: "The project, the `thread`, the linked `task` id and the thread's committed `version`.",
     examples: &[Example {
-        command: "ds design comment promote --thread thread-clearance --yes",
+        command: "ds design comment promote --project <id> --thread thread-clearance --yes",
         note: "Pass --title to give the task a different name from the thread.",
         runnable: false,
     }],
@@ -64,6 +64,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.comment.promote",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{LANE_ARG, MAX_TAG_QUERY_FILTERS, MAX_TAG_QUERY_ROWS};
+use crate::{LANE_ARG, MAX_TAG_QUERY_FILTERS, MAX_TAG_QUERY_ROWS, PROJECT_ARG};
 
 const KIND_ARG: Arg = Arg {
     name: "kind",
@@ -116,22 +116,23 @@ refuses, never returning an empty set for a value the project never authored.",
         INTEGER_ARG,
         NUMBER_ARG,
         LIMIT_ARG,
+        PROJECT_ARG,
         LANE_ARG,
     ],
     output: "The complete matched object rows plus scanned object, assignment and read counts; never a silently truncated selection.",
     examples: &[
         Example {
-            command: "ds design tag query --choice city:any_of:huye,kigali --output json",
+            command: "ds design tag query --project <id> --choice city:any_of:huye,kigali --output json",
             note: "Hypothetical city grouping: returns transformers assigned either governed city value.",
             runnable: false,
         },
         Example {
-            command: "ds design tag query --choice phasing:equals:phase-1 --number completion:gte:80 --output json",
+            command: "ds design tag query --project <id> --choice phasing:equals:phase-1 --number completion:gte:80 --output json",
             note: "Hypothetical delivery cohort: phase 1 transformers whose numeric completion is at least 80.",
             runnable: false,
         },
         Example {
-            command: "ds design tag query --text survey_note:contains:access --presence inspection_date:exists --output json",
+            command: "ds design tag query --project <id> --text survey_note:contains:access --presence inspection_date:exists --output json",
             note: "Text and presence predicates remain typed and may be combined without opening the map.",
             runnable: false,
         },
@@ -202,6 +203,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.tag.query",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

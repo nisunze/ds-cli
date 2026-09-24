@@ -7,8 +7,8 @@ use serde_json::{Map, Value, json};
 
 use ds_cli_contract::spec::{Arg, ArgKind};
 
-use crate::LANE_ARG;
 use crate::group::{DIGEST_ARG, GROUP_ARG, TRANSFORMERS_ARG};
+use crate::{LANE_ARG, PROJECT_ARG};
 
 /// Assigning REQUIRES a value. It is declared required here rather than shared
 /// with `preview`, where omitting it is the meaningful way to plan an unassign:
@@ -43,10 +43,17 @@ outstanding worklist exactly. Never infer model behavior from the definition id.
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[GROUP_ARG, TRANSFORMERS_ARG, VALUE_ARG, DIGEST_ARG, LANE_ARG],
+    args: &[
+        GROUP_ARG,
+        TRANSFORMERS_ARG,
+        VALUE_ARG,
+        DIGEST_ARG,
+        PROJECT_ARG,
+        LANE_ARG,
+    ],
     output: "The same plan shape `preview` returns, with the committed `state` and per-entry outcomes.",
     examples: &[Example {
-        command: "ds design group apply --group city --transformers kigali_a,kigali_b --value kigali --digest <plan-digest> --yes",
+        command: "ds design group apply --project <id> --group city --transformers kigali_a,kigali_b --value kigali --digest <plan-digest> --yes",
         note: "The digest comes from `ds design group preview`; without --yes dispatch refuses first.",
         runnable: false,
     }],
@@ -81,6 +88,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.group.apply",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

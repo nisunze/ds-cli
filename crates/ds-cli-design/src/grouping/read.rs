@@ -5,8 +5,8 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::LANE_ARG;
 use crate::grouping::PURPOSE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 pub static READ_COMMAND: Command = Command {
     id: "design.consumer-grouping.read",
@@ -24,10 +24,10 @@ does.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PURPOSE_ARG, LANE_ARG],
+    args: &[PURPOSE_ARG, PROJECT_ARG, LANE_ARG],
     output: "The stored plan: purpose, definition_ids, groups, counts, plan_digest, revision, lifecycle.",
     examples: &[Example {
-        command: "ds design consumer-grouping read --purpose report_archive --output json",
+        command: "ds design consumer-grouping read --project <id> --purpose report_archive --output json",
         note: "This is the grouping a Combined Report archive files its folders by.",
         runnable: false,
     }],
@@ -52,10 +52,10 @@ new one to be applied.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PURPOSE_ARG, LANE_ARG],
+    args: &[PURPOSE_ARG, PROJECT_ARG, LANE_ARG],
     output: "The archived plan, with its lifecycle now `archived`.",
     examples: &[Example {
-        command: "ds design consumer-grouping archive --purpose report_archive",
+        command: "ds design consumer-grouping archive --project <id> --purpose report_archive",
         note: "Archiving stops the plan being used; it never removes the record.",
         runnable: false,
     }],
@@ -71,6 +71,7 @@ pub fn run_read(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         "design.consumer-grouping.read",
         json!({"purpose": crate::grouping::purpose(inputs)?}),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 
@@ -79,6 +80,7 @@ pub fn run_archive(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         "design.consumer-grouping.archive",
         json!({"purpose": crate::grouping::purpose(inputs)?}),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

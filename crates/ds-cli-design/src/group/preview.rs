@@ -7,8 +7,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::LANE_ARG;
 use crate::group::{GROUP_ARG, TRANSFORMERS_ARG};
+use crate::{LANE_ARG, PROJECT_ARG};
 
 pub const VALUE_ARG: Arg = Arg {
     name: "value",
@@ -38,13 +38,19 @@ bytes; `value_case_mismatch` names what you sent and the stored spelling.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[GROUP_ARG, TRANSFORMERS_ARG, VALUE_ARG, LANE_ARG],
+    args: &[
+        GROUP_ARG,
+        TRANSFORMERS_ARG,
+        VALUE_ARG,
+        PROJECT_ARG,
+        LANE_ARG,
+    ],
     output: "\
 The project, `group`, `operation`, the fencing `digest`, the `state`, counts of \
 `changed`/`unchanged`/`refused`, any `outstanding` transformers, and one \
 `outcomes` row per entry.",
     examples: &[Example {
-        command: "ds design group preview --group city --transformers kigali_a,kigali_b --value kigali --output json",
+        command: "ds design group preview --project <id> --group city --transformers kigali_a,kigali_b --value kigali --output json",
         note: "Carry .data.digest into `ds design group apply`; it is not reusable after the project moves.",
         runnable: false,
     }],
@@ -77,6 +83,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.group.preview",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

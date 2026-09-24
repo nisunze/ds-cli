@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::LANE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 const LAYER_ARG: Arg = Arg {
     name: "layer",
@@ -49,16 +49,16 @@ pub static COMMAND: Command = Command {
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LAYER_ARG, FIELD_ARG, VISIBILITY_ARG, LANE_ARG],
+    args: &[LAYER_ARG, FIELD_ARG, VISIBILITY_ARG, PROJECT_ARG, LANE_ARG],
     output: "The project, authority=know_columns, layer, field, stored visibility, changed flag and committed revision.",
     examples: &[
         Example {
-            command: "ds design known-columns set --layer mv_lines --field tag_city --visibility published --yes",
+            command: "ds design known-columns set --project <id> --layer mv_lines --field tag_city --visibility published --yes",
             note: "Allows only this city tag property on this external layer.",
             runnable: false,
         },
         Example {
-            command: "ds design known-columns set --layer mv_lines --field tag_internal_review --visibility hidden --yes",
+            command: "ds design known-columns set --project <id> --layer mv_lines --field tag_internal_review --visibility hidden --yes",
             note: "Keeps the internal tag in the model but removes it from later exports and tiles.",
             runnable: false,
         },
@@ -86,6 +86,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "visible": visibility == "published",
         }),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

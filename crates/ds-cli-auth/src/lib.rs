@@ -2641,6 +2641,30 @@ pub fn catalog_housekeeping(
     .map(|receipt| receipt.result)
 }
 
+/// The report shape of [`headless_project_report`] for the project the CALLER
+/// named. The saved selection is never read, so `project_name` and
+/// `project_status` are empty: they only ever came from a selection snapshot.
+fn headless_named_report<T>(
+    lane_value: &str,
+    project: &str,
+    device_call: impl FnOnce(&mut device::DeviceSession, &str) -> Result<T, ClientError>,
+    session_call: impl FnOnce(
+        &mut Client<NativeTransport, NativeRefreshStore>,
+        &str,
+    ) -> Result<T, ClientError>,
+) -> Result<HeadlessProjectReport<T>, Failure> {
+    let named = headless_named_project(lane_value, project, device_call, session_call)?;
+    Ok(HeadlessProjectReport {
+        identity: named.identity,
+        user_email: named.user_email,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
+    })
+}
+
 fn headless_project_report<T>(
     lane_value: &str,
     device_call: impl FnOnce(&mut device::DeviceSession, &str) -> Result<T, ClientError>,
@@ -3005,28 +3029,6 @@ pub const PM_REFUSED_REFUSAL: Refusal = Refusal {
     remedy: "read detail.service_message; correct the flag it names and retry",
 };
 
-/// One governed project-management action — a read of the graph or the
-/// context, or one committed command or draft — for only the saved,
-/// audience-fenced selected project.
-///
-/// Until 2026-09-19 every `ds pm` command declared `Requires::Window` and
-/// relayed through the paired desktop to the page's own adapters, so a server
-/// — the host most likely to be asked what a plan says — could not read one at
-/// all. `POST /api/v1/pm` was already published on both gateway lanes and
-/// ds-brain already authenticated from the bearer: the window was habit, never
-/// contract. On 2026-09-20 the writes followed the reads through this same
-/// door.
-pub fn project_management(
-    lane_value: &str,
-    command: &ds_client_core::project_management::Command,
-) -> Result<HeadlessProjectReport<serde_json::Value>, Failure> {
-    headless_project_report(
-        lane_value,
-        |device, project| device.project_management(project, command),
-        |client, project| client.project_management(project, command, now()),
-    )
-}
-
 /// One project-management command whose project is named by this request.
 /// The saved native selection is never observed or changed.
 pub fn project_management_for_project(
@@ -3070,56 +3072,62 @@ pub fn project_assets_for_project(
 /// contract.
 pub fn design_annotations(
     lane_value: &str,
+    project: &str,
     command: &ds_client_core::design_annotations::Command,
 ) -> Result<HeadlessProjectReport<Value>, Failure> {
-    headless_project_report(
+    headless_named_report(
         lane_value,
+        project,
         |device, project| device.design_annotations(project, command),
         |client, project| client.design_annotations(project, command, now()),
     )
 }
 
-/// The selected project's known-column visibility: read it, or set one
-/// field against the revision it was read at.
+/// The named project's known-column visibility: read it, or set one field
+/// against the revision it was read at.
 pub fn known_columns(
     lane_value: &str,
+    project: &str,
     command: &ds_client_core::known_columns::Command,
 ) -> Result<HeadlessProjectReport<Value>, Failure> {
-    headless_project_report(
+    headless_named_report(
         lane_value,
+        project,
         |device, project| device.known_columns(project, command),
         |client, project| client.known_columns(project, command, now()),
     )
 }
 
 /// One preview-pinned pole-material catalogue repair through the report gate,
-/// sourced from the selected project; the receipt is returned whole, with
-/// the request the kernel built for that project, for the kernel to judge.
+/// sourced from the project the caller named; the receipt is returned whole,
+/// with the request the kernel built for that project, for the kernel to
+/// judge. The saved selection is never read.
 ///
-/// `build` is handed the selected project id — the request's
-/// `source_project` — once the credential and its selection are restored,
-/// so the request is built exactly once and for the right project.
+/// `build` is handed the bounded project id — the request's `source_project`
+/// — once the credential is restored, so the request is built exactly once
+/// and for the right project.
 pub fn material_propagation(
     lane_value: &str,
+    project: &str,
     build: impl FnOnce(&str) -> Result<Value, Failure>,
 ) -> Result<(String, Value, Value), Failure> {
     let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let request = build(selected.project_id())?;
+    let project = bounded_named_project(project)?;
+    let request = build(&project)?;
+    if let Some(mut device) = restored_device_session(lane)? {
         let receipt = device
-            .material_propagation(selected.project_id(), &request)
+            .material_propagation(&project, &request)
             .map_err(map_client)?;
-        return Ok((selected.project_id().to_owned(), request, receipt));
+        return Ok((project, request, receipt));
     }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let request = build(selected.project_id())?;
-    let result = client.material_propagation(selected.project_id(), &request, now());
-    let receipt = with_released_context_disposition(client.profile(), &selected, result)?;
-    Ok((selected.project_id().to_owned(), request, receipt))
+    require_restore_before_context(&mut client)?;
+    let receipt = client
+        .material_propagation(&project, &request, now())
+        .map_err(map_client)?;
+    Ok((project, request, receipt))
 }
 
 /// Read verified asset bytes for the project named on this request.

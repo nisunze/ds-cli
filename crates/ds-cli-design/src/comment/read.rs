@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::LANE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 pub const THREAD_ARG: Arg = Arg {
     name: "thread",
@@ -34,13 +34,13 @@ with a null body rather than shown as an empty message.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[THREAD_ARG, LANE_ARG],
+    args: &[THREAD_ARG, PROJECT_ARG, LANE_ARG],
     output: "\
 The project, the `thread`, its `title`, `state`, `version` and linked `task`, \
 whether there is `more` than one page of comments, and rows of `comment`, \
 `sequence`, `author`, `roles`, `redacted`, `body` and `at`.",
     examples: &[Example {
-        command: "ds design comment read --thread thread-clearance --output json",
+        command: "ds design comment read --project <id> --thread thread-clearance --output json",
         note: "Read .data.version before resolving or promoting; both are version-checked.",
         runnable: false,
     }],
@@ -56,6 +56,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.comment.read",
         json!({ "thread": inputs.require("thread")? }),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

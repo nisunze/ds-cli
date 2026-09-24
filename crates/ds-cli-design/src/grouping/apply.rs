@@ -1,6 +1,6 @@
 //! `ds design consumer-grouping apply` — commit the plan that was previewed.
 
-use crate::LANE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
@@ -26,17 +26,18 @@ the folder and section authority a Combined Report archive files by.",
         crate::group::PROJECTION_TRANSFORMERS_ARG,
         crate::grouping::DEFINITION_IDS_ARG,
         crate::grouping::PLAN_DIGEST_ARG,
+        PROJECT_ARG,
         LANE_ARG,
     ],
     output: "The stored record as applied — purpose, ordered definition ids, lifecycle, revision, plan_digest, projection_sha256 and member/unassigned/group counts. A refusal returns no plan at all.",
     examples: &[
         Example {
-            command: "ds design consumer-grouping apply --purpose report_archive --transformers kigali_a,kigali_b --definition-ids city --digest <plan-digest> --yes",
+            command: "ds design consumer-grouping apply --project <id> --purpose report_archive --transformers kigali_a,kigali_b --definition-ids city --digest <plan-digest> --yes",
             note: "The digest comes from `ds design consumer-grouping preview`; without --yes dispatch refuses first.",
             runnable: false,
         },
         Example {
-            command: "ds design consumer-grouping read --purpose report_archive --output json",
+            command: "ds design consumer-grouping read --project <id> --purpose report_archive --output json",
             note: "The confirmation door: this family's only way to re-read what was applied.",
             runnable: false,
         },
@@ -69,6 +70,7 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         "design.consumer-grouping.apply",
         arguments,
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

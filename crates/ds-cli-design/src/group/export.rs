@@ -5,8 +5,8 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::LANE_ARG;
 use crate::group::{PROJECTION_DEFINITION_IDS_ARG, PROJECTION_TRANSFORMERS_ARG};
+use crate::{LANE_ARG, PROJECT_ARG};
 
 pub static COMMAND: Command = Command {
     id: "design.group.export",
@@ -30,6 +30,7 @@ character differently no longer matches the pin.",
     args: &[
         PROJECTION_TRANSFORMERS_ARG,
         PROJECTION_DEFINITION_IDS_ARG,
+        PROJECT_ARG,
         LANE_ARG,
     ],
     output: "\
@@ -38,7 +39,7 @@ The project, the `schema`, ordered `definitionIds`, the \
 `transformers`, any values `excluded` from the document with why, and the \
 `document` text itself.",
     examples: &[Example {
-        command: "ds design group export --transformers site_a,site_b --definition-ids service_region --output json",
+        command: "ds design group export --project <id> --transformers site_a,site_b --definition-ids service_region --output json",
         note: "Save `.data.document` verbatim and keep `.data.sha256` with it.",
         runnable: false,
     }],
@@ -69,6 +70,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.group.export",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

@@ -8,7 +8,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use crate::tag::define::DEFINITION_ARG;
-use crate::{KIND_ARG, LANE_ARG, MAX_TAG_VALUES, OBJECT_ARG, VERSION_ARG};
+use crate::{KIND_ARG, LANE_ARG, MAX_TAG_VALUES, OBJECT_ARG, PROJECT_ARG, VERSION_ARG};
 
 const VALUES_ARG: Arg = Arg {
     name: "values",
@@ -79,17 +79,18 @@ edit of the object-level one.",
         INTEGER_ARG,
         NUMBER_ARG,
         VERSION_ARG,
+        PROJECT_ARG,
         LANE_ARG,
     ],
     output: "The project, object, definition, exact stored values, closed typed_values and committed version; the receipt echoes what was persisted.",
     examples: &[
         Example {
-            command: "ds design tag set --kind lv_transformer --object kigali_a --definition transformer_scope --values additional_scope --yes",
+            command: "ds design tag set --project <id> --kind lv_transformer --object kigali_a --definition transformer_scope --values additional_scope --yes",
             note: "Legacy choice assignment remains valid.",
             runnable: false,
         },
         Example {
-            command: "ds design tag set --kind lv_transformer --object kigali_a --definition completion --number 82.5 --yes",
+            command: "ds design tag set --project <id> --kind lv_transformer --object kigali_a --definition completion --number 82.5 --yes",
             note: "Numeric values stay numeric in typed_values; no string inference is involved.",
             runnable: false,
         },
@@ -178,6 +179,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.tag.set",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

@@ -7,8 +7,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::LANE_ARG;
 use crate::comment::read::THREAD_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 
 const REOPEN_ARG: Arg = Arg {
     name: "reopen",
@@ -35,10 +35,10 @@ resolve refuses the resolve rather than closing a conversation that just moved."
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[THREAD_ARG, REOPEN_ARG, LANE_ARG],
+    args: &[THREAD_ARG, REOPEN_ARG, PROJECT_ARG, LANE_ARG],
     output: "The project, the `thread`, its new `state` and the committed `version`.",
     examples: &[Example {
-        command: "ds design comment resolve --thread thread-clearance --yes",
+        command: "ds design comment resolve --project <id> --thread thread-clearance --yes",
         note: "Add --reopen to bring a resolved thread back.",
         runnable: false,
     }],
@@ -64,6 +64,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.comment.resolve",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

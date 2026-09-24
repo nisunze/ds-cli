@@ -8,8 +8,8 @@ metadata:
 # Batch-edit project tags
 
 `ds design group` discovers active single-choice definitions for LV transformers.
-Never infer behavior from names like `city` or `phasing`. Single-object edits
-can use `ds design tag set`.
+Every command also takes `--project <id>`; no saved selection.
+Never infer behavior from names like `city` or `phasing`.
 
 1. Read the vocabulary: `ds design group list --transformers a,b --output json`.
    Per group: `defined`, `allowed`, `needsModel`, and what each transformer
@@ -40,7 +40,7 @@ A consumer chooses grouping with an explicit ordered list of definition ids.
 Use `--definition-ids` with the ids approved for that report; omit it only when
 the intended result is one explicit untagged group.
 
-Save it verbatim, for example
+Save it verbatim:
 `ds design group export --transformers a,b --output json | jq -r .data.document > tags.json`.
 Never parse and re-serialize it: the digest is over those bytes and the report
 pins it.

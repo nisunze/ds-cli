@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{LANE_ARG, VERSION_ARG};
+use crate::{LANE_ARG, PROJECT_ARG, VERSION_ARG};
 
 // The anchor is CONDITIONAL here, and only here: it is required to open a
 // thread and meaningless when appending to one. Reusing the domain's required
@@ -88,11 +88,12 @@ signed-in session; `ds` cannot claim to be somebody else.",
         OBJECT_ARG,
         TITLE_ARG,
         VERSION_ARG,
+        PROJECT_ARG,
         LANE_ARG,
     ],
     output: "The project, the `thread`, its `title` when newly opened, the resulting `comments` count and the thread's committed `version`.",
     examples: &[Example {
-        command: "ds design comment post --kind mv_model --object mv_line_a --title \"Clearance at span 4\" --body \"Looks short against the road.\" --yes",
+        command: "ds design comment post --project <id> --kind mv_model --object mv_line_a --title \"Clearance at span 4\" --body \"Looks short against the road.\" --yes",
         note: "Pass --thread instead of --kind/--object/--title to append to an existing thread.",
         runnable: false,
     }],
@@ -150,6 +151,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "design.comment.post",
         Value::Object(arguments),
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 

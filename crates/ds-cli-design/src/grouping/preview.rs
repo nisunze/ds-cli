@@ -1,4 +1,4 @@
-use crate::LANE_ARG;
+use crate::{LANE_ARG, PROJECT_ARG};
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Inputs};
@@ -17,6 +17,7 @@ pub static COMMAND: Command = Command {
         crate::grouping::PURPOSE_ARG,
         crate::group::PROJECTION_TRANSFORMERS_ARG,
         crate::grouping::DEFINITION_IDS_ARG,
+        PROJECT_ARG,
         LANE_ARG,
     ],
     output: "The server plan including tuple groups, source suggestions and plan_digest.",
@@ -41,6 +42,7 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         "design.consumer-grouping.preview",
         arguments,
         inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
     )
 }
 pub fn render(data: &Value) -> String {
