@@ -360,6 +360,49 @@ pub fn current(rows: &[Value], item: &Value) -> bool {
     })
 }
 
+/// Remove the exact reviewed output, refusing a newer local revision.
+pub fn remove_catalog(rows: Vec<Value>, item: Value) -> Result<Value, String> {
+    // Apply the same bounded identity validation as catalogue insertion.
+    catalog(rows.clone(), item.clone())?;
+    if rows.iter().any(|row| row["project"] != item["project"]) {
+        return Err("Map catalog project mismatch".into());
+    }
+    if rows.iter().any(|row| row["filename"] == item["filename"]) && !current(&rows, &item) {
+        return Err("This map was replaced. Refresh before removing it.".into());
+    }
+    Ok(json!(rows
+        .into_iter()
+        .filter(|row| !current(std::slice::from_ref(row), &item))
+        .collect::<Vec<_>>()))
+}
+
+#[cfg(test)]
+mod removal_tests {
+    use super::*;
+    #[test]
+    fn remove_keeps_other_papers_and_refuses_replacement() {
+        let item =
+            json!({"project":"p","filename":"map.a3.pdf","sha256":"a".repeat(64),"createdAt":1});
+        let other =
+            json!({"project":"p","filename":"map.a0.pdf","sha256":"b".repeat(64),"createdAt":1});
+        let rows = vec![item.clone(), other.clone()];
+        assert_eq!(
+            remove_catalog(rows.clone(), item.clone()).unwrap(),
+            json!([other.clone()])
+        );
+        assert_eq!(
+            remove_catalog(vec![other.clone()], item.clone()).unwrap(),
+            json!([other])
+        );
+        let mut stale = item.clone();
+        stale["createdAt"] = json!(0);
+        assert!(remove_catalog(rows.clone(), stale).is_err());
+        let mut foreign = item;
+        foreign["project"] = json!("other");
+        assert!(remove_catalog(rows, foreign).is_err());
+    }
+}
+
 /// Replace only one canonical filename. Never remove unselected paper outputs.
 pub fn catalog(rows: Vec<Value>, item: Value) -> Result<Value, String> {
     if rows.len() > 500

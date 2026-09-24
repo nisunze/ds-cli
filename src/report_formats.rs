@@ -603,7 +603,9 @@ pub fn artifact_opens_as_pdf(filename: &str) -> bool {
 /// with whoever renders it.
 pub fn artifact_kind(filename: &str) -> &'static str {
     let name = filename.to_ascii_lowercase();
-    if name.ends_with(".xlsx") || name.ends_with(".xls") {
+    if name.ends_with(".pdf") {
+        "pdf"
+    } else if name.ends_with(".xlsx") || name.ends_with(".xls") {
         "excel"
     } else if name.ends_with(".shp.zip") || name.contains(".shp.") {
         "shapefile"
@@ -621,7 +623,8 @@ pub fn artifact_kind(filename: &str) -> &'static str {
 /// The order those kinds are offered in: the deliverable first, the unreadable
 /// last. An operator scanning one version's files reads the same sequence
 /// wherever the files are listed.
-pub const ARTIFACT_KIND_ORDER: [&str; 6] = ["excel", "shapefile", "kmz", "gpkg", "zip", "other"];
+pub const ARTIFACT_KIND_ORDER: [&str; 7] =
+    ["pdf", "excel", "shapefile", "kmz", "gpkg", "zip", "other"];
 
 /// One version's artifacts, grouped by what they are and ordered for reading.
 ///
