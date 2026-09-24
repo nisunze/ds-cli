@@ -233,8 +233,8 @@ pub const NATIVE_READ_REFUSALS: &[Refusal] = &[
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,
     HEADLESS_SIGNED_OUT,
-    HEADLESS_NO_PROJECT,
-    PROJECT_CONTEXT_STALE,
+    PROJECT_REQUIRED,
+    CONTEXT_CORRUPT,
     NATIVE_STATE_UNSAFE,
     NATIVE_STATE_UNAVAILABLE,
     NATIVE_STATE_PROTECTION,
@@ -257,8 +257,8 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,
     HEADLESS_SIGNED_OUT,
-    HEADLESS_NO_PROJECT,
-    PROJECT_CONTEXT_STALE,
+    PROJECT_REQUIRED,
+    CONTEXT_CORRUPT,
     NATIVE_STATE_UNSAFE,
     NATIVE_STATE_UNAVAILABLE,
     NATIVE_STATE_PROTECTION,
@@ -417,11 +417,19 @@ pub fn receipt_json(receipt: &RetirementReceipt, request: &RetirementRequest) ->
     })
 }
 
+/// `name (id)` when the receipt carries a name, else the id the caller named.
+pub fn project_label(data: &Value) -> String {
+    let id = data["project"]["ds_project"].as_str().unwrap_or("?");
+    match data["project"]["project_name"].as_str() {
+        Some(name) if !name.is_empty() => format!("{name} ({id})"),
+        _ => id.to_owned(),
+    }
+}
+
 pub fn render_receipt(verb: &str, data: &Value) -> String {
     let mut out = format!(
-        "project {} ({}) · {} · {verb}: {} applied, {} failed\n",
-        data["project"]["project_name"].as_str().unwrap_or("?"),
-        data["project"]["ds_project"].as_str().unwrap_or("?"),
+        "project {} · {} · {verb}: {} applied, {} failed\n",
+        project_label(data),
         data["lane"].as_str().unwrap_or("?"),
         data["applied_count"].as_u64().unwrap_or(0),
         data["failed_count"].as_u64().unwrap_or(0),

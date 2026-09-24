@@ -4623,17 +4623,17 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         (
             "design.transformer.inventory",
             "local_auth_state",
-            BTreeSet::from(["lane", "transformer"]),
+            BTreeSet::from(["lane", "project", "transformer"]),
         ),
         (
             "design.transformer.retire",
             "global_write",
-            BTreeSet::from(["lane", "reason", "transformer"]),
+            BTreeSet::from(["lane", "project", "reason", "transformer"]),
         ),
         (
             "design.transformer.restore",
             "global_write",
-            BTreeSet::from(["lane", "transformer"]),
+            BTreeSet::from(["lane", "project", "transformer"]),
         ),
         (
             "report.project.scope",
@@ -4687,11 +4687,13 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, inputs, "{id}");
-        // Design status/dashboard and project reports name their project.
-        // Transformer lifecycle commands still use the saved selection.
+        // Every background project operation names its project; none reads
+        // the saved selection (the Server has no active project).
         assert_eq!(
             actual.contains("project"),
-            matches!(id, "design.status" | "design.dashboard") || id.starts_with("report.project."),
+            matches!(id, "design.status" | "design.dashboard")
+                || id.starts_with("design.transformer.")
+                || id.starts_with("report.project."),
             "{id} disagrees with how it is meant to reach a project"
         );
         assert!(

@@ -15,14 +15,17 @@ prepare: the native report path reads rooms from the service, and the former
    read status again and require the exact resulting id. A project id alone
    is never authority.
 2. Nothing here navigates, processes, stages, saves or publishes a room.
-3. Inspect before you write. `ds design transformer inventory --output json`
+3. Inspect before you write. `ds design transformer inventory --project <exact-id>
+   --output json`
    lists every transformer document with `state` (`active`, `retired`,
    `deleted`, `missing`) and the retirement record. With `--transformer`
    names it answers exactly those names; that receipt is the plan.
 4. Retire only with the user's authority and a reason they gave:
-   `ds design transformer retire --transformer <name> … --reason "<why>"
+   `ds design transformer retire --project <exact-id> --transformer <name> …
+   --reason "<why>"
    --yes`. Retirement is reversible and non-destructive — nothing is erased,
-   and `ds design transformer restore --transformer <name> --yes` brings it
+   and `ds design transformer restore --project <exact-id> --transformer <name>
+   --yes` brings it
    back. Never use `map design delete` for a reversible intent. Read every
    per-name result; a `refusal` (`not_owner`, `governance_locked`,
    `special_document`, …) is the service's decision, not a retry prompt.

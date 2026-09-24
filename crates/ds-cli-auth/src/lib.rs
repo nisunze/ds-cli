@@ -3635,6 +3635,23 @@ pub fn transformer_retirement(
     )
 }
 
+/// Retire or restore exact transformers in the caller's explicit project. The
+/// saved native project selection is neither read nor changed; ds-brain still
+/// decides governance, ownership, and lifecycle per name.
+pub fn transformer_retirement_for_project(
+    lane_value: &str,
+    project: &str,
+    action: RetirementAction,
+    request: &RetirementRequest,
+) -> Result<HeadlessNamedProject<RetirementReceipt>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.transformer_retirement(project, action, request),
+        |client, project| client.transformer_retirement(project, action, request, now()),
+    )
+}
+
 /// Restore one native user and activate project forms for only the saved,
 /// audience-fenced selected project. The gateway rechecks membership.
 pub fn project_forms(lane_value: &str) -> Result<HeadlessProjectForms, Failure> {

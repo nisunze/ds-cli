@@ -6,17 +6,17 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
-use super::{LANE_ARG, TRANSFORMER_ARG};
+use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
 
 pub static COMMAND: Command = Command {
     id: "design.transformer.restore",
     path: &["design", "transformer", "restore"],
-    contract: 1,
+    contract: 2,
     summary: "Restore retired transformers to the active set (needs --yes).",
     purpose: "\
 After CLI confirmation, restores the native user and asks the governed report \
-service to clear the retirement of the named transformers in only its \
-audience-fenced selected project. Only a transformer retired through this \
+service to clear the retirement of the named transformers in the project \
+--project names; the saved selection is never read. Only a transformer retired through this \
 family restores; a document soft-deleted by another path carries no retirement \
 record and is refused per name (`no_retirement_record`). The same governance \
 as retirement applies and every name is answered in order.",
@@ -24,14 +24,14 @@ as retirement applies and every name is answered in order.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, TRANSFORMER_ARG, LANE_ARG],
     output: "\
-Lane and selected-project identity/status, the requested names, applied/failed \
+Lane and the named project, the requested names, applied/failed \
 counts, and one result per name: `applied` with the restoration timestamp, or \
 a closed `refusal` (`not_found`, `not_retired`, `no_retirement_record`, \
 `special_document`, `governance_locked`, `not_owner`, `failed`) with its message.",
     examples: &[Example {
-        command: "ds design transformer restore --transformer TX-1 --yes",
+        command: "ds design transformer restore --project <id> --transformer TX-1 --yes",
         note: "The transformer reappears in listings, reports and the next tile run.",
         runnable: false,
     }],
@@ -48,12 +48,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Failure::invalid("invalid_transformer_scope", error.to_string())
             .remedy(super::INVALID_SCOPE.remedy)
     })?;
-    let headless = ds_cli_auth::transformer_retirement(
+    let project = super::named_project(inputs)?;
+    let headless = ds_cli_auth::transformer_retirement_for_project(
         inputs.require("lane")?,
+        &project,
         RetirementAction::Restore,
         &request,
     )?;
-    let mut output = super::project_receipt(&headless);
+    let mut output = super::named_project_receipt(headless.lane(), headless.project_id());
     let receipt = super::receipt_json(headless.result(), &request);
     output
         .as_object_mut()

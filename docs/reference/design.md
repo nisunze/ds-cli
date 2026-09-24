@@ -50,7 +50,6 @@ arbitrary request field or browser store.
 
 ```bash
 ds account connect
-ds auth project use --project <exact-id>
 ds design lv project-export --transformer T-1042 \
   --out ./T-1042.fast-lv.json --output json
 ds design lv process --input ./T-1042.fast-lv.json \
@@ -134,7 +133,6 @@ Feature bbox is copied or synthesized.
 
 ```bash
 ds account connect
-ds auth project use --project <exact-id>
 ds design features select --transformer T-1042 --layer lv_lines \
   --where drafting_status= --sample 5 --ids 100 --output json
 ```
@@ -395,9 +393,10 @@ share is the only queue, and `ds report outbox status|drain` is its surface.
 
 `ds design transformer inventory|retire|restore` is the map-independent
 lifecycle of a project's transformer documents. Like `features select`, the
-family restores the native user for `--lane stable|canary`, loads only its
-audience-fenced selected project, and calls the fixed governed report contract.
-There is no `--project`, Desktop descriptor, URL, body or action override.
+family restores the native user for `--lane stable|canary` and acts on the
+project `--project` names (the saved selection is never read), through the
+fixed governed report contract. There is no Desktop descriptor, URL, body or
+action override.
 
 **Retirement is not deletion.** Deleting a transformer (`ds map design delete`,
 paired) archives and destroys its artifacts. Retiring it flips the one
@@ -421,10 +420,9 @@ with its lifecycle state; with names it answers exactly those:
 | `missing` | no such document | check the name |
 
 ```bash
-ds auth project use --project <exact-id>
-ds design transformer inventory --transformer TX-1 --transformer TX-2 --output json
-ds design transformer retire --transformer TX-1 --reason "superseded by the 2026 survey" --yes
-ds design transformer restore --transformer TX-1 --yes
+ds design transformer inventory --project <exact-id> --transformer TX-1 --transformer TX-2 --output json
+ds design transformer retire --project <exact-id> --transformer TX-1 --reason "superseded by the 2026 survey" --yes
+ds design transformer restore --project <exact-id> --transformer TX-1 --yes
 ```
 
 The receipt of a write names each transformer with `applied` and a timestamp,

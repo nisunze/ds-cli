@@ -6,32 +6,32 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
-use super::{LANE_ARG, TRANSFORMER_ARG};
+use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
 
 pub static COMMAND: Command = Command {
     id: "design.transformer.inventory",
     path: &["design", "transformer", "inventory"],
-    contract: 1,
+    contract: 2,
     summary: "Inspect which transformers are active, retired, or deleted.",
     purpose: "\
 Start here before retiring or restoring. Restores the native user and reads \
-only its audience-fenced selected project through the fixed inventory call. \
-Without --transformer it lists every transformer document with its lifecycle \
-state; with names it answers exactly those names, so the receipt is the plan: \
-`active` can be retired, `retired` can be restored, `deleted` has no retirement \
-record and `missing` has no document. No project, Desktop descriptor, URL, \
-body or action override is accepted.",
+the project --project names through the fixed inventory call; the saved \
+selection is never read. Without --transformer it lists every transformer \
+document with its lifecycle state; with names it answers exactly those names, \
+so the receipt is the plan: `active` can be retired, `retired` can be \
+restored, `deleted` has no retirement record and `missing` has no document. \
+No Desktop descriptor, URL, body or action override is accepted.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, TRANSFORMER_ARG, LANE_ARG],
     output: "\
-Lane and selected-project identity/status, the requested names, active/retired/\
-deleted counts, and one row per transformer with `kind`, `state`, and the \
-retirement record (reason, who, when, restoration) when one exists.",
+Lane and the named project, the requested names, active/retired/deleted \
+counts, and one row per transformer with `kind`, `state`, and the retirement \
+record (reason, who, when, restoration) when one exists.",
     examples: &[Example {
-        command: "ds design transformer inventory --transformer TX-1 --transformer TX-2 --output json",
+        command: "ds design transformer inventory --project <id> --transformer TX-1 --transformer TX-2 --output json",
         note: "`.data.transformers[].state` says what each name is today.",
         runnable: false,
     }],
@@ -43,9 +43,14 @@ retirement record (reason, who, when, restoration) when one exists.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let project = super::named_project(inputs)?;
     let requested = super::transformer_set(inputs, false)?;
-    let headless = ds_cli_auth::transformer_inventory(inputs.require("lane")?, &requested)?;
-    let mut output = super::project_receipt(&headless);
+    let headless = ds_cli_auth::transformer_inventory_for_project(
+        inputs.require("lane")?,
+        &project,
+        &requested,
+    )?;
+    let mut output = super::named_project_receipt(headless.lane(), headless.project_id());
     let inventory = super::inventory_json(headless.result());
     output
         .as_object_mut()
@@ -61,9 +66,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 pub fn render(data: &Value) -> String {
     let mut out = format!(
-        "project {} ({}) · {} · {} active · {} retired · {} deleted\n",
-        data["project"]["project_name"].as_str().unwrap_or("?"),
-        data["project"]["ds_project"].as_str().unwrap_or("?"),
+        "project {} · {} · {} active · {} retired · {} deleted\n",
+        super::project_label(data),
         data["lane"].as_str().unwrap_or("?"),
         data["active_count"].as_u64().unwrap_or(0),
         data["retired_count"].as_u64().unwrap_or(0),
