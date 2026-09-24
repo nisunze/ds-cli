@@ -48,6 +48,7 @@
 pub mod attach;
 pub mod backup;
 pub mod classify;
+pub mod correspondence;
 pub mod folder;
 pub mod ingest;
 pub mod list;
@@ -302,6 +303,73 @@ pub const ASSET_CLASS_FORBIDDEN: Refusal = ds_cli_auth::ASSET_CLASS_FORBIDDEN_RE
 pub const ASSET_VERSION_CONFLICT: Refusal = ds_cli_auth::ASSET_VERSION_CONFLICT_REFUSAL;
 pub const ASSET_REQUEST_INVALID: Refusal = ds_cli_auth::ASSET_REQUEST_INVALID_REFUSAL;
 pub const ASSET_RULE_REFUSED: Refusal = ds_cli_auth::ASSET_REFUSED_REFUSAL;
+pub const ASSETS_SERVICE_FAILED: Refusal = ds_cli_auth::ASSETS_SERVICE_FAILED_REFUSAL;
+pub const ASSET_BYTES_NOT_HELD: Refusal = Refusal {
+    code: "asset_bytes_not_held",
+    when: "an external reference has no bytes in DS",
+    remedy: "open the external URL in the asset row",
+};
+pub const INVALID_EXTERNAL_REFERENCE: Refusal = Refusal {
+    code: "invalid_external_reference",
+    when: "the external URL, digest, size, or provider is invalid",
+    remedy: "pass an HTTPS URL, a SHA-256 digest, a positive size, and a valid kind",
+};
+pub const ASSET_REFERENCE_CONFLICT: Refusal = Refusal {
+    code: "asset_reference_conflict",
+    when: "a URL and digest already exist under different metadata",
+    remedy: "read the existing asset and register changed bytes with their own digest",
+};
+pub const INVALID_DOCUMENT_REGISTRATION: Refusal = Refusal {
+    code: "invalid_document_registration",
+    when: "a document number, revision, or state was given without the other two",
+    remedy: "pass --document-number, --document-revision and --document-state together",
+};
+pub const INVALID_REFERENCE_FORM: Refusal = Refusal {
+    code: "invalid_reference_form",
+    when: "the external or reporter form is incomplete or both were given",
+    remedy: "give one complete form; see `ds assets reference --help`",
+};
+pub const DOCUMENT_STATES: &[&str] = &[
+    "draft",
+    "issued_for_review",
+    "issued_for_approval",
+    "issued",
+    "approved",
+    "superseded",
+    "reference",
+    "final",
+];
+
+pub fn correspondence_door(
+    lane: &str,
+    action: &ds_client_core::project_correspondence::Action,
+) -> Result<Value, Failure> {
+    Ok(ds_cli_auth::correspondence::project_correspondence(lane, action)?.into_result())
+}
+
+pub fn folder_id(lane: &str, path: &str) -> Result<String, Failure> {
+    folder_at(lane, path)?["folder_id"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| Failure::internal("assets_unreadable", "folder row has no folder_id"))
+}
+
+pub fn digest(raw: &str, flag: &str) -> Result<String, Failure> {
+    let trimmed = raw.trim();
+    let cleaned = trimmed
+        .strip_prefix("sha256:")
+        .unwrap_or(trimmed)
+        .to_ascii_lowercase();
+    if cleaned.len() != 64 || !cleaned.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(Failure::invalid(
+            INVALID_EXTERNAL_REFERENCE.code,
+            format!("`--{flag}` must be a SHA-256 digest of 64 hex characters"),
+        )
+        .remedy(INVALID_EXTERNAL_REFERENCE.remedy)
+        .detail(json!({"field": "sha256", "given": raw})));
+    }
+    Ok(format!("sha256:{cleaned}"))
+}
 
 // The read path's own refusals. `read`, `preview`, `promote` and `tree
 // --into` need an asset's bytes, fetched through the catalogue's signed
@@ -430,7 +498,7 @@ pub const ASSET_ARG: Arg = Arg {
 pub const MEMBER_ARG: Arg = Arg::value(
     "member",
     "<path>",
-    "One member inside a `pack` asset, by the path `ds assets tree --into` reports.",
+    "One member inside a `pack` asset, or one MIME part of a `mail` (.eml) asset, by the path `ds assets tree --into` reports.",
 );
 
 pub const SHEET_ARG: Arg = Arg::value(

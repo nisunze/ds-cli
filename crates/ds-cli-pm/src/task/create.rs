@@ -97,6 +97,12 @@ const ID_ARG: Arg = Arg {
     summary: "Mint this id. Reuse it on a retry; a second create is refused.",
 };
 
+const FROM_RECORD_ARG: Arg = Arg::value(
+    "from-record",
+    "<record-id>",
+    "The correspondence record this task answers; the record lists the task under resultingTasks in the same commit. Valid with every --kind.",
+);
+
 pub const INVALID_TASK_SHAPE: Refusal = Refusal {
     code: "invalid_task_shape",
     when: "a child has no parent, a root/inbox item names one, or a milestone names two dates",
@@ -146,6 +152,7 @@ nothing.",
         DISCIPLINE_ARG,
         START_ARG,
         FINISH_ARG,
+        FROM_RECORD_ARG,
         ID_ARG,
         GEOMETRY_FROM_ARG,
         PACKAGE_ARG,
@@ -246,6 +253,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         &read.graph,
         &CreateTask {
             id: id.clone(),
+            from_record: inputs.value("from-record").map(str::to_owned),
             title: inputs.require("title")?.to_owned(),
             kind,
             parent: parent.map(str::to_owned),

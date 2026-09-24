@@ -21,7 +21,7 @@ use crate::{CatalogueCommand, DEPTH_ARG, FOLDER_ARG, LANE_ARG};
 const INTO_ARG: Arg = Arg::value(
     "into",
     "<asset-id>",
-    "Walk inside this `pack` asset instead: its members, sizes and shapefile companions.",
+    "Walk inside this `pack` or `mail` asset instead: its members (a mail's MIME parts by name), sizes and shapefile companions.",
 );
 
 const QUERY_ARG: Arg = Arg::value(
@@ -56,7 +56,7 @@ pub static COMMAND: Command = Command {
     id: "assets.tree",
     path: &["assets", "tree"],
     contract: 1,
-    summary: "Show the folder tree, or walk inside one container asset.",
+    summary: "Show the folder tree, or walk inside a pack or a mail asset.",
     purpose: "\
 Projects the selected project's folder tree: the declared folders and the \
 catalogued assets in them, with counts, expanded to --depth, by the same \
@@ -149,6 +149,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )?;
         container["asset_id"] = json!(into);
         return Ok(container);
+    }
+    if arguments["folder"]
+        .as_str()
+        .is_some_and(crate::correspondence::is_correspondence_folder)
+    {
+        return crate::correspondence::tree(lane, &arguments);
     }
 
     // One read per authority, both bounded: the declared folders, and the

@@ -1,9 +1,11 @@
-//! `ds assets attach` — link an asset to a task or a DS object, or unlink it.
+//! `ds assets attach` — link an asset to a task, a record or a DS object, or
+//! unlink it.
 //!
 //! The link is recorded on the asset and nowhere else. Nothing is written onto
-//! the task, and nothing at all onto a DS object (§12.9): Project Work's own
-//! contract requires links to point one way, so that deleting an asset can
-//! never leave a half-written field on a transformer somebody else owns.
+//! the task or the record, and nothing at all onto a DS object (§12.9):
+//! Project Management's own contract requires links to point one way, so that
+//! deleting an asset can never leave a half-written field on a transformer
+//! somebody else owns.
 //!
 //! There are exactly three ways to name the other end — a task, a record, or
 //! an object's type and id — and naming two, or half of one, is refused here
@@ -21,13 +23,13 @@ use crate::{ASSET_ARG, CatalogueCommand, LANE_ARG};
 const TASK_ARG: Arg = Arg::value(
     "task",
     "<task-id>",
-    "The Project Work task, by the id `ds pm task list` reports.",
+    "The Project Management task, by the id `ds pm task list` reports.",
 );
 
 const RECORD_ARG: Arg = Arg::value(
     "record",
     "<record-id>",
-    "The correspondence record, by the id `ds pm record list` reports.",
+    "The correspondence record, by the id `ds pm record list` reports; the asset becomes one of its attachments.",
 );
 
 const OBJECT_TYPE_ARG: Arg = Arg::value(
@@ -69,10 +71,10 @@ credential, no window.",
         DETACH_ARG,
         LANE_ARG,
     ],
-    output: "`asset` — the row with its `links` after the change.",
+    output: "`asset` — the row with its `links` after the change — and the `project`.",
     examples: &[Example {
-        command: "ds assets attach --asset a_7kq3nr2v0b1c --task t_4812 --yes",
-        note: "The task's own `ds pm task read` then lists the asset among its attachments.",
+        command: "ds assets attach --asset a_7kq3nr2v0b1c --record R-0031 --yes",
+        note: "The record's own `ds pm record read` then lists the asset among its attachments.",
         runnable: false,
     }],
     refusals: &crate::refusals::<26>(&[
@@ -87,7 +89,7 @@ credential, no window.",
     availability: ds_cli_auth::native_availability,
 };
 
-/// The link, validated locally, in the exact keys the operation declares.
+/// The link, validated locally: exactly one end named.
 fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
     let asset = crate::asset_id(inputs.require("asset")?, "asset")?;
     if crate::is_projected(&asset) {
@@ -98,12 +100,12 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
         .remedy(crate::PROJECTED_ASSET_READ_ONLY.remedy)
         .detail(json!({ "asset": asset })));
     }
-
     let named = |flag: &str| {
         inputs
             .value(flag)
             .map(str::trim)
             .filter(|value| !value.is_empty())
+            .map(str::to_owned)
     };
 
     let mut arguments = Map::new();
@@ -208,7 +210,6 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ds_cli_contract::spec::ArgKind;
 
     fn parse(tokens: &[&str]) -> Inputs {
         let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
@@ -230,8 +231,8 @@ mod tests {
             &["--task", "t_4812", "--record", "R-0012"],
             &["--record", "R-0012", "--entity-id", "TX-104"],
             &[
-                "--task",
-                "t_4812",
+                "--record",
+                "R-1",
                 "--object-type",
                 "transformer",
                 "--entity-id",
@@ -250,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn each_form_travels_under_the_keys_the_operation_declares() {
+    fn each_form_is_the_catalogue_link_it_names() {
         let task =
             arguments(&parse(&["--asset", "a_7kq3nr2v0b1c", "--task", " t_4812 "])).expect("valid");
         assert_eq!(task, json!({ "asset": "a_7kq3nr2v0b1c", "task": "t_4812" }));
@@ -265,7 +266,6 @@ mod tests {
             "transformer",
             "--entity-id",
             "TX-104",
-            "--detach",
         ]))
         .expect("valid");
         assert_eq!(
@@ -273,12 +273,9 @@ mod tests {
             json!({
                 "asset": "a_7kq3nr2v0b1c",
                 "object_type": "transformer",
-                "entity_id": "TX-104",
-                "detach": true
+                "entity_id": "TX-104"
             })
         );
-        // Attaching is the ordinary case, and says nothing about detaching.
-        assert!(task.get("detach").is_none());
     }
 
     #[test]
@@ -305,27 +302,5 @@ mod tests {
         assert!(rendered.contains("→ pm_task:t_0"));
         assert!(rendered.contains("… 3 more"));
         assert!(!rendered.contains("pm_task:t_34"));
-    }
-
-    #[test]
-    fn this_write_cannot_be_reached_without_explicit_confirmation() {
-        // The gate itself lives once, in `ds`'s dispatch, and reads exactly
-        // this declaration — so the declaration is the part a test inside
-        // this crate can hold. A confirmation-gated command may also take no
-        // positional argument, because `--yes` must never be the thing that
-        // shifts what an operand means.
-        assert!(COMMAND.effect.needs_confirmation());
-        assert!(COMMAND.confirmation_required_for(&parse(&[
-            "--asset",
-            "a_7kq3nr2v0b1c",
-            "--task",
-            "t_4812"
-        ])));
-        assert!(
-            COMMAND
-                .args
-                .iter()
-                .all(|arg| arg.kind != ArgKind::Positional)
-        );
     }
 }

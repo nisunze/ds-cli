@@ -25,7 +25,7 @@ pub const DEVICE_LINK_REMEDY: &str = "run `ds account connect`";
 pub const DEVICE_LINK_NEXT: &str = "account.connect";
 /// Words no MCP answer may carry: each is the beginning of advice that sends
 /// a person to a terminal sign-in. Matched case-insensitively.
-pub const TERMINAL_SIGN_IN_WORDS: &[&str] = &["auth login", "--email", "password"];
+pub const TERMINAL_SIGN_IN_WORDS: &[&str] = &["auth login", "password"];
 pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
     "admin-bounds",
@@ -51,6 +51,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "layers",
     "tiling",
     "project",
+    "correspondence",
     "solar-input",
     "solar-migration",
     "design-migration",
@@ -113,6 +114,7 @@ pub enum Profile {
     Layers,
     Tiling,
     Project,
+    Correspondence,
     SolarInput,
     SolarMigration,
     DesignMigration,
@@ -153,6 +155,7 @@ impl Profile {
             "layers" => Some(Self::Layers),
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
+            "correspondence" => Some(Self::Correspondence),
             "solar-input" => Some(Self::SolarInput),
             "solar-migration" => Some(Self::SolarMigration),
             "design-migration" => Some(Self::DesignMigration),
@@ -194,6 +197,7 @@ impl Profile {
             Self::Layers => "layers",
             Self::Tiling => "tiling",
             Self::Project => "project",
+            Self::Correspondence => "correspondence",
             Self::SolarInput => "solar-input",
             Self::SolarMigration => "solar-migration",
             Self::DesignMigration => "design-migration",
@@ -378,7 +382,10 @@ impl Profile {
                 tool.chapter == Chapter::Project
                     && !tool.id.starts_with("auth.")
                     && !tool.id.starts_with("account.")
+                    && !(CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str())
+                        && tool.id != "pm.plan")
             }
+            Self::Correspondence => CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str()),
             Self::Operations => {
                 tool.chapter == Chapter::Operations
                     && !INSTALLATION_COMMANDS.contains(&tool.id.as_str())
@@ -435,6 +442,7 @@ impl Profile {
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS,
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS,
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
+            Self::Correspondence => CORRESPONDENCE_COMMANDS,
             Self::Grid
             | Self::GridNative
             | Self::Pls
@@ -468,7 +476,7 @@ impl Profile {
             }
             Self::Map | Self::Styles | Self::PrintStyles => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
-            Self::Project => chapter == Chapter::Project,
+            Self::Project | Self::Correspondence => chapter == Chapter::Project,
             Self::SolarInput
             | Self::SolarMigration
             | Self::SolarApplication
@@ -771,6 +779,21 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
 // `design-edit` (already at its bound) and out of the `grid` chapter router
 // so neither grows; an agent doing background delivery work gets this narrow
 // profile.
+const CORRESPONDENCE_COMMANDS: &[&str] = &[
+    "pm.plan",
+    "pm.party.list",
+    "pm.party.create",
+    "pm.party.update",
+    "pm.record.list",
+    "pm.record.read",
+    "pm.record.thread",
+    "pm.record.create",
+    "pm.record.reply",
+    "pm.record.update",
+    "pm.task.block",
+    "pm.task.unblock",
+];
+
 const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "design.status",
     "design.transformer.inventory",
@@ -1788,7 +1811,7 @@ mod tests {
         assert_eq!(command["refusals"][0]["remedy"], DEVICE_LINK_REMEDY);
         assert_eq!(command["refusals"][0]["when"], DEVICE_LINK_REMEDY);
         assert_eq!(command["purpose"], DEVICE_LINK_REMEDY);
-        assert_eq!(command["inputs"][0]["summary"], DEVICE_LINK_REMEDY);
+        assert_eq!(command["inputs"][0]["summary"], "Pass --email <address>.");
         assert_eq!(command["examples"][0]["command"], DEVICE_LINK_REMEDY);
         assert_eq!(command["examples"][0]["note"], DEVICE_LINK_REMEDY);
         assert!(!names_terminal_sign_in(&descriptor.to_string()));

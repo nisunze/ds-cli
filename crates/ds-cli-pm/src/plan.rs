@@ -50,8 +50,13 @@ vocabulary the write commands take their state values from.",
 `project`, `revision`, `today`, `dashboard` with the rollups, `phases` by \
 discipline, `attention` rows with their magnitude, `recent` task changes, \
 full `phaseTotal`/`attentionTotal`/`recentTotal` counts for those bounded lists, \
-`permissions` for the signed-in user, and `vocabulary` — the delivery, review \
-and closeout states this project's engine accepts.",
+`permissions` for the signed-in user, `vocabulary` — the delivery, review \
+and closeout states this project's engine accepts, plus the correspondence \
+lists (channels, record categories and states, directions, response \
+statuses, blocker kinds, party kinds and roles) — and `correspondence`: the \
+counters `recordsOutstanding`, `recordsOverdue`, `tasksAwaitingCorrespondence` \
+and the attention rows grouped by the party the answer is owed to (`null` on \
+a server that predates the contract).",
     examples: &[Example {
         command: "ds pm plan --output json",
         note: "Read .data.vocabulary before calling `ds pm task update --delivery`.",
@@ -71,6 +76,10 @@ and closeout states this project's engine accepts.",
         "milestone",
         "late",
         "blocked",
+        "who owes",
+        "ball in court",
+        "correspondence",
+        "overdue",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -151,6 +160,52 @@ pub fn render(data: &Value) -> String {
                 row["wbs"].as_str().unwrap_or("—"),
                 crate::truncate(row["title"].as_str().unwrap_or("?"), 52),
             ));
+        }
+    }
+
+    let correspondence = &data["correspondence"];
+    if correspondence.is_object() {
+        let counters = &correspondence["counters"];
+        out.push_str(&format!(
+            "\nCorrespondence · {} outstanding · {} overdue · {} waiting on an answer\n",
+            counters["recordsOutstanding"].as_u64().unwrap_or(0),
+            counters["recordsOverdue"].as_u64().unwrap_or(0),
+            counters["tasksAwaitingCorrespondence"]
+                .as_u64()
+                .unwrap_or(0),
+        ));
+        for party in correspondence["parties"].as_array().into_iter().flatten() {
+            out.push_str(&format!(
+                "  {} ({} overdue, {} due within {} days)\n",
+                party["partyName"]
+                    .as_str()
+                    .filter(|name| !name.is_empty())
+                    .or(party["partyId"].as_str())
+                    .unwrap_or("(no party)"),
+                party["overdue"].as_u64().unwrap_or(0),
+                party["dueWithinWindow"].as_u64().unwrap_or(0),
+                correspondence["dueWindowDays"].as_u64().unwrap_or(7),
+            ));
+            for row in party["records"].as_array().into_iter().flatten() {
+                out.push_str(&format!(
+                    "    {:<12} {:<11} {:<40} owed by {}{}\n",
+                    row["recordId"].as_str().unwrap_or("?"),
+                    row["responseStatus"].as_str().unwrap_or("?"),
+                    crate::truncate(row["subject"].as_str().unwrap_or(""), 40),
+                    row["owedBy"].as_str().unwrap_or("?"),
+                    row["responseDueDate"]
+                        .as_str()
+                        .map(|due| format!(" · due {due}"))
+                        .unwrap_or_default(),
+                ));
+            }
+            for task in party["blockedTasks"].as_array().into_iter().flatten() {
+                out.push_str(&format!(
+                    "    task {:<12} blocked · {}\n",
+                    task["taskId"].as_str().unwrap_or("?"),
+                    crate::truncate(task["title"].as_str().unwrap_or(""), 44),
+                ));
+            }
         }
     }
     out

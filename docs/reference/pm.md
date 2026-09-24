@@ -54,11 +54,12 @@ is how a client once offered `task` for a node that was a milestone.
 ## Reads are one round trip each
 
 A read fetches the selected project's canonical graph (`get_graph`) once and
-folds it in the kernel; `ds pm record list|read` and `ds pm task read`
-additionally fetch the project's context (`get_context`) — the records the
-graph does not carry, and which the browser never asked for, so this is the
-first `ds` that lists a project's records at all. The server answers at most
-100 records per context read; a project past that lists with
+folds it in the kernel; `ds pm task read` additionally fetches the project's
+context (`get_context`) for the records that reference the task. The record
+commands read through the correspondence contract's own actions
+(`record_list`, `record_read`, `record_thread`): one server filter, one
+bounded page, the record's attachments and blocked tasks projected beside it.
+The server scans at most 1000 records per list; past that the list says
 `truncated: true`.
 
 Every read is bounded and every bound is reported. On list commands, `--limit`
@@ -215,10 +216,12 @@ is send a message: `messages-v1` is human-only, and a domain that could compose
 one would be the same mistake as a domain that could run code inside the
 application.
 
-**Authoring a record, here.** `ds pm record list` and `ds pm record read` are
-reads. Authoring one from the terminal is the correspondence contract's door
-(`pm.record.create|reply`, ds-brain `docs/contracts/correspondence.md`), which
-lands beside these two.
+**A record authored against nothing.** `ds pm record create` without a
+source is refused: the Records-surface doctrine — the person writing it can
+see what it will be attached to — holds in a headless world too.
+
+**Setting `responded` by hand.** It is derived from a reply in the thread;
+what a person may set is a waiver, with a reason, and it is not withdrawn.
 
 **A project id argument, a token, a window and a Firestore path.** See above.
 

@@ -209,6 +209,18 @@ every command here.
 
 ## Refusals worth planning for
 
+Beside the ones below, the correspondence additions name their own:
+`asset_bytes_not_held` (a read or preview of an external reference; the link
+is in `detail.external_url`), `invalid_external_reference` (no https, no
+digest, no positive size; `detail.field` says which),
+`asset_reference_conflict` (the same URL and digest under different facts),
+`invalid_document_registration` (a partial `--document-*` set) and
+`invalid_reference_form` (neither form of `ds assets reference` given whole).
+`ds assets attach` and `ds assets classify` are headless now and answer the
+native client's refusals (`headless_signed_out`,
+`headless_project_not_selected`, `project_not_visible`) beside the
+catalogue's.
+
 | Code | Means |
 |---|---|
 | `headless_signed_out` | no credential is connected on this lane — `ds account connect`, approved in the Desktop |
@@ -244,6 +256,60 @@ every command here.
 transposed day and month is the commonest filter mistake there is, and
 `2026-01-09` for the ninth of September is a perfectly valid date that quietly
 lists the wrong eight months.
+
+## Correspondence in the catalogue
+
+The correspondence contract (ds-brain `docs/contracts/correspondence.md`)
+adds four things to this domain, all through commands that already existed:
+
+- **A mail is a container.** An ingested `.eml` is a `mail` asset whose MIME
+  parts are members: `ds assets tree --into a_mail` lists them by name —
+  the decoded filename, or `part-<section>.<ext>` for an unnamed part, made
+  distinct within the message (`picture (2).png`) — and `ds assets preview
+  --member <name>` / `ds assets read --member <name>` open one part. The
+  kernel walks the same bytes ds-brain listed on the row, by the same rule,
+  so the two sides name the same part.
+- **A registered document.** `ds assets classify --asset a_… --document-number
+  GTP-001 --document-revision B --document-state issued` (all three
+  together) registers the asset as the numbered, revisioned document a
+  submission or transmittal record must carry.
+- **An external reference.** `ds assets reference --url https://… --digest
+  <sha256> --size <bytes> --kind pack --folder <declared> --sensitivity
+  confidential --yes` registers a file that lives on Google Drive as a row
+  with its link, digest and size, `bytes_held: false`. DS never fetches it:
+  `read` and `preview` are refused by name, `asset_bytes_not_held`, with the
+  link in `detail.external_url`; the row lists, attaches to a record and
+  registers as a document like any asset. It is never `open` by default.
+- **A link to a record.** `ds assets attach --asset a_… --record R-0031
+  --yes` makes the asset one of the record's attachments (`ds pm record
+  read`); `--detach` removes it. `ds assets tree --link pm_record:R-0031`
+  filters on it.
+
+**Everything about a thread is under Assets › Correspondence.** The kernel's
+system-folder projection gains a `Correspondence/` root with one folder per
+thread — `<party names> — <subject> (<date>)` — listing the .eml the thread
+was filed from with its parts, the registered documents, every asset
+attached to its records and the external references among them. Each row is
+the catalogued asset itself under a second path (the same `asset_id`, an
+`origin` naming the thread, the record and the role), so `read`, `preview`
+and `--member` work from there exactly as from the declared folder; a mail
+part row's `origin.ref.member` is the `--member` that reads it. A record or
+asset the caller may not read has no row and a thread with nothing readable
+has no folder. `ds assets tree --folder Correspondence` (or a thread under
+it) answers headless — the catalogue, the records and the parties through
+the native credential — and reports `indexed_from` (how many rows it read
+and whether any were cut); every other folder still needs the paired window.
+
+```bash
+ds assets ingest --path ./review.eml --folder correspondence/2026-09 --sensitivity internal --yes   # → a_mail
+ds assets tree --into a_mail --output json            # part-1-1.txt, picture.png, drawing.pdf …
+ds assets preview --asset a_mail --member picture.png
+ds assets classify --asset a_gtp --document-number GTP-001 --document-revision B --document-state issued --yes
+ds assets reference --url "https://drive.google.com/file/d/abc/view" --digest <sha256> --size 18033672 \
+  --kind pack --folder correspondence/2026-09 --sensitivity confidential --yes    # → a_drive, bytes_held false
+ds assets attach --asset a_drive --record R1 --yes
+ds assets tree --folder Correspondence --output json  # one folder per thread; a_mail (+parts), a_gtp, a_drive under R1's
+```
 
 ## Shared reporter outputs
 

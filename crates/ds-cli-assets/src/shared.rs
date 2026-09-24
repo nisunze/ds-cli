@@ -1,6 +1,6 @@
 //! Shared producer references; no artifact upload or copy.
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::assets::{Link, ReportReference};
@@ -58,17 +58,70 @@ const ARGS: &[Arg] = &[
 ];
 const REFERENCE_ARGS: &[Arg] = &[
     ARGS[0],
-    ARGS[1],
+    Arg::value(
+        "role",
+        "<network_information|city_map|transformer_map>",
+        "Reporter-output form: the shared artifact role.",
+    )
+    .choices(&["network_information", "city_map", "transformer_map"]),
     ARGS[2],
     ARGS[3],
     ARGS[4],
-    Arg::value("work", "<id>", "Published network reporter work id.").required(),
+    Arg::value(
+        "work",
+        "<id>",
+        "Reporter-output form: published network reporter work id.",
+    ),
     Arg::value(
         "output-id",
         "<id>",
-        "Exact verified output id from that work.",
+        "Reporter-output form: exact verified output id from that work.",
+    ),
+    Arg::value(
+        "url",
+        "<https://…>",
+        "External form: where the bytes live (a Drive link); never fetched by DS.",
+    ),
+    Arg::value(
+        "digest",
+        "<sha256>",
+        "External form: the file's sha256 (64 hex), pinning the exact bytes.",
+    ),
+    Arg::value(
+        "size",
+        "<bytes>",
+        "External form: the file's size in bytes.",
+    ),
+    Arg::value(
+        "kind",
+        "<kind>",
+        "External form: what the file is — doc, sheet, mail, note, geo, image, pack, other.",
     )
-    .required(),
+    .choices(&[
+        "doc", "sheet", "mail", "note", "geo", "image", "pack", "other",
+    ]),
+    Arg::value(
+        "folder",
+        "<path>",
+        "External form: the declared folder to file the reference in.",
+    ),
+    Arg::value(
+        "sensitivity",
+        "<class>",
+        "External form: internal (the floor), restricted or confidential; never open by default.",
+    )
+    .choices(&["internal", "restricted", "confidential"]),
+    Arg::value(
+        "name",
+        "<filename>",
+        "External form: the listed name; default the URL's last path segment.",
+    ),
+    Arg::value(
+        "provider",
+        "<google_drive|other>",
+        "External form: inferred from the host when absent.",
+    )
+    .choices(&["google_drive", "other"]),
 ];
 pub static RESOLVE: Command = Command {
     id: "assets.resolve",
@@ -225,22 +278,53 @@ pub fn maps(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     )?
     .into_result())
 }
+const fn reference_refusals() -> [Refusal; 29] {
+    crate::refusals::<29>(&[
+        EXTRA,
+        INPUT_INVALID,
+        crate::INVALID_REFERENCE_FORM,
+        crate::INVALID_EXTERNAL_REFERENCE,
+        crate::ASSET_REFERENCE_CONFLICT,
+        crate::UNKNOWN_FOLDER,
+        crate::CONFIRMATION_REQUIRED,
+    ])
+}
 pub static REFERENCE: Command = Command {
     id: "assets.reference",
     path: &["assets", "reference"],
-    contract: 1,
-    summary: "Link an existing verified report artifact to a tag or transformer.",
-    purpose: "Registers metadata pointing to the producer's existing object and generation. Repeating the same work/output reuses its asset. City maps require a tag; transformer maps require a transformer. Uses project assets.attach authority and creates no storage object.",
+    contract: 2,
+    summary: "Register a Drive link with its digest, or a verified report output.",
+    purpose: "\
+Two forms, one row each. EXTERNAL: --url --digest --size --kind registers a \
+file that lives outside DS — a drawing package on Google Drive — as a row \
+with its link, digest and size; DS never fetches the bytes, `read` answers \
+the link, `preview` is refused by name (asset_bytes_not_held), and the row \
+attaches to a record or registers as a document like any asset. The same \
+URL and digest answer the same row. Never open by default. REPORTER OUTPUT: \
+--work --output-id --role with a tag or transformer points at the \
+producer's existing object. Neither form stores bytes. Headless; no window.",
     chapter: Chapter::Assets,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: REFERENCE_ARGS,
-    output: "Shared project asset identity, reference, tag/object links and storage_copied=false.",
-    examples: &[],
-    refusals: &refusals(),
+    output: "The `asset` row with its identity, link (`external.url`, `bytes_held: false`) or reference and links, and storage_copied=false.",
+    examples: &[Example {
+        command: "ds assets reference --url \"https://drive.google.com/file/d/abc/view\" --digest 9f2c…e1 --size 18033672 --kind pack --folder correspondence/2026-09 --sensitivity confidential --yes",
+        note: "The row lists under the folder with bytes_held=false; attach it to a record with `ds assets attach --record`.",
+        runnable: false,
+    }],
+    refusals: &reference_refusals(),
     reference: Some("docs/reference/assets.md"),
-    search: &[],
+    search: &[
+        "external reference",
+        "drive link",
+        "google drive",
+        "link a file",
+        "url",
+        "correspondence",
+        "held elsewhere",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -275,18 +359,76 @@ pub fn resolve(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     .into_result())
 }
 pub fn reference(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    Ok(ds_cli_auth::shared_assets(
-        i.value("lane").unwrap_or("stable"),
-        &ds_cli_auth::SharedAssetsCommand::Reference {
-            link: link(i)?,
-            reference: ReportReference {
-                work_id: i.require("work")?.into(),
-                output_id: i.require("output-id")?.into(),
-                role: i.require("role")?.into(),
+    let lane = i.value("lane").unwrap_or("stable");
+    let external = ["url", "digest", "size", "kind"]
+        .iter()
+        .filter(|flag| i.value(flag).is_some())
+        .count();
+    let reporter = ["work", "output-id", "role"]
+        .iter()
+        .filter(|flag| i.value(flag).is_some())
+        .count();
+    let form = || {
+        Failure::invalid(
+            crate::INVALID_REFERENCE_FORM.code,
+            "give the external form (--url --digest --size --kind) or the reporter form (--work --output-id --role), whole",
+        )
+        .remedy(crate::INVALID_REFERENCE_FORM.remedy)
+        .next("ds assets reference --help")
+    };
+    match (external, reporter) {
+        (4, 0) => {
+            let folder_id = match i.value("folder") {
+                Some(path) => Some(crate::folder_id(
+                    lane,
+                    &crate::folder_path(path, "folder")?,
+                )?),
+                None => None,
+            };
+            let size = i
+                .require("size")?
+                .trim()
+                .parse::<u64>()
+                .ok()
+                .filter(|size| *size > 0)
+                .ok_or_else(|| {
+                    Failure::invalid(
+                        crate::INVALID_EXTERNAL_REFERENCE.code,
+                        "`--size` must be a positive number of bytes",
+                    )
+                    .remedy(crate::INVALID_EXTERNAL_REFERENCE.remedy)
+                    .detail(serde_json::json!({ "field": "size" }))
+                })?;
+            Ok(ds_cli_auth::shared_assets(
+                lane,
+                &ds_cli_auth::SharedAssetsCommand::External {
+                    url: i.require("url")?.trim().into(),
+                    sha256: crate::digest(i.require("digest")?, "digest")?,
+                    size,
+                    kind: i.require("kind")?.into(),
+                    format: None,
+                    folder_id,
+                    sensitivity: i.value("sensitivity").map(str::to_owned),
+                    provider: i.value("provider").map(str::to_owned),
+                    name: i.value("name").map(str::to_owned),
+                },
+            )?
+            .into_result())
+        }
+        (0, 3) => Ok(ds_cli_auth::shared_assets(
+            lane,
+            &ds_cli_auth::SharedAssetsCommand::Reference {
+                link: link(i)?,
+                reference: ReportReference {
+                    work_id: i.require("work")?.into(),
+                    output_id: i.require("output-id")?.into(),
+                    role: i.require("role")?.into(),
+                },
             },
-        },
-    )?
-    .into_result())
+        )?
+        .into_result()),
+        _ => Err(form()),
+    }
 }
 pub fn render(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()

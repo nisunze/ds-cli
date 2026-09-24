@@ -6,6 +6,7 @@
 
 pub mod account;
 mod context;
+pub mod correspondence;
 pub mod device;
 pub mod link_approval;
 mod profile;

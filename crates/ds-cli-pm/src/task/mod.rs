@@ -18,11 +18,13 @@
 //! and decide again", never a silent overwrite of somebody's plan.
 
 pub mod assign;
+pub mod block;
 pub mod create;
 pub mod list;
 pub mod proposals;
 pub mod read;
 pub mod respond;
+pub mod unblock;
 pub mod update;
 
 use serde_json::Value;

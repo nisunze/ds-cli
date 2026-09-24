@@ -1590,6 +1590,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "layers",
         "tiling",
         "project",
+        "correspondence",
         "solar-input",
         "solar-migration",
         "solar-application",
@@ -1764,6 +1765,25 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             && published["grid-local-model"].contains("dsgrid_model_prepare-project")
             && published["grid-local-model"].contains("dsgrid_publish-version"),
         "the grid-local-model profile must project the complete model and project-cache lifecycle"
+    );
+    // The correspondence workflow is its own profile (2026-09-20): the
+    // letters an agent files and the tasks it schedules are two jobs, and
+    // one bounded project profile could not carry both.
+    assert!(
+        published["correspondence"].contains("pm_record_create")
+            && published["correspondence"].contains("pm_record_reply")
+            && published["correspondence"].contains("pm_party_create")
+            && published["correspondence"].contains("pm_task_block")
+            && published["correspondence"].contains("pm_plan"),
+        "the correspondence profile carries file, reply, party, block and the plan"
+    );
+    assert!(
+        published["project"].contains("pm_task_create") && published["project"].contains("pm_plan"),
+        "the project profile keeps the task workflow and the plan"
+    );
+    assert!(
+        !published["project"].contains("pm_record_create"),
+        "filing a letter is the correspondence profile's job"
     );
     assert!(
         published["clearance"].contains("dsgrid_feature-codes_report")
