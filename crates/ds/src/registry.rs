@@ -605,6 +605,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::bundle::render,
     },
     Entry {
+        command: &ds_cli_report::plan_profile::COMMAND,
+        handler: ds_cli_report::plan_profile::run,
+        render: ds_cli_report::plan_profile::render,
+    },
+    Entry {
         command: &ds_cli_report::project::scope::COMMAND,
         handler: ds_cli_report::project::scope::run,
         render: ds_cli_report::project::scope::render,

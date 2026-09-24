@@ -32,6 +32,7 @@ pub mod engine;
 pub mod export;
 pub mod layout;
 pub mod outbox;
+pub mod plan_profile;
 pub mod planning;
 pub mod project;
 pub mod tasks;
@@ -85,6 +86,7 @@ pub static DOMAIN: Domain = Domain {
         &tasks::COMMAND,
         &export::COMMAND,
         &bundle::COMMAND,
+        &plan_profile::COMMAND,
         &outbox::STATUS,
         &outbox::DRAIN,
         &project::scope::COMMAND,
