@@ -238,7 +238,12 @@ mod tests {
                 "`{}` does not name the deployment lane it authenticates on",
                 command.id
             );
-            for windowed in ["host", "project", "desktop-descriptor", "target"] {
+            assert!(
+                flags.contains(&"project"),
+                "`{}` does not name the project it reads or writes",
+                command.id
+            );
+            for windowed in ["host", "desktop-descriptor", "target"] {
                 assert!(
                     !flags.contains(&windowed),
                     "`{}` still declares `--{windowed}`, which only a paired window needed",

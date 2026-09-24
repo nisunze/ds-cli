@@ -451,7 +451,15 @@ pub mod set {
 
 #[cfg(test)]
 mod tests {
-    use ds_cli_contract::parse;
+    /// Every style call names its project; the saved selection is never read.
+    fn parse(
+        command: &ds_cli_contract::spec::Command,
+        tokens: &[String],
+    ) -> Result<ds_cli_contract::Inputs, ds_cli_contract::outcome::Failure> {
+        let mut all = vec!["--project".to_owned(), "test-project".to_owned()];
+        all.extend_from_slice(tokens);
+        ds_cli_contract::parse(command, &all)
+    }
 
     use super::*;
 
