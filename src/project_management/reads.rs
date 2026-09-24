@@ -61,6 +61,12 @@ pub struct TaskRow {
     pub discipline: String,
     pub priority: String,
     pub blockers: i64,
+    /// Open correspondence blockers — records this task waits on — counted
+    /// by the engine (`computed.awaiting_correspondence_count`).
+    pub awaiting_correspondence: i64,
+    /// The records those open blockers name.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub blocked_record_ids: Vec<String>,
     /// True while an assignment request is waiting for an answer.
     pub assignment_open: bool,
     pub updated_at: i64,
@@ -105,6 +111,8 @@ fn task_row(wbs: &str, task: &CanonicalProjectTask) -> TaskRow {
         discipline: task.discipline.clone(),
         priority: enum_token(&task.priority),
         blockers: task.open_blocker_count + task.descendant_blocker_count,
+        awaiting_correspondence: task.awaiting_correspondence_count,
+        blocked_record_ids: task.blocked_record_ids.clone(),
         assignment_open: !task.proposed_assignee_emails.is_empty(),
         updated_at: task.updated_at,
     }
@@ -172,6 +180,10 @@ pub struct TaskListFilter {
     pub assignee: Option<String>,
     pub discipline: Option<String>,
     pub placement: PlacementFilter,
+    /// Only tasks openly blocked on correspondence — the engine's own
+    /// `computed.awaiting_correspondence_count > 0` (correspondence.md
+    /// `task_list --blocked-on-correspondence`: a graph filter, no action).
+    pub blocked_on_correspondence: bool,
     pub page: i64,
     pub page_size: i64,
 }
@@ -246,6 +258,9 @@ pub fn task_list(graph: &CanonicalProjectGraph, filter: &TaskListFilter) -> Task
             PlacementFilter::Wbs => enum_token(&task.placement) == "wbs",
             PlacementFilter::Inbox => enum_token(&task.placement) == "inbox",
         })
+        .filter(|(_, task)| {
+            !filter.blocked_on_correspondence || task.awaiting_correspondence_count > 0
+        })
         .map(|(wbs, task)| task_row(&wbs, task))
         .collect();
     let (tasks, bounds) = page(&matched, filter.page, filter.page_size);
@@ -276,6 +291,10 @@ pub struct TaskDetail {
     pub placement: String,
     pub parent_task_id: Option<String>,
     pub version: i64,
+    /// Every correspondence blocker the task carries, open or cleared, as
+    /// the engine wrote it (`data.blockers[]`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub correspondence_blockers: Vec<super::wire::TaskBlocker>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
@@ -468,6 +487,7 @@ pub fn task_read(
             placement: enum_token(&task.placement),
             parent_task_id: task.parent_task_id.clone(),
             version: task.version,
+            correspondence_blockers: task.blockers.clone(),
         },
         dependency_total: dependencies.len(),
         dependencies: dependencies.into_iter().take(MAX_RELATED_ROWS).collect(),
@@ -523,6 +543,26 @@ pub struct ContextRecord {
     pub source_message_id: Option<String>,
     pub source_artifact_id: Option<String>,
     pub version: i64,
+    // The correspondence contract's additions (ds-brain
+    // `docs/contracts/correspondence.md` §Record): who owes the answer, the
+    // parties, what the record was authored against, and the derivation.
+    pub response_owner_id: Option<String>,
+    pub response_owner_party_id: Option<String>,
+    pub external_party_ids: Vec<String>,
+    pub external_participant_names: Vec<String>,
+    pub source_asset_id: Option<String>,
+    pub meeting_note_asset_id: Option<String>,
+    pub document_ids: Vec<String>,
+    pub resulting_task_ids: Vec<String>,
+    pub waived: bool,
+    pub waived_reason: Option<String>,
+    /// `open` when the server named none: every record authored before the
+    /// contract reads as `open`.
+    pub sensitivity: String,
+    pub responded_by_record_id: Option<String>,
+    pub responded_at: Option<String>,
+    pub days_overdue: i64,
+    pub days_until_due: i64,
 }
 
 fn record_map(value: Option<&Value>) -> &Map<String, Value> {
@@ -602,6 +642,29 @@ pub fn decode_context_record(envelope: &Value) -> Option<ContextRecord> {
             .get("version")
             .and_then(Value::as_i64)
             .unwrap_or_default(),
+        response_owner_id: optional_text_of(data.get("response_owner_id")),
+        response_owner_party_id: optional_text_of(data.get("response_owner_party_id")),
+        external_party_ids: texts_of(data.get("external_party_ids")),
+        external_participant_names: texts_of(data.get("external_participant_names")),
+        source_asset_id: optional_text_of(data.get("source_asset_id")),
+        meeting_note_asset_id: optional_text_of(data.get("meeting_note_asset_id")),
+        document_ids: texts_of(data.get("document_ids")),
+        resulting_task_ids: texts_of(data.get("resulting_task_ids")),
+        waived: flag("waived"),
+        waived_reason: optional_text_of(data.get("waived_reason")),
+        sensitivity: optional_text_of(data.get("sensitivity")).unwrap_or_else(|| "open".into()),
+        responded_by_record_id: optional_text_of(computed.get("responded_by_record_id")),
+        responded_at: optional_instant(computed.get("responded_at")),
+        days_overdue: computed
+            .get("days_overdue")
+            .and_then(Value::as_i64)
+            .unwrap_or_default()
+            .max(0),
+        days_until_due: computed
+            .get("days_until_due")
+            .and_then(Value::as_i64)
+            .unwrap_or_default()
+            .max(0),
     })
 }
 
@@ -633,9 +696,19 @@ pub struct RecordRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
     pub related_tasks: usize,
+    /// The project user who owes the answer (an account uid), when one does.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_owner_id: Option<String>,
+    /// The party that owes the answer, when one does.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_owner_party_id: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub party_ids: Vec<String>,
+    pub sensitivity: String,
 }
 
-fn record_row(entry: &ContextRecord) -> RecordRow {
+/// One record as every list of this module shows it.
+pub fn record_row(entry: &ContextRecord) -> RecordRow {
     RecordRow {
         id: entry.id.clone(),
         category: entry.category.clone(),
@@ -649,6 +722,10 @@ fn record_row(entry: &ContextRecord) -> RecordRow {
         response_status: entry.response_status.clone(),
         thread_id: entry.thread_id.clone(),
         related_tasks: entry.related_task_ids.len(),
+        response_owner_id: entry.response_owner_id.clone(),
+        response_owner_party_id: entry.response_owner_party_id.clone(),
+        party_ids: entry.external_party_ids.clone(),
+        sensitivity: entry.sensitivity.clone(),
     }
 }
 
@@ -766,6 +843,25 @@ pub struct RecordDetail {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document_state: Option<String>,
     pub version: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meeting_note_asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub document_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub external_participant_names: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub resulting_task_ids: Vec<String>,
+    pub waived: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub waived_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub responded_by_record_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub responded_at: Option<String>,
+    pub days_overdue: i64,
+    pub days_until_due: i64,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
@@ -823,8 +919,28 @@ pub fn record_read(
             revision_label: entry.revision_label.clone(),
             document_state: entry.document_state.clone(),
             version: entry.version,
+            source_asset_id: entry.source_asset_id.clone(),
+            meeting_note_asset_id: entry.meeting_note_asset_id.clone(),
+            document_ids: entry.document_ids.clone(),
+            external_participant_names: entry.external_participant_names.clone(),
+            resulting_task_ids: entry.resulting_task_ids.clone(),
+            waived: entry.waived,
+            waived_reason: entry.waived_reason.clone(),
+            responded_by_record_id: entry.responded_by_record_id.clone(),
+            responded_at: entry.responded_at.clone(),
+            days_overdue: entry.days_overdue,
+            days_until_due: entry.days_until_due,
         },
     })
+}
+
+/// The detail of one record from its own entry: what `record_read` answers
+/// for a fetched context, reusable by the correspondence views that carry
+/// the record beside its attachments.
+pub fn record_detail(entry: &ContextRecord) -> RecordDetail {
+    record_read("", std::slice::from_ref(entry), &entry.id)
+        .expect("the entry names itself")
+        .record
 }
 
 #[cfg(test)]
@@ -1012,6 +1128,21 @@ mod tests {
             source_message_id: None,
             source_artifact_id: None,
             version: 3,
+            response_owner_id: None,
+            response_owner_party_id: None,
+            external_party_ids: vec![],
+            external_participant_names: vec![],
+            source_asset_id: None,
+            meeting_note_asset_id: None,
+            document_ids: vec![],
+            resulting_task_ids: vec![],
+            waived: false,
+            waived_reason: None,
+            sensitivity: "open".into(),
+            responded_by_record_id: None,
+            responded_at: None,
+            days_overdue: 0,
+            days_until_due: 0,
         }
     }
 

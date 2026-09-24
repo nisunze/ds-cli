@@ -34,6 +34,7 @@
 //! respond`) and the fold of the engine's answer. Same doctrine — the browser's
 //! rules, translated as they were, reachable without a window.
 
+pub mod correspondence;
 mod hierarchy;
 pub mod projections;
 pub mod reads;
@@ -45,7 +46,9 @@ use serde_json::Value;
 
 pub use hierarchy::{ordered_rows, OrderedRow};
 pub use projections::{
-    effort, proposals, Attention, AttentionKind, Dashboard, Phase, Proposal, RecentTask, TaskEffort,
+    effort, proposals, Attention, AttentionKind, CorrespondenceAttentionRecord,
+    CorrespondenceBlockedTask, CorrespondenceParty, CorrespondencePlan, Dashboard, Phase, Proposal,
+    RecentTask, TaskEffort,
 };
 pub use wire::{decode_project_graph, CanonicalProjectGraph, ProjectGraphPermissions};
 
@@ -121,6 +124,28 @@ pub struct Vocabulary {
     pub max_hours_per_entry: i64,
     pub max_hours_log_entries: i64,
     pub max_assignees: i64,
+    /// The correspondence vocabularies (`ds pm party`, `ds pm record`,
+    /// `ds pm task block`). Each is omitted, not emptied, when the server
+    /// declared none — an empty list would tell the CLI the engine accepts
+    /// nothing, which is the opposite of the truth on an older server.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub channels: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub record_categories: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub record_states: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub record_directions: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub response_statuses: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub blocker_kinds: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub blocker_cleared_bys: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub party_kinds: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub party_roles: Vec<String>,
 }
 
 /// The `work.plan.read` answer, field for field as `readCliWorkPlan` produced
@@ -149,6 +174,10 @@ pub struct PlanReply {
     /// `null` on a graph written before the backend published the field model.
     /// Absent is not the same answer as empty, and neither is invented here.
     pub vocabulary: Option<Vocabulary>,
+    /// The correspondence counters and the attention rows grouped by party.
+    /// `null` when the server published no projection — an older ds-brain —
+    /// which is not the same answer as "nothing is awaited".
+    pub correspondence: Option<CorrespondencePlan>,
 }
 
 /// `YYYY-MM-DD`, shaped. The browser never checked because it minted the value
@@ -223,7 +252,17 @@ fn plan(request: PlanRequest) -> Result<PlanReply, String> {
             max_hours_per_entry: model.max_hours_per_entry,
             max_hours_log_entries: model.max_hours_log_entries,
             max_assignees: model.max_assignees,
+            channels: model.channels.clone(),
+            record_categories: model.record_categories.clone(),
+            record_states: model.record_states.clone(),
+            record_directions: model.record_directions.clone(),
+            response_statuses: model.response_statuses.clone(),
+            blocker_kinds: model.blocker_kinds.clone(),
+            blocker_cleared_bys: model.blocker_cleared_bys.clone(),
+            party_kinds: model.party_kinds.clone(),
+            party_roles: model.party_roles.clone(),
         }),
+        correspondence: projections::correspondence(&graph, limit),
         today: day,
     })
 }
@@ -514,6 +553,76 @@ mod tests {
         // The plan republishes only the eight vocabularies the write commands
         // take their values from; the residual lists are not among them.
         assert!(plan["vocabulary"].get("residualKinds").is_none());
+        // A fixture from before the correspondence contract publishes neither
+        // its vocabularies nor a projection — absent, not empty.
+        assert!(plan["vocabulary"].get("channels").is_none());
+        assert_eq!(plan["correspondence"], Value::Null);
+    }
+
+    #[test]
+    fn the_plan_publishes_correspondence_counters_and_attention_grouped_by_party() {
+        // The server's awaiting rows, folded under the party the answer is
+        // owed to. Overdue parties first; within a party overdue rows first,
+        // then the soonest due; a blocked task sits under every party it
+        // waits on; a row outstanding with no date is counted but not listed.
+        let mut graph = fixture();
+        graph["field_model"]["channels"] = json!(["email", "letter"]);
+        graph["field_model"]["party_roles"] = json!(["client", "consultant", "contractor"]);
+        graph["correspondence"] = json!({
+            "as_of": "2026-09-18", "due_window_days": 7,
+            "records": [
+                {"record_id": "R5", "thread_id": "R1", "subject": "Questions on spans", "category": "request_for_information",
+                 "channel": "email", "direction": "outbound", "happened_at": "2026-09-16T09:00:00Z",
+                 "response_status": "outstanding", "response_due_date": "2026-09-22", "days_overdue": 0, "days_until_due": 4,
+                 "due_within_window": true, "response_owner_party_id": "p_tbea", "party_id": "p_tbea", "party_name": "TBEA",
+                 "external_party_ids": ["p_tbea"], "blocked_task_ids": ["design-1a"], "sensitivity": "internal"},
+                {"record_id": "R2", "thread_id": "R1", "subject": "Five review points", "category": "instruction",
+                 "channel": "email", "direction": "inbound", "happened_at": "2026-09-10T09:00:00Z",
+                 "response_status": "overdue", "response_due_date": "2026-09-15", "days_overdue": 3, "days_until_due": 0,
+                 "due_within_window": false, "response_owner_id": "uid-lead", "party_id": "p_shaker", "party_name": "Shaker",
+                 "external_party_ids": ["p_shaker"], "blocked_task_ids": [], "sensitivity": "open"},
+                {"record_id": "R9", "thread_id": "R9", "subject": "No date", "category": "review",
+                 "channel": "letter", "direction": "inbound", "happened_at": "2026-09-01T09:00:00Z",
+                 "response_status": "outstanding", "days_overdue": 0, "days_until_due": 0,
+                 "due_within_window": false, "response_owner_id": "uid-lead", "party_id": "p_tbea", "party_name": "TBEA",
+                 "external_party_ids": ["p_tbea"], "blocked_task_ids": [], "sensitivity": "open"},
+            ],
+            "records_total": 3, "truncated": false,
+            "blocked_tasks": [{"task_id": "design-1a", "title": "Pole schedule", "record_ids": ["R5"], "party_ids": ["p_tbea"]}],
+            "counters": {"recordsOutstanding": 2, "recordsOverdue": 1, "tasksAwaitingCorrespondence": 1},
+        });
+        let plan = run(json!({
+            "schema": SCHEMA, "action": "plan", "today": "2026-09-18",
+            "ds_project": "p", "graph": graph,
+        }))
+        .expect("plan");
+        assert_eq!(plan["vocabulary"]["channels"], json!(["email", "letter"]));
+        assert_eq!(
+            plan["vocabulary"]["partyRoles"],
+            json!(["client", "consultant", "contractor"])
+        );
+        let correspondence = &plan["correspondence"];
+        assert_eq!(correspondence["asOf"], "2026-09-18");
+        assert_eq!(correspondence["counters"]["recordsOutstanding"], 2);
+        assert_eq!(correspondence["counters"]["recordsOverdue"], 1);
+        assert_eq!(correspondence["counters"]["tasksAwaitingCorrespondence"], 1);
+        assert_eq!(correspondence["partyTotal"], 2);
+        assert_eq!(correspondence["recordsTotal"], 3);
+        let parties = correspondence["parties"].as_array().expect("parties");
+        assert_eq!(parties[0]["partyId"], "p_shaker", "the overdue party leads");
+        assert_eq!(parties[0]["overdue"], 1);
+        assert_eq!(parties[0]["records"][0]["owedBy"], "project");
+        assert_eq!(parties[1]["partyId"], "p_tbea");
+        assert_eq!(parties[1]["partyName"], "TBEA");
+        assert_eq!(
+            parties[1]["recordTotal"], 1,
+            "R9 has no date and is not an attention row"
+        );
+        assert_eq!(parties[1]["records"][0]["recordId"], "R5");
+        assert_eq!(parties[1]["records"][0]["owedBy"], "party");
+        assert_eq!(parties[1]["records"][0]["daysUntilDue"], 4);
+        assert_eq!(parties[1]["blockedTasks"][0]["taskId"], "design-1a");
+        assert_eq!(parties[1]["blockedTaskTotal"], 1);
     }
 
     #[test]

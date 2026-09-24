@@ -322,7 +322,7 @@ fn body_text(part: &Part, notes: &mut Vec<String>) -> Result<String, String> {
 
 /// Header block and body, split at the first blank line. A message with no
 /// blank line is all headers and an empty body.
-fn split_head_body(message: &str) -> (&str, &str) {
+pub(crate) fn split_head_body(message: &str) -> (&str, &str) {
     let crlf = message.find("\r\n\r\n").map(|at| (at, at + 4));
     let lf = message.find("\n\n").map(|at| (at, at + 2));
     let split = match (crlf, lf) {
@@ -337,7 +337,7 @@ fn split_head_body(message: &str) -> (&str, &str) {
 
 /// Unfolds continuation lines (a header line beginning with space or tab
 /// continues the one before it) into `(name, value)` pairs.
-fn parse_headers(head: &str) -> Result<Vec<(String, String)>, String> {
+pub(crate) fn parse_headers(head: &str) -> Result<Vec<(String, String)>, String> {
     let mut headers: Vec<(String, String)> = Vec::new();
     for line in head.lines() {
         if line.trim().is_empty() {
@@ -372,7 +372,7 @@ fn parse_headers(head: &str) -> Result<Vec<(String, String)>, String> {
 }
 
 /// The first value of `name`, case-insensitively.
-fn value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+pub(crate) fn value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
     headers
         .iter()
         .find(|(header, _)| header.eq_ignore_ascii_case(name))
@@ -380,7 +380,7 @@ fn value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
 }
 
 /// `text/plain; charset=utf-8` → `text/plain`.
-fn media_type(header: &str) -> String {
+pub(crate) fn media_type(header: &str) -> String {
     header
         .split(';')
         .next()
@@ -420,7 +420,7 @@ fn split_sections<'a>(body: &'a str, boundary: &str) -> Vec<&'a str> {
 
 /// RFC 2047 encoded words. An unknown charset or encoding is kept raw and
 /// noted rather than guessed at.
-fn decode_encoded_words(value: &str, notes: &mut Vec<String>) -> String {
+pub(crate) fn decode_encoded_words(value: &str, notes: &mut Vec<String>) -> String {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
     let mut adjacent = false;
@@ -500,7 +500,7 @@ fn charset_decode(bytes: &[u8], charset: &str) -> Option<String> {
 
 /// `=XX` hex escapes and soft line breaks, per RFC 2045 §6.7. A malformed
 /// escape is kept as the literal `=` it was written as.
-fn decode_quoted_printable(text: &str) -> Vec<u8> {
+pub(crate) fn decode_quoted_printable(text: &str) -> Vec<u8> {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut at = 0usize;

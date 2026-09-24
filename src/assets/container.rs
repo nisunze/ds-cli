@@ -52,6 +52,13 @@ const SHAPEFILE_REQUIRED: usize = 2;
 /// `MAX_CONTAINER_MEMBERS`, `MAX_CONTAINER_DEPTH` and
 /// `MAX_NESTED_ARCHIVE_LEVELS` report `truncated: true`, never a short list.
 pub fn walk(bytes: &[u8]) -> Result<Container, String> {
+    // A message is a container too (correspondence.md §Asset): its MIME
+    // parts are the members. Bytes that are not a ZIP are tried as one before
+    // the zip refusal, so a host that asked for the default walk of a `.eml`
+    // gets its parts rather than "not a zip".
+    if !looks_like_zip(bytes) && super::mail_container::is_message(bytes) {
+        return super::mail_container::walk(bytes);
+    }
     let mut archive = open(bytes)?;
     let mut container = Container::new(Format::Zip);
     let mut members: Vec<ContainerMember> = Vec::new();
@@ -91,6 +98,9 @@ pub fn walk(bytes: &[u8]) -> Result<Container, String> {
 /// Inflates exactly one member into memory, refusing above `max_bytes` by
 /// name (declared size and inflated size both count).
 pub fn extract_member(bytes: &[u8], path: &str, max_bytes: u64) -> Result<Vec<u8>, String> {
+    if !looks_like_zip(bytes) && super::mail_container::is_message(bytes) {
+        return super::mail_container::extract_part(bytes, path, max_bytes);
+    }
     let mut archive = open(bytes)?;
     let index = archive
         .index_for_name(path)
@@ -200,6 +210,13 @@ pub fn resolve_companions(members: &mut Vec<ContainerMember>) {
 
 /// Reads the central directory of `bytes`, naming what is wrong when it is
 /// not a zip at all.
+/// The local-file or end-of-central-directory signature a ZIP begins with.
+fn looks_like_zip(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"PK\x03\x04")
+        || bytes.starts_with(b"PK\x05\x06")
+        || bytes.starts_with(b"PK\x07\x08")
+}
+
 fn open(bytes: &[u8]) -> Result<zip::ZipArchive<Cursor<&[u8]>>, String> {
     zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|error| format!("the container is not a readable zip archive: {error}"))

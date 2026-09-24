@@ -64,9 +64,9 @@ pub use device::{
 };
 pub use error::{
     ClientError, DeviceApprovalServiceCode, ErrorKind, ProjectPropertiesServiceCode,
-    ProjectReportServiceCode, ServiceRefusal, StoreError, SurveyEntriesChangesServiceCode,
-    SurveyEntriesSelectServiceCode, SurveyEntryCreateServiceCode, SurveyFormReadServiceCode,
-    SurveyQueryServiceCode, TransportError,
+    ProjectReportServiceCode, ServiceRefusal, ServiceRefusalDetail, StoreError,
+    SurveyEntriesChangesServiceCode, SurveyEntriesSelectServiceCode, SurveyEntryCreateServiceCode,
+    SurveyFormReadServiceCode, SurveyQueryServiceCode, TransportError,
 };
 pub use layers::{
     LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
@@ -219,6 +219,9 @@ pub use transport::InstallsCall;
 /// The installation inventory: global, admin-gated, and reachable without a
 /// browser for the first time.
 pub mod installs;
+/// Correspondence — parties, records, threads and task blockers — on the
+/// same `POST /api/v1/pm` door, reachable without a window from the start.
+pub mod project_correspondence;
 pub mod project_management;
 /// Creating a project and editing its properties: server-side, admin-gated,
 /// and reachable without a window for the first time.

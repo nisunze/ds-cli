@@ -262,6 +262,11 @@ pub struct CanonicalProjectTask {
     pub open_blocker_count: i64,
     pub descendant_blocker_count: i64,
     pub unscheduled_descendant_count: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blockers: Vec<TaskBlocker>,
+    pub awaiting_correspondence_count: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocked_record_ids: Vec<String>,
     /// Task proposals (ds-brain docs/contracts/task-proposals.md). The
     /// estimate is the proposer's statement, absent when never stated; the
     /// log is what assignees declared; `actual_hours` is the server's sum;
@@ -438,6 +443,119 @@ pub struct ProjectFieldModel {
     pub max_hours_log_entries: i64,
     pub max_assignees: i64,
     pub max_batch_commands: i64,
+    /// The correspondence vocabularies (ds-brain `docs/contracts/correspondence.md`).
+    /// Empty on a graph from a server that predates them: absent is read as
+    /// empty here and republished as absent by the plan, never as a list
+    /// claiming the engine accepts nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub channels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub record_categories: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub record_states: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub record_directions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub response_statuses: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocker_kinds: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocker_cleared_bys: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub party_kinds: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub party_roles: Vec<String>,
+}
+
+/// One correspondence blocker on a task (`data.blockers[]`): the record the
+/// task waits on, who set it, and — once settled — how it cleared.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskBlocker {
+    pub kind: String,
+    pub record_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub set_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub set_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cleared_at: Option<String>,
+    /// `response`, `waiver` or `manual`, from the engine's vocabulary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cleared_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clear_reason: Option<String>,
+}
+
+impl TaskBlocker {
+    /// A blocker still holds the task while nothing has cleared it.
+    pub fn is_open(&self) -> bool {
+        self.cleared_at.is_none() && self.cleared_by.is_none()
+    }
+}
+
+/// One awaiting record as `get_graph.correspondence.records[]` carries it.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorrespondenceRecord {
+    pub record_id: String,
+    pub thread_id: String,
+    pub subject: String,
+    pub category: String,
+    pub channel: String,
+    pub direction: String,
+    pub happened_at: String,
+    /// `outstanding` or `overdue` — the projection lists awaiting rows only.
+    pub response_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_due_date: Option<String>,
+    pub days_overdue: i64,
+    pub days_until_due: i64,
+    pub due_within_window: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_owner_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_owner_party_id: Option<String>,
+    /// The party the row is grouped under: the owing party, else the first
+    /// external party when the project owes the answer.
+    pub party_id: String,
+    pub party_name: String,
+    pub external_party_ids: Vec<String>,
+    pub blocked_task_ids: Vec<String>,
+    pub sensitivity: String,
+}
+
+/// One task the projection reports as blocked on correspondence.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorrespondenceBlockedTask {
+    pub task_id: String,
+    pub title: String,
+    pub record_ids: Vec<String>,
+    pub party_ids: Vec<String>,
+}
+
+/// The three dashboard counters the contract names; readable rows only.
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CorrespondenceCounters {
+    pub records_outstanding: i64,
+    pub records_overdue: i64,
+    pub tasks_awaiting_correspondence: i64,
+}
+
+/// `get_graph.correspondence`: the awaiting records and the tasks they hold,
+/// redacted by the caller's class authority, not part of the graph revision.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Correspondence {
+    pub as_of: String,
+    pub due_window_days: i64,
+    pub records: Vec<CorrespondenceRecord>,
+    pub records_total: i64,
+    pub truncated: bool,
+    pub blocked_tasks: Vec<CorrespondenceBlockedTask>,
+    pub counters: CorrespondenceCounters,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -455,6 +573,11 @@ pub struct CanonicalProjectGraph {
     pub subject_states: Vec<ProjectSubjectState>,
     pub subject_work: Vec<ProjectSubjectWork>,
     pub permissions: ProjectGraphPermissions,
+    /// Present only when the server published the projection. Absent on a
+    /// graph from before the correspondence contract, which is not the same
+    /// answer as "nothing is awaited".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correspondence: Option<Correspondence>,
 }
 
 // ── the readers ─────────────────────────────────────────────────────────
@@ -683,7 +806,89 @@ pub fn decode_project_graph(value: &Value, fallback_project: &str) -> CanonicalP
             .filter_map(decode_subject_work)
             .collect(),
         permissions: decode_permissions(raw.get("permissions")),
+        correspondence: decode_correspondence(raw.get("correspondence")),
     }
+}
+
+/// `get_graph.correspondence`, when the server published one. A row without
+/// a record id is dropped rather than defaulted: it could not be acted on.
+fn decode_correspondence(value: Option<&Value>) -> Option<Correspondence> {
+    let raw = record(value);
+    if raw.is_empty() {
+        return None;
+    }
+    let counters = record(raw.get("counters"));
+    Some(Correspondence {
+        as_of: schedule_date(raw.get("as_of")),
+        due_window_days: integer(raw.get("due_window_days")).max(0),
+        records: records(raw.get("records"))
+            .into_iter()
+            .filter_map(decode_correspondence_record)
+            .collect(),
+        records_total: integer(raw.get("records_total")).max(0),
+        truncated: raw.get("truncated") == Some(&Value::Bool(true)),
+        blocked_tasks: records(raw.get("blocked_tasks"))
+            .into_iter()
+            .filter_map(|row| {
+                Some(CorrespondenceBlockedTask {
+                    task_id: non_empty(text(row.get("task_id")))?,
+                    title: text(row.get("title")),
+                    record_ids: texts(row.get("record_ids")),
+                    party_ids: texts(row.get("party_ids")),
+                })
+            })
+            .collect(),
+        counters: CorrespondenceCounters {
+            records_outstanding: integer(counters.get("recordsOutstanding")).max(0),
+            records_overdue: integer(counters.get("recordsOverdue")).max(0),
+            tasks_awaiting_correspondence: integer(counters.get("tasksAwaitingCorrespondence"))
+                .max(0),
+        },
+    })
+}
+
+fn decode_correspondence_record(raw: &Map<String, Value>) -> Option<CorrespondenceRecord> {
+    let record_id = non_empty(text(raw.get("record_id")))?;
+    Some(CorrespondenceRecord {
+        thread_id: non_empty(text(raw.get("thread_id"))).unwrap_or_else(|| record_id.clone()),
+        record_id,
+        subject: text(raw.get("subject")),
+        category: text(raw.get("category")),
+        channel: text(raw.get("channel")),
+        direction: text(raw.get("direction")),
+        happened_at: text(raw.get("happened_at")),
+        response_status: text(raw.get("response_status")),
+        response_due_date: non_empty(schedule_date(raw.get("response_due_date"))),
+        days_overdue: integer(raw.get("days_overdue")).max(0),
+        days_until_due: integer(raw.get("days_until_due")).max(0),
+        due_within_window: raw.get("due_within_window") == Some(&Value::Bool(true)),
+        response_owner_id: non_empty(text(raw.get("response_owner_id"))),
+        response_owner_party_id: non_empty(text(raw.get("response_owner_party_id"))),
+        party_id: text(raw.get("party_id")),
+        party_name: text(raw.get("party_name")),
+        external_party_ids: texts(raw.get("external_party_ids")),
+        blocked_task_ids: texts(raw.get("blocked_task_ids")),
+        sensitivity: non_empty(text(raw.get("sensitivity"))).unwrap_or_else(|| "open".into()),
+    })
+}
+
+/// `data.blockers[]` on a task: rows without a record id are dropped.
+fn decode_blockers(value: Option<&Value>) -> Vec<TaskBlocker> {
+    records(value)
+        .into_iter()
+        .filter_map(|row| {
+            Some(TaskBlocker {
+                kind: non_empty(text(row.get("kind")))
+                    .unwrap_or_else(|| "awaiting_correspondence".into()),
+                record_id: non_empty(text(row.get("record_id")))?,
+                set_by: non_empty(text(row.get("set_by"))),
+                set_at: optional_instant(row.get("set_at")),
+                cleared_at: optional_instant(row.get("cleared_at")),
+                cleared_by: non_empty(text(row.get("cleared_by"))),
+                clear_reason: non_empty(text(row.get("clear_reason"))),
+            })
+        })
+        .collect()
 }
 
 /// Present only when the backend declared a non-empty `field_model`
@@ -713,6 +918,15 @@ fn decode_field_model(value: Option<&Value>) -> Option<ProjectFieldModel> {
         max_hours_log_entries: integer(raw.get("max_hours_log_entries")),
         max_assignees: integer(raw.get("max_assignees")),
         max_batch_commands: integer(raw.get("max_batch_commands")),
+        channels: texts(raw.get("channels")),
+        record_categories: texts(raw.get("record_categories")),
+        record_states: texts(raw.get("record_states")),
+        record_directions: texts(raw.get("record_directions")),
+        response_statuses: texts(raw.get("response_statuses")),
+        blocker_kinds: texts(raw.get("blocker_kinds")),
+        blocker_cleared_bys: texts(raw.get("blocker_cleared_bys")),
+        party_kinds: texts(raw.get("party_kinds")),
+        party_roles: texts(raw.get("party_roles")),
     })
 }
 
@@ -1119,6 +1333,9 @@ pub fn decode_task(envelope: &Map<String, Value>) -> Option<CanonicalProjectTask
         open_blocker_count: integer(raw.get("open_blocker_count")).max(0),
         descendant_blocker_count: integer(raw.get("descendant_blocker_count")).max(0),
         unscheduled_descendant_count: integer(raw.get("unscheduled_descendant_count")).max(0),
+        blockers: decode_blockers(raw.get("blockers")),
+        awaiting_correspondence_count: integer(raw.get("awaiting_correspondence_count")).max(0),
+        blocked_record_ids: texts(raw.get("blocked_record_ids")),
         estimated_hours: optional_finite(raw.get("estimated_hours")).filter(|hours| *hours >= 0.0),
         estimated_days: optional_integer(raw.get("estimated_days")).filter(|days| *days >= 0),
         actual_hours: {
@@ -1682,5 +1899,105 @@ mod tests {
             None
         );
         assert_eq!(task_with(json!({})).proposed_at, None);
+    }
+
+    #[test]
+    fn a_task_reads_its_correspondence_blockers_apart_from_the_schedule_counts() {
+        // `data.blockers[]` is authored by `task_block`; the two counts are
+        // the engine's own under `computed`. Neither is re-derived here: a
+        // client that counted open blockers for itself would disagree with
+        // the plan the moment the engine's rule moved.
+        let task = one_task(json!({
+            "id": "T2b",
+            "data": {
+                "title": "Replace spans",
+                "blockers": [
+                    {"kind": "awaiting_correspondence", "record_id": "R5",
+                     "set_by": "lead@ds.rw", "set_at": 1_789_689_600_000i64},
+                    {"kind": "awaiting_correspondence", "record_id": "R2",
+                     "cleared_at": "2026-09-19T08:00:00Z", "cleared_by": "response"},
+                    {"kind": "awaiting_correspondence"},
+                ],
+            },
+            "computed": {
+                "open_blocker_count": 1,
+                "awaiting_correspondence_count": 1,
+                "blocked_record_ids": ["R5"],
+            },
+        }));
+        assert_eq!(
+            task.blockers.len(),
+            2,
+            "a blocker naming no record is dropped"
+        );
+        assert!(task.blockers[0].is_open());
+        assert_eq!(
+            task.blockers[0].set_at.as_deref(),
+            Some("2026-09-18T00:00:00.000Z")
+        );
+        assert!(!task.blockers[1].is_open());
+        assert_eq!(task.blockers[1].cleared_by.as_deref(), Some("response"));
+        assert_eq!(task.awaiting_correspondence_count, 1);
+        assert_eq!(task.blocked_record_ids, vec!["R5"]);
+        // The plain task carries none, and says so by omission.
+        let plain = task_with(json!({}));
+        assert!(plain.blockers.is_empty());
+        assert_eq!(plain.awaiting_correspondence_count, 0);
+    }
+
+    #[test]
+    fn the_correspondence_projection_and_its_vocabularies_are_read_and_never_invented() {
+        let graph = decode_project_graph(
+            &json!({
+                "project_id": "p",
+                "field_model": {
+                    "max_assignees": 5,
+                    "channels": ["email", "letter", "system"],
+                    "response_statuses": ["none", "outstanding", "overdue", "responded", "waived"],
+                    "party_roles": ["client", "consultant"],
+                },
+                "correspondence": {
+                    "as_of": "2026-09-20", "due_window_days": 7,
+                    "records": [
+                        {"record_id": "R5", "thread_id": "R1", "subject": "Questions", "category": "request_for_information",
+                         "channel": "email", "direction": "outbound", "happened_at": "2026-09-20T09:00:00Z",
+                         "response_status": "outstanding", "response_due_date": "2026-09-24",
+                         "days_overdue": 0, "days_until_due": 4, "due_within_window": true,
+                         "response_owner_party_id": "p_tbea", "party_id": "p_tbea", "party_name": "TBEA",
+                         "external_party_ids": ["p_shaker", "p_tbea"], "blocked_task_ids": ["T2b"], "sensitivity": "confidential"},
+                        {"subject": "a row with no record id"},
+                    ],
+                    "records_total": 2, "truncated": false,
+                    "blocked_tasks": [{"task_id": "T2b", "title": "Replace spans", "record_ids": ["R5"], "party_ids": ["p_tbea"]}],
+                    "counters": {"recordsOutstanding": 1, "recordsOverdue": 0, "tasksAwaitingCorrespondence": 1},
+                },
+            }),
+            "p",
+        );
+        let model = graph.field_model.expect("field model");
+        assert_eq!(model.channels, vec!["email", "letter", "system"]);
+        assert_eq!(model.response_statuses.len(), 5);
+        assert!(model.record_categories.is_empty(), "undeclared stays empty");
+        let correspondence = graph.correspondence.expect("projection");
+        assert_eq!(correspondence.as_of, "2026-09-20");
+        assert_eq!(correspondence.due_window_days, 7);
+        assert_eq!(
+            correspondence.records.len(),
+            1,
+            "a row without a record id is dropped"
+        );
+        let row = &correspondence.records[0];
+        assert_eq!(row.thread_id, "R1");
+        assert_eq!(row.response_due_date.as_deref(), Some("2026-09-24"));
+        assert!(row.due_within_window);
+        assert_eq!(row.party_name, "TBEA");
+        assert_eq!(row.sensitivity, "confidential");
+        assert_eq!(correspondence.records_total, 2);
+        assert_eq!(correspondence.blocked_tasks[0].task_id, "T2b");
+        assert_eq!(correspondence.counters.records_outstanding, 1);
+        assert_eq!(correspondence.counters.tasks_awaiting_correspondence, 1);
+        // A graph that never published the projection has none, not an empty one.
+        let silent = decode_project_graph(&json!({"project_id": "p"}), "p");
+        assert!(silent.correspondence.is_none());
     }
 }

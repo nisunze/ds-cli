@@ -224,6 +224,8 @@ pub struct CreateTask {
     /// The task's outgoing `links[]`, as the engine's wire links. Empty is
     /// what the Plan sheet sends for a new item.
     pub links: Vec<Value>,
+    /// Correspondence record this task answers in the same commit.
+    pub from_record: Option<String>,
 }
 
 /// `createCliWorkTask` (cli-pm.ts:564-609) + `createTaskCommand`
@@ -322,6 +324,11 @@ pub fn create_task(
     }
     if let Some(geometry) = &input.geometry {
         payload["geometry"] = geometry.clone();
+    }
+    if let Some(record) = optional_text(input.from_record.as_deref(), "from-record", MAX_ID_LENGTH)?
+        .filter(|id| !id.is_empty())
+    {
+        payload["from_record_id"] = json!(record);
     }
     Ok(PreparedCommand {
         project: graph.project_id.clone(),
@@ -851,6 +858,7 @@ mod tests {
             finish_date: finish.map(str::to_owned),
             geometry: None,
             links: Vec::new(),
+            from_record: None,
         }
     }
 
@@ -915,6 +923,20 @@ mod tests {
         assert_eq!(fields["links"], json!([]));
         assert_eq!(fields["title"], "Renamed");
         assert!(fields.get("geometry").is_none());
+    }
+
+    #[test]
+    fn a_task_from_a_record_carries_the_record_for_the_same_commit() {
+        // `from_record_id` rides the create untouched; ds-brain appends the
+        // task to the record's `resulting_task_ids` in the same transaction.
+        let mut input = create(CreateKind::Milestone, None, None, Some("2026-09-25"));
+        input.from_record = Some(" R2 ".into());
+        let prepared = create_task(&graph(true), &input).expect("prepared");
+        assert_eq!(prepared.command["create_task"]["from_record_id"], "R2");
+        assert_eq!(prepared.command["create_task"]["type"], "milestone");
+        let plain = create_task(&graph(true), &create(CreateKind::Parent, None, None, None))
+            .expect("prepared");
+        assert!(plain.command["create_task"].get("from_record_id").is_none());
     }
 
     #[test]

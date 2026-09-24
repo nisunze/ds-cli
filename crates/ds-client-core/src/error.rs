@@ -171,6 +171,17 @@ pub struct ServiceRefusal {
     status: u16,
     code: Option<String>,
     message: Option<String>,
+    /// The ids and numbers the route's rule names, bounded and scalar: a
+    /// `record_id`, a `bound`, an `external_url`. Never a nested body.
+    details: Vec<(String, ServiceRefusalDetail)>,
+}
+
+/// One scalar a governed route named in its refusal's `details`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServiceRefusalDetail {
+    Text(String),
+    Integer(i64),
+    Flag(bool),
 }
 
 impl ServiceRefusal {
@@ -178,6 +189,11 @@ impl ServiceRefusal {
     pub const MAX_MESSAGE_BYTES: usize = 400;
     /// The longest server code this boundary will carry.
     pub const MAX_CODE_BYTES: usize = 64;
+    /// The most named details this boundary will carry.
+    pub const MAX_DETAILS: usize = 16;
+    /// The longest detail text this boundary will carry — long enough for
+    /// the https link a reference refusal names, never a body.
+    pub const MAX_DETAIL_BYTES: usize = 2048;
 
     /// Build one from a raw server envelope. Anything outside the bounds is
     /// dropped rather than truncated into a different claim, except the
@@ -191,7 +207,73 @@ impl ServiceRefusal {
             status,
             code: code.and_then(sanitized_code),
             message: message.and_then(sanitized_message),
+            details: Vec::new(),
         }
+    }
+
+    /// The same, carrying the scalar details a route named — a JSON object
+    /// whose string, integer and boolean members survive, each key an
+    /// identifier, at most [`Self::MAX_DETAILS`] of them in key order, every
+    /// text sanitized like a message and bounded at
+    /// [`Self::MAX_DETAIL_BYTES`]. Anything else in the object is dropped:
+    /// a nested value is a body, and a body never crosses this boundary.
+    pub fn with_details(
+        status: u16,
+        code: Option<&str>,
+        message: Option<&str>,
+        details: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> Self {
+        let mut refusal = Self::new(status, code, message);
+        let Some(details) = details else {
+            return refusal;
+        };
+        let mut keys: Vec<&String> = details.keys().collect();
+        keys.sort();
+        for key in keys {
+            if refusal.details.len() >= Self::MAX_DETAILS {
+                break;
+            }
+            let Some(name) = sanitized_code(key) else {
+                continue;
+            };
+            let value = match &details[key] {
+                serde_json::Value::String(text) => {
+                    let Some(text) = sanitized_detail(text) else {
+                        continue;
+                    };
+                    ServiceRefusalDetail::Text(text)
+                }
+                serde_json::Value::Number(number) => match number.as_i64() {
+                    Some(integer) => ServiceRefusalDetail::Integer(integer),
+                    None => continue,
+                },
+                serde_json::Value::Bool(flag) => ServiceRefusalDetail::Flag(*flag),
+                _ => continue,
+            };
+            refusal.details.push((name, value));
+        }
+        refusal
+    }
+
+    /// The named details, in key order.
+    pub fn details(&self) -> &[(String, ServiceRefusalDetail)] {
+        &self.details
+    }
+
+    /// One named detail's text, when the route named it as text.
+    pub fn detail_text(&self, name: &str) -> Option<&str> {
+        self.details.iter().find_map(|(key, value)| match value {
+            ServiceRefusalDetail::Text(text) if key == name => Some(text.as_str()),
+            _ => None,
+        })
+    }
+
+    /// One named detail's number, when the route named it as a number.
+    pub fn detail_integer(&self, name: &str) -> Option<i64> {
+        self.details.iter().find_map(|(key, value)| match value {
+            ServiceRefusalDetail::Integer(integer) if key == name => Some(*integer),
+            _ => None,
+        })
     }
 
     /// The exact HTTP status the governed route answered with.
@@ -223,6 +305,26 @@ fn sanitized_code(code: &str) -> Option<String> {
         return None;
     }
     Some(code.to_owned())
+}
+
+/// A detail text keeps control characters out and is bounded; unlike a
+/// message it keeps an address, because the address IS the detail a
+/// reference refusal names (`external_url`) and the reason a `read` of an
+/// external reference can show its link.
+fn sanitized_detail(text: &str) -> Option<String> {
+    let cleaned: String = text
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if cleaned.is_empty() {
+        return None;
+    }
+    if cleaned.len() > ServiceRefusal::MAX_DETAIL_BYTES {
+        return None;
+    }
+    Some(cleaned)
 }
 
 /// A sentence keeps its words and loses everything else: control characters

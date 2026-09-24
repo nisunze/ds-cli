@@ -37,6 +37,7 @@ use sha2::{Digest, Sha256};
 pub mod classify;
 pub mod container;
 pub mod format;
+pub mod mail_container;
 pub mod preview;
 pub mod tag_maps;
 pub mod tree;
@@ -309,6 +310,9 @@ pub enum SourceKind {
     Container,
     DeviceScan,
     System,
+    /// Bytes held outside DS — a Drive link with a digest — registered by
+    /// `assets.reference --url` (correspondence.md §Asset). Never served.
+    ExternalReference,
 }
 
 closed_vocabulary!(SourceKind {
@@ -319,6 +323,7 @@ closed_vocabulary!(SourceKind {
     Container => "container",
     DeviceScan => "device_scan",
     System => "system",
+    ExternalReference => "external_reference",
 });
 
 /// §2.1 `classified_by`: a user override is never re-inferred away.
@@ -405,6 +410,72 @@ pub enum Link {
     },
 }
 
+/// A registered document (`classify --document`): the number, revision and
+/// state a submission or transmittal names it by.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocumentRegistration {
+    #[serde(default)]
+    pub number: String,
+    #[serde(default)]
+    pub revision_label: String,
+    #[serde(default)]
+    pub state: String,
+}
+
+/// One MIME part of a `mail` container as ds-brain listed it at finalize;
+/// `path` is the member name the kernel's own walk derives by the same rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MailPart {
+    pub path: String,
+    #[serde(default)]
+    pub section: String,
+    #[serde(default)]
+    pub content_type: String,
+    #[serde(default)]
+    pub disposition: String,
+    #[serde(default)]
+    pub bytes: u64,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub format: String,
+    #[serde(default)]
+    pub named: bool,
+}
+
+/// The header and structure metadata of a `mail` container (never a body).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MailMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub happened_at: Option<String>,
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub to: Vec<String>,
+    #[serde(default)]
+    pub cc: Vec<String>,
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub message_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_reply_to: Option<String>,
+    #[serde(default)]
+    pub parts: Vec<MailPart>,
+    #[serde(default)]
+    pub parts_total: u64,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+/// Where an external reference's bytes live. `read` answers this link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalReference {
+    pub url: String,
+    #[serde(default)]
+    pub provider: String,
+}
+
 /// §2.5 `origin`: which source inventory a projected row came from and the
 /// reference its own read action needs. Never written to Firestore (D16).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -452,6 +523,48 @@ pub struct Asset {
     pub links: Vec<Link>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Origin>,
+    /// Registered-document identity (correspondence.md §Asset); absent on an
+    /// unregistered row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document: Option<DocumentRegistration>,
+    /// Header and MIME structure of a `mail` container, from the row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mail: Option<MailMetadata>,
+    /// The link of an `external_reference` row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external: Option<ExternalReference>,
+    /// Whether DS can serve the bytes. A row written before the field reads
+    /// `true`, which is what every row then was: an external reference is
+    /// the only row that carries `false`, and it always carries the field.
+    #[serde(
+        default = "bytes_held_default",
+        skip_serializing_if = "bytes_held_is_default"
+    )]
+    pub bytes_held: bool,
+    // ds-brain's row envelope beyond the §2.1 model. Read so a catalogued row
+    // decodes as the server sends it — the tree refused every ingested row
+    // (`unknown field created_by`) before these were read — and republished
+    // only when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<i64>,
+}
+
+fn bytes_held_default() -> bool {
+    true
+}
+
+fn bytes_held_is_default(held: &bool) -> bool {
+    *held
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -577,6 +690,25 @@ impl Asset {
                 })
                 .unwrap_or_default(),
             origin: None,
+            document: row
+                .get("document")
+                .and_then(|value| serde_json::from_value(value.clone()).ok()),
+            mail: row
+                .get("mail")
+                .and_then(|value| serde_json::from_value(value.clone()).ok()),
+            external: row
+                .get("external")
+                .and_then(|value| serde_json::from_value(value.clone()).ok()),
+            bytes_held: row
+                .get("bytes_held")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+            folder_id: text("folder_id"),
+            content_type: text("content_type"),
+            created_by: text("created_by"),
+            updated_at: text("updated_at"),
+            updated_by: text("updated_by"),
+            version: row.get("version").and_then(Value::as_i64),
         })
     }
 }
@@ -612,6 +744,16 @@ pub struct Folder {
     pub default_status: Option<Status>,
     #[serde(default)]
     pub counts: Counts,
+    // ds-brain's folder envelope beyond the §2.2 model, read so a declared
+    // folder decodes as the server sends it and republished only when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden_assets: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<i64>,
 }
 
 fn folder_schema() -> String {
@@ -666,6 +808,10 @@ impl Folder {
                     .and_then(Value::as_u64)
                     .unwrap_or(0),
             },
+            hidden_assets: row.get("hidden_assets").and_then(Value::as_u64),
+            created_at: text("created_at"),
+            updated_at: text("updated_at"),
+            version: row.get("version").and_then(Value::as_i64),
         })
     }
 
@@ -941,7 +1087,7 @@ impl ClassifyRequest {
 pub struct TreeSources(pub std::collections::BTreeMap<String, Vec<Value>>);
 
 /// The closed set of source names the projection understands (contract §2.5).
-pub const TREE_SOURCE_NAMES: [&str; 19] = [
+pub const TREE_SOURCE_NAMES: [&str; 20] = [
     "transformers",
     "transformer_versions",
     "design_attachments",
@@ -950,6 +1096,7 @@ pub const TREE_SOURCE_NAMES: [&str; 19] = [
     "pm_attachments",
     "pm_tasks",
     "pm_records",
+    "pm_parties",
     "compounded",
     "survey_media",
     "project_data",
@@ -1192,6 +1339,16 @@ pub fn evaluate_with_bytes(bytes: &[u8], request: &[u8]) -> Result<String, Strin
         BytesRequest::ContainerWalk { schema, format } => {
             require_schema(&schema)?;
             let declared = format.unwrap_or(Format::Zip);
+            // A mail container is walked by its MIME structure, whether the
+            // host declared `eml` or handed the bytes over under the default.
+            if declared == Format::Eml || (format.is_none() && mail_container::is_message(bytes)) {
+                let container = mail_container::walk(bytes)?;
+                return serde_json::to_string(&with_action(
+                    "container_walk",
+                    serde_json::to_value(container),
+                )?)
+                .map_err(|error| error.to_string());
+            }
             if !is_zip_container(declared) {
                 return Err(match declared {
                     Format::SevenZ | Format::TarGz => format!(

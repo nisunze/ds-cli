@@ -27,7 +27,10 @@ impl RemoveCommand {
         let valid_target = match self.scope.as_str() {
             "mv" => self.transformer == "mv_data",
             "combined" => self.transformer == "combined_transformer",
-            "transformer" => !matches!(self.transformer.as_str(), "mv_data" | "combined_transformer"),
+            "transformer" => !matches!(
+                self.transformer.as_str(),
+                "mv_data" | "combined_transformer"
+            ),
             _ => false,
         };
         if !text(project, 128)
@@ -40,7 +43,10 @@ impl RemoveCommand {
             || !text(&self.gcs_path, 2048)
             || !self.gcs_path.starts_with("gs://")
             || self.sha256.len() != 64
-            || !self.sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || !self
+                .sha256
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         {
             return Err(ClientError::new(
                 ErrorKind::InvalidInput,
@@ -274,20 +280,41 @@ mod tests {
     #[test]
     fn removal_requires_exact_identity_and_a_reference_only_receipt() {
         let command = RemoveCommand {
-            scope: "mv".into(), transformer: "mv_data".into(),
+            scope: "mv".into(),
+            transformer: "mv_data".into(),
             file_name: "mv.a3.pdf".into(),
-            gcs_path: "gs://bucket/exact/mv.a3.pdf".into(), sha256: "a".repeat(64),
+            gcs_path: "gs://bucket/exact/mv.a3.pdf".into(),
+            sha256: "a".repeat(64),
         };
         assert!(command.validate("p-1").is_ok());
         let receipt = json!({"project_id":"p-1","scope":"mv","transformer":"mv_data","file_name":"mv.a3.pdf","gcs_path":"gs://bucket/exact/mv.a3.pdf","sha256":"a".repeat(64),"removed":1,"bytes_deleted":false});
-        assert_eq!(checked_removal_result("p-1", &command, receipt.clone()).unwrap(), receipt);
+        assert_eq!(
+            checked_removal_result("p-1", &command, receipt.clone()).unwrap(),
+            receipt
+        );
         let mut wrong = receipt.clone();
         wrong["bytes_deleted"] = json!(true);
-        assert_eq!(checked_removal_result("p-1", &command, wrong).unwrap_err().kind(), ErrorKind::UnreadableResponse);
+        assert_eq!(
+            checked_removal_result("p-1", &command, wrong)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
         let mut wrong = receipt;
         wrong["project_id"] = json!("other");
-        assert_eq!(checked_removal_result("p-1", &command, wrong).unwrap_err().kind(), ErrorKind::UnreadableResponse);
-        let invalid = RemoveCommand { transformer: "other".into(), ..command };
-        assert_eq!(invalid.validate("p-1").unwrap_err().kind(), ErrorKind::InvalidInput);
+        assert_eq!(
+            checked_removal_result("p-1", &command, wrong)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+        let invalid = RemoveCommand {
+            transformer: "other".into(),
+            ..command
+        };
+        assert_eq!(
+            invalid.validate("p-1").unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
     }
 }

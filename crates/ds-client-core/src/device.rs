@@ -1257,6 +1257,25 @@ impl DeviceApiAuthorization<'_> {
             request,
         )
     }
+    /// One governed correspondence action, on a device session — the same
+    /// door as [`Self::project_management`].
+    pub fn project_correspondence<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        action: &crate::project_correspondence::Action,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
+        self.ensure_active(now)?;
+        crate::project_correspondence::run(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            action,
+        )
+    }
     /// One governed project-management read, on a device session.
     ///
     /// The same door the restored-user path takes; only the credential differs.
