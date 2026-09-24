@@ -652,13 +652,13 @@ These are not project layers: `map layer list` is the governed catalogue, `tile
 add` is a governed tile, and nothing here publishes.
 
 `map data inspect --path <file>` inventories bytes and SHA-256 entirely offline.
-`map data upload --path <file> [--sha256 <inspection-digest>] --yes` streams an
+`map data upload --project <id> --path <file> [--sha256 <inspection-digest>] --yes` streams an
 immutable local snapshot to a backend-issued session, then registers project GIS
 data. It accepts files up to 1 GiB. Zip shapefile sidecars together. This is raw GIS
 ingestion; canonical design cleaning stays in `map design upload inspect/stage`.
-`map data list` reports upload and tiling status. `map data remove --upload <id>
+`map data list --project <id>` reports upload and tiling status. `map data remove --project <id> --upload <id>
 --yes` removes an exact project upload and its owned storage through the backend.
-These three project data commands need a reachable backend. A transfer receipt distinguishes registered from tiles ready.
+These three project data commands name their project with `--project` (the saved selection is never read) and need a reachable backend. A transfer receipt distinguishes registered from tiles ready.
 
 ## Headless Canvas2D camera
 

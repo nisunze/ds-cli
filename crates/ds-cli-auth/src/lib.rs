@@ -1777,25 +1777,31 @@ pub fn tile_remove(
 }
 
 pub use ds_client_core::{MAX_UPLOAD_BYTES, ProjectDataCommand};
-pub fn project_data(lane_value: &str, command: ProjectDataCommand<'_>) -> Result<Value, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .project_data(selected.project_id(), command)
-            .map_err(map_client)?;
-        let mut data = result.data().clone();
-        data["lane"] = serde_json::json!(lane.token());
-        return Ok(data);
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.project_data(selected.project_id(), command, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
-    let mut data = result.data().clone();
-    data["lane"] = serde_json::json!(lane.token());
+/// One project GIS upload action against the project the CALLER named. The
+/// saved selection is never read. The command owns a reader for uploads, so it
+/// is handed to whichever of the two sessions restores.
+pub fn project_data(
+    lane_value: &str,
+    project: &str,
+    command: ProjectDataCommand<'_>,
+) -> Result<Value, Failure> {
+    let command = std::cell::Cell::new(Some(command));
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| {
+            device.project_data(project, command.take().expect("one project-data call"))
+        },
+        |client, project| {
+            client.project_data(
+                project,
+                command.take().expect("one project-data call"),
+                now(),
+            )
+        },
+    )?;
+    let mut data = named.result.data().clone();
+    data["lane"] = serde_json::json!(named.lane);
     Ok(data)
 }
 

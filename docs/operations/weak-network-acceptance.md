@@ -133,7 +133,7 @@ making progress must not be killed for being slow (contract §4.2 rule 13).
 
 ```bash
 ds map data inspect --path ./acceptance-64mib.geojson --output json
-time ds map data upload --path ./acceptance-64mib.geojson --yes --output json
+time ds map data upload --project <id> --path ./acceptance-64mib.geojson --yes --output json
 ```
 
 `inspect` computes the SHA-256 locally, offline, before a byte moves. `upload`

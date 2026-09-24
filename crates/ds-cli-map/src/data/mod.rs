@@ -24,6 +24,12 @@ const FILE: Refusal = Refusal {
     remedy: "check the local file and inspect its bytes before upload",
 };
 const LIMIT: Arg = Arg::value("limit", "<n>", "At most 1..500 upload records.").default("100");
+const PROJECT: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project this call is about; the saved selection is never read.",
+)
+.required();
 const LANE: Arg = super::layer::native::LANE_ARG;
 const REFUSALS: &[Refusal] = super::layer::native::NATIVE_WRITE_REFUSALS;
 const UPLOAD_REFUSALS: [Refusal; REFUSALS.len() + 2] = {
@@ -142,11 +148,11 @@ pub mod upload {
         effect: Effect::GlobalWrite,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[PATH, SHA, LANE],
+        args: &[PROJECT, PATH, SHA, LANE],
         output: "Project, upload id, filename, transferred bytes, SHA-256, registered, tile_status and ready. Session URLs and storage paths are withheld.",
         examples: &[Example {
-            command: "ds map data upload --path ./roads.geojson --yes",
-            note: "The project is selected through native ds project use.",
+            command: "ds map data upload --project <id> --path ./roads.geojson --yes",
+            note: "The project comes only from --project; the saved selection is never read.",
             runnable: false,
         }],
         refusals: &UPLOAD_REFUSALS,
@@ -159,6 +165,7 @@ pub mod upload {
         let (mut staged, info) = snapshot(inputs)?;
         let mut result = ds_cli_auth::project_data(
             inputs.require("lane")?,
+            inputs.require("project")?,
             ds_cli_auth::ProjectDataCommand::Upload {
                 file_name: info["file_name"].as_str().expect("filename"),
                 size: info["bytes"].as_u64().expect("size"),
@@ -184,16 +191,16 @@ pub mod list {
         id: "map.data.list",
         path: &["map", "data", "list"],
         contract: 1,
-        summary: "List the selected project's uploaded GIS files and tiling status.",
+        summary: "List a named project's uploaded GIS files and tiling status.",
         purpose: "Reads the project-owned upload catalogue through the native authenticated client. Does not require a desktop or open map.",
         chapter: Chapter::Survey,
         effect: Effect::LocalAuthState,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[LANE, LIMIT],
+        args: &[PROJECT, LANE, LIMIT],
         output: "Project, total uploads, bounded metadata rows and more. Signed URLs, raw storage paths and backend diagnostic strings are omitted.",
         examples: &[Example {
-            command: "ds map data list --output json",
+            command: "ds map data list --project <id> --output json",
             note: "Check tile_status after uploading.",
             runnable: false,
         }],
@@ -207,6 +214,7 @@ pub mod list {
         let limit = super::super::integer(inputs.require("limit")?, "limit", 1, 500)? as usize;
         let mut result = ds_cli_auth::project_data(
             inputs.require("lane")?,
+            inputs.require("project")?,
             ds_cli_auth::ProjectDataCommand::List,
         )?;
         let total = result["total"].as_u64().unwrap_or(0);
@@ -242,13 +250,14 @@ pub mod remove {
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: &[
+            PROJECT,
             LANE,
             Arg::value("upload", "<id>", "Exact id from map data list.").required(),
         ],
         output: "Project, upload_id and removed true, confirmed by the backend.",
         examples: &[Example {
-            command: "ds map data remove --upload roads --yes",
-            note: "Removes the selected project upload.",
+            command: "ds map data remove --project <id> --upload roads --yes",
+            note: "Removes the named project's upload.",
             runnable: false,
         }],
         refusals: &UPLOAD_REFUSALS,
@@ -260,6 +269,7 @@ pub mod remove {
     pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         ds_cli_auth::project_data(
             inputs.require("lane")?,
+            inputs.require("project")?,
             ds_cli_auth::ProjectDataCommand::Remove {
                 upload_id: inputs.require("upload")?,
             },

@@ -11351,6 +11351,8 @@ fn native_layers_persist_without_a_desktop_and_gis_inspection_pins_exact_bytes()
             "map",
             "data",
             "upload",
+            "--project",
+            "test-project",
             "--path",
             file.to_str().unwrap(),
             "--output",
@@ -11360,7 +11362,15 @@ fn native_layers_persist_without_a_desktop_and_gis_inspection_pins_exact_bytes()
     );
     assert_eq!(
         refusal(&[
-            "map", "data", "remove", "--upload", "roads", "--output", "json"
+            "map",
+            "data",
+            "remove",
+            "--project",
+            "test-project",
+            "--upload",
+            "roads",
+            "--output",
+            "json"
         ]),
         "confirmation_required"
     );
