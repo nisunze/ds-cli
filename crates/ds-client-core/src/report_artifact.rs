@@ -14,6 +14,42 @@ pub struct Command {
     pub orientation: String,
     pub source_receipt: String,
 }
+
+pub struct RemoveCommand {
+    pub scope: String,
+    pub transformer: String,
+    pub file_name: String,
+    pub gcs_path: String,
+    pub sha256: String,
+}
+impl RemoveCommand {
+    pub fn validate(&self, project: &str) -> Result<(), ClientError> {
+        let valid_target = match self.scope.as_str() {
+            "mv" => self.transformer == "mv_data",
+            "combined" => self.transformer == "combined_transformer",
+            "transformer" => !matches!(self.transformer.as_str(), "mv_data" | "combined_transformer"),
+            _ => false,
+        };
+        if !text(project, 128)
+            || project.contains(['/', '\\'])
+            || !valid_target
+            || !text(&self.transformer, 160)
+            || self.transformer.contains(['/', '\\'])
+            || !text(&self.file_name, 240)
+            || self.file_name.contains(['/', '\\'])
+            || !text(&self.gcs_path, 2048)
+            || !self.gcs_path.starts_with("gs://")
+            || self.sha256.len() != 64
+            || !self.sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "select one exact published print filename, scope, gcs_path and sha256",
+            ));
+        }
+        Ok(())
+    }
+}
 fn invalid() -> ClientError {
     ClientError::new(
         ErrorKind::InvalidInput,
@@ -100,6 +136,40 @@ fn call<T: AuthorizedTransport>(
         return Err(unreadable());
     }
     Ok(response["data"].clone())
+}
+pub(crate) fn remove<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    t: &mut T,
+    a: Authority<'_>,
+    project: &str,
+    c: &RemoveCommand,
+) -> Result<Value, ClientError> {
+    c.validate(project)?;
+    let result = call(
+        profile,
+        t,
+        a,
+        json!({"action":"remove", "project_id":project, "scope":c.scope, "transformer":c.transformer, "file_name":c.file_name, "blob_path":c.gcs_path, "sha256":c.sha256}),
+    )?;
+    checked_removal_result(project, c, result)
+}
+fn checked_removal_result(
+    project: &str,
+    c: &RemoveCommand,
+    result: Value,
+) -> Result<Value, ClientError> {
+    if result["project_id"] != project
+        || result["scope"] != c.scope
+        || result["transformer"] != c.transformer
+        || result["file_name"] != c.file_name
+        || result["gcs_path"] != c.gcs_path
+        || result["sha256"] != c.sha256
+        || result["bytes_deleted"] != false
+        || result["removed"].as_u64().is_none()
+    {
+        return Err(unreadable());
+    }
+    Ok(result)
 }
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,
@@ -200,5 +270,24 @@ mod tests {
         assert!(c.validate("project").is_err());
         c.file_name = "../map.pdf".into();
         assert!(c.validate("project").is_err());
+    }
+    #[test]
+    fn removal_requires_exact_identity_and_a_reference_only_receipt() {
+        let command = RemoveCommand {
+            scope: "mv".into(), transformer: "mv_data".into(),
+            file_name: "mv.a3.pdf".into(),
+            gcs_path: "gs://bucket/exact/mv.a3.pdf".into(), sha256: "a".repeat(64),
+        };
+        assert!(command.validate("p-1").is_ok());
+        let receipt = json!({"project_id":"p-1","scope":"mv","transformer":"mv_data","file_name":"mv.a3.pdf","gcs_path":"gs://bucket/exact/mv.a3.pdf","sha256":"a".repeat(64),"removed":1,"bytes_deleted":false});
+        assert_eq!(checked_removal_result("p-1", &command, receipt.clone()).unwrap(), receipt);
+        let mut wrong = receipt.clone();
+        wrong["bytes_deleted"] = json!(true);
+        assert_eq!(checked_removal_result("p-1", &command, wrong).unwrap_err().kind(), ErrorKind::UnreadableResponse);
+        let mut wrong = receipt;
+        wrong["project_id"] = json!("other");
+        assert_eq!(checked_removal_result("p-1", &command, wrong).unwrap_err().kind(), ErrorKind::UnreadableResponse);
+        let invalid = RemoveCommand { transformer: "other".into(), ..command };
+        assert_eq!(invalid.validate("p-1").unwrap_err().kind(), ErrorKind::InvalidInput);
     }
 }

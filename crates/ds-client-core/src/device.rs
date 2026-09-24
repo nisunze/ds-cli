@@ -1680,6 +1680,17 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::report_artifact::run(self.profile, transport, self.authority(), project, command)
     }
+    pub fn remove_report_artifact<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        command: &crate::report_artifact::RemoveCommand,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project)?;
+        self.ensure_active(now)?;
+        crate::report_artifact::remove(self.profile, transport, self.authority(), project, command)
+    }
     pub fn grid_models<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
