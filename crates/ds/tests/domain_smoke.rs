@@ -5084,22 +5084,15 @@ fn design_collisions_reads_the_project_document_and_starts_nothing() {
         .iter()
         .map(|input| input["name"].as_str().expect("input name"))
         .collect::<BTreeSet<_>>();
-    // Lane and nothing else: the project is the session's own.
-    assert_eq!(inputs, BTreeSet::from(["lane"]));
+    // The lane and the project, named on every call: the saved selection is
+    // never read.
+    assert_eq!(inputs, BTreeSet::from(["lane", "project"]));
 
-    // A project override is refused, not ignored — the same rule the rest of
-    // the headless read spine follows.
+    // A call that names no project is refused locally, never answered for a
+    // selection.
     assert_eq!(
-        native_ds(&[
-            "design",
-            "collisions",
-            "--project",
-            "p-1",
-            "--output",
-            "json"
-        ])
-        .envelope["error"]["code"],
-        "unknown_flag"
+        native_ds(&["design", "collisions", "--output", "json"]).envelope["error"]["code"],
+        "missing_input"
     );
 
     // And an undeclared lane is answered locally, before any credential is
@@ -5108,6 +5101,8 @@ fn design_collisions_reads_the_project_document_and_starts_nothing() {
         native_ds(&[
             "design",
             "collisions",
+            "--project",
+            "test-project",
             "--lane",
             "staging",
             "--output",
@@ -5362,6 +5357,7 @@ fn design_bulk_plan_previews_a_batch_before_anything_is_dispatched() {
             "capability",
             "combined-mirror",
             "lane",
+            "project",
             "transformer"
         ])
     );
@@ -5379,6 +5375,8 @@ fn design_bulk_plan_previews_a_batch_before_anything_is_dispatched() {
             "design",
             "bulk",
             "plan",
+            "--project",
+            "test-project",
             "--action",
             "save",
             "--transformer",
@@ -5407,7 +5405,7 @@ fn design_download_plan_answers_scope_urls_and_placement_headlessly() {
             .iter()
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["format", "lane", "transformer"])
+        BTreeSet::from(["format", "lane", "project", "transformer"])
     );
     assert_eq!(
         native_ds(&[
@@ -5421,6 +5419,8 @@ fn design_download_plan_answers_scope_urls_and_placement_headlessly() {
             "design",
             "download",
             "plan",
+            "--project",
+            "test-project",
             "--transformer",
             " tx_a",
             "--output",
@@ -5615,11 +5615,19 @@ fn design_conflict_reads_never_claim_room_state_they_cannot_see() {
             .iter()
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["lane"])
+        BTreeSet::from(["lane", "project"])
     );
     // `check` names a transformer; naming none is refused locally.
     assert_eq!(
-        native_refusal(&["design", "conflict", "check", "--output", "json"]),
+        native_refusal(&[
+            "design",
+            "conflict",
+            "check",
+            "--project",
+            "test-project",
+            "--output",
+            "json"
+        ]),
         "invalid_transformer_scope"
     );
     assert_eq!(
@@ -5627,6 +5635,8 @@ fn design_conflict_reads_never_claim_room_state_they_cannot_see() {
             "design",
             "conflict",
             "check",
+            "--project",
+            "test-project",
             "--transformer",
             " tx_a",
             "--output",
@@ -5653,7 +5663,7 @@ fn design_presence_status_reports_the_bounds_and_refuses_to_invent_rooms() {
             .iter()
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["lane"])
+        BTreeSet::from(["lane", "project"])
     );
     assert!(
         command["output"]

@@ -133,7 +133,7 @@ Feature bbox is copied or synthesized.
 
 ```bash
 ds account connect
-ds design features select --transformer T-1042 --layer lv_lines \
+ds design features select --project <id> --transformer T-1042 --layer lv_lines \
   --where drafting_status= --sample 5 --ids 100 --output json
 ```
 
@@ -734,7 +734,7 @@ the owner after a round trip. That is now a local refusal.
 ## This project's collisions
 
 ```bash
-ds design collisions --output json
+ds design collisions --project <id> --output json
 ```
 
 A collision means two or more transformers claim overlapping ground or a
@@ -924,7 +924,7 @@ Five reads answer questions the register used to keep to itself. Each reads
 the same `list_transformers_status` rows `ds design status` reads, folds them
 once through the shared kernel, and performs nothing.
 
-`ds design bulk plan --action <verb> [--transformer <name>…]
+`ds design bulk plan --project <id> --action <verb> [--transformer <name>…]
 [--capability <name>…] [--combined-mirror]` previews one batch verb:
 `add_to_combined`, `combined_and_export`, `generate_reports`, `retry_process`,
 `save`, `delete` or `version`. The answer's `targets` are the rows the verb
@@ -942,7 +942,7 @@ name rather than silently returning nothing. Naming no transformer previews an
 empty tick set, which is what the page shows before a tick. ds-brain re-reads
 its own state before dispatching, so this is a preview, never the authority.
 
-`ds design download plan [--transformer <name>…] [--format xlsx|shp|kmz|gpkg]…`
+`ds design download plan --project <id> [--transformer <name>…] [--format xlsx|shp|kmz|gpkg]…`
 previews a download. `scope` is the rows in it — naming transformers narrows
 it, naming none takes the project, and reserved rows are never in it, which
 `scope_precedence` states. `urls` is every artifact those rows deliver, in
@@ -966,7 +966,7 @@ published_version is the governance ordinal; manifest_model_revision is the
 native package's separate nonnegative lineage counter. Status never inspects
 an unsaved room or guesses whether its local contents need publication.
 
-`ds design conflict list` and `ds design conflict check --transformer <name>`
+`ds design conflict list --project <id>` and `ds design conflict check --project <id> --transformer <name>`
 answer overwrite admissibility. `list` applies the kernel's detection rule —
 a room this browser holds, dirty and server-known, whose save counter moved
 past the base it was taken from — and `check` runs the ordered preflight,
@@ -978,7 +978,7 @@ alone, `review_not_finished`. `eligible` is whether the overwrite may be SENT;
 `tick_admissible` whether the box may be TICKED. Both come from one
 evaluation, so they cannot disagree.
 
-`ds design presence status` reports the lease pass: which rooms should hold a
+`ds design presence status --project <id>` reports the lease pass: which rooms should hold a
 server lease, which should release, which waited, and `bounds` — the hold
 refresh window, the draft interval, and the per-pass lock-call cap that the
 hold and release loops SHARE, so a pass that spends the cap on holds defers

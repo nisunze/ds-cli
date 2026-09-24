@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 const TRANSFORMER: Arg = Arg::value(
     "transformer",
     "<name>",
-    "One exact transformer in the selected headless project.",
+    "One exact transformer in the project named by --project.",
 )
 .required();
 const LAYER: Arg = Arg::repeated(
@@ -90,9 +90,9 @@ refusal!(
 const SIGNED_OUT: Refusal = ds_cli_auth::SIGNED_OUT_REFUSAL;
 refusal!(
     NO_PROJECT,
-    "headless_project_not_selected",
-    "the restored user has no audience-fenced project selection",
-    "run ds auth project use --project <exact-id>"
+    "context_corrupt",
+    "--project is not one exact DS project id: blank, untrimmed, too long, or a path",
+    "copy one exact ds_project value from ds auth project list"
 );
 refusal!(
     CONTEXT_STALE,
@@ -180,7 +180,7 @@ refusal!(
 refusal!(
     NOT_FOUND,
     "transformer_not_found",
-    "the transformer does not exist in the selected project",
+    "the transformer does not exist in the named project",
     "pass one exact transformer name from that project"
 );
 refusal!(
@@ -292,14 +292,24 @@ pub static COMMAND: Command = Command {
     contract: 2,
     chapter: Chapter::Design,
     summary: "Select design features without opening a map.",
-    purpose: "Restores the native user, reads one exact transformer from the audience-fenced selected project through the fixed gateway call, and runs the authoritative bounded Rust selector locally. The server remains membership authority. No Desktop descriptor, project override, or arbitrary request is accepted.",
+    purpose: "Restores the native user, reads one exact transformer from the project named by --project (the saved selection is never read) through the fixed gateway call, and runs the authoritative bounded Rust selector locally. The server remains membership authority. No Desktop descriptor or arbitrary request is accepted.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMER, LAYER, WHERE, BBOX, ID, SAMPLE, IDS, LANE],
+    args: &[
+        crate::PROJECT_ARG,
+        TRANSFORMER,
+        LAYER,
+        WHERE,
+        BBOX,
+        ID,
+        SAMPLE,
+        IDS,
+        LANE,
+    ],
     output: "Deterministic source fence state, selected layers, scan and match counts, per-layer counts, missing identities, requested ids, and bounded samples. Sample geometry is the Feature's authoritative top-level WGS84 GeoJSON geometry; omission state/reason and with/without/oversize counts are explicit. Legacy properties.geometry/x/y are not geometry fallbacks and have undeclared CRS unless source metadata says otherwise. Legacy source metadata remains explicit and no digest is synthesized.",
     examples: &[Example {
-        command: "ds design features select --transformer T-1042 --layer lv_lines --where drafting_status= --sample 5",
+        command: "ds design features select --project <id> --transformer T-1042 --layer lv_lines --where drafting_status= --sample 5",
         note: "Headlessly previews unset drafting-status rows in one layer.",
         runnable: false,
     }],
@@ -356,7 +366,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "ids_projection_invalid",
     )?;
     let selector = selector(inputs)?;
-    let headless = ds_cli_auth::transformer_context(lane, transformer)?;
+    let headless = ds_cli_auth::transformer_context_for_project(
+        lane,
+        inputs.require("project")?,
+        transformer,
+    )?;
     let snapshot = headless.snapshot();
     let result = select_geojson_features(snapshot.layers(), selector).map_err(map_kernel)?;
     let (selection, omitted) = selection_projection(&result, ids_wanted);
@@ -364,12 +378,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let digest = snapshot.metadata().content_digest();
     let fenced = version.is_some() && digest.is_some();
     let mut output = json!({
-        "lane": headless.lane(),
-        "project": {
-            "ds_project": snapshot.ds_project(),
-            "project_name": headless.project_name(),
-            "status": headless.project_status(),
-        },
+        "lane": lane,
+        "project": { "ds_project": snapshot.ds_project() },
         "transformer": snapshot.transformer_name(),
         "source": {
             "state": if fenced { "fenced" } else { "legacy" },

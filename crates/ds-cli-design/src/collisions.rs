@@ -45,9 +45,9 @@ nothing. The reference names the precedence.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE_ARG],
+    args: &[crate::PROJECT_ARG, LANE_ARG],
     output: "\
-Lane and selected-project identity, `checked`, `pairs` (null when unknown), the \
+Lane and project identity, `checked`, `pairs` (null when unknown), the \
 `state` key an operator reads it under, and how many ordinary transformers a \
 detection run would cover.",
     examples: &[
@@ -72,7 +72,11 @@ detection run would cover.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let requested = TransformerSet::new(std::iter::empty::<String>())
         .map_err(|error| Failure::invalid("invalid_transformer_scope", error.to_string()))?;
-    let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &requested)?;
+    let headless = ds_cli_auth::transformer_status(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &requested,
+    )?;
     let mut output = super::transformer::project_receipt(&headless);
     let rows = headless.result().rows();
     let document = rows
@@ -104,9 +108,8 @@ pub fn render(data: &Value) -> String {
         .map(|count| count.to_string())
         .unwrap_or_else(|| "unknown".into());
     format!(
-        "project {} ({}) · {} · {} pairs · {} transformers in scope · {}\n",
-        data["project"]["project_name"].as_str().unwrap_or("?"),
-        data["project"]["ds_project"].as_str().unwrap_or("?"),
+        "project {} · {} · {} pairs · {} transformers in scope · {}\n",
+        super::transformer::project_label(data),
         data["lane"].as_str().unwrap_or("?"),
         pairs,
         data["transformers"].as_u64().unwrap_or(0),

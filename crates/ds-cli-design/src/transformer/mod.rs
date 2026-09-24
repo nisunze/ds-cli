@@ -352,15 +352,18 @@ pub fn reason(inputs: &ds_cli_contract::Inputs) -> Result<String, Failure> {
     Ok(reason.to_owned())
 }
 
+/// The lane and the project a headless read answered for. The project is the
+/// one the caller named, so its display name and status are only present when
+/// the owner supplied them; nothing is invented from a saved selection.
 pub fn project_receipt<T>(headless: &HeadlessProjectReport<T>) -> Value {
-    json!({
-        "lane": headless.lane(),
-        "project": {
-            "ds_project": headless.project_id(),
-            "project_name": headless.project_name(),
-            "status": headless.project_status(),
-        },
-    })
+    let mut project = json!({ "ds_project": headless.project_id() });
+    if !headless.project_name().is_empty() {
+        project["project_name"] = json!(headless.project_name());
+    }
+    if !headless.project_status().is_empty() {
+        project["status"] = json!(headless.project_status());
+    }
+    json!({ "lane": headless.lane(), "project": project })
 }
 
 pub fn row_json(row: &TransformerInventoryRow) -> Value {

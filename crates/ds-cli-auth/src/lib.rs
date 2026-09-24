@@ -1585,58 +1585,6 @@ fn load_selected_project(
         })
 }
 
-/// Restore one native user and fetch one transformer from that user's fenced
-/// selected project. There is deliberately no project-id or URL override.
-pub fn transformer_context(
-    lane_value: &str,
-    transformer: &str,
-) -> Result<HeadlessTransformerContext, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let snapshot = device
-            .transformer_context(selected.project_id(), transformer)
-            .map_err(map_client)?;
-        return Ok(HeadlessTransformerContext {
-            identity: ProviderIdentity::new(
-                lane.token(),
-                device.profile().credential_audience_sha256(),
-                device.context().uid(),
-            )?,
-            lane: lane.token(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            snapshot,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = ProjectContextLease::acquire(client.profile())?
-        .load_snapshot(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    let result = client.transformer_context(selected.project_id(), transformer, now());
-    let snapshot = with_released_context_disposition(client.profile(), &selected, result)?;
-    Ok(HeadlessTransformerContext {
-        identity: ProviderIdentity::new(
-            lane.token(),
-            client.profile().credential_audience_sha256(),
-            user.uid(),
-        )?,
-        lane: lane.token(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        snapshot,
-    })
-}
-
 pub fn transformer_context_for_project(
     lane_value: &str,
     project: &str,
@@ -2751,18 +2699,6 @@ pub fn export_reports_for_project(
     )
 }
 
-/// List the published Combined Report archives of only the saved,
-/// audience-fenced selected project.
-pub fn compounded_report_list(
-    lane_value: &str,
-) -> Result<HeadlessProjectReport<Vec<CompoundedArchive>>, Failure> {
-    headless_project_report(
-        lane_value,
-        |device, project| device.compounded_report_list(project),
-        |client, project| client.compounded_report_list(project, now()),
-    )
-}
-
 pub fn compounded_report_list_for_project(
     lane_value: &str,
     project: &str,
@@ -2824,10 +2760,12 @@ pub fn transformer_contexts_for_project(
 /// belongs to the module that reads it.
 pub fn transformer_status(
     lane_value: &str,
+    project: &str,
     requested: &TransformerSet,
 ) -> Result<HeadlessProjectReport<TransformerStatusList>, Failure> {
-    headless_project_report(
+    headless_named_report(
         lane_value,
+        project,
         |device, project| device.transformer_status(project, requested),
         |client, project| client.transformer_status(project, requested, now()),
     )
@@ -5686,9 +5624,8 @@ mod tests {
 
     #[test]
     fn project_report_adapter_exposes_only_lane_and_typed_requests() {
-        let _: fn(&str) -> Result<HeadlessProjectReport<Vec<CompoundedArchive>>, Failure> =
-            compounded_report_list;
         let _: fn(
+            &str,
             &str,
             &TransformerSet,
         ) -> Result<HeadlessProjectReport<TransformerStatusList>, Failure> = transformer_status;

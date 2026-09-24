@@ -108,7 +108,7 @@ pub static BULK_PLAN: Command = Command {
     summary: "Preview which rows a bulk verb targets and which it skips.",
     purpose: "\
 Every batch verb takes a list and performs it; this says what it would do \
-first. Reads the selected project's status rows headlessly, then asks the \
+first. Reads the named project's status rows headlessly, then asks the \
 shared kernel which of the named transformers the verb may target, how many \
 of those are already fresh, and why each remaining row is skipped. The same \
 answer the Status page draws beside its buttons. Naming no transformer \
@@ -122,6 +122,7 @@ previews an empty tick set, which is what the page shows before a tick.",
         TRANSFORMER_ARG,
         CAPABILITY_ARG,
         MIRROR_ARG,
+        crate::PROJECT_ARG,
         LANE_ARG,
     ],
     output: "\
@@ -143,7 +144,11 @@ verb.",
 
 pub fn run_bulk_plan(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let requested = crate::transformer::transformer_set(inputs, false)?;
-    let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &requested)?;
+    let headless = ds_cli_auth::transformer_status(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &requested,
+    )?;
     let selection: Vec<String> = inputs.repeated("transformer").to_vec();
     let plan = kernel(
         json!({
@@ -204,7 +209,7 @@ pub static DOWNLOAD_PLAN: Command = Command {
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, FORMAT_ARG, LANE_ARG],
+    args: &[TRANSFORMER_ARG, FORMAT_ARG, crate::PROJECT_ARG, LANE_ARG],
     output: "\
 Lane and project identity, the rows in scope, every delivered URL (and the \
 format-filtered list), the fresh/stale/missing/cached summary, normalized source \
@@ -234,9 +239,14 @@ pub fn run_download_plan(inputs: &Inputs, _context: &Context) -> Result<Value, F
         )
         .map_err(|error| plan_invalid(error.to_string()))?;
     }
-    let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &requested)?;
-    let (archives, archive_error) = match ds_cli_auth::compounded_report_list(
+    let headless = ds_cli_auth::transformer_status(
         inputs.require("lane")?,
+        inputs.require("project")?,
+        &requested,
+    )?;
+    let (archives, archive_error) = match ds_cli_auth::compounded_report_list_for_project(
+        inputs.require("lane")?,
+        inputs.require("project")?,
     ) {
         Ok(registry) => {
             if registry.project_id() != headless.project_id()
@@ -315,7 +325,7 @@ pub static CONFLICT_LIST: Command = Command {
     summary: "List transformers whose cloud head moved under a local copy.",
     purpose: "\
 A `ds` caller could not discover that a transformer was conflicted at all. \
-This reads the selected project's status rows headlessly and applies the \
+This reads the named project's status rows headlessly and applies the \
 shared kernel's detection rule. A conflict is a fact about a WORKING COPY, \
 so a client with no rooms reports `room_state: unknown` and lists only what \
 the rows themselves carry, rather than reporting a confident zero.",
@@ -323,7 +333,7 @@ the rows themselves carry, rather than reporting a confident zero.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE_ARG],
+    args: &[crate::PROJECT_ARG, LANE_ARG],
     output: "\
 Lane and project identity, `room_state`, and one row per detected conflict \
 with its base and current version.",
@@ -341,7 +351,11 @@ with its base and current version.",
 
 pub fn run_conflict_list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let requested = crate::transformer::transformer_set(inputs, false)?;
-    let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &requested)?;
+    let headless = ds_cli_auth::transformer_status(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &requested,
+    )?;
     let reply = kernel(
         json!({
             "op": "detect",
@@ -390,7 +404,7 @@ follows from having none, never a confident yes.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, LANE_ARG],
+    args: &[TRANSFORMER_ARG, crate::PROJECT_ARG, LANE_ARG],
     output: "\
 Lane and project identity, `room_state`, and per transformer: whether the \
 overwrite may be sent, whether the box may be ticked, and the refusal code \
@@ -409,7 +423,11 @@ plus message key behind each.",
 
 pub fn run_conflict_check(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let requested = crate::transformer::transformer_set(inputs, true)?;
-    let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &requested)?;
+    let headless = ds_cli_auth::transformer_status(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &requested,
+    )?;
     let detected = kernel(
         json!({
             "op": "detect",
@@ -497,7 +515,7 @@ the same kernel answers over real ones.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE_ARG],
+    args: &[crate::PROJECT_ARG, LANE_ARG],
     output: "\
 Lane and project identity, `room_state`, the per-pass bounds (hold refresh \
 window, lock-call cap), the plan (holds, releases, deferrals, budget), and \
@@ -516,7 +534,11 @@ one row per transformer with the room state this client can report.",
 
 pub fn run_presence_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let requested = crate::transformer::transformer_set(inputs, false)?;
-    let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &requested)?;
+    let headless = ds_cli_auth::transformer_status(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &requested,
+    )?;
     // No rooms are visible from here, so the pass is deliberately empty and
     // NOT complete: a complete pass is the one permission to release a lease,
     // and this client has no evidence to release one on.

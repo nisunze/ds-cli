@@ -427,7 +427,7 @@ pub fn render(data: &Value) -> String {
     let plan = &data["plan"]["counts"];
     let mut out = format!(
         "pinned context in {} ({}) · {} pinned · {} reused · {} rooms + {} layers fetched in {} requests\n",
-        data["project"]["project_name"].as_str().unwrap_or("?"),
+        super::transformer::project_label(data),
         data["lane"].as_str().unwrap_or("?"),
         plan["pinned"].as_u64().unwrap_or(0),
         plan["reused"].as_u64().unwrap_or(0),
