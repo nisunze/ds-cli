@@ -26,6 +26,16 @@ they are not command-kernel WASM exports. PDF/SVG formatting, GeoJSON projection
 and legend rendering belong to ds-network-reporter. Brain owns global/project
 sharing and expected-revision saves. This module owns no storage or network IO.
 
+## Combined report output
+
+The Combined Report is a project-wide data export. It always selects SHP, XLSX,
+and GeoJSON sequence, with GPKG and Network Information when selected. A saved
+PDF selection applies to individual transformer reports only. Combined never
+renders a project-wide PDF or requires a print layout. Operators print an
+individual report on demand, then assemble chosen individual PDFs separately
+when a print package is needed. The Combined workbook and geospatial outputs
+remain one project-wide set.
+
 `new` accepts optional `id`, `name`, `paper` (A0–A5 or bounded custom paper,
 default A3) and
 `orientation` (portrait/landscape, default landscape). Paper presets uniformly

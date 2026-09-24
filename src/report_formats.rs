@@ -16,7 +16,7 @@ pub const INDIVIDUAL: &[&str] = &[
     "network_information",
 ];
 pub const COMBINED: &[&str] = &["shp", "xlsx", "geojsonseq"];
-pub const OPTIONAL_COMBINED: &[&str] = &["gpkg", "pdf_a0", "pdf_a3", "network_information"];
+pub const OPTIONAL_COMBINED: &[&str] = &["gpkg", "network_information"];
 
 /// Available vector-print presets. Selection is a set, never a single size.
 /// The renderer uses this same type; adding a preset here requires exhaustive
@@ -764,6 +764,9 @@ pub fn normalize(values: &[String]) -> Vec<String> {
 }
 
 pub fn combined(selected: &[String]) -> Vec<&str> {
+    // A project-wide PDF can grow beyond the durable artifact limit even when
+    // every individual sheet is valid. Printing stays an explicit, separate
+    // action on individual reports; Combined is a data-only deliverable.
     COMBINED
         .iter()
         .copied()
@@ -772,12 +775,6 @@ pub fn combined(selected: &[String]) -> Vec<&str> {
                 .iter()
                 .copied()
                 .filter(|f| selected.iter().any(|s| s == f)),
-        )
-        .chain(
-            selected
-                .iter()
-                .filter(|f| named_setup_id(f).is_some())
-                .map(String::as_str),
         )
         .collect()
 }
@@ -1037,13 +1034,15 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
         .transpose()?
         .unwrap_or_default();
     let selected = normalize(&raw);
-    let layouts = named_layouts(sheets)?;
-    for format in &selected {
-        if let Some((_, id)) = named_print_output(format) {
-            if !layouts.contains_key(id) {
-                return Err(format!(
-                    "Selected printing setup {id} is not in the sealed project printing inputs"
-                ));
+    if !is_combined {
+        let layouts = named_layouts(sheets)?;
+        for format in &selected {
+            if let Some((_, id)) = named_print_output(format) {
+                if !layouts.contains_key(id) {
+                    return Err(format!(
+                        "Selected printing setup {id} is not in the sealed project printing inputs"
+                    ));
+                }
             }
         }
     }
@@ -1335,7 +1334,7 @@ mod tests {
     }
 
     #[test]
-    fn pdf_selection_controls_both_report_shapes_and_disabled_legacy_settings_cannot_enable_it() {
+    fn pdf_selection_applies_only_to_individual_reports() {
         let sheets = json!({"project_settings":[
             {"parameter":"design_export_format", "value":{"pdf_a3":true,"pdf_a0":false,"xlsx":true}},
             {"parameter":"print_individual_page_sizes","value":["a0"]},
@@ -1355,9 +1354,22 @@ mod tests {
                 .iter()
                 .map(|o| o.output_id.as_str())
                 .collect::<Vec<_>>(),
-            ["shp", "xlsx", "geojsonseq", "pdf_a3"]
+            ["shp", "xlsx", "geojsonseq"]
         );
         assert_eq!(output("pdf_a3").unwrap().content_type, "application/pdf");
+    }
+    #[test]
+    fn combined_data_does_not_require_a_selected_print_layout() {
+        let sheets = json!({"project_settings":[{"parameter":"design_export_format","value":["xlsx","pdf__missing"]}]});
+        assert!(plan(&sheets, false).is_err());
+        assert_eq!(
+            plan(&sheets, true)
+                .unwrap()
+                .iter()
+                .map(|o| o.output_id.as_str())
+                .collect::<Vec<_>>(),
+            ["shp", "xlsx", "geojsonseq"]
+        );
     }
     #[test]
     fn settings_shapes_and_output_order_are_stable() {
