@@ -71,6 +71,7 @@ the receipt rather than silently included.",
         OWNER_ARG,
         PURPOSE_ARG,
         ASSIGNMENT_ARG,
+        crate::PROJECT_ARG,
         LANE,
     ],
     output: "\
@@ -78,7 +79,7 @@ The project, the `selection`, the minted `assignment` and `task` ids, the \
 pinned `memberDigest`, the assigned `members`, any `missing` members the \
 selection could not resolve, and the `committedRevision` the plan moved to.",
     examples: &[Example {
-        command: "ds design selection assign --selection sel-week-32 --title \"Review LV designs\" --owner nixon@example.com --yes",
+        command: "ds design selection assign --project <id> --selection sel-week-32 --title \"Review LV designs\" --owner nixon@example.com --yes",
         note: "Read .data.memberDigest on the receipt to see exactly what was assigned.",
         runnable: false,
     }],
@@ -91,18 +92,20 @@ selection could not resolve, and the `committedRevision` the plan moved to.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
+    let named = inputs.require("project")?;
     let selection = inputs.require("selection")?;
     let title = inputs.require("title")?;
     // Membership is evaluated first, and the digest that read returned is what
     // travels: echoed, never derived. A selection that moved in between is
     // refused by ds-brain rather than quietly assigning a different set.
-    let (_, read) = super::read_selection(lane, selection)?;
+    let (_, read) = super::read_selection(lane, named, selection)?;
     let assignment_id = match inputs.value("assignment") {
         Some(pinned) => pinned.to_owned(),
         None => super::mint_id("assign", title),
     };
     let (project, answer) = super::ask(
         lane,
+        named,
         selection,
         &DesignSelectionRequest::Promote(DesignSelectionPromotion {
             selection_id: selection.to_owned(),

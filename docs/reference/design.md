@@ -488,9 +488,9 @@ project's own vocabulary. `ds map` owns local map state; this domain owns none.
 ## The shape of a session
 
 ```bash
-ds design selection list                                  # what is saved
-ds design selection read --selection sel-week-32          # who is in it, right now
-ds design selection assign --selection sel-week-32 \
+ds design selection list --project <id>                   # what is saved
+ds design selection read --project <id> --selection sel-week-32  # who is in it, right now
+ds design selection assign --project <id> --selection sel-week-32 \
   --title "Review LV designs" --owner nixon@example.com --yes
 
 ds design attachment list --project <project-id> --kind mv_model --object mv_line_a

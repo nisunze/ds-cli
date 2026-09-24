@@ -37,13 +37,13 @@ project-wide read per row.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[ARCHIVED_ARG, LIMIT_ARG, LANE],
+    args: &[ARCHIVED_ARG, LIMIT_ARG, crate::PROJECT_ARG, LANE],
     output: "\
 The project, the matched total, whether more exist, and rows of `selection`, \
 `name`, `mode`, `version`, `state`, `members` (null for a query selection, \
 whose membership is evaluated on read) and `assignments`.",
     examples: &[Example {
-        command: "ds design selection list --output json",
+        command: "ds design selection list --project <id> --output json",
         note: "Read .data.selections[].selection to feed read, archive or assign.",
         runnable: false,
     }],
@@ -64,6 +64,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let (project, answer) = super::ask(
         inputs.require("lane")?,
+        inputs.require("project")?,
         "",
         &DesignSelectionRequest::List {
             include_archived: inputs.switch("archived"),

@@ -74,11 +74,12 @@ noise on every later read.",
         SELECTION_ARG,
         DESCRIPTION_ARG,
         ID_ARG,
+        crate::PROJECT_ARG,
         LANE,
     ],
     output: "The project, the `selection` id, its `name`, the committed `version`, and the member count.",
     examples: &[Example {
-        command: "ds design selection save --name \"Week 32 review\" --transformers kigali_a,kigali_b --yes",
+        command: "ds design selection save --project <id> --name \"Week 32 review\" --transformers kigali_a,kigali_b --yes",
         note: "Without --yes dispatch refuses before the bridge is opened.",
         runnable: false,
     }],
@@ -91,6 +92,7 @@ noise on every later read.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
+    let named = inputs.require("project")?;
     let name = inputs.require("name")?;
     let transformers = crate::list_values(
         inputs.require("transformers")?,
@@ -102,7 +104,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // here rather than accepted from the caller: `ds` must not be able to assert
     // a version it never observed.
     let expected_version = match existing {
-        Some(selection) => Some(super::read_selection(lane, selection)?.1.selection.version),
+        Some(selection) => Some(
+            super::read_selection(lane, named, selection)?
+                .1
+                .selection
+                .version,
+        ),
         None => None,
     };
     let selection_id = match (existing, inputs.value("id")) {
@@ -113,6 +120,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let members = transformers.len();
     let (project, answer) = super::ask(
         lane,
+        named,
         &selection_id,
         &DesignSelectionRequest::Save(DesignSelectionSave {
             selection_id: selection_id.clone(),

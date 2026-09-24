@@ -51,7 +51,7 @@ pub const ID_ARG: Arg = Arg::value(
 
 const NOT_FOUND: Refusal = Refusal {
     code: "design_selection_not_found",
-    when: "No saved selection in the selected project has that id",
+    when: "No saved selection in the named project has that id",
     remedy: "List the project's selections with `ds design selection list`",
 };
 
@@ -83,26 +83,27 @@ pub const REFUSALS: &[Refusal] = &[
     MOVED,
 ];
 
-/// One saved-selection call against the selected project.
+/// One saved-selection call against the project the caller named.
 ///
 /// Returns the project id with the answer because every one of these commands
-/// reports it, and because it is the only project a headless `ds` may reach.
+/// reports it. The saved selection is never read.
 pub fn ask(
     lane: &str,
+    named: &str,
     selection: &str,
     request: &DesignSelectionRequest,
 ) -> Result<(String, DesignSelectionAnswer), Failure> {
-    let report = ds_cli_auth::design_selections(lane, request).map_err(|failure| {
+    let report = ds_cli_auth::design_selections(lane, named, request).map_err(|failure| {
         // The shared kind mapping speaks of transformers, because until now a
         // 404 on a project route always was one. A missing selection has its
         // own name and its own way out.
         if failure.code() == "transformer_not_found" {
             return Failure::invalid(
                 NOT_FOUND.code,
-                format!("no saved selection {selection} in the selected project"),
+                format!("no saved selection {selection} in project {named}"),
             )
             .remedy(NOT_FOUND.remedy)
-            .next("ds design selection list --output json");
+            .next("ds design selection list --project <id> --output json");
         }
         failure
     })?;
@@ -114,10 +115,12 @@ pub fn ask(
 /// version and the member digest are READ, never asserted by the caller.
 pub fn read_selection(
     lane: &str,
+    named: &str,
     selection: &str,
 ) -> Result<(String, DesignSelectionRead), Failure> {
     let (project, answer) = ask(
         lane,
+        named,
         selection,
         &DesignSelectionRequest::Read {
             selection_id: selection.to_owned(),

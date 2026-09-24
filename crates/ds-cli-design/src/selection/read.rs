@@ -35,13 +35,13 @@ that echo is what proves the operator saw the exact set being assigned.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[SELECTION_ARG, LANE],
+    args: &[SELECTION_ARG, crate::PROJECT_ARG, LANE],
     output: "\
 The project, the selection's `name`, `mode`, `version`, `state`, its \
 `memberDigest`, the `present`/`changed`/`missing` counts, and one row per \
 member with `id`, `label` and `state`.",
     examples: &[Example {
-        command: "ds design selection read --selection sel-week-32 --output json",
+        command: "ds design selection read --project <id> --selection sel-week-32 --output json",
         note: "Read .data.memberDigest before assigning; it pins what gets assigned.",
         runnable: false,
     }],
@@ -54,7 +54,11 @@ member with `id`, `label` and `state`.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let selection = inputs.require("selection")?;
-    let (project, read) = super::read_selection(inputs.require("lane")?, selection)?;
+    let (project, read) = super::read_selection(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        selection,
+    )?;
     Ok(json!({
         "project": project,
         "selection": read.selection.selection_id,

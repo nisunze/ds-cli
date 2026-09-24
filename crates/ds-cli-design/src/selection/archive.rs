@@ -36,10 +36,10 @@ a concurrent edit is refused rather than overwritten.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[SELECTION_ARG, RESTORE_ARG, LANE],
+    args: &[SELECTION_ARG, RESTORE_ARG, crate::PROJECT_ARG, LANE],
     output: "The project, the `selection` id, its new `state`, and the committed `version`.",
     examples: &[Example {
-        command: "ds design selection archive --selection sel-week-32 --yes",
+        command: "ds design selection archive --project <id> --selection sel-week-32 --yes",
         note: "Add --restore to bring it back.",
         runnable: false,
     }],
@@ -52,12 +52,17 @@ a concurrent edit is refused rather than overwritten.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
+    let named = inputs.require("project")?;
     let selection = inputs.require("selection")?;
     // The version is read, never asserted: archiving under a version `ds` never
     // observed would overwrite a concurrent edit instead of refusing.
-    let expected_version = super::read_selection(lane, selection)?.1.selection.version;
+    let expected_version = super::read_selection(lane, named, selection)?
+        .1
+        .selection
+        .version;
     let (project, answer) = super::ask(
         lane,
+        named,
         selection,
         &DesignSelectionRequest::Archive(DesignSelectionArchive {
             selection_id: selection.to_owned(),

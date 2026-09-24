@@ -2962,10 +2962,12 @@ pub fn project_directory(lane_value: &str) -> Result<HeadlessDirectory, Failure>
 /// promotion echoes that digest back.
 pub fn design_selections(
     lane_value: &str,
+    project: &str,
     request: &ds_client_core::DesignSelectionRequest,
 ) -> Result<HeadlessProjectReport<ds_client_core::DesignSelectionAnswer>, Failure> {
-    headless_project_report(
+    headless_named_report(
         lane_value,
+        project,
         |device, project| device.design_selections(project, request),
         |client, project| client.design_selections(project, request, now()),
     )
