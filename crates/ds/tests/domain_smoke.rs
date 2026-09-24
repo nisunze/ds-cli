@@ -10740,7 +10740,7 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         .iter()
         .filter_map(|arg| arg["name"].as_str())
         .collect::<BTreeSet<_>>();
-    assert_eq!(names, BTreeSet::from(["lane", "limit"]));
+    assert_eq!(names, BTreeSet::from(["lane", "limit", "project"]));
     let settings = ok(&[
         "capabilities",
         "survey.project-form.settings",
@@ -10755,13 +10755,13 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         .iter()
         .filter_map(|arg| arg["name"].as_str())
         .collect::<BTreeSet<_>>();
-    assert_eq!(names, BTreeSet::from(["form", "lane"]));
+    assert_eq!(names, BTreeSet::from(["form", "lane", "project"]));
     assert!(
         settings["command"]["inputs"]
             .as_array()
             .unwrap()
             .iter()
-            .all(|arg| arg["name"] != "project" && arg["name"] != "desktop-descriptor")
+            .all(|arg| arg["name"] != "desktop-descriptor")
     );
 
     let query = ok(&["capabilities", "survey.query", "--output", "json"]);
@@ -10784,10 +10784,10 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
             "limit",
             "metric",
             "order",
+            "project",
         ])
     );
     for forbidden in [
-        "project",
         "url",
         "body",
         "token",
@@ -10815,9 +10815,11 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         .iter()
         .filter_map(|arg| arg["name"].as_str())
         .collect::<BTreeSet<_>>();
-    assert_eq!(names, BTreeSet::from(["bbox", "form", "lane", "limit"]));
+    assert_eq!(
+        names,
+        BTreeSet::from(["bbox", "form", "lane", "limit", "project"])
+    );
     for forbidden in [
-        "project",
         "url",
         "method",
         "body",
@@ -10846,6 +10848,8 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         "survey",
         "entries",
         "select",
+        "--project",
+        "test-project",
         "--form",
         "poles",
         "--bbox",
@@ -10867,10 +10871,16 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         names,
-        BTreeSet::from(["cursor", "form", "lane", "limit", "updated-after"])
+        BTreeSet::from([
+            "cursor",
+            "form",
+            "lane",
+            "limit",
+            "project",
+            "updated-after"
+        ])
     );
     for forbidden in [
-        "project",
         "url",
         "method",
         "body",
@@ -10897,6 +10907,8 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         "survey",
         "entries",
         "changes",
+        "--project",
+        "test-project",
         "--form",
         "poles",
         "--updated-after",
@@ -10992,10 +11004,10 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
             "form",
             "idempotency-key",
             "lane",
+            "project",
         ])
     );
     for forbidden in [
-        "project",
         "url",
         "method",
         "body",
@@ -11020,6 +11032,8 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         "survey",
         "entries",
         "create",
+        "--project",
+        "test-project",
         "--form",
         "poles",
         "--doc-id",
@@ -11042,6 +11056,8 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         "survey",
         "entries",
         "create",
+        "--project",
+        "test-project",
         "--form",
         "poles",
         "--doc-id",
@@ -11074,10 +11090,17 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         names,
-        BTreeSet::from(["checkpoint", "file", "form", "lane", "on-error", "receipt"])
+        BTreeSet::from([
+            "checkpoint",
+            "file",
+            "form",
+            "lane",
+            "on-error",
+            "project",
+            "receipt"
+        ])
     );
     for forbidden in [
-        "project",
         "concurrency",
         "retry",
         "origin",
@@ -11106,6 +11129,8 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         "survey",
         "entries",
         "import",
+        "--project",
+        "test-project",
         "--form",
         "poles",
         "--file",

@@ -986,7 +986,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         import["inputSchema"]["properties"]["confirm"]["type"],
         "boolean"
     );
-    assert!(import["inputSchema"]["properties"].get("project").is_none());
+    assert!(import["inputSchema"]["properties"].get("project").is_some());
     // Migration is stateless: both projects are required operands of both
     // steps, and only the apply writes.
     for (name, writes) in [
@@ -1027,11 +1027,14 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .find(|tool| tool["name"] == "survey_project-form_settings")
         .expect("native selected-project settings tool");
     assert_eq!(settings["title"], "survey.project-form.settings");
-    assert_eq!(settings["inputSchema"]["required"], json!(["form"]));
+    assert_eq!(
+        settings["inputSchema"]["required"],
+        json!(["project", "form"])
+    );
     assert!(
         settings["inputSchema"]["properties"]
             .get("project")
-            .is_none()
+            .is_some()
     );
     assert!(
         settings["inputSchema"]["properties"]
@@ -1043,7 +1046,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .find(|tool| tool["name"] == "survey_query")
         .expect("native selected-project Survey query tool");
     assert_eq!(query["title"], "survey.query");
-    assert_eq!(query["inputSchema"]["required"], json!(["form"]));
+    assert_eq!(query["inputSchema"]["required"], json!(["project", "form"]));
     assert_eq!(
         query["inputSchema"]["properties"]["filter"]["type"],
         "array"
@@ -1053,7 +1056,6 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         "array"
     );
     for forbidden in [
-        "project",
         "url",
         "body",
         "token",
@@ -1069,7 +1071,10 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .find(|tool| tool["name"] == "survey_entries_select")
         .expect("native selected-project Survey entry selection tool");
     assert_eq!(entries["title"], "survey.entries.select");
-    assert_eq!(entries["inputSchema"]["required"], json!(["form", "bbox"]));
+    assert_eq!(
+        entries["inputSchema"]["required"],
+        json!(["project", "form", "bbox"])
+    );
     assert_eq!(
         entries["inputSchema"]["properties"]
             .as_object()
@@ -1077,7 +1082,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
             .keys()
             .map(String::as_str)
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["bbox", "form", "lane", "limit"])
+        BTreeSet::from(["bbox", "form", "lane", "limit", "project"])
     );
     assert_eq!(
         entries["inputSchema"]["properties"]["limit"]["default"],
@@ -1090,7 +1095,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert_eq!(changes["title"], "survey.entries.changes");
     assert_eq!(
         changes["inputSchema"]["required"],
-        json!(["form", "updated-after"])
+        json!(["project", "form", "updated-after"])
     );
     assert_eq!(
         changes["inputSchema"]["properties"]
@@ -1099,7 +1104,14 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
             .keys()
             .map(String::as_str)
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["cursor", "form", "lane", "limit", "updated-after"])
+        BTreeSet::from([
+            "cursor",
+            "form",
+            "lane",
+            "limit",
+            "project",
+            "updated-after"
+        ])
     );
     assert_eq!(
         changes["inputSchema"]["properties"]["limit"]["default"],
@@ -1113,6 +1125,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert_eq!(
         entry_create["inputSchema"]["required"],
         json!([
+            "project",
             "form",
             "doc-id",
             "idempotency-key",
@@ -1136,6 +1149,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
             "form",
             "idempotency-key",
             "lane",
+            "project",
         ])
     );
     assert_eq!(

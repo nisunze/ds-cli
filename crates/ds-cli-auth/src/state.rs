@@ -430,6 +430,24 @@ impl Drop for ProjectContextLease {
 }
 
 impl ProjectContext {
+    /// A context for a project the caller named explicitly. It is never
+    /// persisted as a selection; its name and status stay empty because
+    /// nothing read them.
+    pub fn named(profile: &ClientProfile, uid: &str, email: &str, ds_project: &str) -> Self {
+        Self {
+            schema: CONTEXT_SCHEMA.to_owned(),
+            lane: profile.lane().token().to_owned(),
+            credential_audience_sha256: profile.credential_audience_sha256().to_owned(),
+            uid: uid.to_owned(),
+            email: email.to_owned(),
+            ds_project: ds_project.to_owned(),
+            project_name: String::new(),
+            display_name: None,
+            role: None,
+            status: String::new(),
+        }
+    }
+
     pub fn from_project(
         profile: &ClientProfile,
         uid: &str,

@@ -93,7 +93,7 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entries_import_checkpoint_mismatch",
         when: "the checkpoint is bound to different source bytes, lane, audience, principal, project, form, or receipt",
-        remedy: "restore the exact original inputs and selected project, or choose fresh checkpoint and receipt paths for a new import",
+        remedy: "restore the exact original inputs and project, or choose fresh checkpoint and receipt paths for a new import",
     },
     Refusal {
         code: "survey_entries_import_receipt_unsafe",
@@ -138,12 +138,12 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entry_create_permission_denied",
         when: "the verified user lacks entries.create authority for the form",
-        remedy: "request entries.create authority for the selected project and form",
+        remedy: "request entries.create authority for the project and form",
     },
     Refusal {
         code: "survey_entry_create_scope_not_found",
-        when: "the selected project, form, or context ancestor is unavailable",
-        remedy: "verify the selected project, form, and context ancestors",
+        when: "the project, form, or context ancestor is unavailable",
+        remedy: "verify --project, the form, and context ancestors",
     },
     Refusal {
         code: "survey_entry_create_form_disabled",
@@ -152,7 +152,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_entry_create_project_read_only",
-        when: "the selected project lifecycle is read-only",
+        when: "the project lifecycle is read-only",
         remedy: "select the intended active writable project",
     },
     Refusal {
@@ -197,14 +197,14 @@ const REFUSALS: &[Refusal] = &[
     },
     ds_cli_auth::SIGNED_OUT_REFUSAL,
     Refusal {
-        code: "headless_project_not_selected",
-        when: "the user has no audience-fenced selected project",
-        remedy: "run ds auth project use --project <exact-id>",
+        code: "project_required",
+        when: "--project is absent, blank or untrimmed",
+        remedy: "pass one exact ds_project value from ds auth project list",
     },
     Refusal {
-        code: "project_context_stale",
-        when: "saved project context belongs to another identity, lane, or audience",
-        remedy: "select the intended project again",
+        code: "context_corrupt",
+        when: "--project is not one path segment: separator, traversal or whitespace",
+        remedy: "copy one exact ds_project value from ds auth project list",
     },
     Refusal {
         code: "native_state_unsafe",
@@ -273,7 +273,15 @@ pub static COMMAND: Command = Command {
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[FORM, FILE, CHECKPOINT, RECEIPT, ON_ERROR, LANE],
+    args: &[
+        crate::PROJECT,
+        FORM,
+        FILE,
+        CHECKPOINT,
+        RECEIPT,
+        ON_ERROR,
+        LANE,
+    ],
     output: "Bounded progress/state/mirror summary and digest receipts; no payload, fields, coordinates, keys, token, or email.",
     examples: &[Example {
         command: "ds survey entries import --form <form-slug> --file ./survey123.ndjson --checkpoint ./survey123.checkpoint.json --receipt ./survey123.receipt.ndjson --yes --output json",
@@ -511,7 +519,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     // Only after the complete caller-controlled source and local state have
     // been parsed do profile discovery, auth restoration, and project access begin.
-    let mut session = ds_cli_auth::survey_import_session(lane)?;
+    let mut session = ds_cli_auth::survey_import_session(lane, inputs.require("project")?)?;
     let receipt_path_sha256 = digest_text(&paths.receipt.to_string_lossy());
     let checkpoint_path_sha256 = digest_text(&paths.checkpoint.to_string_lossy());
     let mut checkpoint = checkpoint_for(
@@ -1784,7 +1792,7 @@ fn checkpoint_mismatch() -> Failure {
         "survey_entries_import_checkpoint_mismatch",
         "the checkpoint is bound to another import authority or source",
     )
-    .remedy("restore the exact original inputs and selected project, or use fresh state paths")
+    .remedy("restore the exact original inputs and project, or use fresh state paths")
 }
 fn receipt_unsafe() -> Failure {
     Failure::unavailable(
@@ -1946,10 +1954,17 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert_eq!(
             names,
-            BTreeSet::from(["checkpoint", "file", "form", "lane", "on-error", "receipt"])
+            BTreeSet::from([
+                "checkpoint",
+                "file",
+                "form",
+                "lane",
+                "on-error",
+                "project",
+                "receipt",
+            ])
         );
         for forbidden in [
-            "project",
             "concurrency",
             "retry",
             "origin",
@@ -2324,6 +2339,8 @@ mod tests {
         let parsed = parse_args(
             &COMMAND,
             &[
+                "--project".into(),
+                "test-project".into(),
                 "--form".into(),
                 "f".into(),
                 "--file".into(),

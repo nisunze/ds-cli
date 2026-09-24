@@ -1,4 +1,4 @@
-//! One selected-project Survey aggregate through the fixed native route.
+//! One named-project Survey aggregate through the fixed native route.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -58,7 +58,7 @@ const LANE: Arg = Arg::value(
 const QUERY_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_project_access_denied",
-        when: "the verified user is not a member of the selected project",
+        when: "the verified user is not a member of the project",
         remedy: "select a project whose mirrored membership grants this account",
     },
     Refusal {
@@ -68,7 +68,7 @@ const QUERY_REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_form_binding_not_found",
-        when: "the form slug is not bound to the selected project",
+        when: "the form slug is not bound to the project",
         remedy: "pass one exact bound slug from `ds survey project-forms read`",
     },
     Refusal {
@@ -89,8 +89,8 @@ const QUERY_REFUSALS: &[Refusal] = &[
     ds_cli_auth::SURVEY_ROUTE_UNAVAILABLE_REFUSAL,
     Refusal {
         code: "survey_scope_not_found",
-        when: "the selected project or governed form is unavailable to the verified user",
-        remedy: "verify the selected project and its bound forms with `ds survey project-forms read`",
+        when: "the project or governed form is unavailable to the verified user",
+        remedy: "verify --project and its bound forms with `ds survey project-forms read`",
     },
     Refusal {
         code: "survey_view_not_found",
@@ -144,14 +144,14 @@ const QUERY_REFUSALS: &[Refusal] = &[
     },
     ds_cli_auth::SIGNED_OUT_REFUSAL,
     Refusal {
-        code: "headless_project_not_selected",
-        when: "the user has no audience-fenced project selection",
-        remedy: "run ds auth project use --project <exact-id>",
+        code: "project_required",
+        when: "--project is absent, blank or untrimmed",
+        remedy: "pass one exact ds_project value from ds auth project list",
     },
     Refusal {
-        code: "project_context_stale",
-        when: "the saved project belongs to another identity, lane, or audience",
-        remedy: "select the project again with ds auth project use",
+        code: "context_corrupt",
+        when: "--project is not one path segment: separator, traversal or whitespace",
+        remedy: "copy one exact ds_project value from ds auth project list",
     },
     Refusal {
         code: "native_state_unsafe",
@@ -186,7 +186,7 @@ const QUERY_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "auth_rejected",
         when: "the gateway rejects membership or the verified request",
-        remedy: "verify account and form authority in the selected project",
+        remedy: "verify account and form authority in the project",
     },
     Refusal {
         code: "auth_revoked",
@@ -216,11 +216,12 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Measure Survey progress, coverage evidence and data quality.",
-    purpose: "Use for survey progress by surveyor, distinct asset counts, or missing observations before design review. Ask a bounded aggregate question instead of downloading entries. Coverage needs an agreed target count or asset list; record counts alone do not prove completion. Resolve the exact project form and requested field before querying. The native selected-project call returns at most 200 rows after server permission and mirror checks; preserve filters, freshness and truncation. Raw entries and photos require their own supported operations.",
+    purpose: "Use for survey progress by surveyor, distinct asset counts, or missing observations before design review. Ask a bounded aggregate question instead of downloading entries. Coverage needs an agreed target count or asset list; record counts alone do not prove completion. Resolve the exact project form and requested field before querying. The named-project call returns at most 200 rows after server permission and mirror checks; preserve filters, freshness and truncation. Raw entries and photos require their own supported operations.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        crate::PROJECT,
         FORM,
         METRIC,
         DISTINCT_FIELD,
@@ -230,7 +231,7 @@ pub static COMMAND: Command = Command {
         LIMIT,
         LANE,
     ],
-    output: "Lane, selected-project identity, echoed form/metric/grouping, at most 200 aggregate rows, and truncation; never raw entries, billing claims, or credentials.",
+    output: "Lane, the named project, echoed form/metric/grouping, at most 200 aggregate rows, and truncation; never raw entries, billing claims, or credentials.",
     examples: &[
         Example {
             command: "ds survey query --form <form-slug> --metric count --group-by created_by --output json",
@@ -254,7 +255,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // All caller-controlled grammar is parsed before profile discovery, auth,
     // project-context access, or network work.
     let query = parse(inputs)?;
-    let headless = ds_cli_auth::survey_query(inputs.require("lane")?, &query)?;
+    let headless =
+        ds_cli_auth::survey_query(inputs.require("lane")?, inputs.require("project")?, &query)?;
     let result = headless.result();
     let rows = result
         .rows()
@@ -491,8 +493,9 @@ mod tests {
     fn inputs(arguments: &[&str]) -> Inputs {
         parse(
             &COMMAND,
-            &arguments
+            &["--project", "test-project"]
                 .iter()
+                .chain(arguments)
                 .map(|value| (*value).to_owned())
                 .collect::<Vec<_>>(),
         )
@@ -586,7 +589,6 @@ mod tests {
     #[test]
     fn descriptor_has_no_escape_hatches() {
         for forbidden in [
-            "project",
             "url",
             "body",
             "token",

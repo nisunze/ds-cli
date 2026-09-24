@@ -1,4 +1,4 @@
-//! One bounded spatial selection from the selected project's Survey mirror.
+//! One bounded spatial selection from the named project's Survey mirror.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -32,7 +32,7 @@ const LANE: Arg = Arg::value(
 const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_project_access_denied",
-        when: "the verified user is not a member of the selected project",
+        when: "the verified user is not a member of the project",
         remedy: "select a project whose mirrored membership grants this account",
     },
     Refusal {
@@ -42,7 +42,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_form_binding_not_found",
-        when: "the form slug is not bound to the selected project",
+        when: "the form slug is not bound to the project",
         remedy: "pass one exact bound slug from `ds survey project-forms read`",
     },
     Refusal {
@@ -57,8 +57,8 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_entries_scope_not_found",
-        when: "the selected project or governed form is unavailable to the verified user",
-        remedy: "verify the selected project and pass one exact slug from `ds survey forms list`",
+        when: "the project or governed form is unavailable to the verified user",
+        remedy: "verify --project and pass one exact slug from `ds survey forms list`",
     },
     Refusal {
         code: "survey_entries_too_expensive",
@@ -98,7 +98,7 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entries_auth_rejected",
         when: "the fixed selection route rejects the verified identity or form authority",
-        remedy: "verify account and form authority in the selected project",
+        remedy: "verify account and form authority in the project",
     },
     Refusal {
         code: "survey_entries_transient",
@@ -127,14 +127,14 @@ const REFUSALS: &[Refusal] = &[
     },
     ds_cli_auth::SIGNED_OUT_REFUSAL,
     Refusal {
-        code: "headless_project_not_selected",
-        when: "the user has no audience-fenced project selection",
-        remedy: "run ds auth project use --project <exact-id>",
+        code: "project_required",
+        when: "--project is absent, blank or untrimmed",
+        remedy: "pass one exact ds_project value from ds auth project list",
     },
     Refusal {
-        code: "project_context_stale",
-        when: "the saved project belongs to another identity, lane, or audience",
-        remedy: "select the project again with ds auth project use",
+        code: "context_corrupt",
+        when: "--project is not one path segment: separator, traversal or whitespace",
+        remedy: "copy one exact ds_project value from ds auth project list",
     },
     Refusal {
         code: "native_state_unsafe",
@@ -200,12 +200,12 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Locate surveyed assets for spatial review and design handoff.",
-    purpose: "Use to locate surveyed assets in a requested area for spatial review or a design handoff. Returns only identities, geometry, creators and replication times; engineering attributes, photos and network connections are not included. Preserve the project, form, bbox, digest and completeness; a mutable mirror selection is not an approved design revision. Narrow a truncated bbox and deduplicate overlapping selections by identity. Resolve the exact participating project form first. Native selected-project permissions apply; there is no cursor or field expansion.",
+    purpose: "Use to locate surveyed assets in a requested area for spatial review or a design handoff. Returns only identities, geometry, creators and replication times; engineering attributes, photos and network connections are not included. Preserve the project, form, bbox, digest and completeness; a mutable mirror selection is not an approved design revision. Narrow a truncated bbox and deduplicate overlapping selections by identity. Resolve the exact participating project form first. Named-project permissions apply; there is no cursor or field expansion.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[FORM, BBOX, LIMIT, LANE],
-    output: "Lane, selected-project identity, exact form and bounding box, at most 500 typed geometry rows, truncation/completeness, a selection digest, and explicit mutable-mirror consistency. A truncated result requires a narrower --bbox; no cursor or mutable apply is provided.",
+    args: &[crate::PROJECT, FORM, BBOX, LIMIT, LANE],
+    output: "Lane, the named project, exact form and bounding box, at most 500 typed geometry rows, truncation/completeness, a selection digest, and explicit mutable-mirror consistency. A truncated result requires a narrower --bbox; no cursor or mutable apply is provided.",
     examples: &[
         Example {
             command: "ds survey entries select --form <form-slug> --bbox '29.70,-2.05,29.80,-1.95' --output json",
@@ -229,7 +229,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // Parse every caller-controlled byte before profile discovery, local auth,
     // project-context access, or network work.
     let request = parse(inputs)?;
-    let headless = ds_cli_auth::survey_entries_select(inputs.require("lane")?, &request)?;
+    let headless = ds_cli_auth::survey_entries_select(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &request,
+    )?;
     let selection = headless.selection();
     let rows = selection
         .rows()
@@ -324,8 +328,9 @@ mod tests {
     fn inputs(arguments: &[&str]) -> Inputs {
         parse(
             &COMMAND,
-            &arguments
+            &["--project", "test-project"]
                 .iter()
+                .chain(arguments)
                 .map(|value| (*value).to_owned())
                 .collect::<Vec<_>>(),
         )
@@ -377,10 +382,9 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(
             names,
-            std::collections::BTreeSet::from(["bbox", "form", "lane", "limit"])
+            std::collections::BTreeSet::from(["bbox", "form", "lane", "limit", "project"])
         );
         for forbidden in [
-            "project",
             "url",
             "method",
             "body",

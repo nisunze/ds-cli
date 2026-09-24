@@ -1,5 +1,5 @@
 //! Per-project form bindings and settings. Explicit project ids keep this API
-//! control plane independent of the map and selected-project UI state.
+//! control plane independent of the map and any saved project selection.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -25,20 +25,21 @@ pub static LIST_COMMAND: Command = Command {
     id: "survey.project-forms.list",
     path: &["survey", "project-forms", "list"],
     contract: 2,
-    summary: "List the selected project's form bindings headlessly.",
-    purpose: "Find which forms belong to the selected project before counting observations, selecting assets or preparing collection. Use returned slugs and participation state; a global master form is not proof that this project uses it. The native user and selected project are identity-fenced and the gateway rechecks membership. This read does not change bindings or settings.",
+    summary: "List the named project's form bindings headlessly.",
+    purpose: "Find which forms belong to the project before counting observations, selecting assets or preparing collection. Use returned slugs and participation state; a global master form is not proof that this project uses it. The project is named with --project (never the saved selection) and the gateway rechecks membership. This read does not change bindings or settings.",
     chapter: Chapter::Survey,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        crate::PROJECT,
         Arg::value("limit", "<n>", "Return at most 1..500 bindings.").default("50"),
         LANE,
     ],
-    output: "The selected project identity, complete available/unavailable totals, a stable-slug-ordered bounded form summary followed by orphan bindings, and the exact omitted count.",
+    output: "The named project, complete available/unavailable totals, a stable-slug-ordered bounded form summary followed by orphan bindings, and the exact omitted count.",
     examples: &[Example {
-        command: "ds survey project-forms list --limit 100 --output json",
-        note: "Lists the Stable native user's selected project forms without opening Desktop.",
+        command: "ds survey project-forms list --project <id> --limit 100 --output json",
+        note: "Lists the named project's forms without opening Desktop.",
         runnable: false,
     }],
     refusals: &[
@@ -59,14 +60,14 @@ pub static LIST_COMMAND: Command = Command {
         },
         ds_cli_auth::SIGNED_OUT_REFUSAL,
         ds_cli_contract::spec::Refusal {
-            code: "headless_project_not_selected",
-            when: "the user has no audience-fenced project selection",
-            remedy: "run ds auth project use --project <exact-id>",
+            code: "project_required",
+            when: "--project is absent, blank or untrimmed",
+            remedy: "pass one exact ds_project value from ds auth project list",
         },
         ds_cli_contract::spec::Refusal {
-            code: "project_context_stale",
-            when: "the saved project belongs to another identity, lane, or audience",
-            remedy: "select the project again with ds auth project use",
+            code: "context_corrupt",
+            when: "--project is not one path segment: separator, traversal or whitespace",
+            remedy: "copy one exact ds_project value from ds auth project list",
         },
         ds_cli_contract::spec::Refusal {
             code: "native_state_unsafe",
@@ -106,7 +107,7 @@ pub static LIST_COMMAND: Command = Command {
         ds_cli_contract::spec::Refusal {
             code: "auth_rejected",
             when: "the gateway rejects membership or the verified request",
-            remedy: "verify account membership in the selected project",
+            remedy: "verify account membership in the project",
         },
         ds_cli_contract::spec::Refusal {
             code: "auth_revoked",
@@ -181,20 +182,26 @@ pub static SETTINGS_COMMAND: Command = Command {
     id: "survey.project-form.settings",
     path: &["survey", "project-form", "settings"],
     contract: 2,
-    summary: "Read the selected project's form settings headlessly.",
-    purpose: "Restores the native user and reads one backend-owned settings editor through the fixed project-forms settings_editor action. The project comes only from audience-fenced auth state; ds-brain rechecks membership and project-form admin authority. No project id, Desktop descriptor, URL, body, or action override is accepted.",
+    summary: "Read the named project's form settings headlessly.",
+    purpose: "Restores the native user and reads one backend-owned settings editor through the fixed project-forms settings_editor action. The project comes only from --project; the saved selection is never read; ds-brain rechecks membership and project-form admin authority. No Desktop descriptor, URL, body, or action override is accepted.",
     chapter: Chapter::Survey,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
-        Arg::value("form", "<form-slug>", "Exact selected-project form slug.").required(),
+        crate::PROJECT,
+        Arg::value(
+            "form",
+            "<form-slug>",
+            "Exact form slug in the named project.",
+        )
+        .required(),
         LANE,
     ],
-    output: "The selected project identity and one closed backend-owned editor: current/effective settings, legal sections, field state, capabilities, optimistic revision, and explicit unavailable/read-only state.",
+    output: "The named project and one closed backend-owned editor: current/effective settings, legal sections, field state, capabilities, optimistic revision, and explicit unavailable/read-only state.",
     examples: &[Example {
-        command: "ds survey project-form settings --form <form-slug> --output json",
-        note: "Reads the Stable native user's selected-project editor without opening Desktop; `ds survey forms list` names the slug.",
+        command: "ds survey project-form settings --project <id> --form <form-slug> --output json",
+        note: "Reads the named project's editor without opening Desktop; `ds survey forms list` names the slug.",
         runnable: false,
     }],
     refusals: LIST_COMMAND.refusals,
@@ -341,7 +348,7 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let limit = ds_cli_contract::args::integer(inputs.require("limit")?, "limit", 1, 500)? as usize;
-    let headless = ds_cli_auth::project_forms(inputs.require("lane")?)?;
+    let headless = ds_cli_auth::project_forms(inputs.require("lane")?, inputs.require("project")?)?;
     let snapshot = headless.snapshot();
     let total = snapshot.forms().len() + snapshot.orphaned_project_forms().len();
     let available_total = snapshot
@@ -407,8 +414,11 @@ pub fn editor(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn settings(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let headless =
-        ds_cli_auth::project_form_editor(inputs.require("lane")?, inputs.require("form")?)?;
+    let headless = ds_cli_auth::project_form_editor(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        inputs.require("form")?,
+    )?;
     let snapshot = headless.snapshot();
     Ok(json!({
         "lane": headless.lane(),
@@ -500,7 +510,8 @@ mod tests {
     fn all_project_form_reads_use_native_project_authority() {
         assert_eq!(LIST_COMMAND.authority, Authority::HeadlessProject);
         assert_eq!(LIST_COMMAND.effect, Effect::LocalAuthState);
-        assert!(LIST_COMMAND.arg("project").is_none());
+        // Every project-form read names its project; none reads the saved selection.
+        assert!(LIST_COMMAND.arg("project").is_some());
         assert!(LIST_COMMAND.arg("desktop-descriptor").is_none());
         assert!(LIST_COMMAND.arg("url").is_none());
         assert!(LIST_COMMAND.arg("action").is_none());
@@ -512,7 +523,7 @@ mod tests {
         assert_eq!(SETTINGS_COMMAND.authority, Authority::HeadlessProject);
         assert_eq!(SETTINGS_COMMAND.effect, Effect::LocalAuthState);
         assert!(SETTINGS_COMMAND.arg("form").is_some());
-        assert!(SETTINGS_COMMAND.arg("project").is_none());
+        assert!(SETTINGS_COMMAND.arg("project").is_some());
         assert!(SETTINGS_COMMAND.arg("desktop-descriptor").is_none());
         assert!(SETTINGS_COMMAND.arg("url").is_none());
         assert!(SETTINGS_COMMAND.arg("action").is_none());

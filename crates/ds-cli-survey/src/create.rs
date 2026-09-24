@@ -66,26 +66,26 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entry_create_auth_rejected",
         when: "the native session or fixed create route rejects the verified identity",
-        remedy: "sign in again and verify the selected project and form authority",
+        remedy: "sign in again and verify the project and form authority",
     },
     Refusal {
         code: "survey_entry_create_permission_denied",
         when: "the verified user lacks entries.create authority for this project form",
-        remedy: "request entries.create authority for the selected project and form",
+        remedy: "request entries.create authority for the project and form",
     },
     Refusal {
         code: "survey_entry_create_scope_not_found",
-        when: "the selected project, governed form, or context ancestor is unavailable",
-        remedy: "verify the selected project, form, and optional context key",
+        when: "the project, governed form, or context ancestor is unavailable",
+        remedy: "verify --project, the form, and the optional context key",
     },
     Refusal {
         code: "survey_entry_create_form_disabled",
-        when: "the Survey form is not enabled for entry creation in the selected project",
+        when: "the Survey form is not enabled for entry creation in the project",
         remedy: "enable the project form before creating entries",
     },
     Refusal {
         code: "survey_entry_create_project_read_only",
-        when: "the selected project lifecycle does not permit Survey entry creation",
+        when: "the project lifecycle does not permit Survey entry creation",
         remedy: "select an active writable project",
     },
     Refusal {
@@ -130,14 +130,14 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     },
     ds_cli_auth::SIGNED_OUT_REFUSAL,
     Refusal {
-        code: "headless_project_not_selected",
-        when: "the user has no audience-fenced project selection",
-        remedy: "run ds auth project use --project <exact-id>",
+        code: "project_required",
+        when: "--project is absent, blank or untrimmed",
+        remedy: "pass one exact ds_project value from ds auth project list",
     },
     Refusal {
-        code: "project_context_stale",
-        when: "the saved project belongs to another identity, lane, or audience",
-        remedy: "select the project again with ds auth project use",
+        code: "context_corrupt",
+        when: "--project is not one path segment: separator, traversal or whitespace",
+        remedy: "copy one exact ds_project value from ds auth project list",
     },
     Refusal {
         code: "native_state_unsafe",
@@ -202,11 +202,12 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Create one governed Survey entry headlessly.",
-    purpose: "Parses one closed local JSON document and validates all caller-controlled identity, timestamp, context, GeoJSON, and payload bounds before profile or auth access; restores the native user; loads only its audience-fenced selected project and releases that lease before one fixed create-only backend call. The backend atomically binds the idempotency key, entry write, report watermark, and tile-stale fence. The receipt proves Firestore commit only; BigQuery mirror presence remains unconfirmed until a later governed read. There is no project, URL, method, body, token, origin, operation, retry, fallback, force, caller-authority, or Desktop override.",
+    purpose: "Parses one closed local JSON document and validates all caller-controlled identity, timestamp, context, GeoJSON, and payload bounds before profile or auth access; restores the native user; uses the project --project names (never the saved selection) for one fixed create-only backend call. The backend atomically binds the idempotency key, entry write, report watermark, and tile-stale fence. The receipt proves Firestore commit only; BigQuery mirror presence remains unconfirmed until a later governed read. There is no project, URL, method, body, token, origin, operation, retry, fallback, force, caller-authority, or Desktop override.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        crate::PROJECT,
         FORM,
         DOC_ID,
         IDEMPOTENCY_KEY,
@@ -215,10 +216,10 @@ pub static COMMAND: Command = Command {
         CONTEXT_KEY,
         LANE,
     ],
-    output: "Receipt only: lane, selected project identity, form and document identity, client version, Firestore committed, BigQuery mirror unconfirmed, and the verified replication clock/authority. It never returns request data or the idempotency key.",
+    output: "Receipt only: lane, the named project, form and document identity, client version, Firestore committed, BigQuery mirror unconfirmed, and the verified replication clock/authority. It never returns request data or the idempotency key.",
     examples: &[Example {
         command: "ds survey entries create --form <form-slug> --doc-id pole-104 --idempotency-key '<opaque-key>' --created-at 2026-08-30T12:00:00Z --document ./pole-104.json --yes --output json",
-        note: "Creates exactly one entry in the selected project after explicit confirmation; the exact slug comes from `ds survey forms list`.",
+        note: "Creates exactly one entry in the project after explicit confirmation; the exact slug comes from `ds survey forms list`.",
         runnable: false,
     }],
     refusals: REFUSALS,
@@ -232,7 +233,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The complete caller-controlled grammar, including the local file, is
     // consumed before profile discovery, auth restoration, or project state.
     let request = parse(inputs)?;
-    let headless = ds_cli_auth::survey_entry_create(inputs.require("lane")?, &request)?;
+    let headless = ds_cli_auth::survey_entry_create(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &request,
+    )?;
     let receipt = headless.receipt();
     Ok(json!({
         "lane": headless.lane(),
@@ -452,8 +457,9 @@ mod tests {
     fn inputs(arguments: &[&str]) -> Inputs {
         parse_args(
             &COMMAND,
-            &arguments
+            &["--project", "test-project"]
                 .iter()
+                .chain(arguments)
                 .map(|value| (*value).to_owned())
                 .collect::<Vec<_>>(),
         )
@@ -572,10 +578,10 @@ mod tests {
                 "form",
                 "idempotency-key",
                 "lane",
+                "project",
             ])
         );
         for forbidden in [
-            "project",
             "url",
             "method",
             "body",

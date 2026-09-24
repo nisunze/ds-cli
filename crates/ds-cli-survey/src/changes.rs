@@ -1,4 +1,4 @@
-//! One bounded page from the selected project's fenced Survey changes feed.
+//! One bounded page from the named project's Survey changes feed.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -37,7 +37,7 @@ const LANE: Arg = Arg::value(
 const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_project_access_denied",
-        when: "the verified user is not a member of the selected project",
+        when: "the verified user is not a member of the project",
         remedy: "select a project whose mirrored membership grants this account",
     },
     Refusal {
@@ -47,7 +47,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_form_binding_not_found",
-        when: "the form slug is not bound to the selected project",
+        when: "the form slug is not bound to the project",
         remedy: "pass one exact bound slug from `ds survey project-forms read`",
     },
     Refusal {
@@ -107,8 +107,8 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_entries_scope_not_found",
-        when: "the selected project or form is unavailable to this user",
-        remedy: "verify the selected project and pass one exact slug from `ds survey forms list`",
+        when: "the project or form is unavailable to this user",
+        remedy: "verify --project and pass one exact slug from `ds survey forms list`",
     },
     Refusal {
         code: "survey_entries_changes_refused",
@@ -118,7 +118,7 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entries_changes_auth_rejected",
         when: "the route rejects identity or form authority",
-        remedy: "verify the account and selected-project form authority",
+        remedy: "verify the account and project form authority",
     },
     Refusal {
         code: "survey_entries_changes_transient",
@@ -147,14 +147,14 @@ const REFUSALS: &[Refusal] = &[
     },
     ds_cli_auth::SIGNED_OUT_REFUSAL,
     Refusal {
-        code: "headless_project_not_selected",
-        when: "the user has no audience-fenced selected project",
-        remedy: "run ds auth project use --project <exact-id>",
+        code: "project_required",
+        when: "--project is absent, blank or untrimmed",
+        remedy: "pass one exact ds_project value from ds auth project list",
     },
     Refusal {
-        code: "project_context_stale",
-        when: "the saved project belongs to another identity, lane, or audience",
-        remedy: "select the project again with ds auth project use",
+        code: "context_corrupt",
+        when: "--project is not one path segment: separator, traversal or whitespace",
+        remedy: "copy one exact ds_project value from ds auth project list",
     },
     Refusal {
         code: "native_state_unsafe",
@@ -220,12 +220,12 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Refresh a Survey delivery from changes since its checkpoint.",
-    purpose: "Use to refresh a downstream survey delivery after field corrections or new captures without downloading everything again. Reads one selected-project mirror page since an inclusive replication clock; this is not a capture-date filter. It never auto-paginates. Continue incomplete pages with unchanged updated-after/limit and exact next_cursor without advancing the checkpoint. Only a complete upper_fence advances it. Apply rows idempotently by doc_id plus firestore_updated_at; tombstones remove live rows. This is coalesced mirror state, not Firestore history.",
+    purpose: "Use to refresh a downstream survey delivery after field corrections or new captures without downloading everything again. Reads one mirror page of the project --project names since an inclusive replication clock; this is not a capture-date filter. It never auto-paginates. Continue incomplete pages with unchanged updated-after/limit and exact next_cursor without advancing the checkpoint. Only a complete upper_fence advances it. Apply rows idempotently by doc_id plus firestore_updated_at; tombstones remove live rows. This is coalesced mirror state, not Firestore history.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[FORM, UPDATED_AFTER, LIMIT, CURSOR, LANE],
-    output: "Selected project/form, canonical lower clock and limit, rows with optional geometry and tombstones, upper fence, cursor/completion, and immutable mirror consistency. For an incomplete page, retain the prior checkpoint and reuse the same clock/limit with its cursor; only a complete upper fence advances it.",
+    args: &[crate::PROJECT, FORM, UPDATED_AFTER, LIMIT, CURSOR, LANE],
+    output: "Named project/form, canonical lower clock and limit, rows with optional geometry and tombstones, upper fence, cursor/completion, and immutable mirror consistency. For an incomplete page, retain the prior checkpoint and reuse the same clock/limit with its cursor; only a complete upper fence advances it.",
     examples: &[
         Example {
             command: "ds survey entries changes --form <form-slug> --updated-after 2026-08-30T00:00:00Z --output json",
@@ -247,9 +247,13 @@ pub static COMMAND: Command = Command {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // Parse every caller-controlled byte before profile discovery, local auth,
-    // selected-project state, or network work.
+    // project state, or network work.
     let request = parse(inputs)?;
-    let headless = ds_cli_auth::survey_entries_changes(inputs.require("lane")?, &request)?;
+    let headless = ds_cli_auth::survey_entries_changes(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &request,
+    )?;
     let changes = headless.changes();
     let rows = changes
         .rows()
@@ -350,8 +354,9 @@ mod tests {
     fn inputs(arguments: &[&str]) -> Inputs {
         parse(
             &COMMAND,
-            &arguments
+            &["--project", "test-project"]
                 .iter()
+                .chain(arguments)
                 .map(|value| (*value).to_owned())
                 .collect::<Vec<_>>(),
         )
@@ -434,10 +439,16 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(
             names,
-            std::collections::BTreeSet::from(["cursor", "form", "lane", "limit", "updated-after",])
+            std::collections::BTreeSet::from([
+                "cursor",
+                "form",
+                "lane",
+                "limit",
+                "project",
+                "updated-after",
+            ])
         );
         for forbidden in [
-            "project",
             "url",
             "method",
             "body",

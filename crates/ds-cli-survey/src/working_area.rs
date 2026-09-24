@@ -67,16 +67,15 @@ pub const LAYER_STATE_STALE: Refusal = Refusal {
 /// The native vocabulary every project-forms read already declares, plus the
 /// host routing this family takes and the refusals the choice itself owns.
 /// `OWN` is the full length: the base's 18 native codes (its 19th,
-/// `invalid_number`, is not raised here), the six host refusals, then `own`.
+/// `invalid_number`, is not raised here; the base already carries
+/// `project_required` and `context_corrupt`), the four host refusals, then `own`.
 const fn refusals<const OWN: usize>(own: &[Refusal]) -> [Refusal; OWN] {
     const BASE: &[Refusal] = crate::project_forms::LIST_COMMAND.refusals;
-    const HOSTED: [Refusal; 6] = [
+    const HOSTED: [Refusal; 4] = [
         target::TARGET_INSTANCE_UNSUPPORTED,
         target::UNKNOWN_TARGET,
         target::SERVER_REFUSED,
         target::SERVER_OWNER_CHANGED,
-        target::PROJECT_REQUIRED,
-        target::CONTEXT_CORRUPT,
     ];
     assert!(OWN == 18 + HOSTED.len() + own.len());
     let mut list = [UNKNOWN_FORM; OWN];
@@ -98,8 +97,8 @@ const fn refusals<const OWN: usize>(own: &[Refusal]) -> [Refusal; OWN] {
     list
 }
 
-const READ_REFUSALS: [Refusal; 27] = refusals(&[LOCAL_STORE, LAYER_STATE_STALE, KERNEL_REFUSED]);
-const SELECT_REFUSALS: [Refusal; 30] = refusals(&[
+const READ_REFUSALS: [Refusal; 25] = refusals(&[LOCAL_STORE, LAYER_STATE_STALE, KERNEL_REFUSED]);
+const SELECT_REFUSALS: [Refusal; 28] = refusals(&[
     LOCAL_STORE,
     LAYER_STATE_STALE,
     KERNEL_REFUSED,

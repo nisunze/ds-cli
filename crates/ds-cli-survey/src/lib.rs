@@ -176,8 +176,21 @@ pub fn invoke(inputs: &Inputs, op: &str, arguments: Map<String, Value>) -> Resul
             )
             .remedy(INVALID_DOCUMENT.remedy)
         })?;
-    ds_cli_auth::survey_control(inputs.value("lane").unwrap_or("stable"), &command)
+    ds_cli_auth::survey_control(
+        inputs.value("lane").unwrap_or("stable"),
+        inputs.value("project"),
+        &command,
+    )
 }
+
+/// The project a project-domain Survey command acts on; the saved native
+/// selection is never read.
+pub const PROJECT: ds_cli_contract::spec::Arg = ds_cli_contract::spec::Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project this call is about; the saved selection is never read.",
+)
+.required();
 
 pub const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native deployment lane.")

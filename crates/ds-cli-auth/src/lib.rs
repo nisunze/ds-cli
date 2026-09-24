@@ -3231,10 +3231,26 @@ fn headless_named_project<T>(
         &str,
     ) -> Result<T, ClientError>,
 ) -> Result<HeadlessNamedProject<T>, Failure> {
+    headless_named_project_with(lane_value, project, map_client, device_call, session_call)
+}
+
+/// One explicit-project call whose service keeps its own error vocabulary.
+/// The saved native selection is never read; both providers map a failure
+/// through the same `map_err`, so which one restored cannot change the answer.
+fn headless_named_project_with<T>(
+    lane_value: &str,
+    project: &str,
+    map_err: impl Fn(ClientError) -> Failure,
+    device_call: impl FnOnce(&mut device::DeviceSession, &str) -> Result<T, ClientError>,
+    session_call: impl FnOnce(
+        &mut Client<NativeTransport, NativeRefreshStore>,
+        &str,
+    ) -> Result<T, ClientError>,
+) -> Result<HeadlessNamedProject<T>, Failure> {
     let lane = Lane::parse(lane_value)?;
     let project = bounded_named_project(project)?;
     if let Some(mut device) = restored_device_session(lane)? {
-        let result = device_call(&mut device, &project).map_err(map_client)?;
+        let result = device_call(&mut device, &project).map_err(&map_err)?;
         return Ok(HeadlessNamedProject {
             identity: ProviderIdentity::new(
                 lane.token(),
@@ -3251,7 +3267,7 @@ fn headless_named_project<T>(
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
     let user = require_restore_before_context(&mut client)?;
-    let result = session_call(&mut client, &project).map_err(map_client)?;
+    let result = session_call(&mut client, &project).map_err(&map_err)?;
     Ok(HeadlessNamedProject {
         identity: ProviderIdentity::new(
             lane.token(),
@@ -3578,84 +3594,40 @@ pub fn transformer_retirement_for_project(
     )
 }
 
-/// Restore one native user and activate project forms for only the saved,
-/// audience-fenced selected project. The gateway rechecks membership.
-pub fn project_forms(lane_value: &str) -> Result<HeadlessProjectForms, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let snapshot = device
-            .project_forms(selected.project_id())
-            .map_err(map_client)?;
-        return Ok(HeadlessProjectForms {
-            lane: lane.token(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            snapshot,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = ProjectContextLease::acquire(client.profile())?
-        .load_snapshot(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    let result = client.project_forms(selected.project_id(), now());
-    let snapshot = with_released_context_disposition(client.profile(), &selected, result)?;
+/// Read the form bindings of the caller's explicit project. The gateway
+/// rechecks membership; the saved native selection is never read.
+pub fn project_forms(lane_value: &str, project: &str) -> Result<HeadlessProjectForms, Failure> {
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.project_forms(project),
+        |client, project| client.project_forms(project, now()),
+    )?;
     Ok(HeadlessProjectForms {
-        lane: lane.token(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        snapshot,
+        lane: named.lane,
+        project_name: String::new(),
+        project_status: String::new(),
+        snapshot: named.result,
     })
 }
 
-/// Restore one native user and read one backend-owned settings editor from
-/// only the saved, audience-fenced selected project.
+/// Read the settings editor of one form in the caller's explicit project.
 pub fn project_form_editor(
     lane_value: &str,
+    project: &str,
     form_slug: &str,
 ) -> Result<HeadlessProjectFormEditor, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let snapshot = device
-            .project_form_editor(selected.project_id(), form_slug)
-            .map_err(map_client)?;
-        return Ok(HeadlessProjectFormEditor {
-            lane: lane.token(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            snapshot,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = ProjectContextLease::acquire(client.profile())?
-        .load_snapshot(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    let result = client.project_form_editor(selected.project_id(), form_slug, now());
-    let snapshot = with_released_context_disposition(client.profile(), &selected, result)?;
+    let named = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.project_form_editor(project, form_slug),
+        |client, project| client.project_form_editor(project, form_slug, now()),
+    )?;
     Ok(HeadlessProjectFormEditor {
-        lane: lane.token(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        snapshot,
+        lane: named.lane,
+        project_name: String::new(),
+        project_status: String::new(),
+        snapshot: named.result,
     })
 }
 
@@ -3691,323 +3663,175 @@ pub fn solar_snapshot_for_project(
     result
 }
 
-/// Restore one native user and run one typed aggregate against only the saved,
-/// audience-fenced selected project. There is no project or request-target
-/// override, and the context lease is released before the network call.
+/// Ask one bounded Survey aggregate question of the caller's explicit project.
 pub fn survey_query(
     lane_value: &str,
+    project: &str,
     query: &SurveyQueryRequest,
 ) -> Result<HeadlessSurveyQuery, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device.survey_query(selected.project_id(), query);
-        let result = match result {
-            Err(error) if error.survey_query_service_code().is_some() => {
-                return Err(map_survey_query_service_code(
-                    error.survey_query_service_code().unwrap(),
-                ));
-            }
-            Err(error) if error.survey_form_read_service_code().is_some() => {
-                return Err(map_survey_form_read_service_code(
-                    error.survey_form_read_service_code().unwrap(),
-                ));
-            }
-            Err(error) if error.kind() == ErrorKind::RouteUnavailable => {
-                return Err(route_unavailable());
-            }
-            Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
-                // The same refusal as the headless branch below, remedy
-                // included: which lane answered is not something the caller
-                // chose, so it cannot be why one of them is a dead end.
-                return Err(Failure::invalid(
-                    "survey_scope_not_found",
-                    "the selected project or governed form is unavailable to this verified user",
-                )
-                .remedy("verify the selected project and pass one exact available form slug"));
-            }
-            Err(error) => return Err(map_client(error)),
-            Ok(result) => result,
-        };
-        return Ok(HeadlessSurveyQuery {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = ProjectContextLease::acquire(client.profile())?
-        .load_snapshot(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    let result = client.survey_query(selected.project_id(), query, now());
-    let result = match result {
-        Err(error) if error.survey_query_service_code().is_some() => {
-            return Err(map_survey_query_service_code(
-                error.survey_query_service_code().unwrap(),
-            ));
-        }
-        Err(error) if error.survey_form_read_service_code().is_some() => {
-            return Err(map_survey_form_read_service_code(
-                error.survey_form_read_service_code().unwrap(),
-            ));
-        }
-        Err(error) if error.kind() == ErrorKind::RouteUnavailable => {
-            return Err(route_unavailable());
-        }
-        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
-            return Err(Failure::invalid(
-                "survey_scope_not_found",
-                "the selected project or governed form is unavailable to this verified user",
-            )
-            .remedy("verify the selected project and pass one exact available form slug"));
-        }
-        Err(error) if error.kind() == ErrorKind::InvalidInput => {
-            return Err(Failure::conflict(
-                "survey_query_refused",
-                "the backend refused the already validated Survey question or reported a stale view",
-            )
-            .remedy("retry once, then verify the governed form and Survey view state"));
-        }
-        other => with_released_context_disposition(client.profile(), &selected, other)?,
-    };
+    let named = headless_named_project_with(
+        lane_value,
+        project,
+        map_survey_query_error,
+        |device, project| device.survey_query(project, query),
+        |client, project| client.survey_query(project, query, now()),
+    )?;
     Ok(HeadlessSurveyQuery {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
     })
 }
 
-/// Restore one native user and select one bounded spatial receipt from only
-/// the saved, audience-fenced project. The context lease is released before
-/// the fixed core network call. The result is mutable live-mirror data, not a
-/// datastore snapshot, and the core verifies its server-issued digest.
+/// The Survey query vocabulary, identical whichever provider restored.
+fn map_survey_query_error(error: ClientError) -> Failure {
+    if let Some(code) = error.survey_query_service_code() {
+        return map_survey_query_service_code(code);
+    }
+    if let Some(code) = error.survey_form_read_service_code() {
+        return map_survey_form_read_service_code(code);
+    }
+    match error.kind() {
+        ErrorKind::RouteUnavailable => route_unavailable(),
+        ErrorKind::ResourceNotFound => Failure::invalid(
+            "survey_scope_not_found",
+            "the project or governed form is unavailable to this verified user",
+        )
+        .remedy("verify --project and pass one exact available form slug"),
+        ErrorKind::InvalidInput => Failure::conflict(
+            "survey_query_refused",
+            "the backend refused the already validated Survey question or reported a stale view",
+        )
+        .remedy("retry once, then verify the governed form and Survey view state"),
+        _ => map_client(error),
+    }
+}
+
+/// Select Survey entries by a bounded box in the caller's explicit project.
 pub fn survey_entries_select(
     lane_value: &str,
+    project: &str,
     request: &SurveyEntriesSelectRequest,
 ) -> Result<HeadlessSurveyEntriesSelection, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let selection = match device.survey_entries_select(selected.project_id(), request) {
-            Err(error) => return Err(map_survey_entries_select_error(error)),
-            Ok(selection) => selection,
-        };
-        return Ok(HeadlessSurveyEntriesSelection {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            selection,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = ProjectContextLease::acquire(client.profile())?
-        .load_snapshot(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    let selection = client.survey_entries_select(selected.project_id(), request, now());
-    let selection = match selection {
-        // The same mapper the paired branch above uses. Kinds this route has
-        // no word of its own for fall through to the disposition arm, which
-        // still has to release the context lease before it maps them.
-        Err(error) if survey_entries_select_speaks_for(&error) => {
-            return Err(map_survey_entries_select_error(error));
-        }
-        other => with_released_context_disposition(client.profile(), &selected, other)?,
-    };
+    let named = headless_named_project_with(
+        lane_value,
+        project,
+        map_survey_entries_select_error,
+        |device, project| device.survey_entries_select(project, request),
+        |client, project| client.survey_entries_select(project, request, now()),
+    )?;
     Ok(HeadlessSurveyEntriesSelection {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        selection,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        selection: named.result,
     })
 }
 
-/// Restore one native user and read one immutable-fence page of coalesced
-/// Survey mirror changes from only the saved, audience-fenced project. The
-/// selected-project lease is released before the fixed core network call.
+/// Read Survey entry changes since a clock in the caller's explicit project.
 pub fn survey_entries_changes(
     lane_value: &str,
+    project: &str,
     request: &SurveyEntriesChangesRequest,
 ) -> Result<HeadlessSurveyEntriesChanges, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let changes = match device.survey_entries_changes(selected.project_id(), request) {
-            Err(error) => return Err(map_survey_entries_changes_error(error)),
-            Ok(changes) => changes,
-        };
-        return Ok(HeadlessSurveyEntriesChanges {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            changes,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = ProjectContextLease::acquire(client.profile())?
-        .load_snapshot(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    let changes = client.survey_entries_changes(selected.project_id(), request, now());
-    let changes = match changes {
-        // The same mapper the paired branch above uses; see
-        // [`map_survey_entries_changes_error`].
-        Err(error) if survey_entries_changes_speaks_for(&error) => {
-            return Err(map_survey_entries_changes_error(error));
-        }
-        other => with_released_context_disposition(client.profile(), &selected, other)?,
-    };
+    let named = headless_named_project_with(
+        lane_value,
+        project,
+        map_survey_entries_changes_error,
+        |device, project| device.survey_entries_changes(project, request),
+        |client, project| client.survey_entries_changes(project, request, now()),
+    )?;
     Ok(HeadlessSurveyEntriesChanges {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        changes,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        changes: named.result,
     })
 }
 
-/// Restore one native user and create one governed Survey entry in only the
-/// saved, audience-fenced project. Local callers construct the strict core
-/// request before entering this adapter; the selected-project lease is
-/// released before the fixed network call.
+/// Create one governed Survey entry in the caller's explicit project.
 pub fn survey_entry_create(
     lane_value: &str,
+    project: &str,
     request: &SurveyEntryCreateRequest,
 ) -> Result<HeadlessSurveyEntryCreate, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let receipt = match device.survey_entry_create(selected.project_id(), request) {
-            Err(error) if error.survey_entry_create_service_code().is_some() => {
-                return Err(map_survey_entry_create_service_code(
-                    error.survey_entry_create_service_code().unwrap(),
-                ));
-            }
-            Err(error) => return Err(map_client(error)),
-            Ok(receipt) => receipt,
-        };
-        return Ok(HeadlessSurveyEntryCreate {
-            lane: lane.token(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            receipt,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = ProjectContextLease::acquire(client.profile())?
-        .load_snapshot(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    let result = client.survey_entry_create(selected.project_id(), request, now());
-    let receipt = match result {
-        Err(error) if error.survey_entry_create_service_code().is_some() => {
-            return Err(map_survey_entry_create_service_code(
-                error
-                    .survey_entry_create_service_code()
-                    .expect("the guarded Survey create service code is present"),
-            ));
-        }
-        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
-            return Err(Failure::invalid(
-                "survey_entry_create_scope_not_found",
-                "the selected project, governed form, or context ancestor is unavailable",
-            )
-            .remedy("verify the selected project, form, and optional context key"));
-        }
-        Err(error) if error.kind() == ErrorKind::InvalidInput => {
-            return Err(Failure::invalid(
-                "survey_entry_create_refused",
-                "the backend refused the already validated governed Survey create request",
-            )
-            .remedy("recheck the form, document identity, context, and document bounds"));
-        }
-        Err(error) if error.kind() == ErrorKind::AuthenticationRejected => {
-            return Err(Failure::unauthorized(
-                "survey_entry_create_auth_rejected",
-                "the fixed create route rejected the verified identity or form authority",
-            )
-            .remedy("verify account and entries.create authority in the selected project"));
-        }
-        Err(error) if error.kind() == ErrorKind::Transient => {
-            return Err(Failure::unavailable(
-                "survey_entry_create_failed",
-                "the governed Survey create service failed temporarily",
-            )
-            .remedy(
-                "after service recovery, retry the exact document with the same idempotency key",
-            ));
-        }
-        Err(error) if error.kind() == ErrorKind::UnreadableResponse => {
-            return Err(Failure::unavailable(
-                "survey_entry_create_unreadable",
-                "the create response violated its closed identity, version, clock, or authority contract",
-            )
-            .remedy("verify the backend release and update ds before retrying"));
-        }
-        other => with_released_context_disposition(client.profile(), &selected, other)?,
-    };
+    let named = headless_named_project_with(
+        lane_value,
+        project,
+        map_survey_entry_create_error,
+        |device, project| device.survey_entry_create(project, request),
+        |client, project| client.survey_entry_create(project, request, now()),
+    )?;
     Ok(HeadlessSurveyEntryCreate {
-        lane: lane.token(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        receipt,
+        lane: named.lane,
+        project_name: String::new(),
+        project_status: String::new(),
+        receipt: named.result,
     })
 }
 
-/// Restore one native user exactly once and freeze one audience-fenced
-/// selected project for a sequential Survey import. The context lease is
-/// released before this function returns and before any create call begins.
-pub fn survey_import_session(lane_value: &str) -> Result<HeadlessSurveyImportSession, Failure> {
+/// The Survey create vocabulary, identical whichever provider restored.
+fn map_survey_entry_create_error(error: ClientError) -> Failure {
+    if let Some(code) = error.survey_entry_create_service_code() {
+        return map_survey_entry_create_service_code(code);
+    }
+    match error.kind() {
+        ErrorKind::ResourceNotFound => Failure::invalid(
+            "survey_entry_create_scope_not_found",
+            "the project, governed form, or context ancestor is unavailable",
+        )
+        .remedy("verify --project, the form, and the optional context key"),
+        ErrorKind::InvalidInput => Failure::invalid(
+            "survey_entry_create_refused",
+            "the backend refused the already validated governed Survey create request",
+        )
+        .remedy("recheck the form, document identity, context, and document bounds"),
+        ErrorKind::AuthenticationRejected => Failure::unauthorized(
+            "survey_entry_create_auth_rejected",
+            "the fixed create route rejected the verified identity or form authority",
+        )
+        .remedy("verify account and entries.create authority in the project"),
+        ErrorKind::Transient => Failure::unavailable(
+            "survey_entry_create_failed",
+            "the governed Survey create service failed temporarily",
+        )
+        .remedy("after service recovery, retry the exact document with the same idempotency key"),
+        ErrorKind::UnreadableResponse => Failure::unavailable(
+            "survey_entry_create_unreadable",
+            "the create response violated its closed identity, version, clock, or authority contract",
+        )
+        .remedy("verify the backend release and update ds before retrying"),
+        _ => map_client(error),
+    }
+}
+
+/// Open one Survey import session for the caller's explicit project. The
+/// session's context is named, never the saved selection.
+pub fn survey_import_session(
+    lane_value: &str,
+    project: &str,
+) -> Result<HeadlessSurveyImportSession, Failure> {
     let lane = Lane::parse(lane_value)?;
-    if let Some((device, selected)) = restored_device_project(lane)? {
+    let project = bounded_named_project(project)?;
+    if let Some(device) = restored_device_session(lane)? {
         let identity = device.context();
         let principal_sha256 = principal_binding_sha256(identity.uid(), identity.email());
         let credential_audience_sha256 = device.profile().credential_audience_sha256().to_owned();
+        let selected = state::ProjectContext::named(
+            device.profile(),
+            identity.uid(),
+            identity.email(),
+            &project,
+        );
         return Ok(HeadlessSurveyImportSession {
             lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
+            project_id: project,
+            project_name: String::new(),
+            project_status: String::new(),
             principal_sha256,
             credential_audience_sha256,
             selected,
@@ -4018,22 +3842,14 @@ pub fn survey_import_session(lane_value: &str) -> Result<HeadlessSurveyImportSes
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
     let user = require_restore_before_context(&mut client)?;
-    let selected = ProjectContextLease::acquire(client.profile())?
-        .load_snapshot(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
     let principal_sha256 = principal_binding_sha256(user.uid(), user.email());
+    let selected =
+        state::ProjectContext::named(client.profile(), user.uid(), user.email(), &project);
     Ok(HeadlessSurveyImportSession {
         lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
+        project_id: project,
+        project_name: String::new(),
+        project_status: String::new(),
         principal_sha256,
         credential_audience_sha256: client.profile().credential_audience_sha256().to_owned(),
         selected,
@@ -4112,13 +3928,6 @@ fn map_survey_entries_changes_error(error: ClientError) -> Failure {
         return map_survey_entries_changes_service_code(code);
     }
     survey_entries_changes_kind(error.kind()).unwrap_or_else(|| map_client(error))
-}
-
-/// Whether the changes route speaks for this error itself.
-fn survey_entries_changes_speaks_for(error: &ClientError) -> bool {
-    error.survey_form_read_service_code().is_some()
-        || error.survey_entries_changes_service_code().is_some()
-        || survey_entries_changes_kind(error.kind()).is_some()
 }
 
 /// The changes route's own refusal for one transport kind, or `None` when it
@@ -4236,15 +4045,6 @@ fn map_survey_entries_select_error(error: ClientError) -> Failure {
     // Only the kinds this route has a word of its own for; anything else is
     // the shared native mapping, unchanged.
     survey_entries_select_kind(error.kind()).unwrap_or_else(|| map_client(error))
-}
-
-/// Whether the selection route speaks for this error itself. The guard that
-/// decides and the mapper that answers must agree, so they read the same
-/// function.
-fn survey_entries_select_speaks_for(error: &ClientError) -> bool {
-    error.survey_form_read_service_code().is_some()
-        || error.survey_entries_select_service_code().is_some()
-        || survey_entries_select_kind(error.kind()).is_some()
 }
 
 fn map_survey_query_service_code(code: SurveyQueryServiceCode) -> Failure {
@@ -5652,45 +5452,39 @@ pub fn render_project(data: &Value) -> String {
 }
 
 pub use ds_client_core::SurveyControlCommand;
-pub fn survey_control(lane_value: &str, command: &SurveyControlCommand) -> Result<Value, Failure> {
+/// Run one Survey control command. A command that acts on a project names it
+/// explicitly; the saved native selection is never read.
+pub fn survey_control(
+    lane_value: &str,
+    project: Option<&str>,
+    command: &SurveyControlCommand,
+) -> Result<Value, Failure> {
     command.validate().map_err(map_client)?;
     let lane = Lane::parse(lane_value)?;
     let _ = probe_headless_identity(lane.token())?;
-    if let Some(mut device) = device::restore_session(lane)? {
-        let selected = if command.project_hint().is_some() {
-            let identity = device.context();
-            Some(
-                ProjectContextLease::acquire(device.profile())?
-                    .load_snapshot(device.profile(), identity.uid(), identity.email())?
-                    .ok_or_else(|| {
-                        Failure::conflict(
-                            "headless_project_not_selected",
-                            "Select a native project before changing its forms",
-                        )
-                        .remedy("run ds auth project use")
-                    })?,
+    let project = match (command.project_hint().is_some(), project) {
+        (true, Some(project)) => Some(bounded_named_project(project)?),
+        (true, None) => {
+            return Err(Failure::invalid(
+                "project_required",
+                "this Survey control acts on a project; pass --project <exact-id>",
             )
-        } else {
-            None
-        };
+            .remedy("pass one exact ds_project value from ds auth project list"));
+        }
+        (false, _) => None,
+    };
+    if let Some(mut device) = device::restore_session(lane)? {
         return device
-            .survey_control(selected.as_ref().map(|s| s.project_id()), command)
+            .survey_control(project.as_deref(), command)
             .map_err(map_client);
     }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = if command.project_hint().is_some() {
-        Some(load_selected_project(client.profile(), &user)?)
-    } else {
-        None
-    };
-    let result = client.survey_control(selected.as_ref().map(|s| s.project_id()), command, now());
-    match selected {
-        Some(selected) => with_released_context_disposition(client.profile(), &selected, result),
-        None => result.map_err(map_client),
-    }
+    require_restore_before_context(&mut client)?;
+    client
+        .survey_control(project.as_deref(), command, now())
+        .map_err(map_client)
 }
 
 pub fn solar_project_session(lane_value: &str) -> Result<HeadlessSolarProjectSession, Failure> {

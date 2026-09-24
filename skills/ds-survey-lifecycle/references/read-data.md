@@ -18,7 +18,7 @@ the task; the installed contract supplies flags, authority and refusals.
    exact participating slug:
 
    ```text
-   ds survey query --form FORM --metric count --group-by created_by --output json
+   ds survey query --project PROJECT --form FORM --metric count --group-by created_by --output json
    ```
 
    Add only requested area/time/quality filters using the live `--filter`

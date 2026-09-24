@@ -18,8 +18,8 @@ Do not add `--force` merely to remove a dependency refusal.
 
 Read `survey.project-forms.read --project <id> --detail`, then
 `survey.project-form.editor --project <id> --form <slug>` for each form being
-changed. Selected-project `survey.project-form.settings` is also a settings-read
-door. Native project arguments must match the selected project; older releases
+changed. `survey.project-form.settings --project <id>` is also a settings-read
+door. Every native project command names its project; older releases
 may expose different pairing requirements, so obey live authority.
 
 Stage only keys returned in the editor's sections. Rows containing `settings`

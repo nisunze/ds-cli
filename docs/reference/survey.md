@@ -27,7 +27,7 @@ otherwise request the known command directly. Read its full contract once, then
 reuse it while the installed build and task remain unchanged. There is no need
 to walk every command or load an agent-specific skill before a simple query.
 
-Recover scope from the request and selected project; resolve unknown form slugs
+Recover scope from the request and its explicit `--project`; resolve unknown form slugs
 with `survey.project-forms.list`. Read only the schema fields needed by the
 question. A global master catalogue does not establish project participation.
 An unavailable command/profile is an installation problem; an empty result,
@@ -44,8 +44,8 @@ time answers when a downstream copy changed.
 `ds survey` runs natively without Desktop. Form Factory schemas, project form
 bindings/settings, reusable templates and project creation use fixed typed
 `ds-client-core` routes. Global schemas/templates use restored user authority;
-project commands also require the selected project from `ds auth project use`.
-An explicit `--project` must match that selection. `--lane` selects stable or
+every project command names its project with `--project <exact-id>`.
+The saved selection is never read. `--lane` selects stable or
 canary; no survey command accepts a Desktop descriptor. Server operations still
 require service access and current permissions. Profile catalog schema v16 must
 advertise the exact survey control routes; older catalogs fail closed.
@@ -76,7 +76,7 @@ override, or an arbitrary request body. The governed backend rejects questions
 whose dry-run estimate exceeds the 256 MiB billed-byte ceiling.
 
 `<form-slug>` in every example below is a placeholder, never a deployment's
-actual slug. Read the exact one for the selected project with
+actual slug. Read the exact one for the named project with
 `ds survey project-forms read`; a refused read names whether project access,
 the user's form grant, the project binding, or Survey participation must be
 repaired.
@@ -101,7 +101,7 @@ every one of them was reported as an invisible project or form.
 The aggregate grammar is deliberately closed:
 
 ```text
-ds survey query --form <form-slug> --metric count \
+ds survey query --project <project-id> --form <form-slug> --metric count \
   --group-by created_by \
   --filter '{"field":"created_by","op":"eq","value":"operator@example.com"}' \
   --order desc --limit 50 --output json
@@ -130,7 +130,7 @@ selected-project lease before calling only
 `POST /api/v1/survey/entries/select`.
 
 ```text
-ds survey entries select --form <form-slug> \
+ds survey entries select --project <project-id> --form <form-slug> \
   --bbox '29.70,-2.05,29.80,-1.95' --limit 100 --output json
 ```
 
@@ -182,7 +182,7 @@ selected-project lease before one fixed
 `POST /api/v1/survey/entries/changes` call and never auto-paginates.
 
 ```text
-ds survey entries changes --form <form-slug> \
+ds survey entries changes --project <project-id> --form <form-slug> \
   --updated-after 2026-08-30T00:00:00Z --limit 100 --output json
 ```
 
@@ -236,7 +236,7 @@ create-bound `POST /api/v1/entries/mutate` native-core contract. It never
 retries or falls back automatically.
 
 ```text
-ds survey entries create --form <form-slug> --doc-id pole-104 \
+ds survey entries create --project <project-id> --form <form-slug> --doc-id pole-104 \
   --idempotency-key '<opaque-key>' --created-at 2026-08-30T12:00:00Z \
   --document ./pole-104.json --yes --output json
 ```
@@ -261,12 +261,12 @@ single-entry command unchanged, requires explicit `--yes`, and accepts one
 immutable NDJSON source, checkpoint path, receipt path, fixed form, and lane.
 It validates the complete source twice before profile discovery, auth, local
 state creation, or network work; restores one native session; freezes the
-selected project and form; then invokes the same governed create contract
+named project and form; then invokes the same governed create contract
 sequentially. There is no concurrency, automatic retry, source-format parser,
 project override, per-row form, or transport fallback.
 
 ```text
-ds survey entries import --form <form-slug> \
+ds survey entries import --project <project-id> --form <form-slug> \
   --file ./survey123.ndjson \
   --checkpoint ./survey123.checkpoint.json \
   --receipt ./survey123.receipt.ndjson --yes --output json
@@ -300,7 +300,7 @@ checkpoint advances. A crash before that append safely replays the exact
 idempotent create; a complete receipt event one row ahead of the checkpoint is
 reconciled without a network call; a partial receipt tail is removed before
 the exact row is replayed, but only after the unchanged receipt, principal,
-audience, selected project, form, and both state paths are rebound. Pre-auth
+audience, named project, form, and both state paths are rebound. Pre-auth
 inspection never truncates a receipt. Other incomplete or contradictory state
 refuses.
 A non-link sidecar lock derived from the canonical receipt gives one process
@@ -328,9 +328,9 @@ Four related objects have separate lifecycles:
 2. A **project-form binding** enables a master form for one project and stores
    that project's settings. Use `survey project-forms list` for the selected
    native project's bounded summary and `survey project-form settings` for one
-   selected-project editor. Use `survey project-forms read`, `survey
+   named-project editor. Use `survey project-forms read`, `survey
    project-form editor`, `survey project-forms plan`, and `survey project-forms
-   apply` for explicit-project native planning and apply. The project must match the selected project.
+   apply` for explicit-project native planning and apply.
 3. A **project template** is a reusable snapshot containing project-form
    configuration. Use `survey templates list`, `survey template read`, `survey
    template create`, `survey template apply`, and `survey template lifecycle`.
