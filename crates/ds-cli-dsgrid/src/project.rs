@@ -23,7 +23,8 @@ const REFUSALS: &[Refusal] = &refusals();
 const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
     .default("stable")
     .choices(&["stable", "canary"]);
-const PROJECT: Arg = Arg::value("project", "<ds-project>", "Exact project for this request.").required();
+const PROJECT: Arg =
+    Arg::value("project", "<ds-project>", "Exact project for this request.").required();
 pub static RETIRE: Command = Command {
     id: "dsgrid.project.retire",
     path: &["dsgrid", "project", "retire"],
@@ -35,10 +36,21 @@ pub static RETIRE: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
-        PROJECT, LANE,
+        PROJECT,
+        LANE,
         Arg::value("model", "<id>", "Exact project model ID.").required(),
-        Arg::value("expected-head", "<revision-id>", "Head revision inspected before retirement.").required(),
-        Arg::value("expected-digest", "<sha256>", "64-character head model digest inspected before retirement.").required(),
+        Arg::value(
+            "expected-head",
+            "<revision-id>",
+            "Head revision inspected before retirement.",
+        )
+        .required(),
+        Arg::value(
+            "expected-digest",
+            "<sha256>",
+            "64-character head model digest inspected before retirement.",
+        )
+        .required(),
         Arg::value("reason", "<text>", "Why this model is superseded.").required(),
     ],
     output: "The retired model and pinned head, deletion time, and confirmation that immutable revisions and model bytes were retained.",

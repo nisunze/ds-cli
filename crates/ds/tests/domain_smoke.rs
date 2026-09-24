@@ -11844,7 +11844,7 @@ fn printing_plans_answer_headlessly_from_the_same_kernel() {
     assert_eq!(out["results"][0]["transformer"], "a");
     std::fs::write(
         &request,
-        r#"{"project":"p1","transformer":"combined_transformer","active_project":"p1"}"#,
+        r#"{"project":"p1","transformer":"combined_transformer"}"#,
     )
     .unwrap();
     assert_eq!(
@@ -11862,11 +11862,11 @@ fn printing_plans_answer_headlessly_from_the_same_kernel() {
     );
     std::fs::write(
         &request,
-        r#"{"project":"p1","transformer":"combined_transformer","active_project":"p2"}"#,
+        r#"{"project":"p2","transformer":"combined_transformer"}"#,
     )
     .unwrap();
     assert_eq!(
-        refusal(&[
+        ok(&[
             "report",
             "plan",
             "--action",
@@ -11875,8 +11875,8 @@ fn printing_plans_answer_headlessly_from_the_same_kernel() {
             file,
             "--output",
             "json"
-        ]),
-        "report_plan_invalid"
+        ])["project"],
+        "p2"
     );
     std::fs::write(&request, r#"{"command":"export"}"#).unwrap();
     assert_eq!(
