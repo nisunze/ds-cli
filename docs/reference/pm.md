@@ -173,6 +173,39 @@ The write is the ordinary `create_task` / `update_task_fields` command every
 other `ds pm` write sends, against the revision it read, through the same
 headless door.
 
+## A third party proposes; the PM admits
+
+The plan is not only the schedule editor's to write. A member with the
+project's ordinary contribution permission — a consultant, a contractor, a
+surveyor — proposes work about themselves, and the PM decides
+(`ds-brain/docs/contracts/task-proposals.md`):
+
+```bash
+ds pm task propose --title "Survey the Kabuga feeder extension" --hours 12 --days 3 --note "site visit" --yes
+ds pm task request-admission --task <id> --yes           # a task made elsewhere, or after a decline
+ds pm plan --output json                                 # .data.proposals[], .data.dashboard.proposalsPending
+ds pm task admit   --task <id> --under <parent-task-id|root> --yes
+ds pm task decline --task <id> --reason "out of scope this phase" --yes
+ds pm task log-hours --task <id> --hours 4 --note "first day on site" --yes
+```
+
+`propose` is one gesture for two governed commands: it creates an Inbox task
+with you as its responsible person and the estimate you state, then asks the
+schedule editors to admit it. `admit` is the same reviewed reparent a drag on
+the Plan sheet performs, plus the decision, in one commit; `decline` leaves
+the task in the Inbox with the reason on it, and the proposer may revise the
+estimate and ask again. The estimate (`--hours`, `--days`) and the append-only
+hours log are the facts billing and duration learning read; nothing here
+edits or deletes an hours entry, and only an assignee writes one.
+
+These five commands run headless on the CLI-selected project (`ds auth project
+use`) and never through a window. Each takes `--id`: the same id replays the
+ledger rather than repeating the write, which is how a lost answer is retried
+safely — the minted id is in every receipt. `ds pm plan` flags a task whose
+logged hours pass its estimate (`over_estimate`) beside the late ones, and
+publishes the bounds (`vocabulary.maxEstimatedHours` …) the flags are checked
+against before the round trip.
+
 ## What is deliberately absent
 
 **A messaging door.** Assigning work, answering a request and changing a

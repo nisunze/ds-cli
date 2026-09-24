@@ -1723,6 +1723,31 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::geometry::clear::render,
     },
     Entry {
+        command: &ds_cli_pm::task::proposals::PROPOSE,
+        handler: ds_cli_pm::task::proposals::run_propose,
+        render: ds_cli_pm::task::proposals::render_propose,
+    },
+    Entry {
+        command: &ds_cli_pm::task::proposals::REQUEST_ADMISSION,
+        handler: ds_cli_pm::task::proposals::run_request_admission,
+        render: ds_cli_pm::task::proposals::render_request_admission,
+    },
+    Entry {
+        command: &ds_cli_pm::task::proposals::ADMIT,
+        handler: ds_cli_pm::task::proposals::run_admit,
+        render: ds_cli_pm::task::proposals::render_admit,
+    },
+    Entry {
+        command: &ds_cli_pm::task::proposals::DECLINE,
+        handler: ds_cli_pm::task::proposals::run_decline,
+        render: ds_cli_pm::task::proposals::render_decline,
+    },
+    Entry {
+        command: &ds_cli_pm::task::proposals::LOG_HOURS,
+        handler: ds_cli_pm::task::proposals::run_log_hours,
+        render: ds_cli_pm::task::proposals::render_log_hours,
+    },
+    Entry {
         command: &ds_cli_pm::record::list::COMMAND,
         handler: ds_cli_pm::record::list::run,
         render: ds_cli_pm::record::list::render,

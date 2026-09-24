@@ -8329,6 +8329,15 @@ fn every_work_write_refuses_without_confirmation() {
             "--response",
             "accept",
         ],
+        // The third-party loop (task-proposals.md): every one is a global
+        // write and stops at the gate before the native owner is asked.
+        vec![
+            "pm", "task", "propose", "--title", "Survey", "--hours", "12",
+        ],
+        vec!["pm", "task", "request-admission", "--task", "T-1"],
+        vec!["pm", "task", "admit", "--task", "T-1", "--under", "root"],
+        vec!["pm", "task", "decline", "--task", "T-1", "--reason", "no"],
+        vec!["pm", "task", "log-hours", "--task", "T-1", "--hours", "4"],
     ] {
         let mut argv = args.clone();
         argv.extend(["--output", "json"]);
@@ -8339,6 +8348,140 @@ fn every_work_write_refuses_without_confirmation() {
             args.join(" ")
         );
     }
+}
+
+#[test]
+fn the_proposal_loop_is_server_native_and_refuses_its_inputs_before_the_round_trip() {
+    // A third party proposes, the PM admits: five commands that need a
+    // Server and no window (task-proposals.md). Every descriptor says so, and
+    // the input refusals a caller can hit locally are named before the native
+    // owner is asked — a missing required flag, a malformed number, a note
+    // over the bound.
+    for id in [
+        "pm.task.propose",
+        "pm.task.request-admission",
+        "pm.task.admit",
+        "pm.task.decline",
+        "pm.task.log-hours",
+    ] {
+        let command = ok(&["capabilities", id, "--output", "json"])["command"].clone();
+        assert_eq!(
+            command["requires"], "server",
+            "`{id}` must not need a window"
+        );
+        assert_eq!(
+            command["authority"], "headless_project",
+            "`{id}` is the native user's write"
+        );
+        assert_eq!(command["effect"], "global_write");
+        let args: Vec<&str> = command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .filter_map(|arg| arg["name"].as_str())
+            .collect();
+        assert!(
+            args.contains(&"lane"),
+            "`{id}` takes --lane like every Server command"
+        );
+        assert!(
+            args.contains(&"id"),
+            "`{id}` takes --id so a lost answer is retried against the same ledger entry"
+        );
+    }
+    // Under the native profile the handler runs and every local refusal is
+    // named before the owner is asked; a well-formed call ends at the
+    // signed-out gate, never at a window.
+    assert_eq!(
+        native_refusal(&[
+            "pm", "task", "propose", "--hours", "12", "--output", "json", "--yes"
+        ]),
+        "missing_input",
+        "a proposal without a title is refused before the native owner is asked"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "pm", "task", "admit", "--task", "T-1", "--output", "json", "--yes"
+        ]),
+        "missing_input",
+        "an admission names where the task lands"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "pm",
+            "task",
+            "admit",
+            "--task",
+            "T-1",
+            "--under",
+            "root",
+            "--position",
+            "-1",
+            "--output",
+            "json",
+            "--yes"
+        ]),
+        "invalid_number",
+        "a position is a non-negative index"
+    );
+    let long_note = "n".repeat(301);
+    assert_eq!(
+        native_refusal(&[
+            "pm",
+            "task",
+            "request-admission",
+            "--task",
+            "T-1",
+            "--note",
+            &long_note,
+            "--output",
+            "json",
+            "--yes"
+        ]),
+        "bound_exceeded",
+        "a note over the contract's 300 characters is refused locally"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "pm",
+            "task",
+            "log-hours",
+            "--task",
+            "T-1",
+            "--hours",
+            "4",
+            "--id",
+            "x",
+            "--output",
+            "json",
+            "--yes"
+        ]),
+        "invalid_command_id",
+        "a command id is shaped for the ledger before it is sent"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "pm", "task", "decline", "--task", "T-1", "--reason", "  ", "--output", "json", "--yes"
+        ]),
+        "reason_required",
+        "a blank reason is no reason"
+    );
+    let well_formed = native_refusal(&[
+        "pm",
+        "task",
+        "log-hours",
+        "--task",
+        "T-1",
+        "--hours",
+        "4",
+        "--output",
+        "json",
+        "--yes",
+    ]);
+    assert!(
+        NATIVE_AUTH_CODES.contains(&well_formed.as_str()),
+        "a well-formed hours entry ends at the native sign-in gate, not a window: {well_formed}"
+    );
 }
 
 #[test]
@@ -8360,6 +8503,11 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.task.update",
         "pm.task.assign",
         "pm.task.respond",
+        "pm.task.propose",
+        "pm.task.request-admission",
+        "pm.task.admit",
+        "pm.task.decline",
+        "pm.task.log-hours",
         "pm.task.geometry.read",
         "pm.task.geometry.set",
         "pm.task.geometry.clear",
@@ -8395,6 +8543,11 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
                 | "pm.task.update"
                 | "pm.task.assign"
                 | "pm.task.respond"
+                | "pm.task.propose"
+                | "pm.task.request-admission"
+                | "pm.task.admit"
+                | "pm.task.decline"
+                | "pm.task.log-hours"
                 | "pm.task.geometry.set"
                 | "pm.task.geometry.clear"
         );

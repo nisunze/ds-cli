@@ -5,7 +5,12 @@
 //! ```text
 //!   list → read → update | assign → respond
 //!               ↘ create
+//!   propose → (request-admission) → admit | decline ; log-hours
 //! ```
+//!
+//! The second line is the third-party loop (task-proposals.md): a proposer
+//! creates Inbox work about themselves with an estimate and asks; the PM
+//! admits or declines; an assignee logs the hours actually taken.
 //!
 //! Every write is one project command carrying the revision it was authored
 //! against. The application refuses a stale one rather than merging it, and
@@ -15,6 +20,7 @@
 pub mod assign;
 pub mod create;
 pub mod list;
+pub mod proposals;
 pub mod read;
 pub mod respond;
 pub mod update;
