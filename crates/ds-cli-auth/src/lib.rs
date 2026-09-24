@@ -1654,62 +1654,6 @@ pub fn transformer_context_for_project(
     })
 }
 
-/// The same read as [`transformer_context`], for MANY transformers of the
-/// selected project under ONE restored session. A device session mints one
-/// short-lived access token per restore, so a loop that restores per
-/// transformer pays a refresh round trip each time — a 114-transformer
-/// project's seed spent fourteen minutes there (2026-09-20). The answers keep
-/// the request order; the first refusal ends the read.
-pub fn transformer_contexts(
-    lane_value: &str,
-    transformers: &[String],
-) -> Result<Vec<HeadlessTransformerContext>, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    let mut contexts = Vec::with_capacity(transformers.len());
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let identity = ProviderIdentity::new(
-            lane.token(),
-            device.profile().credential_audience_sha256(),
-            device.context().uid(),
-        )?;
-        for transformer in transformers {
-            let snapshot = device
-                .transformer_context(selected.project_id(), transformer)
-                .map_err(map_client)?;
-            contexts.push(HeadlessTransformerContext {
-                identity: identity.clone(),
-                lane: lane.token(),
-                project_name: selected.project_name().to_owned(),
-                project_status: selected.status().to_owned(),
-                snapshot,
-            });
-        }
-        return Ok(contexts);
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let identity = ProviderIdentity::new(
-        lane.token(),
-        client.profile().credential_audience_sha256(),
-        user.uid(),
-    )?;
-    for transformer in transformers {
-        let result = client.transformer_context(selected.project_id(), transformer, now());
-        let snapshot = with_released_context_disposition(client.profile(), &selected, result)?;
-        contexts.push(HeadlessTransformerContext {
-            identity: identity.clone(),
-            lane: lane.token(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            snapshot,
-        });
-    }
-    Ok(contexts)
-}
-
 /// Read the managed tile state of the caller's explicit project. The saved
 /// native selection is never read; there is no URL or action override.
 pub fn tile_list(
@@ -2650,24 +2594,6 @@ pub fn ensure_meter_type(
     .map(|receipt| receipt.result)
 }
 
-/// Save the project's `project_settings` sheet carrying a design output
-/// selection the kernel wrote. The rows are the kernel's answer, not this
-/// caller's composition: `report_formats::apply_output_selection` decides
-/// which row holds the selection and creates one when the sheet has none, and
-/// the closed change verifies that a readable selection is what arrives.
-pub fn design_output_rows(
-    lane: &str,
-    rows: Vec<serde_json::Value>,
-) -> Result<ds_client_core::FeederConfiguration, Failure> {
-    let change = ds_client_core::ProjectConfigurationChange::DesignOutputs { rows };
-    headless_project_report(
-        lane,
-        |device, project| device.feeder_configuration(project, Some(&change)),
-        |client, project| client.feeder_configuration(project, Some(&change), now()),
-    )
-    .map(|receipt| receipt.result)
-}
-
 pub fn design_output_rows_for_project(
     lane: &str,
     project: &str,
@@ -2762,20 +2688,6 @@ fn headless_project_report<T>(
     })
 }
 
-/// Request one Combined Report for only the saved,
-/// audience-fenced selected project. ds-brain owns scope, freshness,
-/// composition, and publication.
-pub fn compounded_report(
-    lane_value: &str,
-    request: &CompoundedReportRequest,
-) -> Result<HeadlessProjectReport<CompoundedReportReceipt>, Failure> {
-    headless_project_report(
-        lane_value,
-        |device, project| device.compounded_report(project, request),
-        |client, project| client.compounded_report(project, request, now()),
-    )
-}
-
 /// Publish a Combined Report for the project explicitly named on this call.
 pub fn compounded_report_for_project(
     lane_value: &str,
@@ -2787,21 +2699,6 @@ pub fn compounded_report_for_project(
         project,
         |device, project| device.compounded_report(project, request),
         |client, project| client.compounded_report(project, request, now()),
-    )
-}
-
-/// Ask the cloud to compute the individual reports of exact transformers of
-/// only the saved, audience-fenced selected project and publish them to it.
-/// ds-brain owns write governance, freshness, the claim and the fan-out to
-/// the cloud reporter; the receipt says per transformer what the cloud did.
-pub fn export_reports(
-    lane_value: &str,
-    request: &TransformerSet,
-) -> Result<HeadlessProjectReport<ExportReportsReceipt>, Failure> {
-    headless_project_report(
-        lane_value,
-        |device, project| device.export_reports(project, request),
-        |client, project| client.export_reports(project, request, now()),
     )
 }
 
@@ -2839,19 +2736,6 @@ pub fn compounded_report_list_for_project(
         project,
         |device, project| device.compounded_report_list(project),
         |client, project| client.compounded_report_list(project, now()),
-    )
-}
-
-/// Read the transformer lifecycle inventory of only the saved,
-/// audience-fenced selected project, or of the exact requested names.
-pub fn transformer_inventory(
-    lane_value: &str,
-    requested: &TransformerSet,
-) -> Result<HeadlessProjectReport<TransformerInventory>, Failure> {
-    headless_project_report(
-        lane_value,
-        |device, project| device.transformer_inventory(project, requested),
-        |client, project| client.transformer_inventory(project, requested, now()),
     )
 }
 
@@ -3158,31 +3042,6 @@ pub fn project_management_for_project(
     )
 }
 
-/// One governed catalogue action on the project's assets, for only the
-/// saved, audience-fenced selected project. `reader` carries the bytes of
-/// an ingest and nothing else; the door streams them once.
-///
-/// Until 2026-09-20 nine `ds assets` commands relayed through the paired
-/// desktop; `POST /api/v1/assets` authenticates from the bearer and needs no
-/// window, exactly as `shared_assets` beside this already proved.
-pub fn project_assets(
-    lane_value: &str,
-    command: &ds_client_core::project_assets::Command,
-    reader: Option<&mut dyn std::io::Read>,
-) -> Result<HeadlessProjectReport<Value>, Failure> {
-    // Exactly one of the two closures runs, and the reader is consumed by
-    // whichever does: a shared cell hands it to that one without the borrow
-    // checker having to know which.
-    let reader = std::cell::RefCell::new(reader);
-    headless_project_report(
-        lane_value,
-        |device, project| device.project_assets(project, command, reader.borrow_mut().take()),
-        |client, project| {
-            client.project_assets(project, command, reader.borrow_mut().take(), now())
-        },
-    )
-}
-
 /// One asset catalogue action scoped to the project named on this request.
 pub fn project_assets_for_project(
     lane_value: &str,
@@ -3263,19 +3122,6 @@ pub fn material_propagation(
     Ok((selected.project_id().to_owned(), request, receipt))
 }
 
-/// One asset's catalogue row and its verified bytes, through the signed read
-/// the catalogue mints for this caller, for only the selected project.
-pub fn read_asset_bytes(
-    lane_value: &str,
-    asset_id: &str,
-) -> Result<HeadlessProjectReport<(Value, Vec<u8>)>, Failure> {
-    headless_project_report(
-        lane_value,
-        |device, project| device.read_asset_bytes(project, asset_id),
-        |client, project| client.read_asset_bytes(project, asset_id, now()),
-    )
-}
-
 /// Read verified asset bytes for the project named on this request.
 pub fn read_asset_bytes_for_project(
     lane_value: &str,
@@ -3287,21 +3133,6 @@ pub fn read_asset_bytes_for_project(
         project,
         |device, project| device.read_asset_bytes(project, asset_id),
         |client, project| client.read_asset_bytes(project, asset_id, now()),
-    )
-}
-
-/// Retire or restore exact transformers in only the saved, audience-fenced
-/// selected project. ds-brain decides governance, ownership, and lifecycle
-/// per name and answers every name in order.
-pub fn transformer_retirement(
-    lane_value: &str,
-    action: RetirementAction,
-    request: &RetirementRequest,
-) -> Result<HeadlessProjectReport<RetirementReceipt>, Failure> {
-    headless_project_report(
-        lane_value,
-        |device, project| device.transformer_retirement(project, action, request),
-        |client, project| client.transformer_retirement(project, action, request, now()),
     )
 }
 
@@ -5215,50 +5046,6 @@ pub fn survey_control(
         .map_err(map_client)
 }
 
-pub fn solar_project_session(lane_value: &str) -> Result<HeadlessSolarProjectSession, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((device, selected)) = restored_device_project(lane)? {
-        let identity = device.context();
-        let principal_sha256 = solar_principal_binding_sha256(identity.uid(), identity.email());
-        let credential_audience_sha256 = device.profile().credential_audience_sha256().to_owned();
-        return Ok(HeadlessSolarProjectSession {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            principal_sha256,
-            credential_audience_sha256,
-            selected,
-            provider: SolarProjectProvider::Device(Box::new(device)),
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = ProjectContextLease::acquire(client.profile())?
-        .load_snapshot(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    let principal_sha256 = solar_principal_binding_sha256(user.uid(), user.email());
-    Ok(HeadlessSolarProjectSession {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        principal_sha256,
-        credential_audience_sha256: client.profile().credential_audience_sha256().to_owned(),
-        selected,
-        provider: SolarProjectProvider::Firebase(Box::new(client)),
-    })
-}
-
 fn solar_principal_binding_sha256(uid: &str, email: &str) -> String {
     let mut hash = Sha256::new();
     hash.update(b"ds.solar.project.principal/v1\0");
@@ -5572,16 +5359,6 @@ pub fn save_transformers(
     )
 }
 
-pub fn shared_assets(
-    lane: &str,
-    command: &ds_client_core::shared_assets::Command,
-) -> Result<HeadlessProjectReport<Value>, Failure> {
-    headless_project_report(
-        lane,
-        |device, project| device.shared_assets(project, command),
-        |client, project| client.shared_assets(project, command, now()),
-    )
-}
 /// Execute a shared-asset operation using only the caller's explicit project.
 pub fn shared_assets_for_project(
     lane_value: &str,
@@ -5603,16 +5380,6 @@ pub fn shared_assets_for_project(
         .map_err(map_client)
 }
 
-pub fn design_versions(
-    lane: &str,
-    command: &ds_client_core::design_versions::Command,
-) -> Result<HeadlessProjectReport<Value>, Failure> {
-    headless_project_report(
-        lane,
-        |device, project| device.design_versions(project, command),
-        |client, project| client.design_versions(project, command, now()),
-    )
-}
 /// Explicit request context: saved selection is neither read nor changed.
 pub fn design_versions_for_project(
     lane_value: &str,
@@ -5899,25 +5666,12 @@ mod tests {
 
     #[test]
     fn project_report_adapter_exposes_only_lane_and_typed_requests() {
-        let _: fn(
-            &str,
-            &CompoundedReportRequest,
-        ) -> Result<HeadlessProjectReport<CompoundedReportReceipt>, Failure> = compounded_report;
         let _: fn(&str) -> Result<HeadlessProjectReport<Vec<CompoundedArchive>>, Failure> =
             compounded_report_list;
         let _: fn(
             &str,
             &TransformerSet,
-        ) -> Result<HeadlessProjectReport<TransformerInventory>, Failure> = transformer_inventory;
-        let _: fn(
-            &str,
-            &TransformerSet,
         ) -> Result<HeadlessProjectReport<TransformerStatusList>, Failure> = transformer_status;
-        let _: fn(
-            &str,
-            RetirementAction,
-            &RetirementRequest,
-        ) -> Result<HeadlessProjectReport<RetirementReceipt>, Failure> = transformer_retirement;
         assert_eq!(ReportFileLevel::Sector.token(), "sector");
         assert_eq!(RetirementAction::Restore.token(), "restore");
     }
