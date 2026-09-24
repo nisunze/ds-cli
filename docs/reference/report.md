@@ -731,6 +731,13 @@ geographic context; `--seed` explicitly acquires missing coverage. For an MV
 plan/profile sheet, pass `--focus-bounds west,south,east,north` from that sheet's
 `plan_route_bounds_wgs84` manifest entry. The geographic context is then read
 around that page's route rather than the full project's bounding rectangle.
+`--design-detail` includes every saved transformer design layer, including LV
+poles, service cables, spans and customers. With focus bounds, the emitted
+vectors are clipped to that area plus a 0.002-degree margin; lines crossing it
+are retained. The default still emits the district overview. Existing
+geographic LV/MV poles remain separate catalogue context layers and must be
+selected in the layout. Current promoted MV model lines and structures retain
+their own model provenance in the captured features.
 Read its omissions before passing the emitted request to `report.layout.render`.
 The request is a portable, editable print capture, not a model version.
 After visual review, `map.design.attach-print --scope mv` uploads a PDF or PNG

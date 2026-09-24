@@ -14,7 +14,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "map-inputs"],
     contract: 1,
     summary: "Prepare a district MV overview for headless PDF/PNG printing.",
-    purpose: "Reads all active LV transformers and exact current MV models, preserving their revisions and geometry. Applies an authored layout to held geographic context and writes a replayable report.layout.render request. No design writes or publication. --seed explicitly acquires missing context. Missing context is named in the receipt; inspect it before rendering. Detailed poles and customers are omitted from the overview.",
+    purpose: "Reads all active LV transformers and exact current MV models, preserving their revisions and geometry. Applies an authored layout to held geographic context and writes a replayable report.layout.render request. No design writes or publication. --seed explicitly acquires missing context. --design-detail includes saved LV poles, customers and other transformer design layers for plan/profile context; the default remains a district overview. Missing context is named in the receipt; inspect it before rendering.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -51,6 +51,10 @@ pub static COMMAND: Command = Command {
         Arg::switch(
             "seed",
             "Acquire missing map context through the dataset owner; may incur provider cost.",
+        ),
+        Arg::switch(
+            "design-detail",
+            "Include every saved transformer design layer, including LV poles and customers, instead of overview-only LV lines and transformers.",
         ),
         super::LANE_ARG,
     ],
@@ -127,19 +131,19 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         if snapshot.ds_project() != project || snapshot.transformer_name() != name {
             return Err(invalid("transformer scope changed"));
         }
-        sources
-            .transformer(
-                name,
-                &serde_json::to_value(snapshot.layers()).map_err(invalid)?,
-            )
-            .map_err(invalid)?;
+        let layers = serde_json::to_value(snapshot.layers()).map_err(invalid)?;
+        if i.switch("design-detail") {
+            sources.transformer_detail(name, &layers).map_err(invalid)?;
+        } else {
+            sources.transformer(name, &layers).map_err(invalid)?;
+        }
         revisions.push(json!({"transformer":name,"version":snapshot.metadata().version(),"content_digest":snapshot.metadata().content_digest()}));
     }
     let network = sources.layers();
-    // Context coverage belongs to the physical page, while the overview's
-    // complete design remains available to the shared map painter. An MV
-    // route can span a district; its union rectangle is not a sheet extent.
-    let context_network = if let Some(raw) = i.value("focus-bounds") {
+    // Context coverage belongs to the physical page while the complete source
+    // inventory still determines the project extent. Detailed vectors are
+    // narrowed to the requested page area before entering the painter.
+    let (context_network, focus_bounds) = if let Some(raw) = i.value("focus-bounds") {
         let values = raw
             .split(',')
             .map(|part| part.trim().parse::<f64>().map_err(invalid))
@@ -159,9 +163,12 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
                 "--focus-bounds needs a valid WGS84 page rectangle no wider than 0.05 degrees",
             ));
         }
-        json!({"mv_sheet": {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"LineString","coordinates":[[values[0],values[1]],[values[2],values[3]]]}}]}})
+        (
+            json!({"mv_sheet": {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"LineString","coordinates":[[values[0],values[1]],[values[2],values[3]]]}}]}}),
+            Some([values[0], values[1], values[2], values[3]]),
+        )
     } else {
-        network.clone()
+        (network.clone(), None)
     };
     let catalog = ds_project_data::validate_resources(&ds_cli_auth::data_distribution(
         lane,
@@ -240,7 +247,19 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     context.warnings.extend(boundary_context.warnings);
     std::fs::create_dir_all(&out).map_err(invalid)?;
     let out = out.canonicalize().map_err(invalid)?;
-    let render = json!({"schema":"ds.print-layout-export/v1","render":{"layout":layout,"layers":sources.vectors(),"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
+    let render_layers = if i.switch("design-detail") {
+        if let Some([w, s, e, n]) = focus_bounds {
+            let margin = 0.002;
+            sources
+                .vectors_in_area([w - margin, s - margin, e + margin, n + margin])
+                .map_err(invalid)?
+        } else {
+            sources.vectors()
+        }
+    } else {
+        sources.vectors()
+    };
+    let render = json!({"schema":"ds.print-layout-export/v1","render":{"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
     let path = out.join("render-request.json");
     let data = serde_json::to_vec(&render).map_err(invalid)?;
     std::fs::OpenOptions::new()
@@ -250,7 +269,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .map_err(invalid)?
         .write_all(&data)
         .map_err(invalid)?;
-    let result = json!({"project":project,"transformer_count":revisions.len(),"sources":revisions,"mv_models":super::mv_context::provenance(&models),"omitted":context.omitted.iter().map(|o|json!({"layer":o.layer,"reason":o.reason})).collect::<Vec<_>>(),"warnings":context.warnings,"request":path,"sha256":ds_command_kernel::report_export::sha256_hex(&data)});
+    let result = json!({"project":project,"transformer_count":revisions.len(),"design_detail":i.switch("design-detail"),"sources":revisions,"mv_models":super::mv_context::provenance(&models),"omitted":context.omitted.iter().map(|o|json!({"layer":o.layer,"reason":o.reason})).collect::<Vec<_>>(),"warnings":context.warnings,"request":path,"sha256":ds_command_kernel::report_export::sha256_hex(&data)});
     std::fs::write(
         out.join("sources.json"),
         serde_json::to_vec_pretty(&result).map_err(invalid)?,
