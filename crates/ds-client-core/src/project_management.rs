@@ -215,18 +215,49 @@ impl Command {
                 }
                 Ok(())
             }
-            Self::Propose { command_id, base_revision, estimated_hours, estimated_days, .. } => {
-                if !command_id_valid(command_id) || *base_revision < 0 || !estimated_hours.is_finite() || *estimated_hours < 0.0 || estimated_days.is_some_and(|days| days < 0) {
-                    return Err(invalid("a task proposal needs a valid command id, revision and estimate"));
+            Self::Propose {
+                command_id,
+                base_revision,
+                estimated_hours,
+                estimated_days,
+                ..
+            } => {
+                if !command_id_valid(command_id)
+                    || *base_revision < 0
+                    || !estimated_hours.is_finite()
+                    || *estimated_hours < 0.0
+                    || estimated_days.is_some_and(|days| days < 0)
+                {
+                    return Err(invalid(
+                        "a task proposal needs a valid command id, revision and estimate",
+                    ));
                 }
                 Ok(())
             }
-            Self::RequestAdmission { command_id, base_revision, .. }
-            | Self::Admit { command_id, base_revision, .. }
-            | Self::DeclineAdmission { command_id, base_revision, .. }
-            | Self::LogHours { command_id, base_revision, .. } => {
+            Self::RequestAdmission {
+                command_id,
+                base_revision,
+                ..
+            }
+            | Self::Admit {
+                command_id,
+                base_revision,
+                ..
+            }
+            | Self::DeclineAdmission {
+                command_id,
+                base_revision,
+                ..
+            }
+            | Self::LogHours {
+                command_id,
+                base_revision,
+                ..
+            } => {
                 if !command_id_valid(command_id) || *base_revision < 0 {
-                    return Err(invalid("a task action needs a valid command id and revision"));
+                    return Err(invalid(
+                        "a task action needs a valid command id and revision",
+                    ));
                 }
                 Ok(())
             }
@@ -261,8 +292,15 @@ impl Command {
                 payload["commands"] = Value::Array(commands.clone());
             }
             Self::Propose {
-                command_id, base_revision, task_id, title, description, discipline,
-                responsible_email, estimated_hours, estimated_days,
+                command_id,
+                base_revision,
+                task_id,
+                title,
+                description,
+                discipline,
+                responsible_email,
+                estimated_hours,
+                estimated_days,
             } => {
                 let mut create = Map::new();
                 create.insert("id".into(), json!(task_id));
@@ -271,38 +309,75 @@ impl Command {
                 create.insert("schedule_state".into(), json!("unscheduled"));
                 create.insert("responsible_email".into(), json!(responsible_email));
                 create.insert("estimated_hours".into(), json!(estimated_hours));
-                if let Some(days) = estimated_days { create.insert("estimated_days".into(), json!(days)); }
-                if let Some(text) = description { create.insert("description".into(), json!(text)); }
-                if let Some(text) = discipline { create.insert("discipline".into(), json!(text)); }
+                if let Some(days) = estimated_days {
+                    create.insert("estimated_days".into(), json!(days));
+                }
+                if let Some(text) = description {
+                    create.insert("description".into(), json!(text));
+                }
+                if let Some(text) = discipline {
+                    create.insert("discipline".into(), json!(text));
+                }
                 payload["command_id"] = json!(command_id);
                 payload["base_revision"] = json!(base_revision);
-                payload["command"] = json!({"kind": "create_task", "create_task": Value::Object(create)});
+                payload["command"] =
+                    json!({"kind": "create_task", "create_task": Value::Object(create)});
             }
-            Self::RequestAdmission { command_id, base_revision, task_id, note } => {
+            Self::RequestAdmission {
+                command_id,
+                base_revision,
+                task_id,
+                note,
+            } => {
                 payload["command_id"] = json!(command_id);
                 payload["base_revision"] = json!(base_revision);
                 payload["task_id"] = json!(task_id);
-                if let Some(note) = note { payload["note"] = json!(note); }
+                if let Some(note) = note {
+                    payload["note"] = json!(note);
+                }
             }
-            Self::Admit { command_id, base_revision, task_id, parent_task_id, target_index } => {
+            Self::Admit {
+                command_id,
+                base_revision,
+                task_id,
+                parent_task_id,
+                target_index,
+            } => {
                 payload["command_id"] = json!(command_id);
                 payload["base_revision"] = json!(base_revision);
                 payload["task_id"] = json!(task_id);
-                if !parent_task_id.is_empty() { payload["parent_task_id"] = json!(parent_task_id); }
-                if let Some(index) = target_index { payload["target_index"] = json!(index); }
+                if !parent_task_id.is_empty() {
+                    payload["parent_task_id"] = json!(parent_task_id);
+                }
+                if let Some(index) = target_index {
+                    payload["target_index"] = json!(index);
+                }
             }
-            Self::DeclineAdmission { command_id, base_revision, task_id, reason } => {
+            Self::DeclineAdmission {
+                command_id,
+                base_revision,
+                task_id,
+                reason,
+            } => {
                 payload["command_id"] = json!(command_id);
                 payload["base_revision"] = json!(base_revision);
                 payload["task_id"] = json!(task_id);
                 payload["reason"] = json!(reason);
             }
-            Self::LogHours { command_id, base_revision, task_id, hours, note } => {
+            Self::LogHours {
+                command_id,
+                base_revision,
+                task_id,
+                hours,
+                note,
+            } => {
                 payload["command_id"] = json!(command_id);
                 payload["base_revision"] = json!(base_revision);
                 payload["task_id"] = json!(task_id);
                 payload["hours"] = json!(hours);
-                if let Some(note) = note { payload["note"] = json!(note); }
+                if let Some(note) = note {
+                    payload["note"] = json!(note);
+                }
             }
         }
         payload
@@ -464,19 +539,26 @@ mod tests {
             estimated_days: Some(3),
         }
         .payload("proj");
-        assert_eq!(proposal, json!({
-            "action": "commit_command", "ds_project": "proj",
-            "command_id": "cmd-propose-0001", "base_revision": 4,
-            "command": {"kind": "create_task", "create_task": {
-                "id": "p1", "title": "Survey the extension", "placement": "inbox",
-                "schedule_state": "unscheduled", "responsible_email": "c@x.rw",
-                "estimated_hours": 12.0, "estimated_days": 3, "discipline": "survey"
-            }}
-        }));
+        assert_eq!(
+            proposal,
+            json!({
+                "action": "commit_command", "ds_project": "proj",
+                "command_id": "cmd-propose-0001", "base_revision": 4,
+                "command": {"kind": "create_task", "create_task": {
+                    "id": "p1", "title": "Survey the extension", "placement": "inbox",
+                    "schedule_state": "unscheduled", "responsible_email": "c@x.rw",
+                    "estimated_hours": 12.0, "estimated_days": 3, "discipline": "survey"
+                }}
+            })
+        );
         let admit = Command::Admit {
-            command_id: "cmd-admit-0001".into(), base_revision: 5,
-            task_id: "p1".into(), parent_task_id: String::new(), target_index: None,
-        }.payload("proj");
+            command_id: "cmd-admit-0001".into(),
+            base_revision: 5,
+            task_id: "p1".into(),
+            parent_task_id: String::new(),
+            target_index: None,
+        }
+        .payload("proj");
         assert!(admit.get("parent_task_id").is_none());
         assert!(admit.get("target_index").is_none());
     }
