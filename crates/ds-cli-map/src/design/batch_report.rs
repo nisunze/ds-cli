@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{BOOL_CHOICES, DESCRIPTOR_ARG};
+use crate::DESCRIPTOR_ARG;
 
 const TRANSFORMER_ARG: Arg = Arg {
     name: "transformer",
@@ -19,54 +19,28 @@ const TRANSFORMER_ARG: Arg = Arg {
     summary: "Transformer in the explicit report scope. Repeat at least twice.",
 };
 
-const FILE_LEVEL_CHOICES: &[&str] = &["transformer", "sector", "district", "root"];
-
-const FILE_LEVEL_ARG: Arg = Arg {
-    name: "file-level",
-    kind: ArgKind::Value,
-    value: "<level>",
-    required: false,
-    default: Some("transformer"),
-    choices: FILE_LEVEL_CHOICES,
-    summary: "Folder level for individual artifacts inside the archive.",
-};
-
-const COMBINE_PER_GROUP_ARG: Arg = Arg {
-    name: "combine-per-group",
-    kind: ArgKind::Value,
-    value: "<true|false>",
-    required: false,
-    default: Some("false"),
-    choices: BOOL_CHOICES,
-    summary: "Also include one combined set per first-level applied report group.",
-};
-
 pub static COMMAND: Command = Command {
     id: "map.design.batch.report",
     path: &["map", "design", "batch", "report"],
     contract: 1,
     summary: "Export one report archive for an explicit transformer batch.",
     purpose: "\
-Declares an exact transformer scope and archive layout to the project report \
+Declares an exact transformer scope to the project report \
 service. The service owns freshness and composition: fresh individual report \
 artifacts are reused, missing or stale ones are regenerated, and the one \
-scope-correct combined set is packaged with them. The CLI does not expose or \
+scope-correct combined set is packaged with them. An applied report_archive \
+grouping files the archive; without one, the archive is flat. The CLI does not expose or \
 replay those internal API phases.",
     chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[
-        TRANSFORMER_ARG,
-        FILE_LEVEL_ARG,
-        COMBINE_PER_GROUP_ARG,
-        DESCRIPTOR_ARG,
-    ],
+    args: &[TRANSFORMER_ARG, DESCRIPTOR_ARG],
     output: "\
 Project, resolved transformer count, archive layout, archive URL, individual \
 artifact coverage, missing artifacts, report errors, and registry status.",
     examples: &[Example {
-        command: "ds map design batch report --transformer TX-1 --transformer TX-2 --file-level sector --combine-per-group false --yes --output json",
+        command: "ds map design batch report --transformer TX-1 --transformer TX-2 --yes --output json",
         note: "One declaration produces the composed cloud deliverable; it does not loop report commands.",
         runnable: false,
     }],
@@ -88,12 +62,12 @@ artifact coverage, missing artifacts, report errors, and registry status.",
         Refusal {
             code: "report_grouping_not_prepared",
             when: "no applied report_archive grouping is retained for this project",
-            remedy: "run `ds report consumer-grouping apply` while online, then retry",
+            remedy: "run `ds design consumer-grouping preview --purpose report_archive`, then `ds design consumer-grouping apply --purpose report_archive --digest <plan-digest> --yes` while online",
         },
         Refusal {
             code: "report_projection_not_prepared",
             when: "the retained tag projection does not match the applied grouping's digest",
-            remedy: "re-run `ds report consumer-grouping apply` while online to retain the exact projection",
+            remedy: "re-run `ds design consumer-grouping apply --purpose report_archive --digest <plan-digest> --yes` while online to retain the exact projection",
         },
         Refusal {
             code: "invalid_transformer_scope",
@@ -125,14 +99,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let mut arguments = Map::new();
     arguments.insert("transformers".into(), json!(transformers));
-    arguments.insert(
-        "fileLevel".into(),
-        json!(inputs.value("file-level").unwrap_or("transformer")),
-    );
-    arguments.insert(
-        "combinePerGroup".into(),
-        json!(crate::boolean(inputs.value("combine-per-group"), false)),
-    );
 
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
