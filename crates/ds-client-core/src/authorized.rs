@@ -1711,7 +1711,10 @@ mod project_report_refusal_tests {
             Some(ProjectReportServiceCode::NoIndividualArtifacts)
         );
         let refusal = error.service_refusal().expect("the rooms are carried");
-        assert_eq!(refusal.detail_integer("missing_individual_artifact_count"), Some(3));
+        assert_eq!(
+            refusal.detail_integer("missing_individual_artifact_count"),
+            Some(3)
+        );
         assert_eq!(
             refusal.detail_text("missing_rooms"),
             Some("ruhuha:reporter_container_terminated, zihare:reporter_request_failed")
