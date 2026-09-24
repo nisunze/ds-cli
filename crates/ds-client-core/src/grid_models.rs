@@ -16,6 +16,12 @@ pub enum Command {
         model: String,
         revision: String,
     },
+    Delete {
+        model: String,
+        expected_revision: String,
+        expected_digest: String,
+        reason: String,
+    },
     Publish {
         intent: ds_command_kernel::grid_publication::Intent,
         bytes: Vec<u8>,
@@ -79,6 +85,22 @@ impl Command {
                 Ok(())
             }
             Self::Download { model, revision } if id(model) && id(revision) => Ok(()),
+            Self::Delete {
+                model,
+                expected_revision,
+                expected_digest,
+                reason,
+            } if id(model)
+                && id(expected_revision)
+                && expected_digest.len() == 64
+                && expected_digest
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                && !reason.trim().is_empty()
+                && reason.len() <= 2000 =>
+            {
+                Ok(())
+            }
             Self::ForkExample { fork }
                 if fork.is_object()
                     && serde_json::to_vec(fork)
@@ -138,6 +160,14 @@ pub(crate) fn run<T: AuthorizedTransport>(
         Command::Download { model, revision } => {
             json!({"action":"get_version","project_id":project,"model_id":model,"revision_id":revision})
         }
+        Command::Delete {
+            model,
+            expected_revision,
+            expected_digest,
+            reason,
+        } => {
+            json!({"action":"delete_model","project_id":project,"delete":{"model_id":model,"expected_head_revision_id":expected_revision,"expected_model_digest":expected_digest,"reason":reason}})
+        }
         Command::ForkExample { fork } => {
             json!({"action":"fork_example","project_id":project,"fork":fork})
         }
@@ -161,6 +191,27 @@ pub(crate) fn run<T: AuthorizedTransport>(
     let data = &body["data"];
     match command {
         Command::Publish { .. } => unreachable!("publication dispatched before reads"),
+        Command::Delete {
+            model,
+            expected_revision,
+            expected_digest,
+            ..
+        } => {
+            let deletion = data.get("deletion").ok_or_else(bad)?;
+            if deletion["project_id"] != project
+                || deletion["model_id"] != *model
+                || deletion["head_revision_id"] != *expected_revision
+                || deletion["head_model_digest"] != *expected_digest
+                || deletion["revisions_retained"] != true
+                || deletion["model_object_retained"] != true
+            {
+                return Err(bad());
+            }
+            Ok(Receipt {
+                data: deletion.clone(),
+                bytes: None,
+            })
+        }
         // The fork's answer is the created project version, verified by the
         // backend that created it. This owner adds no second opinion; it only
         // refuses an envelope that does not carry one.
@@ -277,6 +328,22 @@ mod tests {
         assert!(Command::Download {
             model: "../x".into(),
             revision: "r".into()
+        }
+        .validate("project")
+        .is_err());
+        assert!(Command::Delete {
+            model: "model-1".into(),
+            expected_revision: "revision-1".into(),
+            expected_digest: "a".repeat(64),
+            reason: "Superseded by the reviewed model".into(),
+        }
+        .validate("project")
+        .is_ok());
+        assert!(Command::Delete {
+            model: "model-1".into(),
+            expected_revision: "revision-1".into(),
+            expected_digest: "a".repeat(64),
+            reason: " ".into(),
         }
         .validate("project")
         .is_err());
