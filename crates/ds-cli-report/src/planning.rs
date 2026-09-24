@@ -32,20 +32,21 @@ pub static TRANSFORMERS: Command = Command {
     id: "report.transformers",
     path: &["report", "transformers"],
     contract: 1,
-    summary: "List printable transformers from the selected project, headlessly.",
-    purpose: "Reads the selected project's fresh status rows through the native user and asks the printing kernel for the bounded printable inventory. No browser, map, or project override. Local browser rooms are not inspected: cached and dirty are null, with local_rooms_known=false. The paired desktop inventory uses the same kernel with its own room facts.",
+    summary: "List printable transformers of a named project, headlessly.",
+    purpose: "Reads the named project's fresh status rows through the native user and asks the printing kernel for the bounded printable inventory. The project comes only from --project; the saved selection is never read. No browser or map. Local browser rooms are not inspected: cached and dirty are null, with local_rooms_known=false. The paired desktop inventory uses the same kernel with its own room facts.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        crate::project::PROJECT_ARG,
         crate::project::LANE_ARG,
         Arg::value("limit", "<n>", "Maximum printable rows, 1..500.").default("100"),
     ],
-    output: "Lane and selected project, total, transformers [{name,kind,server_version,cached,dirty}], local_rooms_known, and more.omitted.",
+    output: "Lane and project, total, transformers [{name,kind,server_version,cached,dirty}], local_rooms_known, and more.omitted.",
     examples: &[Example {
-        command: "ds report transformers --limit 20 --output json",
-        note: "The selected project's printable rows; local cache state is unknown.",
+        command: "ds report transformers --project <id> --limit 20 --output json",
+        note: "The named project's printable rows; local cache state is unknown.",
         runnable: false,
     }],
     refusals: REFUSALS,
@@ -60,7 +61,11 @@ pub fn transformers(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         return Err(invalid("limit must be from 1 through 500"));
     }
     let requested = ds_cli_auth::TransformerSet::new(Vec::<String>::new()).map_err(invalid)?;
-    let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &requested)?;
+    let headless = ds_cli_auth::transformer_status_for_project(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        &requested,
+    )?;
     let rows: Vec<Value> = headless
         .result()
         .rows()
@@ -69,7 +74,7 @@ pub fn transformers(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .collect();
     let mut output = inventory(&rows, limit)?;
     output["lane"] = json!(headless.lane());
-    output["project"] = json!({"ds_project":headless.project_id(),"project_name":headless.project_name(),"status":headless.project_status()});
+    output["project"] = json!({"ds_project": headless.project_id()});
     Ok(output)
 }
 fn inventory(rows: &[Value], limit: usize) -> Result<Value, Failure> {

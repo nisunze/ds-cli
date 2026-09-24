@@ -8,12 +8,13 @@ pub static REMOVE: Command = Command {
     path: &["report", "artifact", "remove"],
     contract: 1,
     summary: "Remove one exact published MV, custom or transformer print reference.",
-    purpose: "Remove a duplicate or unwanted print from its project report list. Use the exact filename, gs:// locator and SHA-256 from the current print receipt; a replacement is refused. Requires design.delete_combined and an active selected project. Only the print reference is removed: stored bytes, network models and other report formats are retained. Repeat after an ambiguous result is safe. Standalone custom-map Assets instead use assets.classify with status archive; combined report versions use their report-version lifecycle.",
+    purpose: "Remove a duplicate or unwanted print from its project report list. Use the exact filename, gs:// locator and SHA-256 from the current print receipt; a replacement is refused. Requires design.delete_combined on the project named by --project; the saved selection is never read. Only the print reference is removed: stored bytes, network models and other report formats are retained. Repeat after an ambiguous result is safe. Standalone custom-map Assets instead use assets.classify with status archive; combined report versions use their report-version lifecycle.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        super::project::PROJECT_ARG,
         super::project::LANE_ARG,
         Arg::value(
             "scope",
@@ -63,5 +64,8 @@ pub fn remove(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         gcs_path: i.require("gcs-path")?.into(),
         sha256: i.require("sha256")?.into(),
     };
-    Ok(ds_cli_auth::remove_report_artifact(i.require("lane")?, &command)?.into_result())
+    Ok(
+        ds_cli_auth::remove_report_artifact(i.require("lane")?, i.require("project")?, &command)?
+            .into_result(),
+    )
 }

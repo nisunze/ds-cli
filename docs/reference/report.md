@@ -437,8 +437,8 @@ has agreed to drop unsaved edits. Documents never cross this boundary.
 
 ## Printable inventory and report plans
 
-`ds report transformers --limit 100 --output json` reads the native user's
-selected project and asks `printing::inventory` which rows are printable.
+`ds report transformers --project <id> --limit 100 --output json` reads the
+named project (the saved selection is never read) and asks `printing::inventory` which rows are printable.
 Reserved aggregate, analysis and project-document identities are excluded even
 when raw status rows omit their kind. The result reports `more.omitted`.
 `cached` and `dirty` are **null**, with `local_rooms_known: false`, because this
@@ -824,7 +824,7 @@ queue keeps its work.
 ## Removing printed artifacts
 
 `ds report artifact remove` removes one exact published print reference through
-the native project authority. Supply its scope, transformer, filename, `gs://`
+the native project authority. Name the project with `--project` and supply its scope, transformer, filename, `gs://`
 locator and SHA-256 from the current print receipt, then confirm with `--yes`.
 A replaced print is refused. The operation retains stored bytes and other
 outputs. Archive standalone custom maps through their Assets lifecycle.

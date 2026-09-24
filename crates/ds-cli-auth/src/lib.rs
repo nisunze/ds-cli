@@ -5761,10 +5761,12 @@ pub fn report_artifact(
 }
 pub fn remove_report_artifact(
     lane: &str,
+    project: &str,
     command: &ds_client_core::report_artifact::RemoveCommand,
-) -> Result<HeadlessProjectReport<serde_json::Value>, Failure> {
-    headless_project_report(
+) -> Result<HeadlessNamedProject<serde_json::Value>, Failure> {
+    headless_named_project(
         lane,
+        project,
         |device, project| device.remove_report_artifact(project, command),
         |client, project| client.remove_report_artifact(project, command, now()),
     )

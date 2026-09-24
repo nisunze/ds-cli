@@ -60,6 +60,8 @@ fn print_removal_is_a_confirmed_headless_project_operation() {
             "report",
             "artifact",
             "remove",
+            "--project",
+            "test-project",
             "--scope",
             "mv",
             "--transformer",
@@ -11828,25 +11830,37 @@ fn printable_inventory_is_headless_and_limits_before_reading_credentials() {
         .iter()
         .map(|input| input["name"].as_str().unwrap())
         .collect();
-    assert_eq!(inputs, BTreeSet::from(["lane", "limit"]));
-    assert_eq!(
-        native_refusal(&["report", "transformers", "--limit", "0", "--output", "json"]),
-        "report_plan_invalid"
-    );
-    assert!(
-        NATIVE_AUTH_CODES
-            .contains(&native_refusal(&["report", "transformers", "--output", "json"]).as_str())
-    );
+    assert_eq!(inputs, BTreeSet::from(["lane", "limit", "project"]));
     assert_eq!(
         native_refusal(&[
             "report",
             "transformers",
             "--project",
             "p1",
+            "--limit",
+            "0",
             "--output",
             "json"
         ]),
-        "unknown_flag"
+        "report_plan_invalid"
+    );
+    assert!(
+        NATIVE_AUTH_CODES.contains(
+            &native_refusal(&[
+                "report",
+                "transformers",
+                "--project",
+                "p1",
+                "--output",
+                "json"
+            ])
+            .as_str()
+        )
+    );
+    // The project is named on every call; the saved selection is never read.
+    assert_eq!(
+        native_refusal(&["report", "transformers", "--output", "json"]),
+        "missing_input"
     );
 }
 
