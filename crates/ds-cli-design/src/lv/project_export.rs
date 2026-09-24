@@ -17,7 +17,7 @@ use super::artifact::{PROJECT_REQUEST, ensure_absent, sha256, write_new};
 const TRANSFORMER: Arg = Arg::value(
     "transformer",
     "<name>",
-    "One exact transformer in the selected headless project.",
+    "One exact transformer in the project named by --project.",
 )
 .required();
 const OUT: Arg = Arg::value(
@@ -57,6 +57,7 @@ pub static COMMAND: Command = Command {
     args: &[
         TRANSFORMER,
         OUT,
+        crate::PROJECT_ARG,
         LANE,
         Arg::switch(
             "project-config",
@@ -65,7 +66,7 @@ pub static COMMAND: Command = Command {
     ],
     output: "Output path, request SHA-256/bytes, lane/project/transformer, server version/digest, layer/job counts, owner-default settings, and configuration inclusion/digest. No layer payload is printed.",
     examples: &[Example {
-        command: "ds design lv project-export --transformer T-1042 --out ./T-1042.fast-lv.json --output json",
+        command: "ds design lv project-export --project <id> --transformer T-1042 --out ./T-1042.fast-lv.json --output json",
         note: "Create a fenced one-transformer request for later native processing.",
         runnable: false,
     }],
@@ -87,14 +88,14 @@ pub static COMMAND: Command = Command {
         ),
         ds_cli_auth::SIGNED_OUT_REFUSAL,
         refusal!(
-            "headless_project_not_selected",
-            "the restored user has no audience-fenced project selection",
-            "run ds auth project use --project <exact-id>"
+            "context_corrupt",
+            "--project is not one exact DS project id: blank, untrimmed, too long, or a path",
+            "copy one exact ds_project value from ds auth project list"
         ),
         refusal!(
             "project_context_stale",
-            "the context belongs to another user, lane, or audience",
-            "select the project again with ds auth project use"
+            "the account or project changed between the transformer and configuration reads",
+            "export the transformer again"
         ),
         refusal!(
             "native_state_unsafe",
@@ -166,7 +167,7 @@ pub static COMMAND: Command = Command {
         ),
         refusal!(
             "transformer_not_found",
-            "the transformer does not exist in the selected project",
+            "the transformer does not exist in the named project",
             "pass one exact transformer name from that project"
         ),
         refusal!(
@@ -213,7 +214,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     ensure_absent(&output_path, &PROJECT_REQUEST)?;
 
     let transformer = inputs.require("transformer")?;
-    let headless = ds_cli_auth::transformer_context(inputs.require("lane")?, transformer)?;
+    let lane = inputs.require("lane")?;
+    let project = inputs.require("project")?;
+    let headless = ds_cli_auth::transformer_context_for_project(lane, project, transformer)?;
     let snapshot = headless.snapshot();
     let (Some(version), Some(content_digest)) = (
         snapshot.metadata().version(),
@@ -229,18 +232,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut config_sha256 = None;
     let request = if inputs.switch("project-config") {
         let config = ds_cli_auth::settings_configuration_receipt(
-            inputs.require("lane")?,
+            lane,
+            project,
             ds_client_core::ProjectConfigurationChange::ReadSettings,
         )?;
-        if config.identity() != headless.identity()
-            || config.lane() != headless.lane()
-            || config.project_id() != snapshot.ds_project()
+        if config.identity() != headless.identity() || config.project_id() != snapshot.ds_project()
         {
             return Err(Failure::conflict(
                 "project_context_stale",
-                "The identity or selected project changed while preparing configuration.",
+                "The account or project changed while preparing configuration.",
             )
-            .remedy("Select the intended project and export the transformer again."));
+            .remedy("Export the transformer again."));
         }
         let sheets = config.result().document["sheets"]
             .as_object()
@@ -274,12 +276,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "out": output_path,
         "request_sha256": request_sha256,
         "byte_count": request.len(),
-        "lane": headless.lane(),
-        "project": {
-            "ds_project": snapshot.ds_project(),
-            "project_name": headless.project_name(),
-            "status": headless.project_status(),
-        },
+        "lane": lane,
+        "project": { "ds_project": snapshot.ds_project() },
         "transformer": snapshot.transformer_name(),
         "source": {
             "state": "fenced",
@@ -343,7 +341,7 @@ mod tests {
         assert_eq!(COMMAND.authority, Authority::HeadlessProject);
         assert_eq!(COMMAND.effect, Effect::LocalFileWrite);
         assert_eq!(COMMAND.path, ["design", "lv", "project-export"]);
-        assert!(COMMAND.args.iter().all(|arg| arg.name != "project"));
+        assert!(COMMAND.args.iter().any(|arg| arg.name == "project"));
         assert!(
             COMMAND
                 .args

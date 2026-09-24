@@ -1,4 +1,4 @@
-//! Bounded project feeder settings through the native selected-project owner.
+//! Bounded project feeder settings through the native owner, for the project each call names.
 use ds_cli_contract::{
     Context, Inputs,
     outcome::Failure,
@@ -56,7 +56,7 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "auth_rejected",
-        when: "the gateway refused access to the selected project's configuration",
+        when: "the gateway refused access to the named project's configuration",
         remedy: "verify the account's project access and configuration permissions",
     },
     Refusal {
@@ -106,7 +106,7 @@ const fn command(
         effect,
         execution: Execution::Sync,
         summary: "Read or set the project's feeder cable limits.",
-        purpose: "Reads the native selected project's fresh network configuration without Desktop. Set changes only minimum_feeder_cable_size and max_feeder_cable_size through the existing governed configuration owner and verifies both with a fresh read. Does not process or resize design geometry. Optional --out retains the fresh configuration for native report inputs.",
+        purpose: "Reads the named project's fresh network configuration without Desktop. Set changes only minimum_feeder_cable_size and max_feeder_cable_size through the existing governed configuration owner and verifies both with a fresh read. Does not process or resize design geometry. Optional --out retains the fresh configuration for native report inputs.",
         args,
         output: "Project, the two feeder limits in mm², existing LV cable limits, transformer-to-LV-to-feeder catalog rows, and saved state.",
         examples: &[],
@@ -121,7 +121,7 @@ pub static READ: Command = command(
     "design.feeder-limits.read",
     &["design", "feeder-limits", "read"],
     Effect::LocalFileWrite,
-    &[LANE, OUT],
+    &[crate::PROJECT_ARG, LANE, OUT],
 );
 pub static SET: Command = command(
     "design.feeder-limits.set",
@@ -166,7 +166,11 @@ fn invoke(inputs: &Inputs, write: bool) -> Result<Value, Failure> {
             "configuration output must not already exist",
         ));
     }
-    let receipt = ds_cli_auth::feeder_configuration(inputs.require("lane")?, bounds)?;
+    let receipt = ds_cli_auth::feeder_configuration(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        bounds,
+    )?;
     let mut summary = receipt.summary;
     if let Some(path) = inputs.value("out") {
         let bytes =

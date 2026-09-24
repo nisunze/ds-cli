@@ -34,7 +34,7 @@ ds design intake upload --file ./T001.zip --mode lv-process \
 `ds design lv project-export` is the authenticated, mapless handoff from one
 governed transformer snapshot into the local file contract below. It restores
 the Firebase user for `--lane stable|canary`, uses only that user's
-audience-fenced selected project, and performs the fixed
+project named by `--project` (the saved selection is never read), and performs the fixed
 `get_transformers_data fields=full` call for one exact transformer. The
 gateway rechecks membership. The command refuses legacy context unless the
 server supplies both `metadata.version` and `metadata.content_digest`, then
@@ -50,7 +50,7 @@ arbitrary request field or browser store.
 
 ```bash
 ds account connect
-ds design lv project-export --transformer T-1042 \
+ds design lv project-export --project <id> --transformer T-1042 \
   --out ./T-1042.fast-lv.json --output json
 ds design lv process --input ./T-1042.fast-lv.json \
   --out ./T-1042.fast-lv.result.json --output json
@@ -579,17 +579,17 @@ so nothing is dropped in silence.
 
 ## Feeder cable limits
 
-`ds design categories read --kind customer` or `--kind meter` reads fresh
+`ds design categories read --project <id> --kind customer` or `--kind meter` reads fresh
 canonical names, aliases and catalog metadata with bounded pagination.
 Use the `ds-dirty-categories` skill when a report flags unknown values:
 missing or newly introduced categories generally require a seed correction;
 code should change only when it fails to honor a valid seed.
 
-`ds design meter-types ensure --name Readyboard --yes` preserves Readyboard
+`ds design meter-types ensure --project <id> --name Readyboard --yes` preserves Readyboard
 as its own meter category alongside Single Phase and Three Phase.
-`ds design customer-categories alias --alias Productive --category Commercial --yes`
+`ds design customer-categories alias --project <id> --alias Productive --category Commercial --yes`
 seeds an explicit source-label mapping while preserving Commercial's demand
-settings. Both commands use the native selected project, retain unrelated
+settings. Both commands use the project named by `--project`, retain unrelated
 catalog rows, and verify fresh saved configuration without Desktop.
 
 ### What the catalog does to a report, and how to repair it
@@ -613,35 +613,35 @@ Seeding alone cannot repair a catalog that is already wrong, so four verbs
 order, rename and remove what is already there. None of them creates a row;
 `ensure` and `alias` remain the only way to add one.
 
-`ds design customer-categories retire --name Pauvre --yes` drops one canonical
+`ds design customer-categories retire --project <id> --name Pauvre --yes` drops one canonical
 category — a second client's vocabulary, a duplicate — so reporting stops
 validating against it. It refuses while that category is the fallback only
 because it is first in the catalog; store the choice first with
-`ds design config set --sheet project_settings --parameter default_category
+`ds design config set --project <id> --sheet project_settings --parameter default_category
 --value "<category>" --yes`, then retire.
 
-`ds design customer-categories retire-unnamed --yes` drops the blank rows a
+`ds design customer-categories retire-unnamed --project <id> --yes` drops the blank rows a
 seeding pass left behind. They group nothing and validate nothing, but they are
 still listed wherever the catalog is offered.
 
-`ds design customer-categories rename --from Education_I --to "Primary School"
+`ds design customer-categories rename --project <id> --from Education_I --to "Primary School"
 --yes` changes the name reports total under, keeping the demand settings and
 every source label — including the old name, which stored customer records
 still carry. It refuses a name another category already claims.
 
-`ds design customer-categories unbind --alias "Ecole Primaire" --category School
+`ds design customer-categories unbind --project <id> --alias "Ecole Primaire" --category School
 --yes` resolves a contested label by naming the category that loses it; follow
 it with `alias` to bind the label to the intended owner.
 
-`ds design meter-types default --name "Three Phase" --yes` moves a meter type to
+`ds design meter-types default --project <id> --name "Three Phase" --yes` moves a meter type to
 the front of the catalog. Reporting has no governed setting for the phase-type
 fallback — it reads the first named row — so until it has one, this is how a
 project states that choice on purpose.
 
-`ds design feeder-limits read` reads the native selected project's feeder
+`ds design feeder-limits read` reads the named project's feeder
 bounds, LV cable bounds and transformer cable catalog from fresh configuration,
 without Desktop. Optional `--out` retains this configuration at a new JSON path.
-`ds design feeder-limits set --minimum 25 --maximum 95 --yes` updates only
+`ds design feeder-limits set --project <id> --minimum 25 --maximum 95 --yes` updates only
 `minimum_feeder_cable_size` and `max_feeder_cable_size` (mm²), preserves other
 project settings, and verifies the saved values with a fresh read. The report
 matches transformer kVA → outgoing LV bundle → feeder catalog designation,
@@ -1060,7 +1060,7 @@ grant does not change what it will accept.
 
 ## Which store the project's design data comes from
 
-`ds design data lane` reads the selected project's fresh Settings through the
+`ds design data lane --project <id>` reads the named project's fresh Settings through the
 native user client and asks the kernel which design-data path the project
 declares: `firestore`, or the `mirrored` combined store. The explicit
 `use_firestore_design_data` parameter wins; the legacy `design_data_source` and
@@ -1073,7 +1073,7 @@ it is now one belief rather than the browser's and the CLI's.
 
 ### Project Settings
 
-`ds design config sheets` lists the fresh selected project's kernel model.
+`ds design config sheets --project <id>` lists the named project's fresh kernel model.
 `read --sheet KEY` returns a page of rows (for rules, `--rule-set NAME` selects
 one set). `--limit` is 1–100 and `--offset` pages; `more` counts omitted rows,
 while `truncated` identifies shortened cell/metadata evidence. Use

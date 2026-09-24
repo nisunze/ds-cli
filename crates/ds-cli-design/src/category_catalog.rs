@@ -37,8 +37,9 @@ pub static READ: Command = Command {
     effect: Effect::ReadOnly,
     execution: Execution::Sync,
     summary: "Inspect fresh category seeds and aliases behind Dirty Categories.",
-    purpose: "Reads the selected project's customer or meter catalog without Desktop. Inspect canonical names, aliases and demand metadata before changing data or code. Results are paged; no configuration is modified.",
+    purpose: "Reads the named project's customer or meter catalog without Desktop. Inspect canonical names, aliases and demand metadata before changing data or code. Results are paged; no configuration is modified.",
     args: &[
+        crate::PROJECT_ARG,
         LANE,
         Arg::value("kind", "<customer|meter>", "Catalog to inspect.")
             .required()
@@ -78,7 +79,11 @@ pub fn read(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     } else {
         "cust_meter_type"
     };
-    let receipt = ds_cli_auth::feeder_configuration(inputs.require("lane")?, None)?;
+    let receipt = ds_cli_auth::feeder_configuration(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        None,
+    )?;
     let rows = receipt.document["sheets"][sheet]
         .as_array()
         .ok_or_else(|| {
@@ -112,7 +117,7 @@ pub static METER: Command = Command {
     execution: Execution::Sync,
     summary: "Ensure a distinct project meter category exists.",
     purpose: "Adds one missing canonical meter type to fresh project configuration, preserves existing rows, and verifies the saved catalog. Requires no Desktop and changes no customer records.",
-    args: &[LANE, NAME],
+    args: &[crate::PROJECT_ARG, LANE, NAME],
     output: "Project, saved state and bounded meter categories.",
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
@@ -131,7 +136,7 @@ pub static ALIAS_SET: Command = Command {
     execution: Execution::Sync,
     summary: "Map a customer source label to an existing catalog category.",
     purpose: "Adds one alias to an existing customer category in fresh configuration and verifies the saved catalog. Preserves demand settings and source records; refuses aliases already owned by a different category.",
-    args: &[LANE, ALIAS, CATEGORY],
+    args: &[crate::PROJECT_ARG, LANE, ALIAS, CATEGORY],
     output: "Project, saved state, alias and canonical category.",
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
@@ -141,7 +146,11 @@ pub static ALIAS_SET: Command = Command {
     availability: ds_cli_auth::native_availability,
 };
 pub fn meter(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let receipt = ds_cli_auth::ensure_meter_type(inputs.require("lane")?, inputs.require("name")?)?;
+    let receipt = ds_cli_auth::ensure_meter_type(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        inputs.require("name")?,
+    )?;
     Ok(
         json!({"project":receipt.summary["project"],"saved":receipt.summary["saved"],"meter_types":receipt.summary["meter_types"]}),
     )
@@ -149,7 +158,12 @@ pub fn meter(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn alias(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let alias = inputs.require("alias")?;
     let category = inputs.require("category")?;
-    let receipt = ds_cli_auth::customer_category_alias(inputs.require("lane")?, alias, category)?;
+    let receipt = ds_cli_auth::customer_category_alias(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        alias,
+        category,
+    )?;
     Ok(
         json!({"project":receipt.summary["project"],"saved":receipt.summary["saved"],"alias":alias,"category":category}),
     )
@@ -171,7 +185,7 @@ pub static CUSTOMER_RETIRE: Command = Command {
     execution: Execution::Sync,
     summary: "Drop one canonical customer category from the project catalog.",
     purpose: "Removes a category a project should never have been seeded with — a second client's vocabulary, a duplicate — so reporting stops offering and validating against it. Requires no Desktop and changes no customer records; source labels still spelled that way become dirty categories the next report names. Refuses while the category is the report fallback purely because it is first in the catalog, because retiring it would move every unrecognised customer somewhere new.",
-    args: &[LANE, RETIRE_NAME],
+    args: &[crate::PROJECT_ARG, LANE, RETIRE_NAME],
     output: "Project, saved state and the catalog hazards after the edit.",
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
@@ -191,7 +205,7 @@ pub static CUSTOMER_RETIRE_UNNAMED: Command = Command {
     execution: Execution::Sync,
     summary: "Drop catalog rows that carry no canonical customer category.",
     purpose: "Removes the blank rows a seeding pass left behind. A row with no canonical name groups nothing, validates nothing and can never be the fallback, but it is still offered wherever the catalog is listed. Requires no Desktop and changes no customer records; refuses when every row already carries a name.",
-    args: &[LANE],
+    args: &[crate::PROJECT_ARG, LANE],
     output: "Project, saved state and the catalog hazards after the edit.",
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
@@ -212,6 +226,7 @@ pub static CUSTOMER_RENAME: Command = Command {
     summary: "Give one customer category a different canonical name.",
     purpose: "Renames the name reports group and total under, keeping the category's demand settings and every source label that already resolves to it — including the old name, which stored customer records still carry. Requires no Desktop. Refuses a new name another category already claims as its own name or as one of its aliases, so a rename cannot manufacture a contested label.",
     args: &[
+        crate::PROJECT_ARG,
         LANE,
         Arg::value("from", "<name>", "Canonical category to rename.").required(),
         Arg::value("to", "<name>", "New canonical name for that category.").required(),
@@ -236,6 +251,7 @@ pub static CUSTOMER_UNBIND: Command = Command {
     summary: "Take one source label away from one customer category.",
     purpose: "Resolves a label two categories claim. Reporting drops a contested label from its alias map entirely, so the customers spelled that way stop resolving and are counted under the fallback instead. Naming the category that loses the label is the decision; `design customer-categories alias` then binds it to the intended owner. Requires no Desktop and changes no customer records.",
     args: &[
+        crate::PROJECT_ARG,
         LANE,
         Arg::value("alias", "<name>", "Source label to unbind.").required(),
         Arg::value(
@@ -264,7 +280,7 @@ pub static METER_DEFAULT: Command = Command {
     execution: Execution::Sync,
     summary: "Choose which meter type reporting falls back to.",
     purpose: "Reporting has no governed setting for the phase-type fallback: it takes the first named row of the meter catalog, so a meter reading the catalog does not recognise is counted as whichever type happened to be seeded first. This moves a named type to the front, turning that ordering accident into a stated choice. Requires no Desktop, seeds nothing and changes no customer records; use `design meter-types ensure` to add a type that is missing.",
-    args: &[LANE, NAME],
+    args: &[crate::PROJECT_ARG, LANE, NAME],
     output: "Project, saved state, ordered meter types and the catalog hazards after the edit.",
     examples: &[],
     refusals: super::feeder_limits::REFUSALS,
@@ -278,7 +294,11 @@ fn housekeeping(
     inputs: &Inputs,
     change: ds_client_core::ProjectConfigurationChange,
 ) -> Result<Value, Failure> {
-    let receipt = ds_cli_auth::catalog_housekeeping(inputs.require("lane")?, change)?;
+    let receipt = ds_cli_auth::catalog_housekeeping(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        change,
+    )?;
     Ok(
         json!({"project":receipt.summary["project"],"saved":receipt.summary["saved"],"hazards":hazards(&receipt.document)}),
     )
@@ -323,6 +343,7 @@ pub fn customer_unbind(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn meter_default(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let receipt = ds_cli_auth::catalog_housekeeping(
         inputs.require("lane")?,
+        inputs.require("project")?,
         ds_client_core::ProjectConfigurationChange::DefaultMeterType {
             name: inputs.require("name")?.to_owned(),
         },

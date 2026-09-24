@@ -5022,7 +5022,7 @@ fn the_vocabulary_housekeeping_family_names_the_report_defect_each_verb_removes(
             purpose.contains(promise),
             "`{id}` must say which part of the report rewrite it governs: {purpose}"
         );
-        // The project is the session's own, as everywhere else on this spine.
+        // The project is named on every call; the saved selection is never read.
         let inputs = command["inputs"]
             .as_array()
             .expect("inputs")
@@ -5030,13 +5030,13 @@ fn the_vocabulary_housekeeping_family_names_the_report_defect_each_verb_removes(
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>();
         assert!(inputs.contains("lane"));
-        assert!(!inputs.contains("project"));
+        assert!(inputs.contains("project"));
         // A vocabulary edit reaches the confirmation gate before it reaches a
         // credential: nothing about a catalog is read until the caller means
         // it.
         let mut gated: Vec<&str> = path.to_vec();
         gated.extend(complete);
-        gated.extend(["--output", "json"]);
+        gated.extend(["--project", "test-project", "--output", "json"]);
         assert_eq!(
             native_ds(&gated).envelope["error"]["code"],
             "confirmation_required",
@@ -6683,6 +6683,8 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "design",
             "lv",
             "project-export",
+            "--project",
+            "test-project",
             "--transformer",
             "T-1",
             "--out",
@@ -12274,7 +12276,7 @@ fn settings_writes_require_confirmation_before_file_or_native_io() {
         ],
     ] {
         let mut args = args;
-        args.extend(["--output", "json"]);
+        args.extend(["--project", "test-project", "--output", "json"]);
         assert_eq!(refusal(&args), "confirmation_required");
     }
 }

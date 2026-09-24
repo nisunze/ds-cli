@@ -2514,22 +2514,24 @@ pub fn tile_generate(
     })
 }
 
-/// Run one closed selected-project `/report` operation through whichever
-/// native provider restores: the device credential first, then the Firebase
-/// refresh session. There is no project, URL, lane-header, or action
-/// override; the core owns the grammar and the caller only chooses the
-/// typed operation.
+/// Run one closed `/report` operation against the project the caller named,
+/// through whichever native provider restores: the device credential first,
+/// then the Firebase refresh session. The saved selection is never read.
+/// There is no URL, lane-header, or action override; the core owns the
+/// grammar and the caller only chooses the typed operation.
 pub fn feeder_configuration(
     lane: &str,
+    project: &str,
     bounds: Option<(f64, f64)>,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
-    feeder_configuration_receipt(lane, bounds).map(HeadlessProjectReport::into_result)
+    feeder_configuration_receipt(lane, project, bounds).map(HeadlessProjectReport::into_result)
 }
 
 /// Preserve the identity and project that supplied a configuration so a
 /// multi-call native workflow can reject account or project changes.
 pub fn feeder_configuration_receipt(
     lane: &str,
+    project: &str,
     bounds: Option<(f64, f64)>,
 ) -> Result<HeadlessProjectReport<ds_client_core::FeederConfiguration>, Failure> {
     let change =
@@ -2539,8 +2541,9 @@ pub fn feeder_configuration_receipt(
                 maximum,
             },
         );
-    headless_project_report(
+    headless_named_report(
         lane,
+        project,
         |device, project| device.feeder_configuration(project, change.as_ref()),
         |client, project| client.feeder_configuration(project, change.as_ref(), now()),
     )
@@ -2560,22 +2563,25 @@ pub fn feeder_configuration_for_project(
     )
 }
 
-/// Settings uses the same selected-project transport and fresh readback as
+/// Settings uses the same named-project transport and fresh readback as
 /// feeder edits; the core validates the closed mutation against fetched sheets.
 pub fn settings_configuration(
     lane: &str,
+    project: &str,
     change: ds_client_core::ProjectConfigurationChange,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
-    settings_configuration_receipt(lane, change).map(HeadlessProjectReport::into_result)
+    settings_configuration_receipt(lane, project, change).map(HeadlessProjectReport::into_result)
 }
 
 /// Retain identity and project fences when configuration joins another snapshot.
 pub fn settings_configuration_receipt(
     lane: &str,
+    project: &str,
     change: ds_client_core::ProjectConfigurationChange,
 ) -> Result<HeadlessProjectReport<ds_client_core::FeederConfiguration>, Failure> {
-    headless_project_report(
+    headless_named_report(
         lane,
+        project,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
     )
@@ -2583,11 +2589,13 @@ pub fn settings_configuration_receipt(
 
 pub fn ensure_meter_type(
     lane: &str,
+    project: &str,
     name: &str,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
     let change = ds_client_core::ProjectConfigurationChange::EnsureMeterType { name: name.into() };
-    headless_project_report(
+    headless_named_report(
         lane,
+        project,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
     )
@@ -2611,6 +2619,7 @@ pub fn design_output_rows_for_project(
 
 pub fn customer_category_alias(
     lane: &str,
+    project: &str,
     alias: &str,
     category: &str,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
@@ -2618,23 +2627,26 @@ pub fn customer_category_alias(
         alias: alias.into(),
         category: category.into(),
     };
-    headless_project_report(
+    headless_named_report(
         lane,
+        project,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
     )
     .map(|receipt| receipt.result)
 }
 
-/// One vocabulary housekeeping edit over the same selected-project transport
-/// as the seeding verbs: the core resolves it against the document it just
+/// One vocabulary housekeeping edit over the same transport
+/// as the seeding verbs, for the named project: the core resolves it against the document it just
 /// fetched and proves the save by reading the sheet back.
 pub fn catalog_housekeeping(
     lane: &str,
+    project: &str,
     change: ds_client_core::ProjectConfigurationChange,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
-    headless_project_report(
+    headless_named_report(
         lane,
+        project,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
     )

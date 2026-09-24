@@ -44,15 +44,15 @@ pub static COMMAND: Command = Command {
     path: &["design", "data", "lane"],
     contract: 1,
     summary: "Where this project's design data is read from.",
-    purpose: "Reads the selected project's fresh Settings through the native user client and asks the shared kernel which design-data path the project declares: Firestore, or the mirrored combined store. The explicit parameter wins; the legacy spellings answer only when it is absent; an undeclared project is Firestore. The parameter that answered and why are named, so a surprising lane is traceable to the row that set it.",
+    purpose: "Reads the named project's fresh Settings through the native user client and asks the shared kernel which design-data path the project declares: Firestore, or the mirrored combined store. The explicit parameter wins; the legacy spellings answer only when it is absent; an undeclared project is Firestore. The parameter that answered and why are named, so a surprising lane is traceable to the row that set it.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE],
+    args: &[crate::PROJECT_ARG, LANE],
     output: "{project, path: firestore|mirrored, source: explicit|legacy|default, parameter, reason_key}.",
     examples: &[Example {
-        command: "ds design data lane --output json",
+        command: "ds design data lane --project <id> --output json",
         note: "`.data.path` decides which store a combined read should trust.",
         runnable: false,
     }],
@@ -64,7 +64,11 @@ pub static COMMAND: Command = Command {
 };
 
 pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
-    let current = ds_cli_auth::settings_configuration(i.require("lane")?, Change::ReadSettings)?;
+    let current = ds_cli_auth::settings_configuration(
+        i.require("lane")?,
+        i.require("project")?,
+        Change::ReadSettings,
+    )?;
     let mut result = design_config::apply(Request::DesignDataPath {
         document: current.document,
     })

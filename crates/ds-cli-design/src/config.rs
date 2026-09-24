@@ -134,42 +134,50 @@ pub static SHEETS: Command = command(
     &["design", "config", "sheets"],
     "Find project configuration and pole material seed sheets.",
     Effect::LocalAuthState,
-    &[LANE, LIMIT, OFFSET],
+    &[crate::PROJECT_ARG, LANE, LIMIT, OFFSET],
 );
 pub static READ: Command = command(
     "design.config.read",
     &["design", "config", "read"],
     "Read project configuration or material seeds as complete JSON.",
     Effect::LocalFileWrite,
-    &[LANE, SHEET, RULE_SET, LIMIT, OFFSET, OUT],
+    &[
+        crate::PROJECT_ARG,
+        LANE,
+        SHEET,
+        RULE_SET,
+        LIMIT,
+        OFFSET,
+        OUT,
+    ],
 );
 pub static DIFF: Command = command(
     "design.config.diff",
     &["design", "config", "diff"],
     "Compare a local sheet with the project's current Settings.",
     Effect::LocalAuthState,
-    &[LANE, SHEET, FILE, LIMIT, OFFSET],
+    &[crate::PROJECT_ARG, LANE, SHEET, FILE, LIMIT, OFFSET],
 );
 pub static SET: Command = command(
     "design.config.set",
     &["design", "config", "set"],
     "Set one existing Settings parameter and verify readback.",
     Effect::GlobalWrite,
-    &[LANE, SHEET, PARAMETER, VALUE],
+    &[crate::PROJECT_ARG, LANE, SHEET, PARAMETER, VALUE],
 );
 pub static SAVE: Command = command(
     "design.config.save",
     &["design", "config", "save"],
     "Save corrected material seeds or configuration; verify readback.",
     Effect::GlobalWrite,
-    &[LANE, SHEET, FILE],
+    &[crate::PROJECT_ARG, LANE, SHEET, FILE],
 );
 pub static DUPLICATE: Command = command(
     "design.config.rule-set.duplicate",
     &["design", "config", "rule-set", "duplicate"],
     "Duplicate a rule set, preserving its rows and metadata.",
     Effect::GlobalWrite,
-    &[LANE, SHEET, SOURCE, TARGET],
+    &[crate::PROJECT_ARG, LANE, SHEET, SOURCE, TARGET],
 );
 fn invalid(e: impl std::fmt::Display) -> Failure {
     Failure::invalid("config_input_invalid", e.to_string())
@@ -187,7 +195,11 @@ fn file(path: &str) -> Result<Value, Failure> {
     serde_json::from_slice(&bytes).map_err(invalid)
 }
 fn read_current(i: &Inputs) -> Result<ds_client_core::FeederConfiguration, Failure> {
-    ds_cli_auth::settings_configuration(i.require("lane")?, Change::ReadSettings)
+    ds_cli_auth::settings_configuration(
+        i.require("lane")?,
+        i.require("project")?,
+        Change::ReadSettings,
+    )
 }
 fn page(i: &Inputs) -> Result<(usize, usize), Failure> {
     let limit = i.require("limit")?.parse::<usize>().map_err(invalid)?;
@@ -275,14 +287,20 @@ pub fn set(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         parameter: i.require("parameter")?.into(),
         raw: json!(i.require("value")?),
     };
-    Ok(ds_cli_auth::settings_configuration(i.require("lane")?, change)?.summary)
+    Ok(
+        ds_cli_auth::settings_configuration(i.require("lane")?, i.require("project")?, change)?
+            .summary,
+    )
 }
 pub fn save(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let change = Change::SaveSheet {
         sheet: i.require("sheet")?.into(),
         value: file(i.require("file")?)?,
     };
-    Ok(ds_cli_auth::settings_configuration(i.require("lane")?, change)?.summary)
+    Ok(
+        ds_cli_auth::settings_configuration(i.require("lane")?, i.require("project")?, change)?
+            .summary,
+    )
 }
 pub fn duplicate(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let change = Change::DuplicateRuleSet {
@@ -290,7 +308,10 @@ pub fn duplicate(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         source: i.require("source")?.into(),
         target: i.require("target")?.into(),
     };
-    Ok(ds_cli_auth::settings_configuration(i.require("lane")?, change)?.summary)
+    Ok(
+        ds_cli_auth::settings_configuration(i.require("lane")?, i.require("project")?, change)?
+            .summary,
+    )
 }
 pub fn render(data: &Value) -> String {
     format!(
