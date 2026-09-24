@@ -622,6 +622,16 @@ pub struct Folder {
     pub default_status: Option<Status>,
     #[serde(default)]
     pub counts: Counts,
+    // ds-brain's folder envelope beyond the §2.2 model, read so a declared
+    // folder decodes as the server sends it and republished only when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden_assets: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<i64>,
 }
 
 fn folder_schema() -> String {

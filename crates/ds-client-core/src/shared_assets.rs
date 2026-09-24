@@ -8,6 +8,7 @@ use ds_command_kernel::assets::{Link, ReportReference};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     /// Register bytes held outside DS — a Drive link with its digest — as a
     /// catalogue row (`reference`, external form, `assets.ingest`). DS never
@@ -32,6 +33,23 @@ pub enum Command {
     /// One catalogue row by id, under the caller's class authority.
     Get {
         asset_id: String,
+    },
+    /// The declared folders (`tree`), for resolving a path to its id.
+    Folders,
+    /// One page of catalogue rows (`list`), raw, under the caller's class
+    /// authority: what the kernel's tree projection is fed.
+    List {
+        limit: u16,
+        cursor: Option<String>,
+        folder_id: Option<String>,
+    },
+    /// One classification of a catalogue row (`classify`): the fields to
+    /// change, fenced on the version the caller read. `document` registers
+    /// the asset as a numbered, revisioned document.
+    Classify {
+        asset_id: String,
+        expected_version: i64,
+        patch: serde_json::Map<String, Value>,
     },
     PublishMap {
         name: String,
@@ -189,6 +207,39 @@ impl Command {
                 asset_id: id, link, ..
             } => asset_id(id) && link_valid(link),
             Self::Get { asset_id: id } => asset_id(id),
+            Self::Folders => true,
+            Self::List {
+                limit,
+                cursor,
+                folder_id,
+            } => {
+                (1..=200).contains(limit)
+                    && cursor.as_ref().is_none_or(|s| {
+                        !s.is_empty() && s.len() <= 512 && !s.chars().any(char::is_control)
+                    })
+                    && optional_token(folder_id)
+            }
+            Self::Classify {
+                asset_id: id,
+                expected_version,
+                patch,
+            } => {
+                asset_id(id)
+                    && *expected_version >= 1
+                    && !patch.is_empty()
+                    && patch.keys().all(|key| {
+                        matches!(
+                            key.as_str(),
+                            "kind"
+                                | "status"
+                                | "owner"
+                                | "folder_id"
+                                | "sensitivity"
+                                | "document"
+                                | "reason"
+                        )
+                    })
+            }
             Self::PublishMap {
                 name,
                 bytes,
@@ -298,6 +349,30 @@ pub(crate) fn run<T: AuthorizedTransport>(
         Command::Get { asset_id } => {
             json!({"action":"get","ds_project":project,"asset_id":asset_id})
         }
+        Command::Folders => json!({"action":"tree","ds_project":project}),
+        Command::List {
+            limit,
+            cursor,
+            folder_id,
+        } => {
+            let mut value = json!({"action":"list","ds_project":project,"limit":limit});
+            if let Some(cursor) = cursor {
+                value["cursor"] = json!(cursor);
+            }
+            if let Some(folder_id) = folder_id {
+                value["folder_id"] = json!(folder_id);
+            }
+            value
+        }
+        Command::Classify {
+            asset_id,
+            expected_version,
+            patch,
+        } => {
+            let mut classify = Value::Object(patch.clone());
+            classify["expected_version"] = json!(expected_version);
+            json!({"action":"classify","ds_project":project,"asset_id":asset_id,"classify":classify})
+        }
         Command::Maps { limit, cursor } => {
             let mut value = json!({"action":"list","ds_project":project,"limit":limit});
             if let Some(cursor) = cursor {
@@ -337,7 +412,15 @@ pub(crate) fn run<T: AuthorizedTransport>(
             None => coarse,
         });
     }
-    if response.body.len() > 1024 * 1024 {
+    // A raw page of 200 rows carrying mail parts and links is larger than
+    // one asset answer; the page bound is the catalogue's, the byte bound is
+    // this door's.
+    let bound = if matches!(command, Command::List { .. }) {
+        8 * 1024 * 1024
+    } else {
+        1024 * 1024
+    };
+    if response.body.len() > bound {
         return Err(bad());
     }
     let v: Value = serde_json::from_slice(&response.body).map_err(|_| bad())?;
@@ -375,7 +458,32 @@ pub(crate) fn run<T: AuthorizedTransport>(
             _ => return Err(bad()),
         }
     }
-    let asset = if matches!(command, Command::Read { .. } | Command::Resolve { .. }) {
+    if matches!(command, Command::Folders) {
+        // The declared folders, as rows: no asset to verify here.
+        if !data["folders"].is_array() {
+            return Err(bad());
+        }
+        return Ok(json!({"project":project,"folders":data["folders"]}));
+    }
+    if let Command::List { limit, .. } = command {
+        // Raw rows, bounded by the page asked for; every row is the project's.
+        let rows = data["assets"].as_array().ok_or_else(bad)?;
+        if rows.len() > usize::from(*limit) || rows.iter().any(|row| row["project_id"] != project) {
+            return Err(bad());
+        }
+        return Ok(json!({
+            "project": project,
+            "assets": rows,
+            "has_more": data["has_more"] == true,
+            "next_cursor": data["next_cursor"],
+            "scanned": data["scanned"],
+            "truncated": data["truncated"] == true,
+        }));
+    }
+    let asset = if matches!(
+        command,
+        Command::Read { .. } | Command::Resolve { .. } | Command::Classify { .. }
+    ) {
         &data["asset"]
     } else {
         data
@@ -422,6 +530,21 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 return Err(bad());
             }
             return Ok(json!({"asset":asset,"project":project,"storage_copied":false}));
+        }
+        Command::Folders | Command::List { .. } => {
+            unreachable!("folders and pages return before individual asset validation")
+        }
+        Command::Classify { asset_id, .. } => {
+            if asset["asset_id"] != *asset_id {
+                return Err(bad());
+            }
+            return Ok(json!({
+                "asset": asset,
+                "project": project,
+                "audit_id": data["audit_id"],
+                "changed": data["changed"].as_array().cloned().unwrap_or_default(),
+                "storage_copied": false,
+            }));
         }
         Command::PublishMap { .. } => {
             unreachable!("map publication returned before reference reads")

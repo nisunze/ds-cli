@@ -2648,14 +2648,29 @@ fn a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_new
     use ds_sync_runtime::store::ArtifactState;
     let h = Harness::new();
     let freed: Freed = Arc::new(Mutex::new(Vec::new()));
-    let SolarSeal::Sealed(newest) =
-        solar_seal_completed_at(&h, &fence(), PROJECT, "city-1", "job-2", 2_000, b"second!", &freed)
-    else {
+    let SolarSeal::Sealed(newest) = solar_seal_completed_at(
+        &h,
+        &fence(),
+        PROJECT,
+        "city-1",
+        "job-2",
+        2_000,
+        b"second!",
+        &freed,
+    ) else {
         panic!("the newest completion seals")
     };
     assert!(newest.superseded.is_none());
-    let older =
-        solar_seal_completed_at(&h, &fence(), PROJECT, "city-1", "job-1", 1_000, b"first", &freed);
+    let older = solar_seal_completed_at(
+        &h,
+        &fence(),
+        PROJECT,
+        "city-1",
+        "job-1",
+        1_000,
+        b"first",
+        &freed,
+    );
     assert!(
         matches!(
             older,
@@ -2699,11 +2714,29 @@ fn a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_new
     let h2 = Harness::new();
     let freed2: Freed = Arc::new(Mutex::new(Vec::new()));
     assert!(matches!(
-        solar_seal_completed_at(&h2, &fence(), PROJECT, "city-1", "job-1", 1_000, b"first", &freed2),
+        solar_seal_completed_at(
+            &h2,
+            &fence(),
+            PROJECT,
+            "city-1",
+            "job-1",
+            1_000,
+            b"first",
+            &freed2
+        ),
         SolarSeal::Sealed(_)
     ));
     assert!(matches!(
-        solar_seal_completed_at(&h2, &fence(), PROJECT, "city-1", "job-2", 2_000, b"second!", &freed2),
+        solar_seal_completed_at(
+            &h2,
+            &fence(),
+            PROJECT,
+            "city-1",
+            "job-2",
+            2_000,
+            b"second!",
+            &freed2
+        ),
         SolarSeal::Sealed(_)
     ));
     assert_eq!(*freed2.lock().unwrap(), vec!["job-1".to_string()]);
