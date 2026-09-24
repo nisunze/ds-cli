@@ -705,21 +705,27 @@ type. Fixed titles, scales and furniture belong in the map’s `fit_around` list
 ### Native project MV overview
 
 `report.plan-profile --project <id>` renders one revision-pinned DS Grid scene
-and plan headlessly. Its A3 profile and plan order, structure labels, scales,
-vertical exaggeration, span annotations, 6 m corridor and grid are authored
-inputs. Plan and profile use the same horizontal station scale so every plan
-structure sits directly below its profile ordinate. `--plan-scale`, when set,
-must equal `--horizontal-scale`; angle breaks consume no station distance.
+and plan headlessly. Its A3 profile and plan order, structure labels, horizontal
+and vertical scales, span annotations, 6 m corridor and grid are authored inputs.
+The plan retains true geographic bends at the horizontal scale; profile station
+ordinates are a separate axis. `--plan-scale`, when set, must equal
+`--horizontal-scale`. `--angle-policy preserve_if_fit` keeps an angled span
+whole when its footprint fits; `split_at_authored` forces angle cuts.
 The trace uses rounded station targets and a clear edge inset. At H 1:1500,
 it aims for 0+500, 1+000, and so on, then cuts at a nearby structure with
 less local terrain relief. That structure closes one page and opens the next;
-the profile trace is clipped at the shared station. A short last page is
+incoming and outgoing conductors extend across the matched station marks.
+`--profile-elevation-breaks on` keeps the preferred vertical scale by resetting
+the labeled elevation datum at a structure within the same sheet. A section
+that still cannot fit adjusts its actual vertical denominator and prints it.
+`--profile-continuations` controls matched page cuts. A short last page is
 balanced across the final pair. The manifest records each printed window.
 Each default vertical label row holds one entity field: structure number,
 structure type, then comments in the advanced format. `--ink monochrome` is
 the default; `--ink reference_accents` applies
-restrained green OPGW, plum phase and red structure pens inspired by the
-approved CJIC 120 ACSR sheets while keeping geographic context grayscale.
+green OPGW, plum phase and red route and structure pens inspired by the
+approved CJIC 120 ACSR sheets. Context is gray except the featured transformer
+and new LV design pens.
 `--sample-pages 5` selects representative original sheets and records their
 source sheet numbers. With `--model-crs`, the manifest also gives each sheet's
 WGS84 route bounds.

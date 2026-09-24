@@ -19,7 +19,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "plan-profile"],
     contract: 1,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
-    purpose: "Produces A3 SVG sheet previews and a combined vector PDF. Both inputs must be exact DS Grid engine projections for the same model revision. A simple layout uses H 1:2000 and V 1:500; advanced uses H 1:1000 and V 1:200, expanding the vertical denominator only when the page's measured elevation range requires it. The task is local and headless; the result names every preview and its digest-pinned PDF.",
+    purpose: "Produces A3 SVG sheet previews and one combined vector PDF. Both inputs must be exact DS Grid engine projections for the same model revision. Choose horizontal and vertical scale denominators independently; profile elevation breaks keep the preferred vertical scale where a steep section requires a new datum on the same sheet. The task is local and headless; the result names every preview and its digest-pinned PDF.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -73,7 +73,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "plan-scale",
             "<denominator>",
-            "Advanced format plan denominator, 500..10000; must equal horizontal scale to align structure stations.",
+            "Advanced format plan denominator, 500..10000; must equal horizontal scale for the geographic plan scale.",
         ),
         Arg::value(
             "panel-order",
@@ -92,10 +92,17 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "long-axis",
             "<on|off>",
-            "Split and rotate plan sections at authored angle points.",
+            "Permit rotated plan sections where the physical bend cannot fit the panel.",
         )
         .default("on")
         .choices(&["on", "off"]),
+        Arg::value(
+            "angle-policy",
+            "<preserve_if_fit|split_at_authored>",
+            "Keep a physical angled span when its footprint fits the plan, or force an authored angle cut.",
+        )
+        .default("preserve_if_fit")
+        .choices(&["preserve_if_fit", "split_at_authored"]),
         Arg::value(
             "angle-gap-mm",
             "<millimetres>",
@@ -115,6 +122,20 @@ pub static COMMAND: Command = Command {
             "profile-grid",
             "<on|off>",
             "Draw major and minor station/elevation grids in the profile.",
+        )
+        .default("on")
+        .choices(&["on", "off"]),
+        Arg::value(
+            "profile-elevation-breaks",
+            "<on|off>",
+            "Reset the elevation datum at a structure within a sheet where the preferred vertical scale cannot fit.",
+        )
+        .default("on")
+        .choices(&["on", "off"]),
+        Arg::value(
+            "profile-continuations",
+            "<on|off>",
+            "Repeat the cut structure with incoming and outgoing wires and matched sheet references.",
         )
         .default("on")
         .choices(&["on", "off"]),
@@ -340,7 +361,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         None => json!([]),
     };
-    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"out_dir":out_dir,"sample_pages":scale("sample-pages")?,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":{"format":inputs.require("format")?,"ink_mode":inputs.value("ink").unwrap_or("monochrome"),"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"plan_scale":scale("plan-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"plan_buffer_m":decimal("plan-buffer-m")?.unwrap_or(6.0),"show_profile_grid":inputs.value("profile-grid").unwrap_or("on")=="on","show_attachment_points":selection("attachments"),"show_span_labels":selection("span-labels"),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows}});
+    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"out_dir":out_dir,"sample_pages":scale("sample-pages")?,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":{"format":inputs.require("format")?,"ink_mode":inputs.value("ink").unwrap_or("monochrome"),"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"plan_scale":scale("plan-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","plan_angle_policy":inputs.value("angle-policy").unwrap_or("preserve_if_fit"),"angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"plan_buffer_m":decimal("plan-buffer-m")?.unwrap_or(6.0),"show_profile_grid":inputs.value("profile-grid").unwrap_or("on")=="on","profile_elevation_breaks":inputs.value("profile-elevation-breaks").unwrap_or("on")=="on","show_profile_continuations":inputs.value("profile-continuations").unwrap_or("on")=="on","show_attachment_points":selection("attachments"),"show_span_labels":selection("span-labels"),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows}});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     std::fs::write(&request_path, bytes)
