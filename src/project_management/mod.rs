@@ -44,7 +44,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub use hierarchy::{ordered_rows, OrderedRow};
-pub use projections::{Attention, AttentionKind, Dashboard, Phase, RecentTask};
+pub use projections::{
+    effort, proposals, Attention, AttentionKind, Dashboard, Phase, Proposal, RecentTask, TaskEffort,
+};
 pub use wire::{decode_project_graph, CanonicalProjectGraph, ProjectGraphPermissions};
 
 /// The request/reply schema of this module's one action.
@@ -109,6 +111,15 @@ pub struct Vocabulary {
     pub task_types: Vec<String>,
     pub placements: Vec<String>,
     pub scheduling_modes: Vec<String>,
+    /// Task proposals: the admission states and the four bounds
+    /// (task-proposals.md). Empty / 0 on a graph from an engine that
+    /// predates them — the CLI then refuses nothing locally and the server
+    /// still bounds.
+    pub admission_states: Vec<String>,
+    pub max_estimated_hours: i64,
+    pub max_estimated_days: i64,
+    pub max_hours_per_entry: i64,
+    pub max_hours_log_entries: i64,
     pub max_assignees: i64,
 }
 
@@ -127,6 +138,9 @@ pub struct PlanReply {
     pub phase_total: usize,
     pub attention: Vec<Attention>,
     pub attention_total: usize,
+    /// Proposals awaiting the PM, oldest first (task-proposals.md).
+    pub proposals: Vec<Proposal>,
+    pub proposals_total: usize,
     pub recent: Vec<RecentTask>,
     /// Every plan node, not the length of `recent` — what the browser reported
     /// so a capped list can say what it was capped from (cli-pm.ts:432).
@@ -174,7 +188,9 @@ fn plan(request: PlanRequest) -> Result<PlanReply, String> {
 
     let all_phases = projections::phases(&graph);
     let all_attention = projections::attention(&graph, &day);
-    let (phase_total, attention_total) = (all_phases.len(), all_attention.len());
+    let all_proposals = projections::proposals(&graph);
+    let (phase_total, attention_total, proposals_total) =
+        (all_phases.len(), all_attention.len(), all_proposals.len());
     let bounded = limit as usize;
 
     Ok(PlanReply {
@@ -186,6 +202,8 @@ fn plan(request: PlanRequest) -> Result<PlanReply, String> {
         phase_total,
         attention: all_attention.into_iter().take(bounded).collect(),
         attention_total,
+        proposals: all_proposals.into_iter().take(bounded).collect(),
+        proposals_total,
         // The browser asked for `Math.min(limit, 24)`; the projection bounds
         // itself at 24 as well, so the two agree by construction.
         recent: projections::recently_updated(&graph, limit.min(24)),
@@ -199,6 +217,11 @@ fn plan(request: PlanRequest) -> Result<PlanReply, String> {
             task_types: model.task_types.clone(),
             placements: model.placements.clone(),
             scheduling_modes: model.scheduling_modes.clone(),
+            admission_states: model.admission_states.clone(),
+            max_estimated_hours: model.max_estimated_hours,
+            max_estimated_days: model.max_estimated_days,
+            max_hours_per_entry: model.max_hours_per_entry,
+            max_hours_log_entries: model.max_hours_log_entries,
             max_assignees: model.max_assignees,
         }),
         today: day,
@@ -444,15 +467,22 @@ mod tests {
             plan["attention"],
             json!([
                 {"taskId": "design-1", "title": "LV design", "kind": "blocked", "wbs": "2",
-                 "blockerCount": 3, "daysLate": 3, "daysSinceChange": 3, "residualCount": 0},
+                 "blockerCount": 3, "daysLate": 3, "hoursOver": 0.0, "daysSinceChange": 3, "residualCount": 0},
                 {"taskId": "design-1a", "title": "Pole schedule", "kind": "late", "wbs": "2.1",
-                 "blockerCount": 0, "daysLate": 6, "daysSinceChange": 1, "residualCount": 0},
+                 "blockerCount": 0, "daysLate": 6, "hoursOver": 0.0, "daysSinceChange": 1, "residualCount": 0},
                 {"taskId": "review-1", "title": "Client review", "kind": "review", "wbs": "2.2",
-                 "blockerCount": 0, "daysLate": 0, "daysSinceChange": 0, "residualCount": 0},
+                 "blockerCount": 0, "daysLate": 0, "hoursOver": 0.0, "daysSinceChange": 0, "residualCount": 0},
                 {"taskId": "inbox-1", "title": "Unfiled query", "kind": "residual", "wbs": "Inbox 1",
-                 "blockerCount": 0, "daysLate": 0, "daysSinceChange": 0, "residualCount": 2},
+                 "blockerCount": 0, "daysLate": 0, "hoursOver": 0.0, "daysSinceChange": 0, "residualCount": 2},
             ])
         );
+        // The fixture proposes nothing and logs nothing: the proposal rows
+        // and counters are present and empty, never absent.
+        assert_eq!(plan["proposalsTotal"], 0);
+        assert_eq!(plan["proposals"], json!([]));
+        assert_eq!(dashboard["proposalsPending"], 0);
+        assert_eq!(dashboard["overEstimate"], 0);
+        assert_eq!(plan["vocabulary"]["admissionStates"], json!([]));
 
         // Recent is the canonical update stamp, newest first, and never an
         // actor the graph did not name.

@@ -28,7 +28,7 @@
 //! ds-brain decodes with `DisallowUnknownFields`, so a key this file does not
 //! write is a key the request cannot carry.
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::{
     authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
@@ -52,7 +52,7 @@ const MAX_COMMAND_ID_BYTES: usize = 128;
 pub const MAX_BATCH_COMMANDS: usize = 200;
 
 /// One governed project-management action.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     /// The project's whole canonical graph, at its current revision.
     ///
@@ -88,6 +88,43 @@ pub enum Command {
         base_revision: i64,
         commands: Vec<Value>,
     },
+    Propose {
+        command_id: String,
+        base_revision: i64,
+        task_id: String,
+        title: String,
+        description: Option<String>,
+        discipline: Option<String>,
+        responsible_email: String,
+        estimated_hours: f64,
+        estimated_days: Option<i64>,
+    },
+    RequestAdmission {
+        command_id: String,
+        base_revision: i64,
+        task_id: String,
+        note: Option<String>,
+    },
+    Admit {
+        command_id: String,
+        base_revision: i64,
+        task_id: String,
+        parent_task_id: String,
+        target_index: Option<i64>,
+    },
+    DeclineAdmission {
+        command_id: String,
+        base_revision: i64,
+        task_id: String,
+        reason: String,
+    },
+    LogHours {
+        command_id: String,
+        base_revision: i64,
+        task_id: String,
+        hours: f64,
+        note: Option<String>,
+    },
 }
 
 fn command_id_valid(id: &str) -> bool {
@@ -117,6 +154,11 @@ impl Command {
             Self::Context { .. } => "get_context",
             Self::Commit { .. } => "commit_command",
             Self::CommitBatch { .. } => "commit_batch",
+            Self::Propose { .. } => "commit_command",
+            Self::RequestAdmission { .. } => "task_request_admission",
+            Self::Admit { .. } => "task_admit",
+            Self::DeclineAdmission { .. } => "task_decline_admission",
+            Self::LogHours { .. } => "task_log_hours",
         }
     }
 
@@ -173,6 +215,21 @@ impl Command {
                 }
                 Ok(())
             }
+            Self::Propose { command_id, base_revision, estimated_hours, estimated_days, .. } => {
+                if !command_id_valid(command_id) || *base_revision < 0 || !estimated_hours.is_finite() || *estimated_hours < 0.0 || estimated_days.is_some_and(|days| days < 0) {
+                    return Err(invalid("a task proposal needs a valid command id, revision and estimate"));
+                }
+                Ok(())
+            }
+            Self::RequestAdmission { command_id, base_revision, .. }
+            | Self::Admit { command_id, base_revision, .. }
+            | Self::DeclineAdmission { command_id, base_revision, .. }
+            | Self::LogHours { command_id, base_revision, .. } => {
+                if !command_id_valid(command_id) || *base_revision < 0 {
+                    return Err(invalid("a task action needs a valid command id and revision"));
+                }
+                Ok(())
+            }
         }
     }
 
@@ -203,6 +260,50 @@ impl Command {
                 payload["base_revision"] = json!(base_revision);
                 payload["commands"] = Value::Array(commands.clone());
             }
+            Self::Propose {
+                command_id, base_revision, task_id, title, description, discipline,
+                responsible_email, estimated_hours, estimated_days,
+            } => {
+                let mut create = Map::new();
+                create.insert("id".into(), json!(task_id));
+                create.insert("title".into(), json!(title));
+                create.insert("placement".into(), json!("inbox"));
+                create.insert("schedule_state".into(), json!("unscheduled"));
+                create.insert("responsible_email".into(), json!(responsible_email));
+                create.insert("estimated_hours".into(), json!(estimated_hours));
+                if let Some(days) = estimated_days { create.insert("estimated_days".into(), json!(days)); }
+                if let Some(text) = description { create.insert("description".into(), json!(text)); }
+                if let Some(text) = discipline { create.insert("discipline".into(), json!(text)); }
+                payload["command_id"] = json!(command_id);
+                payload["base_revision"] = json!(base_revision);
+                payload["command"] = json!({"kind": "create_task", "create_task": Value::Object(create)});
+            }
+            Self::RequestAdmission { command_id, base_revision, task_id, note } => {
+                payload["command_id"] = json!(command_id);
+                payload["base_revision"] = json!(base_revision);
+                payload["task_id"] = json!(task_id);
+                if let Some(note) = note { payload["note"] = json!(note); }
+            }
+            Self::Admit { command_id, base_revision, task_id, parent_task_id, target_index } => {
+                payload["command_id"] = json!(command_id);
+                payload["base_revision"] = json!(base_revision);
+                payload["task_id"] = json!(task_id);
+                if !parent_task_id.is_empty() { payload["parent_task_id"] = json!(parent_task_id); }
+                if let Some(index) = target_index { payload["target_index"] = json!(index); }
+            }
+            Self::DeclineAdmission { command_id, base_revision, task_id, reason } => {
+                payload["command_id"] = json!(command_id);
+                payload["base_revision"] = json!(base_revision);
+                payload["task_id"] = json!(task_id);
+                payload["reason"] = json!(reason);
+            }
+            Self::LogHours { command_id, base_revision, task_id, hours, note } => {
+                payload["command_id"] = json!(command_id);
+                payload["base_revision"] = json!(base_revision);
+                payload["task_id"] = json!(task_id);
+                payload["hours"] = json!(hours);
+                if let Some(note) = note { payload["note"] = json!(note); }
+            }
         }
         payload
     }
@@ -222,7 +323,11 @@ fn refusal(status: u16, body: &[u8]) -> ClientError {
     let error = &value["error"];
     // ds-brain spells its codes in upper case; the boundary carries
     // identifiers in lower case, as every other governed door does.
-    let code = error["code"].as_str().map(str::to_ascii_lowercase);
+    let code = match error["code"].as_str() {
+        Some("PM_REFUSED") => error["details"]["reason"].as_str().or(Some("PM_REFUSED")),
+        other => other,
+    }
+    .map(str::to_ascii_lowercase);
     let envelope = ServiceRefusal::new(status, code.as_deref(), error["message"].as_str());
     let (kind, message) = match status {
         400 | 422 => (
@@ -332,6 +437,11 @@ pub(crate) fn run<T: AuthorizedTransport>(
             .filter(|result| result.is_object())
             .cloned()
             .unwrap_or(data),
+        Command::Propose { .. }
+        | Command::RequestAdmission { .. }
+        | Command::Admit { .. }
+        | Command::DeclineAdmission { .. }
+        | Command::LogHours { .. } => data,
     };
     Ok(graph)
 }
@@ -339,6 +449,45 @@ pub(crate) fn run<T: AuthorizedTransport>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn proposal_and_admission_payloads_keep_the_governed_shape() {
+        let proposal = Command::Propose {
+            command_id: "cmd-propose-0001".into(),
+            base_revision: 4,
+            task_id: "p1".into(),
+            title: "Survey the extension".into(),
+            description: None,
+            discipline: Some("survey".into()),
+            responsible_email: "c@x.rw".into(),
+            estimated_hours: 12.0,
+            estimated_days: Some(3),
+        }
+        .payload("proj");
+        assert_eq!(proposal, json!({
+            "action": "commit_command", "ds_project": "proj",
+            "command_id": "cmd-propose-0001", "base_revision": 4,
+            "command": {"kind": "create_task", "create_task": {
+                "id": "p1", "title": "Survey the extension", "placement": "inbox",
+                "schedule_state": "unscheduled", "responsible_email": "c@x.rw",
+                "estimated_hours": 12.0, "estimated_days": 3, "discipline": "survey"
+            }}
+        }));
+        let admit = Command::Admit {
+            command_id: "cmd-admit-0001".into(), base_revision: 5,
+            task_id: "p1".into(), parent_task_id: String::new(), target_index: None,
+        }.payload("proj");
+        assert!(admit.get("parent_task_id").is_none());
+        assert!(admit.get("target_index").is_none());
+    }
+
+    #[test]
+    fn proposal_refusal_carries_its_reason_token() {
+        let refused = refusal(409, br#"{"success":false,"error":{"code":"PM_REFUSED","message":"Survey is already placed in the plan","details":{"reason":"task_already_placed"}}}"#);
+        let detail = refused.service_refusal().expect("bounded refusal");
+        assert_eq!(detail.code(), Some("task_already_placed"));
+        assert_eq!(detail.status(), 409);
+    }
 
     #[test]
     fn the_action_vocabulary_is_closed_and_named() {
