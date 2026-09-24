@@ -2908,6 +2908,20 @@ pub fn feeder_configuration_receipt(
     )
 }
 
+/// Read print settings for a caller-named project. No selected-project state
+/// participates in the report's source snapshot.
+pub fn feeder_configuration_for_project(
+    lane_value: &str,
+    project: &str,
+) -> Result<HeadlessNamedProject<ds_client_core::FeederConfiguration>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.feeder_configuration(project, None),
+        |client, project| client.feeder_configuration(project, None, now()),
+    )
+}
+
 /// Settings uses the same selected-project transport and fresh readback as
 /// feeder edits; the core validates the closed mutation against fetched sheets.
 pub fn settings_configuration(
@@ -3088,6 +3102,46 @@ pub fn transformer_inventory(
         lane_value,
         |device, project| device.transformer_inventory(project, requested),
         |client, project| client.transformer_inventory(project, requested, now()),
+    )
+}
+
+/// Read the lifecycle inventory for the caller's explicit project. The saved
+/// native project selection is neither read nor changed.
+pub fn transformer_inventory_for_project(
+    lane_value: &str,
+    project: &str,
+    requested: &TransformerSet,
+) -> Result<HeadlessNamedProject<TransformerInventory>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.transformer_inventory(project, requested),
+        |client, project| client.transformer_inventory(project, requested, now()),
+    )
+}
+
+/// Read several design snapshots from one explicitly named project under one
+/// restored identity. A second project cannot enter between members.
+pub fn transformer_contexts_for_project(
+    lane_value: &str,
+    project: &str,
+    transformers: &[String],
+) -> Result<HeadlessNamedProject<Vec<TransformerContext>>, Failure> {
+    headless_named_project(
+        lane_value,
+        project,
+        |device, project| {
+            transformers
+                .iter()
+                .map(|name| device.transformer_context(project, name))
+                .collect()
+        },
+        |client, project| {
+            transformers
+                .iter()
+                .map(|name| client.transformer_context(project, name, now()))
+                .collect()
+        },
     )
 }
 

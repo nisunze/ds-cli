@@ -4,6 +4,7 @@ use ds_cli_contract::outcome::Failure;
 use ds_command_kernel::{printing::map, report_export};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 pub(super) struct Model {
     identity: map::Model,
@@ -36,6 +37,18 @@ pub(super) fn overview(models: &[Model]) -> Result<Value, Failure> {
 pub(super) fn provenance(models: &[Model]) -> Vec<Value> {
     models.iter().map(|model| json!({"model_id":model.identity.id,"revision_id":model.identity.revision_id,"sha256":model.identity.digest,"label":model.identity.label})).collect()
 }
+pub(super) fn load_local(path: &str) -> Result<Model, Failure> {
+    let local = ds_project_data::mv_projection::load_local(Path::new(path)).map_err(fail)?;
+    Ok(Model {
+        identity: map::Model {
+            id: local.model_id,
+            label: "Local MV draft".into(),
+            revision_id: local.revision_id,
+            digest: local.sha256,
+        },
+        projection: local.projection,
+    })
+}
 fn fail(e: impl std::fmt::Display) -> Failure {
     Failure::failed("print_context_invalid", e.to_string())
         .remedy("Check the exact project's promoted MV model and declared CRS; no model is modified by printing")
@@ -49,17 +62,15 @@ pub(super) fn load(
     let mut seen = BTreeSet::new();
     let mut rows = Vec::new();
     loop {
-        let response = ds_cli_auth::grid_models(
+        let response = ds_cli_auth::grid_models_for_project(
             lane,
+            project,
             &ds_cli_auth::GridModelsCommand::List {
                 limit: 100,
                 cursor: cursor.clone(),
             },
         )?;
-        if response.identity() != identity || response.project_id() != project {
-            return Err(fail("MV model acquisition changed project or identity"));
-        }
-        let data = response.into_result().data;
+        let data = response.data;
         rows.extend(
             data["models"]
                 .as_array()
@@ -99,17 +110,15 @@ pub(super) fn load(
         let id = text("model_id")?;
         let revision = text("head_revision_id")?;
         let digest = text("head_model_digest")?;
-        let response = ds_cli_auth::grid_models(
+        let response = ds_cli_auth::grid_models_for_project(
             lane,
+            project,
             &ds_cli_auth::GridModelsCommand::Download {
                 model: id.clone(),
                 revision: revision.clone(),
             },
         )?;
-        if response.identity() != identity || response.project_id() != project {
-            return Err(fail("MV model acquisition changed project or identity"));
-        }
-        let result = response.into_result();
+        let result = response;
         if result.data["sha256"] != digest || result.data["verified"] != true {
             return Err(fail(
                 "Downloaded MV model differs from the pinned catalog head",
@@ -133,6 +142,11 @@ pub(super) fn load(
             },
             projection,
         });
+    }
+    let current = ds_cli_auth::probe_headless_identity_for_named_project(lane)?
+        .ok_or_else(|| fail("native identity disappeared during MV model acquisition"))?;
+    if &current != identity {
+        return Err(fail("native identity changed during MV model acquisition"));
     }
     Ok(models)
 }

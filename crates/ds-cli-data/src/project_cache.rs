@@ -14,8 +14,8 @@
 //!   because it spends real money at the provider, and it acquires only the
 //!   coverage the project does not already hold.
 //!
-//! Both run headlessly under the restored native user against its fenced
-//! selected project, on this machine's holdings — no paired Desktop. The
+//! Both run headlessly under the restored native user against an explicit
+//! `--project`, on this machine's holdings — no paired Desktop. The
 //! holdings, acquisition loop and bundle installation are
 //! `ds-project-data`'s (the same crate the desktop shell hosts); every
 //! decision is `ds-command-kernel`'s; this file declares the two commands and
@@ -45,6 +45,19 @@ const DATASET_ARG: Arg = Arg::value(
     "One canonical dataset id, catalogue layer name, or retired alias (answered as its authority). Omitted: every dataset this project declares plus any it holds, even holding none yet.",
 );
 
+const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<ds-project>",
+    "Exact project id; this call does not read or change the saved selection.",
+)
+.required();
+
+const MV_MODEL_ARG: Arg = Arg::value(
+    "mv-model",
+    "<absolute.dsgrid>",
+    "Optional exact local DS Grid draft whose route also needs geographic coverage; the receipt pins its SHA-256. Seed still authorizes --project.",
+);
+
 const LANE_ARG: Arg = Arg::value(
     "lane",
     "<stable|canary>",
@@ -72,8 +85,8 @@ refusal!(
 refusal!(
     NO_DESIGN_EXTENT,
     "project_has_no_extent",
-    "the project holds no active transformer design to derive coverage from",
-    "save at least one transformer design, then seed"
+    "the project holds no active transformer design or governed MV route to derive coverage from",
+    "save a transformer design or publish an MV model head, then seed"
 );
 refusal!(
     PROVIDER_UNAVAILABLE,
@@ -145,14 +158,14 @@ const HEADLESS_SIGNED_OUT: Refusal = Refusal {
 refusal!(
     HEADLESS_NO_PROJECT,
     "headless_project_not_selected",
-    "the user has no audience-fenced selected project",
-    "run ds auth project use --project <exact-id>"
+    "the named project could not be established by the native provider",
+    "pass one accessible exact id with --project"
 );
 refusal!(
     PROJECT_CONTEXT_STALE,
     "project_context_stale",
-    "the saved project belongs to another identity, lane, or audience",
-    "select the project again with ds auth project use"
+    "the native identity changed during the named-project operation",
+    "retry the same --project under the signed-in identity"
 );
 refusal!(
     NATIVE_STATE_UNSAFE,
@@ -193,8 +206,8 @@ refusal!(
 refusal!(
     AUTH_CONTEXT_MISMATCH,
     "auth_context_mismatch",
-    "the protected native providers disagree on identity or selected project",
-    "sign out or revoke the unintended provider before retrying"
+    "the protected native providers disagree on identity or named project",
+    "repair the native identity before retrying the same --project"
 );
 refusal!(
     AUTH_INPUT,
@@ -236,7 +249,7 @@ refusal!(
     NOT_FOUND,
     "transformer_not_found",
     "the service found no such project or transformer",
-    "select the project again with ds auth project use"
+    "verify the exact --project id and project access"
 );
 
 const HEADLESS_REFUSALS: [Refusal; 19] = [
@@ -328,21 +341,21 @@ pub static STATUS_COMMAND: Command = Command {
     path: &["data", "project-cache", "status"],
     contract: 1,
     summary: "Report the project's held extracts of canonical geographic datasets.",
-    purpose: "Reads what the selected project holds on this machine, per dataset: requested and completed coverage (kept separate, so a failed acquisition never reads as a holding), feature count, index state, source versions, buffer policy and last error. Stale coverage is reported, never deleted; abandoned acquisitions read as expired. Declared datasets held nowhere yet are listed as not seeded. No provider, no cost: only the reference catalogue is read, and held rooms are reported even when it cannot be.",
+    purpose: "Reads what the explicitly named project holds on this machine, per dataset: requested and completed coverage (kept separate, so a failed acquisition never reads as a holding), feature count, index state, source versions, buffer policy and last error. Stale coverage is reported, never deleted; abandoned acquisitions read as expired. Declared datasets held nowhere yet are listed as not seeded. No provider, no cost: only the reference catalogue is read, and held rooms are reported even when it cannot be. Saved active-project selection is ignored.",
     chapter: Chapter::Data,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[DATASET_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, DATASET_ARG, LANE_ARG],
     output: "Per dataset: identity, seeded, ready, local_holding, source versions, stale coverage, buffer policy, requested and completed coverage, feature count, index state, pending and expired acquisitions and last error; plus `seeded`, `available` and `catalog`.",
     examples: &[
         Example {
-            command: "ds data project-cache status --output json",
-            note: "Reads every dataset the selected project declares or holds. Costs nothing.",
+            command: "ds data project-cache status --project gisagara --output json",
+            note: "Reads every dataset the named project declares or holds. Costs nothing.",
             runnable: false,
         },
         Example {
-            command: "ds data project-cache status --dataset google_open_buildings --output json",
+            command: "ds data project-cache status --project gisagara --dataset google_open_buildings --output json",
             note: "Reads one dataset's own coverage and readiness.",
             runnable: false,
         },
@@ -359,21 +372,21 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Derives coverage from every active transformer's design extent, buffers and fuses it, and acquires ONLY what is not already held; a re-run over unchanged design acquires nothing. With no --dataset it seeds what this project declares plus what it holds: catalogue layers install once from their bundles and subset locally; buildings, contours and the cloud datasets (customers, parcels) are acquired per project, cell by cell. Confirmed, because it queries a source. Held data survives a failure, one dataset's failure never abandons the rest, and a partial acquisition is never ready.",
+    purpose: "Derives coverage from the explicitly named project's active transformer designs, exact governed MV route segments, and an optional local DS Grid draft supplied with --mv-model. It buffers and fuses them, then acquires ONLY what is not already held; a re-run over unchanged design acquires nothing. With no --dataset it seeds what this project declares plus what it holds. Confirmed, because it queries a source. Saved active-project selection is ignored. Held data survives a failure, and a partial acquisition is never ready.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[DATASET_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, DATASET_ARG, MV_MODEL_ARG, LANE_ARG],
     output: "Per dataset: clusters, cells acquired this run, coverage, feature count, local holding, warnings and its own failure cause; plus `failed` and `complete`.",
     examples: &[
         Example {
-            command: "ds data project-cache seed --dataset google_open_buildings --yes --output json",
+            command: "ds data project-cache seed --project gisagara --dataset google_open_buildings --yes --output json",
             note: "Seeds building footprints for the whole project's fused coverage.",
             runnable: false,
         },
         Example {
-            command: "ds data project-cache seed --yes --output json",
+            command: "ds data project-cache seed --project gisagara --yes --output json",
             note: "Seeds every dataset this project declares, holding none too.",
             runnable: false,
         },
@@ -549,26 +562,26 @@ fn resolve_explicit(
 
 pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
+    let project = inputs.require("project")?;
     let explicit = explicit_dataset(inputs)?;
     // A local read of the durable providers: no network, no token output.
-    let Some((identity, selected)) = ds_cli_auth::probe_headless_identity(lane)? else {
+    let Some(identity) = ds_cli_auth::probe_headless_identity_for_named_project(lane)? else {
         return Err(Failure::conflict(
             HEADLESS_SIGNED_OUT.code,
             "no native user is signed in for this lane",
         )
         .remedy(HEADLESS_SIGNED_OUT.remedy));
     };
-    let Some(project) = selected else {
-        return Err(Failure::conflict(
-            HEADLESS_NO_PROJECT.code,
-            "the native user has no selected project",
-        )
-        .remedy(HEADLESS_NO_PROJECT.remedy));
-    };
     let scope = Scope {
         principal: identity.uid().to_owned(),
-        project: project.clone(),
+        project: project.to_owned(),
     };
+    if !ds_command_kernel::execution_context::valid_project(project) {
+        return Err(Failure::invalid(
+            INVALID_SCOPE.code,
+            "--project must be one exact DS project id",
+        ));
+    }
     let root = holdings_root()?;
     let rooms = held_rooms(&root, &scope)?;
     let (declared, resources, catalog) = match catalogue(lane) {
@@ -660,7 +673,7 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
         )
         .remedy(INVALID_SCOPE.remedy));
     }
-    let mut overview = policy::overview(&project, &policy, &rows);
+    let mut overview = policy::overview(project, &policy, &rows);
     overview["lane"] = json!(lane);
     overview["catalog"] = catalog;
     if let Some(answered_as) = answered_as {
@@ -800,7 +813,7 @@ impl Provider for CliProvider<'_> {
 /// Every active transformer's design extent, from the service's saved rooms.
 fn design_extents(
     lane: &str,
-    inventory: &ds_cli_auth::HeadlessProjectReport<ds_cli_auth::TransformerInventory>,
+    inventory: &ds_cli_auth::HeadlessNamedProject<ds_cli_auth::TransformerInventory>,
 ) -> Result<Vec<policy::Extent>, Failure> {
     use ds_cli_auth::{TransformerKind, TransformerLifecycle};
     let names: Vec<String> = inventory
@@ -815,21 +828,157 @@ fn design_extents(
         .collect();
     // One restored session for the whole inventory: a restore per
     // transformer is a token refresh per transformer.
-    let contexts = ds_cli_auth::transformer_contexts(lane, &names)?;
+    let contexts =
+        ds_cli_auth::transformer_contexts_for_project(lane, inventory.project_id(), &names)?;
+    if contexts.identity() != inventory.identity()
+        || contexts.project_id() != inventory.project_id()
+    {
+        return Err(Failure::conflict(
+            "auth_context_mismatch",
+            "project or native identity changed while reading design extents",
+        ));
+    }
     let mut extents = Vec::with_capacity(names.len());
-    for (name, context) in names.iter().zip(contexts) {
-        let layers = serde_json::to_value(context.snapshot().layers()).unwrap_or(Value::Null);
+    for (name, context) in names.iter().zip(contexts.into_result()) {
+        let layers = serde_json::to_value(context.layers()).unwrap_or(Value::Null);
         extents.push(ds_project_data::extents::extent_of(name, &layers).map_err(refused)?);
     }
     Ok(extents)
 }
 
+/// Governed active MV heads contribute narrow route-segment coverage to the
+/// same project room as transformer designs. Every page and download names the
+/// project explicitly; no saved project selection participates.
+fn mv_route_extents(
+    lane: &str,
+    project: &str,
+    identity: &ds_cli_auth::ProviderIdentity,
+) -> Result<(Vec<policy::Extent>, Vec<Value>), Failure> {
+    let mut cursor = None;
+    let mut seen = std::collections::BTreeSet::new();
+    let mut models = Vec::new();
+    for page in 0..10 {
+        let response = ds_cli_auth::grid_models_for_project(
+            lane,
+            project,
+            &ds_cli_auth::GridModelsCommand::List {
+                limit: 100,
+                cursor: cursor.clone(),
+            },
+        )?;
+        let data = response.data;
+        models.extend(
+            data["models"]
+                .as_array()
+                .ok_or_else(|| Failure::failed(INVALID_SCOPE.code, "MV catalog has no model rows"))?
+                .iter()
+                .cloned(),
+        );
+        if models.len() > 100 {
+            return Err(Failure::invalid(
+                INVALID_SCOPE.code,
+                "project has over 100 MV model heads; seed a bounded model scope",
+            ));
+        }
+        if data["more"] == false {
+            break;
+        }
+        let next = data["next_cursor"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                Failure::failed(INVALID_SCOPE.code, "MV catalog pagination is incomplete")
+            })?
+            .to_owned();
+        if !seen.insert(next.clone()) || page == 9 {
+            return Err(Failure::failed(
+                INVALID_SCOPE.code,
+                "MV catalog repeated a cursor or exceeded ten pages",
+            ));
+        }
+        cursor = Some(next);
+    }
+    let mut extents = Vec::new();
+    let mut sources = Vec::new();
+    for row in models {
+        if row["model_kind"] != "mv_line" || row["state"] != "active" {
+            continue;
+        }
+        let text = |key: &str| -> Result<String, Failure> {
+            row[key]
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| {
+                    Failure::failed(INVALID_SCOPE.code, format!("MV catalog lacks {key}"))
+                })
+        };
+        let id = text("model_id")?;
+        let revision = text("head_revision_id")?;
+        let digest = text("head_model_digest")?;
+        let receipt = ds_cli_auth::grid_models_for_project(
+            lane,
+            project,
+            &ds_cli_auth::GridModelsCommand::Download {
+                model: id.clone(),
+                revision: revision.clone(),
+            },
+        )?;
+        if receipt.data["verified"] != true || receipt.data["sha256"] != digest {
+            return Err(Failure::failed(
+                INVALID_SCOPE.code,
+                format!("MV model {id} differs from its governed head"),
+            ));
+        }
+        let bytes = receipt.bytes.ok_or_else(|| {
+            Failure::failed(
+                INVALID_SCOPE.code,
+                format!("MV model {id} has no verified bytes"),
+            )
+        })?;
+        let routes = ds_project_data::mv_projection::route_extents(&bytes, &revision, &id)
+            .map_err(|error| Failure::failed(INVALID_SCOPE.code, error))?;
+        sources.push(json!({"model_id":id,"revision_id":revision,"sha256":digest,"route_segments":routes.len()}));
+        extents.extend(routes);
+        if extents.len() > policy::MAX_EXTENTS {
+            return Err(Failure::invalid(
+                INVALID_SCOPE.code,
+                "MV route coverage exceeds 5,000 acquisition segments; split the governed model scope",
+            ));
+        }
+    }
+    let current =
+        ds_cli_auth::probe_headless_identity_for_named_project(lane)?.ok_or_else(|| {
+            Failure::conflict(
+                HEADLESS_SIGNED_OUT.code,
+                "native user signed out during MV acquisition",
+            )
+        })?;
+    if &current != identity {
+        return Err(Failure::conflict(
+            AUTH_CONTEXT_MISMATCH.code,
+            "native identity changed during MV acquisition",
+        ));
+    }
+    Ok((extents, sources))
+}
+
+fn local_mv_route_extents(path: &str) -> Result<(Vec<policy::Extent>, Value), Failure> {
+    let local = ds_project_data::mv_projection::load_local(Path::new(path))
+        .map_err(|e| Failure::invalid(INVALID_SCOPE.code, format!("--mv-model: {e}")))?;
+    let source = json!({"kind":"local_draft","path":path,
+        "sha256":format!("sha256:{}",local.sha256),
+        "revision_id":local.revision_id,"route_segments":local.route_extents.len()});
+    Ok((local.route_extents, source))
+}
+
 pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
+    let project = inputs.require("project")?;
     let explicit = explicit_dataset(inputs)?;
     let requested = ds_cli_auth::TransformerSet::new(Vec::<String>::new())
         .map_err(|error| Failure::invalid(INVALID_SCOPE.code, error.to_string()))?;
-    let inventory = ds_cli_auth::transformer_inventory(lane, &requested)?;
+    let inventory = ds_cli_auth::transformer_inventory_for_project(lane, project, &requested)?;
     let project = inventory.project_id().to_owned();
     let scope = Scope {
         principal: inventory.identity().uid().to_owned(),
@@ -857,11 +1006,26 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         })
         .remedy(INVALID_SCOPE.remedy)
     })?;
-    let extents = design_extents(lane, &inventory)?;
+    let mut extents = design_extents(lane, &inventory)?;
+    let transformer_extent_count = extents.len();
+    let (mut mv_extents, mut mv_sources) = mv_route_extents(lane, &project, inventory.identity())?;
+    if let Some(path) = inputs.value("mv-model") {
+        let (draft, source) = local_mv_route_extents(path)?;
+        mv_extents.extend(draft);
+        mv_sources.push(source);
+    }
+    let mv_extent_count = mv_extents.len();
+    extents.extend(mv_extents);
+    if extents.len() > policy::MAX_EXTENTS {
+        return Err(Failure::invalid(
+            INVALID_SCOPE.code,
+            "combined transformer and MV route coverage exceeds 5,000 acquisition extents",
+        ));
+    }
     if extents.iter().all(|extent| extent.bounds.is_none()) {
         return Err(Failure::conflict(
             NO_DESIGN_EXTENT.code,
-            "no active transformer has a design extent to derive coverage from",
+            "no active transformer design or governed MV route has an extent to derive coverage from",
         )
         .remedy(NO_DESIGN_EXTENT.remedy));
     }
@@ -947,6 +1111,9 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "seeded": rows.len(),
         "failed": failed,
         "complete": failed == 0,
+        "transformer_extent_count": transformer_extent_count,
+        "mv_route_extent_count": mv_extent_count,
+        "mv_sources": mv_sources,
     });
     if let Some(answered_as) = answered_as {
         receipt["answered_as"] = answered_as;
@@ -1125,16 +1292,21 @@ mod tests {
         );
     }
 
-    /// Both commands are background project work under the restored native
-    /// user: no map, no Desktop descriptor, and no project override — the
-    /// project is the fenced selection.
+    /// Both commands are background project work under an explicit address.
+    /// The gateway still decides membership; the saved selection is unused.
     #[test]
-    fn the_project_is_the_fenced_selection() {
+    fn project_address_is_required_without_a_map_app() {
         for command in [&STATUS_COMMAND, &SEED_COMMAND] {
             assert_eq!(command.authority, Authority::HeadlessProject);
             let names: Vec<&str> = command.args.iter().map(|arg| arg.name).collect();
             assert!(names.contains(&"lane"), "{} lost its lane", command.id);
-            for forbidden in ["project", "desktop-descriptor", "url", "action", "body"] {
+            assert!(
+                command
+                    .args
+                    .iter()
+                    .any(|arg| arg.name == "project" && arg.required)
+            );
+            for forbidden in ["desktop-descriptor", "url", "action", "body"] {
                 assert!(
                     !names.contains(&forbidden),
                     "{} accepts a {forbidden} override",

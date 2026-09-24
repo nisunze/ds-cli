@@ -21,6 +21,22 @@ pub static COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value(
+            "project",
+            "<id>",
+            "Exact project id; saved active-project selection is ignored.",
+        )
+        .required(),
+        Arg::value(
+            "mv-model",
+            "<absolute.dsgrid>",
+            "Optional local DS Grid draft included in the print context and receipt with its exact digest.",
+        ),
+        Arg::value(
+            "focus-bounds",
+            "<west,south,east,north>",
+            "Optional WGS84 plan-page bounds for acquiring and reading geographic context around one MV sheet.",
+        ),
+        Arg::value(
             "layout",
             "<json-file>",
             "Validated authored layout; context and pens remain editable without code.",
@@ -71,49 +87,82 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .remedy("Choose a fresh --out-dir"));
     }
     let lane = i.require("lane")?;
+    let requested = ds_cli_auth::TransformerSet::default();
     let inventory =
-        ds_cli_auth::transformer_inventory(lane, &ds_cli_auth::TransformerSet::default())?;
+        ds_cli_auth::transformer_inventory_for_project(lane, i.require("project")?, &requested)?;
     let identity = inventory.identity();
     let project = inventory.project_id();
-    let config = ds_cli_auth::feeder_configuration_receipt(lane, None)?;
+    let config = ds_cli_auth::feeder_configuration_for_project(lane, project)?;
     if config.identity() != identity || config.project_id() != project {
         return Err(invalid("configuration scope changed"));
     }
     let receipt = InputReceipt::from_config(&config.result().document).map_err(invalid)?;
     let sheets = receipt.sheets().map_err(invalid)?;
     printing::style_overrides::preflight(&layout, &sheets["printing_styles"]).map_err(invalid)?;
-    let models = super::mv_context::load(lane, identity, project)?;
+    let mut models = super::mv_context::load(lane, identity, project)?;
+    if let Some(path) = i.value("mv-model") {
+        models.push(super::mv_context::load_local(path)?);
+    }
     let mut sources = printing::project_sources::Sources::default();
     sources
         .collections(&super::mv_context::overview(&models)?)
         .map_err(invalid)?;
     let mut revisions = Vec::new();
-    for row in inventory.result().rows() {
-        if row.kind() != ds_cli_auth::TransformerKind::Transformer
-            || row.lifecycle() != ds_cli_auth::TransformerLifecycle::Active
-        {
-            continue;
-        }
-        let response =
-            super::export::with_weak_network(super::export::WEAK_NETWORK_DELAYS, || {
-                ds_cli_auth::transformer_context(lane, row.name())
-            })?;
-        let snapshot = response.snapshot();
-        if response.identity() != identity
-            || snapshot.ds_project() != project
-            || snapshot.transformer_name() != row.name()
-        {
+    let active = inventory
+        .result()
+        .rows()
+        .iter()
+        .filter(|row| {
+            row.kind() == ds_cli_auth::TransformerKind::Transformer
+                && row.lifecycle() == ds_cli_auth::TransformerLifecycle::Active
+        })
+        .map(|row| row.name().to_owned())
+        .collect::<Vec<_>>();
+    let contexts = ds_cli_auth::transformer_contexts_for_project(lane, project, &active)?;
+    if contexts.identity() != identity || contexts.project_id() != project {
+        return Err(invalid("transformer context scope changed"));
+    }
+    for (name, response) in active.iter().zip(contexts.into_result()) {
+        let snapshot = &response;
+        if snapshot.ds_project() != project || snapshot.transformer_name() != name {
             return Err(invalid("transformer scope changed"));
         }
         sources
             .transformer(
-                row.name(),
+                name,
                 &serde_json::to_value(snapshot.layers()).map_err(invalid)?,
             )
             .map_err(invalid)?;
-        revisions.push(json!({"transformer":row.name(),"version":snapshot.metadata().version(),"content_digest":snapshot.metadata().content_digest()}));
+        revisions.push(json!({"transformer":name,"version":snapshot.metadata().version(),"content_digest":snapshot.metadata().content_digest()}));
     }
     let network = sources.layers();
+    // Context coverage belongs to the physical page, while the overview's
+    // complete design remains available to the shared map painter. An MV
+    // route can span a district; its union rectangle is not a sheet extent.
+    let context_network = if let Some(raw) = i.value("focus-bounds") {
+        let values = raw
+            .split(',')
+            .map(|part| part.trim().parse::<f64>().map_err(invalid))
+            .collect::<Result<Vec<_>, _>>()?;
+        if values.len() != 4
+            || values.iter().any(|v| !v.is_finite())
+            || !(-180.0..=180.0).contains(&values[0])
+            || !(-90.0..=90.0).contains(&values[1])
+            || !(-180.0..=180.0).contains(&values[2])
+            || !(-90.0..=90.0).contains(&values[3])
+            || values[2] <= values[0]
+            || values[3] <= values[1]
+            || values[2] - values[0] > 0.05
+            || values[3] - values[1] > 0.05
+        {
+            return Err(invalid(
+                "--focus-bounds needs a valid WGS84 page rectangle no wider than 0.05 degrees",
+            ));
+        }
+        json!({"mv_sheet": {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"LineString","coordinates":[[values[0],values[1]],[values[2],values[3]]]}}]}})
+    } else {
+        network.clone()
+    };
     let catalog = ds_project_data::validate_resources(&ds_cli_auth::data_distribution(
         lane,
         &ds_cli_auth::DataDistributionRequest::ListDatasets {},
@@ -149,7 +198,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         &ds_report_host::shared_root().map_err(invalid)?,
         &scope,
         "mv_data",
-        &network,
+        &context_network,
         &boundary_contexts,
         &catalog,
         if i.switch("seed") {
@@ -163,7 +212,6 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         let document: Value = serde_json::from_slice(bytes).map_err(invalid)?;
         sources.collections(&document["layers"]).map_err(invalid)?;
     }
-    let network = sources.layers();
     let extent = sources.overview_extent().map_err(invalid)?;
     let contexts = contexts
         .into_iter()
@@ -178,7 +226,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         &ds_report_host::shared_root().map_err(invalid)?,
         &scope,
         "mv_data",
-        &network,
+        &context_network,
         &contexts,
         &catalog,
         mode,

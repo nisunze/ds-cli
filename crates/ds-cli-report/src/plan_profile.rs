@@ -54,6 +54,13 @@ pub static COMMAND: Command = Command {
         Arg::value("title", "<text>", "Project title printed on every page.").required(),
         Arg::value("sheet-title", "<text>", "Drawing title.").default("MV plan & profile"),
         Arg::value(
+            "ink",
+            "<monochrome|reference_accents>",
+            "Mostly black pens or restrained conductor and structure accents from the approved 120 ACSR reference.",
+        )
+        .default("monochrome")
+        .choices(&["monochrome", "reference_accents"]),
+        Arg::value(
             "horizontal-scale",
             "<denominator>",
             "Advanced format horizontal denominator, 500..10000.",
@@ -62,6 +69,11 @@ pub static COMMAND: Command = Command {
             "vertical-scale",
             "<denominator>",
             "Advanced format preferred vertical denominator, 100..5000.",
+        ),
+        Arg::value(
+            "plan-scale",
+            "<denominator>",
+            "Advanced format plan denominator, 500..10000; must equal horizontal scale to align structure stations.",
         ),
         Arg::value(
             "panel-order",
@@ -87,7 +99,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "angle-gap-mm",
             "<millimetres>",
-            "Paper gap between rotated plan sections, 2..30 mm.",
+            "Local break-mark size at a plan angle section, 2..30 mm.",
         ),
         Arg::value(
             "min-angle-deg",
@@ -95,9 +107,35 @@ pub static COMMAND: Command = Command {
             "Minimum route deflection that opens a plan gap, 0..90 degrees.",
         ),
         Arg::value(
+            "plan-buffer-m",
+            "<metres>",
+            "Dashed plan corridor on either side of the route; default 6 m, zero hides it.",
+        ),
+        Arg::value(
+            "profile-grid",
+            "<on|off>",
+            "Draw major and minor station/elevation grids in the profile.",
+        )
+        .default("on")
+        .choices(&["on", "off"]),
+        Arg::value(
+            "attachments",
+            "<auto|show|hide>",
+            "Show exact engine profile attachment positions.",
+        )
+        .default("auto")
+        .choices(&["auto", "show", "hide"]),
+        Arg::value(
+            "span-labels",
+            "<auto|show|hide>",
+            "Show the engine's physical span labels once per attachment set.",
+        )
+        .default("auto")
+        .choices(&["auto", "show", "hide"]),
+        Arg::value(
             "feature-codes",
             "<auto|show|hide>",
-            "Show engine feature codes at surveyed profile points.",
+            "Show meaningful engine feature names at surveyed profile points; generic ground-point codes are suppressed.",
         )
         .default("auto")
         .choices(&["auto", "show", "hide"]),
@@ -127,6 +165,11 @@ pub static COMMAND: Command = Command {
             "label-rows",
             "<json-file>",
             "One to three ordered structure label lines built from canonical staking fields.",
+        ),
+        Arg::value(
+            "sample-pages",
+            "<count>",
+            "Render 1..20 representative sheets, retaining their original sheet numbers and full set count.",
         ),
         Arg::value(
             "result",
@@ -277,7 +320,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         None => json!([]),
     };
-    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"out_dir":out_dir,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":{"format":inputs.require("format")?,"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows}});
+    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"out_dir":out_dir,"sample_pages":scale("sample-pages")?,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":{"format":inputs.require("format")?,"ink_mode":inputs.value("ink").unwrap_or("monochrome"),"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"plan_scale":scale("plan-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"plan_buffer_m":decimal("plan-buffer-m")?.unwrap_or(6.0),"show_profile_grid":inputs.value("profile-grid").unwrap_or("on")=="on","show_attachment_points":selection("attachments"),"show_span_labels":selection("span-labels"),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows}});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     std::fs::write(&request_path, bytes)

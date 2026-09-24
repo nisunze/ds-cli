@@ -704,9 +704,28 @@ type. Fixed titles, scales and furniture belong in the map’s `fit_around` list
 
 ### Native project MV overview
 
-`report.project.map-inputs` captures the selected project's active LV overview
-and complete promoted MV geometry through native fenced reads. An authored
-layout selects geographic context; `--seed` explicitly acquires missing coverage.
+`report.plan-profile --project <id>` renders one revision-pinned DS Grid scene
+and plan headlessly. Its A3 profile and plan order, structure labels, scales,
+vertical exaggeration, span annotations, 6 m corridor and grid are authored
+inputs. Plan and profile use the same horizontal station scale so every plan
+structure sits directly below its profile ordinate. `--plan-scale`, when set,
+must equal `--horizontal-scale`; angle breaks consume no station distance.
+Each default vertical label row holds one entity field: structure number,
+structure type, then comments in the advanced format. `--ink monochrome` is
+the default; `--ink reference_accents` applies
+restrained green OPGW, plum phase and red structure pens inspired by the
+approved CJIC 120 ACSR sheets while keeping geographic context grayscale.
+`--sample-pages 5` selects representative original sheets and records their
+source sheet numbers. With `--model-crs`, the manifest also gives each sheet's
+WGS84 route bounds.
+
+`report.project.map-inputs --project <id>` captures the named project's active LV
+overview and complete promoted MV geometry through native fenced reads. Add
+`--mv-model <absolute.dsgrid>` for one local draft. An authored layout selects
+geographic context; `--seed` explicitly acquires missing coverage. For an MV
+plan/profile sheet, pass `--focus-bounds west,south,east,north` from that sheet's
+`plan_route_bounds_wgs84` manifest entry. The geographic context is then read
+around that page's route rather than the full project's bounding rectangle.
 Read its omissions before passing the emitted request to `report.layout.render`.
 The request is a portable, editable print capture, not a model version.
 After visual review, `map.design.attach-print --scope mv` uploads a PDF or PNG
