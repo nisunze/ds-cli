@@ -13,7 +13,7 @@
 //! What each target means:
 //!
 //! * `desktop` (the default) — this machine's own native client, exactly as
-//!   before. With no `--project`, its subject is the saved selection.
+//!   before. `--project` names its subject; the saved selection is never read.
 //! * `desktop:<instance>` — one named Desktop window. Accepted as a shape and
 //!   refused by name (`target_instance_unsupported`) so a caller learns the
 //!   spelling now and gets a real answer when slice 2 wires it, rather than
@@ -41,7 +41,7 @@ pub const TARGET_ARG: Arg = Arg::value(
 /// project every request to it names. Both are this crate's own
 /// declarations, so the two halves of one operation cannot drift apart.
 pub const STATE_DIR_ARG: Arg = crate::STATE_DIR_ARG;
-pub const PROJECT_ARG: Arg = crate::PROJECT_ARG;
+pub const PROJECT_ARG: Arg = crate::PROJECT_ARG.required();
 
 pub const TARGET_INSTANCE_UNSUPPORTED: Refusal = Refusal {
     code: "target_instance_unsupported",
@@ -80,8 +80,8 @@ pub const SERVER_OWNER_CHANGED: Refusal = Refusal {
 };
 pub const PROJECT_REQUIRED: Refusal = Refusal {
     code: "project_required",
-    when: "--target server was passed with no --project and no saved selection to send",
-    remedy: "pass --project <exact-id> or run ds auth project use --project <exact-id>",
+    when: "the call names no --project; the saved selection is never read",
+    remedy: "pass --project <exact-id>",
 };
 /// One grammar, whichever host runs the command: the kernel's. Declaring the
 /// desktop's old looser bound here said the same command id refuses different
@@ -102,15 +102,15 @@ pub enum Target {
 /// The desktop host's document source — the target every one of these four
 /// commands has always had, and still the default.
 ///
-/// `--project` names the project for THIS call only: it reads that project's
-/// document and never rewrites the saved selection or a window's project.
-/// Without it the subject is the saved selection, exactly as before.
+/// `--project` names the project for THIS call: it reads that project's
+/// document and never reads or rewrites the saved selection or a window's
+/// project.
 pub fn desktop_documents(inputs: &Inputs) -> Result<ds_layer_ops::Native, Failure> {
     let lane = inputs.require("lane")?;
-    Ok(match inputs.value("project") {
-        Some(project) => ds_layer_ops::Native::for_project(lane, project),
-        None => ds_layer_ops::Native::new(lane),
-    })
+    Ok(ds_layer_ops::Native::for_project(
+        lane,
+        inputs.require("project")?,
+    ))
 }
 
 pub fn resolve(inputs: &Inputs) -> Result<Target, Failure> {
@@ -160,10 +160,10 @@ mod tests {
             requires: Requires::Server,
             availability: || ds_cli_contract::spec::Availability::Available,
         };
-        let tokens: Vec<String> = match target {
-            Some(target) => vec!["--target".to_owned(), target.to_owned()],
-            None => vec![],
-        };
+        let mut tokens = vec!["--project".to_owned(), "p1".to_owned()];
+        if let Some(target) = target {
+            tokens.extend(["--target".to_owned(), target.to_owned()]);
+        }
         ds_cli_contract::parse(&HOSTED, &tokens).expect("declared arguments")
     }
 

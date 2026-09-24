@@ -146,48 +146,26 @@ impl Preferences {
 /// during a request is a typed refusal, never a document applied under the
 /// wrong scope.
 ///
-/// The PROJECT comes from one of two places, decided once when the source is
-/// built and never re-decided:
-///
-/// * [`Native::new`] / [`Native::guarded`] — this machine's saved selection.
-///   That is the desktop-paired CLI's own subject: `ds map layer list` with no
-///   `--project` asks about the project the operator selected.
-/// * [`Native::for_project`] / [`Native::guarded_for_project`] — the project
-///   the CALLER named. That is every host serving more than one project at a
-///   time: the Server's `/v1/layers*`, and `ds map layer … --project <id>`.
-///   Nothing here reads the selection, so a second authorized project is
-///   served on its own terms and no call rewrites what the operator selected.
+/// The PROJECT is the one the CALLER named ([`Native::for_project`] /
+/// [`Native::guarded_for_project`]), decided once when the source is built:
+/// the Server's `/v1/layers*` and `ds map layer … --project <id>` alike.
+/// Nothing here reads the saved selection, so every host serves several
+/// authorized projects at once, each on its own terms.
 type NativeGuard = Box<dyn Fn(&ds_cli_auth::LayerScopeFence) -> Result<(), Failure> + Send>;
 
 pub struct Native {
     lane: String,
-    /// `None` = the saved selection is the subject; `Some(id)` = the caller's.
-    project: Option<String>,
+    /// The project the caller named; the saved selection is never read.
+    project: String,
     fence: Option<ds_cli_auth::LayerScopeFence>,
     guard: Option<NativeGuard>,
 }
 impl Native {
-    pub fn new(lane: &str) -> Self {
-        Self {
-            lane: lane.to_owned(),
-            project: None,
-            fence: None,
-            guard: None,
-        }
-    }
-    pub fn guarded(lane: &str, guard: NativeGuard) -> Self {
-        Self {
-            lane: lane.to_owned(),
-            project: None,
-            fence: None,
-            guard: Some(guard),
-        }
-    }
     /// The named project's document source. The saved selection is not read.
     pub fn for_project(lane: &str, project: &str) -> Self {
         Self {
             lane: lane.to_owned(),
-            project: Some(project.to_owned()),
+            project: project.to_owned(),
             fence: None,
             guard: None,
         }
@@ -196,7 +174,7 @@ impl Native {
     pub fn guarded_for_project(lane: &str, project: &str, guard: NativeGuard) -> Self {
         Self {
             lane: lane.to_owned(),
-            project: Some(project.to_owned()),
+            project: project.to_owned(),
             fence: None,
             guard: Some(guard),
         }
@@ -208,12 +186,7 @@ impl Native {
         Ok(())
     }
     fn capture(&self) -> Result<ds_cli_auth::LayerScopeFence, Failure> {
-        match &self.project {
-            Some(project) => {
-                ds_cli_auth::capture_layer_scope_fence_for_project(&self.lane, project)
-            }
-            None => ds_cli_auth::capture_layer_scope_fence(&self.lane),
-        }
+        ds_cli_auth::capture_layer_scope_fence_for_project(&self.lane, &self.project)
     }
     fn read_fence(&self) -> Result<&ds_cli_auth::LayerScopeFence, Failure> {
         self.fence.as_ref().ok_or_else(|| {
@@ -229,12 +202,8 @@ impl LayerDocuments for Native {
     fn read(&mut self, refresh: bool) -> Result<DocumentRead, Failure> {
         let fence = self.capture()?;
         self.authorize(&fence)?;
-        let headless = match &self.project {
-            Some(project) => {
-                ds_cli_auth::layer_config_for_project(&self.lane, project, refresh, &fence)?
-            }
-            None => ds_cli_auth::layer_config_fenced(&self.lane, refresh, &fence)?,
-        };
+        let headless =
+            ds_cli_auth::layer_config_for_project(&self.lane, &self.project, refresh, &fence)?;
         self.authorize(&fence)?;
         self.fence = Some(fence);
         Ok(DocumentRead {
@@ -249,30 +218,18 @@ impl LayerDocuments for Native {
     fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
         let fence = self.read_fence()?;
         self.authorize(fence)?;
-        match &self.project {
-            Some(_) => ds_cli_auth::verify_layer_scope_fence_for_project(
-                &self.lane,
-                fence,
-                &expected.uid,
-                &expected.project,
-            ),
-            None => ds_cli_auth::verify_layer_scope_fence(
-                &self.lane,
-                fence,
-                &expected.uid,
-                &expected.project,
-            ),
-        }
+        ds_cli_auth::verify_layer_scope_fence_for_project(
+            &self.lane,
+            fence,
+            &expected.uid,
+            &expected.project,
+        )
     }
     fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
         let fence = self.read_fence()?;
         self.authorize(fence)?;
-        let receipt = match &self.project {
-            Some(project) => {
-                ds_cli_auth::layer_reorder_for_project(&self.lane, project, orders, fence)?
-            }
-            None => ds_cli_auth::layer_reorder_fenced(&self.lane, orders, fence)?,
-        };
+        let receipt =
+            ds_cli_auth::layer_reorder_for_project(&self.lane, &self.project, orders, fence)?;
         Ok(OrderReceipt {
             project: receipt.project_id().to_owned(),
             reordered: orders.len(),
@@ -284,12 +241,12 @@ impl LayerDocuments for Native {
     ) -> Result<DefaultVisibilityReceipt, Failure> {
         let fence = self.read_fence()?;
         self.authorize(fence)?;
-        let receipt = match &self.project {
-            Some(project) => ds_cli_auth::layer_default_visibility_for_project(
-                &self.lane, project, defaults, fence,
-            )?,
-            None => ds_cli_auth::layer_default_visibility_fenced(&self.lane, defaults, fence)?,
-        };
+        let receipt = ds_cli_auth::layer_default_visibility_for_project(
+            &self.lane,
+            &self.project,
+            defaults,
+            fence,
+        )?;
         Ok(DefaultVisibilityReceipt {
             project: receipt.project_id().to_owned(),
             updated: receipt.result().updated,

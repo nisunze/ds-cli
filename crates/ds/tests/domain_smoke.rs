@@ -255,9 +255,9 @@ fn the_default_target_is_the_desktop_as_before() {
             target["choices"].is_null(),
             "`{id}`'s --target must accept desktop:<instance> to refuse it by name"
         );
-        // The project is for THIS call. Optional, because the saved selection
-        // is its default -- never because a host may choose one.
-        assert_eq!(named("project")["required"], false);
+        // The project is for THIS call and always named: the saved selection
+        // is never read, so no host may choose one.
+        assert_eq!(named("project")["required"], true);
         assert_eq!(named("state-dir")["required"], false);
     }
 
@@ -276,7 +276,7 @@ fn the_default_target_is_the_desktop_as_before() {
         ],
     ] {
         let mut args = args;
-        args.extend_from_slice(&["--output", "json"]);
+        args.extend_from_slice(&["--project", "test-project", "--output", "json"]);
         let code = native_refusal(&args);
         assert!(
             NATIVE_AUTH_CODES.contains(&code.as_str()),
@@ -294,9 +294,9 @@ fn the_default_target_is_the_desktop_as_before() {
 /// this path can produce is one the command documents.
 #[test]
 fn a_map_layer_op_runs_the_same_against_the_server() {
-    // The client resolves the project before it sends anything: without one,
-    // and with no saved selection to default to, the call refuses here rather
-    // than letting a host pick.
+    // The client names the project before it sends anything: without one the
+    // parser refuses here (the saved selection is never read), rather than
+    // letting a host pick.
     for args in [
         vec!["map", "layer", "list", "--target", "server"],
         vec![
@@ -332,8 +332,8 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
         args.extend_from_slice(&["--output", "json"]);
         assert_eq!(
             native_refusal(&args),
-            "project_required",
-            "`ds {}` did not resolve its own project",
+            "missing_input",
+            "`ds {}` did not require its own project",
             args.join(" ")
         );
     }
@@ -379,6 +379,8 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
         "map",
         "layer",
         "list",
+        "--project",
+        "test-project",
         "--target",
         "desktop:kigali",
         "--output",
@@ -398,7 +400,15 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
     );
     assert_eq!(
         native_refusal(&[
-            "map", "layer", "list", "--target", "cloud", "--output", "json"
+            "map",
+            "layer",
+            "list",
+            "--project",
+            "test-project",
+            "--target",
+            "cloud",
+            "--output",
+            "json"
         ]),
         "unknown_target"
     );
@@ -4349,6 +4359,8 @@ fn map_layer_management_keeps_project_and_desktop_local_effects_separate() {
         "map",
         "layer",
         "reorder",
+        "--project",
+        "test-project",
         "--order",
         "roads=100",
         "--output",

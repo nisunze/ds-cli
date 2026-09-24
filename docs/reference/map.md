@@ -593,9 +593,9 @@ not installed, which is every CI machine.
 
 ## Native layers and project GIS files
 
-`map layer list/default/reorder` use native sign-in and, by default, the selected
-project; `--project <exact-id>` reads one named project instead, for that call
-only. Canonical IDs come from list; runtime MapLibre IDs are refused by reorder.
+`map layer list/default/reorder` use native sign-in and name their project with
+`--project <exact-id>` on every call; the saved selection is never read.
+Canonical IDs come from list; runtime MapLibre IDs are refused by reorder.
 No desktop is required. Governed tile references use `ds tile list/add/remove` on the same lane.
 
 `map layer add/remote-list/visibility/remove` work offline and signed out. They

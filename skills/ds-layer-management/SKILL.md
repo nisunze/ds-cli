@@ -58,8 +58,8 @@ ds map layer add --name "Water imagery" --kind xyz \
 ds map layer visibility --layer <id-from-add> --visible true
 
 # "Show me the real project stack, then move two known water layers."
-ds map layer list --refresh --output json
-ds map layer reorder \
+ds map layer list --project <id> --refresh --output json
+ds map layer reorder --project <id> \
   --order '<canonical-water-polygon-id>=40' \
   --order '<canonical-water-main-id>=140' --yes
 

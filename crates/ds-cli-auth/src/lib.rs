@@ -2212,44 +2212,13 @@ pub fn grid_catalog(
     client.grid_catalog(command, now()).map_err(map_client)
 }
 
-pub fn layer_config(lane_value: &str, refresh: bool) -> Result<HeadlessLayerSnapshot, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .layer_config(selected.project_id(), refresh)
-            .map_err(map_client)?;
-        return Ok(HeadlessLayerSnapshot {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.layer_config(selected.project_id(), refresh, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
-    Ok(HeadlessLayerSnapshot {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
-    })
-}
-
 /// Opaque identity, audience, project and credential binding captured for one
 /// layer operation. It can fence fixed layer calls, never construct a client or
 /// reveal a credential.
 ///
-/// The project is either this machine's saved selection
-/// ([`capture_layer_scope_fence`], the desktop-paired CLI path) or the one the
-/// caller named ([`capture_layer_scope_fence_for_project`], every host that
-/// serves more than one project at a time). Which one it is, is decided once
+/// The project is the one the caller named
+/// ([`capture_layer_scope_fence_for_project`]); the saved selection is never
+/// read, so every host serves several projects at once. It is decided once
 /// here and never re-decided further down.
 #[derive(Clone, Debug)]
 pub struct LayerScopeFence {
@@ -2338,52 +2307,7 @@ pub fn capture_layer_scope_fence_for_project(
     })
 }
 
-pub fn capture_layer_scope_fence(lane_value: &str) -> Result<LayerScopeFence, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    let (identity, project) =
-        probe_headless_identity(lane_value)?.ok_or_else(|| signed_out_failure(lane))?;
-    let project = project.ok_or_else(|| {
-        Failure::conflict(
-            "project_context_changed",
-            "no selected project is available for the native layer operation",
-        )
-        .remedy("select a project and repeat the layer request")
-    })?;
-    Ok(LayerScopeFence {
-        uid: identity.uid().to_owned(),
-        audience: identity.credential_audience_sha256().to_owned(),
-        project,
-        credential: runtime_credential_binding(lane_value)?,
-    })
-}
-
-pub fn verify_layer_scope_fence(
-    lane_value: &str,
-    fence: &LayerScopeFence,
-    expected_uid: &str,
-    expected_project: &str,
-) -> Result<(), Failure> {
-    if fence.uid != expected_uid || fence.project != expected_project {
-        return Err(Failure::conflict(
-            "project_context_changed",
-            "the layer operation no longer has its read scope",
-        )
-        .remedy("repeat the layer request"));
-    }
-    let current = capture_layer_scope_fence(lane_value)?;
-    if current.uid != fence.uid
-        || current.audience != fence.audience
-        || current.project != fence.project
-        || current.credential != fence.credential
-    {
-        return Err(Failure::conflict("project_context_changed", "the native account, credential, or selected project changed during the layer operation")
-            .remedy("repeat the layer request under the current native account and project"));
-    }
-    Ok(())
-}
-
-/// The counterpart of [`verify_layer_scope_fence`] for a fence that holds a
-/// named project: the account, its audience and its credential must be the
+/// Re-check a fence that holds a named project: the account, its audience and its credential must be the
 /// same ones the document was read under, and the project is not re-resolved
 /// because it was never resolved — it was given.
 pub fn verify_layer_scope_fence_for_project(
@@ -2416,10 +2340,8 @@ pub fn verify_layer_scope_fence_for_project(
 /// One named project's assembled layer document, with the saved selection
 /// never consulted.
 ///
-/// This is the read every host that serves more than one project at a time
-/// makes: the Server's `/v1/layers*`, and `ds map layer …` with an explicit
-/// `--project`. [`layer_config_fenced`] stays the desktop-paired CLI's read,
-/// where the saved selection IS the subject.
+/// This is the read every host makes: the Server's `/v1/layers*`, and
+/// `ds map layer …` with its required `--project`.
 ///
 /// `project_name` and `project_status` are empty on purpose: they come from a
 /// selection snapshot, and this path reads none. A caller that named an id gets
@@ -2568,54 +2490,6 @@ pub fn layer_default_visibility_for_project(
     })
 }
 
-pub fn layer_config_fenced(
-    lane_value: &str,
-    refresh: bool,
-    fence: &LayerScopeFence,
-) -> Result<HeadlessLayerSnapshot, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        verify_restored_layer_identity(
-            fence,
-            device.context().uid(),
-            device.profile().credential_audience_sha256(),
-            selected.project_id(),
-        )?;
-        verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-        let result = device
-            .layer_config(selected.project_id(), refresh)
-            .map_err(map_client)?;
-        return Ok(HeadlessLayerSnapshot {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    verify_restored_layer_identity(
-        fence,
-        user.uid(),
-        client.profile().credential_audience_sha256(),
-        selected.project_id(),
-    )?;
-    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-    let result = client.layer_config(selected.project_id(), refresh, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
-    Ok(HeadlessLayerSnapshot {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
-    })
-}
-
 pub fn style_catalog(lane_value: &str, project: &str) -> Result<HeadlessStyleSnapshot, Failure> {
     let named = headless_named_project(
         lane_value,
@@ -2629,131 +2503,6 @@ pub fn style_catalog(lane_value: &str, project: &str) -> Result<HeadlessStyleSna
         project_name: String::new(),
         project_status: String::new(),
         result: named.result,
-    })
-}
-
-pub fn layer_reorder(
-    lane_value: &str,
-    orders: &[crate::LayerOrder],
-) -> Result<HeadlessLayerOrderReceipt, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device
-            .layer_reorder(selected.project_id(), orders)
-            .map_err(map_client)?;
-        return Ok(HeadlessLayerOrderReceipt {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = client.layer_reorder(selected.project_id(), orders, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
-    Ok(HeadlessLayerOrderReceipt {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
-    })
-}
-
-pub fn layer_reorder_fenced(
-    lane_value: &str,
-    orders: &[crate::LayerOrder],
-    fence: &LayerScopeFence,
-) -> Result<HeadlessLayerOrderReceipt, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        verify_restored_layer_identity(
-            fence,
-            device.context().uid(),
-            device.profile().credential_audience_sha256(),
-            selected.project_id(),
-        )?;
-        verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-        let result = device
-            .layer_reorder(selected.project_id(), orders)
-            .map_err(map_client)?;
-        return Ok(HeadlessLayerOrderReceipt {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    verify_restored_layer_identity(
-        fence,
-        user.uid(),
-        client.profile().credential_audience_sha256(),
-        selected.project_id(),
-    )?;
-    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-    let result = client.layer_reorder(selected.project_id(), orders, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
-    Ok(HeadlessLayerOrderReceipt {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
-    })
-}
-
-pub fn layer_default_visibility_fenced(
-    lane_value: &str,
-    defaults: &[crate::LayerVisibilityDefault],
-    fence: &LayerScopeFence,
-) -> Result<HeadlessLayerVisibilityDefaultReceipt, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        verify_restored_layer_identity(
-            fence,
-            device.context().uid(),
-            device.profile().credential_audience_sha256(),
-            selected.project_id(),
-        )?;
-        verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-        let result = device
-            .layer_default_visibility(selected.project_id(), defaults)
-            .map_err(map_client)?;
-        return Ok(HeadlessLayerVisibilityDefaultReceipt {
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    verify_restored_layer_identity(
-        fence,
-        user.uid(),
-        client.profile().credential_audience_sha256(),
-        selected.project_id(),
-    )?;
-    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-    let result = client.layer_default_visibility(selected.project_id(), defaults, now());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
-    Ok(HeadlessLayerVisibilityDefaultReceipt {
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        result,
     })
 }
 
