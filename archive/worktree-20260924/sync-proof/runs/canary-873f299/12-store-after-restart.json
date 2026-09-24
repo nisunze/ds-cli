@@ -1,0 +1,275 @@
+{
+  "path": "/home/magese/data-solutions/_worktrees/proofs-20260922/sync-up/runs/canary-873f299/hostA/store.sqlite",
+  "tables": [
+    "meta",
+    "artifacts",
+    "heads",
+    "head_reads",
+    "grants",
+    "receipts",
+    "sqlite_sequence",
+    "leases",
+    "compute_jobs"
+  ],
+  "integrity_check": [
+    [
+      "ok"
+    ]
+  ],
+  "journal_mode": [
+    [
+      "wal"
+    ]
+  ],
+  "artifact_count": 4,
+  "artifacts": [
+    [
+      "network_reporter",
+      "export-agatare_1",
+      "held",
+      "publish-76ab72a6-6b1d-4095-a54e-139232b5152c"
+    ],
+    [
+      "network_reporter",
+      "export-akaderege_kigoma",
+      "held",
+      "publish-e784b29b-b14e-4343-b2d1-7aa9414b2ed4"
+    ],
+    [
+      "network_reporter",
+      "export-akamana",
+      "held",
+      "publish-c51893de-ab94-48d2-a9f5-421228f47aa5"
+    ],
+    [
+      "network_reporter",
+      "export-amarongi_rwaniro",
+      "held",
+      "publish-876be738-6772-4c0d-a714-3dc1e6402ab1"
+    ]
+  ],
+  "receipt_count": 10,
+  "distinct_outcomes": [
+    "failed"
+  ],
+  "any_published": false,
+  "any_head_revision": false,
+  "last_receipts": [
+    {
+      "receipt_id": "open_grant:1790076305754:1970d5643fd340cdb5e4222c90d4db56",
+      "scope": {
+        "kind": "project",
+        "project": "agct38sq_sample"
+      },
+      "action": "open_grant",
+      "identity": {
+        "engine": "network_reporter",
+        "operation": "export-akamana",
+        "variant": "default"
+      },
+      "outcome": "failed",
+      "detail": "native Sync Center operation was refused (HTTP 403: No published release registers this engine build)",
+      "grant_id": null,
+      "work_id": null,
+      "head_revision": null,
+      "head_sha256": null,
+      "head_counter": null,
+      "committed_bytes": null,
+      "at_ms": 1790076305754
+    },
+    {
+      "receipt_id": "open_grant:1790076305754:d5a539e0b2564bcb93d85cbe1915060c",
+      "scope": {
+        "kind": "project",
+        "project": "agct38sq_sample"
+      },
+      "action": "open_grant",
+      "identity": {
+        "engine": "network_reporter",
+        "operation": "export-amarongi_rwaniro",
+        "variant": "default"
+      },
+      "outcome": "failed",
+      "detail": "native Sync Center operation was refused (HTTP 403: No published release registers this engine build)",
+      "grant_id": null,
+      "work_id": null,
+      "head_revision": null,
+      "head_sha256": null,
+      "head_counter": null,
+      "committed_bytes": null,
+      "at_ms": 1790076305754
+    },
+    {
+      "receipt_id": "upload:1790076305754:0ff574979f1045cb9a7ae4753db055a5",
+      "scope": {
+        "kind": "project",
+        "project": "agct38sq_sample"
+      },
+      "action": "upload",
+      "identity": {
+        "engine": "network_reporter",
+        "operation": "export-agatare_1",
+        "variant": "default"
+      },
+      "outcome": "failed",
+      "detail": "no work grant covers this publication",
+      "grant_id": null,
+      "work_id": null,
+      "head_revision": null,
+      "head_sha256": null,
+      "head_counter": null,
+      "committed_bytes": null,
+      "at_ms": 1790076305754
+    },
+    {
+      "receipt_id": "upload:1790076305754:d55ef613dba0434cadbaa1700491b34f",
+      "scope": {
+        "kind": "project",
+        "project": "agct38sq_sample"
+      },
+      "action": "upload",
+      "identity": {
+        "engine": "network_reporter",
+        "operation": "export-akaderege_kigoma",
+        "variant": "default"
+      },
+      "outcome": "failed",
+      "detail": "no work grant covers this publication",
+      "grant_id": null,
+      "work_id": null,
+      "head_revision": null,
+      "head_sha256": null,
+      "head_counter": null,
+      "committed_bytes": null,
+      "at_ms": 1790076305754
+    },
+    {
+      "receipt_id": "upload:1790076305754:451eef4315dc4357b6e725f7b0e56deb",
+      "scope": {
+        "kind": "project",
+        "project": "agct38sq_sample"
+      },
+      "action": "upload",
+      "identity": {
+        "engine": "network_reporter",
+        "operation": "export-akamana",
+        "variant": "default"
+      },
+      "outcome": "failed",
+      "detail": "no work grant covers this publication",
+      "grant_id": null,
+      "work_id": null,
+      "head_revision": null,
+      "head_sha256": null,
+      "head_counter": null,
+      "committed_bytes": null,
+      "at_ms": 1790076305754
+    },
+    {
+      "receipt_id": "upload:1790076305754:ff6d5cc2271c4294bb86ff89116a2de9",
+      "scope": {
+        "kind": "project",
+        "project": "agct38sq_sample"
+      },
+      "action": "upload",
+      "identity": {
+        "engine": "network_reporter",
+        "operation": "export-amarongi_rwaniro",
+        "variant": "default"
+      },
+      "outcome": "failed",
+      "detail": "no work grant covers this publication",
+      "grant_id": null,
+      "work_id": null,
+      "head_revision": null,
+      "head_sha256": null,
+      "head_counter": null,
+      "committed_bytes": null,
+      "at_ms": 1790076305754
+    }
+  ],
+  "leases": [],
+  "meta": [
+    [
+      "schema_version",
+      1
+    ]
+  ],
+  "schema_columns": {
+    "meta": [
+      "key",
+      "value"
+    ],
+    "artifacts": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "engine",
+      "operation",
+      "variant",
+      "replay_key",
+      "state",
+      "updated_at_ms",
+      "row"
+    ],
+    "heads": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "engine",
+      "operation",
+      "variant",
+      "read_at_ms",
+      "row"
+    ],
+    "head_reads": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "read_at_ms"
+    ],
+    "grants": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "grant_id",
+      "row"
+    ],
+    "receipts": [
+      "sequence",
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "receipt_id",
+      "at_ms",
+      "row"
+    ],
+    "sqlite_sequence": [
+      "name",
+      "seq"
+    ],
+    "leases": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "row"
+    ],
+    "compute_jobs": [
+      "id",
+      "owner",
+      "lane",
+      "phase",
+      "lease_until",
+      "created",
+      "row",
+      "input",
+      "result"
+    ]
+  }
+}

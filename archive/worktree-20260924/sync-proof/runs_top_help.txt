@@ -1,0 +1,45 @@
+ds — the Data Solutions command line.
+
+USAGE
+  ds <domain> <command> [--flags]
+
+DOMAINS
+  server           Native server.
+  dsgrid           Canonical .dsgrid models: inspect, validate, revise, publish.
+  dsgrid-exchange  Import, export, compose: classify, plan, convert.
+  library          Engineering libraries: verify, store, pack, seed.
+  pls              PLS-CADD workspaces: structures, capacity, references, DONs.
+  solar            Solar preparation, local run lifecycle and artifact execution.
+  report           Deliverables: transformer and combined report artifacts.
+  survey           Survey evidence, forms and project templates.
+  map              Local data, layer ordering, remote overlays, and design edits.
+  work             Project Work: the plan, its tasks, assignments and records.
+  assets           Project Assets: documents in folders, previewed and linked.
+  design           Headless reads, offline LV compute, and governed collaboration.
+  sre              Platform reliability: fleet health and bounded request events.
+  style            Guided appearance, labels, a second field dimension, and cartography.
+  tile             Vector tiles: status, plan, generate, and the catalogue.
+  data             Local data: inspect, convert, and attach governed reference fields.
+  feedback         Product feedback: report a gap, and close it once it is fixed.
+  desktop          Paired DS GridDesign: pairing, project, active context.
+  shell            Reach `ds` from any shell: status, register, unregister.
+  workstation      Workstation prerequisites and safe setup plans.
+  mcp              Serve `ds` to MCP hosts; install the host entry.
+  auth             Sign in headlessly and select a visible project.
+
+DISCOVERY
+  ds <domain> --help             commands in one domain
+  ds <domain> <cmd> --help       one command's full contract
+  ds capabilities [<domain>|<id>]  the same, as JSON
+  ds capabilities --search <text>  find a command by words
+  ds doctor                      what works here, and why not
+
+GLOBAL
+  --output human|json  stdout format (default: human)
+  --pretty             indent JSON; costs bytes, aids humans
+  --no-color           never emit ANSI (also honours NO_COLOR)
+  --yes                pre-confirm an effectful command
+  --version            build identity
+
+Machine output is stdout; diagnostics are stderr.
+Exit  0 ok · 2 input · 3 unavailable · 4 auth · 5 conflict · 6 failed · 1 bug

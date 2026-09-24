@@ -1,0 +1,63 @@
+ds design status — Read the project's transformer status rows and verdicts, headlessly.
+
+  The read every headless Design answer starts from. Restores the native
+  user and reads only that user's audience-fenced selected project through
+  the fixed status call. Without --transformer it answers every transformer
+  document; with names, exactly those that exist. Rows come back as the
+  service sent them, each with the shared kernel's verdict (health) and
+  truth (view, phase ownership, latest action, governance, retry, kind,
+  allows). With --search, --sort or --filter the rows are the register's own
+  selection, in its order, decided by the same kernel the application reads.
+  Nothing falls back to a browser; the reference describes each member.
+
+USAGE
+  ds design status [--transformer <name>] [--lane <stable|canary>] [--findings] [--search <text>] [--sort <key>] [--desc] [--filter <dimension=value>]
+
+CONTRACT
+  effect     local_auth_state  (changes protected native credential or project state)
+  authority  headless_project  (a restored native user with explicit project context)
+  execution  sync
+  id         design.status   contract v1
+
+INPUTS
+  --transformer <name>        Exact transformer in the selected headless project. Repeat for several.
+  --lane <stable|canary>      Deployment lane; stable is the default.  (default: stable)  (one of: stable, canary)
+  --findings                  List the project's findings as rows: transformer, phase, code, affected count.
+  --search <text>             Name substring; quote it for an exact name.
+  --sort <key>                Order the rows by this.  (one of: name, district, tags, legacy, process, report, combined, governance, user, updated, version)
+  --desc                      Sort descending.
+  --filter <dimension=value>  Keep matching rows; repeat to combine. Dimensions are in the reference.
+
+OUTPUT
+  Lane and selected-project identity/status, the row count, the project's
+  severity summary, and one row per transformer as the service sent it —
+  process/report/draft/sketch metadata, layer counts, uploads, artifacts,
+  retry capabilities — plus `health`, `view`, `phase_ownership`,
+  `latest_action`, `governance`, `retry`, `kind` and `allows`. With
+  --findings, one `findings` row per finding; with a selector, `query`
+  carries the options each filter may offer.
+
+EXAMPLES
+  ds design status --transformer TX-1 --output json
+      `.data.transformers[0].health.severity` is the row's verdict.
+  ds design status --findings --output json
+      `.data.findings` is the project's issue list.
+
+REFUSALS
+  native_profile_not_configured   the exact packaged native profile is unavailable
+                                  → install one complete ds release
+  native_profile_digest_mismatch  the packaged catalogue differs from the build pin
+                                  → reinstall one complete ds release
+  native_profile_unsafe           the packaged native catalogue is unsafe or malformed
+                                  → reinstall one complete ds release
+  headless_signed_out             the selected lane has no restorable native user
+                                  → run ds auth login --email <address>
+  headless_project_not_selected   the user has no audience-fenced selected project
+                                  → run ds auth project use --project <exact-id>
+  project_context_stale           the saved project belongs to another identity, lane, or audience
+                                  → select the project again with ds auth project use
+  design_status_query_invalid     A --filter is not <dimension=value> over a known dimension, or names two admin levels
+                                  → See the reference for the dimensions; name one admin level
+
+REFERENCE
+  docs/reference/design.md

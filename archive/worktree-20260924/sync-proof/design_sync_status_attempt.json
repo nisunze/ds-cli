@@ -1,0 +1,1 @@
+{"v":1,"command":"design.sync.status","contract":1,"status":"error","error":{"class":"unavailable","code":"desktop_operation_unsupported","message":"the paired local Desktop build has no provisioned native lane","retryable":true,"remedy":"use a provisioned Canary or Stable DS GridDesign build for paired CLI operations"}}

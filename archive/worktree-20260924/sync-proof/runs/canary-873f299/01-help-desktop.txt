@@ -1,0 +1,35 @@
+ds desktop — Paired DS GridDesign: pairing, project, active context.
+
+COMMANDS
+  offline status          Inspect the paired application's offline test switch.
+  offline set             Enable or disable the paired application's offline test switch.
+  status                  Report pairing, project and active design context.
+  list                    List the live DS GridDesign instances this machine is running.
+  project list            List projects visible to the signed-in desktop user.
+  project switch          Switch the paired desktop to one exact visible project.
+  printing settings       Read project print settings, selected outputs and template papers.
+  printing transformers   List printable transformers in one explicit project.
+  printing export         Export selected formats for one or more held transformers.
+  printing prepare        Save a project print layout, select exports and prepare inputs.
+  sync plan               Decide upload, download, conflict or nothing for project artifacts.
+  printing seed-context   Seed selected geographic context before a transformer is printed.
+  printing custom area    Prepare an exact connected custom print area from Rwanda sectors.
+  printing map export     Capture and retain district or sector PDFs through paired Desktop.
+  printing map list       List the active project's retained local map PDFs.
+  printing map attach     Retry publication of one current local map printout.
+  printing artifact read  Verify one committed local print artifact and read its evidence.
+  printing artifact copy  Copy one verified local print artifact to a new file.
+  data rwanda status      List Rwanda datasets and prove their exact local install state.
+  data rwanda catalog     Reconcile Rwanda geographic sources (needs --yes).
+  data rwanda publish     Publish one dataset's compressed Desktop bundle (needs --yes).
+  data rwanda install     Download and spatially index selected Rwanda datasets.
+  data rwanda storage     Inspect or change this computer's geographic-data storage root.
+  data rwanda remove      Remove selected Rwanda datasets from this computer.
+  sync published          Read a shared publication or verify one downloaded output.
+  sync status             Inspect retained local compute publications across projects.
+  sync retry              Retry one recoverable retained Network Reporter failure (needs --yes).
+  sync sanitize preview   Inspect recovery and archival of one project’s retained reports.
+  sync sanitize apply     Apply inspected sync sanitation without deleting files (needs --yes).
+
+  ds desktop <command> --help   full contract, inputs, refusals
+  ds capabilities desktop       the same index, as JSON

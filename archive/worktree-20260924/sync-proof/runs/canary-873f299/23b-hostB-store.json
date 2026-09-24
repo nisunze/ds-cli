@@ -1,0 +1,115 @@
+{
+  "path": "/home/magese/data-solutions/_worktrees/proofs-20260922/sync-up/runs/canary-873f299/hostB/store.sqlite",
+  "tables": [
+    "meta",
+    "artifacts",
+    "heads",
+    "head_reads",
+    "grants",
+    "receipts",
+    "sqlite_sequence",
+    "leases",
+    "compute_jobs"
+  ],
+  "integrity_check": [
+    [
+      "ok"
+    ]
+  ],
+  "journal_mode": [
+    [
+      "wal"
+    ]
+  ],
+  "artifact_count": 0,
+  "artifacts": [],
+  "receipt_count": 0,
+  "distinct_outcomes": [],
+  "any_published": false,
+  "any_head_revision": false,
+  "last_receipts": [],
+  "leases": [],
+  "meta": [
+    [
+      "schema_version",
+      1
+    ]
+  ],
+  "schema_columns": {
+    "meta": [
+      "key",
+      "value"
+    ],
+    "artifacts": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "engine",
+      "operation",
+      "variant",
+      "replay_key",
+      "state",
+      "updated_at_ms",
+      "row"
+    ],
+    "heads": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "engine",
+      "operation",
+      "variant",
+      "read_at_ms",
+      "row"
+    ],
+    "head_reads": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "read_at_ms"
+    ],
+    "grants": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "grant_id",
+      "row"
+    ],
+    "receipts": [
+      "sequence",
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "receipt_id",
+      "at_ms",
+      "row"
+    ],
+    "sqlite_sequence": [
+      "name",
+      "seq"
+    ],
+    "leases": [
+      "account",
+      "deployment",
+      "install_id",
+      "scope",
+      "row"
+    ],
+    "compute_jobs": [
+      "id",
+      "owner",
+      "lane",
+      "phase",
+      "lease_until",
+      "created",
+      "row",
+      "input",
+      "result"
+    ]
+  }
+}

@@ -1,0 +1,1 @@
+{"v":1,"command":"report.project.export","contract":1,"status":"error","error":{"class":"failed","code":"print_context_invalid","message":"member \"tables/alignments.arrow\" does not match the canonical schema fingerprint","retryable":false,"remedy":"Check the exact project's promoted MV model and declared CRS; no model is modified by printing"}}

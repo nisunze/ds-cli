@@ -1,0 +1,12 @@
+total 1900
+drwx------  7 magese magese    4096 Sep 22 11:24 .
+drwxrwxr-x  4 magese magese    4096 Sep 22 11:30 ..
+-rw-------  1 magese magese     195 Sep 22 11:20 connection.json
+drwxrwxr-x  3 magese magese    4096 Sep 22 11:23 out-agatare_1
+drwxrwxr-x  3 magese magese    4096 Sep 22 11:24 out-akaderege_kigoma
+drwxrwxr-x  3 magese magese    4096 Sep 22 11:24 out-akamana
+drwxrwxr-x  3 magese magese    4096 Sep 22 11:24 out-amarongi_rwaniro
+drwx------ 19 magese magese    4096 Sep 22 11:24 report-artifacts
+-rw-r--r--  1 magese magese   81920 Sep 22 11:24 store.sqlite
+-rw-r--r--  1 magese magese   32768 Sep 22 11:30 store.sqlite-shm
+-rw-r--r--  1 magese magese 1796352 Sep 22 11:30 store.sqlite-wal

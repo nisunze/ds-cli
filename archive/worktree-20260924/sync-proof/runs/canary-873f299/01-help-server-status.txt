@@ -1,0 +1,57 @@
+ds server status — Inspect one project's durable jobs without a browser or desktop.
+
+  Drive native transformer and prepared Solar computation on the shared Rust
+  runtime. Jobs survive UI closure and server restart; request and result
+  bytes are retained under the initiating identity. Every call is about one
+  project: --project names it explicitly and neither client nor Server
+  consults a saved selection -- one host serves several of its owner's
+  projects at once. The gateway enforces entitlement at publication and
+  sync; a Solar request's sealed input names the project that wins.
+
+USAGE
+  ds server status [--state-dir <absolute-path>] [--lane <stable|canary>] [--project <exact-id>] [--job <id>]
+
+CONTRACT
+  effect     read_only  (reads state; writes nothing)
+  authority  headless_user  (a restored native user session)
+  execution  sync
+  id         server.status   contract v2
+
+INPUTS
+  --state-dir <absolute-path>  Protected server state directory; defaults to the lane's user state directory.
+  --lane <stable|canary>       Native authentication lane.  (default: stable)  (one of: stable, canary)
+  --project <exact-id>         Exact ds_project id this call is about; always supplied explicitly.
+  --job <id>                   One exact job; otherwise this project's latest 100 jobs and more flag.
+
+OUTPUT
+  A bounded receipt or list, each naming its project; full bytes only to a
+  named file. No credential is printed.
+
+EXAMPLES
+  ds server status --project <exact-id> --output json
+      Read bounded job receipts for one project from the running server.
+  ds server status --help
+      The always-safe complete contract for this command.
+
+REFUSALS
+  server_platform_unsupported  the native server is requested outside Linux
+                               → run these commands on a Linux machine
+  server_refused               native authentication, protected state, job identity, capacity or the request is invalid or unavailable
+                               → read the stated reason; verify ds auth status, the state directory and that ds server serve is running
+  server_owner_changed         the Server's account differs from the caller's, or its credential was revoked or replaced
+                               → sign in under the intended Server account and explicitly restart ds server serve
+  project_required             no --project was passed
+                               → pass --project <exact-id>
+  context_corrupt              a project id is not one path segment: empty, over-long, or holding a separator, a traversal, whitespace or a control character
+                               → copy one exact ds_project value from ds auth project list
+  not_visible                  the job id is unknown, or belongs to another principal, lane, deployment or project
+                               → read ds server status --project <exact-id> for the jobs you can see
+  principal_mismatch           the stored job belongs to another account, lane or deployment
+                               → run it under the account, lane and deployment that submitted the job
+  context_unrecoverable        a job stored by an older Server names no project and none can be recovered
+                               → read the job's stored input with ds server input, then resubmit it under an explicit --project
+  capacity_exhausted           a queue or the request door is full; the answer names scope and retry_after_ms
+                               → retry after retry_after_ms, cancel work you no longer need, or raise --workers
+
+REFERENCE
+  docs/reference/server.md

@@ -1,0 +1,96 @@
+ds design — Headless reads, offline LV compute, and governed collaboration.
+
+COMMANDS
+  tag project-list           Read project tag definitions for city and phase selection.
+  group project-export       Read city and phase tag assignments for maps and Solar.
+  group project-preview      Preview city and phase tag assignments with a fencing digest.
+  group project-apply        Apply a previewed headless tag batch under its exact digest.
+  config sheets              Find project configuration and pole material seed sheets.
+  config read                Read project configuration or material seeds as complete JSON.
+  config diff                Compare a local sheet with the project's current Settings.
+  config set                 Set one existing Settings parameter and verify readback.
+  config save                Save corrected material seeds or configuration; verify readback.
+  config rule-set duplicate  Duplicate a rule set, preserving its rows and metadata.
+  sync status                Inspect retained reconciliation operations offline.
+  sync cancel                Cancel delivery while retaining local work and evidence.
+  sync resume                Resume the same immutable retained request.
+  project resolve-sources    Resolve project and user source selections through the shared kernel.
+  project init               Create a private offline Design workspace.
+  project write              Create or replace one complete transformer snapshot.
+  project edit               Apply one atomic batch of version-fenced feature edits.
+  project read               Export an exact current or historical transformer snapshot.
+  project restore            Restore a historical snapshot as a new local operation.
+  project revisions          List retained transformer revisions without opening a map.
+  project compare            Compare local transformer revisions without opening a map.
+  project status             Inspect workspace counts or one run's ordered job states.
+  project process            Capture and process local transformers on native workers.
+  project cancel             Cancel pending jobs; already running jobs may finish.
+  project result             Export a complete immutable transformer process result.
+  project outbox             Inspect pending publication without contacting the network.
+  project report             Produce offline reports and printable PDFs from a captured run.
+  features select            Select design features without opening a map.
+  selection list             List the project's saved Transformer Status selections.
+  selection read             Resolve one saved selection and evaluate its membership now.
+  selection save             Save a named selection of transformers, or replace one's members.
+  selection archive          Archive a saved selection, or restore one, without losing it.
+  selection assign           Create one project work task scoped to a saved selection.
+  attachment list            List the files attached to a transformer or DS Grid model.
+  attachment publish         Publish one immutable file revision onto a design object.
+  attachment download        Authorize a download of one attachment revision.
+  attachment retire          Retire an attachment or one of its revisions, reversibly.
+  tag list                   List the project's tag definitions and this object's values.
+  tag query                  Find transformers with bounded typed tag predicates.
+  tag define                 Create or edit one of the project's typed tag definitions.
+  tag set                    Apply one tag definition's values to a transformer or model.
+  tag enrich-preview         Plan the governed administrative tags for named transformers.
+  tag enrich-apply           Apply exactly the previewed administrative tag plan.
+  materials preview          Preview a scoped pole-material catalog repair.
+  feeder-limits read         Read or set the project's feeder cable limits.
+  feeder-limits set          Read or set the project's feeder cable limits.
+  meter-types ensure         Ensure a distinct project meter category exists.
+  categories read            Inspect fresh category seeds and aliases behind Dirty Categories.
+  customer-categories alias  Map a customer source label to an existing catalog category.
+  materials apply            Commit exactly the previewed material catalog repair.
+  known-columns list         List the known columns that may leave DS.
+  known-columns set          Publish or hide one design property on one layer.
+  group list                 List batchable tag definitions and current transformer values.
+  group preview              Plan a tag-definition batch and return its fencing digest.
+  group apply                Assign a tag definition's value across a set of transformers.
+  group unassign             Clear a tag definition's value on a set of transformers.
+  group export               Export a digest-pinned projection for ordered tag definition IDs.
+  consumer-grouping preview  Preview typed Solar report grouping.
+  consumer-grouping apply    Apply a previewed typed consumer grouping plan.
+  consumer-grouping read     Read the applied grouping plan for one purpose.
+  consumer-grouping archive  Retire the applied grouping plan for one purpose.
+  comment list               List the comment threads on a transformer or DS Grid model.
+  comment read               Read one comment thread in sequence, redactions included.
+  comment post               Open a comment thread on a design object, or append to one.
+  comment resolve            Resolve a comment thread, or reopen a resolved one.
+  comment promote            Create one project work task linked to a comment thread.
+  lv project-export          Prepare one project transformer for headless LV processing.
+  lv project-save            Save a processed LV transformer online and verify its current version.
+  lv process                 Process transformer batches headlessly in parallel from local files.
+  process settings           Resolve the process settings a lane and preset would send.
+  collisions                 Read this project's collision count and detection state.
+  autoprocess plan           Plan what AutoProcess would do with committed edits.
+  force-gate check           Does this forced action need a grant, and mint one.
+  data lane                  Where this project's design data is read from.
+  status                     Read the project's transformer status rows and verdicts, headlessly.
+  bulk plan                  Preview which rows a bulk verb targets and which it skips.
+  download plan              Preview a download: rows in scope, URLs, and which copy wins.
+  version status             Read the exact saved LV or MV version head.
+  version list               List governed LV or MV versions and their pinned source.
+  version compare            Compare governed LV snapshots or MV revision metadata.
+  version begin              Create a governed LV or MV version (needs --yes).
+  version restore            Restore an exact governed LV version (needs --yes).
+  conflict list              List transformers whose cloud head moved under a local copy.
+  conflict check             Say whether overwriting one transformer is admissible now.
+  presence status            Read the lease plan and this client's own room visibility.
+  dashboard                  Read the project's whole Design dashboard, headlessly.
+  transformer download       Bulk-download saved transformer rooms into the paired local cache.
+  transformer inventory      Inspect which transformers are active, retired, or deleted.
+  transformer retire         Retire transformers reversibly from the active set (needs --yes).
+  transformer restore        Restore retired transformers to the active set (needs --yes).
+
+  ds design <command> --help   full contract, inputs, refusals
+  ds capabilities design       the same index, as JSON

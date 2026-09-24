@@ -1,0 +1,35 @@
+ds report — Deliverables: transformer and combined report artifacts.
+
+COMMANDS
+  transformers         List printable transformers from the selected project, headlessly.
+  plan                 Inspect report progress or an export decision without IO.
+  layout new           Create an A3 vector map layout.
+  layout edit          Validate and apply one print document intent.
+  layout schema        Describe the exact print document and editing grammar.
+  layout context       Decide a layout's context layers: defaults, catalogue, selection.
+  layout session       Decide one print-editor event: next state and the host's operations.
+  layout add           Add the canonical new element of a kind to a layout.
+  layout style-ref     Which governed print styles a print layer may bind; bind one.
+  layout pens          Read or edit the layout's print pens.
+  layout render        Print captured maps with collision and clipping diagnostics.
+  layout list          List published global samples or project printing setups.
+  layout get           Read one shared printing setup and its revision.
+  layout create        Create one global or project printing setup.
+  layout update        Update one exact global or project printing revision.
+  layout save          Publish a printing setup; with a revision it updates, else creates.
+  layout delete        Delete one exact global or project printing revision.
+  layout copy          Copy an exact printing revision between libraries.
+  engine               Report the installed reporter engine's identity.
+  tasks                List the reporter's tasks, or one task's request schema.
+  export               Export a transformer or combined report from local inputs.
+  bundle               Package transformer and combined reports into one verified ZIP.
+  project scope        Show which transformers a compounded report would include.
+  project compounded   Publish one compounded report archive in the background (needs --yes).
+  project archives     List the selected project's published compounded archives.
+  project settings     Read the project's printing outputs and whether they are ready.
+  project outputs set  Save the project's design output selection.
+  project export       Export all transformer reports and maps headlessly in parallel.
+  project map-inputs   Prepare a district MV overview for headless PDF/PNG printing.
+
+  ds report <command> --help   full contract, inputs, refusals
+  ds capabilities report       the same index, as JSON

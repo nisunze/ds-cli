@@ -1,0 +1,60 @@
+ds server serve — Host durable parallel compute for every project this account reaches.
+
+  Host the shared Rust compute runtime under this Linux user's native
+  account: the desktop's own core, without the desktop. No project is
+  selected or captured here and no directory is fetched: callers name the
+  project per request, the Server records it and runs what its owner hands
+  it, and the gateway enforces entitlement at publication and sync -- so one
+  host serves several projects at once, needs no ds auth project use to
+  start, and runs with no upstream. One owner per Server; many users are
+  many machines. --workers bounds the whole host; --per-project bounds what
+  one project may hold while another has work queued. Control is an
+  owner-only loopback credential. This process runs in the foreground until
+  it stops.
+
+USAGE
+  ds server serve [--state-dir <absolute-path>] [--lane <stable|canary>] [--listen <loopback:port>] [--workers <count>] [--per-project <count>]
+
+CONTRACT
+  effect     local_file_write  (writes a file in your workspace)
+  authority  headless_user  (a restored native user session)
+  execution  sync
+  id         server.serve   contract v1
+
+INPUTS
+  --state-dir <absolute-path>  Protected server state directory; defaults to the lane's user state directory.
+  --lane <stable|canary>       Native authentication lane.  (default: stable)  (one of: stable, canary)
+  --listen <loopback:port>     Fixed loopback bind address.  (default: 127.0.0.1:19766)
+  --workers <count>            Parallel jobs, bounded by measured CPU and memory; defaults to capacity.
+  --per-project <count>        Jobs one project may run at once while another queues; 1..workers, default half.
+
+OUTPUT
+  The worker and per-project limits the host ran under, once it stops. No
+  credential is printed.
+
+EXAMPLES
+  ds server serve --lane stable
+      Run after native login under the same Linux user. No project need be selected: callers name theirs.
+
+REFUSALS
+  invalid_input                 a served HTTP request has malformed fields, query parameters or body
+                                → send the documented route query and request body
+  server_platform_unsupported   the native server is requested outside Linux
+                                → run these commands on a Linux machine
+  server_refused                native authentication, protected state, job identity, capacity or the request is invalid or unavailable
+                                → read the stated reason; verify ds auth status, the state directory and that ds server serve is running
+  server_owner_changed          the Server's account differs from the caller's, or its credential was revoked or replaced
+                                → sign in under the intended Server account and explicitly restart ds server serve
+  multi_principal_unsupported   the protected state directory already belongs to another account
+                                → run that account its own ds server serve, with its own --state-dir and --listen
+  needs_paired_map              an operation that needs a rendered map reaches this host, which has none
+                                → run the same command with --target desktop, against a window open on this project
+  unsupported_operation         a request names a route this host does not serve, usually a version skew
+                                → update ds, or read ds server --help for what this host serves
+  headless_install_unavailable  the registered install this host runs under cannot be read or created in the protected DS state root
+                                → make the Server user's protected DS state root present, owner-only and writable, then start the host again
+  capacity_exhausted            a queue or the request door is full; the answer names scope and retry_after_ms
+                                → retry after retry_after_ms, cancel work you no longer need, or raise --workers
+
+REFERENCE
+  docs/reference/server.md

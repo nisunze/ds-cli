@@ -1,0 +1,16 @@
+ds server — Native server.
+
+COMMANDS
+  engine        Inspect the Solar engine embedded in this Server executable.
+  serve         Host durable parallel compute for every project this account reaches.
+  submit        Queue a complete native transformer batch and return immediately.
+  solar submit  Queue one sealed prepared Solar calculation and return immediately.
+  tile submit   Queue prepared vector tiles with this host’s verified local cache.
+  status        Inspect one project's durable jobs without a browser or desktop.
+  activity      Read one project's shared Sync Center activity and publication state.
+  cancel        Cancel a queued or running job while retaining its inputs.
+  result        Save a completed job's full result to a new local file.
+  input         Save a job's own stored request bytes to a new local file.
+
+  ds server <command> --help   full contract, inputs, refusals
+  ds capabilities server       the same index, as JSON

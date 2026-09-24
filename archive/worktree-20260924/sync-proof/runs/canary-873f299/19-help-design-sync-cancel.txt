@@ -1,0 +1,53 @@
+ds design sync cancel — Cancel delivery while retaining local work and evidence.
+
+  Inspect or control the active project's durable reconciliation queue in
+  the paired application's local storage. The shared Rust kernel owns state
+  transitions and exact request identity. No network is contacted.
+  Cancellation retains payloads and evidence; an attempted remote operation
+  remains cancellation-requested until its outcome is known. Resume
+  preserves the original request and does not promise transport
+  availability.
+
+USAGE
+  ds design sync cancel --operation <id> [--desktop-descriptor <path>] --yes
+
+CONTRACT
+  effect     global_write  (mutates governed shared state)
+  authority  project  (signed in, with a project selected)
+  execution  sync
+  id         design.sync.cancel   contract v1
+
+INPUTS
+  --operation <id>             Exact retained operation identity from sync status.  (required)
+  --desktop-descriptor <path>  Use this bridge descriptor instead of discovering one; DS_DESKTOP_DESCRIPTOR sets the same default.
+
+OUTPUT
+  Project, bounded operation rows with phase, attempts and last retained
+  event; status includes counts and explicit more/total. Control returns the
+  exact operation's new state.
+
+REFUSALS
+  desktop_not_paired             no DS GridDesign session is running on this machine
+                                 → start DS GridDesign, then run `ds desktop status`
+  desktop_ambiguous              two or more live DS GridDesign instances can serve this
+                                 → name one with --target desktop:<instance_id>
+  desktop_unreachable            the descriptor is stale, or the application did not answer in time
+                                 → DS GridDesign may have exited; restart it and retry
+  pairing_rejected               the application refused the descriptor's pairing secret
+                                 → the descriptor is stale; restart DS GridDesign
+  desktop_refused                no such record, or ds-brain declined the request
+                                 → check the id with the matching `list` command; read detail.detail for its message
+  desktop_operation_unsupported  this DS GridDesign build does not offer the operation
+                                 → update DS GridDesign; `ds desktop status` reports the profile
+  desktop_unreadable             the application's reply could not be read within its bound
+                                 → restart DS GridDesign and retry
+  desktop_signed_out             the application is running but signed out, or has no project selected
+                                 → sign in and select a project in DS GridDesign
+  design_not_permitted           the signed-in user may read this project's design records but not change them
+                                 → ask a project admin for the matching design capability
+  invalid_number                 a numeric flag is not a number, or falls outside the bound in its summary
+                                 → the refusal carries the accepted range
+  design_version_conflict        the record moved while the command was in flight
+                                 → re-read with the matching `read` or `list` command and issue the command again
+  confirmation_required          --yes was not given for a command that changes governed project state
+                                 → re-run with --yes once you intend the change

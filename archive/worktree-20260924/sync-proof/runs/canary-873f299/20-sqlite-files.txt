@@ -1,0 +1,3 @@
+/home/magese/data-solutions/_worktrees/proofs-20260922/sync-up/runs/canary-873f299/hostA/store.sqlite-shm
+/home/magese/data-solutions/_worktrees/proofs-20260922/sync-up/runs/canary-873f299/hostA/store.sqlite
+/home/magese/data-solutions/_worktrees/proofs-20260922/sync-up/runs/canary-873f299/hostA/store.sqlite-wal

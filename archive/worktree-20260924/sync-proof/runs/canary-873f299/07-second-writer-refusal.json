@@ -1,0 +1,1 @@
+{"v":1,"command":"server.serve","contract":1,"status":"error","error":{"class":"conflict","code":"server_refused","message":"the existing server connection is on another lane or address; use a separate state directory","retryable":true,"remedy":"read the stated reason; verify ds auth status and that ds server serve is running"}}

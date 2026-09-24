@@ -1,0 +1,1 @@
+{"v":1,"command":"auth.project.use","contract":1,"status":"ok","data":{"lane":"canary","credential_provider":"ds_device","selected":true,"project":{"ds_project":"arjgpydw_survey_test","project_name":"survey_test","status":"testing"}}}

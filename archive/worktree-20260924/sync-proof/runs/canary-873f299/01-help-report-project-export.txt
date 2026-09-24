@@ -1,0 +1,145 @@
+ds report project export — Export all transformer reports and maps headlessly in parallel.
+
+  Export active transformers and named print outputs with project-wide
+  numbering. Local layout proofs and draft SVG previews cannot publish.
+  --publish queues Server sync; completion requires its publication receipt.
+  Setups use held context; --seed acquires missing context. Photos require a
+  media grant.
+
+USAGE
+  ds report project export [--transformer <name>] --out-dir <path> [--concurrency <n>] [--admin-bounds <path>] [--print-layout <json-file>] [--preview-layout <json-file>] [--context-vectors <dir>] [--seed] [--publish] [--server-state-dir <absolute-path>] [--lane <stable|canary>]
+
+CONTRACT
+  effect     local_file_write  (writes a file in your workspace)
+  authority  headless_project  (a restored native user with explicit project context)
+  execution  sync
+  id         report.project.export   contract v1
+
+INPUTS
+  --transformer <name>                Explicit scope; repeat per name. Omit for every active saved transformer.
+  --out-dir <path>                    Fresh directory to write into: one folder per transformer plus the batch receipt.  (required)
+  --concurrency <n>                   Engines resident at once, 1..64. Default: min(scope, processors, 4).
+  --admin-bounds <path>               Rwanda villages asset (.dsab). Default: the installed machine-shared asset.
+  --print-layout <json-file>          Local proof replacement for an existing project layout; preserves engineering inputs and paper identity, records source/recipe digests, and cannot publish.
+  --preview-layout <json-file>        One SVG preview per transformer, with outlined text and template pens; any draft id or paper. Cannot publish or combine with --print-layout.
+  --context-vectors <dir>             Verified data.city-vectors output to use as this batch’s OSM/Microsoft map context.
+  --seed                              Acquire the printed transformer's missing map context first (provider cost); without it unheld context is omitted and named.
+  --publish                           Seal verified outputs for the matching native Server sync pump; without it, writes local reports only.
+  --server-state-dir <absolute-path>  Matching `ds server serve --state-dir` directory when the Server uses a custom state root.
+  --lane <stable|canary>              Deployment lane; stable is the default.  (default: stable)  (one of: stable, canary)
+
+OUTPUT
+  Lane, project, scope, engine identity, publication state, batch counts and
+  receipt, context diagnostics and ordered transformer results: artifact
+  inventory or typed error. --publish adds the Server-sync queue identity.
+
+EXAMPLES
+  ds report project export --out-dir ./reports --output json
+      Every active transformer; `.data.results[]` says what each produced.
+  ds report project export --transformer tx_a --transformer tx_b --out-dir ./reports --concurrency 2
+      Two named transformers, two engines at once.
+  ds report project export --transformer tx_a --out-dir ./reports --publish --output json
+      Queue one verified report for Server sync; publication is separate.
+  ds report project export --transformer tx_a --preview-layout ./draft.json --out-dir ./preview --output json
+      tx_a's sheet as the draft composes it, with its pens, as one SVG page; `.data.preview` names the output.
+
+REFUSALS
+  native_profile_not_configured        the exact packaged native profile is unavailable
+                                       → install one complete ds release
+  native_profile_digest_mismatch       the packaged catalogue differs from the build pin
+                                       → reinstall one complete ds release
+  native_profile_unsafe                the packaged native catalogue is unsafe or malformed
+                                       → reinstall one complete ds release
+  headless_signed_out                  the selected lane has no restorable native user
+                                       → run ds auth login --email <address>
+  headless_project_not_selected        the user has no audience-fenced selected project
+                                       → run ds auth project use --project <exact-id>
+  project_context_stale                the saved project belongs to another identity, lane, or audience
+                                       → select the project again with ds auth project use
+  native_state_unsafe                  protected native state is unsafe or unreadable
+                                       → repair the owner-only DS config directory
+  native_state_unavailable             protected native state cannot be accessed
+                                       → repair the owner-only DS config directory
+  native_state_protection_unavailable  this build has no protected-state adapter
+                                       → install a supported native ds build
+  native_state_root_invalid            the configured state root is not absolute
+                                       → unset it or provide an absolute path
+  native_state_conflict                another native operation holds the state lease
+                                       → retry after that operation finishes
+  native_cleanup_required              revoked identity cleanup could not clear context
+                                       → repair protected state and run auth logout
+  auth_context_mismatch                the protected native providers disagree on identity or selected project
+                                       → sign out or revoke the unintended provider before retrying
+  auth_input_invalid                   the report service refused the request: an unknown or excluded transformer, no applied `report_archive` grouping, or a malformed scope or layout
+                                       → run `ds report project scope`, and `ds design consumer-grouping read --purpose report_archive`
+  auth_rejected                        the fixed gateway rejects the verified request, the user lacks design.compounded_report, or the project is archived or expired
+                                       → verify the account, its project access and capabilities, and the project lifecycle
+  auth_revoked                         the native session was permanently revoked
+                                       → sign in again interactively
+  auth_identity_mismatch               the restored identity differs from the bound native session
+                                       → sign in again and report a repeated mismatch
+  auth_transient                       the report service is temporarily unavailable, or transformer freshness could not be verified
+                                       → retry without changing local state; no artifact was regenerated
+  auth_response_unreadable             the response violates its closed bounded contract, e.g. an archive advertised for zero individual artifacts
+                                       → retry once, then update ds if it persists
+  transformer_not_found                the service found no such project
+                                       → select the project again with ds auth project use
+  invalid_transformer_scope            a --transformer name is blank, untrimmed, or over 200 characters, or more than 500 were named
+                                       → pass bounded transformer names, or omit them for every active transformer
+  reserved_transformer_identity        a --transformer name is a reserved computed identity (collisions, combined_transformer and its aliases): report output, never a participant
+                                       → drop the reserved name; `ds report project scope` lists the real participants
+  reporter_engine_missing              `ds-report` is not installed next to `ds`
+                                       → install the desktop or headless package, or set DS_REPORT_BIN
+  callee_contract_mismatch             `build-info` did not return the engine's release identity
+                                       → update `ds` and the reporter to matching releases
+  callee_timed_out                     one transformer's export exceeded the 30-minute bound
+                                       → retry the named transformer alone, or investigate the engine
+  engine_refused                       the engine failed before writing a typed result (a batch row carries it)
+                                       → read `error.detail.engine` for the engine's own message
+  export_blocked                       the engine refused a transformer or completed only part of it (a batch row carries its blockers)
+                                       → read `error.detail.blockers`, fix the named input, and re-run that transformer
+  report_inputs_invalid                the input receipt, a transformer's saved layers or the output policy cannot be run as given
+                                       → refresh the project configuration; `ds report project settings` shows the output policy
+  report_staging_failed                the output directory or its staging area could not be prepared
+                                       → check that --out-dir is writable and has space
+  report_output_exists                 --out-dir already holds a batch receipt or that transformer's folder
+                                       → choose a fresh --out-dir; a report is never overwritten
+  report_result_invalid                the engine's result or the bytes it declared are not this run's answer
+                                       → retry; if it persists, update `ds` and the reporter to matching releases
+  report_engine_identity_changed       `ds-report` was replaced while a report was running
+                                       → retry once the installation is stable
+  admin_bounds_unavailable             the Rwanda villages asset is not installed for the project's dataset snapshot
+                                       → install it from the desktop's Geographic Data page, or pass --admin-bounds
+  invalid_concurrency                  --concurrency is not a whole number from 1 through 64
+                                       → pass --concurrency between 1 and 64, or omit it
+  report_batch_empty                   the selected project has no active transformer to report
+                                       → save a transformer first; `ds report project scope` lists the inventory
+  report_batch_failed                  no transformer report completed; each result carries its failure
+                                       → read detail.results and fix the named inputs
+  transformer_not_active               a named transformer is retired, deleted or missing
+                                       → `ds report project scope` shows the lifecycle; restore or drop the name
+  report_publish_local_only            --publish was requested from a development reporter build
+                                       → run a release reporter build, or omit --publish for local-only files
+  report_publish_scope_changed         the native identity, lane, audience, project or credential generation changed before sealing
+                                       → repeat the export under the current native account and project
+  report_publish_root_invalid          the Server state root is unavailable, relative, or cannot hold a sealed publication
+                                       → use Server's default state root, or the same absolute --server-state-dir as ds server serve
+  print_context_unsupported            a setup names a survey or local-layer context source (desktop-held; batch row)
+                                       → print that setup from the desktop, or drop the source from the setup
+  print_context_invalid                the print context exceeds the engine's bounds or the holdings are unreadable (batch row)
+                                       → narrow the setup's context buffers, or repair the geographic data root
+  catalog_unavailable                  the reference catalogue could not be read; catalogue layers print from held rooms
+                                       → retry when connected
+  reference_bundle_unavailable         --seed needed a national bundle that is unpublished or failed to install (batch row)
+                                       → publish the dataset's bundle, then print again with --seed
+  project_dataset_acquisition_failed   --seed acquired context the room refused (batch row)
+                                       → `ds data project-cache status` shows the last error
+  print_context_too_large              a preview's held context exceeds the engine's bounds
+                                       → narrow the draft's context buffers, or drop a context layer
+  project_dataset_store_failed         a preview could not read the geographic holdings this machine keeps
+                                       → `ds data project-cache status`; repair the geographic data root
+  data_distribution_unavailable        ds-brain's geographic data-distribution route could not answer: unreachable, past the gateway deadline, a server fault, or an answer outside its closed contract
+                                       → retry without changing local state; a repeated refusal is a deployment or provider outage, not a request defect
+
+REFERENCE
+  docs/reference/report.md

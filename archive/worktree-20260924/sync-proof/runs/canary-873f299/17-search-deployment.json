@@ -1,0 +1,1 @@
+{"v":1,"command":"capabilities","contract":1,"status":"ok","data":{"tier":"search","query":"deployment","matched":1,"results":[{"id":"survey.photo.publish","summary":"Publish the exact original and thumbnail in a rotation bundle.","terms_matched":1}],"next":"ds capabilities <command-id>"}}

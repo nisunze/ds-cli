@@ -1,0 +1,61 @@
+ds desktop sync status — Inspect retained local compute publications across projects.
+
+  Reads the same account-owned compute-artifact outbox rendered by Sync
+  Center. It returns exact producer release and build-manifest identities,
+  project and native batch identity, attempts, upload progress and bounded
+  errors. Local artifact locators and resumable upload credentials never
+  leave the application.
+
+USAGE
+  ds desktop sync status [--project <project-id>] [--limit <count>] [--desktop-descriptor <path>]
+
+CONTRACT
+  effect     read_only  (reads state; writes nothing)
+  authority  desktop_user  (a running DS GridDesign session, signed in)
+  execution  sync
+  id         desktop.sync.status   contract v1
+
+INPUTS
+  --project <project-id>       Filter status to one retained project. Required for retry as an exact project echo.
+  --limit <count>              Rows in one account-owned page (1-200); total and more are always reported.  (default: 50)
+  --desktop-descriptor <path>  Use this bridge descriptor instead of discovering one; DS_DESKTOP_DESCRIPTOR sets the same default.
+
+OUTPUT
+  Optional project filter, queue summary, total/more and bounded path-free
+  publication rows with exact producer identities and retry guidance.
+
+EXAMPLES
+  ds desktop sync status --help
+      The always-safe complete contract for this command.
+
+REFUSALS
+  sync_sanitation_refused        the inspected queue changed, the owner changed, or its bounded plan is unavailable
+                                 → inspect sanitation again under the intended account/project, then apply its exact unchanged digest
+  desktop_not_paired             no DS GridDesign session is running on this machine
+                                 → start DS GridDesign, then run `ds desktop status`
+  desktop_ambiguous              two or more live DS GridDesign instances can serve this
+                                 → name one with --target desktop:<instance_id>
+  desktop_unreachable            the descriptor is stale, or the application did not answer in time
+                                 → DS GridDesign may have exited; restart it and retry
+  pairing_rejected               the application refused the descriptor's pairing secret
+                                 → the descriptor is stale; restart DS GridDesign
+  desktop_refused                the application answered and refused the operation
+                                 → read detail.detail for the application's own message
+  desktop_operation_unsupported  this DS GridDesign build does not offer the operation
+                                 → update DS GridDesign; `ds desktop status` reports the profile
+  desktop_unreadable             the application's reply could not be read within its bound
+                                 → restart DS GridDesign and retry
+  desktop_signed_out             the application is running but signed out, or has no project selected
+                                 → sign in and select a project in DS GridDesign
+  sync_invalid_input             a limit, project identity, or retained row identity is malformed
+                                 → use the exact project and row fields returned by `ds desktop sync status`
+  sync_signed_out                the paired application no longer has an account that owns the queue
+                                 → sign in to DS GridDesign with the account that produced the local reports
+  sync_account_changed           the signed-in account changes while the local queue operation is running
+                                 → read status again under the intended account before retrying a row
+  sync_row_not_found             the exact row is absent or does not belong to the echoed account and project
+                                 → run `ds desktop sync status --project <project-id>` and use its exact row id
+  sync_row_not_retryable         the row is not an eligible retained Network Reporter admission or storage-comparison failure
+                                 → follow status guidance: repair exact build admission or install the server storage-comparison fix; stale or integrity failures remain blocked
+  sync_native_store_owned        retry is owned by the shared native sync store on this host
+                                 → inspect status, reconnect, or wake Sync Center without changing retained publication identity
