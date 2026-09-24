@@ -79,6 +79,11 @@ transformer's files and combined atlas/joined pages at archive root.",
             "<sha256>",
             "Optional digest of the exact DS export receipt used for rendering.",
         ),
+        Arg::value(
+            "project",
+            "<exact-id>",
+            "Exact ds_project for the native --scope mv publication; the saved selection is never read.",
+        ),
         crate::layer::native::LANE_ARG,
         DESCRIPTOR_ARG,
     ],
@@ -244,7 +249,14 @@ fn attach_native_mv(i: &Inputs) -> Result<Value, Failure> {
         orientation: i.require("orientation")?.into(),
         source_receipt: i.value("source-receipt-sha256").unwrap_or("").into(),
     };
-    let result = ds_cli_auth::report_artifact(i.require("lane")?, &command)?;
+    let project = i.value("project").ok_or_else(|| {
+        Failure::invalid(
+            "project_required",
+            "--scope mv publishes natively to the project named by --project; the saved selection is never read",
+        )
+        .remedy("pass --project <exact-id>")
+    })?;
+    let result = ds_cli_auth::report_artifact(i.require("lane")?, project, &command)?;
     let result = result.into_result();
     Ok(
         json!({"project":result["project_id"],"scope":"mv","transformer":"mv_data","file_name":result["file_name"],"sha256":result["sha256"],"artifact":result["gcs_path"],"map_family":result["map_family"],"layout":i.require("layout")?,"paper_size":i.require("paper-size")?,"orientation":i.require("orientation")?,"page_role":"sheet"}),

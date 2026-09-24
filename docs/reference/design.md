@@ -20,12 +20,12 @@ Status without an open map or paired Desktop. Repeat `--file` for independent
 `sketch-lv`, or `lv-process`. For `lv-process`, `--settings` accepts a bounded
 JSON object containing boolean and numeric process settings.
 
-The command freezes the lane's selected project for the job, verifies each
-server-issued resumable target against that project, completes the upload
+The command works on the project named by `--project` (the saved selection is
+never read), verifies each server-issued resumable target against that project, completes the upload
 phase before it starts one-file process jobs, and returns one result per file.
 
 ```bash
-ds design intake upload --file ./T001.zip --mode lv-process \
+ds design intake upload --project <id> --file ./T001.zip --mode lv-process \
   --settings ./process-settings.json --yes --output json
 ```
 

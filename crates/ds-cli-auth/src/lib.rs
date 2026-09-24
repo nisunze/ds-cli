@@ -1284,7 +1284,6 @@ pub struct HeadlessSurveyImportSession {
     project_status: String,
     principal_sha256: String,
     credential_audience_sha256: String,
-    selected: state::ProjectContext,
     provider: SurveyImportProvider,
 }
 
@@ -1302,13 +1301,6 @@ impl SurveyImportProvider {
         match self {
             Self::Firebase(client) => client.survey_entry_create(project, request, now()),
             Self::Device(device) => device.survey_entry_create(project, request),
-        }
-    }
-
-    fn profile(&self) -> &ds_client_core::ClientProfile {
-        match self {
-            Self::Firebase(client) => client.profile(),
-            Self::Device(device) => device.profile(),
         }
     }
 }
@@ -1387,11 +1379,7 @@ impl HeadlessSurveyImportSession {
                 )
                 .remedy("verify the backend release and update ds before resuming"))
             }
-            other => with_released_context_disposition(
-                self.provider.profile(),
-                &self.selected,
-                other,
-            ),
+            other => other.map_err(map_client),
         }
     }
 }
@@ -1548,43 +1536,6 @@ fn restored_device_session(lane: Lane) -> Result<Option<device::DeviceSession>, 
     device::restore_session(lane)
 }
 
-fn restored_device_project(
-    lane: Lane,
-) -> Result<Option<(device::DeviceSession, state::ProjectContext)>, Failure> {
-    let _ = probe_headless_identity(lane.token())?;
-    let Some(session) = device::restore_session(lane)? else {
-        return Ok(None);
-    };
-    let identity = session.context();
-    let selected = ProjectContextLease::acquire(session.profile())?
-        .load_snapshot(session.profile(), identity.uid(), identity.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this device, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    Ok(Some((session, selected)))
-}
-
-fn load_selected_project(
-    profile: &ds_client_core::ClientProfile,
-    user: &ds_client_core::AuthenticatedUser,
-) -> Result<state::ProjectContext, Failure> {
-    ProjectContextLease::acquire(profile)?
-        .load_snapshot(profile, user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })
-}
-
 pub fn transformer_context_for_project(
     lane_value: &str,
     project: &str,
@@ -1699,52 +1650,46 @@ pub fn project_data(
 
 pub use ds_client_core::StatusUploadDomain;
 
-/// Run the Rust-owned design-intake state machine against files on
-/// this machine. The selected project is acquired once and remains frozen for
-/// every upload and process effect in the job.
+/// Run the Rust-owned design-intake state machine against files on this
+/// machine, for the project the caller named. The project is bounded once and
+/// stays fixed for every upload and process effect in the job; the saved
+/// selection is never read.
 pub fn status_upload(
     lane_value: &str,
+    project: &str,
     paths: &[String],
     mode: StatusUploadDomain,
     settings: &serde_json::Map<String, Value>,
 ) -> Result<Value, Failure> {
     let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let mut result =
-            drive_status_upload(selected.project_id(), paths, mode, settings, |command| {
-                device
-                    .status_processing(selected.project_id(), command)
-                    .map(|receipt| receipt.data().clone())
-                    .map_err(map_client)
-            })?;
-        decorate_status_upload(&mut result, lane.token(), &selected);
-        return Ok(result);
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let mut result =
-        drive_status_upload(selected.project_id(), paths, mode, settings, |command| {
-            let call = client.status_processing(selected.project_id(), command, now());
-            with_released_context_disposition(client.profile(), &selected, call)
+    let project = bounded_named_project(project)?;
+    let mut result = if let Some(mut device) = restored_device_session(lane)? {
+        drive_status_upload(&project, paths, mode, settings, |command| {
+            device
+                .status_processing(&project, command)
                 .map(|receipt| receipt.data().clone())
-        })?;
-    decorate_status_upload(&mut result, lane.token(), &selected);
+                .map_err(map_client)
+        })?
+    } else {
+        let profile = profile::load(lane)?;
+        let store = NativeRefreshStore::open()?;
+        let mut client = Client::new(profile, NativeTransport, store);
+        require_restore_before_context(&mut client)?;
+        drive_status_upload(&project, paths, mode, settings, |command| {
+            client
+                .status_processing(&project, command, now())
+                .map(|receipt| receipt.data().clone())
+                .map_err(map_client)
+        })?
+    };
+    result["project"] = json!(project);
+    result["lane"] = json!(lane.token());
     Ok(result)
-}
-
-fn decorate_status_upload(result: &mut Value, lane: &str, selected: &state::ProjectContext) {
-    result["project"] = json!(selected.project_id());
-    result["project_name"] = json!(selected.project_name());
-    result["project_status"] = json!(selected.status());
-    result["lane"] = json!(lane);
 }
 
 fn status_upload_failure(message: impl Into<String>) -> Failure {
     Failure::invalid("status_upload_invalid", message)
-        .remedy("Pass bounded regular files and keep the selected project unchanged for the run")
+        .remedy("Pass bounded regular files for the one project named by --project")
 }
 
 fn status_upload_domain(value: &str) -> Result<StatusUploadDomain, Failure> {
@@ -2601,7 +2546,7 @@ pub fn catalog_housekeeping(
     .map(|receipt| receipt.result)
 }
 
-/// The report shape of [`headless_project_report`] for the project the CALLER
+/// The [`HeadlessProjectReport`] shape for the project the CALLER
 /// named. The saved selection is never read, so `project_name` and
 /// `project_status` are empty: they only ever came from a selection snapshot.
 fn headless_named_report<T>(
@@ -2622,53 +2567,6 @@ fn headless_named_report<T>(
         project_name: String::new(),
         project_status: String::new(),
         result: named.result,
-    })
-}
-
-fn headless_project_report<T>(
-    lane_value: &str,
-    device_call: impl FnOnce(&mut device::DeviceSession, &str) -> Result<T, ClientError>,
-    session_call: impl FnOnce(
-        &mut Client<NativeTransport, NativeRefreshStore>,
-        &str,
-    ) -> Result<T, ClientError>,
-) -> Result<HeadlessProjectReport<T>, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let result = device_call(&mut device, selected.project_id()).map_err(map_client)?;
-        return Ok(HeadlessProjectReport {
-            identity: ProviderIdentity::new(
-                lane.token(),
-                device.profile().credential_audience_sha256(),
-                device.context().uid(),
-            )?,
-            user_email: device.context().email().to_owned(),
-            lane: lane.token(),
-            project_id: selected.project_id().to_owned(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            result,
-        });
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let result = session_call(&mut client, selected.project_id());
-    let result = with_released_context_disposition(client.profile(), &selected, result)?;
-    Ok(HeadlessProjectReport {
-        identity: ProviderIdentity::new(
-            lane.token(),
-            client.profile().credential_audience_sha256(),
-            user.uid(),
-        )?,
-        user_email: user.email().to_owned(),
-        lane: lane.token(),
-        project_id: selected.project_id().to_owned(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        result,
     })
 }
 
@@ -3340,12 +3238,6 @@ pub fn survey_import_session(
         let identity = device.context();
         let principal_sha256 = principal_binding_sha256(identity.uid(), identity.email());
         let credential_audience_sha256 = device.profile().credential_audience_sha256().to_owned();
-        let selected = state::ProjectContext::named(
-            device.profile(),
-            identity.uid(),
-            identity.email(),
-            &project,
-        );
         return Ok(HeadlessSurveyImportSession {
             lane: lane.token(),
             project_id: project,
@@ -3353,7 +3245,6 @@ pub fn survey_import_session(
             project_status: String::new(),
             principal_sha256,
             credential_audience_sha256,
-            selected,
             provider: SurveyImportProvider::Device(Box::new(device)),
         });
     }
@@ -3362,8 +3253,6 @@ pub fn survey_import_session(
     let mut client = Client::new(profile, NativeTransport, store);
     let user = require_restore_before_context(&mut client)?;
     let principal_sha256 = principal_binding_sha256(user.uid(), user.email());
-    let selected =
-        state::ProjectContext::named(client.profile(), user.uid(), user.email(), &project);
     Ok(HeadlessSurveyImportSession {
         lane: lane.token(),
         project_id: project,
@@ -3371,7 +3260,6 @@ pub fn survey_import_session(
         project_status: String::new(),
         principal_sha256,
         credential_audience_sha256: client.profile().credential_audience_sha256().to_owned(),
-        selected,
         provider: SurveyImportProvider::Firebase(Box::new(client)),
     })
 }
@@ -4067,32 +3955,6 @@ fn require_restore_before_context(
         {
             let context = ProjectContextLease::acquire(client.profile())?;
             context.clear().map_err(|_| cleanup_required())?;
-            Err(map_client(error))
-        }
-        Err(error) => Err(map_client(error)),
-    }
-}
-
-/// Apply identity disposition after a request whose selected-project snapshot
-/// no longer holds the lease. Conditional cleanup cannot erase a concurrent
-/// project replacement.
-fn with_released_context_disposition<T>(
-    profile: &ds_client_core::ClientProfile,
-    selected: &state::ProjectContext,
-    result: Result<T, ClientError>,
-) -> Result<T, Failure> {
-    match result {
-        Ok(value) => Ok(value),
-        Err(error)
-            if matches!(
-                error.kind(),
-                ErrorKind::PermanentlyRevoked | ErrorKind::IdentityMismatch
-            ) =>
-        {
-            let context = ProjectContextLease::acquire(profile)?;
-            context
-                .clear_if_unchanged(selected)
-                .map_err(|_| cleanup_required())?;
             Err(map_client(error))
         }
         Err(error) => Err(map_client(error)),
@@ -5017,38 +4879,9 @@ fn solar_principal_binding_sha256(uid: &str, email: &str) -> String {
 pub use ds_client_core::solar_project::{
     Command as SolarProjectCommand, Output as SolarProjectOutput,
 };
-pub struct HeadlessSolarProjectSession {
-    lane: &'static str,
-    project_id: String,
-    project_name: String,
-    project_status: String,
-    principal_sha256: String,
-    credential_audience_sha256: String,
-    selected: state::ProjectContext,
-    provider: SolarProjectProvider,
-}
 enum SolarProjectProvider {
     Firebase(Box<NativeClient>),
     Device(Box<device::DeviceSession>),
-}
-impl HeadlessSolarProjectSession {
-    pub fn binding(&self) -> Value {
-        json!({"project":self.project_id,"lane":self.lane,"principal":self.principal_sha256,"audience":self.credential_audience_sha256,"project_name":self.project_name,"project_status":self.project_status})
-    }
-    pub fn execute(&mut self, command: &SolarProjectCommand) -> Result<Value, Failure> {
-        command.validate(&self.project_id).map_err(map_client)?;
-        let (profile, result) = match &mut self.provider {
-            SolarProjectProvider::Firebase(client) => {
-                let result = client.solar_project(&self.project_id, command, now());
-                (client.profile(), result)
-            }
-            SolarProjectProvider::Device(device) => {
-                let result = device.solar_project(&self.project_id, command);
-                (device.profile(), result)
-            }
-        };
-        with_released_context_disposition(profile, &self.selected, result)
-    }
 }
 
 /// The seeding door's own refusals, published beside the hosts that emit them.
@@ -5220,13 +5053,16 @@ pub fn printing(
     client.printing("", request, now()).map_err(map_client)
 }
 
-/// Resolve models only inside the restored user's selected project.
+/// Publish one print artifact to the project the caller named; the saved
+/// selection is never read.
 pub fn report_artifact(
     lane: &str,
+    project: &str,
     command: &ds_client_core::report_artifact::Command,
 ) -> Result<HeadlessProjectReport<serde_json::Value>, Failure> {
-    headless_project_report(
+    headless_named_report(
         lane,
+        project,
         |device, project| device.report_artifact(project, command),
         |client, project| client.report_artifact(project, command, now()),
     )
@@ -5308,12 +5144,15 @@ pub use ds_client_core::report_artifact::{
 pub use ds_client_core::{
     TransformerSaveBatch, TransformerSaveItem, TransformerSaveReceipt, TransformerSaved,
 };
+/// Save one batch to the project the batch itself names (a sealed source
+/// receipt's project); the saved selection is never read.
 pub fn save_transformers(
     lane: &str,
     batch: &TransformerSaveBatch,
 ) -> Result<HeadlessProjectReport<TransformerSaveReceipt>, Failure> {
-    headless_project_report(
+    headless_named_report(
         lane,
+        &batch.project_id,
         |device, project| device.save_transformers(project, batch),
         |client, project| client.save_transformers(project, batch, now()),
     )

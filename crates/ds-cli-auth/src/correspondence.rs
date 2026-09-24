@@ -26,24 +26,7 @@ use ds_cli_contract::Failure;
 use ds_client_core::{ErrorKind, ServiceRefusal, ServiceRefusalDetail};
 use serde_json::{Map, Value, json};
 
-use super::{
-    HeadlessNamedProject, HeadlessProjectReport, headless_named_project, headless_project_report,
-    map_client_kind, now,
-};
-
-/// One governed correspondence action for only the saved, audience-fenced
-/// selected project. Membership, permission and every named rule are
-/// ds-brain's; nothing in `ds` re-derives them.
-pub fn project_correspondence(
-    lane_value: &str,
-    action: &ds_client_core::project_correspondence::Action,
-) -> Result<HeadlessProjectReport<Value>, Failure> {
-    headless_project_report(
-        lane_value,
-        |device, project| device.project_correspondence(project, action),
-        |client, project| client.project_correspondence(project, action, now()),
-    )
-}
+use super::{HeadlessNamedProject, headless_named_project, map_client_kind, now};
 
 /// One correspondence action for the project named on this request.
 pub fn project_correspondence_for_project(

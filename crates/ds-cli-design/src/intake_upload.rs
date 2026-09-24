@@ -32,12 +32,13 @@ pub static COMMAND: Command = Command {
     path: &["design", "intake", "upload"],
     contract: 1,
     summary: "Upload and process LV design files without Desktop.",
-    purpose: "Captures the lane's selected project once, admits every file through the shared Rust upload state machine, obtains project-scoped resumable targets, uploads local bytes, then submits independent one-file processing jobs. Upload admission, phase order, process request shape, result matching, failures and progress are the same kernel used by the browser; this native adapter supplies filesystem and fixed network effects only.",
+    purpose: "Names its project with --project (the saved selection is never read), admits every file through the shared Rust upload state machine, obtains project-scoped resumable targets, uploads local bytes, then submits independent one-file processing jobs. Upload admission, phase order, process request shape, result matching, failures and progress are the same kernel used by the browser; this native adapter supplies filesystem and fixed network effects only.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        crate::PROJECT_ARG,
         Arg::repeated(
             "file",
             "<path>",
@@ -56,18 +57,14 @@ pub static COMMAND: Command = Command {
             "<settings.json>",
             "Optional scalar JSON settings object, used only by lv-process.",
         ),
-        Arg::value(
-            "lane",
-            "<stable|canary>",
-            "Native user lane and selected project.",
-        )
-        .default("stable")
-        .choices(&["stable", "canary"]),
+        Arg::value("lane", "<stable|canary>", "Native user lane.")
+            .default("stable")
+            .choices(&["stable", "canary"]),
     ],
     output: "Frozen project/lane, terminal upload phase, aggregate progress, and one success or error result per source file.",
     examples: &[Example {
-        command: "ds design intake upload --file ./T001.zip --mode lv-process --settings ./process-settings.json --yes --output json",
-        note: "Runs the complete intake on the selected project with no open map or Desktop pairing.",
+        command: "ds design intake upload --project <id> --file ./T001.zip --mode lv-process --settings ./process-settings.json --yes --output json",
+        note: "Runs the complete intake on the named project with no open map or Desktop pairing.",
         runnable: false,
     }],
     refusals: REFUSALS,
@@ -118,6 +115,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let settings = read_settings(inputs.value("settings"))?;
     ds_cli_auth::status_upload(
         inputs.require("lane")?,
+        inputs.require("project")?,
         inputs.repeated("file"),
         mode,
         &settings,

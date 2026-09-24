@@ -1,4 +1,4 @@
-//! Publish an exact native result through the selected user's fenced save owner.
+//! Publish an exact native result to the project its sealed export receipt names.
 use std::io::Read;
 
 use ds_cli_contract::spec::{
@@ -52,7 +52,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "project-save"],
     contract: 1,
     summary: "Save a processed LV transformer online and verify its current version.",
-    purpose: "Finish headless LV processing by saving one selected successful result to the signed-in project. Supply the original project-export receipt, configured process input, full result and process receipt. Exact file hashes, source layers, server version/content digest and current project configuration are checked before the bounded save; fresh readback proves the saved result. Tags are preserved. Run report.project.export afterward to print and publish reports. No Desktop is needed.",
+    purpose: "Finish headless LV processing by saving one selected successful result to the project its source receipt names (the saved selection is never read). Supply the original project-export receipt, configured process input, full result and process receipt. Exact file hashes, source layers, server version/content digest and current project configuration are checked before the bounded save; fresh readback proves the saved result. Tags are preserved. Run report.project.export afterward to print and publish reports. No Desktop is needed.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
