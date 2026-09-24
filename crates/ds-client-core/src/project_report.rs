@@ -1102,6 +1102,36 @@ impl TransformerKind {
     }
 }
 
+/// The verified backup ds-brain wrote before it retired a transformer: the
+/// exact storage object, its generation, and the digest and length of the
+/// bytes it holds. A restore of a deleted transformer names this receipt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetirementBackup {
+    bucket: String,
+    object: String,
+    generation: i64,
+    sha256: String,
+    byte_length: i64,
+}
+
+impl RetirementBackup {
+    pub fn bucket(&self) -> &str {
+        &self.bucket
+    }
+    pub fn object(&self) -> &str {
+        &self.object
+    }
+    pub const fn generation(&self) -> i64 {
+        self.generation
+    }
+    pub fn sha256(&self) -> &str {
+        &self.sha256
+    }
+    pub const fn byte_length(&self) -> i64 {
+        self.byte_length
+    }
+}
+
 /// The retirement record ds-brain keeps on a retired or restored document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetirementRecord {
@@ -1110,6 +1140,7 @@ pub struct RetirementRecord {
     retired_by: Option<String>,
     restored_at: Option<u64>,
     restored_by: Option<String>,
+    backup: Option<RetirementBackup>,
 }
 
 impl RetirementRecord {
@@ -1127,6 +1158,11 @@ impl RetirementRecord {
     }
     pub fn restored_by(&self) -> Option<&str> {
         self.restored_by.as_deref()
+    }
+    /// The verified backup written before this retirement, when ds-brain
+    /// recorded one.
+    pub fn backup(&self) -> Option<&RetirementBackup> {
+        self.backup.as_ref()
     }
 }
 
@@ -1200,6 +1236,47 @@ struct RetirementWire {
     restored_at: Option<u64>,
     #[serde(default)]
     restored_by: Option<String>,
+    #[serde(default)]
+    backup: Option<BackupWire>,
+}
+
+#[derive(Deserialize)]
+struct BackupWire {
+    bucket: String,
+    object: String,
+    generation: i64,
+    sha256: String,
+    byte_length: i64,
+}
+
+/// A backup receipt is all-or-nothing: a present receipt with a field out of
+/// bounds is an unreadable answer, never a partial one.
+fn decode_backup(wire: Option<BackupWire>) -> Result<Option<RetirementBackup>, ClientError> {
+    let Some(wire) = wire else {
+        return Ok(None);
+    };
+    let digest_ok = wire.sha256.len() == 64
+        && wire
+            .sha256
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    if wire.bucket.is_empty()
+        || wire.bucket.chars().count() > 222
+        || wire.object.is_empty()
+        || wire.object.chars().count() > 1024
+        || wire.generation <= 0
+        || wire.byte_length <= 0
+        || !digest_ok
+    {
+        return Err(unreadable());
+    }
+    Ok(Some(RetirementBackup {
+        bucket: wire.bucket,
+        object: wire.object,
+        generation: wire.generation,
+        sha256: wire.sha256,
+        byte_length: wire.byte_length,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -1243,6 +1320,7 @@ fn decode_retirement(wire: RetirementWire) -> Result<RetirementRecord, ClientErr
         retired_by: nonempty(wire.retired_by),
         restored_at: wire.restored_at,
         restored_by: nonempty(wire.restored_by),
+        backup: decode_backup(wire.backup)?,
     })
 }
 
@@ -1516,6 +1594,7 @@ pub struct RetirementResult {
     at: Option<u64>,
     refusal: Option<RetirementRefusal>,
     error: Option<String>,
+    backup: Option<RetirementBackup>,
 }
 
 impl RetirementResult {
@@ -1533,6 +1612,11 @@ impl RetirementResult {
     }
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
+    }
+    /// The verified backup a successful retirement wrote first, as ds-brain
+    /// reported it.
+    pub fn backup(&self) -> Option<&RetirementBackup> {
+        self.backup.as_ref()
     }
 }
 
@@ -1574,6 +1658,8 @@ struct RetirementResultWire {
     error_code: Option<String>,
     #[serde(default)]
     error: Option<String>,
+    #[serde(default)]
+    backup: Option<BackupWire>,
 }
 
 #[derive(Deserialize)]
@@ -1641,6 +1727,7 @@ pub(crate) fn decode_retirement_receipt(
             at: row.at,
             refusal,
             error: nonempty(row.error),
+            backup: decode_backup(row.backup)?,
         });
     }
     if wire.applied_count != applied || wire.failed_count != failed {

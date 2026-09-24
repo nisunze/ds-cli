@@ -4970,7 +4970,11 @@ fn inventory_envelope(project: &str) -> Vec<u8> {
             {"name": "tx_a", "state": "active"},
             {"name": "tx_b", "state": "retired", "retirement": {
                 "state": "retired", "reason": "duplicate of tx_a", "retired_at": 1_900_000_000_000_u64,
-                "retired_by": "user@example.com"
+                "retired_by": "user@example.com",
+                "backup": {
+                    "bucket": "ds-transformer-backups", "object": "project_a/tx_b/1900000000000.json",
+                    "generation": 1_758_000_000_000_001_i64, "sha256": "ab".repeat(32), "byte_length": 4096
+                }
             }}
         ]
     }))
@@ -5061,7 +5065,10 @@ fn project_report_operations_are_six_fixed_selected_project_actions() {
             "eds_project_id": "project_a",
             "action": "retire_transformer",
             "results": [
-                {"name": "tx_a", "status": "retired", "at": 1_900_000_001_000_u64},
+                {"name": "tx_a", "status": "retired", "at": 1_900_000_001_000_u64, "backup": {
+                    "bucket": "ds-transformer-backups", "object": "project_a/tx_a/1900000001000.json",
+                    "generation": 7, "sha256": "cd".repeat(32), "byte_length": 2048
+                }},
                 {"name": "tx_b", "status": "failed", "error_code": "already_retired", "error": "already retired"}
             ],
             "applied_count": 1,
@@ -5136,6 +5143,12 @@ fn project_report_operations_are_six_fixed_selected_project_actions() {
         inventory.rows()[2].retirement().unwrap().reason(),
         Some("duplicate of tx_a")
     );
+    let backup = inventory.rows()[2].retirement().unwrap().backup().unwrap();
+    assert_eq!(backup.object(), "project_a/tx_b/1900000000000.json");
+    assert_eq!(backup.generation(), 1_758_000_000_000_001);
+    assert_eq!(backup.sha256(), "ab".repeat(32));
+    assert_eq!(backup.byte_length(), 4096);
+    assert!(inventory.rows()[1].retirement().is_none());
 
     let retire = RetirementRequest::retire(
         TransformerSet::new(["tx_a".to_owned(), "tx_b".to_owned()]).unwrap(),
@@ -5148,6 +5161,12 @@ fn project_report_operations_are_six_fixed_selected_project_actions() {
     assert_eq!(receipt.applied_count(), 1);
     assert_eq!(receipt.failed_count(), 1);
     assert!(receipt.results()[0].applied());
+    let backup = receipt.results()[0]
+        .backup()
+        .expect("a retirement names its backup");
+    assert_eq!(backup.bucket(), "ds-transformer-backups");
+    assert_eq!(backup.generation(), 7);
+    assert!(receipt.results()[1].backup().is_none());
     assert_eq!(
         receipt.results()[1].refusal(),
         Some(RetirementRefusal::AlreadyRetired)
@@ -5347,6 +5366,8 @@ fn project_report_profile_inputs_receipts_and_bounds_fail_closed() {
         serde_json::json!([{"name": "tx_a", "status": "retired"}]),
         serde_json::json!([{"name": "tx_b", "status": "retired"}, {"name": "tx_a", "status": "retired"}]),
         serde_json::json!([{"name": "tx_a", "status": "retired"}, {"name": "tx_b", "status": "failed", "error_code": "mystery"}]),
+        // A backup receipt is all-or-nothing: a malformed digest is unreadable.
+        serde_json::json!([{"name": "tx_a", "status": "retired", "backup": {"bucket": "b", "object": "o", "generation": 1, "sha256": "short", "byte_length": 1}}, {"name": "tx_b", "status": "retired"}]),
     ] {
         transport.push_project_report(
             200,
