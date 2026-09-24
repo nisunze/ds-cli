@@ -5771,14 +5771,26 @@ pub fn remove_report_artifact(
         |client, project| client.remove_report_artifact(project, command, now()),
     )
 }
+/// One model operation against the project the CALLER named, keeping the
+/// credential's identity for the host's own scoping (this machine's working
+/// copies). The saved selection is never read.
 pub fn grid_models(
     lane: &str,
+    project: &str,
     command: &ds_client_core::grid_models::Command,
-) -> Result<HeadlessProjectReport<ds_client_core::grid_models::Receipt>, Failure> {
-    headless_project_report(
+) -> Result<HeadlessNamedProject<ds_client_core::grid_models::Receipt>, Failure> {
+    headless_named_project_with(
         lane,
-        |device, project| device.grid_models(project, command),
-        |client, project| client.grid_models(project, command, now()),
+        project,
+        map_grid_publication,
+        |device, project| {
+            command.validate(project)?;
+            device.grid_models(project, command)
+        },
+        |client, project| {
+            command.validate(project)?;
+            client.grid_models(project, command, now())
+        },
     )
 }
 /// One explicit-project model operation. The gateway authorizes the project

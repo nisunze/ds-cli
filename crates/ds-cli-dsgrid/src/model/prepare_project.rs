@@ -32,6 +32,13 @@ const DOWNLOAD_MISSING_ARG: Arg = Arg {
     summary: "Download and verify each missing exact MV head into this machine's working copies, one at a time.",
 };
 
+const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project whose MV heads to prepare; the saved selection is never read.",
+)
+.required();
+
 const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
     .choices(&["stable", "canary"])
     .default("stable");
@@ -43,7 +50,7 @@ const MAX_PAGES: usize = 10;
 
 pub const INVENTORY_UNBOUNDED: Refusal = Refusal {
     code: "grid_project_inventory_unbounded",
-    when: "the selected project lists more than 1000 governed MV heads",
+    when: "the named project lists more than 1000 governed MV heads",
     remedy: "prepare heads individually with `ds dsgrid project list` and `ds dsgrid project download`",
 };
 pub const HEAD_UNVERIFIED: Refusal = Refusal {
@@ -81,13 +88,13 @@ pub static COMMAND: Command = Command {
     id: "dsgrid.model.prepare-project",
     path: &["dsgrid", "model", "prepare-project"],
     contract: 1,
-    summary: "Show or prepare the selected project's exact DS Grid MV heads.",
-    purpose: "Lists every governed MV model head of the CLI-selected project and reports whether this machine holds its exact immutable bytes as a working copy (`ds dsgrid model list`). With --download-missing, downloads and verifies each missing head one at a time and registers it as a project-pinned working copy, never activated. Design and physical printing on this machine consume the same working copies. No window, no browser cache; model bytes never leave this machine's store.",
+    summary: "Show or prepare a named project's exact DS Grid MV heads.",
+    purpose: "Lists every governed MV model head of the project named by --project (the saved selection is never read) and reports whether this machine holds its exact immutable bytes as a working copy (`ds dsgrid model list`). With --download-missing, downloads and verifies each missing head one at a time and registers it as a project-pinned working copy, never activated. Design and physical printing on this machine consume the same working copies. No window, no browser cache; model bytes never leave this machine's store.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[DOWNLOAD_MISSING_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, DOWNLOAD_MISSING_ARG, LANE_ARG],
     output: "Project, total and ready counts, completeness, downloaded ids, and one bounded row per head with model_id, name, revision, digest, cached, local_id and bytes when held.",
     examples: &[],
     refusals: &REFUSALS,
@@ -122,8 +129,9 @@ fn heads_of(rows: &[Value]) -> Vec<GovernedHead> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.value("lane").unwrap_or("stable");
     let download = inputs.switch("download-missing");
+    let named = inputs.require("project")?;
 
-    // 1. Every governed head of the selected project, paged at the bound.
+    // 1. Every governed head of the named project, paged at the bound.
     let mut heads = Vec::new();
     let mut cursor: Option<String> = None;
     let mut project = String::new();
@@ -141,6 +149,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         let report = ds_cli_auth::grid_models(
             lane,
+            named,
             &ds_cli_auth::GridModelsCommand::List {
                 limit: PAGE,
                 cursor: cursor.clone(),
@@ -175,6 +184,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         for row in rows.iter_mut().filter(|row| !row.cached) {
             let receipt = ds_cli_auth::grid_models(
                 lane,
+                named,
                 &ds_cli_auth::GridModelsCommand::Download {
                     model: row.model_id.clone(),
                     revision: row.revision.clone(),
@@ -297,8 +307,21 @@ mod tests {
                 .any(|arg| arg.name == "desktop-descriptor"),
             "the window path is retired"
         );
-        let parsed = parse(&COMMAND, &["--download-missing".to_owned()]).expect("parses");
+        let parsed = parse(
+            &COMMAND,
+            &[
+                "--project".to_owned(),
+                "p1".to_owned(),
+                "--download-missing".to_owned(),
+            ],
+        )
+        .expect("parses");
         assert!(parsed.switch("download-missing"));
+        assert_eq!(parsed.value("project"), Some("p1"));
+        assert!(
+            parse(&COMMAND, &["--download-missing".to_owned()]).is_err(),
+            "the project is named on every call; the saved selection is never read"
+        );
     }
 
     #[test]

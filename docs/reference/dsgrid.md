@@ -16,7 +16,7 @@ catalogue — decided by `ds_command_kernel::local_models` and persisted by
 `ds-layer-store`: `model list`, `model show`, `model create-local`, `model
 import-external` and `model set-active` need no application, project or
 window (since 2026-09-18). `model prepare-project` (since 2026-09-20) reads the
-CLI-selected project's governed MV heads under the native credential and
+governed MV heads of the project named by `--project` under the native credential and
 answers which of them this machine holds as exact working copies; with
 `--download-missing` it fills the rest, one verified download at a time, each
 registered as a project-pinned copy and never activated. `publish-version`
@@ -44,7 +44,7 @@ These words are deliberately not interchangeable:
 | `ds dsgrid model create-local` | Create one empty working copy and open it as active. | none |
 | `ds dsgrid model import-external` | Acquire one external `.dsgrid`; it does not become active. | none |
 | `ds dsgrid model set-active` | Open one existing working copy as the active one; idempotent when already active. | none |
-| `ds dsgrid model prepare-project` | Show which exact governed MV heads of the selected project this machine holds and, with `--download-missing`, fill the rest as project-pinned working copies. | headless_project |
+| `ds dsgrid model prepare-project` | Show which exact governed MV heads of the named project this machine holds and, with `--download-missing`, fill the rest as project-pinned working copies. | headless_project |
 | `ds dsgrid project retire` | Retire one superseded project model with explicit project, head revision, digest and reason; a byte-verified separate backup is mandatory and immutable revisions remain. | headless_project + `--yes` |
 | `ds dsgrid project restore` | Restore the exact retired head after verifying its separate backup; version-bound attachments retain their pins. | headless_project + `--yes` |
 | `ds dsgrid project list --include-deleted` | Include retired heads and their exact revision and digest for restoration. | headless_project |
@@ -67,9 +67,8 @@ match its declared digest is `grid_project_head_unverified` and nothing is
 registered for it.
 
 ```bash
-ds auth project use --lane canary --project <exact-id>
-ds dsgrid model prepare-project --lane canary --output json
-ds dsgrid model prepare-project --lane canary --download-missing --output json
+ds dsgrid model prepare-project --lane canary --project <exact-id> --output json
+ds dsgrid model prepare-project --lane canary --project <exact-id> --download-missing --output json
 ds dsgrid model list --lane canary --account <uid>       # the copies, origin "project"
 ```
 PLS-CADD workspaces and `.bak` files remain under `ds dsgrid-exchange inspect`,
