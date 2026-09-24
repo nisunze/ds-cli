@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Grid Corrections"
+  short_description: "Correct spotted DS Grid models from review comments"
+  default_prompt: "Use $ds-grid-corrections to translate review comments or computed findings on a spotted DS Grid model into scoped, cherry-picked typed corrections through the live DS CLI or MCP."
