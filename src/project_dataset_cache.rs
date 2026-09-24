@@ -227,10 +227,10 @@ pub(crate) fn capture(rect: Rect, metres: f64, sheets: &[SheetShape]) -> Rect {
         let half_h = (shown_h / 2.0) / metres_per_degree_latitude(mid);
         let centre = [(rect.w + rect.e) / 2.0, mid];
         let sheet_rect = Rect {
-            w: (centre[0] - half_w).max(-180.0),
-            s: (centre[1] - half_h).max(-MAX_LATITUDE),
-            e: (centre[0] + half_w).min(180.0),
-            n: (centre[1] + half_h).min(MAX_LATITUDE),
+            w: round_out((centre[0] - half_w).max(-180.0), false),
+            s: round_out((centre[1] - half_h).max(-MAX_LATITUDE), false),
+            e: round_out((centre[0] + half_w).min(180.0), true),
+            n: round_out((centre[1] + half_h).min(MAX_LATITUDE), true),
         };
         out = out.union(sheet_rect);
     }
@@ -2044,6 +2044,18 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sheet_capture_edges_are_outward_quantized_for_room_queries() {
+        let rect =
+            Rect::from_bounds([29.905891855, -2.554536198, 29.908155482, -2.550060858]).unwrap();
+        let captured = capture(rect, 200.0, &both_orientations());
+        for edge in captured.bounds() {
+            assert_eq!(round(edge), edge);
+        }
+        let geometry = Coverage::from_rects(vec![captured]).geometry().unwrap();
+        assert!(crate::reference_cache::covers_area(&geometry, &geometry).unwrap());
+    }
 
     fn catalog() -> CatalogEntry {
         CatalogEntry {
