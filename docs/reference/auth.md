@@ -38,8 +38,10 @@ canonical identity, immutable profile/audience fences, selected-project
 metadata, provider/session state, and normalized capabilities; credential
 material never enters the projection.
 
-The selected project is only a device-local address plus an authority fence.
-It is not loaded project data, active map state, an open edit room, or evidence
+The selected project is only a device-local address plus an authority fence,
+and since 2026-09-24 no `ds` command reads it: every project command names its
+project with `--project`, so one machine, Server or agent serves several
+projects at once. It is not loaded project data, active map state, an open edit room, or evidence
 that Desktop is running. Browser providers may keep that bounded address in
 IndexedDB; this native provider keeps its equivalent below protected per-user
 state. The server still authorizes every operation against the exact project.
