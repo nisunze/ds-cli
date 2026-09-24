@@ -81,3 +81,6 @@ stage, controls and safe outcome have been reproduced with a pinned PLS
 version. Keep characterization in the server-side operator contract. Windows
 runs only the supported native controller on the transferred workspace; it
 does not become the application-code authority.
+
+Stops at: the native PLS-CADD operator's decision to complete or refuse the
+characterized dialog; hand over the pinned workspace and observed controls.

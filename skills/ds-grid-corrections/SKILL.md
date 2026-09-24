@@ -111,3 +111,6 @@ exact new package and receipts to the PLS owner for export, Restore/reopen,
 and native checks. DS import/sync supports only characterized native edits;
 do not claim that a section or route edit has reached PLS until a strict
 export or a fresh native re-import proves it.
+
+Stops at: the PLS-CADD operator's native export and Restore/reopen check;
+hand over the exact revised package, guard and DS receipts.
