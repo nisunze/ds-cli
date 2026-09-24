@@ -71,6 +71,13 @@ pub static COMMAND: Command = Command {
         .default("profile_top")
         .choices(&["profile_top", "plan_top"]),
         Arg::value(
+            "label-orientation",
+            "<vertical|horizontal>",
+            "Station-aligned upward labels inside the profile, or the horizontal ledger.",
+        )
+        .default("vertical")
+        .choices(&["vertical", "horizontal"]),
+        Arg::value(
             "long-axis",
             "<on|off>",
             "Split and rotate plan sections at authored angle points.",
@@ -270,7 +277,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         None => json!([]),
     };
-    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"out_dir":out_dir,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":{"format":inputs.require("format")?,"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows}});
+    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"out_dir":out_dir,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":{"format":inputs.require("format")?,"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows}});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     std::fs::write(&request_path, bytes)
