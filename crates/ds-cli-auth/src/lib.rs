@@ -219,55 +219,6 @@ pub fn refresh_runtime_identity(lane_value: &str) -> Result<ProviderIdentity, Fa
     Ok(after)
 }
 
-/// The non-secret native context a durable local host needs to enter the
-/// shared Sync Center store. It is deliberately not a gateway credential:
-/// callers may fence local rows and leases, but cannot turn it into a general
-/// authenticated HTTP client.
-pub struct HeadlessSyncContext {
-    account_uid: String,
-    deployment: String,
-    project_id: String,
-}
-
-impl HeadlessSyncContext {
-    pub fn account_uid(&self) -> &str {
-        &self.account_uid
-    }
-
-    pub fn deployment(&self) -> &str {
-        &self.deployment
-    }
-
-    pub fn project_id(&self) -> &str {
-        &self.project_id
-    }
-}
-
-/// Restore the selected native project after refreshing the exact provider
-/// identity. The returned context is fenced to the caller's lane and profile;
-/// a server still has no bearer or arbitrary gateway route from this API.
-pub fn headless_sync_context(lane_value: &str) -> Result<HeadlessSyncContext, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    let identity = refresh_runtime_identity(lane.token())?;
-    let (_, selected_project) = probe_headless_identity(lane.token())?.ok_or_else(|| {
-        Failure::conflict("headless_signed_out", "the server has no native identity")
-            .remedy("sign in under the server's Linux account")
-    })?;
-    let project_id = selected_project.ok_or_else(|| {
-        Failure::conflict(
-            "headless_project_not_selected",
-            "no project is selected for this native user, lane, and credential audience",
-        )
-        .remedy("run ds auth project use --project <exact-id>")
-    })?;
-    let profile = profile::load(lane)?;
-    Ok(HeadlessSyncContext {
-        account_uid: identity.uid().to_owned(),
-        deployment: profile.gateway_origin().to_owned(),
-        project_id,
-    })
-}
-
 /// The connection identity a durable local host has **without** a selected
 /// project: the account, the deployment it is bound to, and the registered
 /// install. A host that admits a project per operation needs exactly this and
