@@ -61,8 +61,10 @@ pub static DOMAIN: Domain = Domain {
     commands: &[
         &backup::COMMAND,
         &project::LIST,
+        &project::VERSIONS,
         &project::DOWNLOAD,
         &project::RETIRE,
+        &project::RESTORE,
         &create::COMMAND,
         &template::COMMAND,
         &template::APPLY,

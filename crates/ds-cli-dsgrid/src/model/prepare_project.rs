@@ -144,6 +144,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             &ds_cli_auth::GridModelsCommand::List {
                 limit: PAGE,
                 cursor: cursor.clone(),
+                include_deleted: false,
             },
         )?;
         project = report.project_id().to_owned();

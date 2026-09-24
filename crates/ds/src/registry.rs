@@ -132,6 +132,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::project::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::project::VERSIONS,
+        handler: ds_cli_dsgrid::project::versions,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::project::DOWNLOAD,
         handler: ds_cli_dsgrid::project::download,
         render: ds_cli_dsgrid::project::render,
@@ -139,6 +144,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_dsgrid::project::RETIRE,
         handler: ds_cli_dsgrid::project::retire,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::RESTORE,
+        handler: ds_cli_dsgrid::project::restore,
         render: ds_cli_dsgrid::project::render,
     },
     Entry {

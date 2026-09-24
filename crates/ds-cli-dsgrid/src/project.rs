@@ -61,6 +61,32 @@ pub static RETIRE: Command = Command {
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
+pub static RESTORE: Command = Command {
+    id: "dsgrid.project.restore",
+    path: &["dsgrid", "project", "restore"],
+    contract: 1,
+    summary: "Restore one backed-up project DS Grid model (needs --yes).",
+    purpose: "Reactivates the exact retired head after the Server verifies its separate backup and immutable model bytes. Attachments remain pinned to their original version. A changed head is refused.",
+    chapter: Chapter::GridModel,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        PROJECT,
+        LANE,
+        Arg::value("model", "<id>", "Exact retired project model ID.").required(),
+        Arg::value("expected-head", "<revision-id>", "Retired head revision.").required(),
+        Arg::value("expected-digest", "<sha256>", "Retired head digest.").required(),
+        Arg::value("reason", "<text>", "Why this model is being restored.").required(),
+    ],
+    output: "Restored model and pinned head, verified backup identity, and tile invalidation.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/dsgrid.md"),
+    search: &["restore deleted model", "recover MV model"],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
 pub static LIST: Command = Command {
     id: "dsgrid.project.list",
     path: &["dsgrid", "project", "list"],
@@ -80,12 +106,45 @@ pub static LIST: Command = Command {
             "<opaque>",
             "Exact next cursor from the previous page.",
         ),
+        Arg::switch(
+            "include-deleted",
+            "Include retired model heads so they can be restored.",
+        ),
     ],
     output: "Selected project, bounded models with head revisions/digests, more and next_cursor.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
+pub static VERSIONS: Command = Command {
+    id: "dsgrid.project.versions",
+    path: &["dsgrid", "project", "versions"],
+    contract: 1,
+    summary: "List immutable versions of one project DS Grid model.",
+    purpose: "Lists exact revision IDs and artifact digests, including versions of a retired model. Attachments remain assigned to their own version; download one exact revision with dsgrid project download.",
+    chapter: Chapter::GridModel,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        PROJECT,
+        LANE,
+        Arg::value("model", "<id>", "Exact project model ID.").required(),
+        Arg::value("limit", "<1..100>", "Maximum versions in one page.").default("50"),
+        Arg::value(
+            "cursor",
+            "<opaque>",
+            "Exact next cursor from the previous page.",
+        ),
+    ],
+    output: "Bounded immutable versions with revision IDs, model digests, and next cursor.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/dsgrid.md"),
+    search: &["model history", "older MV model versions"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -123,6 +182,20 @@ pub fn list(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         i.require("lane")?,
         i.require("project")?,
         &ds_cli_auth::GridModelsCommand::List {
+            limit,
+            cursor: i.value("cursor").map(str::to_owned),
+            include_deleted: i.switch("include-deleted"),
+        },
+    )?;
+    Ok(r.data)
+}
+pub fn versions(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let limit = i.require("limit")?.parse::<u16>().map_err(failure)?;
+    let r = ds_cli_auth::grid_models_for_project(
+        i.require("lane")?,
+        i.require("project")?,
+        &ds_cli_auth::GridModelsCommand::ListVersions {
+            model: i.require("model")?.into(),
             limit,
             cursor: i.value("cursor").map(str::to_owned),
         },
@@ -165,6 +238,19 @@ pub fn retire(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         i.require("lane")?,
         project,
         &ds_cli_auth::GridModelsCommand::Delete {
+            model: i.require("model")?.into(),
+            expected_revision: i.require("expected-head")?.into(),
+            expected_digest: i.require("expected-digest")?.into(),
+            reason: i.require("reason")?.into(),
+        },
+    )?;
+    Ok(receipt.data)
+}
+pub fn restore(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let receipt = ds_cli_auth::grid_models_for_project(
+        i.require("lane")?,
+        i.require("project")?,
+        &ds_cli_auth::GridModelsCommand::Restore {
             model: i.require("model")?.into(),
             expected_revision: i.require("expected-head")?.into(),
             expected_digest: i.require("expected-digest")?.into(),

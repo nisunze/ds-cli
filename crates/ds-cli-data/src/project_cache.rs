@@ -864,6 +864,7 @@ fn mv_route_extents(
             &ds_cli_auth::GridModelsCommand::List {
                 limit: 100,
                 cursor: cursor.clone(),
+                include_deleted: false,
             },
         )?;
         let data = response.data;
