@@ -820,3 +820,11 @@ conflicts, refused, in_sync after the pass), `reclaimed` (batches and bytes
 freed for rows that lost), `idle` (why nothing moved, when nothing did) and
 the pass's `receipts`. An offline pass changes nothing and says so, and the
 queue keeps its work.
+
+## Removing printed artifacts
+
+`ds report artifact remove` removes one exact published print reference through
+the native project authority. Supply its scope, transformer, filename, `gs://`
+locator and SHA-256 from the current print receipt, then confirm with `--yes`.
+A replaced print is refused. The operation retains stored bytes and other
+outputs. Archive standalone custom maps through their Assets lifecycle.

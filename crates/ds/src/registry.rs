@@ -664,6 +664,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         handler: ds_cli_report::project::map_inputs::run,
         render: ds_cli_report::layout::render_text,
     },
+    Entry {
+        command: &ds_cli_report::artifact::REMOVE,
+        handler: ds_cli_report::artifact::remove,
+        render: ds_cli_report::layout::render_text,
+    },
 ];
 
 static SOLAR_ENTRIES: &[Entry] = &[

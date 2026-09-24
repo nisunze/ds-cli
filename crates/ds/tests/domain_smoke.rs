@@ -44,6 +44,40 @@ fn discoverable(command: &Value) -> bool {
     )
 }
 
+#[test]
+fn print_removal_is_a_confirmed_headless_project_operation() {
+    let described = ok(&["capabilities", "report.artifact.remove", "--output", "json"]);
+    assert_eq!(described["command"]["authority"], "headless_project");
+    assert_eq!(described["command"]["effect"], "global_write");
+    assert!(
+        described["command"]["output"]
+            .as_str()
+            .unwrap()
+            .contains("bytes_deleted=false")
+    );
+    assert_eq!(
+        refusal(&[
+            "report",
+            "artifact",
+            "remove",
+            "--scope",
+            "mv",
+            "--transformer",
+            "mv_data",
+            "--filename",
+            "map.pdf",
+            "--gcs-path",
+            "gs://bucket/map.pdf",
+            "--sha256",
+            &"a".repeat(64),
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "native_profile_not_configured"
+    );
+}
+
 /// Design commands the collaboration test reaches that are still bound to a
 /// window. 27 on 2026-09-19; 0 on 2026-09-20, when tags, groups, comments,
 /// consumer grouping, known columns and materials took the kernel's design

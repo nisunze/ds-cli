@@ -5881,6 +5881,16 @@ pub fn report_artifact(
         |client, project| client.report_artifact(project, command, now()),
     )
 }
+pub fn remove_report_artifact(
+    lane: &str,
+    command: &ds_client_core::report_artifact::RemoveCommand,
+) -> Result<HeadlessProjectReport<serde_json::Value>, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.remove_report_artifact(project, command),
+        |client, project| client.remove_report_artifact(project, command, now()),
+    )
+}
 pub fn grid_models(
     lane: &str,
     command: &ds_client_core::grid_models::Command,
@@ -5927,7 +5937,9 @@ fn map_grid_publication(error: ClientError) -> Failure {
 }
 
 pub use ds_client_core::grid_models::Command as GridModelsCommand;
-pub use ds_client_core::report_artifact::Command as ReportArtifactCommand;
+pub use ds_client_core::report_artifact::{
+    Command as ReportArtifactCommand, RemoveCommand as RemoveReportArtifactCommand,
+};
 
 pub use ds_client_core::{
     TransformerSaveBatch, TransformerSaveItem, TransformerSaveReceipt, TransformerSaved,
