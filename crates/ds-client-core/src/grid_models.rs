@@ -11,12 +11,24 @@ pub enum Command {
     List {
         limit: u16,
         cursor: Option<String>,
+        include_deleted: bool,
+    },
+    ListVersions {
+        model: String,
+        limit: u16,
+        cursor: Option<String>,
     },
     Download {
         model: String,
         revision: String,
     },
     Delete {
+        model: String,
+        expected_revision: String,
+        expected_digest: String,
+        reason: String,
+    },
+    Restore {
         model: String,
         expected_revision: String,
         expected_digest: String,
@@ -76,7 +88,7 @@ impl Command {
             return Err(invalid());
         }
         match self {
-            Self::List { limit, cursor }
+            Self::List { limit, cursor, .. }
                 if (1..=100).contains(limit)
                     && cursor.as_ref().is_none_or(|c| {
                         !c.is_empty() && c.len() <= 4096 && !c.chars().any(char::is_control)
@@ -84,8 +96,26 @@ impl Command {
             {
                 Ok(())
             }
+            Self::ListVersions {
+                model,
+                limit,
+                cursor,
+            } if id(model)
+                && (1..=100).contains(limit)
+                && cursor.as_ref().is_none_or(|c| {
+                    !c.is_empty() && c.len() <= 4096 && !c.chars().any(char::is_control)
+                }) =>
+            {
+                Ok(())
+            }
             Self::Download { model, revision } if id(model) && id(revision) => Ok(()),
             Self::Delete {
+                model,
+                expected_revision,
+                expected_digest,
+                reason,
+            }
+            | Self::Restore {
                 model,
                 expected_revision,
                 expected_digest,
@@ -154,8 +184,19 @@ pub(crate) fn run<T: AuthorizedTransport>(
         return publication::run(profile, transport, authority, project, intent, bytes);
     }
     let payload = match command {
-        Command::List { limit, cursor } => {
-            json!({"action":"list_models","project_id":project,"page_size":limit,"cursor":cursor.as_deref().unwrap_or(""),"include_deleted":false})
+        Command::List {
+            limit,
+            cursor,
+            include_deleted,
+        } => {
+            json!({"action":"list_models","project_id":project,"page_size":limit,"cursor":cursor.as_deref().unwrap_or(""),"include_deleted":include_deleted})
+        }
+        Command::ListVersions {
+            model,
+            limit,
+            cursor,
+        } => {
+            json!({"action":"list_versions","project_id":project,"model_id":model,"page_size":limit,"cursor":cursor.as_deref().unwrap_or("")})
         }
         Command::Download { model, revision } => {
             json!({"action":"get_version","project_id":project,"model_id":model,"revision_id":revision})
@@ -167,6 +208,14 @@ pub(crate) fn run<T: AuthorizedTransport>(
             reason,
         } => {
             json!({"action":"delete_model","project_id":project,"delete":{"model_id":model,"expected_head_revision_id":expected_revision,"expected_model_digest":expected_digest,"reason":reason}})
+        }
+        Command::Restore {
+            model,
+            expected_revision,
+            expected_digest,
+            reason,
+        } => {
+            json!({"action":"restore_model","project_id":project,"restore":{"model_id":model,"expected_head_revision_id":expected_revision,"expected_model_digest":expected_digest,"reason":reason}})
         }
         Command::ForkExample { fork } => {
             json!({"action":"fork_example","project_id":project,"fork":fork})
@@ -204,11 +253,41 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 || deletion["head_model_digest"] != *expected_digest
                 || deletion["revisions_retained"] != true
                 || deletion["model_object_retained"] != true
+                || deletion["backup"]["digest"] != *expected_digest
+                || deletion["backup"]["generation"]
+                    .as_i64()
+                    .is_none_or(|value| value <= 0)
+                || deletion["backup"]["bucket"]
+                    .as_str()
+                    .is_none_or(str::is_empty)
+                || deletion["backup"]["object"]
+                    .as_str()
+                    .is_none_or(str::is_empty)
             {
                 return Err(bad());
             }
             Ok(Receipt {
                 data: deletion.clone(),
+                bytes: None,
+            })
+        }
+        Command::Restore {
+            model,
+            expected_revision,
+            expected_digest,
+            ..
+        } => {
+            let restoration = data.get("restoration").ok_or_else(bad)?;
+            if restoration["project_id"] != project
+                || restoration["model_id"] != *model
+                || restoration["head_revision_id"] != *expected_revision
+                || restoration["head_model_digest"] != *expected_digest
+                || restoration["backup"]["digest"] != *expected_digest
+            {
+                return Err(bad());
+            }
+            Ok(Receipt {
+                data: restoration.clone(),
                 bytes: None,
             })
         }
@@ -226,6 +305,26 @@ pub(crate) fn run<T: AuthorizedTransport>(
             }
             Ok(Receipt {
                 data: version,
+                bytes: None,
+            })
+        }
+        Command::ListVersions { model, limit, .. } => {
+            let rows = data["versions"].as_array().ok_or_else(bad)?;
+            let more = data["has_more"].as_bool().ok_or_else(bad)?;
+            let cursor = data["next_cursor"].as_str().unwrap_or("");
+            if rows.len() > usize::from(*limit)
+                || (more && cursor.is_empty())
+                || cursor.len() > 4096
+                || rows.iter().any(|row| {
+                    row["project_id"] != project
+                        || row["model_id"] != *model
+                        || !row["revision_id"].is_string()
+                })
+            {
+                return Err(bad());
+            }
+            Ok(Receipt {
+                data: data.clone(),
                 bytes: None,
             })
         }
@@ -250,7 +349,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 if !ids.insert(model.to_owned()) || row["project_id"] != project {
                     return Err(bad());
                 }
-                models.push(json!({"model_id":model,"display_name":row["display_name"],"model_kind":row["model_kind"],"head_revision_id":row["head_revision_id"],"manifest_model_id":row["manifest_model_id"],"manifest_model_revision":row["manifest_model_revision"],"head_model_digest":row["head_model_digest"],"state":row["state"],"lifecycle":row["lifecycle"]}));
+                models.push(json!({"model_id":model,"display_name":row["display_name"],"model_kind":row["model_kind"],"head_revision_id":row["head_revision_id"],"manifest_model_id":row["manifest_model_id"],"manifest_model_revision":row["manifest_model_revision"],"head_model_digest":row["head_model_digest"],"state":row["state"],"lifecycle":row["lifecycle"],"backup":row["backup"]}));
             }
             Ok(Receipt {
                 data: json!({"project":project,"models":models,"more":more,"next_cursor":cursor}),
@@ -321,7 +420,8 @@ mod tests {
         }
         assert!(Command::List {
             limit: 101,
-            cursor: None
+            cursor: None,
+            include_deleted: true,
         }
         .validate("project")
         .is_err());
@@ -336,6 +436,21 @@ mod tests {
             expected_revision: "revision-1".into(),
             expected_digest: "a".repeat(64),
             reason: "Superseded by the reviewed model".into(),
+        }
+        .validate("project")
+        .is_ok());
+        assert!(Command::Restore {
+            model: "model-1".into(),
+            expected_revision: "revision-1".into(),
+            expected_digest: "a".repeat(64),
+            reason: "Needed again".into(),
+        }
+        .validate("project")
+        .is_ok());
+        assert!(Command::ListVersions {
+            model: "model-1".into(),
+            limit: 50,
+            cursor: None,
         }
         .validate("project")
         .is_ok());
