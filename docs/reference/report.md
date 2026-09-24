@@ -716,8 +716,12 @@ it aims for 0+500, 1+000, and so on, then cuts at a nearby structure with
 less local terrain relief. That structure closes one page and opens the next;
 incoming and outgoing conductors extend across the matched station marks.
 `--profile-elevation-breaks on` keeps the preferred vertical scale by resetting
-the labeled elevation datum at a structure within the same sheet. A section
-that still cannot fit adjusts its actual vertical denominator and prints it.
+the labeled elevation datum at a midspan station within the same sheet. The
+measured wire elevations are labeled on both sides of the cut. Each structure
+is drawn once; `--break-support-context repeat_labels` adds the identities of
+the two bounding supports beside both rulers. A section that still cannot fit
+adjusts its actual vertical denominator and prints it. Large holes in the
+pinned ground or conductor source are marked instead of interpolated.
 `--profile-continuations` controls matched page cuts. A short last page is
 balanced across the final pair. The manifest records each printed window.
 Each default vertical label row holds one entity field: structure number,
