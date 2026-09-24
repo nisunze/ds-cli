@@ -71,12 +71,12 @@ pub use ds_client_core::{
     LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
     LayerVisibilityDefaultReceipt, PROJECT_REPORT_MAX_REASON_CHARS,
     PROJECT_REPORT_MAX_TRANSFORMER_CHARS, PROJECT_REPORT_MAX_TRANSFORMERS, ReportFileLevel,
-    RetirementAction, RetirementReceipt, RetirementRecord, RetirementRefusal, RetirementRequest,
-    RetirementResult, StyleEditReceipt, StyleInstruction, StyleSnapshot, TileCatalog, TileMutation,
-    TileOperationResult, TileOperationStatus, TilePreflight, TilePreflightLayer,
-    TilePreflightStatus, TileScope, TileType, TransformerInventory, TransformerInventoryRow,
-    TransformerKind, TransformerLifecycle, TransformerSet, TransformerStatusList,
-    TransformerStatusRow,
+    RetirementAction, RetirementBackup, RetirementReceipt, RetirementRecord, RetirementRefusal,
+    RetirementRequest, RetirementResult, StyleEditReceipt, StyleInstruction, StyleSnapshot,
+    TileCatalog, TileMutation, TileOperationResult, TileOperationStatus, TilePreflight,
+    TilePreflightLayer, TilePreflightStatus, TileScope, TileType, TransformerInventory,
+    TransformerInventoryRow, TransformerKind, TransformerLifecycle, TransformerSet,
+    TransformerStatusList, TransformerStatusRow,
 };
 pub use ds_client_core::{SolarCalculationArtifactFinalize, SolarCalculationArtifactOpen};
 pub use profile::Lane;

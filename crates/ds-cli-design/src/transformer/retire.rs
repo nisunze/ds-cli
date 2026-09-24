@@ -31,7 +31,8 @@ a destructive paired-application action.",
     output: "\
 Lane and the named project, the requested names and reason, \
 applied/failed counts, and one result per name: `applied` with the retirement \
-timestamp, or a closed `refusal` (`not_found`, `already_retired`, \
+timestamp and the verified `backup` (bucket, object, generation, sha256, \
+byte_length) written first, or a closed `refusal` (`not_found`, `already_retired`, \
 `no_retirement_record`, `special_document`, `governance_locked`, `not_owner`, \
 `failed`) with its message.",
     examples: &[Example {

@@ -366,6 +366,18 @@ pub fn project_receipt<T>(headless: &HeadlessProjectReport<T>) -> Value {
     json!({ "lane": headless.lane(), "project": project })
 }
 
+/// The verified backup ds-brain wrote before a retirement: the exact object a
+/// deleted transformer is restored from, with the digest that proves it.
+fn backup_json(backup: &ds_cli_auth::RetirementBackup) -> Value {
+    json!({
+        "bucket": backup.bucket(),
+        "object": backup.object(),
+        "generation": backup.generation(),
+        "sha256": backup.sha256(),
+        "byte_length": backup.byte_length(),
+    })
+}
+
 pub fn row_json(row: &TransformerInventoryRow) -> Value {
     let mut out = json!({
         "name": row.name(),
@@ -380,6 +392,9 @@ pub fn row_json(row: &TransformerInventoryRow) -> Value {
             "restored_at": record.restored_at(),
             "restored_by": record.restored_by(),
         });
+        if let Some(backup) = record.backup() {
+            out["retirement"]["backup"] = backup_json(backup);
+        }
     }
     out
 }
@@ -415,6 +430,9 @@ pub fn receipt_json(receipt: &RetirementReceipt, request: &RetirementRequest) ->
             if let Some(error) = result.error() {
                 out["error"] = json!(error);
             }
+            if let Some(backup) = result.backup() {
+                out["backup"] = backup_json(backup);
+            }
             out
         }).collect::<Vec<_>>(),
     })
@@ -441,7 +459,15 @@ pub fn render_receipt(verb: &str, data: &Value) -> String {
         for result in results {
             let name = result["name"].as_str().unwrap_or("?");
             if result["applied"].as_bool().unwrap_or(false) {
-                out.push_str(&format!("  {name:<32} {verb}\n"));
+                match result["backup"]["object"].as_str() {
+                    Some(object) => out.push_str(&format!(
+                        "  {name:<32} {verb} · backup gs://{}/{object}#{} sha256:{}\n",
+                        result["backup"]["bucket"].as_str().unwrap_or("?"),
+                        result["backup"]["generation"],
+                        result["backup"]["sha256"].as_str().unwrap_or("?"),
+                    )),
+                    None => out.push_str(&format!("  {name:<32} {verb}\n")),
+                }
             } else {
                 out.push_str(&format!(
                     "  {name:<32} refused ({}): {}\n",
@@ -452,4 +478,35 @@ pub fn render_receipt(verb: &str, data: &Value) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn an_applied_retirement_shows_the_backup_it_can_be_restored_from() {
+        let data = json!({
+            "lane": "canary",
+            "project": {"ds_project": "p1"},
+            "applied_count": 1,
+            "failed_count": 0,
+            "results": [{
+                "name": "TX-1",
+                "applied": true,
+                "backup": {
+                    "bucket": "ds-transformer-backups",
+                    "object": "p1/TX-1/1.json",
+                    "generation": 7,
+                    "sha256": "ab",
+                    "byte_length": 10,
+                },
+            }],
+        });
+        let text = super::render_receipt("retired", &data);
+        assert!(
+            text.contains("backup gs://ds-transformer-backups/p1/TX-1/1.json#7 sha256:ab"),
+            "{text}"
+        );
+    }
 }

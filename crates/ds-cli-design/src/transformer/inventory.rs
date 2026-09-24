@@ -29,7 +29,8 @@ No Desktop descriptor, URL, body or action override is accepted.",
     output: "\
 Lane and the named project, the requested names, active/retired/deleted \
 counts, and one row per transformer with `kind`, `state`, and the retirement \
-record (reason, who, when, restoration) when one exists.",
+record (reason, who, when, restoration, and the verified `backup` written \
+before retirement) when one exists.",
     examples: &[Example {
         command: "ds design transformer inventory --project <id> --transformer TX-1 --transformer TX-2 --output json",
         note: "`.data.transformers[].state` says what each name is today.",
