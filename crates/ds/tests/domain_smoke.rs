@@ -4709,7 +4709,8 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
     let headless = |args: &[&str]| -> String {
         let mut named = args.to_vec();
-        if args.starts_with(&["report", "project"]) {
+        if args.starts_with(&["report", "project"]) || args.starts_with(&["design", "transformer"])
+        {
             named.extend(["--project", "test-project"]);
         }
         let output = Command::new(env!("CARGO_BIN_EXE_ds"))
@@ -4874,6 +4875,8 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             "design",
             "transformer",
             "restore",
+            "--project",
+            "test-project",
             "--transformer",
             "tx_a",
             "--output",

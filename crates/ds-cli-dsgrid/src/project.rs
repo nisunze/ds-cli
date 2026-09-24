@@ -57,7 +57,7 @@ pub static RETIRE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["delete project model", "superseded MV model"],
+    search: &["retire model", "superseded model"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -83,7 +83,7 @@ pub static RESTORE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["restore deleted model", "recover MV model"],
+    search: &["restore model", "recover model"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -144,7 +144,7 @@ pub static VERSIONS: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["model history", "older mv model versions"],
+    search: &["model history", "model versions"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
