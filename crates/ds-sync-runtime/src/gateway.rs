@@ -86,10 +86,18 @@ impl Gateway for UnavailableGateway {
     }
 }
 
-/// A validated gateway origin. A credential is only ever attached to this.
+/// A validated gateway origin. A credential is attached only to HTTPS or to
+/// the local Desktop's exact loopback HTTP host during development.
 pub fn validated_origin(raw: &str) -> Result<String, String> {
     let url = url::Url::parse(raw.trim()).map_err(|_| "The gateway origin is unusable")?;
-    if url.scheme() != "https"
+    let local_http = url.scheme() == "http"
+        && matches!(
+            url.host(),
+            Some(url::Host::Domain("localhost"))
+                | Some(url::Host::Ipv4(std::net::Ipv4Addr::LOCALHOST))
+                | Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
+        );
+    if !(url.scheme() == "https" || local_http)
         || !url.username().is_empty()
         || url.password().is_some()
         || url.host_str().is_none_or(str::is_empty)
@@ -129,7 +137,7 @@ impl Gateway for BearerGateway {
         let route = route.declared();
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .max_redirects(0)
-            .https_only(true)
+            .https_only(self.origin.starts_with("https://"))
             .http_status_as_error(false)
             .timeout_global(Some(std::time::Duration::from_secs(route.timeout_s)))
             .build()
@@ -202,8 +210,18 @@ mod tests {
     #[test]
     fn a_gateway_origin_is_pinned_before_a_credential_is_attached() {
         assert!(validated_origin("https://gateway.example.com").is_ok());
+        for local in [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://[::1]:5173",
+        ] {
+            assert_eq!(validated_origin(local).unwrap(), local);
+        }
         for bad in [
             "http://gateway.example.com",
+            "http://localhost.evil.example:5173",
+            "http://127.0.0.2:5173",
+            "http://localhost:5173/api",
             "https://user:pass@gateway.example.com",
             "https://gateway.example.com/api/v1",
             "https://gateway.example.com?query=1",
