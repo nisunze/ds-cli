@@ -4118,14 +4118,38 @@ fn now() -> u64 {
 /// `auth_input_invalid` with no detail and no remedy, so a blocked reporting
 /// session was unreadable from the headless lane while the desktop lane showed
 /// the cause plainly.
-fn map_project_report_service_code(code: ProjectReportServiceCode) -> Failure {
+fn map_project_report_service_code(
+    code: ProjectReportServiceCode,
+    refusal: Option<&ds_client_core::ServiceRefusal>,
+) -> Failure {
     match code {
-        ProjectReportServiceCode::NoIndividualArtifacts => Failure::conflict(
-            "report_no_individual_artifacts",
-            "No selected transformer had an individual report to package, so no archive was published.",
-        )
-        .remedy("generate the individual reports first, then retry this command")
-        .next("ds report project scope"),
+        ProjectReportServiceCode::NoIndividualArtifacts => {
+            // The route names each room and its closed cause; a room the
+            // reporter could not build (killed for memory, unreachable) reads as
+            // that, not as a report nobody generated.
+            let rooms = refusal.and_then(|refusal| refusal.detail_text("missing_rooms"));
+            let count = refusal
+                .and_then(|refusal| refusal.detail_integer("missing_individual_artifact_count"));
+            let message = match (rooms, count) {
+                (Some(rooms), Some(count)) => format!(
+                    "No selected transformer had an individual report to package, so no archive was published. {count} room(s) without a report (name:cause): {rooms}"
+                ),
+                (Some(rooms), None) => format!(
+                    "No selected transformer had an individual report to package, so no archive was published. Rooms without a report (name:cause): {rooms}"
+                ),
+                _ => "No selected transformer had an individual report to package, so no archive was published.".to_owned(),
+            };
+            let mut failure = Failure::conflict("report_no_individual_artifacts", message)
+                .remedy("generate the individual reports first (a reporter_* cause is a capacity or transport failure: retry), then retry this command")
+                .next("ds report project scope");
+            if let Some(rooms) = rooms {
+                failure = failure.detail(serde_json::json!({
+                    "missing_rooms": rooms,
+                    "missing_individual_artifact_count": count,
+                }));
+            }
+            failure
+        }
         ProjectReportServiceCode::GroupingStale => Failure::conflict(
             "report_grouping_stale",
             "The applied report grouping changed after this request pinned its digest.",
@@ -4143,7 +4167,7 @@ fn map_project_report_service_code(code: ProjectReportServiceCode) -> Failure {
 
 fn map_client(error: ClientError) -> Failure {
     if let Some(code) = error.project_report_service_code() {
-        return map_project_report_service_code(code);
+        return map_project_report_service_code(code, error.service_refusal());
     }
     let message = error.to_string();
     // These are closed, static Core diagnostics, not backend response text.
