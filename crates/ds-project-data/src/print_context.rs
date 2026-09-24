@@ -20,7 +20,8 @@
 use ds_command_kernel::printing::context::expanded_layer_ids;
 use ds_command_kernel::printing::{PrintContextLayer, PrintContextSource};
 use ds_command_kernel::project_dataset_cache::{
-    buffer_policy, Dataset, Scope, CONTOURS_INDEX_LAYER, CONTOURS_INTERMEDIATE_LAYER,
+    both_orientations, buffer_policy, plan_focused, BufferPolicy, Dataset, Scope,
+    CONTOURS_INDEX_LAYER, CONTOURS_INTERMEDIATE_LAYER,
 };
 use ds_command_kernel::report_export::{print_context_document, sha256_hex};
 use serde_json::{json, Value};
@@ -68,35 +69,32 @@ pub struct PrintContext {
     pub reused: bool,
 }
 
-/// The buffered rectangle one context source is read for, through the kernel's
-/// own metric buffering (no metre-to-degree arithmetic lives in a host).
-fn buffered_area(transformer: &str, layers: &Value, buffer_m: f64) -> Result<Value, Failure> {
-    let request = json!({
-        "schema": ds_command_kernel::project_design_extent::SCHEMA,
-        "action": "extent",
-        "name": transformer,
-        "layers": layers,
-        "buffer_m": buffer_m,
-    });
-    let bytes = serde_json::to_vec(&request).map_err(crate::store)?;
-    let answer: Value = serde_json::from_str(
-        &ds_command_kernel::project_design_extent::evaluate(&bytes).map_err(crate::store)?,
+/// A print reads the same sheet-shaped area the project cache seeds. The
+/// source's metre buffer is a floor; a long, narrow design needs substantially
+/// more context to fill the other dimension of a physical page.
+fn print_policy(buffer_m: f64) -> Result<BufferPolicy, Failure> {
+    let mut policy = buffer_policy(&[buffer_m]).map_err(crate::store)?;
+    policy.sheets = both_orientations();
+    Ok(policy)
+}
+
+fn sheet_area(
+    scope: &Scope,
+    transformer: &str,
+    layers: &Value,
+    buffer_m: f64,
+) -> Result<Value, Failure> {
+    let extent = extent_of(transformer, layers)?;
+    let plan = plan_focused(
+        scope,
+        &buildings_dataset(),
+        &print_policy(buffer_m)?,
+        &[extent],
+        &[transformer.to_owned()],
     )
     .map_err(crate::store)?;
-    let bounds = answer["buffered"]
-        .as_array()
-        .filter(|b| b.len() == 4)
-        .map(|b| {
-            [
-                b[0].as_f64().unwrap_or(f64::NAN),
-                b[1].as_f64().unwrap_or(f64::NAN),
-                b[2].as_f64().unwrap_or(f64::NAN),
-                b[3].as_f64().unwrap_or(f64::NAN),
-            ]
-        })
-        .ok_or_else(|| Failure::Unsupported("the design has no geographic extent".into()))?;
-    let [w, s, e, n] = bounds;
-    Ok(json!({"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}))
+    plan.coverage_geometry
+        .ok_or_else(|| Failure::Unsupported("the design has no geographic extent".into()))
 }
 
 /// The metric buffer one context source is read for: its own when it
@@ -170,7 +168,7 @@ fn room_layers(
     warnings: &mut Vec<String>,
     reused: &mut bool,
 ) -> Result<Vec<(String, Vec<Value>, String)>, Failure> {
-    let policy = buffer_policy(&[buffer_of(&context.source)]).map_err(crate::store)?;
+    let policy = print_policy(buffer_of(&context.source))?;
     let extent = extent_of(transformer, layers)?;
     if extent.bounds.is_none() {
         return Err(Failure::Unsupported(
@@ -359,7 +357,7 @@ pub fn read_print_context(
             reused,
         });
     }
-    let coverage = buffered_area(transformer, layers, widest.max(0.0))?;
+    let coverage = sheet_area(scope, transformer, layers, widest.max(0.0))?;
     let bytes = print_context_document(&coverage, &json!(sources), &document_layers)
         .map_err(document_failure)?;
     let sha256 = sha256_hex(&bytes);

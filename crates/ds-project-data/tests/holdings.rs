@@ -46,6 +46,13 @@ fn contour(index: usize, kind: &str, y: f64) -> Value {
         "geometry": {"type": "LineString", "coordinates": [[29.9995, y], [30.0015, y]]}})
 }
 
+fn long_narrow_design() -> Value {
+    json!({"lv_lines": {"type":"FeatureCollection", "features":[
+        {"type":"Feature", "properties":{}, "geometry":{"type":"LineString",
+            "coordinates":[[30.0,-2.0],[30.02,-1.9999]]}}
+    ]}})
+}
+
 /// Answers every area with three footprints inside it, and counts calls.
 struct Footprints {
     calls: usize,
@@ -523,7 +530,7 @@ fn a_catalogue_subset_is_extracted_from_the_installed_bundle_and_printed() {
     );
     let document: Value = serde_json::from_slice(seeded.document.as_deref().unwrap()).unwrap();
     assert_eq!(document["schema"], PRINT_CONTEXT_SCHEMA);
-    assert_eq!(document["coverage"]["type"], "Polygon");
+    assert_eq!(document["coverage"]["type"], "MultiPolygon");
     assert_eq!(
         document["layers"]["roads"]["features"]
             .as_array()
@@ -571,6 +578,54 @@ fn a_catalogue_subset_is_extracted_from_the_installed_bundle_and_printed() {
     assert_eq!(provider.calls, calls);
     assert_eq!(warm.document, seeded.document);
     assert_eq!(warm.sha256, seeded.sha256);
+}
+
+#[test]
+fn contour_print_context_covers_the_sheet_around_a_long_narrow_design() {
+    let root = tempfile::tempdir().unwrap();
+    let context = PrintContextLayer {
+        id: "elevation_contours".into(),
+        label: "Elevation contours".into(),
+        source: PrintContextSource::ElevationContours {
+            buffer_m: 200.0,
+            minor_interval_m: 10,
+            index_interval_m: 50,
+            sample_spacing_m: 10.0,
+        },
+    };
+    let mut provider = Footprints {
+        calls: 0,
+        fail_first: false,
+    };
+    let mut fetch = no_fetch;
+    let mut hosts = Hosts {
+        provider: &mut provider,
+        fetch: &mut fetch,
+    };
+    let print = read_print_context(
+        root.path(),
+        &scope(),
+        "tx",
+        &long_narrow_design(),
+        &[context],
+        &[],
+        Mode::Acquire(&mut hosts),
+    )
+    .unwrap();
+    let document: Value = serde_json::from_slice(
+        print
+            .document
+            .as_deref()
+            .unwrap_or_else(|| panic!("missing contour context: {print:?}")),
+    )
+    .unwrap();
+    let ring = document["coverage"]["coordinates"][0][0]
+        .as_array()
+        .unwrap();
+    let south = ring[0][1].as_f64().unwrap();
+    let north = ring[2][1].as_f64().unwrap();
+    assert!(south < -2.01 && north > -1.99, "{ring:?}");
+    assert!(print.layers.contains(&"contours_index".to_string()));
 }
 
 #[test]

@@ -78,8 +78,9 @@ walks the kernel's `ContextPreparation` contexts:
 As on the desktop, a catalogue or derived layer that cannot be supplied is a
 warning and an [`Omission`], never the end of the print; `Mode::Read` never
 acquires and names `ds data project-cache seed --yes` / `--seed`. The document
-is the kernel's `print_context_document` over the design's buffered rectangle
-(the widest selected buffer, through the kernel's metric buffering), its layers
+is the kernel's `print_context_document` over the sheet-shaped capture area
+used by project-cache seed (both page orientations, with the widest selected
+metre buffer as a floor), its layers
 in `BTreeMap` order, its `sources` naming every layer; `sha256` is what the
 engine re-verifies and the run receipt records.
 
