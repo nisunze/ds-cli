@@ -951,6 +951,65 @@ struct ProjectReportRefusalWire {
     code: String,
     #[serde(default)]
     status: String,
+    #[serde(default)]
+    missing_individual_artifact_count: Option<i64>,
+    #[serde(default)]
+    missing_individual_artifact_causes: Vec<MissingArtifactCauseWire>,
+}
+
+#[derive(Deserialize)]
+struct MissingArtifactCauseWire {
+    #[serde(default)]
+    transformer: String,
+    #[serde(default)]
+    code: String,
+}
+
+/// The rooms a combined run could not package, as `name:code` pairs: each name
+/// a bounded identifier and each code the route's closed token. The route's
+/// free-text detail never crosses; a pair outside the bounds is dropped, and
+/// the list stops before the refusal's detail budget.
+fn missing_rooms_details(
+    wire: &ProjectReportRefusalWire,
+) -> serde_json::Map<String, serde_json::Value> {
+    const MAX_ROOMS_BYTES: usize = 1800;
+    let token = |value: &str, max: usize, extra: &[u8]| {
+        !value.is_empty()
+            && value.len() <= max
+            && value.bytes().all(|b| {
+                b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || extra.contains(&b)
+            })
+    };
+    let mut rooms = String::new();
+    let mut shown = 0_i64;
+    for cause in &wire.missing_individual_artifact_causes {
+        let name = cause.transformer.trim();
+        let code = cause.code.trim();
+        if !token(name, 128, b"-.") || !token(code, 64, b"") {
+            continue;
+        }
+        let pair = format!("{name}:{code}");
+        if rooms.len() + pair.len() + 2 > MAX_ROOMS_BYTES {
+            break;
+        }
+        if !rooms.is_empty() {
+            rooms.push_str(", ");
+        }
+        rooms.push_str(&pair);
+        shown += 1;
+    }
+    let mut details = serde_json::Map::new();
+    if let Some(count) = wire
+        .missing_individual_artifact_count
+        .filter(|count| *count >= 0)
+    {
+        details.insert("missing_individual_artifact_count".into(), count.into());
+    }
+    if shown > 0 {
+        details.insert("missing_rooms".into(), rooms.into());
+        details.insert("missing_rooms_shown".into(), shown.into());
+    }
+    details
 }
 
 /// Read the route's own refusal code out of a non-200 body.
@@ -997,6 +1056,19 @@ fn classify_project_report_response(response: &TransportResponse) -> ClientError
                 "the applied report grouping does not cover every requested transformer",
             ),
         };
+        if code == ProjectReportServiceCode::NoIndividualArtifacts {
+            // The body was bounded and parsed once already to name the code.
+            if let Ok(wire) = serde_json::from_slice::<ProjectReportRefusalWire>(&response.body) {
+                let details = missing_rooms_details(&wire);
+                let refusal = crate::ServiceRefusal::with_details(
+                    response.status,
+                    Some("no_individual_transformer_artifacts"),
+                    None,
+                    Some(&details),
+                );
+                return ClientError::with_project_report_refusal(kind, message, code, refusal);
+            }
+        }
         return ClientError::with_project_report_service_code(kind, message, code);
     }
     classify_project_report_error(response.status)
@@ -1618,6 +1690,35 @@ mod project_report_refusal_tests {
             assert_eq!(error.project_report_service_code(), None, "status {status}");
             assert_eq!(error.kind(), ErrorKind::InvalidInput);
         }
+    }
+
+    /// A combined run that packaged nothing names its rooms and each closed
+    /// cause, so a forced run killed for memory reads as that, per room. The
+    /// route's free-text detail and a malformed name never cross.
+    #[test]
+    fn the_rooms_a_combined_run_could_not_package_cross_as_bounded_pairs() {
+        let error = refusal(
+            424,
+            r#"{"code":"no_individual_transformer_artifacts","detail":"SECRET-SERVER-TEXT",
+               "missing_individual_artifact_count":3,
+               "missing_individual_artifact_causes":[
+                 {"transformer":"ruhuha","code":"reporter_container_terminated","detail":"SECRET"},
+                 {"transformer":"zihare","code":"reporter_request_failed","detail":"x"},
+                 {"transformer":"bad name!","code":"x","detail":"x"}]}"#,
+        );
+        assert_eq!(
+            error.project_report_service_code(),
+            Some(ProjectReportServiceCode::NoIndividualArtifacts)
+        );
+        let refusal = error.service_refusal().expect("the rooms are carried");
+        assert_eq!(refusal.detail_integer("missing_individual_artifact_count"), Some(3));
+        assert_eq!(
+            refusal.detail_text("missing_rooms"),
+            Some("ruhuha:reporter_container_terminated, zihare:reporter_request_failed")
+        );
+        assert_eq!(refusal.detail_integer("missing_rooms_shown"), Some(2));
+        assert_eq!(refusal.message(), None);
+        assert!(!format!("{refusal:?}").contains("SECRET"));
     }
 
     /// The body is read for its code only; no server string reaches the caller.

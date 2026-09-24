@@ -393,6 +393,20 @@ impl ClientError {
         }
     }
 
+    /// A named report refusal that also carries the route's bounded, scalar
+    /// facts (for a combined run: which rooms had no report, and the closed
+    /// cause code of each), never its sentences.
+    pub(crate) fn with_project_report_refusal(
+        kind: ErrorKind,
+        message: &'static str,
+        code: ProjectReportServiceCode,
+        refusal: ServiceRefusal,
+    ) -> Self {
+        let mut error = Self::with_project_report_service_code(kind, message, code);
+        error.service_refusal = Some(refusal);
+        error
+    }
+
     pub(crate) const fn with_project_report_service_code(
         kind: ErrorKind,
         message: &'static str,
