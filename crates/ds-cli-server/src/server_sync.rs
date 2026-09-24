@@ -117,6 +117,65 @@ impl ServerSyncSession {
         &self.project
     }
 
+    /// Free this project's sync lease when its holder is provably gone, and
+    /// name the holder that still blocks it otherwise.
+    ///
+    /// A worker id is `<install>#<credential digest>#<pid>`. A lease is
+    /// abandoned only when it was taken on THIS install by another process
+    /// that is not running here; a live holder, another install's, or one
+    /// whose process cannot be observed keeps it until it expires (at most
+    /// 15 minutes). Reclaiming releases it under the holder's own id, the one
+    /// release the store accepts.
+    pub fn reclaim_abandoned_lease(&self) -> Result<LeaseReading, String> {
+        let scope = ds_sync_runtime::rows::store_scope(&self.project);
+        let mut store = self
+            .store
+            .lock()
+            .map_err(|_| "The sync gate is unavailable".to_string())?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis() as u64)
+            .unwrap_or_default();
+        let Some(lease) = store
+            .leases_of_fence(&self.fence)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|lease| lease.scope == scope && lease.expires_at_ms > now)
+        else {
+            return Ok(LeaseReading::default());
+        };
+        let own_install = &self.identity.principal.install_id;
+        if abandoned_holder(
+            own_install,
+            &self.worker_id,
+            &lease.worker_id,
+            process_running,
+        ) {
+            store
+                .apply(
+                    &self.fence,
+                    now,
+                    ds_sync_runtime::store::Event::LeaseRelease {
+                        scope,
+                        worker_id: lease.worker_id.clone(),
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+            return Ok(LeaseReading {
+                reclaimed_from: Some(lease.worker_id),
+                blocked_by: None,
+            });
+        }
+        Ok(LeaseReading {
+            reclaimed_from: None,
+            blocked_by: Some(BlockingLease {
+                holder_running: holder_pid(own_install, &lease.worker_id).and_then(process_running),
+                worker_id: lease.worker_id,
+                expires_at_ms: lease.expires_at_ms,
+            }),
+        })
+    }
+
     /// The store this session writes through, shared with every host over
     /// this project: the seal records its row here, the pump drains from
     /// here. One store per execution context.
@@ -222,6 +281,55 @@ fn require_sync_identity(
     Ok(())
 }
 
+/// What a drain found on its project's sync lease before it ran.
+#[derive(Debug, Default)]
+pub struct LeaseReading {
+    /// A holder proven gone whose lease this session released.
+    pub reclaimed_from: Option<String>,
+    /// A holder that still blocks the project.
+    pub blocked_by: Option<BlockingLease>,
+}
+
+#[derive(Debug)]
+pub struct BlockingLease {
+    pub worker_id: String,
+    pub expires_at_ms: u64,
+    /// Whether the holder's process runs on this machine; `None` when it is
+    /// another install's worker or cannot be observed here.
+    pub holder_running: Option<bool>,
+}
+
+/// The pid of a worker of THIS install, or `None` for any other id.
+fn holder_pid(own_install: &str, worker_id: &str) -> Option<u32> {
+    let mut parts = worker_id.split('#');
+    let (install, _credential, pid) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() || install != own_install {
+        return None;
+    }
+    pid.parse().ok()
+}
+
+/// A lease is abandoned only when its holder is another process of this
+/// install that is provably not running. Anything unobservable keeps it.
+fn abandoned_holder(
+    own_install: &str,
+    own_worker: &str,
+    holder: &str,
+    running: impl Fn(u32) -> Option<bool>,
+) -> bool {
+    holder != own_worker
+        && holder_pid(own_install, holder).is_some_and(|pid| running(pid) == Some(false))
+}
+
+/// Whether a pid runs on this machine; `None` where that cannot be asked.
+fn process_running(pid: u32) -> Option<bool> {
+    if cfg!(target_os = "linux") {
+        Some(Path::new(&format!("/proc/{pid}")).exists())
+    } else {
+        None
+    }
+}
+
 /// The sync fence of this host's identity, as every session of it derives
 /// it: account, deployment, registered install — no project.
 pub fn fence_of(identity: &ds_compute_runtime::HostIdentity) -> Fence {
@@ -251,6 +359,59 @@ fn require_session_project(project: &str, session_project: &str) -> Result<(), S
 
 #[cfg(test)]
 mod tests {
+
+    /// A drain frees a lease only from a provably dead process of this same
+    /// install (b06fad17): a live holder, another install's worker, this
+    /// session itself, a malformed id and an unobservable pid all keep it.
+    #[test]
+    fn a_lease_is_reclaimed_only_from_a_dead_process_of_this_install() {
+        let dead = |_pid: u32| Some(false);
+        let live = |_pid: u32| Some(true);
+        let unknown = |_pid: u32| None;
+        let own = "install-a#cred#100";
+        assert!(super::abandoned_holder(
+            "install-a",
+            own,
+            "install-a#cred#3930728",
+            dead
+        ));
+        assert!(!super::abandoned_holder(
+            "install-a",
+            own,
+            "install-a#cred#3930728",
+            live
+        ));
+        assert!(!super::abandoned_holder(
+            "install-a",
+            own,
+            "install-a#cred#3930728",
+            unknown
+        ));
+        assert!(!super::abandoned_holder(
+            "install-a",
+            own,
+            "install-b#cred#3930728",
+            dead
+        ));
+        assert!(!super::abandoned_holder("install-a", own, own, dead));
+        assert!(!super::abandoned_holder(
+            "install-a",
+            own,
+            "install-a#3930728",
+            dead
+        ));
+        assert!(!super::abandoned_holder(
+            "install-a",
+            own,
+            "install-a#cred#pid",
+            dead
+        ));
+        assert_eq!(
+            super::holder_pid("install-a", "install-a#cred#42"),
+            Some(42)
+        );
+        assert_eq!(super::holder_pid("install-a", "install-a#cred#42#x"), None);
+    }
     use super::*;
 
     #[test]

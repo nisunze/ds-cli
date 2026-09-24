@@ -157,7 +157,7 @@ One publication pass over this machine's queued reports, through the same \
 runner the Server's pump uses — never a second pump or queue. Safe to run \
 twice: a publication already in the shared record is recognised by its \
 client publish id. A row that lost has its bytes freed by the pass and says \
-so. An offline pass changes nothing and says so.",
+so. An offline pass changes nothing and says so. A dead holder's lease is freed.",
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -166,7 +166,7 @@ so. An offline pass changes nothing and says so.",
     output: "\
 `before` and `after` queue readings, `drained`, and `projects[]`: per project \
 `offline`, `retry_eligible`, `wake_at_ms`, `summary` (after the pass), \
-`reclaimed` (batches, bytes), `idle` (why nothing moved) and `receipts`.",
+`reclaimed` (batches, bytes), `lease` (freed or blocking), `idle` (why nothing moved) and `receipts`.",
     examples: &[Example {
         command: "ds report outbox drain --yes --output json",
         note: "`.data.drained` says what moved; `.data.projects[].receipts` what each row did.",
@@ -367,6 +367,10 @@ pub fn drain(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             &project_id,
         )
         .and_then(|session| {
+            // A lease left by a process that is provably gone is freed first,
+            // and a live one is named: a drain that moves nothing never
+            // answers without saying who holds the project (b06fad17).
+            let lease = session.reclaim_abandoned_lease()?;
             // `Manual` is the kernel's own name for "the operator pressed
             // Sync now". A hand-driven drain is exactly that, and it must not
             // borrow a scheduler trigger that changes retry policy.
@@ -409,6 +413,7 @@ pub fn drain(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     "batches": pass.reclaimed.batches,
                     "bytes": pass.reclaimed.bytes,
                 },
+                "lease": lease_value(&lease),
                 "idle": pass.idle,
                 "receipts": receipts,
                 "more": pass.receipts.len().saturating_sub(MAX_REPORTED_RECEIPTS),
@@ -434,6 +439,19 @@ pub fn drain(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "stuck": after.stuck,
         "next": after.next,
     }))
+}
+
+/// A project's sync lease as the drain found it: freed from a dead holder,
+/// or still held by a named worker until a named time.
+fn lease_value(lease: &ds_cli_server::server_sync::LeaseReading) -> Value {
+    json!({
+        "reclaimed_from": lease.reclaimed_from,
+        "blocked_by": lease.blocked_by.as_ref().map(|held| json!({
+            "worker": held.worker_id,
+            "expires_at_ms": held.expires_at_ms,
+            "holder_running": held.holder_running,
+        })),
+    })
 }
 
 pub fn render(data: &Value) -> String {
@@ -484,6 +502,26 @@ pub fn render(data: &Value) -> String {
             data["drained"]["batches"].as_u64().unwrap_or(0),
             bytes(data["drained"]["bytes"].as_u64().unwrap_or(0)),
         ));
+        for pass in data["projects"].as_array().into_iter().flatten() {
+            let project = pass["project"].as_str().unwrap_or("?");
+            if let Some(worker) = pass["lease"]["reclaimed_from"].as_str() {
+                out.push_str(&format!(
+                    "  {project}: freed the lease of {worker}, whose process is gone\n"
+                ));
+            }
+            let held = &pass["lease"]["blocked_by"];
+            if let Some(worker) = held["worker"].as_str() {
+                let state = match held["holder_running"].as_bool() {
+                    Some(true) => "running",
+                    Some(false) => "not running",
+                    None => "not observable here",
+                };
+                out.push_str(&format!(
+                    "  {project}: blocked by the lease of {worker} ({state}) until {} ms since epoch; nothing of this project was drained\n",
+                    held["expires_at_ms"].as_u64().unwrap_or(0)
+                ));
+            }
+        }
         for project in data["projects"].as_array().into_iter().flatten() {
             let summary = &project["summary"];
             out.push_str(&format!(

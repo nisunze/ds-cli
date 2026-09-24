@@ -797,6 +797,13 @@ downloads every published head this machine lacks, each output verified by
 its SHA-256 before it is placed. That is how a second machine receives what
 the first published.
 
+A project is drained by one worker at a time under a lease (at most 15
+minutes, renewed while the worker runs). A drain first frees a lease whose
+holder was a process of this install that is no longer running; a lease
+held by a live worker, or by another install, is reported in the project's
+`lease.blocked_by` (worker, expiry, whether it runs) rather than answered
+with a silent empty pass.
+
 `status` reads the store read-only — no gateway session, no project
 selection, no running Server; it needs only the native identity on this
 machine to name the store's fence. It answers, for the machine and per
