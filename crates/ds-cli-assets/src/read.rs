@@ -33,7 +33,9 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Save one asset's bytes, or one pack member, to a new file.",
     purpose: "\
-Fetches the asset's bytes through its source's own signed read and has the \
+Fetches the asset's bytes — or with --member one pack member or mail part, \
+by the name `ds assets tree --into` lists — through its source's own signed \
+read and has the \
 paired desktop write them to --out through one closed native command: a new \
 absolute path only, written to a temporary sibling, digest-verified and \
 renamed. Bytes never cross the bridge and an existing file is never \
@@ -78,6 +80,7 @@ The `path` written, its `bytes` and `digest` (sha256), and the `asset_id` and \
         crate::ORIGIN_READ_FAILED,
         crate::ORIGIN_UNREACHABLE,
         crate::ORIGIN_READ_UNAVAILABLE,
+        crate::ASSET_BYTES_NOT_HELD,
         crate::INVALID_MEMBER,
     ],
     reference: Some("docs/reference/assets.md"),

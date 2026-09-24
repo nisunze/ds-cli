@@ -24,8 +24,17 @@
 //!
 //! ```text
 //!   plan → task list → task read → task create | update | assign | respond
-//!                                  record list → record read
+//!                                  task block | unblock  (on a record)
+//!   party list → party create | update
+//!   record list → record read | thread → record create | reply | update
 //! ```
+//!
+//! The correspondence half (ds-brain `docs/contracts/correspondence.md`):
+//! a record is one externally facing exchange, always authored against
+//! something (a source asset, a message, a meeting note, or the record it
+//! replies to), naming the parties it involves and who owes the next answer
+//! by when; a task may be blocked on a record until that answer arrives, and
+//! the blocker clears itself in the same commit as the reply.
 //!
 //! Reads are bounded projections of the same canonical graph the Plan,
 //! Dashboard, Board, Gantt, Table and Records surfaces render — the CLI has
@@ -46,6 +55,7 @@
 //! command; a caller that still passes it is told `requires_window_retired`
 //! by the parser, with the remedy of dropping the flag.
 
+pub mod party;
 pub mod plan;
 pub mod record;
 pub mod task;
@@ -70,8 +80,17 @@ pub static DOMAIN: Domain = Domain {
         &task::update::COMMAND,
         &task::assign::COMMAND,
         &task::respond::COMMAND,
+        &task::block::COMMAND,
+        &task::unblock::COMMAND,
+        &party::list::COMMAND,
+        &party::create::COMMAND,
+        &party::update::COMMAND,
         &record::list::COMMAND,
         &record::read::COMMAND,
+        &record::thread::COMMAND,
+        &record::create::COMMAND,
+        &record::reply::COMMAND,
+        &record::update::COMMAND,
     ],
 };
 
@@ -144,9 +163,293 @@ pub const TASK_NOT_FOUND: Refusal = Refusal {
 };
 pub const RECORD_NOT_FOUND: Refusal = Refusal {
     code: "record_not_found",
-    when: "no record in the fetched context carries this id",
+    when: "no record in this project carries this id, or it is one the signed-in user may not read",
     remedy: "check the id with `ds pm record list`",
 };
+
+// ---------------------------------------------------------------------------
+// The correspondence contract's named refusals (correspondence.md §Refusals),
+// one to one with ds-brain's `PM_REFUSED` reason tokens. The code IS the
+// token; `detail` carries the ids and numbers the rule named.
+// ---------------------------------------------------------------------------
+
+pub const RECORD_SOURCE_REQUIRED: Refusal = Refusal {
+    code: "record_source_required",
+    when: "a record was authored against nothing: no --source-asset, --source-message, --meeting-note, and it is not a reply",
+    remedy: "name what the record is about — the ingested asset (`ds assets ingest`), the message, the note — or file it with `ds pm record reply --reply-to`",
+};
+pub const INVALID_RESPONSE_OWNER: Refusal = Refusal {
+    code: "invalid_response_owner",
+    when: "the answer is owed by both a party and a person, or --response-owed-by names an account that is not a signed-in project member",
+    remedy: "pass ONE --response-owed-by: a party id from `ds pm party list`, or a member's email",
+};
+pub const RECORD_NOT_AWAITING: Refusal = Refusal {
+    code: "record_not_awaiting",
+    when: "the record's response status is none, responded or waived, so nothing can wait on it",
+    remedy: "block on a record that owes an answer (`ds pm record list --awaiting`), or set the owner first with `ds pm record update --response-owed-by`",
+};
+pub const PARTY_EXISTS: Refusal = Refusal {
+    code: "party_exists",
+    when: "a party of this kind already carries this name, or the same --id was created twice",
+    remedy: "read detail.party_id and use it, or choose the distinct name",
+};
+pub const PARTY_NOT_FOUND: Refusal = Refusal {
+    code: "party_not_found",
+    when: "a --party, --organisation or --response-owed-by names no party of this project",
+    remedy: "check the id with `ds pm party list`, or create the party first",
+};
+pub const DOCUMENT_REQUIRED: Refusal = Refusal {
+    code: "document_required",
+    when: "a submission or transmittal names no --document",
+    remedy: "pass --document <asset-id> for each registered document it carries",
+};
+pub const DOCUMENT_NOT_REGISTERED: Refusal = Refusal {
+    code: "document_not_registered",
+    when: "a --document names an asset that carries no document registration",
+    remedy: "register it first: `ds assets classify --asset <id> --document-number … --revision … --document-state …`",
+};
+pub const THREAD_MISMATCH: Refusal = Refusal {
+    code: "thread_mismatch",
+    when: "the reply asserted a thread that is not the parent record's",
+    remedy: "drop the thread assertion; a reply inherits its parent's thread",
+};
+pub const BLOCKER_EXISTS: Refusal = Refusal {
+    code: "blocker_exists",
+    when: "the task is already openly blocked on this record",
+    remedy: "read the task with `ds pm task read --task <id> --timeline`; nothing to add",
+};
+pub const BLOCKER_NOT_FOUND: Refusal = Refusal {
+    code: "blocker_not_found",
+    when: "the task carries no open blocker on this record",
+    remedy: "read the task's blockers with `ds pm task read --task <id>`",
+};
+pub const RECORD_EXISTS: Refusal = Refusal {
+    code: "record_exists",
+    when: "the same --id was already minted for a record",
+    remedy: "the record landed — read it with `ds pm record read`; mint a new --id for a new record",
+};
+pub const RESPONSE_NOT_SETTABLE: Refusal = Refusal {
+    code: "response_not_settable",
+    when: "a waiver was being withdrawn, or `responded` was being set by hand",
+    remedy: "a waiver stands and `responded` is derived from a reply; file the reply instead",
+};
+pub const BOUND_EXCEEDED: Refusal = Refusal {
+    code: "bound_exceeded",
+    when: "a thread, list or field is past the bound ds-brain names (detail.what, detail.bound)",
+    remedy: "start a new thread or shorten the field named in detail.what",
+};
+pub const ASSET_NOT_FOUND: Refusal = Refusal {
+    code: "asset_not_found",
+    when: "a --source-asset, --meeting-note or --document names no asset the signed-in user may read",
+    remedy: "check the id with `ds assets tree`; a confidential asset reads as missing",
+};
+pub const PROJECT_NOT_VISIBLE: Refusal = Refusal {
+    code: "project_not_visible",
+    when: "the selected project is not one this account is a member of",
+    remedy: "choose an exact id from `ds auth project list`",
+};
+pub const INVALID_STAMP: Refusal = Refusal {
+    code: "invalid_stamp",
+    when: "--happened-at or --since is neither a YYYY-MM-DD day nor an RFC 3339 instant",
+    remedy: "pass e.g. --happened-at 2026-09-18 or 2026-09-18T09:15:00Z",
+};
+pub const BODY_UNREADABLE: Refusal = Refusal {
+    code: "body_unreadable",
+    when: "--body-file names a file that cannot be read as UTF-8 text within 64 KiB",
+    remedy: "pass a readable UTF-8 text file, or --body with the text",
+};
+
+/// Every token the correspondence door can relay, with its remedy. A token
+/// ds-brain answers that is not here is renamed `pm_refused` by
+/// [`classify`], so the surface never emits an undocumented code.
+pub const CORRESPONDENCE_REFUSALS: &[Refusal] = &[
+    RECORD_SOURCE_REQUIRED,
+    INVALID_RESPONSE_OWNER,
+    RECORD_NOT_AWAITING,
+    PARTY_EXISTS,
+    PARTY_NOT_FOUND,
+    DOCUMENT_REQUIRED,
+    DOCUMENT_NOT_REGISTERED,
+    THREAD_MISMATCH,
+    BLOCKER_EXISTS,
+    BLOCKER_NOT_FOUND,
+    RECORD_EXISTS,
+    RECORD_NOT_FOUND,
+    RESPONSE_NOT_SETTABLE,
+    BOUND_EXCEEDED,
+    ASSET_NOT_FOUND,
+];
+
+/// The refusals every correspondence command shares beyond the read set:
+/// the door's own conditions and the plan's.
+pub const CORRESPONDENCE_BASE: [Refusal; 5] = [
+    PM_REFUSED,
+    NOT_PERMITTED,
+    CONFLICT,
+    PROJECT_NOT_VISIBLE,
+    CONFIRMATION_REQUIRED,
+];
+
+/// The refusals one correspondence command declares: the headless set,
+/// `plan_unreadable`, the base above, then its own. `TOTAL` is
+/// `21 + own.len()`, checked at compile time.
+pub const fn correspondence_refusals<const TOTAL: usize>(own: &[Refusal]) -> [Refusal; TOTAL] {
+    assert!(TOTAL == READ_BASE + CORRESPONDENCE_BASE.len() + own.len());
+    let mut out = [PLAN_UNREADABLE; TOTAL];
+    let mut i = 0;
+    while i < HEADLESS_REFUSALS.len() {
+        out[i] = HEADLESS_REFUSALS[i];
+        i += 1;
+    }
+    out[i] = PLAN_UNREADABLE;
+    i += 1;
+    let mut k = 0;
+    while k < CORRESPONDENCE_BASE.len() {
+        out[i + k] = CORRESPONDENCE_BASE[k];
+        k += 1;
+    }
+    i += CORRESPONDENCE_BASE.len();
+    let mut j = 0;
+    while j < own.len() {
+        out[i + j] = own[j];
+        j += 1;
+    }
+    out
+}
+/// `READ_BASE` + [`CORRESPONDENCE_BASE`].
+pub const CORRESPONDENCE_READ: usize = 16 + 5;
+
+/// One correspondence action through the door, its refusal classified for
+/// this domain.
+pub fn correspondence(
+    lane: &str,
+    action: &ds_client_core::project_correspondence::Action,
+) -> Result<ds_cli_auth::HeadlessProjectReport<Value>, Failure> {
+    ds_cli_auth::correspondence::project_correspondence(lane, action).map_err(classify)
+}
+
+/// Attach this domain's remedy to a relayed token, and rename a token this
+/// domain does not document to `pm_refused` — the contract's vocabulary is
+/// closed here, whatever the server gains tomorrow.
+pub fn classify(failure: Failure) -> Failure {
+    let code = failure.code().to_owned();
+    if let Some(known) = CORRESPONDENCE_REFUSALS
+        .iter()
+        .find(|refusal| refusal.code == code)
+    {
+        return if failure.remedy_text().is_none() {
+            failure.remedy(known.remedy)
+        } else {
+            failure
+        };
+    }
+    let relayed = failure
+        .detail_value()
+        .and_then(|detail| detail["service_code"].as_str())
+        .is_some_and(|service| service == code);
+    if relayed {
+        let message = failure.message().to_owned();
+        let detail = failure.detail_value().cloned().unwrap_or(Value::Null);
+        return Failure::invalid(PM_REFUSED.code, message)
+            .detail(detail)
+            .remedy(PM_REFUSED.remedy);
+    }
+    failure
+}
+
+/// `--happened-at` / `--since`: a `YYYY-MM-DD` day (midnight UTC) or an
+/// RFC 3339 instant, passed to the server as the instant it is.
+pub fn stamp(raw: &str, flag: &str) -> Result<String, Failure> {
+    let raw = raw.trim();
+    if let Ok(day) = date(raw, flag) {
+        return Ok(format!("{day}T00:00:00Z"));
+    }
+    let shaped = raw.len() >= 20
+        && date(&raw[..10], flag).is_ok()
+        && raw.as_bytes()[10] == b'T'
+        && raw[11..]
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b':' | b'.' | b'Z' | b'+' | b'-'));
+    if shaped {
+        return Ok(raw.to_owned());
+    }
+    Err(Failure::invalid(
+        INVALID_STAMP.code,
+        format!("`--{flag}` must be a YYYY-MM-DD day or an RFC 3339 instant"),
+    )
+    .remedy(INVALID_STAMP.remedy)
+    .detail(json!({ "given": raw })))
+}
+
+/// The most bytes `--body-file` reads.
+pub const MAX_BODY_FILE_BYTES: u64 = 64 * 1024;
+
+/// `--body` or `--body-file`, whichever the caller gave.
+pub fn body(inputs: &ds_cli_contract::Inputs) -> Result<Option<String>, Failure> {
+    if let Some(text) = inputs.value("body") {
+        return Ok(Some(text.to_owned()));
+    }
+    let Some(path) = inputs.value("body-file") else {
+        return Ok(None);
+    };
+    let unreadable = |why: String| {
+        Failure::invalid(BODY_UNREADABLE.code, why)
+            .remedy(BODY_UNREADABLE.remedy)
+            .detail(json!({ "path": path }))
+    };
+    let metadata = std::fs::metadata(path).map_err(|error| unreadable(error.to_string()))?;
+    if metadata.len() > MAX_BODY_FILE_BYTES {
+        return Err(unreadable(format!(
+            "the file is {} bytes; the body bound is {MAX_BODY_FILE_BYTES}",
+            metadata.len()
+        )));
+    }
+    let bytes = std::fs::read(path).map_err(|error| unreadable(error.to_string()))?;
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| unreadable("the file is not UTF-8 text".into()))
+}
+
+/// `--response-owed-by <party-id | email>`: an address names a project
+/// member, anything else a party.
+pub fn response_owner(raw: &str) -> Result<(&'static str, String), Failure> {
+    if raw.contains('@') {
+        Ok(("response_owner_email", email(raw, "response-owed-by")?))
+    } else {
+        Ok(("response_owner_party_id", raw.trim().to_owned()))
+    }
+}
+
+/// `--affects scope,schedule,quality,cost` → the four flags the record stores.
+pub fn affects(raw: &str) -> Result<Vec<(&'static str, bool)>, Failure> {
+    let mut out = vec![
+        ("affects_scope", false),
+        ("affects_schedule", false),
+        ("affects_quality", false),
+        ("affects_cost", false),
+    ];
+    for piece in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|piece| !piece.is_empty())
+    {
+        let slot = match piece {
+            "scope" => 0,
+            "schedule" => 1,
+            "quality" => 2,
+            "cost" => 3,
+            other => {
+                return Err(Failure::invalid(
+                    INVALID_VALUE.code,
+                    format!("`--affects` names `{other}`; it takes scope, schedule, quality, cost"),
+                )
+                .remedy("pass e.g. --affects scope,schedule"));
+            }
+        };
+        out[slot].1 = true;
+    }
+    Ok(out)
+}
 pub const INVALID_DATE: Refusal = Refusal {
     code: "invalid_date",
     when: "a schedule flag is not a calendar date in YYYY-MM-DD form",

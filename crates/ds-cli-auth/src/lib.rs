@@ -5,6 +5,7 @@
 //! project response contract remain exclusively in `ds-client-core`.
 
 mod context;
+pub mod correspondence;
 pub mod device;
 pub mod link_approval;
 mod profile;
@@ -4716,6 +4717,15 @@ fn map_service_refusal(
     // than as one `auth_rejected`.
     if owner_message.starts_with("project management") {
         return map_project_management_refusal(kind, refusal, message);
+    }
+    // Correspondence and the assets catalogue name their rule: the code is
+    // the contract's own token (`record_source_required`,
+    // `asset_bytes_not_held`, …) and travels as the failure's code, with the
+    // ids and numbers the rule named beside it.
+    if owner_message.starts_with("correspondence")
+        || owner_message.starts_with("the assets catalogue")
+    {
+        return correspondence::map_named_refusal(kind, refusal, message);
     }
     match refusal.code() {
         Some("version_not_found") => Failure::invalid("version_not_found", message)

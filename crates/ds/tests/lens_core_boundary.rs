@@ -78,7 +78,7 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     // ── core, pending a headless form ───────────────────────────────────────
     // Project documents: preview, read, classify and ingest still ask the
     // paired application for bytes.
-    ("ds-cli-assets", Layer::CorePending, 10),
+    ("ds-cli-assets", Layer::CorePending, 8),
     // The paired Desktop is the approval fallback for a lane with no native
     // session; the one file that names it is that fallback.
     ("ds-cli-auth", Layer::CorePending, 1),
@@ -276,7 +276,7 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // (the machine-local layer catalogue) are not counted here.
     ("ds-cli-map", 39),
     // ── core, pending a headless form ───────────────────────────────────────
-    ("ds-cli-assets", 9),
+    ("ds-cli-assets", 7),
     // 1 → 0 on 2026-09-19: `auth link approve` approves under the native
     // user; it was the last governance write bound to a window.
     ("ds-cli-auth", 0),
@@ -494,7 +494,9 @@ fn the_window_ledger_and_the_bridge_inventory_name_the_same_crates() {
 ///
 /// Measured 2026-09-18 against the run tip.
 const WINDOW_BACKLOG: &[(&str, u64)] = &[
-    ("assets", 9),
+    // 9 → 7: `assets.attach` and `assets.classify` write through the native
+    // client now (correspondence.md: attach --record, classify --document-*).
+    ("assets", 7),
     // 1 → 0: `auth.link.approve` is the native user's write now.
     ("auth", 0),
     ("data", 4),
@@ -512,7 +514,7 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 /// What the filter answers for the whole surface. Pinned beside the rows so a
 /// domain cannot be quietly dropped from the ledger to hide its commands.
 /// 131 → 123 on 2026-09-20 (`pm`).
-const WINDOW_BACKLOG_TOTAL: u64 = 123;
+const WINDOW_BACKLOG_TOTAL: u64 = 121;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {

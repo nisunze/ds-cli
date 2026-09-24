@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 ds-cli-auth = { workspace = true }
+ds-client-core = { workspace = true }
 ds-command-kernel = { workspace = true }
 ds-cli-contract = { workspace = true }
 # Project Assets live behind the running application: ds-brain is the

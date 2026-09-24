@@ -90,6 +90,12 @@ const ID_ARG: Arg = Arg {
     summary: "Mint this id. Reuse it on a retry; a second create is refused.",
 };
 
+const FROM_RECORD_ARG: Arg = Arg::value(
+    "from-record",
+    "<record-id>",
+    "The correspondence record this task answers; the record lists the task under resultingTasks in the same commit. Valid with every --kind.",
+);
+
 pub const INVALID_TASK_SHAPE: Refusal = Refusal {
     code: "invalid_task_shape",
     when: "a child has no parent, a root/inbox item names one, or a milestone names two dates",
@@ -106,8 +112,9 @@ Creates one work item through the same governed command the Plan sheet uses, \
 so it lands with the sort key, schedule state and duration the surface would \
 have given it. A retry that passes the same --id is refused rather than \
 duplicated, which is what makes this safe to run again after a lost answer. \
-Headless: commits to the selected project of the signed-in native credential, \
-no window.",
+Made --from-record, the task points back at the correspondence it answers \
+and the record lists it. Headless: commits to the selected project of the \
+signed-in native credential, no window.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -120,6 +127,7 @@ no window.",
         DISCIPLINE_ARG,
         START_ARG,
         FINISH_ARG,
+        FROM_RECORD_ARG,
         ID_ARG,
         LANE_ARG,
     ],
@@ -132,14 +140,25 @@ new item in the app.",
         note: "Without --yes dispatch refuses before anything is sent.",
         runnable: false,
     }],
-    refusals: &crate::write_refusals::<25>(&[
+    refusals: &crate::write_refusals::<26>(&[
         crate::INVALID_DATE,
         crate::INVALID_VALUE,
         INVALID_TASK_SHAPE,
+        crate::RECORD_NOT_FOUND,
     ]),
     reference: Some("docs/reference/pm.md"),
     search: &[
-        "subtask", "sub-task", "deadline", "due", "date", "backlog", "wbs", "schedule",
+        "subtask",
+        "sub-task",
+        "deadline",
+        "due",
+        "date",
+        "backlog",
+        "wbs",
+        "schedule",
+        "from record",
+        "correspondence",
+        "action from letter",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -193,12 +212,16 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             discipline: inputs.value("discipline").map(str::to_owned),
             start_date,
             finish_date,
+            from_record: inputs.value("from-record").map(str::to_owned),
         },
     )
     .map_err(crate::refused)?;
-    let result = crate::commit(lane, &prepared)?;
+    let result = crate::commit(lane, &prepared).map_err(crate::classify)?;
     let mut extra = Map::new();
     extra.insert("kind".into(), json!(kind.token()));
+    if let Some(record) = inputs.value("from-record") {
+        extra.insert("fromRecordId".into(), json!(record));
+    }
     Ok(writes::write_outcome(&read.project_id, &id, &result, extra))
 }
 

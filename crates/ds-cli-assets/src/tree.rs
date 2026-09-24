@@ -9,17 +9,17 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DEPTH_ARG, DESCRIPTOR_ARG, FOLDER_ARG};
+use crate::{DEPTH_ARG, DESCRIPTOR_ARG, FOLDER_ARG, LANE_ARG};
 
 const INTO_ARG: Arg = Arg::value(
     "into",
     "<asset-id>",
-    "Walk inside this `pack` asset instead: its members, sizes and shapefile companions.",
+    "Walk inside this `pack` or `mail` asset instead: its members (a mail's MIME parts by name), sizes and shapefile companions.",
 );
 
 const QUERY_ARG: Arg = Arg::value(
@@ -54,15 +54,19 @@ pub static COMMAND: Command = Command {
     id: "assets.tree",
     path: &["assets", "tree"],
     contract: 1,
-    summary: "Show the folder tree, or walk inside one container asset.",
+    summary: "Show the folder tree, or walk inside a pack or a mail asset.",
     purpose: "\
 Projects the open project's folder tree: the folders a person declared and the \
 system folders auto-indexed from what the project already holds — transformer \
 attachments and versions, MV model revisions, project-work attachments, report \
-and print artifacts — each with its counts, expanded to --depth. With --into it \
-walks one `pack` asset's central directory and lists its members with sizes, \
-never unpacking to disk. --query and --link narrow to the same rows the Assets \
-tab and the Project work page search, computed by the same kernel.",
+and print artifacts, and `Correspondence/`: one folder per correspondence \
+thread listing the .eml it was filed from (with its parts), its registered \
+documents, every asset attached to its records and the external references \
+among them — each with its counts, expanded to --depth. With --into it walks \
+one `pack` asset's central directory, or one `mail` (.eml) asset's MIME parts, \
+never unpacking to disk. --query and --link narrow to the rows the Assets tab \
+searches. `--folder Correspondence` (or a thread under it) answers headless \
+through the native credential; every other read needs the paired window.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
@@ -74,6 +78,7 @@ tab and the Project work page search, computed by the same kernel.",
         QUERY_ARG,
         LINK_ARG,
         KIND_ARG,
+        LANE_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\
@@ -87,40 +92,78 @@ tab and the Project work page search, computed by the same kernel.",
         note: "Read .data.members[].path to feed `preview --member` or `read --member`.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::INVALID_NUMBER,
-        crate::INVALID_ASSET_ID,
-        crate::INVALID_FOLDER_PATH,
-        crate::INVALID_QUERY,
-        crate::INVALID_LINK,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
-        crate::ASSET_IS_NOT_A_FILE,
-        crate::ASSET_TOO_LARGE,
-        crate::ORIGIN_READ_FAILED,
-        crate::ORIGIN_UNREACHABLE,
-        crate::ORIGIN_READ_UNAVAILABLE,
-    ],
+    refusals: &tree_refusals(),
     reference: Some("docs/reference/assets.md"),
-    search: &[],
+    search: &[
+        "correspondence",
+        "thread",
+        "letter",
+        "email",
+        "mail parts",
+        "attachments",
+        "index",
+    ],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };
+
+/// The window path's refusals, then the headless path's (the
+/// `Correspondence/` read goes through the native client), then the tree's
+/// own: one roster for one command, whichever host answered.
+const WINDOW_REFUSALS: [Refusal; 9] = [
+    crate::NOT_PAIRED,
+    crate::PROJECT_NOT_OPEN,
+    crate::AMBIGUOUS,
+    crate::UNREACHABLE,
+    crate::PAIRING_REJECTED,
+    crate::ASSETS_REFUSED,
+    crate::UNSUPPORTED,
+    crate::UNREADABLE,
+    crate::SIGNED_OUT,
+];
+const OWN_REFUSALS: [Refusal; 18] = [
+    crate::INVALID_NUMBER,
+    crate::INVALID_ASSET_ID,
+    crate::INVALID_FOLDER_PATH,
+    crate::INVALID_QUERY,
+    crate::INVALID_LINK,
+    crate::ASSET_NOT_FOUND,
+    crate::ASSET_CLASS_FORBIDDEN,
+    crate::ASSET_REQUEST_INVALID,
+    crate::ASSET_RULE_REFUSED,
+    crate::ASSETS_NOT_IMPLEMENTED,
+    crate::ASSETS_SERVICE_FAILED,
+    crate::OFFLINE,
+    crate::BACKEND_UNREACHABLE,
+    crate::ASSET_IS_NOT_A_FILE,
+    crate::ASSET_TOO_LARGE,
+    crate::ORIGIN_READ_FAILED,
+    crate::ORIGIN_UNREACHABLE,
+    crate::ORIGIN_READ_UNAVAILABLE,
+];
+const fn tree_refusals() -> [Refusal; 9 + 15 + 18 + 2] {
+    let mut out = [crate::NOT_PAIRED; 9 + 15 + 18 + 2];
+    let mut i = 0;
+    while i < WINDOW_REFUSALS.len() {
+        out[i] = WINDOW_REFUSALS[i];
+        i += 1;
+    }
+    let mut h = 0;
+    while h < crate::HEADLESS_REFUSALS.len() {
+        out[i + h] = crate::HEADLESS_REFUSALS[h];
+        h += 1;
+    }
+    i += crate::HEADLESS_REFUSALS.len();
+    let mut o = 0;
+    while o < OWN_REFUSALS.len() {
+        out[i + o] = OWN_REFUSALS[o];
+        o += 1;
+    }
+    i += OWN_REFUSALS.len();
+    out[i] = crate::ASSET_VERSION_CONFLICT;
+    out[i + 1] = crate::correspondence::PROJECT_NOT_VISIBLE;
+    out
+}
 
 /// The tree read, validated locally, in the exact keys the operation
 /// declares. Only flags that were given travel.
@@ -158,6 +201,17 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
+    if let Some(folder) = arguments["folder"]
+        .as_str()
+        .filter(|_| inputs.value("into").is_none())
+    {
+        if crate::correspondence::is_correspondence_folder(folder) {
+            return crate::correspondence::tree(
+                inputs.value("lane").unwrap_or("stable"),
+                &arguments,
+            );
+        }
+    }
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
         &descriptor,

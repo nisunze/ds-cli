@@ -927,6 +927,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<serde_json::Value, ClientError> {
         fixed_device_call!(self, project_management, project, command)
     }
+    pub fn project_correspondence(
+        &mut self,
+        project: &str,
+        action: &ds_client_core::project_correspondence::Action,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, project_correspondence, project, action)
+    }
     pub fn data_distribution(
         &mut self,
         project: &str,

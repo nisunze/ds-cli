@@ -29,7 +29,8 @@ pub static COMMAND: Command = Command {
     purpose: "\
 Returns a preview document — text blocks, a bounded grid, mail headers, a \
 metadata card or feature geometry — decoded by the kernel inside the paired \
-application from cached or freshly fetched bytes. Never rendered pixels: the \
+application from cached or freshly fetched bytes; --member names a pack \
+member or a mail part. An external reference is refused by name. Never rendered pixels: the \
 caller gets text and the client does the drawing. A PDF answers a \
 metadata-only document that names pdf.js as its renderer. Anything over a \
 bound is refused with the bound and the actual number, never silently cut, \
@@ -80,6 +81,7 @@ each with its own `truncated` count.",
         crate::ORIGIN_READ_FAILED,
         crate::ORIGIN_UNREACHABLE,
         crate::ORIGIN_READ_UNAVAILABLE,
+        crate::ASSET_BYTES_NOT_HELD,
         crate::INVALID_MEMBER,
     ],
     reference: Some("docs/reference/assets.md"),

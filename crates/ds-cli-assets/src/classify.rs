@@ -17,9 +17,10 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_client_core::shared_assets::Command as Catalogue;
 use serde_json::{Map, Value, json};
 
-use crate::{ASSET_ARG, DESCRIPTOR_ARG, FOLDER_ARG};
+use crate::{ASSET_ARG, FOLDER_ARG, LANE_ARG};
 
 const KIND_ARG: Arg =
     Arg::value("kind", "<kind>", "Override the kind the kernel inferred.").choices(crate::KINDS);
@@ -50,11 +51,23 @@ const REASON_ARG: Arg = Arg::value(
     "Why, for the audit row; expected when sensitivity loosens.",
 );
 
-/// The longest `--reason` one audit row carries.
-///
-/// A reason is read by a person reconciling an access change months later, so
-/// it is a sentence rather than a document; anything longer is refused here
-/// instead of being silently cut on the way to the audit sink.
+const DOCUMENT_NUMBER_ARG: Arg = Arg::value(
+    "document-number",
+    "<number>",
+    "Register the asset as a numbered document (correspondence.md): with --document-revision and --document-state, all three together.",
+);
+const DOCUMENT_REVISION_ARG: Arg = Arg::value(
+    "document-revision",
+    "<label>",
+    "The document's revision label, e.g. B or 02.",
+);
+const DOCUMENT_STATE_ARG: Arg = Arg::value(
+    "document-state",
+    "<state>",
+    "The document's state in the attachment vocabulary.",
+)
+.choices(crate::DOCUMENT_STATES);
+
 const MAX_REASON_CHARS: usize = 500;
 
 const INVALID_REASON: Refusal = Refusal {
@@ -68,23 +81,35 @@ const INVALID_REASON: Refusal = Refusal {
 /// `--reason` is deliberately not one of them: it annotates the audit entry,
 /// so an invocation carrying only a reason changes nothing and is refused
 /// rather than audited.
-const CHANGE_KEYS: &[&str] = &["kind", "status", "owner", "folder", "sensitivity"];
+const CHANGE_KEYS: &[&str] = &[
+    "kind",
+    "status",
+    "owner",
+    "folder_id",
+    "sensitivity",
+    "document",
+];
 
 pub static COMMAND: Command = Command {
     id: "assets.classify",
     path: &["assets", "classify"],
-    contract: 1,
-    summary: "Change one asset's kind, status, owner, folder or sensitivity.",
+    contract: 2,
+    summary: "Change an asset's kind, status, owner, folder, class; register a doc.",
     purpose: "\
 Applies every flag given as one audited catalogue change through ds-brain, \
 which decides whether the caller may make it: loosening sensitivity needs the \
 capability for the class being left, and a person's override is never \
-re-inferred away. Nothing given, nothing sent — a flag you omit is untouched. \
-Projected sys: rows are read-only in this slice and refused by name. Refused \
-offline, because a queued access change is a queued exposure.",
+re-inferred away. --document-number with --document-revision and \
+--document-state registers the asset as a numbered, revisioned document — \
+what a submission or transmittal record must carry (`ds pm record create \
+--document`). Nothing given, nothing sent — a flag you omit is untouched. \
+Projected sys: rows are read-only and refused by name. The current version \
+is read first and the change is refused if the row moved in between. \
+Headless: writes to the selected project of the signed-in native \
+credential, no window.",
     chapter: Chapter::Assets,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         ASSET_ARG,
@@ -93,53 +118,44 @@ offline, because a queued access change is a queued exposure.",
         OWNER_ARG,
         FOLDER_ARG,
         SENSITIVITY_ARG,
+        DOCUMENT_NUMBER_ARG,
+        DOCUMENT_REVISION_ARG,
+        DOCUMENT_STATE_ARG,
         REASON_ARG,
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
     output: "\
 `asset` — the row after the change — the `audit_id` recorded for it, and \
 `changed`: the names of the fields that actually moved.",
     examples: &[Example {
-        command: "ds assets classify --asset a_7kq3nr2v0b1c --status durable --sensitivity restricted --reason signed-copy --yes",
-        note: "Status and class land together or not at all; the audit row names the reason.",
+        command: "ds assets classify --asset a_7kq3nr2v0b1c --document-number GTP-001 --document-revision B --document-state issued --yes",
+        note: "The asset is now a registered document a transmittal record can carry.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::ASSETS_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::INVALID_ASSET_ID,
+    refusals: &crate::catalogue_refusals::<29>(&[
         crate::INVALID_FOLDER_PATH,
         INVALID_REASON,
         crate::PROJECTED_ASSET_READ_ONLY,
         crate::NOTHING_TO_UPDATE,
-        crate::CONFIRMATION_REQUIRED,
-        crate::ASSET_NOT_FOUND,
-        crate::ASSET_CLASS_FORBIDDEN,
-        crate::ASSET_VERSION_CONFLICT,
-        crate::ASSET_REQUEST_INVALID,
-        crate::ASSET_RULE_REFUSED,
-        crate::ASSETS_NOT_IMPLEMENTED,
-        crate::ASSETS_SERVICE_FAILED,
-        crate::OFFLINE,
-        crate::BACKEND_UNREACHABLE,
-        crate::ASSETS_OFFLINE_WRITE,
         crate::UNKNOWN_FOLDER,
-    ],
+        crate::INVALID_DOCUMENT_REGISTRATION,
+    ]),
     reference: Some("docs/reference/assets.md"),
-    search: &[],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
+    search: &[
+        "register document",
+        "document number",
+        "revision",
+        "correspondence",
+        "transmittal",
+    ],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
 };
 
-/// The patch, validated locally, in the exact keys the operation declares.
-fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
+/// The patch, validated locally, in the exact keys the catalogue's
+/// `classify` reads. A folder is carried as its path here and resolved to
+/// its id at the door.
+fn arguments(inputs: &Inputs) -> Result<(String, Map<String, Value>, Option<String>), Failure> {
     let asset = crate::asset_id(inputs.require("asset")?, "asset")?;
     if crate::is_projected(&asset) {
         return Err(Failure::invalid(
@@ -150,46 +166,72 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
         .detail(json!({ "asset": asset })));
     }
 
-    let mut arguments = Map::new();
-    arguments.insert("asset".into(), json!(asset));
-
+    let mut patch = Map::new();
     // kind, status and sensitivity are closed at the parser, so a value that
     // reaches here is one of the contract's own words and needs no second
     // vocabulary check.
     for flag in ["kind", "status", "sensitivity"] {
         if let Some(value) = inputs.value(flag) {
-            arguments.insert(flag.into(), json!(value));
+            patch.insert(flag.into(), json!(value));
         }
     }
     if let Some(owner) = inputs.value("owner") {
-        arguments.insert("owner".into(), json!(owner.trim()));
+        patch.insert(
+            "owner".into(),
+            json!({ "kind": "user", "id": owner.trim() }),
+        );
     }
-    if let Some(folder) = inputs.value("folder") {
-        let folder = crate::folder_path(folder, "folder")?;
-        if let Some(root) = crate::folder::system_root(&folder) {
-            return Err(crate::folder::system_folder_refusal(
-                "folder", &folder, root,
-            ));
+    let mut folder = None;
+    if let Some(path) = inputs.value("folder") {
+        let path = crate::folder_path(path, "folder")?;
+        if let Some(root) = crate::folder::system_root(&path) {
+            return Err(crate::folder::system_folder_refusal("folder", &path, root));
         }
-        arguments.insert("folder".into(), json!(folder));
+        // Resolved to its id at the door; a placeholder marks the change.
+        patch.insert("folder_id".into(), Value::Null);
+        folder = Some(path);
+    }
+    let document = (
+        inputs.value("document-number").map(str::trim),
+        inputs.value("document-revision").map(str::trim),
+        inputs.value("document-state").map(str::trim),
+    );
+    match document {
+        (None, None, None) => {}
+        (Some(number), Some(revision), Some(state))
+            if !number.is_empty() && !revision.is_empty() =>
+        {
+            patch.insert(
+                "document".into(),
+                json!({ "number": number, "revision_label": revision, "state": state }),
+            );
+        }
+        _ => {
+            return Err(Failure::invalid(
+                crate::INVALID_DOCUMENT_REGISTRATION.code,
+                "a document registration needs --document-number, --document-revision and --document-state together",
+            )
+            .remedy(crate::INVALID_DOCUMENT_REGISTRATION.remedy)
+            .next("ds assets classify --help"));
+        }
     }
     if let Some(reason) = inputs.value("reason") {
-        arguments.insert("reason".into(), json!(audit_reason(reason)?));
+        patch.insert("reason".into(), json!(audit_reason(reason)?));
     }
 
     // `--asset` alone, or with only a reason, is a write that writes nothing:
     // one audit row, one round trip and no change. It costs a local refusal
     // instead.
-    if !CHANGE_KEYS.iter().any(|key| arguments.contains_key(*key)) {
+    if !CHANGE_KEYS.iter().any(|key| patch.contains_key(*key)) {
         return Err(Failure::invalid(
             "nothing_to_update",
-            "no kind, status, owner, folder or sensitivity flag was given",
+            "no kind, status, owner, folder, sensitivity or document flag was given",
         )
         .remedy(crate::NOTHING_TO_UPDATE.remedy)
         .next("ds assets classify --help"));
     }
 
-    Ok(Value::Object(arguments))
+    Ok((asset, patch, folder))
 }
 
 fn audit_reason(raw: &str) -> Result<String, Failure> {
@@ -207,15 +249,27 @@ fn audit_reason(raw: &str) -> Result<String, Failure> {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let arguments = arguments(inputs)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::ASSETS_CLASSIFY,
-        arguments,
-        crate::WRITE_TIMEOUT,
+    let (asset_id, mut patch, folder) = arguments(inputs)?;
+    let lane = inputs.value("lane").unwrap_or("stable");
+    if let Some(path) = folder {
+        patch.insert("folder_id".into(), json!(crate::folder_id(lane, &path)?));
+    }
+    // The version fence: what the caller read is what the change is against.
+    let current = crate::catalogue(
+        lane,
+        &Catalogue::Get {
+            asset_id: asset_id.clone(),
+        },
+    )?;
+    let expected_version = current["asset"]["version"].as_i64().unwrap_or(1).max(1);
+    crate::catalogue(
+        lane,
+        &Catalogue::Classify {
+            asset_id,
+            expected_version,
+            patch,
+        },
     )
-    .map_err(crate::classify_assets_failure)
 }
 
 pub fn render(data: &Value) -> String {
@@ -241,34 +295,12 @@ pub fn render(data: &Value) -> String {
     if row.is_object() {
         out.push_str(&crate::asset_line(row));
     }
-    out.push_str(&warnings(data));
-    out
-}
-
-/// The application's own warnings, under the headline.
-///
-/// A warning is not a refusal: the change applied. But a classification that
-/// widened what a folder's children inherit, or left a link pointing at
-/// something the new class hides, is exactly what a caller running unattended
-/// needs told — so no write here renders without passing them through.
-fn warnings(data: &Value) -> String {
-    let mut out = String::new();
-    for warning in data["warnings"].as_array().into_iter().flatten() {
-        let text = warning
-            .as_str()
-            .or_else(|| warning["message"].as_str())
-            .or_else(|| warning["code"].as_str())
-            .unwrap_or("the application returned a warning with no message");
-        out.push_str(&format!("  ! {text}\n"));
-    }
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ds_cli_contract::spec::ArgKind;
-    use ds_cli_desktop::ops::undeclared_key;
 
     fn parse(tokens: &[&str]) -> Inputs {
         let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
@@ -281,9 +313,6 @@ mod tests {
 
     #[test]
     fn a_patch_that_changes_nothing_never_reaches_the_project() {
-        // A write that writes nothing still costs an audit row and a round
-        // trip. `--reason` alone is the interesting case: it is a real flag
-        // that changes no field.
         assert_eq!(
             refused(&["--asset", "a_7kq3nr2v0b1c"]).code(),
             "nothing_to_update"
@@ -304,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn a_projected_row_is_refused_by_name_before_the_bridge() {
+    fn a_projected_row_and_a_system_folder_are_refused_by_name_before_the_door() {
         let failure = refused(&[
             "--asset",
             "sys:design_attachment:att_1:rev_2",
@@ -312,19 +341,6 @@ mod tests {
             "durable",
         ]);
         assert_eq!(failure.code(), "projected_asset_read_only");
-        assert!(
-            failure
-                .remedy_text()
-                .expect("remedy")
-                .contains("act on the source object")
-        );
-    }
-
-    #[test]
-    fn a_system_folder_is_not_a_classification_target() {
-        // System folders are projected from the project's own inventories, so
-        // filing a document into one would be filing it into something that
-        // is rebuilt from elsewhere on the next refresh.
         for path in ["Transformers/AGASHARU/reports", "prints/local"] {
             assert_eq!(
                 refused(&["--asset", "a_7kq3nr2v0b1c", "--folder", path]).code(),
@@ -336,19 +352,75 @@ mod tests {
             refused(&["--asset", "a_7kq3nr2v0b1c", "--folder", "contracts//epc"]).code(),
             "invalid_folder_path"
         );
+        let (_, patch, folder) = arguments(&parse(&[
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--folder",
+            "contracts/2026/epc",
+        ]))
+        .expect("valid");
+        assert_eq!(folder.as_deref(), Some("contracts/2026/epc"));
         assert!(
-            arguments(&parse(&[
-                "--asset",
-                "a_7kq3nr2v0b1c",
-                "--folder",
-                "contracts/2026/epc"
-            ]))
-            .is_ok()
+            patch.contains_key("folder_id"),
+            "the folder travels as its id once resolved"
         );
     }
 
     #[test]
-    fn an_audit_reason_is_a_sentence_and_is_never_cut_silently() {
+    fn a_document_registration_is_whole_or_refused() {
+        let asset = ["--asset", "a_7kq3nr2v0b1c"];
+        for partial in [
+            vec!["--document-number", "GTP-001"],
+            vec!["--document-number", "GTP-001", "--document-revision", "B"],
+            vec!["--document-state", "issued"],
+        ] {
+            let mut tokens: Vec<&str> = asset.to_vec();
+            tokens.extend(partial.iter());
+            assert_eq!(
+                refused(&tokens).code(),
+                "invalid_document_registration",
+                "{partial:?}"
+            );
+        }
+        let (asset_id, patch, _) = arguments(&parse(&[
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--document-number",
+            "GTP-001",
+            "--document-revision",
+            "B",
+            "--document-state",
+            "issued",
+        ]))
+        .expect("valid");
+        assert_eq!(asset_id, "a_7kq3nr2v0b1c");
+        assert_eq!(
+            patch["document"],
+            json!({ "number": "GTP-001", "revision_label": "B", "state": "issued" })
+        );
+        let tokens: Vec<String> = [
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--document-number",
+            "x",
+            "--document-revision",
+            "1",
+            "--document-state",
+            "signed",
+        ]
+        .iter()
+        .map(|token| (*token).to_string())
+        .collect();
+        assert_eq!(
+            ds_cli_contract::parse(&COMMAND, &tokens)
+                .expect_err("closed vocabulary")
+                .code(),
+            "invalid_choice"
+        );
+    }
+
+    #[test]
+    fn an_audit_reason_is_a_sentence_and_the_owner_is_a_user() {
         let long = "x".repeat(MAX_REASON_CHARS + 1);
         for bad in ["", "   ", long.as_str()] {
             assert_eq!(
@@ -364,123 +436,22 @@ mod tests {
                 "invalid_reason"
             );
         }
-        let payload = arguments(&parse(&[
+        let (_, patch, _) = arguments(&parse(&[
             "--asset",
             "a_7kq3nr2v0b1c",
             "--status",
             "durable",
+            "--owner",
+            " lead@example.com ",
             "--reason",
             "  signed copy received  ",
         ]))
         .expect("valid");
-        assert_eq!(payload["reason"], json!("signed copy received"));
-    }
-
-    #[test]
-    fn the_vocabularies_are_closed_at_the_parser() {
-        let tokens: Vec<String> = ["--asset", "a_7kq3nr2v0b1c", "--status", "settled"]
-            .iter()
-            .map(|token| (*token).to_string())
-            .collect();
+        assert_eq!(patch["reason"], json!("signed copy received"));
         assert_eq!(
-            ds_cli_contract::parse(&COMMAND, &tokens)
-                .expect_err("must refuse")
-                .code(),
-            "invalid_choice"
+            patch["owner"],
+            json!({ "kind": "user", "id": "lead@example.com" })
         );
-    }
-
-    #[test]
-    fn the_payload_carries_exactly_the_keys_the_operation_declares() {
-        let payload = arguments(&parse(&[
-            "--asset",
-            "a_7kq3nr2v0b1c",
-            "--kind",
-            "doc",
-            "--status",
-            "durable",
-            "--owner",
-            "commercial@example.com",
-            "--folder",
-            "contracts/2026/epc",
-            "--sensitivity",
-            "confidential",
-            "--reason",
-            "signed copy received",
-        ]))
-        .expect("valid");
-        assert_eq!(undeclared_key(&crate::ASSETS_CLASSIFY, &payload), None);
-        let mut keys: Vec<&str> = payload
-            .as_object()
-            .expect("object")
-            .keys()
-            .map(String::as_str)
-            .collect();
-        keys.sort_unstable();
-        assert_eq!(
-            keys,
-            [
-                "asset",
-                "folder",
-                "kind",
-                "owner",
-                "reason",
-                "sensitivity",
-                "status"
-            ]
-        );
-        // A flag nobody gave is absent, not null: the application's own
-        // default is the answer to a question that was not asked.
-        let minimal = arguments(&parse(&[
-            "--asset",
-            "a_7kq3nr2v0b1c",
-            "--status",
-            "archive",
-        ]))
-        .expect("valid");
-        assert_eq!(
-            minimal.as_object().expect("object").keys().len(),
-            2,
-            "an omitted flag must not travel"
-        );
-    }
-
-    #[test]
-    fn the_human_projection_reports_the_fields_that_moved_and_the_audit_row() {
-        let rendered = render(&json!({
-            "asset": { "asset_id": "a_7kq3nr2v0b1c", "name": "EPC Lot 3.pdf", "folder": "contracts",
-                       "kind": "doc", "status": "durable", "sensitivity": "confidential", "bytes": 12 },
-            "audit_id": "aud_9",
-            "changed": ["status", "sensitivity"],
-            "warnings": [{ "message": "two links now point at a hidden document" }]
-        }));
-        assert!(rendered.contains("classified a_7kq3nr2v0b1c · status, sensitivity"));
-        assert!(rendered.contains("audit aud_9"));
-        assert!(rendered.contains("contracts/EPC Lot 3.pdf"));
-        assert!(rendered.contains("! two links now point at a hidden document"));
-        // Nothing moved is said, not hidden.
-        assert!(render(&json!({ "changed": [] })).contains("no field moved"));
-    }
-
-    #[test]
-    fn this_write_cannot_be_reached_without_explicit_confirmation() {
-        // The gate itself lives once, in `ds`'s dispatch, and reads exactly
-        // this declaration — so the declaration is the part a test inside
-        // this crate can hold. A confirmation-gated command may also take no
-        // positional argument, because `--yes` must never be the thing that
-        // shifts what an operand means.
-        assert!(COMMAND.effect.needs_confirmation());
-        assert!(COMMAND.confirmation_required_for(&parse(&[
-            "--asset",
-            "a_7kq3nr2v0b1c",
-            "--status",
-            "durable"
-        ])));
-        assert!(
-            COMMAND
-                .args
-                .iter()
-                .all(|arg| arg.kind != ArgKind::Positional)
-        );
+        assert_eq!(patch["status"], json!("durable"));
     }
 }

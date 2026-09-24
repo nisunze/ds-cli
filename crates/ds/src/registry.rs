@@ -1544,6 +1544,51 @@ static WORK_ENTRIES: &[Entry] = &[
         handler: ds_cli_pm::record::read::run,
         render: ds_cli_pm::record::read::render,
     },
+    Entry {
+        command: &ds_cli_pm::task::block::COMMAND,
+        handler: ds_cli_pm::task::block::run,
+        render: ds_cli_pm::task::block::render,
+    },
+    Entry {
+        command: &ds_cli_pm::task::unblock::COMMAND,
+        handler: ds_cli_pm::task::unblock::run,
+        render: ds_cli_pm::task::unblock::render,
+    },
+    Entry {
+        command: &ds_cli_pm::party::list::COMMAND,
+        handler: ds_cli_pm::party::list::run,
+        render: ds_cli_pm::party::list::render,
+    },
+    Entry {
+        command: &ds_cli_pm::party::create::COMMAND,
+        handler: ds_cli_pm::party::create::run,
+        render: ds_cli_pm::party::create::render,
+    },
+    Entry {
+        command: &ds_cli_pm::party::update::COMMAND,
+        handler: ds_cli_pm::party::update::run,
+        render: ds_cli_pm::party::update::render,
+    },
+    Entry {
+        command: &ds_cli_pm::record::thread::COMMAND,
+        handler: ds_cli_pm::record::thread::run,
+        render: ds_cli_pm::record::thread::render,
+    },
+    Entry {
+        command: &ds_cli_pm::record::create::COMMAND,
+        handler: ds_cli_pm::record::create::run,
+        render: ds_cli_pm::record::create::render,
+    },
+    Entry {
+        command: &ds_cli_pm::record::reply::COMMAND,
+        handler: ds_cli_pm::record::reply::run,
+        render: ds_cli_pm::record::reply::render,
+    },
+    Entry {
+        command: &ds_cli_pm::record::update::COMMAND,
+        handler: ds_cli_pm::record::update::run,
+        render: ds_cli_pm::record::update::render,
+    },
 ];
 
 /// Project Assets lists its commands in the order a session uses them: find

@@ -40,6 +40,7 @@
 pub mod attach;
 pub mod backup;
 pub mod classify;
+pub mod correspondence;
 pub mod folder;
 pub mod ingest;
 pub mod list;
@@ -348,8 +349,8 @@ pub const INVALID_FOLDER_PATH: Refusal = Refusal {
 };
 pub const INVALID_LINK: Refusal = Refusal {
     code: "invalid_link",
-    when: "--link is not `pm_task:<id>` or `ds_object:<type>:<id>`, or was given more than once",
-    remedy: "pass e.g. --link pm_task:t_4812 or --link ds_object:transformer:TX-104",
+    when: "--link is not `pm_task:<id>`, `pm_record:<id>` or `ds_object:<type>:<id>`, or was given more than once",
+    remedy: "pass e.g. --link pm_task:t_4812, --link pm_record:R-0031 or --link ds_object:transformer:TX-104",
 };
 pub const INVALID_QUERY: Refusal = Refusal {
     code: "invalid_query",
@@ -401,6 +402,207 @@ pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     remedy: "re-run with --yes once you intend the change",
 };
 
+// The correspondence contract's named catalogue refusals (ds-brain
+// `docs/contracts/correspondence.md` §Asset), one to one with `ASSET_REFUSED`
+// reason tokens. The code IS the token; `detail` carries what the rule named.
+pub const ASSET_BYTES_NOT_HELD: Refusal = Refusal {
+    code: "asset_bytes_not_held",
+    when: "the asset is an external reference — a link with a digest, no bytes in DS — so there is nothing to preview, read or promote; detail.external_url is the link",
+    remedy: "open detail.external_url where the bytes live; the row itself reads with `ds assets list --output json`",
+};
+pub const INVALID_EXTERNAL_REFERENCE: Refusal = Refusal {
+    code: "invalid_external_reference",
+    when: "--url is not https with a host and no credentials, --digest is not a sha256, --size is not positive, or --provider is unknown (detail.field names which)",
+    remedy: "pass an https link, the file's sha256 hex digest, its size in bytes and a kind from the vocabulary",
+};
+pub const ASSET_REFERENCE_CONFLICT: Refusal = Refusal {
+    code: "asset_reference_conflict",
+    when: "the same URL and digest were already registered under different facts (size, kind or name)",
+    remedy: "read the existing row with `ds assets list`; register a changed file as a new reference with its own digest",
+};
+pub const INVALID_DOCUMENT_REGISTRATION: Refusal = Refusal {
+    code: "invalid_document_registration",
+    when: "a document registration is partial: --document-number, --document-revision and --document-state are all required together",
+    remedy: "pass the three together, e.g. --document-number GTP-001 --document-revision B --document-state issued",
+};
+pub const INVALID_REFERENCE_FORM: Refusal = Refusal {
+    code: "invalid_reference_form",
+    when: "neither the external form (--url --digest --size --kind) nor the reporter-output form (--work --output-id --role with a tag or transformer) was given whole, or both were",
+    remedy: "give one form whole: `ds assets reference --url … --digest … --size … --kind … --yes`, or the reporter form",
+};
+/// The document states a registration takes (correspondence.md §Asset).
+pub const DOCUMENT_STATES: &[&str] = &[
+    "draft",
+    "issued_for_review",
+    "issued_for_approval",
+    "issued",
+    "approved",
+    "superseded",
+    "reference",
+    "final",
+];
+
+/// The refusals the headless catalogue client can answer with, for every
+/// Server command of this domain: profile, state, session, identity,
+/// transport and project-context conditions. Declared once in `ds auth`.
+pub const HEADLESS_REFUSALS: &[Refusal] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
+
+/// The refusals every headless catalogue command shares beyond the headless
+/// set: what the catalogue itself can say.
+pub const CATALOGUE_BASE: [Refusal; 8] = [
+    ASSET_NOT_FOUND,
+    ASSET_CLASS_FORBIDDEN,
+    ASSET_VERSION_CONFLICT,
+    ASSET_REQUEST_INVALID,
+    ASSET_RULE_REFUSED,
+    ASSETS_SERVICE_FAILED,
+    INVALID_ASSET_ID,
+    CONFIRMATION_REQUIRED,
+];
+
+/// The refusals one headless catalogue command declares: the headless set,
+/// [`CATALOGUE_BASE`], then its own. `TOTAL` is `15 + 8 + own.len()`,
+/// checked at compile time.
+pub const fn catalogue_refusals<const TOTAL: usize>(own: &[Refusal]) -> [Refusal; TOTAL] {
+    assert!(TOTAL == HEADLESS_REFUSALS.len() + CATALOGUE_BASE.len() + own.len());
+    let mut out = [ASSET_NOT_FOUND; TOTAL];
+    let mut i = 0;
+    while i < HEADLESS_REFUSALS.len() {
+        out[i] = HEADLESS_REFUSALS[i];
+        i += 1;
+    }
+    let mut k = 0;
+    while k < CATALOGUE_BASE.len() {
+        out[i + k] = CATALOGUE_BASE[k];
+        k += 1;
+    }
+    i += CATALOGUE_BASE.len();
+    let mut j = 0;
+    while j < own.len() {
+        out[i + j] = own[j];
+        j += 1;
+    }
+    out
+}
+/// `HEADLESS_REFUSALS.len()` + [`CATALOGUE_BASE`].
+pub const CATALOGUE_READ: usize = 15 + 8;
+const _: () = assert!(HEADLESS_REFUSALS.len() + CATALOGUE_BASE.len() == CATALOGUE_READ);
+
+/// One catalogue command through the headless client, its refusal
+/// classified for this domain.
+pub fn catalogue(
+    lane: &str,
+    command: &ds_client_core::shared_assets::Command,
+) -> Result<Value, Failure> {
+    ds_cli_auth::shared_assets(lane, command)
+        .map(ds_cli_auth::HeadlessProjectReport::into_result)
+        .map_err(classify_catalogue_failure)
+}
+
+/// The catalogue's own refusal, as this domain documents it.
+///
+/// The headless client relays an `ASSET_REFUSED` reason token as the code;
+/// the two the correspondence contract names keep theirs, every other rule
+/// is `asset_refused` with the token in `detail.service_code`, and the
+/// envelope codes take the names the bridge already gave them so a caller
+/// meets one vocabulary on either host.
+pub fn classify_catalogue_failure(failure: Failure) -> Failure {
+    let code = failure.code().to_owned();
+    let detail = failure.detail_value().cloned().unwrap_or(Value::Null);
+    let status = detail["http_status"].as_u64();
+    let service = detail["service_code"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    let message = failure.message().to_owned();
+    let relayed = service == code;
+    match (code.as_str(), status) {
+        ("asset_bytes_not_held", _) => failure.remedy(ASSET_BYTES_NOT_HELD.remedy),
+        ("invalid_external_reference", _) => failure.remedy(INVALID_EXTERNAL_REFERENCE.remedy),
+        ("conflict", Some(409)) => Failure::conflict(ASSET_REFERENCE_CONFLICT.code, message)
+            .detail(detail)
+            .remedy(ASSET_REFERENCE_CONFLICT.remedy),
+        ("asset_version_conflict", _) | (_, Some(409)) if relayed => {
+            Failure::conflict(ASSET_VERSION_CONFLICT.code, message)
+                .detail(detail)
+                .remedy(ASSET_VERSION_CONFLICT.remedy)
+        }
+        ("not_found", _) | ("project_not_visible", Some(404)) => {
+            Failure::invalid(ASSET_NOT_FOUND.code, message)
+                .detail(detail)
+                .remedy(ASSET_NOT_FOUND.remedy)
+        }
+        ("work_not_permitted", _) | ("asset_class_forbidden", _) => {
+            Failure::unauthorized(ASSET_CLASS_FORBIDDEN.code, message)
+                .detail(detail)
+                .remedy(ASSET_CLASS_FORBIDDEN.remedy)
+        }
+        ("validation_failed", _) | ("missing_required_field", _) => {
+            Failure::invalid(ASSET_REQUEST_INVALID.code, message)
+                .detail(detail)
+                .remedy(ASSET_REQUEST_INVALID.remedy)
+        }
+        (_, Some(500..=599)) => Failure::unavailable(ASSETS_SERVICE_FAILED.code, message)
+            .detail(detail)
+            .remedy(ASSETS_SERVICE_FAILED.remedy),
+        _ if relayed => Failure::invalid(ASSET_RULE_REFUSED.code, message)
+            .detail(detail)
+            .remedy(ASSET_RULE_REFUSED.remedy),
+        _ => failure,
+    }
+}
+
+/// One correspondence action through the pm door, its refusal classified
+/// for this domain (the index reads records and parties for the tree).
+pub fn correspondence_door(
+    lane: &str,
+    action: &ds_client_core::project_correspondence::Action,
+) -> Result<Value, Failure> {
+    ds_cli_auth::correspondence::project_correspondence(lane, action)
+        .map(ds_cli_auth::HeadlessProjectReport::into_result)
+        .map_err(classify_catalogue_failure)
+}
+
+/// Which native credential lane a headless `ds assets` command authenticates on.
+pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
+    .choices(&["stable", "canary"])
+    .default("stable");
+
+/// The declared folder at `path`, by id, or the refusal `unknown_folder`.
+pub fn folder_id(lane: &str, path: &str) -> Result<String, Failure> {
+    let answer = catalogue(lane, &ds_client_core::shared_assets::Command::Folders)?;
+    answer["folders"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|row| row["path"].as_str() == Some(path))
+        .and_then(|row| row["folder_id"].as_str().map(str::to_owned))
+        .ok_or_else(|| {
+            Failure::invalid("unknown_folder", format!("No declared folder at {path}."))
+                .remedy(UNKNOWN_FOLDER.remedy)
+                .detail(json!({ "path": path }))
+        })
+}
+
+/// A sha256 hex digest, as `--digest` takes it: 64 lowercase hex characters,
+/// with or without a `sha256:` prefix.
+pub fn digest(raw: &str, flag: &str) -> Result<String, Failure> {
+    let cleaned = raw
+        .trim()
+        .strip_prefix("sha256:")
+        .unwrap_or(raw.trim())
+        .to_ascii_lowercase();
+    if cleaned.len() != 64 || !cleaned.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(Failure::invalid(
+            INVALID_EXTERNAL_REFERENCE.code,
+            format!("`--{flag}` must be the file's sha256 as 64 hex characters"),
+        )
+        .remedy(INVALID_EXTERNAL_REFERENCE.remedy)
+        .detail(json!({ "field": "sha256", "given": raw })));
+    }
+    Ok(cleaned)
+}
+
 /// Give the application's refusals the names a caller can plan for.
 ///
 /// The shared rule turns "no active project" prose into `desktop_signed_out`.
@@ -409,7 +611,28 @@ pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
 /// application's own structured refusal, with its class, code and remedy
 /// intact, so no prose of this domain's own is keyed on here.
 pub fn classify_assets_failure(failure: Failure) -> Failure {
-    classify_signed_out(failure)
+    let failure = classify_signed_out(failure);
+    // One catalogue rule crosses the bridge under the adapter's generic
+    // `asset_refused`: a read of an external reference. It has a name in the
+    // contract and a link in its sentence, so it is given both here.
+    if failure.code() == "asset_refused" {
+        let sentence = failure.message().to_owned();
+        if sentence.contains("external reference") && sentence.contains("holds no bytes") {
+            let url = sentence
+                .rsplit_once("open ")
+                .map(|(_, url)| url.trim().trim_end_matches('.').to_owned())
+                .filter(|url| url.starts_with("https://"));
+            let mut detail = failure.detail_value().cloned().unwrap_or(json!({}));
+            detail["service_code"] = json!("asset_bytes_not_held");
+            if let Some(url) = url {
+                detail["external_url"] = json!(url);
+            }
+            return Failure::invalid(ASSET_BYTES_NOT_HELD.code, sentence)
+                .detail(detail)
+                .remedy(ASSET_BYTES_NOT_HELD.remedy);
+        }
+    }
+    failure
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +652,7 @@ pub const ASSET_ARG: Arg = Arg {
 pub const MEMBER_ARG: Arg = Arg::value(
     "member",
     "<path>",
-    "One member inside a `pack` asset, by the path `ds assets tree --into` reports.",
+    "One member inside a `pack` asset, or one MIME part of a `mail` (.eml) asset, by the path `ds assets tree --into` reports.",
 );
 
 pub const SHEET_ARG: Arg = Arg::value(
@@ -594,14 +817,14 @@ pub fn link(raw: &str, flag: &str) -> Result<String, Failure> {
     let trimmed = raw.trim();
     let segments: Vec<&str> = trimmed.split(':').collect();
     let well_formed = match segments.as_slice() {
-        ["pm_task", id] => !id.is_empty(),
+        ["pm_task", id] | ["pm_record", id] => !id.is_empty(),
         ["ds_object", object_type, id] => !object_type.is_empty() && !id.is_empty(),
         _ => false,
     };
     if !well_formed {
         return Err(Failure::invalid(
             "invalid_link",
-            format!("`--{flag}` must be pm_task:<id> or ds_object:<type>:<id>"),
+            format!("`--{flag}` must be pm_task:<id>, pm_record:<id> or ds_object:<type>:<id>"),
         )
         .remedy(INVALID_LINK.remedy)
         .detail(json!({ "given": raw })));

@@ -54,6 +54,11 @@ const DISCIPLINE_ARG: Arg = Arg {
     summary: "Only this kind of work — the project's own vocabulary.",
 };
 
+const BLOCKED_ARG: Arg = Arg::switch(
+    "blocked-on-correspondence",
+    "Only tasks openly waiting on a record's answer (`ds pm task block`).",
+);
+
 const PLACEMENT_ARG: Arg = Arg {
     name: "placement",
     kind: ArgKind::Value,
@@ -86,6 +91,7 @@ credential, no window.",
         ASSIGNEE_ARG,
         DISCIPLINE_ARG,
         PLACEMENT_ARG,
+        BLOCKED_ARG,
         LIMIT_ARG,
         PAGE_ARG,
         LANE_ARG,
@@ -93,6 +99,7 @@ credential, no window.",
     output: "\
 The project, its graph revision, the matched total, the page bounds, and rows \
 of `wbs`, `id`, `title`, `type`, `delivery`, `review`, `closeout`, `progress`, \
+`awaitingCorrespondence`, `blockedRecordIds`, \
 `start`, `finish`, `responsible`, `discipline`, `priority`, `blockers` and \
 `assignmentOpen` — true while a request is waiting for an answer.",
     examples: &[Example {
@@ -103,6 +110,9 @@ of `wbs`, `id`, `title`, `type`, `delivery`, `review`, `closeout`, `progress`, \
     refusals: &crate::read_refusals::<17>(&[crate::INVALID_NUMBER]),
     reference: Some("docs/reference/pm.md"),
     search: &[
+        "blocked on",
+        "waiting on",
+        "correspondence",
         "subtask",
         "sub-task",
         "backlog",
@@ -132,6 +142,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             Some("inbox") => PlacementFilter::Inbox,
             _ => PlacementFilter::Any,
         },
+        blocked_on_correspondence: inputs.switch("blocked-on-correspondence"),
         page_size: match inputs.value("limit") {
             Some(limit) => crate::integer(limit, "limit", 1, crate::MAX_PAGE_SIZE)?,
             None => 50,

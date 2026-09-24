@@ -1,11 +1,19 @@
 //! `ds pm task read` — one work item, with everything hanging off it.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
+use ds_client_core::project_correspondence::Action;
 use serde_json::{Value, json};
 
 use crate::{LANE_ARG, TASK_ARG};
+
+const TIMELINE_ARG: Arg = Arg::switch(
+    "timeline",
+    "Also read the task's history in time order: records, attachments, state changes, assignments, blockers set and cleared.",
+);
 
 pub static COMMAND: Command = Command {
     id: "pm.task.read",
@@ -22,17 +30,21 @@ Headless: the selected project of the signed-in native credential, no window.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, LANE_ARG],
+    args: &[TASK_ARG, TIMELINE_ARG, LANE_ARG],
     output: "\
-`task` with the canonical fields, `dependencies`, `residuals` (open first), \
+`task` with the canonical fields — including `awaitingCorrespondence`, \
+`blockedRecordIds` and every `correspondenceBlockers` entry with who set \
+it and how it cleared — `dependencies`, `residuals` (open first), \
 `episodes`, `records` referencing it, and a `*Total` for each bounded related \
-collection; plus the project's `permissions`, graph `revision`, and `link`.",
+collection; plus the project's `permissions`, graph `revision`, and `link`. \
+With --timeline, `timeline.entries` in time order with `total`, `truncated` \
+and per-source counts.",
     examples: &[Example {
         command: "ds pm task read --task T-0007 --output json",
         note: "`.data.task.assignmentOpen` tells you whether respond is available.",
         runnable: false,
     }],
-    refusals: &crate::read_refusals::<17>(&[crate::TASK_NOT_FOUND]),
+    refusals: &crate::correspondence_refusals::<22>(&[crate::TASK_NOT_FOUND]),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "subtask",
@@ -44,6 +56,10 @@ collection; plus the project's `permissions`, graph `revision`, and `link`.",
         "wbs",
         "progress",
         "assignee",
+        "timeline",
+        "history",
+        "blocked on",
+        "correspondence",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -59,7 +75,25 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // correspondence names it.
     let (_, records, _) = crate::records(lane)?;
     match ds_command_kernel::project_management::reads::task_read(&read.graph, task_id, &records) {
-        Some(reply) => crate::data(&reply),
+        Some(reply) => {
+            let mut data = crate::data(&reply)?;
+            if inputs.switch("timeline") {
+                // The history is the server's projection over its ledgers;
+                // the row itself is the graph's, read above.
+                let report = crate::correspondence(
+                    lane,
+                    &Action::TaskRead {
+                        task_id: task_id.to_owned(),
+                        timeline: true,
+                    },
+                )?;
+                let timeline = ds_command_kernel::project_management::correspondence::timeline(
+                    &report.into_result()["timeline"],
+                );
+                data["timeline"] = crate::data(&timeline)?;
+            }
+            Ok(data)
+        }
         None => Err(Failure::invalid(
             crate::TASK_NOT_FOUND.code,
             format!("No task {task_id} in this project's plan."),
