@@ -710,6 +710,11 @@ vertical exaggeration, span annotations, 6 m corridor and grid are authored
 inputs. Plan and profile use the same horizontal station scale so every plan
 structure sits directly below its profile ordinate. `--plan-scale`, when set,
 must equal `--horizontal-scale`; angle breaks consume no station distance.
+The trace uses rounded station targets and a clear edge inset. At H 1:1500,
+it aims for 0+500, 1+000, and so on, then cuts at a nearby structure with
+less local terrain relief. That structure closes one page and opens the next;
+the profile trace is clipped at the shared station. A short last page is
+balanced across the final pair. The manifest records each printed window.
 Each default vertical label row holds one entity field: structure number,
 structure type, then comments in the advanced format. `--ink monochrome` is
 the default; `--ink reference_accents` applies
