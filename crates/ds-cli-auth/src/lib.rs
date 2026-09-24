@@ -5593,30 +5593,25 @@ pub const REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL: Refusal = Refusal {
     remedy: "retry the download; if the digest keeps failing the catalogue row is stale, so read the catalogue again before installing",
 };
 
-/// One data-distribution action against the fenced selected project: the
+/// One data-distribution action against the project the CALLER named: the
 /// reference catalogue, or one bounded derived print-context acquisition.
-/// There is deliberately no project, URL, action or credential override, and
-/// the billed `query_dataset` page read is not in the vocabulary at all.
+/// The saved selection is never read. There is deliberately no URL, action or
+/// credential override, and the billed `query_dataset` page read is not in the
+/// vocabulary at all.
 pub fn data_distribution(
     lane_value: &str,
+    project: &str,
     request: &DataDistributionRequest,
 ) -> Result<Value, Failure> {
     request.validate().map_err(map_client)?;
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        return device
-            .data_distribution(selected.project_id(), request)
-            .map_err(map_data_distribution);
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    match client.data_distribution(selected.project_id(), request, now()) {
-        Err(error) if is_data_distribution_outage(&error) => Err(map_data_distribution(error)),
-        result => with_released_context_disposition(client.profile(), &selected, result),
-    }
+    headless_named_project_with(
+        lane_value,
+        project,
+        map_data_distribution,
+        |device, project| device.data_distribution(project, request),
+        |client, project| client.data_distribution(project, request, now()),
+    )
+    .map(HeadlessNamedProject::into_result)
 }
 
 /// The route itself could not answer — as opposed to the credential refresh

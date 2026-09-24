@@ -165,6 +165,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     };
     let catalog = ds_project_data::validate_resources(&ds_cli_auth::data_distribution(
         lane,
+        project,
         &ds_cli_auth::DataDistributionRequest::ListDatasets {},
     )?)
     .map_err(invalid)?;
@@ -183,7 +184,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         })
         .cloned()
         .collect::<Vec<_>>();
-    let mut provider = ds_cli_data::project_cache::CliProvider { lane };
+    let mut provider = ds_cli_data::project_cache::CliProvider { lane, project };
     let mut fetch = ds_cli_data::project_cache::bundle_fetch(lane);
     let mut hosts = ds_project_data::Hosts {
         provider: &mut provider,

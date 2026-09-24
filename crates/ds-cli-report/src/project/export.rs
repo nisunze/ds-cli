@@ -1160,6 +1160,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         match ds_cli_auth::data_distribution(
             lane,
+            &project_id,
             &ds_cli_auth::DataDistributionRequest::ListDatasets {},
         )
         .map_err(|error| format!("{}: {}", error.code(), error.message()))
@@ -1200,7 +1201,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         catalog
     };
-    let mut provider = ds_cli_data::project_cache::CliProvider { lane };
+    let mut provider = ds_cli_data::project_cache::CliProvider {
+        lane,
+        project: &project_id,
+    };
     let mut bundle_fetch = ds_cli_data::project_cache::bundle_fetch(lane);
     let mut transformer_context_notes: Vec<Value> = Vec::new();
     // A source a selected layout hides entirely prints nothing and is not

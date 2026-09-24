@@ -174,9 +174,9 @@ neighbouring transformers share one acquisition.
 `status` costs nothing and reaches no provider. `seed` is the one command here
 that queries a geographic source, so it is confirmed.
 
-Both run headlessly, under the restored native user against its fenced
-selected project (`ds auth project use`), on this machine's holdings — no
-paired Desktop and no `--project`. The holdings live under the shared
+Both run headlessly, under the restored native user against the project
+named by `--project` (the saved selection is never read), on this machine's
+holdings — no paired Desktop. The holdings live under the shared
 geographic data root (`rw.datasolutions.desktop.shared`, the same root the
 desktop uses), so a desktop signed in as the same account on the same machine
 reads the rooms a headless seed filled. The orchestration is
@@ -263,6 +263,8 @@ it in the cloud. It is read two ways:
 
 * **Bounded, at the moment of need** — `upi lookup`, `customers query`,
   `parcels query` below answer one question inside one bound and keep nothing.
+  Each names its project with `--project`; ds-brain authorizes the read
+  against that project, never a saved selection.
 * **Seeded for this project** — `seed --dataset edcl_customers` (or
   `rwanda_upi_parcels`) fills the project's coverage cells through the same
   bounded read, cell by cell, exactly as building footprints are seeded from
@@ -329,7 +331,7 @@ this line's corridor cross*, is two commands:
 
 ```
 ds data vector buffer --layer mv_lines --distance-m 15 --out ./corridor.geojson
-ds data parcels query --boundary ./corridor.geojson --geometry-out ./crossed.geojson
+ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed.geojson
 ```
 
 The terminal prints counts per sector/cell and the summed `source_area_m2`;

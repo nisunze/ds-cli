@@ -9,8 +9,8 @@
 //! cell, one small rectangle, or one transformer's design area, capped at
 //! 5,000 and receipted with the dataset, the query, the bound and the counts.
 //!
-//! Both run headlessly under the restored native user against the fenced
-//! selected project; membership is ds-brain's decision. As with
+//! Both run headlessly under the restored native user against the project the
+//! caller names with `--project`; membership is ds-brain's decision. As with
 //! `data admin-bounds read`, the terminal prints evidence rather than
 //! coordinates; `--geometry-out` keeps the exact GeoJSON as a file that
 //! `ds map local register` takes as it stands.
@@ -54,7 +54,7 @@ const BBOX_ARG: Arg = Arg::value(
 const TRANSFORMER_ARG: Arg = Arg::value(
     "transformer",
     "<name>",
-    "One active transformer of the selected project: its design extent, buffered by the project's design buffer, is the rectangle.",
+    "One active transformer of the named project: its design extent, buffered by the project's design buffer, is the rectangle.",
 );
 const BOUNDARY_ARG: Arg = Arg::value(
     "boundary",
@@ -68,6 +68,12 @@ const GEOMETRY_OUT_ARG: Arg = Arg::value(
     "<path.geojson>",
     "Also write the exact GeoJSON here (a FeatureCollection). Existing files are never overwritten.",
 );
+const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project this read is billed and authorized against; the saved selection is never read.",
+)
+.required();
 const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
     .default("stable")
     .choices(&["stable", "canary"]);
@@ -120,8 +126,14 @@ refusal!(
 refusal!(
     NOT_FOUND,
     "transformer_not_found",
-    "the named transformer is not an active transformer of the selected project",
+    "the named transformer is not an active transformer of the named project",
     "pass one exact transformer name from `ds design status`"
+);
+refusal!(
+    PROJECT_INVALID,
+    "context_corrupt",
+    "--project is not one exact DS project id: blank, untrimmed, too long, or a path",
+    "copy one exact ds_project value from `ds auth project list`"
 );
 refusal!(
     NO_DESIGN_EXTENT,
@@ -149,8 +161,9 @@ const fn with_native_refusals<const N: usize, const TOTAL: usize>(
     }
     all
 }
-const LOOKUP_REFUSAL_SET: [Refusal; 5 + AUTH_REFUSALS] =
-    with_native_refusals::<5, { 5 + AUTH_REFUSALS }>([
+const LOOKUP_REFUSAL_SET: [Refusal; 6 + AUTH_REFUSALS] =
+    with_native_refusals::<6, { 6 + AUTH_REFUSALS }>([
+        PROJECT_INVALID,
         UPI_INVALID,
         UPI_NOT_FOUND,
         AMBIGUOUS,
@@ -158,8 +171,9 @@ const LOOKUP_REFUSAL_SET: [Refusal; 5 + AUTH_REFUSALS] =
         ds_cli_auth::DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL,
     ]);
 const LOOKUP_REFUSALS: &[Refusal] = &LOOKUP_REFUSAL_SET;
-const QUERY_REFUSAL_SET: [Refusal; 6 + AUTH_REFUSALS] =
-    with_native_refusals::<6, { 6 + AUTH_REFUSALS }>([
+const QUERY_REFUSAL_SET: [Refusal; 7 + AUTH_REFUSALS] =
+    with_native_refusals::<7, { 7 + AUTH_REFUSALS }>([
+        PROJECT_INVALID,
         INVALID_SCOPE,
         BOUND_EXCEEDED,
         NOT_FOUND,
@@ -179,16 +193,16 @@ pub static LOOKUP_COMMAND: Command = Command {
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[UPI_ARG, GEOMETRY_OUT_ARG, LANE_ARG],
+    args: &[PROJECT_ARG, UPI_ARG, GEOMETRY_OUT_ARG, LANE_ARG],
     output: "Dataset (id, layer, source, residency cloud, version), the query bound, rows_cap/rows_returned/rows_total/truncated, the parcel's properties, bounds and vertex count, and the written path when --geometry-out was given.",
     examples: &[
         Example {
-            command: "ds data upi lookup --upi 20506012183 --output json",
+            command: "ds data upi lookup --project <id> --upi 20506012183 --output json",
             note: "One parcel, one feature, receipted; costs one bounded BigQuery read.",
             runnable: false,
         },
         Example {
-            command: "ds data upi lookup --upi 2/05/06/01/2183 --geometry-out ./parcel-2183.geojson",
+            command: "ds data upi lookup --project <id> --upi 2/05/06/01/2183 --geometry-out ./parcel-2183.geojson",
             note: "The printed UPI form is accepted; the exact geometry is kept as a layer file.",
             runnable: false,
         },
@@ -211,6 +225,7 @@ pub static QUERY_COMMAND: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        PROJECT_ARG,
         VILLAGE_ARG,
         CELL_ARG,
         BBOX_ARG,
@@ -223,17 +238,17 @@ pub static QUERY_COMMAND: Command = Command {
     output: "Dataset (id, layer, source, residency cloud, version), the query bound, rows_cap/rows_returned/rows_total/truncated, counts per village and per segmentation, and the written path when --geometry-out was given.",
     examples: &[
         Example {
-            command: "ds data customers query --village 25060102 --output json",
+            command: "ds data customers query --project <id> --village 25060102 --output json",
             note: "Every customer inside one village boundary, up to the cap.",
             runnable: false,
         },
         Example {
-            command: "ds data customers query --transformer fill_in_kabuhoro --limit 500 --geometry-out ./customers.geojson",
+            command: "ds data customers query --project <id> --transformer fill_in_kabuhoro --limit 500 --geometry-out ./customers.geojson",
             note: "Customers in the transformer's design area, kept as a point layer.",
             runnable: false,
         },
         Example {
-            command: "ds data customers query --boundary ./corridor.geojson --output json",
+            command: "ds data customers query --project <id> --boundary ./corridor.geojson --output json",
             note: "Customers inside a buffered line corridor written by `ds data vector buffer`.",
             runnable: false,
         },
@@ -264,6 +279,7 @@ pub static PARCELS_COMMAND: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        PROJECT_ARG,
         VILLAGE_ARG,
         CELL_ARG,
         BBOX_ARG,
@@ -276,12 +292,12 @@ pub static PARCELS_COMMAND: Command = Command {
     output: "Dataset (id, layer, source, residency cloud, version), the query bound, rows_cap/rows_returned/rows_total/truncated, counts per cell and the written path when --geometry-out was given.",
     examples: &[
         Example {
-            command: "ds data vector buffer --layer mv_lines --distance-m 15 --out ./corridor.geojson && ds data parcels query --boundary ./corridor.geojson --geometry-out ./crossed-parcels.geojson",
+            command: "ds data vector buffer --layer mv_lines --distance-m 15 --out ./corridor.geojson && ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed-parcels.geojson",
             note: "Parcels crossed by a 15 m MV corridor, kept as a local layer.",
             runnable: false,
         },
         Example {
-            command: "ds data parcels query --transformer fill_in_kabuhoro --output json",
+            command: "ds data parcels query --project <id> --transformer fill_in_kabuhoro --output json",
             note: "Every parcel touching the transformer's buffered design extent, up to the cap.",
             runnable: false,
         },
@@ -383,8 +399,8 @@ fn refused_locally(error: Failure) -> Failure {
     }
 }
 
-fn read(lane: &str, request: &DataDistributionRequest) -> Result<Value, Failure> {
-    match ds_cli_auth::data_distribution(lane, request) {
+fn read(lane: &str, project: &str, request: &DataDistributionRequest) -> Result<Value, Failure> {
+    match ds_cli_auth::data_distribution(lane, project, request) {
         Err(error) if error.code() == "auth_input_invalid" => Err(refused_locally(error)),
         result => result,
     }
@@ -392,6 +408,7 @@ fn read(lane: &str, request: &DataDistributionRequest) -> Result<Value, Failure>
 
 pub fn run_lookup(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
+    let project = inputs.require("project")?;
     let request = DataDistributionRequest::UpiLookup {
         upi: inputs.require("upi")?.to_owned(),
     };
@@ -402,7 +419,7 @@ pub fn run_lookup(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
         .value("geometry-out")
         .map(|value| geometry_out(Path::new(value)))
         .transpose()?;
-    let answer = read(lane, &request)?;
+    let answer = read(lane, project, &request)?;
     let feature = answer["feature"].clone();
     let mut receipt = json!({
         "dataset": answer["dataset"],
@@ -424,8 +441,12 @@ pub fn run_lookup(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
 /// The rectangle one transformer's design covers on paper: its saved extent,
 /// buffered by the project's own policy through the kernel's coverage plan —
 /// the same plan a seed acquires with.
-fn transformer_rectangle(lane: &str, name: &str) -> Result<([f64; 4], Value), Failure> {
-    let context = ds_cli_auth::transformer_context(lane, name)?;
+fn transformer_rectangle(
+    lane: &str,
+    project: &str,
+    name: &str,
+) -> Result<([f64; 4], Value), Failure> {
+    let context = ds_cli_auth::transformer_context_for_project(lane, project, name)?;
     let layers = serde_json::to_value(context.snapshot().layers()).unwrap_or(Value::Null);
     let extent = ds_project_data::extents::extent_of(name, &layers)
         .map_err(|error| Failure::invalid(INVALID_SCOPE.code, error.message().to_owned()))?;
@@ -486,7 +507,7 @@ fn parse_bbox(raw: &str) -> Result<[f64; 4], Failure> {
 }
 
 /// One bound, read from the inputs: the same grammar for customers and parcels.
-fn bound(inputs: &Inputs, lane: &str) -> Result<(BoundFields, Value), Failure> {
+fn bound(inputs: &Inputs, lane: &str, project: &str) -> Result<(BoundFields, Value), Failure> {
     let limit = match inputs.value("limit") {
         None => None,
         Some(raw) => Some(raw.trim().parse::<u64>().map_err(|_| {
@@ -519,7 +540,8 @@ fn bound(inputs: &Inputs, lane: &str) -> Result<(BoundFields, Value), Failure> {
     } else if let Some(path) = inputs.value("boundary") {
         fields.boundary = Some(read_boundary(Path::new(path))?);
     } else {
-        let (bbox, described) = transformer_rectangle(lane, inputs.require("transformer")?)?;
+        let (bbox, described) =
+            transformer_rectangle(lane, project, inputs.require("transformer")?)?;
         scope = described;
         fields.bbox = Some(bbox);
     }
@@ -586,7 +608,8 @@ fn read_boundary(path: &Path) -> Result<Value, Failure> {
 
 pub fn run_query(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
-    let (fields, scope) = bound(inputs, lane)?;
+    let project = inputs.require("project")?;
+    let (fields, scope) = bound(inputs, lane, project)?;
     let request = DataDistributionRequest::CustomersQuery {
         village_code: fields.village_code,
         cell_code: fields.cell_code,
@@ -594,7 +617,7 @@ pub fn run_query(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
         boundary: fields.boundary,
         limit: fields.limit,
     };
-    let (answer, features, mut receipt) = answer(lane, &request, scope, inputs)?;
+    let (answer, features, mut receipt) = answer(lane, project, &request, scope, inputs)?;
     let mut by_village: std::collections::BTreeMap<String, u64> = Default::default();
     let mut by_segment: std::collections::BTreeMap<String, u64> = Default::default();
     for feature in &features {
@@ -619,7 +642,8 @@ pub fn run_query(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
 
 pub fn run_parcels(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
-    let (fields, scope) = bound(inputs, lane)?;
+    let project = inputs.require("project")?;
+    let (fields, scope) = bound(inputs, lane, project)?;
     let request = DataDistributionRequest::ParcelsQuery {
         village_code: fields.village_code,
         cell_code: fields.cell_code,
@@ -627,7 +651,7 @@ pub fn run_parcels(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
         boundary: fields.boundary,
         limit: fields.limit,
     };
-    let (answer, features, mut receipt) = answer(lane, &request, scope, inputs)?;
+    let (answer, features, mut receipt) = answer(lane, project, &request, scope, inputs)?;
     let mut by_cell: std::collections::BTreeMap<String, u64> = Default::default();
     let mut area = 0.;
     for feature in &features {
@@ -649,6 +673,7 @@ pub fn run_parcels(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
 /// Validate, read and shape the common receipt; write the geometry when asked.
 fn answer(
     lane: &str,
+    project: &str,
     request: &DataDistributionRequest,
     scope: Value,
     inputs: &Inputs,
@@ -660,7 +685,7 @@ fn answer(
         .value("geometry-out")
         .map(|value| geometry_out(Path::new(value)))
         .transpose()?;
-    let answer = read(lane, request)?;
+    let answer = read(lane, project, request)?;
     let features = answer["features"].as_array().cloned().unwrap_or_default();
     let mut query = answer["query"].clone();
     if !scope.is_null() {

@@ -31,7 +31,7 @@ Exactly one bound per call. Prefer the tightest one that states the question:
 | The customers a transformer would serve | `--transformer <name>` (its buffered design extent) |
 | Everything in one administrative unit | `--village <8-digit>` / `--cell <6-digit>` from `ds data admin-bounds list` |
 | An area the user drew or holds | `--boundary <polygon.geojson>` or `--bbox w,s,e,n` |
-| One parcel by its title number | `ds data upi lookup --upi <UPI>` |
+| One parcel by its title number | `ds data upi lookup --project <id> --upi <UPI>` |
 
 A boundary is one WGS84 Polygon or MultiPolygon (bare, a Feature, or a
 one-feature FeatureCollection) whose envelope is at most 25 km². Larger
@@ -42,7 +42,7 @@ the buffer, never widen the cap.
 
 ```
 ds data vector buffer --layer mv_lines --distance-m 15 --out ./corridor.geojson
-ds data parcels query --boundary ./corridor.geojson --geometry-out ./crossed.geojson --output json
+ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed.geojson --output json
 ```
 
 Read `rows_total` and `truncated` before reporting a count. `truncated: true`

@@ -450,8 +450,12 @@ fn holdings_root() -> Result<PathBuf, Failure> {
 /// The catalogue, read once per invocation and never cached: the reference
 /// catalogue is ds-brain's, and a stale copy would declare a bundle that is no
 /// longer published.
-fn catalogue(lane: &str) -> Result<Vec<ds_project_data::ReferenceResource>, Failure> {
-    let rows = ds_cli_auth::data_distribution(lane, &DataDistributionRequest::ListDatasets {})?;
+fn catalogue(
+    lane: &str,
+    project: &str,
+) -> Result<Vec<ds_project_data::ReferenceResource>, Failure> {
+    let rows =
+        ds_cli_auth::data_distribution(lane, project, &DataDistributionRequest::ListDatasets {})?;
     ds_project_data::validate_resources(&rows).map_err(refused)
 }
 
@@ -584,7 +588,7 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
     }
     let root = holdings_root()?;
     let rooms = held_rooms(&root, &scope)?;
-    let (declared, resources, catalog) = match catalogue(lane) {
+    let (declared, resources, catalog) = match catalogue(lane, project) {
         Ok(resources) => {
             let declared = ds_project_data::declared(&resources).map_err(refused)?;
             let count = resources.len();
@@ -687,6 +691,7 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
 /// transformer through the same door.
 pub struct CliProvider<'a> {
     pub lane: &'a str,
+    pub project: &'a str,
 }
 
 /// The bundle byte transfer a seeding host lends `ds-project-data`: the
@@ -757,8 +762,8 @@ impl Provider for CliProvider<'_> {
                     )));
                 }
             };
-            let response =
-                ds_cli_auth::data_distribution(self.lane, &request).map_err(|error| {
+            let response = ds_cli_auth::data_distribution(self.lane, self.project, &request)
+                .map_err(|error| {
                     let message = format!("{}: {}", error.code(), error.message());
                     match error.code() {
                         "data_distribution_unavailable" | "auth_transient" => {
@@ -792,15 +797,16 @@ impl Provider for CliProvider<'_> {
             area: area.clone(),
             contour_parameters,
         };
-        let response = ds_cli_auth::data_distribution(self.lane, &request).map_err(|error| {
-            let message = format!("{}: {}", error.code(), error.message());
-            match error.code() {
-                "data_distribution_unavailable" | "auth_transient" => {
-                    Cause::ProviderUnavailable(message)
+        let response =
+            ds_cli_auth::data_distribution(self.lane, self.project, &request).map_err(|error| {
+                let message = format!("{}: {}", error.code(), error.message());
+                match error.code() {
+                    "data_distribution_unavailable" | "auth_transient" => {
+                        Cause::ProviderUnavailable(message)
+                    }
+                    _ => Cause::AcquisitionFailed(message),
                 }
-                _ => Cause::AcquisitionFailed(message),
-            }
-        })?;
+            })?;
         let decoded = match kind {
             PrintContextKind::GoogleOpenBuildings => policy::decode_buildings(&response, area),
             PrintContextKind::ElevationContours => policy::decode_contours(&response, area),
@@ -986,7 +992,7 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         project: project.clone(),
     };
     let root = holdings_root()?;
-    let resources = catalogue(lane)?;
+    let resources = catalogue(lane, &project)?;
     let (explicit, answered_as) = resolve_explicit(&explicit, &resources)?;
     let declared = ds_project_data::declared(&resources).map_err(refused)?;
     let rooms = held_rooms(&root, &scope)?;
@@ -1036,7 +1042,10 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Failure::unavailable(STORE_FAILED.code, error).remedy(STORE_FAILED.remedy)
     })?;
     policy.sheets = both_orientations();
-    let mut provider = CliProvider { lane };
+    let mut provider = CliProvider {
+        lane,
+        project: &project,
+    };
     let mut fetch = bundle_fetch(lane);
     let mut rows = Vec::new();
     let mut failed = 0_usize;
