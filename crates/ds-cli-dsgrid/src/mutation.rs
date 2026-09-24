@@ -202,7 +202,7 @@ pub enum Target {
     /// One of this machine's working copies: revised in place.
     WorkingCopy {
         scope: ds_command_kernel::local_models::Scope,
-        row: LocalModel,
+        row: Box<LocalModel>,
         path: std::path::PathBuf,
     },
     /// An immutable package: a new file is written.
@@ -226,7 +226,7 @@ impl Target {
                 let located = workspace::locate(inputs, id)?;
                 Ok(Self::WorkingCopy {
                     scope: located.scope,
-                    row: located.row,
+                    row: Box::new(located.row),
                     path: located.path,
                 })
             }
@@ -305,18 +305,18 @@ pub fn open(target: Target, inputs: &Inputs) -> Result<Opened, Failure> {
     let package = package::decode(&path, &bytes)?;
     let session = GridSession::open(package.snapshot.clone());
     let head = session.current_revision().revision_id.clone();
-    if let Some(pinned) = inputs.value("revision").map(str::trim) {
-        if pinned != head.as_str() {
-            return Err(Failure::conflict(
-                "revision_conflict",
-                "the head moved since the revision you observed",
-            )
-            .remedy("re-read the head and decide again against it")
-            .detail(json!({
-                "expected_revision": pinned,
-                "actual_revision": head.as_str(),
-            })));
-        }
+    if let Some(pinned) = inputs.value("revision").map(str::trim)
+        && pinned != head.as_str()
+    {
+        return Err(Failure::conflict(
+            "revision_conflict",
+            "the head moved since the revision you observed",
+        )
+        .remedy("re-read the head and decide again against it")
+        .detail(json!({
+            "expected_revision": pinned,
+            "actual_revision": head.as_str(),
+        })));
     }
     Ok(Opened {
         target,

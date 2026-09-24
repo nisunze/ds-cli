@@ -73,6 +73,11 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[
         Refusal {
+            code: "spotting_price_rules_invalid",
+            when: "the optional spotting price rules are malformed or incompatible with the seed",
+            remedy: "correct the JSON rules and their referenced source members, then retry",
+        },
+        Refusal {
             code: "library_seed_failed",
             when: "classification, ingestion, schema, digest or immutable-layout planning fails",
             remedy: "resolve the reported leaf/source conflict; do not substitute another authority",

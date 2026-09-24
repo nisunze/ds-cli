@@ -308,7 +308,7 @@ pub fn model_line(row: &serde_json::Value, active: &str) -> String {
         row["revision"],
         row["head_revision"]
             .as_str()
-            .map(|head| crate::mutation::short(head))
+            .map(crate::mutation::short)
             .unwrap_or_else(|| "—".to_string()),
     );
     // A linked copy says where a sync would write, under its own line: the

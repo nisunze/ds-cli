@@ -222,10 +222,9 @@ pub static COMMAND: Command = Command {
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Print or write an MCP host entry for this `ds`.",
     purpose: "\
-Print this executable's stdio entry and user target. The default is \
-read-only. `--write --yes` atomically owns only that key, migrates an exact \
-legacy `ds`, preserves siblings, and refuses conflicts. It never writes \
-workspace configuration.",
+Print the stdio entry and target. By default it only reads. \
+`--write --yes` owns only that key, migrates an exact legacy `ds`, preserves \
+siblings, and refuses conflicts. It never writes workspace configuration.",
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,

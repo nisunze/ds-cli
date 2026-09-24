@@ -138,17 +138,17 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
             );
         }
     };
-    if let Some(text) = &description {
-        if text.chars().count() > MAX_STRUCTURE_DESCRIPTION_CHARS {
-            return Err(Failure::invalid(
-                "command_invalid",
-                format!(
-                    "--text is {} characters; the bound is {MAX_STRUCTURE_DESCRIPTION_CHARS}",
-                    text.chars().count()
-                ),
-            )
-            .remedy("shorten the description to one line"));
-        }
+    if let Some(text) = &description
+        && text.chars().count() > MAX_STRUCTURE_DESCRIPTION_CHARS
+    {
+        return Err(Failure::invalid(
+            "command_invalid",
+            format!(
+                "--text is {} characters; the bound is {MAX_STRUCTURE_DESCRIPTION_CHARS}",
+                text.chars().count()
+            ),
+        )
+        .remedy("shorten the description to one line"));
     }
 
     let target = Target::resolve(inputs, writing)?;

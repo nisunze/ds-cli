@@ -274,7 +274,7 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
     };
 
     // `ds <domain>` with nothing after it is a question, not a mistake.
-    let Some(second) = rest.get(1) else {
+    let Some(_second) = rest.get(1) else {
         return globals
             .output
             .text(&help::domain(registered.domain))
@@ -342,7 +342,7 @@ fn show_help(
                 None => emit_failure(output, "ds", 1, &[], &unknown_domain(one, domains)),
             }
         }
-        [one, two, ..] => match registry::find_by_path(path) {
+        [one, _two, ..] => match registry::find_by_path(path) {
             Some((entry, _)) => show_command_help(output, entry.command),
             None => match registry::find_domain(one) {
                 Some(registered) => {

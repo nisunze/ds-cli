@@ -18,7 +18,7 @@ pub static COMMAND: Command = Command {
     id: "report.plan-profile",
     path: &["report", "plan-profile"],
     contract: 1,
-    summary: "Render DS Grid plan/profile sheets from one revision-pinned scene and plan.",
+    summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
     purpose: "Produces A3 SVG sheet previews and a combined vector PDF. Both inputs must be exact DS Grid engine projections for the same model revision. A simple layout uses H 1:2000 and V 1:500; advanced uses H 1:1000 and V 1:200, expanding the vertical denominator only when the page's measured elevation range requires it. The task is local and headless; the result names every preview and its digest-pinned PDF.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
@@ -185,6 +185,26 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[
         Refusal {
+            code: "logo_manifest_invalid",
+            when: "the logo manifest cannot be read as a JSON array",
+            remedy: "provide a valid JSON array of one or two absolute PNG/JPEG paths",
+        },
+        Refusal {
+            code: "label_rows_invalid",
+            when: "the structure label rows file cannot be read as JSON",
+            remedy: "provide valid JSON with one to three ordered label rows",
+        },
+        Refusal {
+            code: "request_encode_failed",
+            when: "the validated renderer request cannot be encoded as JSON",
+            remedy: "report the input and this build; the reporter was not started",
+        },
+        Refusal {
+            code: "request_write_failed",
+            when: "the renderer request file cannot be written locally",
+            remedy: "check output-path permissions and available disk space",
+        },
+        Refusal {
             code: "reporter_engine_missing",
             when: "ds-report is unavailable",
             remedy: "install the matching reporter",
@@ -216,7 +236,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/report.md"),
-    search: &["dsgrid", "profile", "print", "sheets"],
+    search: &["dsgrid", "print"],
     requires: Requires::Server,
     availability,
 };

@@ -1624,7 +1624,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // workflow.
             // 2026-09-21: native structure import and atomic batch editing
             // add two file-authoring leaves; see the profile's matching limit.
-            "grid" => 27,
+            "grid" => 28,
             // Seventeen working-copy leaves plus bootstrap: the four
             // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
             // admin-refresh`, `dsgrid profile labels set|show`) were routed
@@ -1673,7 +1673,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // (2026-09-20) let an agent that read a comment naming structures
             // say WHERE the task is — the proposal a person confirms and the
             // read the map paints from.
-            "project" => 19,
+            "project" => 22,
             _ => 16,
         };
         assert!(

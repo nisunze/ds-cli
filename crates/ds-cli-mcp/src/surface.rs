@@ -228,7 +228,7 @@ impl Profile {
             // import from PLS-CADD but never deliver to it.
             // Reviewed batch corrections and native sync now have separate
             // routes, keeping this broad typed profile within its budget.
-            Self::Grid => 27,
+            Self::Grid => 28,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -286,14 +286,14 @@ impl Profile {
             // individual report produced in the cloud, which is how edge and
             // cloud production are proven to meet in one project.
             Self::ProjectOperations => 18,
-            // Seventeen leaves plus both bootstrap tools. Raised from the
+            // Twenty leaves plus both bootstrap tools. Raised from the
             // default on 2026-09-20 by the three task-geometry leaves (`pm task
             // geometry read|set|clear`): an agent that reads a comment naming
             // structures 74, 76, 77 in a swamp and can create the task, but
             // cannot say WHERE it is, leaves the plan and the map without the
             // one thing the comment was about. The proposal is what the person
             // confirms; the read is what the map paints from.
-            Self::Project => 19,
+            Self::Project => 22,
             // Seventeen working-copy leaves plus both bootstrap tools. Raised
             // from the default on 2026-09-22 when the four 2026-09-21 leaves
             // (`dsgrid model forget`, `dsgrid structure admin-refresh`,

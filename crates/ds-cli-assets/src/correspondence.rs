@@ -196,8 +196,7 @@ pub fn tree(lane: &str, arguments: &Value) -> Result<Value, Failure> {
             .map_err(|error| Failure::internal("assets_service_failed", error.to_string()))?,
     )
     .map_err(|error| {
-        Failure::invalid("asset_request_invalid", error)
-            .remedy(crate::ASSET_REQUEST_INVALID.remedy)
+        Failure::invalid("asset_request_invalid", error).remedy(crate::ASSET_REQUEST_INVALID.remedy)
     })?;
     let mut value: Value = serde_json::from_str(&answer)
         .map_err(|error| Failure::internal("assets_service_failed", error.to_string()))?;

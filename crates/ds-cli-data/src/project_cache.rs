@@ -372,7 +372,7 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Derives coverage from the explicitly named project's active transformer designs, exact governed MV route segments, and an optional local DS Grid draft supplied with --mv-model. It buffers and fuses them, then acquires ONLY what is not already held; a re-run over unchanged design acquires nothing. With no --dataset it seeds what this project declares plus what it holds. Confirmed, because it queries a source. Saved active-project selection is ignored. Held data survives a failure, and a partial acquisition is never ready.",
+    purpose: "Derives coverage from the explicitly named project's active transformer designs, exact governed MV route segments, and an optional local DS Grid draft supplied with --mv-model. It buffers and fuses them, then acquires only missing data; a re-run over unchanged design acquires nothing. With no --dataset it seeds what this project declares plus what it holds. Confirmed, because it queries a source. Saved active-project selection is ignored. Held data survives a failure, and a partial acquisition is never ready.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,

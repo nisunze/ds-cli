@@ -66,7 +66,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["standards", "template", "model creation"],
+    search: &["model creation"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
@@ -176,7 +176,7 @@ pub static APPLY: Command = Command {
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["standards", "template", "spotting catalog"],
+    search: &["spotting catalog"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
@@ -192,16 +192,16 @@ pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         inputs.require("revision")?,
     )
     .map_err(|detail| {
-        let code = if detail.starts_with("revision_conflict:") {
-            "revision_conflict"
+        let failure = if detail.starts_with("revision_conflict:") {
+            Failure::invalid("revision_conflict", detail)
         } else if detail.starts_with("model_not_cleared:") {
-            "model_not_cleared"
+            Failure::invalid("model_not_cleared", detail)
         } else if detail.starts_with("template_") || detail.starts_with("structure_") {
-            "template_refused"
+            Failure::invalid("template_refused", detail)
         } else {
-            "model_apply_failed"
+            Failure::invalid("model_apply_failed", detail)
         };
-        Failure::invalid(code, detail).remedy("inspect the model and verified standards template")
+        failure.remedy("inspect the model and verified standards template")
     })?;
     crate::apply::write_new(out, &outcome.bytes)?;
     let mut receipt = serde_json::to_value(&outcome).expect("typed receipt serializes");

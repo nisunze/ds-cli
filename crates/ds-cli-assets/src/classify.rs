@@ -128,13 +128,14 @@ credential, no window.",
         note: "The asset is now a registered document a transmittal record can carry.",
         runnable: false,
     }],
-    refusals: &crate::refusals::<29>(&[
+    refusals: &crate::refusals::<30>(&[
         crate::INVALID_ASSET_ID,
         crate::INVALID_FOLDER_PATH,
         crate::PROJECTED_ASSET_READ_ONLY,
         crate::NOTHING_TO_UPDATE,
         crate::CONFIRMATION_REQUIRED,
         crate::UNKNOWN_FOLDER,
+        crate::INVALID_DOCUMENT_REGISTRATION,
         INVALID_REASON,
     ]),
     reference: Some("docs/reference/assets.md"),
@@ -146,7 +147,9 @@ credential, no window.",
 /// The patch, validated locally, in the exact keys the catalogue's
 /// `classify` reads. A folder is carried as its path here and resolved to
 /// its id at the door.
-fn arguments(inputs: &Inputs) -> Result<(String, Map<String, Value>, Option<String>), Failure> {
+type ClassificationArgs = (String, Map<String, Value>, Option<String>);
+
+fn arguments(inputs: &Inputs) -> Result<ClassificationArgs, Failure> {
     let asset = crate::asset_id(inputs.require("asset")?, "asset")?;
     if crate::is_projected(&asset) {
         return Err(Failure::invalid(

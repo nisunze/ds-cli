@@ -233,7 +233,7 @@ pub static CORRECTION: Command = Command {
     id: "dsgrid.apply-correction",
     path: &["dsgrid", "apply-correction"],
     contract: 1,
-    summary: "Apply selected reviewed findings within an exact Grid correction scope.",
+    summary: "Apply reviewed findings within an exact Grid correction scope.",
     purpose: "Reads a revision-pinned typed command batch and a mandatory correction guard. \
 The guard pins source .dsgrid bytes, selected alignments or angle intervals, and permitted command kinds. \
 Each selected command must carry a review_ref naming a comment or finding. \
@@ -279,12 +279,7 @@ decision_ref; a draft can dry-run. Dry-run and write use identical engineering c
     }],
     refusals: COMMAND.refusals,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &[
-        "review comments",
-        "correct spotted line",
-        "cherry pick structures",
-        "restring",
-    ],
+    search: &["review comments", "spotted line", "cherry pick", "restring"],
     requires: Requires::Server,
     availability: available,
 };
@@ -506,7 +501,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "--select requires --guard",
         ));
     }
-    let batch = select_commands(batch, &selected_ids)?;
+    let batch = select_commands(batch, selected_ids)?;
     let dry_run = inputs.switch("dry-run");
     if let Some((guard, _)) = &guard {
         let needs_preservation_source = guard.scope.level
@@ -549,14 +544,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Some(out)
     };
     let bytes = package::read_bytes(model_path)?;
-    if let Some((guard, _)) = &guard {
-        if !guard.source_sha256.eq_ignore_ascii_case(&sha256(&bytes)) {
-            return Err(Failure::conflict(
-                "source_digest_conflict",
-                "source package differs from the reviewed correction guard",
-            )
-            .detail(json!({"expected": guard.source_sha256, "actual": sha256(&bytes)})));
-        }
+    if let Some((guard, _)) = &guard
+        && !guard.source_sha256.eq_ignore_ascii_case(&sha256(&bytes))
+    {
+        return Err(Failure::conflict(
+            "source_digest_conflict",
+            "source package differs from the reviewed correction guard",
+        )
+        .detail(json!({"expected": guard.source_sha256, "actual": sha256(&bytes)})));
     }
     let package = package::decode(model_path, &bytes)?;
     let before = package.snapshot.clone();

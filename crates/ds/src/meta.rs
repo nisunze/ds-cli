@@ -516,8 +516,23 @@ fn search(query: &str, limit: &str) -> Result<Value, Failure> {
         })
         .collect();
 
-    // Best score first, then by id so equal matches are stably ordered.
-    scored.sort_by(|left, right| right.0.cmp(&left.0).then(left.2.id.cmp(right.2.id)));
+    // For a domain-only query such as `pm`, put its shallow entry point
+    // before deeper commands with the same score. Other searches retain
+    // their stable id ordering.
+    let domain_query = terms.len() == 1 && registry::find_domain(&terms[0]).is_some();
+    scored.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| {
+                if domain_query {
+                    left.2.path.len().cmp(&right.2.path.len())
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            })
+            .then(left.2.id.cmp(right.2.id))
+    });
     let total = scored.len();
     scored.truncate(limit);
 
@@ -848,14 +863,28 @@ mod tests {
     use super::*;
 
     fn top_hit(query: &str) -> Option<&'static str> {
+        let words = words(query);
+        let domain_query = words.len() == 1 && registry::find_domain(&words[0]).is_some();
         let mut scored: Vec<(u32, &'static Command)> = registry::all_commands()
             .into_iter()
             .filter_map(|command| {
-                let (score, _) = score_command(&words(query), command);
+                let (score, _) = score_command(&words, command);
                 (score > 0).then_some((score, command))
             })
             .collect();
-        scored.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.id.cmp(right.1.id)));
+        scored.sort_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| {
+                    if domain_query {
+                        left.1.path.len().cmp(&right.1.path.len())
+                    } else {
+                        std::cmp::Ordering::Equal
+                    }
+                })
+                .then(left.1.id.cmp(right.1.id))
+        });
         scored.first().map(|(_, command)| command.id)
     }
 

@@ -168,23 +168,24 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
             .iter()
             .find(|row| row.id == proposal.structure_id)
             .expect("proposal is from this snapshot");
-        if let Some(function) = proposal.function {
-            if row.staking.function == StakingFunction::Line && function != StakingFunction::Line {
-                edits.push(ProfilePropertyEdit {
-                    entity_id: row.id.entity().clone(),
-                    field_id: "staking.function".into(),
-                    value: json!(function),
-                });
-            }
+        if let Some(function) = proposal.function
+            && row.staking.function == StakingFunction::Line
+            && function != StakingFunction::Line
+        {
+            edits.push(ProfilePropertyEdit {
+                entity_id: row.id.entity().clone(),
+                field_id: "staking.function".into(),
+                value: json!(function),
+            });
         }
-        if row.staking.earthing.is_none() {
-            if let Some(earthing) = proposal.earthing {
-                edits.push(ProfilePropertyEdit {
-                    entity_id: row.id.entity().clone(),
-                    field_id: "staking.earthing".into(),
-                    value: json!(earthing),
-                });
-            }
+        if row.staking.earthing.is_none()
+            && let Some(earthing) = proposal.earthing
+        {
+            edits.push(ProfilePropertyEdit {
+                entity_id: row.id.entity().clone(),
+                field_id: "staking.earthing".into(),
+                value: json!(earthing),
+            });
         }
         if row.staking.load_ref.is_none() && proposal.load_ref.is_some() {
             edits.push(ProfilePropertyEdit {

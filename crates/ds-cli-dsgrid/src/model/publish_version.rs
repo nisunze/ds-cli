@@ -475,7 +475,7 @@ mod replacement_tests {
         }
     }
 
-    fn pinned_flags<'a>(path: &'a str) -> Vec<&'a str> {
+    fn pinned_flags(path: &str) -> Vec<&str> {
         vec![
             "--path",
             path,
