@@ -24,10 +24,9 @@ Each step: **what it answers · command · the receipt to keep · the hazard.**
 ## 0. Fix the target
 
 - Which user, lane and project the work binds to · `auth.status --lane <lane>`
-  (native user, device, fenced selected project) and `auth.project.use
-  --project <id>` to select · keep `data.auth_context.selected_project` · the
-  *requested* project wins; a desktop's map project is irrelevant to headless
-  steps. On a paired step also read `desktop.status`.
+  (native user, device) · the *requested* project is passed as `--project <id>`
+  on every headless step (no saved selection is read); a desktop's map project
+  is irrelevant to headless steps. On a paired step also read `desktop.status`.
 
 ## 1. Know what there is to print
 

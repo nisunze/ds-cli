@@ -19,8 +19,8 @@ destination and earlier decisions; build the subject/layout/format matrix.
 Keep authorization, input/recipe revisions, receipts, QA coverage and next
 action in host task state or the deliverables directory.
 
-Default to a signed-in headless server/workstation. Verify executable, lane and
-fenced selected project through `auth.status` and `auth.project.use`. Discover
+Default to a signed-in headless server/workstation. Verify executable and lane
+through `auth.status`; name the project with `--project` on every call. Discover
 `report.project.export`, project output settings, `report.layout.*`, and
 `data.project-cache.status|seed`. A paired desktop is needed only where the live
 contract names an app-owned operation; never borrow its credentials or lane.

@@ -23,10 +23,9 @@ sequence, cache, IndexedDB, Svelte, WASM, or backend implementation.
 
 Two project contexts exist and they are not the same thing. The paired
 application's visible project (`ds desktop status`) governs every `map.*`
-command that needs a rendered map. Project Management and `ds report project`
-commands take required `--project` on every request and ignore the CLI's saved
-selection. Other headless commands may still use `ds auth project use`; read
-their live descriptor before calling them.
+command that needs a rendered map. Every headless project command takes a
+required `--project` on every request; no command reads a saved selection, so
+never run `ds auth project use` to steer one.
 Switching one context never switches the other; read the descriptor's
 `authority` and project argument before a durable operation. For the
 background family, read
@@ -65,7 +64,7 @@ Cloud-resident reference data — land parcels by UPI and existing customer
 connections — is never seeded, installed or downloaded (`dataset_cloud_only`);
 read it where it lives with `data.upi.lookup --upi <id>` and
 `data.customers.query --village|--cell|--bbox|--transformer …`, both bounded
-and receipted, against the selected project.
+and receipted, against the project named by `--project`.
 
 Touched version and attachment boundaries instead require explicit `--project`:
 `design.version.*` and `design.attachment.*` capture that project for native

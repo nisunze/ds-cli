@@ -470,8 +470,8 @@ Version and attachment commands require explicit `--project` and native
 authorization independently of Desktop and the Web active project; since
 2026-09-18 `ds design status` and `ds design dashboard` do too. Tag, group,
 comment, known-columns and materials commands, saved selections, the headless
-feature reads and LV export use the audience-fenced selected context
-(`ds auth project use`).
+feature reads and LV export name their project the same way; since 2026-09-24
+no `ds` command reads the saved selection.
 
 Idempotency keys for the writes that carry one (a comment post, a thread
 promotion, a group or consumer-grouping apply) are minted here from the
