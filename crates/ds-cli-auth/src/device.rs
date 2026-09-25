@@ -922,6 +922,14 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, design_attachments, project, command)
     }
+    pub fn design_attachment_bytes(
+        &mut self,
+        project: &str,
+        attachment: &str,
+        revision: Option<&str>,
+    ) -> Result<(Value, Vec<u8>), ClientError> {
+        fixed_device_call!(self, design_attachment_bytes, project, attachment, revision)
+    }
     pub fn design_tags(
         &mut self,
         project: &str,

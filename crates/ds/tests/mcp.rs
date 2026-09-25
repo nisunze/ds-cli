@@ -1645,7 +1645,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // here on 2026-09-22 from the broad `grid` router they had pushed
             // past its budget. The governed head's versions, retire and
             // restore joined on 2026-09-24 for the same reason (e62edf85).
-            "grid-local-model" => 22,
+            // The eight design attachment verbs joined on 2026-09-25: a
+            // submitted version's delivered .bak binds to its content
+            // revision, the same workflow as publishing the version.
+            "grid-local-model" => 30,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,

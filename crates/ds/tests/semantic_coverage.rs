@@ -247,14 +247,33 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "desktop_user",
     ),
+    // `--out` fetches, verifies and writes a new local file; without it the
+    // command only authorizes a signed read. The declared effect is the
+    // stronger of the two.
     (
         "design.attachment.download",
-        "read_only",
+        "local_file_write",
         "headless_project",
     ),
     ("design.attachment.list", "read_only", "headless_project"),
     (
+        "design.attachment.list-project",
+        "read_only",
+        "headless_project",
+    ),
+    ("design.attachment.show", "read_only", "headless_project"),
+    (
+        "design.attachment.versions",
+        "read_only",
+        "headless_project",
+    ),
+    (
         "design.attachment.publish",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.attachment.set-latest",
         "global_write",
         "headless_project",
     ),
@@ -327,6 +346,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.comment.post", "global_write", "headless_project"),
     ("design.comment.promote", "global_write", "headless_project"),
     ("design.comment.read", "read_only", "headless_project"),
+    ("design.comment.redact", "global_write", "headless_project"),
     ("design.comment.resolve", "global_write", "headless_project"),
     (
         "report.project.map-inputs",

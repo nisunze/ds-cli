@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v29",
+  "schema_version": "ds.native-client-profiles/v30",
   "development": true,
   "profiles": {
     "stable": {
@@ -203,7 +203,9 @@
           "get_version",
           "get_head",
           "create_version",
-          "restore_version"
+          "restore_version",
+          "list_version_summaries",
+          "create_versions"
         ]
       },
       "design_attachments": {
@@ -216,7 +218,10 @@
           "finalize_upload",
           "download",
           "archive",
-          "archive_revision"
+          "archive_revision",
+          "set_latest",
+          "list_project",
+          "list_object_versions"
         ]
       }
     },
@@ -421,7 +426,9 @@
           "get_version",
           "get_head",
           "create_version",
-          "restore_version"
+          "restore_version",
+          "list_version_summaries",
+          "create_versions"
         ]
       },
       "design_attachments": {
@@ -434,7 +441,10 @@
           "finalize_upload",
           "download",
           "archive",
-          "archive_revision"
+          "archive_revision",
+          "set_latest",
+          "list_project",
+          "list_object_versions"
         ]
       }
     }

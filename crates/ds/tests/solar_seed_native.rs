@@ -103,13 +103,9 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
             .to_vec(),
         design_versions_method: "POST".into(),
         design_versions_path: "/api/v1/design/versions".into(),
-        design_versions_actions: vec![
-            "list_versions".into(),
-            "get_version".into(),
-            "get_head".into(),
-            "create_version".into(),
-            "restore_version".into(),
-        ],
+        design_versions_actions: ds_client_core::DESIGN_VERSIONS_ACTIONS
+            .map(str::to_owned)
+            .to_vec(),
         design_selections_method: "POST".to_owned(),
         design_selections_path: "/api/v1/design/selections".to_owned(),
         design_selections_actions: vec![

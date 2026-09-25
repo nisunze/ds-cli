@@ -84,6 +84,7 @@ fn dispatch(operation: &str, arguments: Value, door: Door<'_>) -> Result<Value, 
         "design.comment.post" => comment_post(door, &args),
         "design.comment.resolve" => comment_resolve(door, &args),
         "design.comment.promote" => comment_promote(door, &args),
+        "design.comment.redact" => comment_redact(door, &args),
         "design.known-columns.list" => known_columns_list(door),
         "design.known-columns.set" => known_columns_set(door, &args),
         "design.materials.preview" => materials(door, &args, "preview"),
@@ -868,6 +869,70 @@ fn comment_resolve(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, F
         "project": project,
         "thread": thread_id,
         "state": resolved["thread"]["state"],
+        "version": resolved["thread"]["version"],
+    }))
+}
+
+/// `redactDesignComment`, behind a read: the thread must still be at the
+/// version the moderator read the comment at, and the comment must be in it,
+/// before its text is cleared under that same version. The text is not
+/// retained, so nothing here redacts blind.
+fn comment_redact(door: Door<'_>, args: &Map<String, Value>) -> Result<Value, Failure> {
+    let thread_id = text(args, "thread").unwrap_or_default();
+    let comment_id = text(args, "comment").unwrap_or_default();
+    let expected_version = args
+        .get("expected_version")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let (project, current) = annotate_with_project(
+        door,
+        &Command::GetThread {
+            thread_id: thread_id.clone(),
+        },
+    )?;
+    let now = current["thread"]["version"].as_i64();
+    if now != Some(expected_version) {
+        return Err(Failure::conflict(
+            CONFLICT.code,
+            format!(
+                "thread {thread_id} is at version {}, not {expected_version}; it moved since you read it",
+                now.map_or("unknown".to_owned(), |v| v.to_string())
+            ),
+        )
+        .remedy(CONFLICT.remedy)
+        .next(format!("ds design comment read --thread {thread_id}")));
+    }
+    let comment = current["comments"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|comment| comment["comment_id"] == comment_id.as_str());
+    // A thread longer than one read may hold the comment past the page;
+    // ds-brain is then the one that answers whether it exists.
+    if comment.is_none() && current["truncated"] != Value::Bool(true) {
+        return Err(Failure::invalid(
+            "design_record_not_found",
+            format!("comment {comment_id} is not in thread {thread_id}"),
+        )
+        .remedy(DESIGN_RECORD_NOT_FOUND.remedy));
+    }
+    let already = comment.is_some_and(|comment| comment["redacted"] == Value::Bool(true));
+    let resolved = annotate(
+        door,
+        &Command::RedactComment {
+            thread_id: thread_id.clone(),
+            comment_id: comment_id.clone(),
+            expected_version,
+            reason: text(args, "reason").unwrap_or_default(),
+        },
+    )?;
+    Ok(json!({
+        "project": project,
+        "thread": thread_id,
+        "comment": comment_id,
+        "author": comment.map_or(Value::Null, |comment| comment["author_email"].clone()),
+        "sequence": comment.map_or(Value::Null, |comment| comment["sequence"].clone()),
+        "already_redacted": already,
         "version": resolved["thread"]["version"],
     }))
 }

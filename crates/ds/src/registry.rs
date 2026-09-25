@@ -1964,6 +1964,21 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::attachment::list::render,
     },
     Entry {
+        command: &ds_cli_design::attachment::list_project::COMMAND,
+        handler: ds_cli_design::attachment::list_project::run,
+        render: ds_cli_design::attachment::list_project::render,
+    },
+    Entry {
+        command: &ds_cli_design::attachment::show::COMMAND,
+        handler: ds_cli_design::attachment::show::run,
+        render: ds_cli_design::attachment::show::render,
+    },
+    Entry {
+        command: &ds_cli_design::attachment::versions::COMMAND,
+        handler: ds_cli_design::attachment::versions::run,
+        render: ds_cli_design::attachment::versions::render,
+    },
+    Entry {
         command: &ds_cli_design::attachment::publish::COMMAND,
         handler: ds_cli_design::attachment::publish::run,
         render: ds_cli_design::attachment::publish::render,
@@ -1972,6 +1987,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::attachment::download::COMMAND,
         handler: ds_cli_design::attachment::download::run,
         render: ds_cli_design::attachment::download::render,
+    },
+    Entry {
+        command: &ds_cli_design::attachment::set_latest::COMMAND,
+        handler: ds_cli_design::attachment::set_latest::run,
+        render: ds_cli_design::attachment::set_latest::render,
     },
     Entry {
         command: &ds_cli_design::attachment::retire::COMMAND,
@@ -2177,6 +2197,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::comment::promote::COMMAND,
         handler: ds_cli_design::comment::promote::run,
         render: ds_cli_design::comment::promote::render,
+    },
+    Entry {
+        command: &ds_cli_design::comment::redact::COMMAND,
+        handler: ds_cli_design::comment::redact::run,
+        render: ds_cli_design::comment::redact::render,
     },
     Entry {
         command: &ds_cli_design::lv::project_export::COMMAND,

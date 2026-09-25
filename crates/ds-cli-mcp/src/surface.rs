@@ -300,8 +300,12 @@ impl Profile {
             // `dsgrid profile labels set|show`) were routed here from the
             // broad `grid` router they had pushed past its own budget. Raised
             // to 22 on 2026-09-24 for the governed head's versions, retire and
-            // restore, routed here for the same reason (e62edf85).
-            Self::GridLocalModel => 22,
+            // restore, routed here for the same reason (e62edf85). Raised to
+            // 30 on 2026-09-25 for the eight design attachment verbs: a
+            // submitted version's delivered .bak is attached to its content
+            // revision, and a profile that publishes versions but cannot bind,
+            // read or move what shipped with them is half the workflow.
+            Self::GridLocalModel => 30,
             _ => 16,
         }
     }
@@ -467,9 +471,10 @@ impl Profile {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::GridNative => chapter == Chapter::GridModel,
             Self::Printing => matches!(chapter, Chapter::Reports | Chapter::MapPresentation),
-            Self::GridLocalModel | Self::GridClearance | Self::GridCorrections => {
-                chapter == Chapter::GridModel
-            }
+            // Version attachments are Design commands the model lifecycle
+            // profile carries beside publication.
+            Self::GridLocalModel => matches!(chapter, Chapter::GridModel | Chapter::Design),
+            Self::GridClearance | Self::GridCorrections => chapter == Chapter::GridModel,
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
             Self::Survey
             | Self::FormFactory
@@ -606,6 +611,19 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.project.retire",
     "dsgrid.project.restore",
     "dsgrid.profile.labels.show",
+    // A submitted version carries its delivered PLS-CADD .bak as a design
+    // attachment pinned to the content revision (2026-09-25): publishing a
+    // version and attaching what shipped with it are one workflow, so every
+    // attachment verb lives here beside publication. The Design chapter
+    // router carries them regardless.
+    "design.attachment.list",
+    "design.attachment.list-project",
+    "design.attachment.show",
+    "design.attachment.versions",
+    "design.attachment.publish",
+    "design.attachment.download",
+    "design.attachment.set-latest",
+    "design.attachment.retire",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -1718,7 +1736,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Manage Form Factory schemas, project-form settings, project templates and project creation without map state; or work with survey/map-owned local data. Describe a command before invoking it."
         }
         Chapter::Design => {
-            "Read, stage, process, report, save, or discard transformer and LV design work. Describe a command before invoking it."
+            "Read, stage, process, report, save, or discard transformer and LV design work; version, attach, tag and discuss transformers and MV DS Grid models (a submitted MV version's .bak binds to its content revision). Describe a command before invoking it."
         }
         Chapter::MapPresentation => {
             "Read or change project map styling and its secondary visual dimension. Describe a command before invoking it."
