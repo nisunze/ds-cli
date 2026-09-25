@@ -734,6 +734,12 @@ station and scale notes sit in the free lower margin. The exact model
 revision stays in the result receipt and PDF information metadata; the
 visible revision is the human drawing issue. `--ds-branding off` omits the
 discrete margin credit.
+`--span-labels show` prints each physical span length in both plan and
+profile, in black ink with a white halo in either colour mode.
+`--obstacle-sticks on` shows measured wire-to-obstacle gaps at surveyed
+crossings. A heavy dashed stick flags a value below the scene's ground-offset
+visualization guide; it does not assert a feature-specific engineering
+clearance where the model has no resolved requirement.
 Each default vertical label row holds one entity field: structure number,
 structure type, then comments in the advanced format. `--ink monochrome` is
 the default; `--ink reference_accents` applies
