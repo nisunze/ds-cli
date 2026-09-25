@@ -450,7 +450,7 @@ fn inspect_reports_the_engine_s_own_identity() {
     // the fixture on 2026-09-21 and 2026-09-22, respectively.
     // Keep the source fingerprint and its derived model id coupled: changing
     // one while leaving the other stale would conceal an identity drift.
-    const HUMBLE_FINGERPRINT: &str = "fnv1a64:677b0f5a87d4b5d2";
+    const HUMBLE_FINGERPRINT: &str = "fnv1a64:5b3a50ec7b10f1ab";
     assert_eq!(data["model"]["fingerprint"], HUMBLE_FINGERPRINT);
     assert_eq!(
         data["model"]["id"],

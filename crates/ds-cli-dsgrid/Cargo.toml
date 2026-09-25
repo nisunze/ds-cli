@@ -40,3 +40,7 @@ ds-command-kernel = { workspace = true }
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-design-workspace = { workspace = true }
 tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+# The host memory figure a spotting batch budgets against.
+windows-sys = { workspace = true }
