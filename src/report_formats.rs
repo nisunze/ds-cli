@@ -1019,7 +1019,7 @@ pub fn inspect_project_settings(
     )
 }
 
-pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
+fn selected_formats(sheets: &Value) -> Result<Vec<String>, String> {
     let raw = project_output_setting(sheets)?
         .map(|row| {
             // The versioned selection is read by the one reader; a legacy
@@ -1033,7 +1033,32 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
         })
         .transpose()?
         .unwrap_or_default();
-    let selected = normalize(&raw);
+    Ok(normalize(&raw))
+}
+
+/// Whether an output id is a printout: a named print setup or a legacy
+/// A0/A3 sheet. Printouts are authored only on the Desktop and the Server.
+pub fn is_printout(format: &str) -> bool {
+    matches!(format, "pdf_a0" | "pdf_a3") || named_print_output(format).is_some()
+}
+
+/// The cloud's plan: the selected DATA outputs only. Printing is Desktop and
+/// Server only (owner ruling 2026-09-25), so printouts are left out before any
+/// printing input is consulted; a project's print setups can never fail a
+/// cloud data export.
+pub fn plan_data_outputs(sheets: &Value) -> Result<Vec<Output>, String> {
+    let formats: Vec<String> = selected_formats(sheets)?
+        .into_iter()
+        .filter(|format| !is_printout(format))
+        .collect();
+    if formats.len() > 32 {
+        return Err("Report exceeds 32 selected output artifacts".into());
+    }
+    formats.iter().map(|f| output(f)).collect()
+}
+
+pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
+    let selected = selected_formats(sheets)?;
     if !is_combined {
         let layouts = named_layouts(sheets)?;
         for format in &selected {
@@ -1128,6 +1153,26 @@ mod tests {
             plan(&sheets, false).is_ok(),
             "plan must read the stored selection"
         );
+    }
+
+    /// The cloud plans data only: a named print whose setup is not in the
+    /// sealed inputs refuses `plan`, but never a cloud data export.
+    #[test]
+    fn the_cloud_plan_keeps_data_outputs_and_leaves_every_printout_out() {
+        let sheets = json!({"project_settings":[{"parameter":"design_export_format",
+            "value":"excel;A3_PDF;pdf__a0-landscape-missing"}]});
+        assert!(
+            plan(&sheets, false).is_err(),
+            "the missing setup still refuses a printing plan"
+        );
+        let planned: Vec<_> = plan_data_outputs(&sheets)
+            .expect("a data plan never consults printing inputs")
+            .into_iter()
+            .map(|output| output.output_id)
+            .collect();
+        assert_eq!(planned, ["xlsx"]);
+        assert!(is_printout("pdf_a3") && is_printout("pdf__a0-landscape-missing"));
+        assert!(!is_printout("xlsx"));
     }
 
     /// One stored token, one answer. `normalize` (and therefore `plan`, the
