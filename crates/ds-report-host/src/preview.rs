@@ -273,6 +273,7 @@ pub fn transformer_page(
         selection: Some(preview.selection.clone()),
         print_context: context,
         sheet: room.sheet,
+        survey: None,
     };
     let outcome = run_transformer_report_with(
         engine,

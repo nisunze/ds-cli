@@ -25,11 +25,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ds_command_kernel::printing::table_rows::PrintWarning;
 use ds_command_kernel::report_export::{
-    self as decisions, engine_identity, engine_request, plan_transformer_export, run_receipt,
-    transformer_document_bytes, typed_failure, verify_result, BatchResult, EngineIdentity,
-    FailedFormat, InputReceipt, ResultRefusal, RunReceiptFacts, StagedInputs, SurveyLayersOmitted,
-    VerifiedArtifact, BATCH_RECEIPT_FILE, MAX_RESULT_BYTES, MAX_SEMANTIC_REQUEST_BYTES,
-    RUN_RECEIPT_FILE,
+    self as decisions, engine_identity, engine_request, plan_transformer_export_with_survey,
+    run_receipt, transformer_document_bytes, typed_failure, verify_result, BatchResult,
+    EngineIdentity, FailedFormat, InputReceipt, ResultRefusal, RunReceiptFacts, StagedInputs,
+    SurveyAppend, SurveyLayerReceipt, SurveyLayersOmitted, VerifiedArtifact, BATCH_RECEIPT_FILE,
+    MAX_RESULT_BYTES, MAX_SEMANTIC_REQUEST_BYTES, RUN_RECEIPT_FILE,
 };
 use ds_command_kernel::report_formats::DesignOutputSelection;
 use serde_json::{json, Value};
@@ -83,6 +83,10 @@ const STAGING_PRINT_CONTEXT_FILE: &str = "print-context.json";
 /// The engine-schema media grant a host holds for this room's photos, staged
 /// beside the room and named to the engine by path.
 const STAGING_MEDIA_GRANT_FILE: &str = "media-grant.json";
+/// The `ds.survey-layers/v1` document the kernel assembled from the core's
+/// held survey forms for this transformer, staged beside its room and named
+/// to the engine digest-bound.
+const STAGING_SURVEY_LAYERS_FILE: &str = "survey-layers.json";
 /// The largest media grant document a run stages: one grant, or a bundle of
 /// a few scopes, in the engine's own schema.
 pub const MAX_MEDIA_GRANT_BYTES: u64 = 64 * 1024;
@@ -170,6 +174,11 @@ pub struct TransformerReportInputs {
     /// One-based position in the drawing set and the set's size, for the
     /// sheet numbering a title block prints; `None` is a set of one.
     pub sheet: Option<(u32, u32)>,
+    /// The project's survey append for this transformer, as the kernel
+    /// resolved it from the core's held copy (`report_export::survey_append`):
+    /// the staged document, and the forms not held with their reasons. `None`
+    /// stages none, and every form the project appends is named omitted.
+    pub survey: Option<SurveyAppend>,
 }
 
 /// The verified Rwanda villages reference the engine stamps artifacts with.
@@ -227,6 +236,9 @@ pub struct RunOutcome {
     /// run's sheet was produced without, as the plan named them. `None` when
     /// the project appends none.
     pub survey_layers_omitted: Option<SurveyLayersOmitted>,
+    /// The held survey forms this run's artifacts carry, with the features
+    /// the engine kept inside the bounding rectangle. Empty when none.
+    pub survey_layers: Vec<SurveyLayerReceipt>,
     pub engine: EngineIdentity,
 }
 
@@ -546,15 +558,20 @@ pub fn run_transformer_report_with(
             ));
         }
     }
-    let plan = plan_transformer_export(
+    let plan = plan_transformer_export_with_survey(
         settings.project_id,
         settings.receipt,
         &inputs.transformer,
         inputs.server_version,
         &inputs.layers,
         inputs.selection.as_ref(),
+        inputs.survey.as_ref(),
     )
     .map_err(|error| HostFailure::new(CODE_INPUTS_INVALID, error))?;
+    let survey_document = inputs
+        .survey
+        .as_ref()
+        .and_then(|survey| survey.document.as_ref());
     decisions::verify_content_digest(&plan, inputs.content_digest.as_deref())
         .map_err(|error| HostFailure::new(CODE_INPUTS_INVALID, error))?;
     if plan.requires_admin_bounds && settings.admin_bounds.is_none() {
@@ -584,6 +601,17 @@ pub fn run_transformer_report_with(
             format!("the room and configuration exceed the {MAX_SEMANTIC_REQUEST_BYTES}-byte request bound"),
         ));
     }
+    if let Some((bytes, digest)) = survey_document {
+        if bytes.is_empty()
+            || bytes.len() as u64 > decisions::survey::MAX_SURVEY_LAYERS_BYTES
+            || decisions::sha256_hex(bytes) != *digest
+        {
+            return Err(HostFailure::new(
+                CODE_INPUTS_INVALID,
+                "the staged survey layers are not the bytes their digest names",
+            ));
+        }
+    }
 
     let client_run_id = random_run_id();
     fs::create_dir_all(settings.staging_root).map_err(|error| {
@@ -604,10 +632,14 @@ pub fn run_transformer_report_with(
     let result_path = staging.path.join(STAGING_RESULT_FILE);
     let print_context_path = staging.path.join(STAGING_PRINT_CONTEXT_FILE);
     let media_grant_path = staging.path.join(STAGING_MEDIA_GRANT_FILE);
+    let survey_layers_path = staging.path.join(STAGING_SURVEY_LAYERS_FILE);
     write_new_private(&transformer_path, &transformer_bytes)?;
     write_new_private(&config_path, &config_bytes)?;
     if let Some(context) = &inputs.print_context {
         write_new_private(&print_context_path, &context.bytes)?;
+    }
+    if let Some((bytes, _)) = survey_document {
+        write_new_private(&survey_layers_path, bytes)?;
     }
     if let Some(grant) = extras.media_grant {
         write_new_private(&media_grant_path, grant)?;
@@ -633,6 +665,8 @@ pub fn run_transformer_report_with(
             media_grant,
             print_context,
             sheet: inputs.sheet,
+            survey_layers: survey_document
+                .map(|(_, digest)| (survey_layers_path.as_path(), digest.as_str())),
         },
     )
     .map_err(|error| HostFailure::new(CODE_INPUTS_INVALID, error))?;
@@ -743,6 +777,7 @@ pub fn run_transformer_report_with(
         failed: result.failed,
         warnings: result.warnings,
         survey_layers_omitted: plan.survey_layers_omitted,
+        survey_layers: result.survey_layers,
         engine: identity_before,
     })
 }
@@ -807,6 +842,10 @@ pub struct BatchSettings<'a> {
     /// How many engines may be resident at once; the kernel's `batch_plan`
     /// decides it from the scope, the processors and the resident limit.
     pub concurrency: usize,
+    /// One media grant in the engine's own schema that every run of the batch
+    /// stages ([`RunExtras::media_grant`]): the survey photos a delivered report
+    /// links to. `None` stages none.
+    pub media_grant: Option<&'a [u8]>,
 }
 
 /// What a batch left behind: one result per requested transformer in the
@@ -885,13 +924,19 @@ where
             let job_rx = &job_rx;
             let done_tx = done_tx.clone();
             let run_settings = &settings.run;
+            let media_grant = settings.media_grant;
             scope.spawn(move || loop {
                 let job = match job_rx.lock() {
                     Ok(receiver) => receiver.recv(),
                     Err(_) => break,
                 };
                 let Ok((name, inputs)) = job else { break };
-                let outcome = run_transformer_report(engine, run_settings, &inputs);
+                let outcome = run_transformer_report_with(
+                    engine,
+                    run_settings,
+                    &inputs,
+                    &RunExtras { media_grant },
+                );
                 drop(inputs);
                 if done_tx.send((name, outcome)).is_err() {
                     break;
@@ -920,7 +965,8 @@ where
                             run.artifacts.len(),
                         )
                         .with_failed_formats(run.failed.clone())
-                        .with_survey_layers_omitted(run.survey_layers_omitted.clone()),
+                        .with_survey_layers_omitted(run.survey_layers_omitted.clone())
+                        .with_survey_layers(run.survey_layers.clone()),
                     );
                     runs.push(run);
                 }
@@ -1136,6 +1182,7 @@ pub(crate) mod tests {
             selection: None,
             print_context: None,
             sheet: None,
+            survey: None,
         }
     }
 
@@ -1495,6 +1542,7 @@ pub(crate) mod tests {
                 run: settings(&receipt, &batch_out, &staging),
                 lane: "stable",
                 concurrency: 1,
+                media_grant: None,
             },
             &["tx_a".to_string()],
             |name| Ok(inputs(name)),
@@ -1716,6 +1764,7 @@ pub(crate) mod tests {
                 run: settings(&receipt, &out, &staging),
                 lane: "stable",
                 concurrency: 2,
+                media_grant: None,
             },
             &names,
             |name| {
@@ -1765,6 +1814,7 @@ pub(crate) mod tests {
                 run: settings(&receipt, &out, &staging),
                 lane: "stable",
                 concurrency: 1,
+                media_grant: None,
             },
             &names[..1],
             |name| Ok(inputs(name)),

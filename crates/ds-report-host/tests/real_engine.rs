@@ -97,6 +97,7 @@ fn room(path: &Path, name: &str) -> TransformerReportInputs {
         selection: None,
         print_context: None,
         sheet: None,
+        survey: None,
     }
 }
 
@@ -174,6 +175,7 @@ fn the_installed_engine_produces_prints_and_data_the_host_proves_and_places() {
             },
             lane: "stable",
             concurrency: 2,
+            media_grant: None,
         },
         &["tr_example_b".to_string(), "tr_example_a".to_string()],
         |name| Ok(room(&examples.join(format!("rooms/{name}.json")), name)),
@@ -221,6 +223,7 @@ fn a_survey_policy_delivers_the_print_and_names_every_omitted_form() {
             },
             lane: "stable",
             concurrency: 1,
+            media_grant: None,
         },
         &["tr_example_a".to_string()],
         |name| Ok(room(&examples.join(format!("rooms/{name}.json")), name)),
