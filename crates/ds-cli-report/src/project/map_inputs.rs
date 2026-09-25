@@ -14,7 +14,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "map-inputs"],
     contract: 1,
     summary: "Prepare a district MV overview for headless PDF/PNG printing.",
-    purpose: "Reads all active LV transformers and exact current MV models, preserving revisions and geometry. Includes new LV lines and poles in print context. Applies an authored layout to held geographic context and writes a replayable report.layout.render request. No design writes or publication. --seed explicitly acquires missing context. Missing context is named in the receipt; inspect it before rendering. Customers are omitted from the overview.",
+    purpose: "Reads all active LV transformers and exact current MV models, preserving revisions and geometry. Includes new LV lines, poles, service cables and customers with their saved print styles. Applies an authored layout to held geographic context and writes a replayable report.layout.render request. No design writes or publication. --seed explicitly acquires missing context. Missing context is named in the receipt; inspect it before rendering.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -59,7 +59,7 @@ pub static COMMAND: Command = Command {
         ),
         super::LANE_ARG,
     ],
-    output: "Project, transformer count, new LV line/pole and transformer feature counts, exact MV model provenance, source revisions, omitted context, and render request path.",
+    output: "Project, transformer count, new LV line, pole, service cable and customer feature counts, exact MV model provenance, source revisions, omitted context, and render request path.",
     examples: &[],
     refusals: super::export::REFUSALS,
     reference: Some("docs/reference/report.md"),
@@ -191,7 +191,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         }
     }
     let network = sources.layers();
-    let design_layer_counts = ["tr", "lv_lines", "lv_poles"]
+    let design_layer_counts = ["tr", "lv_lines", "lv_poles", "service_cables", "customers"]
         .into_iter()
         .map(|id| {
             (
