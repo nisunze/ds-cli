@@ -177,8 +177,10 @@ mod tests {
     }
     #[test]
     fn the_download_plan_names_every_survey_layer_and_carries_no_window_cursor() {
-        let plan = evaluate(&json!({"mode":"download_plan","now":1,"center":null,"zoom":null,
-            "layers":[{"key":"poles"},{"key":"customers"},{"key":""},{"label":"no key"}]}))
+        let plan = evaluate(
+            &json!({"mode":"download_plan","now":1,"center":null,"zoom":null,
+            "layers":[{"key":"poles"},{"key":"customers"},{"key":""},{"label":"no key"}]}),
+        )
         .unwrap();
         assert_eq!(plan["slugs"], json!(["customers", "poles"]));
         assert_eq!(plan["working_area"]["fullProjectLoad"], true);
