@@ -3,22 +3,30 @@ pub use ds_command_kernel::overlays::{Overlay, OverlayEdit, OverlayRegistry};
 use fs2::FileExt;
 use serde_json::Value;
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::File,
     io::{Read, Write},
     path::{Path, PathBuf},
 };
 
+/// The machine-local layer root. The first call in a process also tightens an
+/// install from before the privacy rule ([`private`]): the root and all it
+/// holds, and — for the default location — the `ds` namespace directory above it.
 pub fn default_root() -> Result<PathBuf, String> {
     if let Some(root) = std::env::var_os("DS_LAYER_HOME") {
         let root = PathBuf::from(root);
         if !root.is_absolute() {
             return Err("DS_LAYER_HOME must be absolute".into());
         }
+        private::tighten_root_once(&root);
         return Ok(root);
     }
-    dirs::data_local_dir()
-        .map(|p| p.join("ds").join("layers"))
-        .ok_or_else(|| "local data directory is unavailable".into())
+    let namespace = dirs::data_local_dir()
+        .map(|p| p.join("ds"))
+        .ok_or_else(|| "local data directory is unavailable".to_string())?;
+    let root = namespace.join("layers");
+    let _ = private::tighten(&namespace);
+    private::tighten_root_once(&root);
+    Ok(root)
 }
 pub fn new_id() -> String {
     format!("tile-{}", uuid::Uuid::new_v4())
@@ -39,9 +47,9 @@ pub fn execute_at(root: &Path, edit: OverlayEdit) -> Result<Value, String> {
     }
     // Existing stores serialize reads with writers. An absent read creates nothing.
     if !reading {
-        fs::create_dir_all(root).map_err(io_error)?;
+        private::create_dir_all(root).map_err(io_error)?;
     }
-    let lock = OpenOptions::new()
+    let lock = private::open_options()
         .create(!reading)
         .truncate(false)
         .read(true)
@@ -82,6 +90,7 @@ pub fn execute_at(root: &Path, edit: OverlayEdit) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     fn row(id: &str) -> Overlay {
         Overlay {
             id: id.into(),
@@ -133,6 +142,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(read["layers"].as_array().unwrap().len(), 12);
+        #[cfg(unix)]
+        crate::private::assert_private_tree(tmp.path());
     }
     #[test]
     fn corrupt_store_is_never_overwritten() {
@@ -201,6 +212,7 @@ pub(crate) fn sqlite_path(path: &Path) -> Result<PathBuf, String> {
 
 pub mod local_models;
 pub mod prepared;
+pub mod private;
 pub mod project_dataset_cache;
 pub mod reference_cache;
 pub mod scoped;
@@ -220,9 +232,9 @@ pub use prepared::{Op as PreparedOp, Register as PreparedRegister, StoreError as
 /// same root and must not take a locking dependency of its own.
 pub fn exclusive_lock(path: &Path) -> Result<File, String> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(io_error)?;
+        private::create_dir_all(parent).map_err(io_error)?;
     }
-    let lock = OpenOptions::new()
+    let lock = private::open_options()
         .create(true)
         .truncate(false)
         .read(true)

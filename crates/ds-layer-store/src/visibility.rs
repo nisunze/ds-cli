@@ -233,6 +233,8 @@ mod tests {
         .unwrap();
         assert_eq!(again["changed"], false);
         assert_eq!(again["revision"], 1, "an identical write is not a revision");
+        #[cfg(unix)]
+        crate::private::assert_private_tree(root);
     }
 
     #[test]

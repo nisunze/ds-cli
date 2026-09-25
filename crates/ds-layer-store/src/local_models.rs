@@ -32,11 +32,12 @@
 //! conflict rather than overwriting silently.
 
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{Read, Write},
     path::{Component, Path, PathBuf},
 };
 
+use crate::private;
 use ds_command_kernel::local_models::{Catalogue, Op, Outcome, Scope};
 use fs2::FileExt;
 
@@ -313,8 +314,8 @@ pub fn execute_at(
     // directory, the lock every writer shares, and a second reading under it.
     // Another writer may have been admitted between the two readings, so the
     // answer over the LOCKED catalogue is the authoritative one.
-    fs::create_dir_all(&dir).map_err(io_error)?;
-    let lock = OpenOptions::new()
+    private::create_dir_all(&dir).map_err(io_error)?;
+    let lock = private::open_options()
         .create(true)
         .truncate(false)
         .read(true)
@@ -346,7 +347,7 @@ pub fn execute_at(
         // the previous package in one step: there is never a moment with no
         // package under the id.
         Some(bytes) => {
-            fs::create_dir_all(packages_dir(&dir)).map_err(io_error)?;
+            private::create_dir_all(&packages_dir(&dir)).map_err(io_error)?;
             write_atomic(&file, &packages_dir(&dir), bytes)?;
             persist(&catalogue_path, &dir, &outcome.catalogue)?;
         }
@@ -438,6 +439,8 @@ mod tests {
             "the store's clock"
         );
         assert_eq!(read_at(root.path(), &scope()).unwrap(), revised.catalogue);
+        #[cfg(unix)]
+        crate::private::assert_private_tree(&dir);
 
         // A stale expectation leaves both the row and the bytes alone.
         let stale = execute_at(

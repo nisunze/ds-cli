@@ -28,6 +28,7 @@
 //!   refresh re-acquires stale coverage, and until it does the project keeps
 //!   every row it paid for.
 
+use crate::private;
 use ds_command_kernel::project_dataset_cache::{self as policy, feature_key};
 use ds_command_kernel::reference_cache::{feature_bounds, intersects_area, validate_area};
 use fs2::FileExt;
@@ -91,11 +92,11 @@ fn digest_key(value: &str) -> Result<&str, String> {
 fn directory(root: &Path, key: &str) -> Result<PathBuf, String> {
     digest_key(key)?;
     let mut current = root.to_path_buf();
-    fs::create_dir_all(&current).map_err(io_error)?;
+    private::create_dir_all(&current).map_err(io_error)?;
     for segment in [ROOT, VERSION, key] {
         current.push(segment);
         if !current.exists() {
-            match fs::create_dir(&current) {
+            match private::create_dir(&current) {
                 Ok(()) => (),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (),
                 Err(error) => return Err(io_error(error)),
@@ -111,14 +112,14 @@ fn directory(root: &Path, key: &str) -> Result<PathBuf, String> {
 
 fn room_lock(root: &Path, key: &str) -> Result<fs::File, String> {
     digest_key(key)?;
-    fs::create_dir_all(root).map_err(io_error)?;
+    private::create_dir_all(root).map_err(io_error)?;
     let path = root.join(format!("{ROOT}-{key}.lock"));
     if let Ok(metadata) = fs::symlink_metadata(&path) {
         if linked(&metadata) || !metadata.is_file() {
             return Err("invalid project dataset room lock".into());
         }
     }
-    fs::OpenOptions::new()
+    private::open_options()
         .create(true)
         .truncate(false)
         .read(true)
@@ -131,6 +132,8 @@ fn open_room(dir: &Path) -> Result<Connection, String> {
     // Windows path lengths, not a preference: a room lives under a storage root
     // the operator may relocate, and SQLite does not reach past 260 characters
     // the way `std::fs` silently does. See `crate::sqlite_path`.
+    // The room holds project data: its file is private before SQLite opens it.
+    private::prepare_file(&dir.join(ROOM_FILE)).map_err(io_error)?;
     let connection =
         Connection::open(crate::sqlite_path(&dir.join(ROOM_FILE))?).map_err(io_error)?;
     connection
@@ -1518,6 +1521,8 @@ mod tests {
         assert!(execute_at(root.path(), request)
             .unwrap_err()
             .contains("between pages"));
+        #[cfg(unix)]
+        crate::private::assert_private_tree(root.path());
     }
 
     /// Move every recorded request back in time, so expiry can be proved

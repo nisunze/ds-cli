@@ -40,11 +40,12 @@
 //! itself wrote, so a file that no longer parses is a fault to look at, never
 //! one to overwrite.
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::private;
 use fs2::FileExt;
 use serde_json::{json, Value};
 
@@ -211,8 +212,8 @@ pub fn execute_at(root: &Path, scope: &Scope, op: Op) -> Result<Value, StoreErro
     // catalogue that is authoritative: the registry this write replaces, the
     // sequence and palette cursor it mints from and the receipt this host
     // acts on all come from that second ask.
-    fs::create_dir_all(&dir).map_err(io_error)?;
-    let lock = OpenOptions::new()
+    private::create_dir_all(&dir).map_err(io_error)?;
+    let lock = private::open_options()
         .create(true)
         .truncate(false)
         .read(true)
@@ -248,7 +249,7 @@ pub fn execute_at(root: &Path, scope: &Scope, op: Op) -> Result<Value, StoreErro
     // names a file that is not there.
     let mut payload = Value::Null;
     if let (Some(staged), Some(file)) = (&staged, &payload_file) {
-        fs::create_dir_all(payloads_dir(&dir)).map_err(io_error)?;
+        private::create_dir_all(&payloads_dir(&dir)).map_err(io_error)?;
         write_atomic(file, payloads_dir(&dir).as_path(), &staged.bytes)?;
         payload = json!({
             "path": file.to_string_lossy(),
@@ -823,6 +824,8 @@ mod tests {
             "the copied payload is beside the catalogue"
         );
         assert_eq!(fs::read(&payload).unwrap(), fs::read(&source).unwrap());
+        #[cfg(unix)]
+        crate::private::assert_private_tree(&scope_dir(root, &lane).unwrap());
     }
 
     #[test]

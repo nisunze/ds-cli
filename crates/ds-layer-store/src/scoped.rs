@@ -10,12 +10,13 @@
 //! concurrent transitions never replace each other's edits, an identical write
 //! is not a revision, and a fence that a canary project never inherits a
 //! stable project's choice and two accounts on one host never share theirs.
+use crate::private;
 use fs2::FileExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
-    fs::{self, File, OpenOptions},
+    fs::File,
     io::{Read, Write},
     path::Path,
 };
@@ -118,7 +119,7 @@ pub fn read_at<T: DeserializeOwned>(
     if !path.try_exists().map_err(|_| io_error(kind.noun))? {
         return Ok(None);
     }
-    let lock = OpenOptions::new()
+    let lock = private::open_options()
         .read(true)
         .open(root.join(kind.lock))
         .ok();
@@ -152,8 +153,8 @@ where
     let store_error = |_: std::io::Error| UpdateError::Store(io_error(kind.noun));
     let any_error = |_: &dyn std::fmt::Display| UpdateError::Store(io_error(kind.noun));
     let key = scope(kind.noun, lane, uid, project).map_err(UpdateError::Store)?;
-    fs::create_dir_all(root).map_err(store_error)?;
-    let lock = OpenOptions::new()
+    private::create_dir_all(root).map_err(store_error)?;
+    let lock = private::open_options()
         .create(true)
         .truncate(false)
         .read(true)

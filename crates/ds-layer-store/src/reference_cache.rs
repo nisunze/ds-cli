@@ -1,5 +1,6 @@
 //! Shared native storage for immutable reference query pages. This is a response
 //! cache, separate from canonical GeoParquet assets and derived DSAB indexes.
+use crate::private;
 use ds_command_kernel::reference_cache::{
     self as contract, Identity, Page, MAX_PAGES, MAX_PAGE_BYTES, MAX_RESOURCE_BYTES, PAGE_ROWS,
 };
@@ -115,6 +116,7 @@ impl BundleIndexWriter {
 /// over-long directory, and a build that is discarded on failure has nothing to
 /// roll back to anyway — the whole database is thrown away.
 fn open_index_for_write(path: &Path) -> Result<Connection, String> {
+    private::prepare_file(path).map_err(|error| format!("open reference index: {error}"))?;
     let connection = Connection::open_with_flags(
         crate::sqlite_path(path)?,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_CREATE,
@@ -176,7 +178,7 @@ fn linked(metadata: &fs::Metadata) -> bool {
 fn directory(root: &Path, identity: &Identity) -> Result<PathBuf, String> {
     identity.validate()?;
     let mut current = root.to_path_buf();
-    fs::create_dir_all(&current).map_err(|e| e.to_string())?;
+    private::create_dir_all(&current).map_err(|e| e.to_string())?;
     if linked(&fs::symlink_metadata(&current).map_err(|e| e.to_string())?) {
         return Err("linked reference root is not allowed".into());
     }
@@ -193,7 +195,7 @@ fn directory(root: &Path, identity: &Identity) -> Result<PathBuf, String> {
                 return Err("linked or invalid reference cache directory".into());
             }
         } else {
-            match fs::create_dir(&current) {
+            match private::create_dir(&current) {
                 Ok(()) => (),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
                 Err(e) => return Err(e.to_string()),
@@ -614,10 +616,14 @@ fn query_bundle(
         json!({"features":features,"truncated":truncated,"cache":"local","version":identity.version}),
     )
 }
+/// The machine-shared geographic data root. The first call in a process also
+/// tightens an install from before the privacy rule ([`crate::private`]).
 pub fn default_root() -> Result<PathBuf, String> {
-    dirs::data_local_dir()
-        .map(|p| p.join("rw.datasolutions.desktop.shared"))
-        .ok_or_else(|| "local reference cache directory is unavailable".into())
+    let root = dirs::data_local_dir()
+        .map(|p| p.join(OWNED_ROOT))
+        .ok_or_else(|| "local reference cache directory is unavailable".to_string())?;
+    private::tighten_root_once(&root);
+    Ok(root)
 }
 pub fn configured_root() -> Result<PathBuf, String> {
     let default = default_root()?;
@@ -641,18 +647,23 @@ pub fn configured_root() -> Result<PathBuf, String> {
     if !path.is_absolute() {
         return Err("geographic data storage root is not absolute".into());
     }
+    // A relocated root is the owned directory DS made inside the operator's
+    // chosen location; only that one is ever tightened, never the location.
+    if path.file_name() == Some(std::ffi::OsStr::new(OWNED_ROOT)) {
+        private::tighten_root_once(&path);
+    }
     Ok(path)
 }
 
 pub fn download_staging_root() -> Result<PathBuf, String> {
     let root = configured_root()?;
-    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    private::create_dir_all(&root).map_err(|error| error.to_string())?;
     let metadata = fs::symlink_metadata(&root).map_err(|error| error.to_string())?;
     if linked(&metadata) || !metadata.is_dir() {
         return Err("invalid geographic data storage root".into());
     }
     let staging = root.join("reference-bundle-staging");
-    fs::create_dir_all(&staging).map_err(|error| error.to_string())?;
+    private::create_dir_all(&staging).map_err(|error| error.to_string())?;
     let metadata = fs::symlink_metadata(&staging).map_err(|error| error.to_string())?;
     if linked(&metadata) || !metadata.is_dir() {
         return Err("invalid geographic data staging directory".into());
@@ -661,7 +672,7 @@ pub fn download_staging_root() -> Result<PathBuf, String> {
 }
 
 fn storage_status(root: &Path) -> Result<Value, String> {
-    fs::create_dir_all(root)
+    private::create_dir_all(root)
         .map_err(|error| format!("could not create geographic data storage: {error}"))?;
     let metadata = fs::symlink_metadata(root).map_err(|error| error.to_string())?;
     if linked(&metadata) || !metadata.is_dir() {
@@ -681,7 +692,7 @@ fn storage_status(root: &Path) -> Result<Value, String> {
 
 fn set_storage_root(path: Option<&str>) -> Result<Value, String> {
     let default = default_root()?;
-    fs::create_dir_all(&default).map_err(|error| error.to_string())?;
+    private::create_dir_all(&default).map_err(|error| error.to_string())?;
     let pointer = default.join(LOCATION_FILE);
     let root = if let Some(raw) = path.filter(|value| !value.trim().is_empty()) {
         let base = PathBuf::from(raw.trim());
@@ -695,7 +706,7 @@ fn set_storage_root(path: Option<&str>) -> Result<Value, String> {
         }
         let canonical = fs::canonicalize(base).map_err(|error| error.to_string())?;
         let owned = canonical.join(OWNED_ROOT);
-        fs::create_dir_all(&owned).map_err(|error| {
+        private::create_dir_all(&owned).map_err(|error| {
             format!("could not create owned geographic data directory: {error}")
         })?;
         let bytes = serde_json::to_vec(&json!({"root": owned.to_string_lossy()}))
@@ -761,7 +772,7 @@ pub fn execute_at(root: &Path, request: Value) -> Result<Value, String> {
 
 fn resource_lock(root: &Path, identity: &Identity) -> Result<fs::File, String> {
     identity.validate()?;
-    fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    private::create_dir_all(root).map_err(|e| e.to_string())?;
     if linked(&fs::symlink_metadata(root).map_err(|e| e.to_string())?) {
         return Err("linked reference root is not allowed".into());
     }
@@ -776,7 +787,7 @@ fn resource_lock(root: &Path, identity: &Identity) -> Result<fs::File, String> {
             return Err("invalid reference cache lock".into());
         }
     }
-    let lock = fs::OpenOptions::new()
+    let lock = private::open_options()
         .create(true)
         .truncate(false)
         .read(true)
@@ -1033,6 +1044,8 @@ mod tests {
         let result = execute_at(root.path(), query).unwrap();
         assert_eq!(result["features"], json!([]));
         assert_eq!(result["cache"], "local");
+        #[cfg(unix)]
+        crate::private::assert_private_tree(root.path());
     }
     #[test]
     fn native_bundle_can_exceed_cloud_page_bytes_without_materializing_a_page() {
