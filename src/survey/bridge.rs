@@ -108,7 +108,7 @@ pub(super) fn evaluate(r: &Value) -> Result<Value, String> {
             Ok(
                 json!({"slugs":slugs,"working_area":{"mode":"full","admin":null,"drawBoundary":null,"fullProjectLoad":true,
                 "dateFrom":"","dateTo":"","surveyors":[],"applied":true,"appliedAt":r["now"],"appliedCenter":r["center"],"appliedZoom":r["zoom"],
-                "appliedBbox":null,"lastUpdatedAt":null,"cutoffAt":null,"cutoffByForm":{}}}),
+                "appliedBbox":null}}),
             )
         }
         Some("download_receipt") => {
@@ -174,6 +174,19 @@ mod tests {
             migration_receipt(&json!({}), "src", "dst", true)["mode"],
             "plan"
         );
+    }
+    #[test]
+    fn the_download_plan_names_every_survey_layer_and_carries_no_window_cursor() {
+        let plan = evaluate(&json!({"mode":"download_plan","now":1,"center":null,"zoom":null,
+            "layers":[{"key":"poles"},{"key":"customers"},{"key":""},{"label":"no key"}]}))
+        .unwrap();
+        assert_eq!(plan["slugs"], json!(["customers", "poles"]));
+        assert_eq!(plan["working_area"]["fullProjectLoad"], true);
+        // Cursors are the core's (`survey::hold`); the window's working area
+        // carries none.
+        for key in ["cutoffAt", "cutoffByForm", "lastUpdatedAt"] {
+            assert!(plan["working_area"].get(key).is_none(), "{key}");
+        }
     }
     #[test]
     fn explicit_download_intent_is_required_and_no_migration_mode_remains() {

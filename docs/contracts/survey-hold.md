@@ -20,7 +20,10 @@ workspace" stands; the hold is plain files.
   lock, whole-file writes renamed into place. The host injects the fetch; the
   crate never opens a socket.
 - Hosts: `ds` commands and the Desktop shell call those two; neither
-  re-derives a decision.
+  re-derives a decision. The Desktop window reads its rows through the
+  shell (`survey_hold_read`, `survey_hold_status`) and keeps only what it
+  renders, in memory. A browser window has no core: it streams `query_entries` through the
+  same read policy into memory for its session and keeps nothing.
 
 ## Layout
 
