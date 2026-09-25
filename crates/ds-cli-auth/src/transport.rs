@@ -1355,10 +1355,13 @@ impl Transport for NativeTransport {
     ) -> Result<TransportResponse, TransportError> {
         // The link is the whole authority: no bearer, key or identity header
         // is sent, so following the resolver's one redirect to its storage
-        // signature hands nothing to a second origin.
+        // signature hands nothing to a second origin. An https link never
+        // follows that redirect down to plain http: the signature it lands on
+        // is a bearer for the photo.
         let response = ureq::get(call.url())
             .config()
             .max_redirects(call.max_redirects())
+            .https_only(call.url().starts_with("https://"))
             .http_status_as_error(false)
             .timeout_connect(Some(CONNECT_TIMEOUT))
             .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
