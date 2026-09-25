@@ -39,6 +39,7 @@ pub mod criteria;
 pub mod describe;
 pub mod feature_codes;
 pub mod folder;
+mod host_memory;
 pub mod import_structure;
 pub mod inspect;
 pub mod model;

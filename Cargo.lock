@@ -991,6 +991,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1425,7 +1426,6 @@ dependencies = [
  "ds-grid-physics",
  "ds-profile",
  "geo",
- "rayon",
  "regex",
  "serde",
  "serde_json",

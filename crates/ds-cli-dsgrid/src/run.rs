@@ -609,8 +609,16 @@ fn dispatch(
                 .map_err(|error| engine_error(operation_id, error))?,
         ),
         "plan_optimum_spotting_batch" => {
-            let request: ds_grid_engine::spotting::batch::SpottingBatchRequest =
+            let mut request: ds_grid_engine::spotting::batch::SpottingBatchRequest =
                 parse(operation_id, params)?;
+            // Parallel by default, within what this machine can spare. A host
+            // that reports no memory figures runs one search at a time.
+            if request.memory_budget_bytes.is_none() {
+                match crate::host_memory::spotting_memory_budget_bytes() {
+                    Some(budget) => request.memory_budget_bytes = Some(budget),
+                    None => request.max_workers = request.max_workers.or(Some(1)),
+                }
+            }
             serialize(
                 operation_id,
                 ds_grid_engine::spotting::batch::plan_optimum_spotting_batch(
