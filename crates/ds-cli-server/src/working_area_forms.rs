@@ -5,8 +5,8 @@
 //! Every decision is `ds_layer_ops::working_area_forms`' — the same owner
 //! `ds survey working-area forms|select|clear` calls natively — so the answer
 //! is the same whichever host executed it. This module only binds it to the
-//! protected loopback transport exactly as `layers.rs` binds the drawer: the
-//! owner-only bearer, the connection's lane, the principal observed at request
+//! owner-only socket exactly as `layers.rs` binds the drawer: the
+//! owner's own account, the connection's lane, the principal observed at request
 //! time, the project NAMED by the caller (`?project=<exact-id>`) and held
 //! against the document that comes back. The selection is admitted under the
 //! layer operations (`layer_read` / `layer_write`): it is read from the layer
@@ -106,13 +106,13 @@ pub async fn clear(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
-    //! The realistic workflow through a REAL loopback listener with the layer
+    //! The realistic workflow through the REAL owner-only socket with the layer
     //! fixture identity and upstream: never chosen, select, restart, read the
     //! retained choice, the second project on its own terms, unknown slug,
     //! project change during a request, clear.
-    use crate::layers::tests::{TOKEN, fixture_upstream, start, wire};
+    use crate::layers::tests::{fixture_upstream, start, wire};
     use serde_json::{Value, json};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -125,24 +125,17 @@ mod tests {
         let server = start(dir.path(), upstream.clone(), allowed.clone()).await;
 
         // No project named: refused before anything is read.
-        let (status, refused) = wire(
-            server.address,
-            "GET",
-            "/v1/survey/working-area-forms",
-            None,
-            TOKEN,
-        )
-        .await;
+        let (status, refused) =
+            wire(&server.socket, "GET", "/v1/survey/working-area-forms", None).await;
         assert_eq!(status, 400, "{refused}");
         assert_eq!(refused["code"], "project_required");
 
         // Never chosen: nothing loads, and the answer says how to choose.
         let (status, first) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/survey/working-area-forms?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{first}");
@@ -159,11 +152,10 @@ mod tests {
 
         // An unknown slug is refused by name and writes nothing.
         let (status, unknown) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/survey/working-area-forms/select?project=proj-kigali",
             Some(json!({"forms": ["poles", "not_here"]})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 400, "{unknown}");
@@ -182,11 +174,10 @@ mod tests {
 
         // A choice persists under the named project only.
         let (status, chosen) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/survey/working-area-forms/select?project=proj-kigali",
             Some(json!({"forms": ["customers"]})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{chosen}");
@@ -194,25 +185,23 @@ mod tests {
         assert_eq!(chosen["loads"], json!(["customers"]));
         assert_eq!(chosen["persisted"], "native_local");
         let (_, other) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/survey/working-area-forms?project=proj-lome",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(other["chosen"], false, "{other}");
         assert_eq!(other["form_count"], 1);
 
         // Restart: the choice is retained on disk, not in the process.
-        server.handle.abort();
+        server.stop().await;
         let server = start(dir.path(), upstream.clone(), allowed.clone()).await;
         let (_, retained) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/survey/working-area-forms?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(retained["chosen"], true, "{retained}");
@@ -223,11 +212,10 @@ mod tests {
             .switch_project_on_read
             .store(true, Ordering::SeqCst);
         let (status, switched) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/survey/working-area-forms/select?project=proj-kigali",
             Some(json!({"all": true})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 409, "{switched}");
@@ -238,31 +226,28 @@ mod tests {
 
         // All, then clear: back to never chosen.
         let (_, all) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/survey/working-area-forms/select?project=proj-kigali",
             Some(json!({"all": true})),
-            TOKEN,
         )
         .await;
         assert_eq!(all["loads"], json!(["poles", "customers"]), "{all}");
         let (status, cleared) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/survey/working-area-forms/clear?project=proj-kigali",
             Some(json!({})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{cleared}");
         assert_eq!(cleared["chosen"], false);
         assert_eq!(cleared["changed"], true);
         let (_, again) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/survey/working-area-forms?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(again["chosen"], false);
@@ -271,14 +256,13 @@ mod tests {
         // A revoked owner is refused at the door.
         allowed.store(false, Ordering::SeqCst);
         let (status, revoked) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/survey/working-area-forms?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 401, "{revoked}");
-        server.handle.abort();
+        server.stop().await;
     }
 }

@@ -20,7 +20,7 @@
 //! therefore need no upstream at all.
 //!
 //! One user per machine; many users are many machines. The Server is signed in
-//! as exactly one owner and its bearer is that owner's; there is no second
+//! as exactly one owner and its socket answers only that owner's account; there is no second
 //! identity to distinguish, so there is no per-principal anything here.
 //!
 //! Nothing here decides. `execution_context::admit` decides; this module
@@ -217,11 +217,14 @@ impl ServerSessions {
         })
     }
 
-    /// How this connection names itself in a context. The connection token is
-    /// never any part of it; the address it listens on is enough to tell two
-    /// Servers on one machine apart.
+    /// How this connection names itself in a context: its socket, digested.
+    /// Nothing about the door opens it, and the socket's path is enough to
+    /// tell two Servers on one machine apart — digested, because a state
+    /// directory's path can be longer than a context's client field, and it
+    /// names a home directory that a context has no reason to carry.
     pub fn client_label(&self) -> String {
-        format!("server-connection:{}", self.connection.address)
+        let socket = runtime::digest(self.connection.socket.as_os_str().as_encoded_bytes());
+        format!("server-socket:{}", &socket[..16])
     }
 
     /// The Sync Center session for one admitted project, opened on first use
@@ -426,10 +429,10 @@ mod tests {
         };
         ServerSessions::with(
             Connection {
-                address: "127.0.0.1:19766".parse().unwrap(),
                 owner: "owner-digest".into(),
                 lane: "canary".into(),
-                token: "a".repeat(64),
+                socket: crate::transport::socket_path(std::path::Path::new("/state")),
+                legacy_address: None,
             },
             database,
             Limits {

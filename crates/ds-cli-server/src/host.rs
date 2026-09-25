@@ -1,12 +1,13 @@
-//! The Server's HTTP surface: the protected loopback door onto one
-//! authenticated account's durable compute, publication and layer state.
+//! The Server's HTTP surface: the owner-only door onto one authenticated
+//! account's durable compute, publication and layer state.
 //!
 //! Every route that acts asks `ServerSessions` to admit it, and the kernel
 //! decides which project the operation is about. Every route that reads
 //! answers through the job's own execution context, so a job in a project the
 //! caller did not name is absent in exactly the way an invented id is absent.
-//! The loopback boundary is unchanged: one owner-only bearer, one
-//! re-authorized native account, one fixed loopback port.
+//! The door is `crate::transport`: one owner-only Unix socket in the protected
+//! state directory, a peer the kernel names as this Server's own account, and
+//! one re-authorized native account behind it. No bearer and no port.
 
 use axum::extract::{Query, Request};
 use axum::middleware::{self, Next};
@@ -42,18 +43,58 @@ pub const ACTIVITY_SCHEMA: &str = "ds.server-activity/v1";
 /// The operation keeps its id and its shape; only this host cannot run it.
 pub const NEEDS_PAIRED_MAP: &str = "needs_paired_map";
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// The one Server a protected state directory holds: whose it is, on which
+/// lane, and the socket it answers on.
+///
+/// `connection.json` records the owner and the lane and nothing that opens
+/// the door — there is no bearer to keep, because the door asks the kernel
+/// who is knocking. The socket is not recorded either: it is always
+/// `<state>/server.sock`.
+#[derive(Clone, Debug)]
 pub struct Connection {
-    pub address: SocketAddr,
     pub owner: String,
     pub lane: String,
-    pub token: String,
+    /// `<state>/server.sock`, the Server's only door.
+    pub socket: PathBuf,
+    /// Set only when `connection.json` was written by a `ds` from before the
+    /// socket: that Server listened on this TCP loopback address and admitted
+    /// a bearer. Such a record identifies its owner and lane and is never a
+    /// transport — a client refuses it by name and sends nothing, and the
+    /// next `ds server serve` rewrites it without the bearer.
+    pub legacy_address: Option<SocketAddr>,
+}
+
+/// `connection.json` as this build writes it.
+pub const CONNECTION_SCHEMA: &str = "ds.server-connection/v2";
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Record {
+    schema: String,
+    owner: String,
+    lane: String,
+}
+
+/// `connection.json` as a `ds` from before the socket wrote it. Read only to
+/// learn its owner, its lane and where it listened; the bearer is skipped
+/// unread and never leaves this parse.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyRecord {
+    address: SocketAddr,
+    owner: String,
+    lane: String,
+    #[allow(dead_code)]
+    token: serde::de::IgnoredAny,
 }
 #[derive(Clone)]
 pub struct App {
     pub database: PathBuf,
     pub connection: Connection,
+    /// The operating-system account this host runs as: the only peer its
+    /// socket admits (`transport::own_uid()`), or `None` where there is no
+    /// socket and so no peer to admit.
+    pub os_uid: Option<u32>,
     pub auth: Arc<dyn Authorizer>,
     /// How many requests this host answers at once, and what it says when it
     /// is full.
@@ -68,10 +109,6 @@ pub struct App {
 }
 
 type ApiError = (StatusCode, Json<Value>);
-
-fn error(status: StatusCode, message: impl ToString) -> ApiError {
-    (status, Json(json!({"error":message.to_string()})))
-}
 
 /// A quarter second per request already inside the door.
 ///
@@ -188,26 +225,7 @@ pub fn typed(failure: &Failure) -> ApiError {
     (status, Json(body))
 }
 
-fn authorize(app: &App, headers: &HeaderMap) -> Result<(), ApiError> {
-    let supplied = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .unwrap_or("");
-    let wanted = app.connection.token.as_bytes();
-    let supplied = supplied.as_bytes();
-    let mismatch = wanted
-        .iter()
-        .enumerate()
-        .fold(wanted.len() ^ supplied.len(), |acc, (i, b)| {
-            acc | usize::from(*b ^ supplied.get(i).copied().unwrap_or(0))
-        });
-    // One Server, one owner: this bearer is that owner's, and there is no
-    // second identity for a request to name. Anything else is denied here,
-    // and that IS the rule -- many users are many machines.
-    if mismatch != 0 {
-        return Err(error(StatusCode::UNAUTHORIZED, "server access denied"));
-    }
+fn authorize(app: &App) -> Result<(), ApiError> {
     // The authorizer answers from the credential this machine holds, and it
     // refuses for exactly one reason: a local answer that the owner changed.
     // "The gateway is unreachable" is not one of its answers, so there is no
@@ -271,9 +289,19 @@ async fn access(
     request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let headers = request.headers().clone();
+    // One Server, one owner: the process at the other end of the socket runs
+    // as the account this Server runs as, by the kernel's word, and there is
+    // no second identity for a request to name. Anything else is denied here,
+    // before it takes a place in the door -- and that IS the rule: many users
+    // are many machines. A request that did not come through the socket
+    // carries no peer and is a stranger too.
+    let peer = request
+        .extensions()
+        .get::<crate::transport::Peer>()
+        .copied();
+    crate::transport::admit(peer, app.os_uid).map_err(|refused| typed(&refused))?;
     let permit = app.requests.enter().map_err(|full| typed(&full))?;
-    tokio::task::spawn_blocking(move || authorize(&app, &headers))
+    tokio::task::spawn_blocking(move || authorize(&app))
         .await
         .map_err(|_| typed(&worker_lost("authorization")))??;
     let response = next.run(request).await;
@@ -804,6 +832,12 @@ fn protected(path: &Path, directory: bool) -> Result<(), String> {
         Err("server connection requires a protected native state adapter on this platform".into())
     }
 }
+/// Read the protected `connection.json` of the Server over `directory`.
+///
+/// Both shapes are read — this build's, and the one a `ds` from before the
+/// socket wrote — because both name whose state this is. The older one comes
+/// back with `legacy_address` set, and is never used as a transport: its
+/// bearer is not even read.
 pub fn load_connection(directory: &Path) -> Result<Connection, String> {
     protected(directory, true)?;
     let path = directory.join("connection.json");
@@ -817,14 +851,33 @@ pub fn load_connection(directory: &Path) -> Result<Connection, String> {
     if bytes.len() > 4096 {
         return Err("connection file too large".into());
     }
-    let connection: Connection = serde_json::from_slice(&bytes)
-        .map_err(|_| "invalid protected server connection".to_string())?;
-    if !connection.address.ip().is_loopback()
-        || !ds_command_kernel::compute_jobs::digest(&connection.token)
-    {
-        return Err("invalid server address or token".into());
+    let socket = crate::transport::socket_path(directory);
+    if let Ok(record) = serde_json::from_slice::<Record>(&bytes) {
+        if record.schema != CONNECTION_SCHEMA {
+            return Err(format!(
+                "this server connection is {}, and this ds reads {CONNECTION_SCHEMA}; use the ds that started the Server",
+                record.schema
+            ));
+        }
+        return Ok(Connection {
+            owner: record.owner,
+            lane: record.lane,
+            socket,
+            legacy_address: None,
+        });
     }
-    Ok(connection)
+    if let Ok(legacy) = serde_json::from_slice::<LegacyRecord>(&bytes) {
+        if !legacy.address.ip().is_loopback() {
+            return Err("invalid server address".into());
+        }
+        return Ok(Connection {
+            owner: legacy.owner,
+            lane: legacy.lane,
+            socket,
+            legacy_address: Some(legacy.address),
+        });
+    }
+    Err("invalid protected server connection".into())
 }
 /// One Server serves one owner, and this is the sentence a second account
 /// meets when it asks one Server to serve it too: the protected state it
@@ -832,54 +885,85 @@ pub fn load_connection(directory: &Path) -> Result<Connection, String> {
 /// the remedy is a host of one's own, never a second identity in this process.
 pub const MULTI_PRINCIPAL_UNSUPPORTED: &str = "multi_principal_unsupported";
 
-pub fn connection(
-    directory: &Path,
-    address: SocketAddr,
-    owner: String,
-    lane: String,
-) -> Result<Connection, Failure> {
+/// Settle the protected record of the Server about to start over `directory`
+/// for `owner` on `lane`, writing it when there is none.
+///
+/// A record left by a `ds` from before the socket is adopted — same owner,
+/// same lane — and rewritten without its bearer, unless the TCP address it
+/// names still accepts connections: then an older Server may still be
+/// running on this state, and two hosts on one queue is refused. Nothing is
+/// sent to that address; the probe is a connect and nothing more.
+pub fn connection(directory: &Path, owner: String, lane: String) -> Result<Connection, Failure> {
     prepare_directory(directory).map_err(host_failure)?;
-    if !address.ip().is_loopback() || address.port() == 0 {
-        return Err(Failure::invalid(
-            "server_refused",
-            "server must listen on a fixed loopback port",
-        )
-        .remedy("pass --listen 127.0.0.1:<port>"));
-    }
     let path = directory.join("connection.json");
-    if path.exists() {
-        let existing = load_connection(directory).map_err(host_failure)?;
-        // A second ACCOUNT is the one thing this Server can never become, so
-        // it is answered by its own name rather than as a generic refusal —
-        // and separately from a lane or address that simply does not match,
-        // which is one owner's own misconfiguration.
-        if existing.owner != owner {
-            return Err(Failure::conflict(
-                // Written out, like `needs_paired_map` above: the
-                // refusal-coverage scan reads a literal, and a code it cannot
-                // read is a code nothing checks is documented.
-                "multi_principal_unsupported",
-                "this protected server state belongs to another account; one Server serves exactly one owner",
-            )
-            .remedy(
-                "run that account its own ds server serve, with its own --state-dir and --listen",
-            ));
-        }
-        if existing.lane != lane || existing.address != address {
-            return Err(host_failure(
-                "the existing server connection is on another lane or address; use a separate state directory",
-            ));
-        }
-        return Ok(existing);
+    if !path.exists() {
+        write_record(directory, &owner, &lane)?;
+        return Ok(Connection {
+            owner,
+            lane,
+            socket: crate::transport::socket_path(directory),
+            legacy_address: None,
+        });
     }
-    let mut secret = [0u8; 32];
-    getrandom::getrandom(&mut secret).map_err(host_failure)?;
-    let connection = Connection {
-        address,
-        owner,
-        lane,
-        token: runtime::digest(&secret),
+    let existing = load_connection(directory).map_err(host_failure)?;
+    // A second ACCOUNT is the one thing this Server can never become, so it
+    // is answered by its own name rather than as a generic refusal — and
+    // separately from a lane that simply does not match, which is one owner's
+    // own misconfiguration.
+    if existing.owner != owner {
+        return Err(Failure::conflict(
+            // Written out, like `needs_paired_map` above: the
+            // refusal-coverage scan reads a literal, and a code it cannot
+            // read is a code nothing checks is documented.
+            "multi_principal_unsupported",
+            "this protected server state belongs to another account; one Server serves exactly one owner",
+        )
+        .remedy("run that account its own ds server serve, with its own --state-dir"));
+    }
+    if existing.lane != lane {
+        return Err(host_failure(
+            "the existing server connection is on another lane; use a separate state directory",
+        ));
+    }
+    let Some(address) = existing.legacy_address else {
+        return Ok(existing);
     };
+    if std::net::TcpStream::connect_timeout(&address, std::time::Duration::from_secs(1)).is_ok() {
+        return Err(Failure::conflict(
+            "server_refused",
+            format!(
+                "{address}, where an older ds server on this state directory listened, still accepts connections; nothing was sent to it"
+            ),
+        )
+        .remedy(
+            "stop that older ds server serve, then start this one again; if that port belongs to something else, remove connection.json from the state directory (it holds only the retired bearer) and start again",
+        ));
+    }
+    write_record(directory, &existing.owner, &existing.lane)?;
+    Ok(Connection {
+        legacy_address: None,
+        ..existing
+    })
+}
+
+/// Write this build's record, owner-only, beside the old one and then over
+/// it, so a reader meets the old record or the new one and never half of
+/// either. Replacing a record from before the socket is what takes its
+/// bearer off the disk.
+fn write_record(directory: &Path, owner: &str, lane: &str) -> Result<(), Failure> {
+    let bytes = serde_json::to_vec(&Record {
+        schema: CONNECTION_SCHEMA.into(),
+        owner: owner.into(),
+        lane: lane.into(),
+    })
+    .map_err(host_failure)?;
+    let staging = directory.join("connection.json.new");
+    match fs::remove_file(&staging) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            return Err(host_failure(error));
+        }
+        _ => {}
+    }
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -887,26 +971,23 @@ pub fn connection(
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options.open(&path).map_err(host_failure)?;
-    file.write_all(&serde_json::to_vec(&connection).map_err(host_failure)?)
-        .map_err(host_failure)?;
+    let mut file = options.open(&staging).map_err(host_failure)?;
+    file.write_all(&bytes).map_err(host_failure)?;
     file.sync_all().map_err(host_failure)?;
+    fs::rename(&staging, directory.join("connection.json")).map_err(host_failure)?;
     #[cfg(unix)]
     fs::File::open(directory)
         .and_then(|d| d.sync_all())
         .map_err(host_failure)?;
-    Ok(connection)
+    Ok(())
 }
-pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
-    let listener = tokio::net::TcpListener::bind(app.connection.address)
-        .await
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::AddrInUse {
-                format!("{} already has a listener; use the running server, stop that instance, or select a different --listen and --state-dir", app.connection.address)
-            } else {
-                format!("cannot bind {}: {e}", app.connection.address)
-            }
-        })?;
+
+/// Run this host on the socket `listening` holds until it is told to stop.
+pub async fn serve(
+    mut app: App,
+    workers: usize,
+    listening: crate::transport::Listening,
+) -> Result<(), String> {
     // The durable store, created ONCE and by one thread, before anything that
     // will open it concurrently.
     //
@@ -940,31 +1021,35 @@ pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
         workers,
     )?;
     eprintln!(
-        "DS server ready at {} (protected owner access)",
-        app.connection.address
+        "DS server ready at {} (owner-only socket)",
+        listening.socket().display()
     );
-    let result = axum::serve(listener, router(app))
-        .with_graceful_shutdown(async {
-            #[cfg(unix)]
-            {
-                if let Ok(mut terminate) =
-                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                {
-                    tokio::select! {_=tokio::signal::ctrl_c()=>{},_=terminate.recv()=>{}}
-                }
-            }
-            #[cfg(not(unix))]
-            {
-                let _ = tokio::signal::ctrl_c().await;
-            }
-        })
-        .await
-        .map_err(|e| e.to_string());
+    let result = crate::transport::serve(listening, router(app), stop_requested()).await;
     workers.stop();
     solar_pump.stop();
     drop(workers);
     drop(solar_pump);
     result
+}
+
+/// Ctrl-C, or the SIGTERM a service manager sends.
+async fn stop_requested() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        match signal(SignalKind::terminate()) {
+            Ok(mut terminate) => {
+                tokio::select! {_ = tokio::signal::ctrl_c() => {}, _ = terminate.recv() => {}}
+            }
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
 }
 
 #[cfg(test)]
@@ -1005,12 +1090,18 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn test_connection(address: SocketAddr) -> Connection {
+    /// The operating-system account every host in these tests runs as, and
+    /// so the peer the kernel would name for its owner's own `ds`.
+    pub(crate) const OS_UID: u32 = 4242;
+    /// The peer the socket hands the router for the owner's own process.
+    pub(crate) const OWNER_PEER: crate::transport::Peer = crate::transport::Peer { uid: OS_UID };
+
+    pub(crate) fn test_connection(state: &Path) -> Connection {
         Connection {
-            address,
             owner: "test-owner".into(),
             lane: "stable".into(),
-            token: "a".repeat(64),
+            socket: crate::transport::socket_path(state),
+            legacy_address: None,
         }
     }
     pub(crate) fn identity(connection: &Connection) -> HostIdentity {
@@ -1049,7 +1140,7 @@ pub(crate) mod tests {
     /// A Server over `path` with no directory, no snapshot and no upstream:
     /// exactly what production has.
     fn app_with(path: &Path, authorized: bool, limits: Limits) -> App {
-        let connection = test_connection("127.0.0.1:19766".parse().unwrap());
+        let connection = test_connection(path);
         let database = path.join("store.sqlite");
         let sessions = ServerSessions::with(
             connection.clone(),
@@ -1061,6 +1152,7 @@ pub(crate) mod tests {
         App {
             database,
             connection,
+            os_uid: Some(OS_UID),
             auth: Arc::new(Auth(authorized)),
             requests: Arc::new(Door::new(4)),
             activity: None,
@@ -1118,12 +1210,12 @@ pub(crate) mod tests {
         .await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
-    /// One request straight at the router, with the owner bearer.
+    /// One request straight at the router, as the owner's own process.
     async fn call(app: App, method: &str, uri: &str, body: Option<Vec<u8>>) -> (StatusCode, Value) {
         let request = Request::builder()
             .method(method)
             .uri(uri)
-            .header("authorization", format!("Bearer {}", "a".repeat(64)))
+            .extension(OWNER_PEER)
             .header("content-type", "application/json");
         let response = router(app)
             .oneshot(
@@ -1151,7 +1243,7 @@ pub(crate) mod tests {
                 Request::builder()
                     .method(method)
                     .uri(uri)
-                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
+                    .extension(OWNER_PEER)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1164,20 +1256,28 @@ pub(crate) mod tests {
         (status, bytes.to_vec())
     }
 
+    /// A request as a given peer — or, with `None`, one that did not come
+    /// through the socket at all.
+    async fn as_peer(app: App, peer: Option<crate::transport::Peer>) -> Response {
+        let mut request = Request::builder().uri("/v1/jobs");
+        if let Some(peer) = peer {
+            request = request.extension(peer);
+        }
+        router(app)
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
     #[tokio::test]
     async fn unauthenticated_or_revoked_calls_never_read_or_create_jobs() {
         let dir = tempfile::tempdir().unwrap();
-        for (allowed, token) in [(true, "wrong".to_owned()), (false, "a".repeat(64))] {
-            let response = router(app(dir.path(), allowed))
-                .oneshot(
-                    Request::builder()
-                        .uri("/v1/jobs")
-                        .header("authorization", format!("Bearer {token}"))
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
+        for (allowed, peer) in [
+            (true, Some(crate::transport::Peer { uid: OS_UID + 1 })),
+            (true, None),
+            (false, Some(OWNER_PEER)),
+        ] {
+            let response = as_peer(app(dir.path(), allowed), peer).await;
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
             assert!(!dir.path().join("store.sqlite").exists());
         }
@@ -1190,52 +1290,61 @@ pub(crate) mod tests {
         assert_eq!(value, json!({"jobs":[],"more":false}));
     }
 
-    /// One owner per Server, enforced by the bearer and by nothing else.
-    /// There is no header that names an account and no second identity to
-    /// distinguish: anything but this owner's bearer is denied at the door,
-    /// and that is the whole of the rule. Many users are many machines.
+    /// One owner per Server, enforced by the kernel's word on who is at the
+    /// other end of the socket and by nothing else. There is no header that
+    /// names an account and no second identity to distinguish: a process of
+    /// any other account — root included — is denied at the door, and that is
+    /// the whole of the rule. Many users are many machines.
     #[tokio::test]
-    async fn one_owner_per_server_is_the_bearer_and_nothing_else() {
+    async fn one_owner_per_server_is_the_socket_peer_and_nothing_else() {
         let dir = tempfile::tempdir().unwrap();
-        let denied = |token: String| {
-            let app = app(dir.path(), true);
-            async move {
-                router(app)
-                    .oneshot(
-                        Request::builder()
-                            .uri("/v1/jobs")
-                            .header("authorization", format!("Bearer {token}"))
-                            .body(Body::empty())
-                            .unwrap(),
-                    )
-                    .await
-                    .unwrap()
-            }
-        };
-        let response = denied("b".repeat(64)).await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        let bytes = axum::body::to_bytes(response.into_body(), 4096)
-            .await
-            .unwrap();
-        let value: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(value["error"], "server access denied");
-        // A header naming an account is not a thing this host reads.
-        let response = router(app(dir.path(), true))
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/jobs")
-                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
-                    .header("x-ds-principal", "uid-somebody-else")
-                    .body(Body::empty())
-                    .unwrap(),
+        for stranger in [OS_UID + 1, 0] {
+            let response = as_peer(
+                app(dir.path(), true),
+                Some(crate::transport::Peer { uid: stranger }),
             )
-            .await
-            .unwrap();
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "the owner's bearer is the only question asked"
-        );
+            .await;
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            let bytes = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            let value: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(value["code"], "server_peer_refused");
+            assert_eq!(value["class"], "unauthorized");
+            // The refusal names nobody: not the peer, not the owner.
+            let said = String::from_utf8_lossy(&bytes);
+            for secret in [OS_UID.to_string(), stranger.to_string(), UID.to_owned()] {
+                assert!(!said.contains(&secret), "{said} names {secret}");
+            }
+        }
+        // A header naming an account, or the bearer an older client sends, is
+        // not a thing this host reads: the owner's own process is served
+        // whatever it says, and a stranger is refused whatever it says.
+        for (peer, expected) in [
+            (OWNER_PEER, StatusCode::OK),
+            (
+                crate::transport::Peer { uid: OS_UID + 1 },
+                StatusCode::UNAUTHORIZED,
+            ),
+        ] {
+            let response = router(app(dir.path(), true))
+                .oneshot(
+                    Request::builder()
+                        .uri("/v1/jobs")
+                        .extension(peer)
+                        .header("x-ds-principal", "uid-somebody-else")
+                        .header("authorization", format!("Bearer {}", "a".repeat(64)))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                expected,
+                "the socket's peer is the only question asked"
+            );
+        }
     }
 
     /// One operation id, one shape, whichever host runs it — and where this
@@ -2714,31 +2823,26 @@ pub(crate) mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
-        let first = super::connection(
-            dir.path(),
-            "127.0.0.1:19766".parse().unwrap(),
-            "owner".into(),
-            "stable".into(),
-        )
-        .unwrap();
-        assert_eq!(load_connection(dir.path()).unwrap().token, first.token);
-        // The same owner, restarted: the same protected connection, so a
-        // running host's bearer survives a restart rather than rotating.
+        let first = super::connection(dir.path(), "owner".into(), "stable".into()).unwrap();
+        assert_eq!(first.socket, dir.path().join("server.sock"));
+        assert_eq!(first.legacy_address, None);
+        // What is on disk names the owner and the lane, and nothing that
+        // opens the door: there is no bearer left to keep.
+        let recorded: Value =
+            serde_json::from_slice(&fs::read(dir.path().join("connection.json")).unwrap()).unwrap();
         assert_eq!(
-            super::connection(dir.path(), first.address, "owner".into(), "stable".into())
-                .unwrap()
-                .token,
-            first.token
+            recorded,
+            json!({"schema": CONNECTION_SCHEMA, "owner": "owner", "lane": "stable"})
         );
+        // The same owner, restarted: the same protected connection.
+        let again = super::connection(dir.path(), "owner".into(), "stable".into()).unwrap();
+        assert_eq!(again.owner, first.owner);
+        assert_eq!(load_connection(dir.path()).unwrap().socket, first.socket);
         // A SECOND ACCOUNT pointed at one Server's protected state is the one
         // place many users meet one host, and it is answered by its own name
         // with the remedy that is the whole model: a host of one's own.
-        // `.err()` rather than `expect_err`: `Connection` has no `Debug` on
-        // purpose, because a panic message must never carry the bearer.
-        let second_account =
-            super::connection(dir.path(), first.address, "other".into(), "stable".into())
-                .err()
-                .expect("one Server serves one owner");
+        let second_account = super::connection(dir.path(), "other".into(), "stable".into())
+            .expect_err("one Server serves one owner");
         assert_eq!(second_account.code(), MULTI_PRINCIPAL_UNSUPPORTED);
         assert_eq!(second_account.class(), ExitClass::Conflict);
         assert!(
@@ -2747,13 +2851,11 @@ pub(crate) mod tests {
                 .is_some_and(|remedy| remedy.contains("--state-dir")),
             "the remedy is a host of its own: {second_account:?}"
         );
-        // The same owner on another lane or address is that owner's own
+        // The same owner on another lane is that owner's own
         // misconfiguration, and says so instead of accusing them of being
         // somebody else.
-        let other_lane =
-            super::connection(dir.path(), first.address, "owner".into(), "canary".into())
-                .err()
-                .expect("one state directory, one lane");
+        let other_lane = super::connection(dir.path(), "owner".into(), "canary".into())
+            .expect_err("one state directory, one lane");
         assert_eq!(other_lane.code(), "server_refused");
         fs::set_permissions(
             dir.path().join("connection.json"),
@@ -2761,5 +2863,77 @@ pub(crate) mod tests {
         )
         .unwrap();
         assert!(load_connection(dir.path()).is_err());
+    }
+
+    /// The record a `ds` from before the socket left: an address and a bearer
+    /// that never rotated. It still says whose state this is; it is never a
+    /// door. The next host adopts it — unless the old one may still be
+    /// running — and takes the bearer off the disk.
+    #[cfg(unix)]
+    #[test]
+    fn a_record_from_before_the_socket_is_adopted_and_its_bearer_retired() {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let dir = tempfile::tempdir().unwrap();
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        // An older Server still listening where the record says it does.
+        let older = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = older.local_addr().unwrap();
+        let bearer = "d".repeat(64);
+        let legacy =
+            json!({"address": address, "owner": "owner", "lane": "stable", "token": bearer});
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(dir.path().join("connection.json"))
+            .unwrap();
+        file.write_all(&serde_json::to_vec(&legacy).unwrap())
+            .unwrap();
+        drop(file);
+
+        // A client reads whose it is and where it was, and nothing more.
+        let read = load_connection(dir.path()).unwrap();
+        assert_eq!(read.owner, "owner");
+        assert_eq!(read.legacy_address, Some(address));
+        assert!(
+            !format!("{read:?}").contains(&bearer),
+            "the bearer is never read"
+        );
+
+        // Another account is still another account, whatever wrote the record.
+        let stranger = super::connection(dir.path(), "other".into(), "stable".into())
+            .expect_err("one Server serves one owner");
+        assert_eq!(stranger.code(), MULTI_PRINCIPAL_UNSUPPORTED);
+
+        // The older Server may still be running: two hosts on one queue is
+        // refused, and the record stays as it was.
+        let running = super::connection(dir.path(), "owner".into(), "stable".into())
+            .expect_err("an older host may still be serving this state");
+        assert_eq!(running.code(), "server_refused");
+        assert!(
+            running.message().contains(&address.to_string()),
+            "{running:?}"
+        );
+        assert!(!running.message().contains(&bearer));
+        assert!(
+            fs::read_to_string(dir.path().join("connection.json"))
+                .unwrap()
+                .contains(&bearer)
+        );
+
+        // It stopped: the record is adopted and rewritten without the bearer.
+        drop(older);
+        let adopted = super::connection(dir.path(), "owner".into(), "stable".into()).unwrap();
+        assert_eq!(adopted.legacy_address, None);
+        let on_disk = fs::read_to_string(dir.path().join("connection.json")).unwrap();
+        assert!(
+            !on_disk.contains(&bearer),
+            "the retired bearer is off the disk"
+        );
+        assert!(!on_disk.contains("token"), "{on_disk}");
+        let meta = fs::metadata(dir.path().join("connection.json")).unwrap();
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        assert!(!dir.path().join("connection.json.new").exists());
+        assert_eq!(load_connection(dir.path()).unwrap().legacy_address, None);
     }
 }

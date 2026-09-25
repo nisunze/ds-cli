@@ -2,8 +2,8 @@
 //! driven by a client with no Tauri process, browser, paired map or renderer.
 //!
 //! Every decision is `ds_layer_ops`' — the same owner `ds map layer …` calls
-//! natively. This module only binds it to the protected loopback transport:
-//! the request must carry the owner-only connection bearer and pass the
+//! natively. This module only binds it to the owner-only socket:
+//! the request must come from the owner's own account and pass the
 //! native authorizer (`access` in `host.rs`), the lane is the connection's,
 //! and the principal comes from the native identity the Server is bound to,
 //! observed at request time. A client never names a lane, account or
@@ -390,6 +390,9 @@ pub async fn default_visibility(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    // Everything below the first test drives the real owner-only socket, which
+    // only Unix has; elsewhere its fixtures stand unused rather than absent.
+    #![cfg_attr(not(unix), allow(dead_code, unused_imports))]
     #[test]
     fn captured_account_cannot_pass_after_current_account_switches_back() {
         struct Accept;
@@ -409,7 +412,7 @@ pub(crate) mod tests {
         }
         assert!(super::authorize_captured_owner(&Revoked, "owner-a", "owner-a").is_err());
     }
-    // The realistic workflow through a REAL loopback listener with a fixture
+    // The realistic workflow through the REAL owner-only socket with a fixture
     // identity and a fixture upstream: list, hide, restart, list the retained
     // state, show, reorder, invalid id, unauthorized, revoked, project change
     // during a request, account change across restart. Fixtures are not a
@@ -575,26 +578,35 @@ pub(crate) mod tests {
             switch_project_on_read: AtomicBool::new(false),
         })
     }
-    pub(crate) const TOKEN: &str =
-        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-    /// One running Server: a real TCP listener on a free loopback port.
+    /// One running Server: the real owner-only socket in `dir`, answered by
+    /// the production accept loop.
+    #[cfg(unix)]
     pub(crate) struct Running {
-        pub(crate) address: std::net::SocketAddr,
-        pub(crate) handle: tokio::task::JoinHandle<()>,
+        pub(crate) socket: std::path::PathBuf,
+        handle: tokio::task::JoinHandle<()>,
     }
+    #[cfg(unix)]
+    impl Running {
+        /// Stop it and wait until its socket and lock are released, as a
+        /// host that exits does.
+        pub(crate) async fn stop(self) {
+            self.handle.abort();
+            let _ = self.handle.await;
+        }
+    }
+    #[cfg(unix)]
     pub(crate) async fn start(
         dir: &std::path::Path,
         upstream: Arc<Upstream>,
         allowed: Arc<AtomicBool>,
     ) -> Running {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
+        let listening = crate::transport::listen(dir).unwrap();
+        let socket = listening.socket().to_owned();
         let connection = Connection {
-            address,
             owner: "owner-digest".into(),
             lane: "canary".into(),
-            token: TOKEN.into(),
+            socket: socket.clone(),
+            legacy_address: None,
         };
         let app = App {
             database: dir.join("store.sqlite"),
@@ -619,6 +631,7 @@ pub(crate) mod tests {
                 Arc::new(crate::host::tests::NoGateway),
             ),
             connection,
+            os_uid: crate::transport::own_uid(),
             auth: Arc::new(Auth(allowed)),
             requests: Arc::new(crate::host::Door::new(4)),
             activity: None,
@@ -629,48 +642,46 @@ pub(crate) mod tests {
             }),
         };
         let handle = tokio::spawn(async move {
-            axum::serve(listener, router(app)).await.unwrap();
+            crate::transport::serve(listening, router(app), std::future::pending())
+                .await
+                .unwrap();
         });
-        Running { address, handle }
+        Running { socket, handle }
     }
-    /// The client half, over the wire like `ds map layer … --target server` does.
+    /// The client half, over the socket exactly as `ds map layer …
+    /// --target server` reaches it.
+    #[cfg(unix)]
     fn call(
-        address: std::net::SocketAddr,
+        socket: &std::path::Path,
         method: &str,
         path: &str,
         body: Option<Value>,
-        token: &str,
     ) -> (u16, Value) {
-        let url = format!("http://{address}{path}");
-        let agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .build()
-            .new_agent();
-        let mut response = match method {
-            "GET" => agent
-                .get(&url)
-                .header("authorization", &format!("Bearer {token}"))
-                .call()
-                .unwrap(),
-            _ => agent
-                .post(&url)
-                .header("authorization", &format!("Bearer {token}"))
-                .header("content-type", "application/json")
-                .send(serde_json::to_vec(&body.unwrap()).unwrap())
-                .unwrap(),
-        };
-        let status = response.status().as_u16();
-        let text = response.body_mut().read_to_string().unwrap();
-        (status, serde_json::from_str(&text).unwrap_or(Value::Null))
+        let body = body.map(|body| serde_json::to_vec(&body).unwrap());
+        let reply = crate::transport::call(
+            socket,
+            method,
+            path,
+            &[("content-type", "application/json")],
+            body.as_deref(),
+            64 * 1024 * 1024,
+            std::time::Duration::from_secs(60),
+        )
+        .unwrap();
+        (
+            reply.status,
+            serde_json::from_slice(&reply.body).unwrap_or(Value::Null),
+        )
     }
+    #[cfg(unix)]
     pub(crate) async fn wire(
-        address: std::net::SocketAddr,
+        socket: &std::path::Path,
         method: &'static str,
         path: &'static str,
         body: Option<Value>,
-        token: &'static str,
     ) -> (u16, Value) {
-        tokio::task::spawn_blocking(move || call(address, method, path, body, token))
+        let socket = socket.to_owned();
+        tokio::task::spawn_blocking(move || call(&socket, method, path, body))
             .await
             .unwrap()
     }
@@ -686,6 +697,7 @@ pub(crate) mod tests {
     /// The project is the caller's word, and the Server checks it two ways:
     /// it must be there, and it must be the one the document that comes back
     /// is actually for. Nothing is fetched to decide either.
+    #[cfg(unix)]
     #[tokio::test(flavor = "multi_thread")]
     async fn the_project_is_named_by_the_caller_and_never_assumed() {
         let dir = tempfile::tempdir().unwrap();
@@ -694,21 +706,15 @@ pub(crate) mod tests {
         let server = start(dir.path(), upstream.clone(), allowed).await;
 
         // No project at all.
-        let (status, refused) = wire(server.address, "GET", "/v1/layers", None, TOKEN).await;
+        let (status, refused) = wire(&server.socket, "GET", "/v1/layers", None).await;
         assert_eq!(status, 400, "{refused}");
         assert_eq!(refused["code"], "project_required");
         assert_eq!(refused["class"], "invalid_input");
 
         // A name outside the kernel's bound: refused under the kernel's own
         // word for it, before anything is read.
-        let (status, padded) = wire(
-            server.address,
-            "GET",
-            "/v1/layers?project=%20padded",
-            None,
-            TOKEN,
-        )
-        .await;
+        let (status, padded) =
+            wire(&server.socket, "GET", "/v1/layers?project=%20padded", None).await;
         assert_eq!(status, 400, "{padded}");
         assert_eq!(padded["code"], "context_corrupt");
 
@@ -717,11 +723,10 @@ pub(crate) mod tests {
         // Server invents from a directory it does not hold, and never another
         // project's catalogue served under the requested name.
         let (status, elsewhere) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-nowhere",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 401, "{elsewhere}");
@@ -745,7 +750,7 @@ pub(crate) mod tests {
                 json!({"orders": [{"layer_id": "survey/poles", "order": 100}]}),
             ),
         ] {
-            let (status, refused) = call(server.address, "POST", path, Some(body), TOKEN);
+            let (status, refused) = call(&server.socket, "POST", path, Some(body));
             assert_eq!(status, 401, "{refused}");
             assert_eq!(refused["code"], "auth_rejected");
         }
@@ -764,11 +769,10 @@ pub(crate) mod tests {
 
         // Named correctly, the same request is served.
         let (status, listing) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{listing}");
@@ -781,11 +785,10 @@ pub(crate) mod tests {
             .switch_project_on_read
             .store(true, Ordering::SeqCst);
         let (status, switched) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 409, "{switched}");
@@ -800,13 +803,14 @@ pub(crate) mod tests {
         upstream
             .switch_project_on_read
             .store(false, Ordering::SeqCst);
-        server.handle.abort();
+        server.stop().await;
     }
 
     /// F3: the Server serves ANY project its owner names, not only whichever
     /// one this machine has selected. Two of the account's projects are read
     /// through one running host, each answers its own catalogue, and each
     /// remembers its own toggles — a hide in one is invisible in the other.
+    #[cfg(unix)]
     #[tokio::test(flavor = "multi_thread")]
     async fn a_second_project_the_owner_names_is_served_on_its_own_terms() {
         let dir = tempfile::tempdir().unwrap();
@@ -816,23 +820,16 @@ pub(crate) mod tests {
 
         // Two catalogues, from one host, without anything being selected.
         let (status, kigali) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{kigali}");
         assert_eq!(kigali["project"], "proj-kigali");
-        let (status, lome) = wire(
-            server.address,
-            "GET",
-            "/v1/layers?project=proj-lome",
-            None,
-            TOKEN,
-        )
-        .await;
+        let (status, lome) =
+            wire(&server.socket, "GET", "/v1/layers?project=proj-lome", None).await;
         assert_eq!(status, 200, "{lome}");
         assert_eq!(lome["project"], "proj-lome");
         assert_eq!(
@@ -851,33 +848,24 @@ pub(crate) mod tests {
 
         // A write lands in the project it named, and only there.
         let (status, hidden) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/visibility?project=proj-lome",
             Some(json!({"layers": ["survey/poles"], "visible": false})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{hidden}");
         assert_eq!(hidden["project"], "proj-lome");
-        let (_, lome) = wire(
-            server.address,
-            "GET",
-            "/v1/layers?project=proj-lome",
-            None,
-            TOKEN,
-        )
-        .await;
+        let (_, lome) = wire(&server.socket, "GET", "/v1/layers?project=proj-lome", None).await;
         assert_eq!(
             row(&lome, "survey/poles")["visibility"]["any_visible"],
             false
         );
         let (_, kigali) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(
@@ -888,11 +876,10 @@ pub(crate) mod tests {
 
         // The governed order write reaches the source under the same name.
         let (status, ordered) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/order?project=proj-lome",
             Some(json!({"orders": [{"layer_id": "survey/poles", "order": 100}]})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{ordered}");
@@ -901,9 +888,10 @@ pub(crate) mod tests {
             upstream.reorders.lock().unwrap().first().unwrap().0,
             "proj-lome"
         );
-        server.handle.abort();
+        server.stop().await;
     }
 
+    #[cfg(unix)]
     #[tokio::test(flavor = "multi_thread")]
     async fn the_workflow_runs_through_a_real_listener_and_survives_restart() {
         let dir = tempfile::tempdir().unwrap();
@@ -913,11 +901,10 @@ pub(crate) mod tests {
 
         // list: every family reads as the document authored it, zoom reported
         let (status, listing) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali&zoom=8",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{listing}");
@@ -933,11 +920,10 @@ pub(crate) mod tests {
 
         // hide: the family is written, the answer reads hidden
         let (status, hidden) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["survey/poles"], "visible": false})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{hidden}");
@@ -956,14 +942,13 @@ pub(crate) mod tests {
         );
 
         // restart: a new process over the same state; the toggle is retained
-        server.handle.abort();
+        server.stop().await;
         let server = start(dir.path(), upstream.clone(), allowed.clone()).await;
         let (status, listing) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200);
@@ -979,32 +964,29 @@ pub(crate) mod tests {
 
         // show: back to visible, idempotent on repeat
         let (status, shown) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["survey/poles"], "visible": true})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200);
         assert_eq!(shown["changed"], json!(["ds-poles", "ds-poles__label"]));
         let (_, again) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["survey/poles"], "visible": true})),
-            TOKEN,
         )
         .await;
         assert_eq!(again["changed"], json!([]));
 
         // reorder: admitted, then written upstream; partial says what it leaves unlisted
         let (status, ordered) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/order?project=proj-kigali",
             Some(json!({"orders": [{"layer_id": "survey/poles", "order": 100}]})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{ordered}");
@@ -1016,11 +998,10 @@ pub(crate) mod tests {
         // project default: the Server transports the same shared request and
         // the owner admits a canonical id before the governed write.
         let (status, defaulted) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/default-visibility?project=proj-kigali",
             Some(json!({"defaults": [{"layer_id": "survey/poles", "visible": false}]})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200, "{defaulted}");
@@ -1029,11 +1010,10 @@ pub(crate) mod tests {
 
         // invalid ids: typed refusals, nothing written upstream or locally
         let (status, refused) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/order?project=proj-kigali",
             Some(json!({"orders": [{"layer_id": "ds-poles", "order": 1}]})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 400);
@@ -1041,41 +1021,37 @@ pub(crate) mod tests {
         assert_eq!(refused["class"], "invalid_input");
         assert_eq!(upstream.reorders.lock().unwrap().len(), 1);
         let (status, refused) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["ds-poles"], "visible": false})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 400);
         assert_eq!(refused["code"], "unknown_layer");
         let (status, refused) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layer": "x"})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 400);
         assert_eq!(refused["code"], "invalid_input");
         let (status, refused) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali&limit=0",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 400);
         assert_eq!(refused["code"], "invalid_number");
         let (status, _) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali&foo=1",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 400);
@@ -1087,23 +1063,15 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        // unauthorized: a wrong bearer and a revoked device both stop at the door
-        let (status, _) = wire(
-            server.address,
-            "POST",
-            "/v1/layers/visibility?project=proj-kigali",
-            Some(json!({"layers": ["survey/poles"], "visible": false})),
-            "not-the-token",
-        )
-        .await;
-        assert_eq!(status, 401);
+        // unauthorized: a revoked device stops at the door. (A process of
+        // another account stops there too, before this; that is the socket's
+        // own proof, `host::tests::one_owner_per_server_is_the_socket_peer…`.)
         allowed.store(false, Ordering::SeqCst);
         let (status, _) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 401);
@@ -1125,11 +1093,10 @@ pub(crate) mod tests {
             .switch_project_on_read
             .store(true, Ordering::SeqCst);
         let (status, refused) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(status, 409, "{refused}");
@@ -1140,24 +1107,22 @@ pub(crate) mod tests {
 
         // account change across restart: the new account sees its own defaults,
         // and the previous account's toggles are still on disk under its scope
-        server.handle.abort();
+        server.stop().await;
         let server = start(dir.path(), fixture_upstream("uid-b"), allowed.clone()).await;
         let (status, hidden_b) = wire(
-            server.address,
+            &server.socket,
             "POST",
             "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["design/lines"], "visible": false})),
-            TOKEN,
         )
         .await;
         assert_eq!(status, 200);
         assert_eq!(hidden_b["changed"], json!(["ds-lines"]));
         let (_, listing_b) = wire(
-            server.address,
+            &server.socket,
             "GET",
             "/v1/layers?project=proj-kigali",
             None,
-            TOKEN,
         )
         .await;
         assert_eq!(
@@ -1183,6 +1148,6 @@ pub(crate) mod tests {
             )
             .unwrap()["ds-lines"]
         );
-        server.handle.abort();
+        server.stop().await;
     }
 }

@@ -8,8 +8,8 @@
 //! per operation, whichever host runs it) and 2026-09-12 §0c (the Server IS
 //! the desktop's core, offline-first, one owner).
 //!
-//! Every assertion here is made at the authoritative boundary: a real loopback
-//! listener the tests speak HTTP to, the real `ds` executable where the claim
+//! Every assertion here is made at the authoritative boundary: the real
+//! owner-only socket the tests speak HTTP over, the real `ds` executable where the claim
 //! is about what an operator types, and the durable SQLite queue on disk. No
 //! route is stubbed, no decision is mocked, and nothing is checked by reading
 //! a source string. There is no gateway anywhere and no project directory of
@@ -46,6 +46,10 @@
 //! What is NOT proven here, and why, is stated in the `unproven_…` tests at
 //! the bottom: each is `#[ignore]`d with its reason in its own name. Solar
 //! EXECUTION on the Server and report export on the Server are among them.
+//!
+//! The Server's only door is an owner-only Unix socket, so this proof is a
+//! Unix one: where there are no Unix sockets there is no Server to prove.
+#![cfg(unix)]
 
 mod fixtures;
 
@@ -519,18 +523,18 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
     assert_eq!(stored.idempotency_key, "a1");
 }
 
-/// One Server is signed in as exactly one owner, and its owner-only loopback
-/// bearer is that owner's. There is no header that names an account and no
-/// second identity this process can have, so the whole rule is the bearer: a
-/// different one is 401, and the refusal names nobody. Many users are many
-/// machines, which is the deployment model and not a gap.
+/// One Server is signed in as exactly one owner, and its door is the
+/// owner-only socket: the kernel names the account of the process at the
+/// other end, and only this Server's own is served. There is no header that
+/// names an account, no bearer, and no second identity this process can have,
+/// so the whole rule is the peer: another account is 401, and the refusal
+/// names nobody. Many users are many machines, which is the deployment model
+/// and not a gap.
 #[test]
-fn a_different_bearer_is_denied_without_naming_a_principal() {
+fn a_different_account_is_denied_without_naming_a_principal() {
     let host = Host::start(limits());
-    let stranger_token = "f".repeat(64);
 
-    // A well-formed bearer that is not this Server's owner's, on a read and on
-    // a write alike.
+    // A process of another account, on a read and on a write alike.
     for (method, path, body) in [
         ("GET", "/v1/jobs".to_owned(), None),
         (
@@ -544,12 +548,14 @@ fn a_different_bearer_is_denied_without_naming_a_principal() {
             Some(HIDE_POLES.to_vec()),
         ),
     ] {
-        let denied = host.as_bearer(&stranger_token, method, &path, body.as_deref());
+        let denied = host.as_stranger(method, &path, body.as_deref());
         assert_eq!(denied.status, 401, "{method} {path}: {:?}", denied.json());
-        // The whole body. It names no account, no uid, no principal and no
-        // project — there is nothing here for a caller to learn.
-        assert_eq!(denied.json(), json!({"error": "server access denied"}));
-        for secret in [UID, OWNER, DEPLOYMENT, A] {
+        assert_eq!(denied.code(), "server_peer_refused");
+        assert_eq!(denied.json()["class"], "unauthorized");
+        // It names no account, no uid, no principal and no project — there is
+        // nothing here for a caller to learn.
+        let own = ds_cli_server::transport::own_uid().expect("a Unix account");
+        for secret in [UID, OWNER, DEPLOYMENT, A, &own.to_string()] {
             assert!(
                 !String::from_utf8_lossy(&denied.body).contains(secret),
                 "a denial discloses nothing: {}",
@@ -558,15 +564,19 @@ fn a_different_bearer_is_denied_without_naming_a_principal() {
         }
     }
 
-    // And the header a client used to send to name an account is not read at
-    // all: with the owner's own bearer the answer is byte-identical with and
-    // without it, so there is no second identity to claim.
+    // And the headers a client used to send are not read at all: the header
+    // that named an account, and the bearer an older `ds` sends. The owner's
+    // own process gets a byte-identical answer with and without them, so
+    // there is no second identity to claim and no secret to present.
     let plain = host.raw("GET", "/v1/jobs", None);
     let with_header = host.raw_with(
         "GET",
         "/v1/jobs",
         None,
-        &[("x-ds-principal", "uid-somebody-else")],
+        &[
+            ("x-ds-principal", "uid-somebody-else"),
+            ("authorization", "Bearer ffffffffffffffffffffffffffffffff"),
+        ],
     );
     assert_eq!(plain.status, 200, "{:?}", plain.json());
     assert_eq!(with_header, plain);
@@ -743,7 +753,7 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
     .expect("admitted");
     let live = admitted["job"]["id"].as_str().unwrap().to_owned();
 
-    // Restart on the same protected state and the same fixed loopback port.
+    // Restart on the same protected state, and so the same socket.
     host.restart();
     // `serve` starts its workers, and starting them is when a released
     // Server's rows get whatever context they can honestly be given — before
@@ -1834,24 +1844,18 @@ fn activity_scope_covers_a_project_older_than_one_page_of_the_queue() {
     );
 }
 
-/// Nothing reaches the store without the owner bearer, and a revoked device
-/// stops every route at the door — including the ones that would otherwise
-/// create a queue file.
+/// Nothing reaches the store from any account but the owner's, and a revoked
+/// device stops every route at the door — including the ones that would
+/// otherwise create a queue file.
 #[test]
 fn an_unauthenticated_call_never_reads_or_creates_anything() {
     let host = Host::start(limits());
-    let denied = ureq::Agent::config_builder()
-        .http_status_as_error(false)
-        .build()
-        .new_agent()
-        .post(format!(
-            "http://{}/v1/transformer-processing/x?project={A}",
-            host.address
-        ))
-        .header("authorization", "Bearer wrong")
-        .send(transformer("T1").as_slice())
-        .expect("answered");
-    assert_eq!(denied.status().as_u16(), 401);
+    let denied = host.as_stranger(
+        "POST",
+        &format!("/v1/transformer-processing/x?project={A}"),
+        Some(&transformer("T1")),
+    );
+    assert_eq!(denied.status, 401, "{}", denied.stringify());
     assert!(
         !host.database().exists(),
         "an unauthenticated call created no queue"
@@ -1997,6 +2001,196 @@ fn the_server_starts_and_serves_with_no_gateway_and_the_real_authorizer() {
         server.said().contains("the host is unaffected"),
         "{}",
         server.said()
+    );
+}
+
+/// The shipped door is the owner-only socket and nothing else: the real
+/// `ds server serve` process holds no TCP listener at all, its socket and its
+/// record are owner-only and carry no secret, the real `ds` of the same
+/// account is served through it, a second host on the same state is refused,
+/// and a stopped host leaves nothing to connect to — refused at once, never a
+/// hang.
+#[test]
+fn the_shipped_server_answers_only_on_its_owner_only_socket_and_opens_no_port() {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+    let machine = device_home::DeviceHome::linked(LANE, FIRST_DEVICE);
+    let mut server = LiveServer::start(&machine, 2);
+    let own = ds_cli_server::transport::own_uid().expect("a Unix account");
+
+    // No port: the kernel lists no TCP socket in LISTEN for the process. The
+    // probe is proven able to see one by pointing it at this test process
+    // while it holds a listener of its own.
+    #[cfg(target_os = "linux")]
+    {
+        assert_eq!(
+            tcp_listeners(server.pid()),
+            Vec::<String>::new(),
+            "the Server opened a TCP listener: {}",
+            server.said()
+        );
+        let control = std::net::TcpListener::bind("127.0.0.1:0").expect("a control listener");
+        assert!(
+            !tcp_listeners(std::process::id()).is_empty(),
+            "the probe must see a TCP listener where there is one"
+        );
+        drop(control);
+    }
+
+    // The door: a socket, this account's, owner-only, in the 0700 state.
+    let socket = std::fs::symlink_metadata(&server.socket).expect("the Server's socket");
+    assert!(socket.file_type().is_socket());
+    assert_eq!(socket.uid(), own);
+    assert_eq!(socket.permissions().mode() & 0o777, 0o600);
+    let state = std::fs::metadata(server.state.path()).expect("the state directory");
+    assert_eq!(state.permissions().mode() & 0o777, 0o700);
+    assert!(
+        server.said().contains(&server.socket.display().to_string()),
+        "the host says where it answers: {}",
+        server.said()
+    );
+
+    // The record names whose Server this is and nothing that opens it.
+    let record: Value = serde_json::from_slice(
+        &std::fs::read(server.state.path().join("connection.json")).expect("the record"),
+    )
+    .expect("the record parses");
+    let mut keys: Vec<&str> = record
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["lane", "owner", "schema"], "{record}");
+    assert_eq!(record["schema"], ds_cli_server::host::CONNECTION_SCHEMA);
+
+    // The same account's real `ds`, through the socket.
+    let status = server.ds(&["server", "status", "--project", A, "--output", "json"]);
+    assert_eq!(status.code, 0, "{} {}", status.stdout, status.stderr);
+    assert_eq!(status.envelope["status"], "ok", "{}", status.stdout);
+
+    // One host per state directory, by the lock and by name.
+    let state_dir = server.state.path().display().to_string();
+    let second = run_ds_in(
+        &server.config,
+        &[
+            "server",
+            "serve",
+            "--lane",
+            LANE,
+            "--state-dir",
+            &state_dir,
+            "--output",
+            "json",
+        ],
+    );
+    assert_ne!(second.code, 0, "{} {}", second.stdout, second.stderr);
+    assert!(
+        second.stdout.contains("already running"),
+        "{} {}",
+        second.stdout,
+        second.stderr
+    );
+    // …and the first is still serving.
+    assert_eq!(
+        server
+            .raw("GET", &format!("/v1/jobs?project={A}"), None)
+            .status,
+        200
+    );
+
+    // Stopped: the socket goes with it, and a caller is told at once.
+    server.stop();
+    assert!(!server.socket.exists(), "a stopped host leaves no socket");
+    let started = std::time::Instant::now();
+    let unreachable = server.ds(&["server", "status", "--project", A, "--output", "json"]);
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "a stopped Server is answered at once"
+    );
+    assert_ne!(unreachable.code, 0);
+    assert_eq!(
+        unreachable.envelope["error"]["code"], "server_refused",
+        "{}",
+        unreachable.stdout
+    );
+    assert!(
+        unreachable.stdout.contains("start ds server serve"),
+        "{}",
+        unreachable.stdout
+    );
+}
+
+/// A Server started by a `ds` from before the socket admitted a bearer on a
+/// TCP port. This `ds` meets its record and refuses by name, with the fix —
+/// and sends that port nothing at all: no connection is ever made to it.
+#[test]
+fn a_server_started_by_an_older_ds_is_refused_by_name_and_sent_nothing() {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let state = tempfile::tempdir().expect("state");
+    std::fs::set_permissions(state.path(), std::fs::Permissions::from_mode(0o700))
+        .expect("owner-only state directory");
+    // Whatever listens where the old record points — the older Server, or
+    // something that took its port — and counts who knocks.
+    let older = std::net::TcpListener::bind("127.0.0.1:0").expect("the older port");
+    older.set_nonblocking(true).expect("non-blocking");
+    let address = older.local_addr().expect("its address");
+    let bearer = "e".repeat(64);
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(state.path().join("connection.json"))
+        .expect("the older record");
+    std::io::Write::write_all(
+        &mut file,
+        &serde_json::to_vec(
+            &json!({"address": address, "owner": OWNER, "lane": LANE, "token": bearer}),
+        )
+        .expect("encodes"),
+    )
+    .expect("written");
+    drop(file);
+
+    let state_dir = state.path().display().to_string();
+    let refused = run_ds(&[
+        "server",
+        "status",
+        "--project",
+        A,
+        "--state-dir",
+        &state_dir,
+        "--lane",
+        LANE,
+        "--output",
+        "json",
+    ]);
+    assert_ne!(refused.code, 0, "{}", refused.stdout);
+    assert_eq!(
+        refused.envelope["error"]["code"], "server_refused",
+        "{}",
+        refused.stdout
+    );
+    let message = refused.envelope["error"]["message"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(message.contains("older ds"), "{}", refused.stdout);
+    assert!(message.contains(&address.to_string()), "{}", refused.stdout);
+    let remedy = refused.envelope["error"]["remedy"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        remedy.contains("start it again with this ds"),
+        "{}",
+        refused.stdout
+    );
+    assert!(!refused.stdout.contains(&bearer) && !refused.stderr.contains(&bearer));
+    // Nothing knocked: the old port never saw a connection, so it never saw
+    // a byte, let alone the bearer.
+    assert_eq!(
+        older.accept().map(|_| ()).map_err(|error| error.kind()),
+        Err(std::io::ErrorKind::WouldBlock),
+        "this ds connected to the older Server's port"
     );
 }
 
@@ -2165,7 +2359,7 @@ fn the_request_door_answers_a_typed_capacity_refusal() {
     );
     // A capacity answer names counts, never a project or an identity.
     let said = refused.stringify();
-    for secret in [A, B, UID, OWNER, host.token.as_str()] {
+    for secret in [A, B, UID, OWNER] {
         assert!(!said.contains(secret), "{said} names {secret}");
     }
 
@@ -2295,13 +2489,8 @@ fn a_legacy_queued_row_is_readable_by_input_and_resubmittable() {
         assert_eq!(hidden.code(), "not_visible");
         assert_eq!(hidden.json()["error"], "job not found");
     }
-    // And a bearer that is not this owner's reads nobody's input.
-    let foreign = host.as_bearer(
-        &"f".repeat(64),
-        "GET",
-        &format!("/v1/jobs/{stranded}/input"),
-        None,
-    );
+    // And a process of another account reads nobody's input.
+    let foreign = host.as_stranger("GET", &format!("/v1/jobs/{stranded}/input"), None);
     assert_eq!(foreign.status, 401, "{}", foreign.stringify());
 }
 

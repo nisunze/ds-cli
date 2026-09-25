@@ -19,7 +19,7 @@
 //!   spelling now and gets a real answer when slice 2 wires it, rather than
 //!   discovering the argument does not parse.
 //! * `server` — the running `ds server serve` on this machine, over its
-//!   protected loopback connection. The project is sent explicitly on every
+//!   owner-only socket. The project is sent explicitly on every
 //!   request, so the Server verifies one named project and reads no selection
 //!   of its own.
 
@@ -69,8 +69,8 @@ pub const SERVER_REFUSED: Refusal = Refusal {
     remedy: "read the stated reason; verify ds server serve is running under this lane",
 };
 /// A second ACCOUNT is not something a layer request can meet: one Server is
-/// signed in as one owner, its bearer is that owner's, and a request under any
-/// other bearer never reaches an operation. `multi_principal_unsupported` is
+/// signed in as one owner, its socket answers only that owner's account, and a
+/// request from any other never reaches an operation. `multi_principal_unsupported` is
 /// therefore declared by `ds server serve`, which is where a second account
 /// actually meets one Server, and claimed by nothing here.
 pub const SERVER_OWNER_CHANGED: Refusal = Refusal {

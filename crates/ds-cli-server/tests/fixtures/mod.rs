@@ -1,4 +1,4 @@
-//! The isolation proof's harness: a REAL Server, on a REAL loopback listener,
+//! The isolation proof's harness: a REAL Server, on its REAL owner-only socket,
 //! over a fixture identity and a fixture layer document source — and no
 //! gateway, no directory and no upstream at all.
 //!
@@ -37,7 +37,7 @@
 //!     leaves, so the production `NativeAuthorizer` can be exercised over a
 //!     real machine instead of a stub `Authorizer`.
 //!   * [`LiveServer`] starts the REAL `ds server serve` as its own process, on
-//!     a real port, over that machine — the shipped wiring, end to end,
+//!     its real socket, over that machine — the shipped wiring, end to end,
 //!     including the startup path the pass refuted.
 //!   * [`cut_network`] compiles an `LD_PRELOAD` shim that fails every
 //!     non-loopback connect and every non-loopback name lookup, so "there is
@@ -50,8 +50,6 @@ pub mod device_home;
 
 use std::{
     collections::BTreeMap,
-    io::Read,
-    net::SocketAddr,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock,
@@ -393,15 +391,28 @@ impl Answer {
 struct Running {
     runtime: tokio::runtime::Runtime,
     shutdown: tokio::sync::oneshot::Sender<()>,
+    served: tokio::task::JoinHandle<()>,
+}
+impl Running {
+    /// Stop answering and wait until the socket and its lock are released,
+    /// as a host that exits does, so the same state can be served again.
+    fn stop(self) {
+        let _ = self.shutdown.send(());
+        let _ = self
+            .runtime
+            .block_on(async { tokio::time::timeout(Duration::from_secs(5), self.served).await });
+        self.runtime.shutdown_timeout(Duration::from_secs(5));
+    }
 }
 
-/// A Server listening on loopback, plus everything a proof needs to talk to
-/// it as `ds` does, to restart it, and to read its store on disk.
+/// A Server answering on its owner-only socket, plus everything a proof
+/// needs to talk to it as `ds` does, to restart it, and to read its store on
+/// disk.
 pub struct Host {
     pub state: tempfile::TempDir,
     pub prefs: tempfile::TempDir,
-    pub address: SocketAddr,
-    pub token: String,
+    /// `<state>/server.sock`: the only door this Server has.
+    pub socket: PathBuf,
     pub identity: HostIdentity,
     pub limits: Limits,
     pub app: App,
@@ -478,15 +489,14 @@ impl Host {
         if let Some(queue) = queue {
             std::fs::copy(queue, state.path().join("store.sqlite")).expect("stage legacy queue");
         }
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
-        let address = listener.local_addr().expect("bound address");
+        let listening = bind(state.path());
+        let socket = listening.socket().to_owned();
         let identity = identity(UID, LANE);
         let layers = Arc::new(LayerFixture::new(UID, prefs.path().to_owned(), READABLE));
         let gateway = Arc::new(NoGateway::default());
         let mut app = build_app(
             state.path(),
             state.path().join("store.sqlite"),
-            address,
             LANE,
             identity.clone(),
             limits,
@@ -494,13 +504,11 @@ impl Host {
             gateway.clone(),
         );
         app.requests = Arc::new(ds_cli_server::host::Door::new(door));
-        let token = app.connection.token.clone();
-        let running = serve(app.clone(), listener);
+        let running = serve(app.clone(), listening);
         Self {
             state,
             prefs,
-            address,
-            token,
+            socket,
             identity,
             limits,
             app,
@@ -525,34 +533,33 @@ impl Host {
             .expect("read jobs")
     }
 
-    /// Stop the listener and free the port, keeping every byte on disk.
+    /// Stop answering and release the socket, keeping every byte on disk.
     pub fn stop(&mut self) {
         if let Some(running) = self.running.take() {
-            let _ = running.shutdown.send(());
-            running.runtime.shutdown_timeout(Duration::from_secs(5));
+            running.stop();
         }
     }
 
-    /// Restart on the same protected state, the same layer source and the
-    /// same fixed loopback port, exactly as `ds server serve` would after a
+    /// Restart on the same protected state — and so the same socket — and
+    /// the same layer source, exactly as `ds server serve` would after a
     /// machine reboot.
     pub fn restart(&mut self) {
         self.stop();
-        let listener = std::net::TcpListener::bind(self.address).expect("rebind the same port");
+        let listening = bind(self.state.path());
+        assert_eq!(listening.socket(), self.socket, "one state, one door");
         self.app = build_app(
             self.state.path(),
             self.database(),
-            self.address,
             LANE,
             self.identity.clone(),
             self.limits,
             self.layers.clone(),
             self.gateway.clone(),
         );
-        self.running = Some(serve(self.app.clone(), listener));
+        self.running = Some(serve(self.app.clone(), listening));
     }
 
-    /// A second Server, on its own protected state and port, over THIS
+    /// A second Server, on its own protected state and socket, over THIS
     /// Server's durable queue — the only honest way to ask the same store as
     /// another authenticated identity or another lane.
     ///
@@ -562,12 +569,11 @@ impl Host {
     pub fn shadow(&mut self, uid: &str, lane: &str, owner: &str) -> Loopback {
         let state = tempfile::tempdir().expect("shadow state");
         let prefs = tempfile::tempdir().expect("shadow preferences");
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
-        let address = listener.local_addr().expect("bound address");
+        let listening = bind(state.path());
+        let socket = listening.socket().to_owned();
         let app = build_app_as(
             state.path(),
             self.database(),
-            address,
             owner,
             lane,
             identity_of(owner, uid, lane),
@@ -575,14 +581,12 @@ impl Host {
             Arc::new(LayerFixture::new(uid, prefs.path().to_owned(), READABLE)),
             Arc::new(NoGateway::default()),
         );
-        let token = app.connection.token.clone();
         let state_path = state.path().to_owned();
-        let running = serve(app, listener);
+        let running = serve(app, listening);
         self.shadows.push(state);
         self.shadows.push(prefs);
         Loopback {
-            address,
-            token,
+            socket,
             state: state_path,
             lane: lane.to_owned(),
             running: Some(running),
@@ -622,15 +626,29 @@ impl Host {
         parse(command, &all).expect("declared tokens parse")
     }
 
-    /// One request straight at the listener, with the owner bearer, returning
-    /// the exact bytes.
+    /// One request at the socket, as the owner's own process, returning the
+    /// exact bytes.
     pub fn raw(&self, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
-        raw_at(self.address, &self.token, method, path, body, &[])
+        raw_at(&self.socket, method, path, body, &[])
     }
 
-    /// One request with a bearer that is not this Server's owner's.
-    pub fn as_bearer(&self, token: &str, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
-        raw_at(self.address, token, method, path, body, &[])
+    /// One request as a process of ANOTHER account, returning the exact bytes.
+    ///
+    /// A second account cannot be conjured inside one test process, and the
+    /// socket's check is the kernel's (`SO_PEERCRED`), so this hands this
+    /// Server's own router the peer the kernel would have named for that
+    /// process — exactly what the socket's accept loop hands it — and asks.
+    pub fn as_stranger(&self, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
+        let own = ds_cli_server::transport::own_uid().expect("a Unix account");
+        routed(
+            &self.app,
+            Some(ds_cli_server::transport::Peer {
+                uid: own.wrapping_add(1),
+            }),
+            method,
+            path,
+            body,
+        )
     }
 
     /// The owner's own request, carrying extra headers — for proving that a
@@ -642,7 +660,7 @@ impl Host {
         body: Option<&[u8]>,
         headers: &[(&str, &str)],
     ) -> Answer {
-        raw_at(self.address, &self.token, method, path, body, headers)
+        raw_at(&self.socket, method, path, body, headers)
     }
 
     /// Write one input file and return its absolute path, as a caller would
@@ -678,24 +696,22 @@ impl Drop for Host {
     }
 }
 
-/// A second listener over the same durable queue.
+/// A second Server over the same durable queue, on its own socket.
 pub struct Loopback {
-    pub address: SocketAddr,
-    pub token: String,
+    pub socket: PathBuf,
     pub state: PathBuf,
     pub lane: String,
     running: Option<Running>,
 }
 impl Loopback {
     pub fn raw(&self, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
-        raw_at(self.address, &self.token, method, path, body, &[])
+        raw_at(&self.socket, method, path, body, &[])
     }
 }
 impl Drop for Loopback {
     fn drop(&mut self) {
         if let Some(running) = self.running.take() {
-            let _ = running.shutdown.send(());
-            running.runtime.shutdown_timeout(Duration::from_secs(5));
+            running.stop();
         }
     }
 }
@@ -704,7 +720,6 @@ impl Drop for Loopback {
 fn build_app(
     state_path: &Path,
     database: PathBuf,
-    address: SocketAddr,
     lane: &str,
     identity: HostIdentity,
     limits: Limits,
@@ -712,7 +727,7 @@ fn build_app(
     gateway: Arc<NoGateway>,
 ) -> App {
     build_app_as(
-        state_path, database, address, OWNER, lane, identity, limits, layers, gateway,
+        state_path, database, OWNER, lane, identity, limits, layers, gateway,
     )
 }
 
@@ -720,7 +735,6 @@ fn build_app(
 fn build_app_as(
     state_path: &Path,
     database: PathBuf,
-    address: SocketAddr,
     owner: &str,
     lane: &str,
     identity: HostIdentity,
@@ -729,9 +743,8 @@ fn build_app_as(
     gateway: Arc<NoGateway>,
 ) -> App {
     owner_only(state_path);
-    let connection =
-        ds_cli_server::host::connection(state_path, address, owner.to_owned(), lane.to_owned())
-            .expect("protected connection");
+    let connection = ds_cli_server::host::connection(state_path, owner.to_owned(), lane.to_owned())
+        .expect("protected connection");
     let sessions = ServerSessions::with(
         connection.clone(),
         database.clone(),
@@ -742,6 +755,9 @@ fn build_app_as(
     App {
         database,
         connection,
+        // The account this test runs as: the real socket's peer check is the
+        // production one, against the real process on the other end.
+        os_uid: ds_cli_server::transport::own_uid(),
         auth: Arc::new(Allow),
         requests: Arc::new(ds_cli_server::host::Door::new(8)),
         activity: None,
@@ -762,8 +778,16 @@ fn owner_only(path: &Path) {
     }
 }
 
-fn serve(app: App, listener: std::net::TcpListener) -> Running {
-    listener.set_nonblocking(true).expect("non-blocking");
+/// The state directory's lock and owner-only socket, exactly as `ds server
+/// serve` takes them.
+fn bind(state: &Path) -> ds_cli_server::transport::Listening {
+    owner_only(state);
+    ds_cli_server::transport::listen(state).expect("the owner-only socket binds")
+}
+
+/// Answer `app` on `listening` through the production accept loop, on a
+/// runtime of its own.
+fn serve(app: App, listening: ds_cli_server::transport::Listening) -> Running {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -771,73 +795,89 @@ fn serve(app: App, listener: std::net::TcpListener) -> Running {
         .expect("server runtime");
     let (shutdown, stopped) = tokio::sync::oneshot::channel();
     let router = ds_cli_server::host::router(app);
-    runtime.spawn(async move {
-        let listener = tokio::net::TcpListener::from_std(listener).expect("tokio listener");
-        let _ = axum::serve(listener, router)
-            .with_graceful_shutdown(async {
-                let _ = stopped.await;
-            })
-            .await;
+    let served = runtime.spawn(async move {
+        let _ = ds_cli_server::transport::serve(listening, router, async {
+            let _ = stopped.await;
+        })
+        .await;
     });
-    Running { runtime, shutdown }
+    Running {
+        runtime,
+        shutdown,
+        served,
+    }
 }
 
-/// One request at any listener, with any bearer, returning the exact bytes.
-/// The same call [`Host::raw`] makes, for a Server this harness did not build.
-pub fn wire(
-    address: SocketAddr,
-    token: &str,
-    method: &str,
-    path: &str,
-    body: Option<&[u8]>,
-) -> Answer {
-    raw_at(address, token, method, path, body, &[])
+/// One request at any Server's socket, as the owner's own process, returning
+/// the exact bytes. The same call [`Host::raw`] makes, for a Server this
+/// harness did not build.
+pub fn wire(socket: &Path, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
+    raw_at(socket, method, path, body, &[])
 }
 
 fn raw_at(
-    address: SocketAddr,
-    token: &str,
+    socket: &Path,
     method: &str,
     path: &str,
     body: Option<&[u8]>,
     headers: &[(&str, &str)],
 ) -> Answer {
-    let url = format!("http://{address}{path}");
-    let authorization = format!("Bearer {token}");
-    let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(60)))
-        .http_status_as_error(false)
-        .build()
-        .new_agent();
-    let mut response = if method == "GET" {
-        let mut request = agent.get(&url).header("authorization", &authorization);
-        for (name, value) in headers {
-            request = request.header(*name, *value);
-        }
-        request.call()
-    } else {
-        let mut request = agent
-            .post(&url)
-            .header("authorization", &authorization)
-            .header("content-type", "application/json");
-        for (name, value) in headers {
-            request = request.header(*name, *value);
-        }
-        request.send(body.unwrap_or_default())
+    let mut all = headers.to_vec();
+    if method != "GET" {
+        all.push(("content-type", "application/json"));
     }
-    .expect("the loopback listener answered");
-    let status = response.status().as_u16();
-    let mut bytes = Vec::new();
-    response
-        .body_mut()
-        .as_reader()
-        .take(64 * 1024 * 1024)
-        .read_to_end(&mut bytes)
-        .expect("read the answer");
+    let reply = ds_cli_server::transport::call(
+        socket,
+        method,
+        path,
+        &all,
+        body,
+        64 * 1024 * 1024,
+        Duration::from_secs(60),
+    )
+    .expect("the owner-only socket answered");
     Answer {
-        status,
-        body: bytes,
+        status: reply.status,
+        body: reply.body,
     }
+}
+
+/// One request handed straight to `app`'s router with the peer the socket
+/// would have named — or none, as for a request that never came through it.
+fn routed(
+    app: &App,
+    peer: Option<ds_cli_server::transport::Peer>,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+) -> Answer {
+    use tower::ServiceExt;
+    let mut request = axum::http::Request::builder()
+        .method(method)
+        .uri(path)
+        .header("content-type", "application/json");
+    if let Some(peer) = peer {
+        request = request.extension(peer);
+    }
+    let request = request
+        .body(axum::body::Body::from(body.unwrap_or_default().to_vec()))
+        .expect("a request");
+    let router = ds_cli_server::host::router(app.clone());
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime")
+        .block_on(async move {
+            let response = router.oneshot(request).await.expect("an answer");
+            let status = response.status().as_u16();
+            let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024 * 1024)
+                .await
+                .expect("the answer's bytes");
+            Answer {
+                status,
+                body: bytes.to_vec(),
+            }
+        })
 }
 
 // ── the `ds` executable ─────────────────────────────────────────────────
@@ -998,14 +1038,14 @@ pub fn cut_network() -> Option<PathBuf> {
 ///
 /// Everything the in-process [`Host`] replaces is real here — the startup
 /// path, the production `NativeAuthorizer` reading the protected state on
-/// disk, the credential refresher, the worker pool, the port. Nothing is
+/// disk, the credential refresher, the worker pool, the socket. Nothing is
 /// injected: the only things this harness supplies are the two environment
 /// values any install has (a client catalogue and a config home) and the
-/// state directory and port an operator passes on the command line.
+/// state directory an operator passes on the command line.
 pub struct LiveServer {
     child: std::process::Child,
-    pub address: SocketAddr,
-    pub token: String,
+    /// `<state>/server.sock`, where the real process answers.
+    pub socket: PathBuf,
     pub state: tempfile::TempDir,
     pub config: PathBuf,
     said: Arc<Mutex<String>>,
@@ -1039,7 +1079,6 @@ impl LiveServer {
             !state.path().join("store.sqlite").exists(),
             "every live Server here starts cold, durable store included"
         );
-        let address = free_loopback_port();
         let mut child = ds_command(
             home.config_home(),
             &[
@@ -1049,8 +1088,6 @@ impl LiveServer {
                 LANE,
                 "--state-dir",
                 &state.path().display().to_string(),
-                "--listen",
-                &address.to_string(),
                 "--workers",
                 &workers.to_string(),
             ],
@@ -1070,10 +1107,9 @@ impl LiveServer {
             let said = said.clone();
             std::thread::spawn(move || stream.drain(&said));
         }
-        let mut server = Self {
+        let server = Self {
             child,
-            address,
-            token: String::new(),
+            socket: ds_cli_server::transport::socket_path(state.path()),
             state,
             config: home.config_home().to_owned(),
             said,
@@ -1084,15 +1120,6 @@ impl LiveServer {
             "the Server never became ready with no gateway present. It said: {}",
             server.said()
         );
-        let connection: Value = serde_json::from_slice(
-            &std::fs::read(server.state.path().join("connection.json"))
-                .expect("the Server wrote its protected connection"),
-        )
-        .expect("connection.json parses");
-        server.token = connection["token"]
-            .as_str()
-            .expect("an owner bearer")
-            .to_owned();
         server
     }
 
@@ -1101,9 +1128,14 @@ impl LiveServer {
         self.said.lock().expect("output").clone()
     }
 
-    /// One request at the running Server, with the owner bearer.
+    /// The real process's id, for reading what the kernel says it holds.
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
+    /// One request at the running Server's socket, as its owner's process.
     pub fn raw(&self, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
-        wire(self.address, &self.token, method, path, body)
+        wire(&self.socket, method, path, body)
     }
 
     /// `ds …` against this running Server, from the same machine.
@@ -1115,7 +1147,14 @@ impl LiveServer {
     }
 
     /// Ask it to stop the way a service manager does, and wait for it.
+    ///
+    /// Once it has been waited for, asking again only reports how it ended:
+    /// the id of a process already reaped may belong to somebody else's by
+    /// now, and nothing here signals a process it did not start.
     pub fn stop(&mut self) -> Option<i32> {
+        if let Ok(Some(status)) = self.child.try_wait() {
+            return status.code();
+        }
         #[cfg(unix)]
         unsafe {
             libc::kill(self.child.id() as i32, libc::SIGTERM);
@@ -1159,14 +1198,37 @@ impl Reading {
     }
 }
 
-/// A loopback port nothing is listening on, released again immediately. The
-/// Server takes a FIXED port by design, so the proof picks one the way an
-/// operator would and hands it over.
-fn free_loopback_port() -> SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
-    let address = listener.local_addr().expect("bound address");
-    drop(listener);
-    address
+/// Every TCP socket in the LISTEN state that process `pid` holds, as the
+/// kernel reports it: the process's socket inodes (`/proc/<pid>/fd`) matched
+/// against the listening rows of `/proc/net/tcp` and `/proc/net/tcp6`. Each
+/// entry is the row's local address, in the kernel's hex.
+#[cfg(target_os = "linux")]
+pub fn tcp_listeners(pid: u32) -> Vec<String> {
+    let inodes: std::collections::BTreeSet<String> = std::fs::read_dir(format!("/proc/{pid}/fd"))
+        .expect("the process's descriptors")
+        .filter_map(|entry| std::fs::read_link(entry.ok()?.path()).ok())
+        .filter_map(|target| {
+            let target = target.to_string_lossy().into_owned();
+            target
+                .strip_prefix("socket:[")?
+                .strip_suffix(']')
+                .map(str::to_owned)
+        })
+        .collect();
+    let mut listening = Vec::new();
+    for table in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let Ok(rows) = std::fs::read_to_string(table) else {
+            continue;
+        };
+        for row in rows.lines().skip(1) {
+            let fields: Vec<&str> = row.split_whitespace().collect();
+            // local_address is field 1, st is field 3 (0A = LISTEN), inode 9.
+            if fields.len() > 9 && fields[3] == "0A" && inodes.contains(fields[9]) {
+                listening.push(fields[1].to_owned());
+            }
+        }
+    }
+    listening
 }
 
 // ── inputs ──────────────────────────────────────────────────────────────

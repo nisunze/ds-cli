@@ -1,7 +1,7 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
 // The HTTP host and the layer binding are reachable from an integration test
-// so the isolation proof can stand up a real loopback listener over a fixture
+// so the isolation proof can stand up a real owner-only socket over a fixture
 // identity and a fixture document source. Nothing here is a supported API:
 // `ds` itself reaches this crate only through its command handlers.
 #[doc(hidden)]
@@ -9,6 +9,10 @@ pub mod host;
 #[doc(hidden)]
 pub mod layers;
 pub mod target;
+// The owner-only socket both halves of the Server speak over: the host binds
+// and admits by the kernel's word on the peer's account, the client connects
+// only to its own. No port and no bearer.
+pub mod transport;
 pub mod working_area_forms;
 // The shared report publication pass. `ds report outbox drain` calls exactly
 // this, so a hand-driven drain and the background pump are one runner.
@@ -159,7 +163,7 @@ const OUTPUT_EXISTS: Refusal = Refusal {
 const MULTI_PRINCIPAL: Refusal = Refusal {
     code: host::MULTI_PRINCIPAL_UNSUPPORTED,
     when: "the protected state directory already belongs to another account",
-    remedy: "run that account its own ds server serve, with its own --state-dir and --listen",
+    remedy: "run that account its own ds server serve, with its own --state-dir",
 };
 
 const INSTALL_UNAVAILABLE: Refusal = Refusal {
@@ -189,6 +193,15 @@ const UNSUPPORTED: Refusal = Refusal {
     when: "a request names a route this host does not serve, usually a version skew",
     remedy: "update ds, or read ds server --help for what this host serves",
 };
+/// The door's own answer. `ds` never meets it — it refuses a state directory
+/// it does not own before it connects — but anything else that reaches the
+/// socket as another account, root included, is told by name and nothing
+/// more (`transport::admit`).
+const PEER_REFUSED: Refusal = Refusal {
+    code: "server_peer_refused",
+    when: "a process of another account reaches the socket",
+    remedy: "run it as the account that runs ds server serve",
+};
 const SERVE_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "invalid_input",
@@ -201,6 +214,7 @@ const SERVE_REFUSALS: &[Refusal] = &[
     MULTI_PRINCIPAL,
     NEEDS_MAP,
     UNSUPPORTED,
+    PEER_REFUSED,
     INSTALL_UNAVAILABLE,
     // The host's own door, which is this command's: a request that arrives
     // while every place in it is taken is refused here, under the same code
@@ -345,9 +359,11 @@ pub fn engine(_: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub static SERVE: Command = Command {
     id: "server.serve",
     path: &["server", "serve"],
-    contract: 1,
+    // 2: `--listen` is gone. The host answers only on `<state>/server.sock`,
+    // so which Server a caller reaches is which `--state-dir` it names.
+    contract: 2,
     summary: "Host durable parallel compute for every project this account reaches.",
-    purpose: "Host the shared Rust compute runtime under this Linux user's native account: the desktop's own core, without the desktop. No project is selected or captured here and no directory is fetched: callers name the project per request, the Server records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Server; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control is an owner-only loopback credential. This process runs in the foreground until it stops.",
+    purpose: "Host the shared Rust compute runtime under this Linux user's native account: the desktop's own core, without the desktop. No project is selected or captured here and no directory is fetched: callers name the project per request, the Server records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Server; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control is an owner-only socket in the state directory. This process runs in the foreground until it stops.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -355,8 +371,6 @@ pub static SERVE: Command = Command {
     args: &[
         STATE,
         LANE,
-        Arg::value("listen", "<loopback:port>", "Fixed loopback bind address.")
-            .default("127.0.0.1:19766"),
         Arg::value(
             "workers",
             "<count>",
@@ -569,9 +583,9 @@ pub static INPUT: Command = command(
 // with an explicit `--target server|desktop[:instance]`. A second set of ids
 // that differed only by which host answered is exactly what that ruling ends.
 //
-// What stays here is the part that genuinely is the Server's: the protected
-// loopback transport. This crate owns `connection.json`, its bearer and the
-// lane fence, so the `--target server` half of those four commands calls the
+// What stays here is the part that genuinely is the Server's: the owner-only
+// socket. This crate owns `connection.json`, the socket and the lane fence,
+// so the `--target server` half of those four commands calls the
 // functions below. They send an explicit project on every request -- the
 // Server reads no selection of this machine's -- and re-raise the Server's
 // typed refusals unchanged, which is why one `ds map layer …` invocation
@@ -646,9 +660,10 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
     // A remedy the Server sent wins. Failing that, the sentence this command
     // declares for the code the Server named -- and failing THAT, the one it
     // declares for the code this client gave the answer, because a Server may
-    // legitimately answer without naming a code at all (a foreign bearer is
-    // `401 {"error": …}` and nothing else, by design), and an answer with a
-    // code and a class but no remedy leaves its caller nothing to do.
+    // legitimately answer without naming a code at all (an older Server's
+    // foreign-bearer 401 was `{"error": …}` and nothing else, by design), and
+    // an answer with a code and a class but no remedy leaves its caller
+    // nothing to do.
     let declared = default_remedy(code.or_else(|| Some(refusal.code())), &value);
     let refusal = match value["remedy"].as_str() {
         Some(remedy) => refusal.remedy(remedy),
@@ -1009,7 +1024,6 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // The host's own numbers first. They are measured and parsed locally, so a
     // typo'd bound is answered without refreshing a credential to find out --
     // and the answer is the same on a machine that has never signed in.
-    let address = inputs.require("listen")?.parse().map_err(failure)?;
     let capacity = ds_compute_runtime::capacity();
     let workers = inputs
         .value("workers")
@@ -1042,9 +1056,15 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             .map_err(failure)?;
     let owner = authorizer.owner().to_owned();
     let directory = state(inputs)?;
+    host::prepare_directory(&directory).map_err(failure)?;
+    // The door before the record: the state directory's single-host lock is
+    // taken and the owner-only socket bound first, so a second host on this
+    // state is refused before it reads or rewrites anything. Nothing is
+    // answered on the socket until the host below is ready.
+    let listening = transport::listen(&directory).map_err(failure)?;
     // Typed as the host decided it: a protected state directory that already
     // belongs to another account is `multi_principal_unsupported`, by name.
-    let connection = host::connection(&directory, address, owner, lane.clone())?;
+    let connection = host::connection(&directory, owner, lane.clone())?;
     let database = directory.join("store.sqlite");
     let sessions =
         server_sync::sessions::ServerSessions::native(connection.clone(), database.clone(), limits)
@@ -1055,6 +1075,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let app = host::App {
         database,
         connection,
+        os_uid: transport::own_uid(),
         layers: layer_host,
         auth: layer_auth,
         requests: Arc::new(host::Door::new(request_permits(workers))),
@@ -1064,7 +1085,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     };
     // The gateway refresh starts here and runs BESIDE the host: its own
     // thread, one attempt immediately (so a reachable upstream is used at
-    // once) and then one per interval. Binding is the next statement and
+    // once) and then one per interval. Serving is the next statement and
     // never waits for it; a refresh that fails is logged and changes no
     // answer this host gives.
     let refresh = auth::CredentialRefresh::start(credential, auth::REFRESH_INTERVAL);
@@ -1072,7 +1093,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .enable_all()
         .build()
         .map_err(failure)?
-        .block_on(host::serve(app, workers));
+        .block_on(host::serve(app, workers, listening));
     drop(refresh);
     hosted.map_err(failure)?;
     Ok(json!({"stopped":true,"workers":workers,"per_project":per_project}))
@@ -1086,6 +1107,21 @@ fn request(
 ) -> Result<Vec<u8>, Failure> {
     request_with_timeout(inputs, method, path, body, limit, 60)
 }
+/// The refusal a caller meets instead of reaching a Server started by a `ds`
+/// from before the socket. Nothing is sent to it: that Server admits a
+/// bearer on a TCP port, and sending the bearer anywhere is what the socket
+/// ended.
+fn started_by_an_older_ds(address: std::net::SocketAddr) -> Failure {
+    Failure::unavailable(
+        "server_refused",
+        format!(
+            "the Server on this state directory was started by an older ds that listens on {address} and admits a bearer; this ds speaks only to the owner-only socket and sent it nothing"
+        ),
+    )
+    .remedy(
+        "stop that ds server serve and start it again with this ds — it moves to the owner-only socket by itself; an older ds client is upgraded the same way",
+    )
+}
 fn request_with_timeout(
     inputs: &Inputs,
     method: &str,
@@ -1098,41 +1134,34 @@ fn request_with_timeout(
     if connection.lane != inputs.require("lane")? {
         return Err(failure("server lane differs from the selected lane"));
     }
-    let url = format!("http://{}{path}", connection.address);
-    let authorization = format!("Bearer {}", connection.token);
-    let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(std::time::Duration::from_secs(timeout_seconds)))
-        .http_status_as_error(false)
-        .build()
-        .new_agent();
-    let mut response = if method == "GET" {
-        agent
-            .get(&url)
-            .header("authorization", &authorization)
-            .call()
+    if let Some(address) = connection.legacy_address {
+        return Err(started_by_an_older_ds(address));
+    }
+    let headers: &[(&str, &str)] = if method == "GET" {
+        &[]
     } else {
-        agent
-            .post(&url)
-            .header("authorization", &authorization)
-            .header("content-type", "application/json")
-            .send(body.unwrap_or_default())
+        &[("content-type", "application/json")]
+    };
+    let reply = transport::call(
+        &connection.socket,
+        method,
+        path,
+        headers,
+        body,
+        limit,
+        std::time::Duration::from_secs(timeout_seconds),
+    )
+    .map_err(|error| match error {
+        transport::CallError::Unreachable(reason) => failure(reason),
+        transport::CallError::NotOwner(reason) => Failure::unauthorized("server_refused", reason)
+            .remedy("run ds as the account that runs ds server serve, against its own --state-dir"),
+        transport::CallError::TooLarge => failure(transport::CallError::TooLarge),
+        transport::CallError::Failed(reason) => failure(reason),
+    })?;
+    if reply.status >= 400 {
+        return Err(typed_refusal(reply.status, &reply.body));
     }
-    .map_err(|_| failure("could not reach the protected server; start ds server serve"))?;
-    let status = response.status().as_u16();
-    let mut bytes = Vec::new();
-    response
-        .body_mut()
-        .as_reader()
-        .take(limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(failure)?;
-    if bytes.len() as u64 > limit {
-        return Err(failure("server response exceeds the command's bound"));
-    }
-    if status >= 400 {
-        return Err(typed_refusal(status, &bytes));
-    }
-    Ok(bytes)
+    Ok(reply.body)
 }
 fn json_request(
     inputs: &Inputs,
@@ -1519,9 +1548,10 @@ mod tests {
 
     #[test]
     fn an_answer_that_names_no_code_is_still_one_a_caller_can_act_on() {
-        // A foreign bearer is `401 {"error": …}` and deliberately nothing
-        // else: naming a code there would say something about who owns this
-        // host. The client still has to leave its caller a class, a code and
+        // An older Server's foreign-bearer answer was `401 {"error": …}` and
+        // deliberately nothing else: naming a code there would have said
+        // something about who owns the host. An answer with no code is still
+        // one a client can meet, so it has to leave its caller a class, a code and
         // something to do, so it falls back to what `server_refused` declares.
         let error = typed_refusal(401, br#"{"error":"server access denied"}"#);
         assert_eq!(error.code(), "server_refused");
