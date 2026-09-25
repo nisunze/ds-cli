@@ -65,8 +65,12 @@ into reasons to leave the Yes dialog stacked. No (ID 7) is only for an explicit
 workflow that deliberately leaves the project unopened. A dialog reporting
 skipped files or another project is a refusal.
 
-Use only the host's supported native controller for that characterized
-transition. If it is unavailable, preserve the dialog and hand the exact
+The supported native controller is `ds pls desktop` on the Windows desktop:
+`check`, `restore`, `qualify`, `deliver`, `autosag`, `reports` and
+`sheets-pdf` run the characterized drivers embedded in `ds`, and
+`ds pls desktop dialogs` lists every catalogued decision. An unknown dialog
+stops those runs with `unknown_dialog`; PLS-CADD stays open for inspection.
+If the controller is unavailable, preserve the dialog and hand the exact
 observation to the operator; do not improvise a Win32 message driver. The
 generic posted button click was observed to leave this modal stacked, so do
 not repeat that ineffective action.
@@ -76,9 +80,9 @@ A dialog that disappears may also hide a failed restore. The evidence is the
 state transition, native artifacts and log, not the visual impression of a
 message.
 
-Do not add a prompt to an automatic click catalogue until its title, body,
-stage, controls and safe outcome have been reproduced with a pinned PLS
-version. Keep characterization in the server-side operator contract. Windows
+Do not add a prompt to the catalogue (`pls-dialog-catalog.psd1`, embedded in
+`ds` with a pinned digest) until its title, body, stage, controls and safe
+outcome have been reproduced with a pinned PLS version. Windows
 runs only the supported native controller on the transferred workspace; it
 does not become the application-code authority.
 

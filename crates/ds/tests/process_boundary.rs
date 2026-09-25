@@ -42,6 +42,14 @@ const SPAWN_OWNERS: &[(&str, &str)] = &[
          for the owners that chose process separation (ds-report, ds-solar)",
     ),
     (
+        "crates/ds-cli-pls/src/desktop/run.rs",
+        "Windows PowerShell 5.1 from %SystemRoot% (never PATH) on one ds-desktop \
+         entry of the embedded, digest-pinned PLS-CADD driver bundle: the switches \
+         are literals, the entry is a closed `Entry` enum, parameter names are \
+         `&'static str`, and every value is a path, digest, label or number the \
+         verb validated; quoting is its own tested function passed by raw_arg",
+    ),
+    (
         "crates/ds-cli-mcp/src/tools.rs",
         "re-invokes this same executable to read its own `ds capabilities` (fixed \
          literal argv, path is `current_exe`) and, for one MCP invoke whose live \

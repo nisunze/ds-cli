@@ -16,10 +16,15 @@
 //! structured for flags, the schema is what a caller reads and
 //! `--request <file>` is what they pass, rather than the domain growing a
 //! flag per nested field.
+//!
+//! `ds pls desktop …` is the one family that is not a file task: it drives
+//! PLS-CADD itself on its Windows desktop, through the embedded PowerShell
+//! drivers that own that work. See [`desktop`].
 
 pub mod backup_create;
 pub mod compare_don;
 pub mod delivery_verify;
+pub mod desktop;
 pub mod deviation_labels;
 pub mod pole_capacity;
 pub mod reference_closure;
@@ -46,6 +51,14 @@ pub static DOMAIN: Domain = Domain {
         &terrain_reconcile::COMMAND,
         &deviation_labels::COMMAND,
         &delivery_verify::COMMAND,
+        &desktop::check::COMMAND,
+        &desktop::dialogs::COMMAND,
+        &desktop::restore::COMMAND,
+        &desktop::qualify::COMMAND,
+        &desktop::deliver::COMMAND,
+        &desktop::autosag::COMMAND,
+        &desktop::reports::COMMAND,
+        &desktop::sheets_pdf::COMMAND,
     ],
 };
 

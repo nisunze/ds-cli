@@ -49,7 +49,7 @@ Specialized profiles publish conventional typed leaf tools for one workflow:
 ds mcp serve --exposure commands --profile pls
 ```
 
-Profiles include `auth-context`, `datasets`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-library`, `library-governance`, `survey`,
+Profiles include `auth-context`, `datasets`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-desktop`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-media`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
 `tiling`, `project`, `correspondence`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
 `solar-portfolio-batch`, `solar-migration`, `design-migration`,
@@ -142,7 +142,8 @@ alongside the paired historical batch lifecycle. These calculation/publication
 leaves moved from `solar-delivery` to keep that profile within its tool budget.
 
 PLS and its libraries are split by operator workflow: `pls` contains workspace
-backup, closure, terrain and diagnostics; `pls-library` contains local
+backup, closure, terrain and diagnostics; `pls-desktop` contains the verbs that
+drive PLS-CADD itself on its Windows desktop (`ds pls desktop …`); `pls-library` contains local
 immutable-library verification, packing, seeding and native resolution; and
 `library-governance` contains global library/example upload, publication and
 lifecycle. Their union is the PLS-CADD chapter, but each typed tool surface

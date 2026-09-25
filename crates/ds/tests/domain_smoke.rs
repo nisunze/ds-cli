@@ -2954,6 +2954,193 @@ fn pls_terrain_reconcile_then_deviation_labels_is_dry_run_first_and_code_only() 
 }
 
 // ---------------------------------------------------------------------------
+// pls desktop
+// ---------------------------------------------------------------------------
+
+/// The catalogue answers on any host, and the decisions the desktop verbs
+/// rely on are read back from the one embedded in this build: Exit answers
+/// "Save changes" No, AutoSag goes through the Section Table, the Repair
+/// Wizard stops a run.
+#[test]
+fn pls_desktop_dialogs_reads_the_catalogue_the_drivers_decide_by() {
+    let all = ok(&["pls", "desktop", "dialogs", "--output", "json"]);
+    assert_eq!(all["version"], "2026-09-24");
+    assert_eq!(all["count"], 58);
+    assert!(
+        all["rule"]
+            .as_str()
+            .unwrap()
+            .starts_with("An unknown dialog stops the run.")
+    );
+    let entries = all["entries"].as_array().unwrap();
+    let save = entries
+        .iter()
+        .find(|entry| entry["name"] == "save_changes")
+        .expect("save_changes is catalogued");
+    assert_eq!(save["action"], "click");
+    assert_eq!(save["control_id"], 7);
+    assert!(
+        save.get("note").is_none(),
+        "the list is the cheap tier; notes are behind --name"
+    );
+
+    let table = ok(&[
+        "pls",
+        "desktop",
+        "dialogs",
+        "--name",
+        "section_table",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(table["entry"]["action"], "flow");
+    assert_eq!(table["entry"]["title_pattern"], "^Section Table$");
+    assert!(
+        table["entry"]["note"]
+            .as_str()
+            .unwrap()
+            .contains("THE AutoSag ROUTE")
+    );
+
+    let stops = ok(&[
+        "pls", "desktop", "dialogs", "--action", "stop", "--output", "json",
+    ]);
+    let names: Vec<&str> = stops["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"repair_wizard"), "{names:?}");
+    assert!(
+        stops["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| entry["action"] == "stop")
+    );
+
+    let unknown = ds(&[
+        "pls",
+        "desktop",
+        "dialogs",
+        "--name",
+        "no_such_dialog",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(unknown.envelope["error"]["code"], "dialog_not_found");
+}
+
+/// Off Windows every verb that drives PLS-CADD refuses `windows_only` at the
+/// dispatch gate, before it validates a path, extracts a driver or creates a
+/// folder — and says what to do instead.
+#[cfg(not(windows))]
+#[test]
+fn pls_desktop_verbs_refuse_windows_only_off_windows_and_create_nothing() {
+    let root = temp_root("pls-desktop");
+    std::fs::create_dir_all(&root).unwrap();
+    let backup = root.join("candidate.bak");
+    std::fs::write(&backup, b"not a real backup").unwrap();
+    let project = root.join("example.xyz");
+    std::fs::write(&project, b"0 0 0\n").unwrap();
+    let out = root.join("run");
+    let (backup, project, out_text) = (
+        backup.display().to_string(),
+        project.display().to_string(),
+        out.display().to_string(),
+    );
+    let calls: Vec<Vec<&str>> = vec![
+        vec!["pls", "desktop", "check"],
+        vec![
+            "pls", "desktop", "restore", "--bak", &backup, "--into", &out_text,
+        ],
+        vec![
+            "pls", "desktop", "qualify", "--bak", &backup, "--out", &out_text,
+        ],
+        vec![
+            "pls",
+            "desktop",
+            "deliver",
+            "--bak",
+            &backup,
+            "--out",
+            &out_text,
+            "--no-sheets",
+        ],
+        vec![
+            "pls",
+            "desktop",
+            "autosag",
+            "--project",
+            &project,
+            "--out",
+            &out_text,
+        ],
+        vec![
+            "pls",
+            "desktop",
+            "reports",
+            "--project",
+            &project,
+            "--out",
+            &out_text,
+        ],
+        vec![
+            "pls",
+            "desktop",
+            "sheets-pdf",
+            "--project",
+            &project,
+            "--out",
+            &out_text,
+        ],
+    ];
+    for mut call in calls {
+        call.extend(["--output", "json"]);
+        let run = ds(&call);
+        assert_eq!(
+            run.envelope["error"]["code"],
+            "windows_only",
+            "`ds {}`: {}",
+            call.join(" "),
+            run.stdout
+        );
+        assert!(
+            run.envelope["error"]["remedy"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Windows desktop"),
+            "the refusal names where to run instead"
+        );
+        assert!(!out.exists(), "`ds {}` created its output", call.join(" "));
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn capability_search_finds_the_pls_cadd_desktop_verbs() {
+    for (query, expected) in [
+        ("unknown dialog", "pls.desktop.dialogs"),
+        ("dialog catalogue", "pls.desktop.dialogs"),
+        ("native restore", "pls.desktop.restore"),
+        ("native restore reopen", "pls.desktop.qualify"),
+        ("autosag", "pls.desktop.deliver"),
+        ("section table", "pls.desktop.autosag"),
+        ("structure usage report", "pls.desktop.reports"),
+        ("plan and profile", "pls.desktop.sheets-pdf"),
+        ("pls-cadd version", "pls.desktop.check"),
+    ] {
+        let data = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let results = data["results"].as_array().expect("search results");
+        assert!(
+            results.iter().any(|row| row["id"] == expected),
+            "`{query}` did not find {expected}: {results:?}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Cross-cutting
 // ---------------------------------------------------------------------------
 

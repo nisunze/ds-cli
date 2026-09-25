@@ -14,6 +14,10 @@ result.
 So this domain is thin on purpose. It parses no PLS format, resolves no
 reference and compares no station. Those live behind the owner boundaries.
 
+One family is not a file task: `ds pls desktop …` drives PLS-CADD 16.81 itself
+on its Windows desktop, through the PowerShell drivers that own that work. See
+[PLS-CADD on its desktop](#pls-cadd-on-its-desktop-ds-pls-desktop).
+
 ## Shaded and unshaded workspace variants
 
 `shading-variants` takes one digest-pinned native backup and an absent output
@@ -238,6 +242,190 @@ ds pls section-orientation --schema --output json
 
 That schema is the task's own, so it cannot drift from what the task accepts.
 
+## PLS-CADD on its desktop: `ds pls desktop`
+
+Eight verbs run PLS-CADD 16.81 itself: native Restore, the two-restore
+qualification, the whole deliver chain, AutoSag, the deliverable reports and
+the plan & profile PDF. The owner of that work is the set of PowerShell
+drivers proven on the Nyamagabe delivery (ds-work `ea67e9b`, the deliver chain
+proven end to end on the v19 cap6 export). `ds` carries them rather than
+re-implementing a click:
+
+- **Embedded byte for byte.** `crates/ds-cli-pls/desktop/` holds the 26 driver
+  files and the ds entry scripts. Each file's sha256 is pinned in
+  `src/desktop/bundle.rs`, with its origin: vendored unchanged, vendored and
+  modified (only `pls-deliver-autosag.ps1`, which gained `-NoSheets`), or owned
+  by `ds`. `.gitattributes` exempts the folder from line-ending conversion, so
+  every checkout embeds the same bytes.
+- **Extracted per call.** A run writes the bundle into a new private folder
+  under `%TEMP%`, reads every file back against its pin, runs one
+  `ds-desktop-<verb>.ps1` with `powershell.exe -NoLogo -NoProfile
+  -NonInteractive -ExecutionPolicy Bypass -File …`, and removes the folder.
+  Windows PowerShell 5.1 is found under `%SystemRoot%`, never on `PATH`.
+- **One result document.** The entry writes `status: ok` with its receipt's
+  path, or `status: failed` with the driver's own message and the PLS-CADD
+  processes still running. `ds` reads the receipt the drivers wrote
+  (`deliver.json`, `restore-open.json`, `manifest.json`, …) and never parses
+  console text. Every result carries `receipt` and `drivers`, the bundle
+  digest that names the exact scripts.
+
+Every verb except `dialogs` refuses `windows_only` off Windows,
+`pls_cadd_not_found` when `C:\Program Files\PLS\pls_cadd\pls_cadd64.exe` is
+absent, and `powershell_not_found` without Windows PowerShell 5.1. Every folder
+a verb creates must not exist yet, must have an existing parent, and must not
+be on `C:` (`system_drive_refused`): project work lives on the project Drive,
+the rule the deliver chain and the backup driver already enforce. A run
+refuses `pls_cadd_running` when PLS-CADD is already open. Run them from a
+terminal in the signed-in Windows session: the drivers need the desktop, so a
+remote shell without one cannot drive PLS-CADD.
+
+### The dialog catalogue rule
+
+An unknown dialog stops the run. Record it in the catalogue with its
+decision; never click through it blind.
+
+`pls-dialog-catalog.psd1` lists every modal the drivers have met: when it
+fires, how it is recognised, and the decision — `wait` (a progress box, never
+clicked), `click` a named button, `click_any_ok`, `options` (press only the
+visible OK of a tabbed dialog), `flow` (a dialog a driver fills in), `ignore`,
+or `stop`. The watcher acts on it and journals every event. A dialog that
+matches nothing is `unknown`: its control tree is journaled and the run stops
+with `unknown_dialog`, carrying the dialog's title and text in `detail.dialog`.
+A catalogued `stop` or an out-of-flow dialog stops with `dialog_stop`. PLS-CADD
+is left open so the operator can see it.
+
+```bash
+ds pls desktop dialogs --output json                 # every decision
+ds pls desktop dialogs --action stop --output json   # what stops a run
+ds pls desktop dialogs --name save_changes --output json
+```
+
+`dialogs` reads the catalogue embedded in this `ds`, the one its drivers use,
+so it answers on any host. To add an entry, reproduce the dialog on the pinned
+PLS-CADD version, record its title, text, controls and safe outcome in the
+catalogue, pin the new digest in `bundle.rs` and the entry count in
+`catalog.rs`, and ship `ds`.
+
+### `check`
+
+Reads, changes nothing: PLS-CADD at its pinned path, its sha256 and version
+against the pinned 16.81 profile (the same test the restore drivers apply),
+running PLS-CADD processes, Word registered for report PDFs, and the
+PowerShell version. `ready` is false with named `blockers` otherwise. The
+Classic interface and the Project Wizard switched off have no characterised
+setting key yet, so they are listed under `operator_confirms` with any
+`PLS_CADD.INI` lines that mention them, never guessed.
+
+### `restore`
+
+```bash
+ds pls desktop restore --bak <file.bak> --into <new folder> [--evidence <new folder>] [--sha256 sha256:<hex>] [--source-root <C:\dir>] [--project-file <name.xyz>]
+```
+
+`interim/pls-restore-open-interim.ps1` then `interim/pls-close-interim.ps1`:
+a fresh Restore through PLS-CADD's own dialogs, every file restored and none
+skipped, only catalogued open prompts answered, the project opened, exit
+without saving, and the restored tree checked against the backup's protected
+members. `--into` keeps the restored workspace; the journals go to
+`--evidence`, `<into>-evidence` by default. Without `--sha256` the digest is
+computed and reported; either way the driver re-checks it before PLS-CADD sees
+the file. `--source-root` maps a backup spanning several roots.
+
+### `qualify`
+
+```bash
+ds pls desktop qualify --bak <file.bak> --out <new folder>
+```
+
+`pls-backup-restore-qualify.ps1`, the native acceptance `backup-create`
+cannot give itself: Restore and open (`r1`), PLS File > Backup of the
+untouched project (`fresh-pls-backup.bak`), close, Full and Protected checks;
+Restore that fresh backup (`r2`), close, checks against both backups. No save
+is authorised. Its `evidence/manifest.json` is the receipt, including the
+`saps_unlicensed_pls_16_81` caveat: this proves Restore integrity, not
+engineering. On an unexpected dialog the qualifier leaves PLS-CADD open, and
+the refusal says so in `detail.process_left_for_operator`.
+
+### `deliver`
+
+```bash
+ds pls desktop deliver --bak <file.bak> --out <new folder> [--label <name>] [--paging-gap <m>] [--no-sheets] [--report-timeout <s>]
+```
+
+`pls-deliver-autosag.ps1`, the proven chain, unattended:
+
+1. working session: fresh Restore (`r1`), AutoSag of every section through the
+   Section Table, paging settings (new sheet per alignment, `--paging-gap`,
+   default 100 m, page starts not rounded), Save, the Section Usage gate, PLS
+   File > Backup to `backup\<label>.bak`, Exit;
+2. from a fresh Restore of that backup (`r2`) — what a reviewer opening it
+   sees: the six reports as RTF with their verdict lines (Section Usage,
+   Structure Usage, Terrain Clearances for every feature code, Wind & Weight
+   Span, Summary, Sag-Tension), every plan & profile sheet to
+   `pdf\Plan and Profile.pdf`, Exit without saving;
+3. the RTFs to A3 landscape PDFs with Word.
+
+`--no-sheets` skips the sheet PDF only (the owner no longer prints PLS plan &
+profile); the receipt's `sheets` is then null. `--label` names the delivered
+backup and defaults to the `--bak` name with any character outside
+`A-Z a-z 0-9 . _ -` replaced by `_`. `--paging-gap` takes at most two
+decimals, because the driver types the gap with two and refuses a readback
+that differs. Word is checked before PLS-CADD starts. The result is
+`deliver.json` (`ds.pls.deliver_autosag.v4`), regrouped.
+
+### `autosag`, `reports`, `sheets-pdf`
+
+```bash
+ds pls desktop autosag    --project <project.xyz> --out <new folder>
+ds pls desktop reports    --project <project.xyz> --out <new folder>
+ds pls desktop sheets-pdf --project <project.xyz> --out <new folder>
+```
+
+One step of the deliver chain each, on a saved project. PLS-CADD opens a
+project by its `.xyz` entry point (`pls-launch-project.ps1`, pinned
+executable digest); the catalogued watcher settles the startup and open-time
+prompts. They reuse the chain's own `Watch`, `Save`, `ExitPls` and `Verdict`,
+loaded verbatim from its script, and its report list and Sheets View step,
+which a test holds to the chain's text.
+
+- `autosag` saves the project **in place**: AutoSag through the Section Table
+  (never menu command 40337, which crashes 16.81), Save, the Section Usage
+  gate, Exit. Receipt `autosag.json`.
+- `reports` writes the six RTFs and their A3 PDFs and saves nothing. Receipt
+  `reports.json`.
+- `sheets-pdf` writes `pdf\Plan and Profile.pdf` with PLS-CADD's own exporter,
+  each sheet at its page size, and saves nothing. Receipt `sheets.json`.
+
+These three compose proven steps in an order the deliver chain already runs;
+the compositions themselves have not yet run on the desktop. `deliver`,
+`restore` and `qualify` run the drivers' proven sequences as they are.
+
+### Refusals from a run
+
+The drivers already refuse precisely; `ds` names those refusals. The cause
+is the driver's own message: a phrase the embedded drivers throw, each held to
+the scripts by a test, or the watcher outcome it quotes (`did not return to
+ready: unknown`). The journals only enrich a dialog refusal with the latest
+matching event's title and text; they never decide the cause, because a step
+can journal a dialog event and still succeed:
+
+| Code | From |
+|---|---|
+| `unknown_dialog` | a watcher `unknown` outcome, or an unexpected window in the restore/backup/exit drivers |
+| `dialog_stop` | a catalogued `stop` or out-of-flow dialog, or a project that needs repair |
+| `pls_cadd_timeout` | PLS-CADD did not reach a state a driver waited for |
+| `pls_cadd_running`, `pls_cadd_mismatch` | PLS-CADD already open; not the pinned 16.81 build |
+| `backup_digest_mismatch`, `backup_invalid` | the pin moved; not a readable one-project backup |
+| `restored_tree_mismatch` | restored files differ from the backup's members |
+| `word_not_found` | no Word for report PDFs |
+| `driver_failed` | any other driver refusal, with its message and script |
+| `desktop_run_timed_out` | the whole run exceeded ds's bound; PLS-CADD may still be open |
+| `driver_bundle_failed`, `driver_result_unreadable` | extraction, or a run that left no readable document |
+
+Every refusal from a run carries `detail.message`, `detail.script` and
+`detail.pls_cadd_running`. A code a verb does not document is reported as
+`driver_failed`.
+
 ## What is not here yet
 
 `ds-grid-cli` carries more PLS surface than this — structure ingest, emit,
@@ -265,3 +453,17 @@ Every command calls one function in `ds-grid-tasks`:
 | `terrain-reconcile` | `reconcile_pls_terrain` |
 | `deviation-labels` | `label_pls_deviations` |
 | `delivery-verify` | `verify_pls_delivery` |
+
+The `desktop` verbs call no task: each runs one ds entry of the embedded
+PLS-CADD driver bundle, as above.
+
+| Command | Driver |
+|---|---|
+| `desktop check` | `ds-desktop-check.ps1` (reads only) |
+| `desktop dialogs` | the embedded `pls-dialog-catalog.psd1`, read in `ds` |
+| `desktop restore` | `interim/pls-restore-open-interim.ps1`, `interim/pls-close-interim.ps1` |
+| `desktop qualify` | `pls-backup-restore-qualify.ps1` |
+| `desktop deliver` | `pls-deliver-autosag.ps1` |
+| `desktop autosag` | `pls-launch-project.ps1`, `pls-section-table-autosag.ps1`, `pls-report-any.ps1` |
+| `desktop reports` | `pls-launch-project.ps1`, `pls-report-any.ps1`, `pls-rtf-to-pdf.ps1` |
+| `desktop sheets-pdf` | `pls-launch-project.ps1`, `pls-save-sheets-pdf.ps1` |

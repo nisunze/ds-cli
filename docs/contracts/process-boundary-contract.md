@@ -54,6 +54,7 @@ four owner classes, and each is audited where it lives:
 | An executable already on this machine, probed | `crates/ds-cli-workstation/src/detect.rs`, `verify.rs` | bounded version probes and the harmless verification smoke test |
 | This same `ds`, and the installed desktop | `crates/ds-cli-mcp/src/tools.rs` | one `ds <path> … --output json` per `tools/call`; for a live-descriptor command that requires desktop authority and has no named descriptor, one fixed no-argument DS GridDesign launch |
 | Installed document tools | `crates/ds-cli-server/src/solar_documents.rs` | fixed Pandoc Markdown-to-DOCX and LibreOffice DOCX-to-PDF conversions, using private resources verified by the captured Solar owner; no caller-supplied executable or argv |
+| The PLS-CADD desktop drivers | `crates/ds-cli-pls/src/desktop/run.rs` | Windows PowerShell 5.1, found under `%SystemRoot%` and never on `PATH`, on one `ds-desktop-*.ps1` entry of the embedded driver bundle; the bundle is extracted into a private folder and every file checked against its pinned sha256 before the run; literal switches, a closed `Entry` enum, static parameter names, and values the verb validated (paths, a digest, a label, numbers), each quoted by one tested function |
 
 Every one of those sites builds its arguments from a literal array in its own
 source. None accepts an argv, a subcommand string, or a shell fragment from a

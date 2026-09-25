@@ -1,0 +1,109 @@
+{
+    "schema":  "ds.pls.interim_restore_open.v1",
+    "status":  "opened_presence_verified",
+    "at_utc":  "2026-09-24T13:55:29.6928743Z",
+    "executable":  {
+                       "path":  "C:\\Program Files\\PLS\\pls_cadd\\pls_cadd64.exe",
+                       "sha256":  "bf5cc5c3cde126ed2119303b5530f81d80222508e2815253a29709879c858650",
+                       "version":  "Version 16.81"
+                   },
+    "candidate":  {
+                      "path":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\in\\example-cap4.bak",
+                      "container":  "single_member_zip_wrapping_native_plsbackupfile_v3_1",
+                      "sha256":  "c10e63656a3fa03c96be8c04800512bcce1ec4020f5f44e2ce7fa8894401bb81",
+                      "native_sha256":  "a5b3e6a53e18107c2084a941a6c9e2e8297c3668879d6535d9c42414ea483dbc",
+                      "project_file":  "example.xyz",
+                      "source_root":  "C:\\example",
+                      "counts":  {
+                                     "records":  49,
+                                     "directories":  3,
+                                     "files":  46,
+                                     "project_core":  9,
+                                     "engineering_library":  31,
+                                     "ancillary":  6
+                                 }
+                  },
+    "restore":  {
+                    "directory":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\restore-cap4\\r1",
+                    "project":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\restore-cap4\\r1\\example.xyz",
+                    "process_id":  22496,
+                    "main_window_handle":  723132,
+                    "frame_title":  "PLS-CADD - example.xyz - 1 - [Profile View]"
+                },
+    "pre_open_presence":  {
+                              "schema":  "ds.pls.restored_tree_verification.v1",
+                              "scope":  "full",
+                              "root":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\restore-cap4\\r1",
+                              "verified_files":  46,
+                              "verified_members":  [
+                                                       {
+                                                           "relative_path":  "cables\\acsr 70-12mm2",
+                                                           "bytes":  1027,
+                                                           "sha256":  null,
+                                                           "verification":  "present"
+                                                       },
+                                                       {
+                                                           "relative_path":  "cables\\opgw.wir",
+                                                           "bytes":  1014,
+                                                           "sha256":  null,
+                                                           "verification":  "present"
+                                                       },
+                                                       {
+                                                           "relative_path":  "example.brk",
+                                                           "bytes":  201,
+                                                           "sha256":  null,
+                                                           "verification":  "present"
+                                                       },
+                                                       {
+                                                           "relative_path":  "example.con",
+                                                           "bytes":  75667,
+                                                           "sha256":  null,
+                                                           "verification":  "present"
+                                                       }
+                                                   ],
+                              "verified_digest":  null,
+                              "unexpected_files":  [
+
+                                                   ]
+                          },
+    "post_close_protected":  "run pls-close-interim.ps1 (C3f: the open project locks its .xyz)",
+    "open_prompts":  [
+                         {
+                             "phase":  "startup",
+                             "name":  "about_pls_cadd_16_81",
+                             "title":  "About PLS-CADD",
+                             "body":  "PLS-CADD Version 16.81x64 Copyright Power Line Systems 1993-2021 5400 King James Way, Suite 300 Madison, Wisconsin 53719 U.S.A. Phone: 608-238-2171 Fax: 608-238-9241 info@powerlinesystems.com Licensed to: Example https://www.powerlinesystems.com SAPS Finite Element Sag-Tension Real Time Rating Distribution Advanced Distribution There are 365 days left in your technical support period. 730 days of disconnected use remaining. Optimum Spotting Upgrade status unknown"
+                         },
+                         {
+                             "phase":  "startup",
+                             "name":  "tip_of_the_day",
+                             "title":  "Tip of the Day",
+                             "body":  "Cable files for use with PLS-CADD can be found in our online library which you can reach with the Help/Visit the PLS Online Library command. Did you know?"
+                         },
+                         {
+                             "name":  "pp_paging_unable_to_cut",
+                             "title":  "Warning",
+                             "body":  "Unable to cut pages. This may be because of the presence of multiple alignments and use of a multiple alignment gap (currently set to 1 in Terrain/Alignment/Multiple Alignment Options) that is smaller than Drafting/Plan \u0026 Profile Sheet Configuration/Scales/Station major grid line spacing (currently 20) which often results in paging problems."
+                         },
+                         {
+                             "name":  "pp_paging_no_progress",
+                             "title":  "Problem",
+                             "body":  "No progress in find_next_page_start_station: prevstartstation=1540.000000 prevstopstation=1541.698369 startstation=1540.000000"
+                         },
+                         {
+                             "name":  "pp_paging_no_progress",
+                             "title":  "Problem",
+                             "body":  "No progress in place_sheets loop. Paging aborted!"
+                         }
+                     ],
+    "repairs":  [
+
+                ],
+    "log_tail":  [
+                     "57e0 3:55:07 PM 9/24/2026        0 PLS_WIN.CPP:2580: PLS-CADD Version 16.81x64 Example [SBL]",
+                     "57e0 3:55:07 PM 9/24/2026        0 PLS_WIN.CPP:2610: Could not load SiAppDll dll files: return code 16 - 3DX support disabled.",
+                     "57e0 3:55:07 PM 9/24/2026        0  OnCommand:Help/\u0026About...",
+                     "57e0 3:55:07 PM 9/24/2026        0 PLS_WIN.CPP:14271: InternetGetFileWithProgress about to start HTTPS download to local file C:\\Users\\ops\\AppData\\Roaming\\PLS\\temp\\contents.pls"
+                 ],
+    "caveat":  "Interim driver: restore/open integrity only. PLS-CADD 16.81 on this host may lack SAPS (see qualify caveat); not engineering acceptance."
+}
