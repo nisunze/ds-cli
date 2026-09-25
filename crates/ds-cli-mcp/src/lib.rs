@@ -45,7 +45,7 @@ pub(crate) fn always() -> Availability {
 
 pub(crate) const CAPABILITIES_UNAVAILABLE: Refusal = Refusal {
     code: "mcp_capabilities_unavailable",
-    when: "`ds capabilities` could not be read from this executable while building the tool list",
+    when: "`ds capabilities` could not be read while building the tool list",
     remedy: "run `ds capabilities --output json` by hand and fix what it reports before serving",
 };
 

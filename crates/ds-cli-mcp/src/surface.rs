@@ -36,6 +36,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "grid-local-model",
     "clearance",
     "pls",
+    "pls-desktop",
     "pls-library",
     "library-governance",
     "survey",
@@ -99,6 +100,7 @@ pub enum Profile {
     GridLocalModel,
     GridClearance,
     Pls,
+    PlsDesktop,
     PlsLibrary,
     LibraryGovernance,
     Survey,
@@ -140,6 +142,7 @@ impl Profile {
             "grid-local-model" => Some(Self::GridLocalModel),
             "clearance" => Some(Self::GridClearance),
             "pls" => Some(Self::Pls),
+            "pls-desktop" => Some(Self::PlsDesktop),
             "pls-library" => Some(Self::PlsLibrary),
             "library-governance" => Some(Self::LibraryGovernance),
             "survey" => Some(Self::Survey),
@@ -182,6 +185,7 @@ impl Profile {
             Self::GridLocalModel => "grid-local-model",
             Self::GridClearance => "clearance",
             Self::Pls => "pls",
+            Self::PlsDesktop => "pls-desktop",
             Self::PlsLibrary => "pls-library",
             Self::LibraryGovernance => "library-governance",
             Self::Survey => "survey",
@@ -364,7 +368,18 @@ impl Profile {
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
             Self::GridClearance => GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str()),
-            Self::Pls => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls."),
+            // The file-task family. `ds pls desktop …` drives PLS-CADD itself on
+            // its Windows desktop for hours at a time — a different job on a
+            // different host — and has its own profile, which also keeps this
+            // one inside its default budget (2026-09-25).
+            Self::Pls => {
+                tool.chapter == Chapter::PlsCadd
+                    && tool.id.starts_with("pls.")
+                    && !tool.id.starts_with("pls.desktop.")
+            }
+            Self::PlsDesktop => {
+                tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls.desktop.")
+            }
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS.contains(&tool.id.as_str()),
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS.contains(&tool.id.as_str()),
             Self::Survey => SURVEY_MAP_COMMANDS.contains(&tool.id.as_str()),
@@ -452,6 +467,7 @@ impl Profile {
             Self::Grid
             | Self::GridNative
             | Self::Pls
+            | Self::PlsDesktop
             | Self::Map
             | Self::Tiling
             | Self::Project
@@ -470,7 +486,9 @@ impl Profile {
             Self::GridLocalModel | Self::GridClearance | Self::GridCorrections => {
                 chapter == Chapter::GridModel
             }
-            Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
+            Self::Pls | Self::PlsDesktop | Self::PlsLibrary | Self::LibraryGovernance => {
+                chapter == Chapter::PlsCadd
+            }
             Self::Survey
             | Self::FormFactory
             | Self::SurveyProjects
@@ -1951,6 +1969,7 @@ mod tests {
     fn profiles_are_typed_filtered_views_and_require_command_exposure() {
         let tools = vec![
             tool("pls.reference-closure", Chapter::PlsCadd, false),
+            tool("pls.desktop.deliver", Chapter::PlsCadd, false),
             tool("library.resolve-native", Chapter::PlsCadd, false),
             tool("tile.generate", Chapter::VectorTiles, true),
         ];
@@ -1975,6 +1994,17 @@ mod tests {
         assert_eq!(
             names,
             ["ds_catalog", "ds_diagnostics", "library_resolve-native"]
+        );
+        let desktop = Surface::new(Exposure::Commands, Some(Profile::PlsDesktop), tools.clone())
+            .expect("desktop profile");
+        let names = desktop
+            .tool_list()
+            .into_iter()
+            .map(|value| value["name"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            ["ds_catalog", "ds_diagnostics", "pls_desktop_deliver"]
         );
         let error = Surface::new(Exposure::Chapters, Some(Profile::Pls), tools).unwrap_err();
         assert_eq!(error.code(), "mcp_profile_exposure_invalid");

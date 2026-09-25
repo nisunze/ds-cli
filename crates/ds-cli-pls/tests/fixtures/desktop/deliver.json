@@ -1,0 +1,131 @@
+{
+    "schema":  "ds.pls.deliver_autosag.v4",
+    "label":  "cap6",
+    "source":  {
+                   "path":  "G:\\Working\\in\\cap6.bak",
+                   "sha256":  "51f28ab700000000000000000000000000000000000000000000000000000000"
+               },
+    "working_session":  {
+                            "restored_files":  44,
+                            "autosag":  {
+                                            "evidence_directory":  "G:\\Working\\deliver-cap6\\ev-autosag",
+                                            "fill":  {
+                                                         "index":  9,
+                                                         "id":  38079,
+                                                         "text":  "Copy \u0026\u0026 Fill Column",
+                                                         "down_keys":  9
+                                                     },
+                                            "watcher":  "ready"
+                                        },
+                            "paging":  {
+                                           "alignment_gap_m":  100.0,
+                                           "new_sheet_per_alignment":  1,
+                                           "page_start_rounding":  "do_not_round"
+                                       },
+                            "gate_section_usage":  {
+                                                       "section_violations":  0,
+                                                       "structure_violations":  null,
+                                                       "structure_warnings":  null,
+                                                       "clearance_spans_ng":  null,
+                                                       "clearance_spans_ok":  null
+                                                   }
+                        },
+    "backup":  {
+                   "path":  "G:\\Working\\deliver-cap6\\backup\\cap6.bak",
+                   "sha256":  "a5b3e6a511111111111111111111111111111111111111111111111111111111",
+                   "bytes":  5322311
+               },
+    "deliverables_from_fresh_restore":  {
+                                            "restored_files":  44,
+                                            "reports":  {
+                                                            "Section Usage":  {
+                                                                                  "rtf":  "G:\\Working\\deliver-cap6\\reports\\Section Usage.rtf",
+                                                                                  "bytes":  412331,
+                                                                                  "sha256":  "ffffffffffffffffffffffffffffffffffffffffffffffff8749c9897a6b4b06",
+                                                                                  "verdict":  {
+                                                                                                  "section_violations":  0,
+                                                                                                  "structure_violations":  null,
+                                                                                                  "structure_warnings":  null,
+                                                                                                  "clearance_spans_ng":  null,
+                                                                                                  "clearance_spans_ok":  null
+                                                                                              },
+                                                                                  "pdf":  "G:\\Working\\deliver-cap6\\reports\\Section Usage.pdf",
+                                                                                  "pdf_bytes":  58904
+                                                                              },
+                                                            "Structure Usage":  {
+                                                                                    "rtf":  "G:\\Working\\deliver-cap6\\reports\\Structure Usage.rtf",
+                                                                                    "bytes":  1893310,
+                                                                                    "sha256":  "ffffffffffffffffffffffffffffffffffffffffffffffff957c143b70bc8538",
+                                                                                    "verdict":  {
+                                                                                                    "section_violations":  null,
+                                                                                                    "structure_violations":  3,
+                                                                                                    "structure_warnings":  0,
+                                                                                                    "clearance_spans_ng":  null,
+                                                                                                    "clearance_spans_ok":  null
+                                                                                                },
+                                                                                    "pdf":  "G:\\Working\\deliver-cap6\\reports\\Structure Usage.pdf",
+                                                                                    "pdf_bytes":  270472
+                                                                                },
+                                                            "Terrain Clearances":  {
+                                                                                       "rtf":  "G:\\Working\\deliver-cap6\\reports\\Terrain Clearances.rtf",
+                                                                                       "bytes":  2210045,
+                                                                                       "sha256":  "0000000000000000000000000000000000000000000000000685f978080a1d82",
+                                                                                       "verdict":  {
+                                                                                                       "section_violations":  null,
+                                                                                                       "structure_violations":  null,
+                                                                                                       "structure_warnings":  null,
+                                                                                                       "clearance_spans_ng":  0,
+                                                                                                       "clearance_spans_ok":  666
+                                                                                                   },
+                                                                                       "pdf":  "G:\\Working\\deliver-cap6\\reports\\Terrain Clearances.pdf",
+                                                                                       "pdf_bytes":  315720
+                                                                                   },
+                                                            "Wind & Weight Span":  {
+                                                                                       "rtf":  "G:\\Working\\deliver-cap6\\reports\\Wind \u0026 Weight Span.rtf",
+                                                                                       "bytes":  977120,
+                                                                                       "sha256":  "ffffffffffffffffffffffffffffffffffffffffffffffffe8a3445391ba60f3",
+                                                                                       "verdict":  {
+                                                                                                       "section_violations":  null,
+                                                                                                       "structure_violations":  null,
+                                                                                                       "structure_warnings":  null,
+                                                                                                       "clearance_spans_ng":  null,
+                                                                                                       "clearance_spans_ok":  null
+                                                                                                   },
+                                                                                       "pdf":  "G:\\Working\\deliver-cap6\\reports\\Wind \u0026 Weight Span.pdf",
+                                                                                       "pdf_bytes":  139588
+                                                                                   },
+                                                            "Summary":  {
+                                                                            "rtf":  "G:\\Working\\deliver-cap6\\reports\\Summary.rtf",
+                                                                            "bytes":  60211,
+                                                                            "sha256":  "00000000000000000000000000000000000000000000000007f73a8a87b17e61",
+                                                                            "verdict":  {
+                                                                                            "section_violations":  0,
+                                                                                            "structure_violations":  3,
+                                                                                            "structure_warnings":  null,
+                                                                                            "clearance_spans_ng":  null,
+                                                                                            "clearance_spans_ok":  null
+                                                                                        },
+                                                                            "pdf":  "G:\\Working\\deliver-cap6\\reports\\Summary.pdf",
+                                                                            "pdf_bytes":  8601
+                                                                        },
+                                                            "Sag Tension":  {
+                                                                                "rtf":  "G:\\Working\\deliver-cap6\\reports\\Sag Tension.rtf",
+                                                                                "bytes":  3312870,
+                                                                                "sha256":  "ffffffffffffffffffffffffffffffffffffffffffffffff8d230faccf0274d9",
+                                                                                "verdict":  {
+                                                                                                "section_violations":  null,
+                                                                                                "structure_violations":  null,
+                                                                                                "structure_warnings":  null,
+                                                                                                "clearance_spans_ng":  null,
+                                                                                                "clearance_spans_ok":  null
+                                                                                            },
+                                                                                "pdf":  "G:\\Working\\deliver-cap6\\reports\\Sag Tension.pdf",
+                                                                                "pdf_bytes":  473267
+                                                                            }
+                                                        },
+                                            "sheets":  {
+                                                           "pdf":  "G:\\Working\\deliver-cap6\\pdf\\Plan and Profile.pdf",
+                                                           "bytes":  48912004
+                                                       }
+                                        }
+}

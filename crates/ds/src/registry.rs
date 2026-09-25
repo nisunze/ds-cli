@@ -506,6 +506,46 @@ static PLS_ENTRIES: &[Entry] = &[
         handler: ds_cli_pls::delivery_verify::run,
         render: ds_cli_pls::delivery_verify::render,
     },
+    Entry {
+        command: &ds_cli_pls::desktop::check::COMMAND,
+        handler: ds_cli_pls::desktop::check::run,
+        render: ds_cli_pls::desktop::check::render,
+    },
+    Entry {
+        command: &ds_cli_pls::desktop::dialogs::COMMAND,
+        handler: ds_cli_pls::desktop::dialogs::run,
+        render: ds_cli_pls::desktop::dialogs::render,
+    },
+    Entry {
+        command: &ds_cli_pls::desktop::restore::COMMAND,
+        handler: ds_cli_pls::desktop::restore::run,
+        render: ds_cli_pls::desktop::restore::render,
+    },
+    Entry {
+        command: &ds_cli_pls::desktop::qualify::COMMAND,
+        handler: ds_cli_pls::desktop::qualify::run,
+        render: ds_cli_pls::desktop::qualify::render,
+    },
+    Entry {
+        command: &ds_cli_pls::desktop::deliver::COMMAND,
+        handler: ds_cli_pls::desktop::deliver::run,
+        render: ds_cli_pls::desktop::deliver::render,
+    },
+    Entry {
+        command: &ds_cli_pls::desktop::autosag::COMMAND,
+        handler: ds_cli_pls::desktop::autosag::run,
+        render: ds_cli_pls::desktop::autosag::render,
+    },
+    Entry {
+        command: &ds_cli_pls::desktop::reports::COMMAND,
+        handler: ds_cli_pls::desktop::reports::run,
+        render: ds_cli_pls::desktop::reports::render,
+    },
+    Entry {
+        command: &ds_cli_pls::desktop::sheets_pdf::COMMAND,
+        handler: ds_cli_pls::desktop::sheets_pdf::run,
+        render: ds_cli_pls::desktop::sheets_pdf::render,
+    },
 ];
 
 static REPORT_ENTRIES: &[Entry] = &[

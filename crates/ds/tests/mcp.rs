@@ -1588,6 +1588,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "grid-local-model",
         "clearance",
         "pls",
+        "pls-desktop",
         "pls-library",
         "library-governance",
         "survey",
@@ -1816,6 +1817,12 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "the PLS profile must expose the live backup command without a second MCP schema"
     );
     assert!(
+        published["pls-desktop"].contains("pls_desktop_deliver")
+            && published["pls-desktop"].contains("pls_desktop_dialogs")
+            && !published["pls"].contains("pls_desktop_deliver"),
+        "the PLS-CADD desktop verbs are their own profile, projected from the live registry"
+    );
+    assert!(
         published["design-edit"].contains("map_design_open"),
         "the design-edit profile must project the canonical visible context-entry command"
     );
@@ -1881,7 +1888,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                 "solar-dashboard",
             ][..],
         ),
-        ("pls_", &["pls", "pls-library", "library-governance"][..]),
+        (
+            "pls_",
+            &["pls", "pls-desktop", "pls-library", "library-governance"][..],
+        ),
     ] {
         let expected = all
             .iter()

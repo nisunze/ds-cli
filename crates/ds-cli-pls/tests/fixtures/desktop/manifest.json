@@ -1,0 +1,93 @@
+{
+    "schema":  "ds.pls.backup_restore_qualification.v1",
+    "status":  "qualified_backup_roundtrip_local_only",
+    "completed_at_utc":  "2026-09-25T09:12:44.1234567Z",
+    "executable":  {
+                       "path":  "C:\\Program Files\\PLS\\pls_cadd\\pls_cadd64.exe",
+                       "sha256":  "bf5cc5c3cde126ed2119303b5530f81d80222508e2815253a29709879c858650",
+                       "file_version":  "Version 16.81",
+                       "product_version":  "16.81"
+                   },
+    "candidate":  {
+                      "path":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\in\\example-cap4.bak",
+                      "container_format":  "single_member_zip_wrapping_native_plsbackupfile_v3_1",
+                      "container_sha256":  "c10e63656a3fa03c96be8c04800512bcce1ec4020f5f44e2ce7fa8894401bb81",
+                      "native_sha256":  "a5b3e6a53e18107c2084a941a6c9e2e8297c3668879d6535d9c42414ea483dbc",
+                      "project_file":  "example.xyz",
+                      "counts":  {
+                                     "records":  49,
+                                     "directories":  3,
+                                     "files":  46,
+                                     "project_core":  9,
+                                     "engineering_library":  31,
+                                     "ancillary":  6
+                                 },
+                      "digests":  {
+                                      "protected":  "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+                                      "full":  "7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e"
+                                  }
+                  },
+    "first_restore":  {
+                          "directory":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\qualify-cap4\\r1",
+                          "project_opened":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\qualify-cap4\\r1\\example.xyz",
+                          "full_tree_verified":  true,
+                          "protected_candidate_verified":  true
+                      },
+    "fresh_pls_backup":  {
+                             "path":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\qualify-cap4\\fresh-pls-backup.bak",
+                             "container_format":  "native_plsbackupfile_v3_1",
+                             "container_sha256":  "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+                             "native_sha256":  "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+                             "counts":  {
+                                            "records":  49,
+                                            "directories":  3,
+                                            "files":  46,
+                                            "project_core":  9,
+                                            "engineering_library":  31,
+                                            "ancillary":  6
+                                        },
+                             "digests":  {
+                                             "protected":  "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+                                             "full":  "7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e"
+                                         },
+                             "protected_equal_to_candidate":  true,
+                             "save_before_backup_authorized":  false,
+                             "ui":  {
+                                        "completion_prompt":  "46 files backed up from 1 project"
+                                    }
+                         },
+    "second_restore":  {
+                           "directory":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\qualify-cap4\\r2",
+                           "project_opened":  "G:\\Shared drives\\Pro\\Client\\Example Project\\Working\\qualify-cap4\\r2\\example.xyz",
+                           "full_tree_verified_against_fresh_backup":  true,
+                           "protected_tree_verified_against_intended_candidate":  true
+                       },
+    "repairs":  {
+                    "count":  0,
+                    "remove_missing_references_used":  false,
+                    "actions":  [
+
+                                ]
+                },
+    "warnings":  {
+                     "known_dialog_count":  6,
+                     "log_match_count":  41,
+                     "evidence":  "warnings.json"
+                 },
+    "caveat":  {
+                   "code":  "saps_unlicensed_pls_16_81",
+                   "accepted_for_local_verification":  false,
+                   "shipment_grade":  false,
+                   "text":  "PLS-CADD 16.81 on this host lacks SAPS and may substitute Initial RS for unsupported wire conditions 2/3; PLS-CADD states affected results are incorrect. This qualification proves backup/restore integrity only. Engineering submission still requires a SAPS-equipped supported run or explicit responsible-operator acceptance."
+               },
+    "source_drift_detected":  false,
+    "save_after_open_without_explicit_authority":  false,
+    "evidence_files":  [
+                           "candidate-inventory.json",
+                           "first-restore-verification.json",
+                           "fresh-backup-inventory.json",
+                           "second-restore-verification.json",
+                           "warnings.json",
+                           "journal.jsonl"
+                       ]
+}

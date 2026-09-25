@@ -688,6 +688,18 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pls.structure-inventory", "discovery", "none"),
     ("pls.shading-variants", "local_file_write", "none"),
     ("pls.terrain-reconcile", "local_file_write", "none"),
+    // PLS-CADD itself on its Windows desktop, through the embedded drivers
+    // (2026-09-25). `check` only reads the install; `dialogs` only reads the
+    // embedded catalogue. Every other verb writes into a new folder off C:
+    // and, for `autosag`, saves the named project in place.
+    ("pls.desktop.check", "read_only", "none"),
+    ("pls.desktop.dialogs", "discovery", "none"),
+    ("pls.desktop.restore", "local_file_write", "none"),
+    ("pls.desktop.qualify", "local_file_write", "none"),
+    ("pls.desktop.deliver", "local_file_write", "none"),
+    ("pls.desktop.autosag", "local_file_write", "none"),
+    ("pls.desktop.reports", "local_file_write", "none"),
+    ("pls.desktop.sheets-pdf", "local_file_write", "none"),
     ("report.bundle", "local_file_write", "none"),
     ("report.artifact.remove", "global_write", "headless_project"),
     ("report.plan-profile", "local_file_write", "none"),
