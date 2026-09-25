@@ -34,9 +34,10 @@ pub mod export;
 pub mod layout;
 pub mod outbox;
 pub mod plan_profile;
-pub mod spatial_workbook;
+pub mod plan_profile_config;
 pub mod planning;
 pub mod project;
+pub mod spatial_workbook;
 pub mod tasks;
 
 use std::time::Duration;
@@ -90,6 +91,8 @@ pub static DOMAIN: Domain = Domain {
         &export::COMMAND,
         &bundle::COMMAND,
         &plan_profile::COMMAND,
+        &plan_profile_config::COMMAND,
+        &plan_profile_config::SCHEMA,
         &spatial_workbook::COMMAND,
         &outbox::STATUS,
         &outbox::DRAIN,

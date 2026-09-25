@@ -630,6 +630,16 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::plan_profile::render,
     },
     Entry {
+        command: &ds_cli_report::plan_profile_config::COMMAND,
+        handler: ds_cli_report::plan_profile_config::run,
+        render: ds_cli_report::plan_profile_config::render,
+    },
+    Entry {
+        command: &ds_cli_report::plan_profile_config::SCHEMA,
+        handler: ds_cli_report::plan_profile_config::schema_run,
+        render: ds_cli_report::plan_profile_config::schema_render,
+    },
+    Entry {
         command: &ds_cli_report::spatial_workbook::COMMAND,
         handler: ds_cli_report::spatial_workbook::run,
         render: ds_cli_report::spatial_workbook::render,

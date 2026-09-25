@@ -14,7 +14,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "map-inputs"],
     contract: 1,
     summary: "Prepare a district MV overview for headless PDF/PNG printing.",
-    purpose: "Reads all active LV transformers and exact current MV models, preserving their revisions and geometry. Applies an authored layout to held geographic context and writes a replayable report.layout.render request. No design writes or publication. --seed explicitly acquires missing context. Missing context is named in the receipt; inspect it before rendering. Detailed poles and customers are omitted from the overview.",
+    purpose: "Reads all active LV transformers and exact current MV models, preserving revisions and geometry. Includes new LV lines, poles, service cables and customers with their saved print styles. Applies an authored layout to held geographic context and writes a replayable report.layout.render request. No design writes or publication. --seed explicitly acquires missing context. Missing context is named in the receipt; inspect it before rendering.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -59,7 +59,7 @@ pub static COMMAND: Command = Command {
         ),
         super::LANE_ARG,
     ],
-    output: "Project, transformer count, exact MV model provenance, source revisions, omitted context, and render request path.",
+    output: "Project, transformer count, new LV line, pole, service cable and customer feature counts, exact MV model provenance, source revisions, omitted context, and render request path.",
     examples: &[],
     refusals: super::export::REFUSALS,
     reference: Some("docs/reference/report.md"),
@@ -191,6 +191,15 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         }
     }
     let network = sources.layers();
+    let design_layer_counts = ["tr", "lv_lines", "lv_poles", "service_cables", "customers"]
+        .into_iter()
+        .map(|id| {
+            (
+                id.to_owned(),
+                json!(network[id]["features"].as_array().map_or(0, Vec::len)),
+            )
+        })
+        .collect::<serde_json::Map<String, Value>>();
     // Context coverage belongs to the physical page, while the overview's
     // complete design remains available to the shared map painter. An MV
     // route can span a district; its union rectangle is not a sheet extent.
@@ -290,7 +299,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .map_err(invalid)?
         .write_all(&data)
         .map_err(invalid)?;
-    let result = json!({"project":project,"transformer_count":revisions.len(),"sources":revisions,"mv_models":super::mv_context::provenance(&models),"area_bounds":area_bounds,"render_extent":extent,"omitted":context.omitted.iter().map(|o|json!({"layer":o.layer,"reason":o.reason})).collect::<Vec<_>>(),"warnings":context.warnings,"request":path,"sha256":ds_command_kernel::report_export::sha256_hex(&data)});
+    let result = json!({"project":project,"transformer_count":revisions.len(),"design_layer_counts":design_layer_counts,"sources":revisions,"mv_models":super::mv_context::provenance(&models),"area_bounds":area_bounds,"render_extent":extent,"omitted":context.omitted.iter().map(|o|json!({"layer":o.layer,"reason":o.reason})).collect::<Vec<_>>(),"warnings":context.warnings,"request":path,"sha256":ds_command_kernel::report_export::sha256_hex(&data)});
     std::fs::write(
         out.join("sources.json"),
         serde_json::to_vec_pretty(&result).map_err(invalid)?,

@@ -1123,7 +1123,9 @@ dependencies = [
  "ds-report-host",
  "ds-sync-runtime",
  "ds-sync-store",
+ "serde",
  "serde_json",
+ "sha2",
  "tempfile",
 ]
 

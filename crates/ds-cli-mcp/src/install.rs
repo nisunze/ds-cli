@@ -220,7 +220,7 @@ pub static COMMAND: Command = Command {
     path: &["mcp", "install"],
     contract: 6,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
-    summary: "Print or write an MCP host entry for this `ds`.",
+    summary: "Print or write this `ds` MCP host entry.",
     purpose: "\
 Print the stdio entry and target. By default it only reads. \
 `--write --yes` owns only that key, migrates an exact legacy `ds`, preserves \
