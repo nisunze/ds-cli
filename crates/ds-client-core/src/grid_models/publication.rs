@@ -117,7 +117,13 @@ pub(super) fn run<T: AuthorizedTransport>(
         .get("revision")
         .or_else(|| readback.get("version"))
         .ok_or_else(bad)?;
-    if !plan.matches_version(verified) || verified["version"] != version["version"] {
+    // A Server that stores ordinals says where the revision landed; an
+    // explicit bump must have started the version (ordinal 1).
+    let ordinal = ds_command_kernel::grid_versions::stored_ordinal(verified);
+    if !plan.matches_version(verified)
+        || verified["version"] != version["version"]
+        || (intent.bump_version && ordinal.is_some_and(|n| n != 1))
+    {
         return Err(bad());
     }
     // Project bytes are committed even if a presentation host later fails to
@@ -128,7 +134,8 @@ pub(super) fn run<T: AuthorizedTransport>(
         "expected_head":intent.expected_head_revision_id,"parent_revision":verified["parent_revision_id"],
         "digest":plan.artifact.digest,"byte_length":plan.artifact.byte_length,"upload_skipped":skipped,
         "verified":true,"local_revision":intent.source_revision_id,"bump_version":intent.bump_version,
-        "milestone":verified["milestone"],"approval":verified["approval"]}),
+        "milestone":verified["milestone"],"approval":verified["approval"],
+        "revision_ordinal_within_version":ordinal}),
         bytes: None,
     })
 }

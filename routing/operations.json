@@ -798,9 +798,11 @@
           "doc": [
             "`start_upload` returns a resumable session URI. The session is an",
             "`authority: storage_session` transfer that the caller never sees; it",
-            "does not re-enter this operation. `get_export_artifact` signs one",
-            "published export item for a digest-verified read; a Server that",
-            "predates it refuses the action and the client reports that by name."
+            "does not re-enter this operation. `get_export_artifact` and",
+            "`get_backup_artifact` sign one digest-verified read; `bump_version`,",
+            "`update_model` and `set_approval` are head-fenced governance writes",
+            "with no upload. A Server that predates an action refuses it and the",
+            "client reports that by name."
           ],
           "transport": "json",
           "authority": "gateway",
@@ -813,9 +815,13 @@
             "get_version",
             "list_exports",
             "get_export_artifact",
+            "get_backup_artifact",
             "start_upload",
             "create_version",
+            "bump_version",
             "fork_example",
+            "update_model",
+            "set_approval",
             "delete_model",
             "restore_model",
             "publish_export"

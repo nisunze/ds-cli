@@ -9,7 +9,9 @@ use crate::{
     AuthorizedTransport, ClientError, ClientProfile, ErrorKind, GridModelsCall, ServiceRefusal,
     TransportResponse,
 };
-use ds_command_kernel::grid_publication::{catalog_identifier, sha256_hex};
+use ds_command_kernel::grid_publication::{
+    catalog_identifier, sha256_hex, APPROVAL_STATES, MAX_MILESTONE,
+};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 pub const MAX_BYTES: usize = 256 * 1024 * 1024;
@@ -18,16 +20,20 @@ pub const MAX_BYTES: usize = 256 * 1024 * 1024;
 /// claims no ordinal.
 pub const MAX_POSITION_PAGES: usize = 20;
 /// Every action this owner sends. The gateway registry must allow each.
-pub const ACTIONS: [&str; 12] = [
+pub const ACTIONS: [&str; 16] = [
     "list_models",
     "get_model",
     "list_versions",
     "get_version",
     "list_exports",
     "get_export_artifact",
+    "get_backup_artifact",
     "start_upload",
     "create_version",
+    "bump_version",
     "fork_example",
+    "update_model",
+    "set_approval",
     "delete_model",
     "restore_model",
     "publish_export",
@@ -35,6 +41,7 @@ pub const ACTIONS: [&str; 12] = [
 /// The refusal code for an action or field a Server predates.
 pub const SERVER_ACTION_UNSUPPORTED: &str = "server_action_unsupported";
 pub mod exports;
+pub mod governance;
 pub mod publication;
 pub enum Command {
     List {
@@ -119,6 +126,34 @@ pub enum Command {
         revision: String,
         export: String,
         output: String,
+    },
+    /// Start the next version whose first revision re-pins the current head's
+    /// exact bytes: no upload, no content change. Fenced on the head.
+    BumpVersion {
+        model: String,
+        expected_head: String,
+        reason: String,
+        milestone: Option<String>,
+    },
+    /// Rename or re-describe the head. Revisions keep the name they saved.
+    UpdateModel {
+        model: String,
+        expected_head: String,
+        display_name: Option<String>,
+        description: Option<String>,
+        reason: Option<String>,
+    },
+    /// Record a review decision on one existing revision. The revision stays
+    /// immutable; the decision is appended beside it.
+    SetApproval {
+        model: String,
+        revision: String,
+        expected_head: String,
+        approval: ds_command_kernel::grid_publication::Approval,
+    },
+    /// Read the head's retirement backup, digest-verified.
+    DownloadBackup {
+        model: String,
     },
 }
 pub struct Receipt {
@@ -252,6 +287,10 @@ impl Command {
             {
                 Ok(())
             }
+            Self::BumpVersion { .. }
+            | Self::UpdateModel { .. }
+            | Self::SetApproval { .. }
+            | Self::DownloadBackup { .. } => governance::validate(self),
             Self::PublishExport { .. } | Self::DownloadExport { .. } => Err(ClientError::new(
                 ErrorKind::InvalidInput,
                 "export, output and format ids must match ^[a-z0-9][a-z0-9_-]{1,127}$ and the file must hold 1 byte to 256 MiB",
@@ -290,7 +329,13 @@ pub(crate) fn request<T: AuthorizedTransport>(
 
 /// Actions a deployed Server may predate. Its decoder refuses an unknown
 /// action, or an unknown field, as a 400 with one of two fixed sentences.
-const LATER_ACTIONS: [&str; 1] = ["get_export_artifact"];
+const LATER_ACTIONS: [&str; 5] = [
+    "get_export_artifact",
+    "get_backup_artifact",
+    "bump_version",
+    "update_model",
+    "set_approval",
+];
 
 /// Classify one grid-models refusal, carrying the Server's bounded sentence.
 ///
@@ -372,6 +417,23 @@ fn revision_record<T: AuthorizedTransport>(
     model: &str,
     revision: &str,
 ) -> Result<Value, ClientError> {
+    revision_read(profile, transport, authority, project, model, revision).map(|(r, _)| r)
+}
+
+/// The post-creation approval a Server that records decisions reports beside
+/// one revision.
+type ApprovalFields = Vec<(&'static str, Value)>;
+
+/// [`revision_record`] plus `effective_approval` and `approval_decisions`,
+/// when the Server reports them.
+fn revision_read<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    model: &str,
+    revision: &str,
+) -> Result<(Value, ApprovalFields), ClientError> {
     let data = request(
         profile,
         transport,
@@ -391,12 +453,31 @@ fn revision_record<T: AuthorizedTransport>(
     {
         return Err(bad());
     }
-    Ok(record.clone())
+    let mut approval = Vec::new();
+    if data["effective_approval"].is_object() {
+        approval.push(("effective_approval", data["effective_approval"].clone()));
+    }
+    if let Some(decisions) = data["approval_decisions"].as_array() {
+        if decisions.len() > 200
+            || decisions
+                .iter()
+                .any(|d| d["revision_id"] != revision || d["model_id"] != model)
+        {
+            return Err(bad());
+        }
+        approval.push(("approval_decisions", json!(decisions)));
+    }
+    Ok((record.clone(), approval))
 }
 
 /// Walk the catalog newest first until the revision's whole version has been
 /// seen (a lower version appears, or the catalog ends), within
 /// [`MAX_POSITION_PAGES`]. The kernel decides the ordinal from the chain.
+///
+/// `stored` is the revision's ordinal as a Server that stores ordinals
+/// reported it. Its version's newest row then already holds the count, so
+/// the walk stops at the first row of that version.
+#[allow(clippy::too_many_arguments)]
 fn walk<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
@@ -405,6 +486,7 @@ fn walk<T: AuthorizedTransport>(
     model: &str,
     revision: &str,
     version: u64,
+    stored: Option<u64>,
 ) -> Result<Value, ClientError> {
     let mut rows = Vec::new();
     let mut cursor = String::new();
@@ -435,6 +517,15 @@ fn walk<T: AuthorizedTransport>(
                 .filter(|row| row["version"].as_u64() == Some(version))
                 .cloned(),
         );
+        if let (Some(ordinal), Some(count)) = (
+            stored,
+            rows.first()
+                .and_then(ds_command_kernel::grid_versions::stored_ordinal),
+        ) {
+            return Ok(json!({"version":version,"revision_id":revision,
+                "revision_ordinal_within_version":ordinal,"version_revision_count":count,
+                "count_exact":true,"pages_read":pages}));
+        }
         if lower || !more {
             ended = true;
             break;
@@ -548,10 +639,20 @@ pub(crate) fn run<T: AuthorizedTransport>(
             if row["project_id"] != project || row["model_id"] != *model {
                 return Err(bad());
             }
-            let current = match (head, version) {
-                (Some(head), Some(version)) => {
-                    walk(profile, transport, authority, project, model, head, version)?
+            // A Server that stores ordinals counts the head's version itself
+            // (the head is its newest revision); an older one is walked.
+            let count = row["head_version_revision_count"]
+                .as_u64()
+                .filter(|n| *n > 0);
+            let current = match (head, version, count) {
+                (Some(head), Some(version), Some(count)) => {
+                    json!({"version":version,"revision_id":head,
+                        "revision_ordinal_within_version":count,"version_revision_count":count,
+                        "count_exact":true,"pages_read":0})
                 }
+                (Some(head), Some(version), None) => walk(
+                    profile, transport, authority, project, model, head, version, None,
+                )?,
                 _ => Value::Null,
             };
             return Ok(Receipt {
@@ -560,17 +661,23 @@ pub(crate) fn run<T: AuthorizedTransport>(
             });
         }
         Command::ShowVersion { model, revision } => {
-            let record = revision_record(profile, transport, authority, project, model, revision)?;
-            return Ok(Receipt {
-                data: json!({"project":project,"revision":record,"bytes_fetched":false}),
-                bytes: None,
-            });
+            let (record, approval) =
+                revision_read(profile, transport, authority, project, model, revision)?;
+            let mut data = json!({"project":project,"revision":record,"bytes_fetched":false});
+            // A Server that records approval decisions after creation names
+            // the effective approval and the decision history beside the
+            // immutable revision; an older one names neither.
+            for (key, value) in approval {
+                data[key] = value;
+            }
+            return Ok(Receipt { data, bytes: None });
         }
         Command::Position { model, revision } => {
             let record = revision_record(profile, transport, authority, project, model, revision)?;
             let version = record["version"].as_u64().ok_or_else(bad)?;
+            let stored = ds_command_kernel::grid_versions::stored_ordinal(&record);
             let mut data = walk(
-                profile, transport, authority, project, model, revision, version,
+                profile, transport, authority, project, model, revision, version, stored,
             )?;
             data["project"] = json!(project);
             data["model_id"] = json!(model);
@@ -585,6 +692,12 @@ pub(crate) fn run<T: AuthorizedTransport>(
         }
         Command::PublishExport { .. } | Command::DownloadExport { .. } => {
             return exports::run(profile, transport, authority, project, command)
+        }
+        Command::BumpVersion { .. }
+        | Command::UpdateModel { .. }
+        | Command::SetApproval { .. }
+        | Command::DownloadBackup { .. } => {
+            return governance::run(profile, transport, authority, project, command)
         }
         _ => {}
     }

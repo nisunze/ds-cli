@@ -9,6 +9,11 @@
 //! was saved on (`parent_revision_id`), so one version's revisions form a single
 //! chain whose first link's parent lies outside the version.
 //!
+//! A Server that stores `revision_ordinal_within_version` on every revision
+//! (legacy rows read as 1: each legacy version held one revision) is the
+//! authority for ordinals, and its rows are used as they are. Only rows from
+//! a Server that predates stored ordinals are ordered by the chain.
+//!
 //! Hosts page the catalog and hand the rows here; everything that decides an
 //! ordinal, a count or whether either is exact stays in this one place.
 use serde_json::{json, Value};
@@ -32,6 +37,13 @@ fn version_of(row: &Value) -> Option<u64> {
 
 fn revision_of(row: &Value) -> Option<&str> {
     row["revision_id"].as_str().filter(|s| !s.is_empty())
+}
+
+/// The ordinal the Server stored on a row, when it stores one.
+pub fn stored_ordinal(row: &Value) -> Option<u64> {
+    row["revision_ordinal_within_version"]
+        .as_u64()
+        .filter(|n| *n > 0)
 }
 
 /// Order the rows of ONE version oldest first by following the parent chain.
@@ -84,6 +96,17 @@ pub fn position(rows: &[Value], revision: &str, exhausted: bool) -> Option<Posit
         .iter()
         .filter(|row| version_of(row) == Some(version))
         .collect();
+    // Stored ordinals: the version's newest row (the first one listed) holds
+    // its count, whatever the walk has or has not reached below it.
+    if let Some(ordinal) = stored_ordinal(target) {
+        let count = members.iter().filter_map(|row| stored_ordinal(row)).max()?;
+        return Some(Position {
+            version,
+            ordinal: Some(ordinal),
+            count,
+            complete: true,
+        });
+    }
     let complete = exhausted
         || rows
             .iter()
@@ -134,23 +157,36 @@ pub fn group_page(rows: &[Value], more: bool) -> Result<Vec<Value>, &'static str
             .iter()
             .filter(|row| version_of(row) == Some(version))
             .collect();
-        let reaches_first = !(more && Some(version) == last);
-        let order = chronological(&members);
-        let exact = reaches_first && order.is_some();
-        let indices = order.unwrap_or_else(|| (0..members.len()).rev().collect());
-        let revisions: Vec<Value> = indices
-            .iter()
-            .enumerate()
-            .map(|(at, &index)| {
-                let mut row = members[index].clone();
-                row["revision_ordinal_within_version"] = if exact {
-                    json!(at as u64 + 1)
-                } else {
-                    Value::Null
-                };
-                row
-            })
-            .collect();
+        let stored: Option<Vec<u64>> = members.iter().map(|row| stored_ordinal(row)).collect();
+        let (exact, revisions): (bool, Vec<Value>) = match stored {
+            // The Server's own ordinals are exact on every page, a cut
+            // group included; they only need save order.
+            Some(ordinals) => {
+                let mut indices: Vec<usize> = (0..members.len()).collect();
+                indices.sort_by_key(|&index| ordinals[index]);
+                (true, indices.iter().map(|&i| members[i].clone()).collect())
+            }
+            None => {
+                let reaches_first = !(more && Some(version) == last);
+                let order = chronological(&members);
+                let exact = reaches_first && order.is_some();
+                let indices = order.unwrap_or_else(|| (0..members.len()).rev().collect());
+                let rows = indices
+                    .iter()
+                    .enumerate()
+                    .map(|(at, &index)| {
+                        let mut row = members[index].clone();
+                        row["revision_ordinal_within_version"] = if exact {
+                            json!(at as u64 + 1)
+                        } else {
+                            Value::Null
+                        };
+                        row
+                    })
+                    .collect();
+                (exact, rows)
+            }
+        };
         groups.push(json!({
             "version": version,
             "revisions_listed": revisions.len(),
@@ -243,5 +279,25 @@ mod tests {
         let mut unordered = catalog();
         unordered.swap(0, 4);
         assert!(group_page(&unordered, false).is_err());
+    }
+    #[test]
+    fn a_servers_stored_ordinals_are_the_authority_even_on_a_cut_page() {
+        let stored = |id: &str, version: u64, ordinal: u64| json!({"revision_id":id,"version":version,"revision_ordinal_within_version":ordinal});
+        // Newest first by creation, as a Server with stored ordinals lists.
+        let rows = vec![
+            stored("rev-y", 3, 2),
+            stored("rev-x", 3, 1),
+            stored("rev-w", 2, 7),
+        ];
+        let at = position(&rows[..1], "rev-y", false).unwrap();
+        assert_eq!((at.ordinal, at.count, at.complete), (Some(2), 2, true));
+        let groups = group_page(&rows, true).unwrap();
+        assert_eq!(groups[0]["revisions"][0]["revision_id"], "rev-x");
+        // v2 was cut by the page, but its stored ordinal is still exact.
+        assert_eq!(groups[1]["ordinals_exact"], true);
+        assert_eq!(
+            groups[1]["revisions"][0]["revision_ordinal_within_version"],
+            7
+        );
     }
 }

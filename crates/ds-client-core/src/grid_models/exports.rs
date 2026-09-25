@@ -180,6 +180,13 @@ pub(super) fn run<T: AuthorizedTransport>(
                     return Err(bad());
                 }
             }
+            if data.get("digest").is_some_and(|d| *d != declared.digest)
+                || data
+                    .get("byte_length")
+                    .is_some_and(|n| n.as_u64() != Some(declared.byte_length))
+            {
+                return Err(bad());
+            }
             let url = data["download_url"].as_str().ok_or_else(bad)?;
             let size = declared.byte_length as usize;
             let mut response = transport.grid_model_bytes(locator(url, &declared.object, size)?)?;
