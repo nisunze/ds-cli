@@ -3133,6 +3133,21 @@ pub fn survey_media_grant(
     )
 }
 
+/// The grant a delivered report's photo links are written under: the named
+/// project, for ds-brain's report default life (the browser's own request).
+pub fn report_media_grant(
+    lane_value: &str,
+    project: &str,
+) -> Result<HeadlessNamedProject<MediaGrants>, Failure> {
+    headless_named_project_with(
+        lane_value,
+        project,
+        map_survey_photo_error,
+        |device, project| device.report_media_grant(project),
+        |client, project| client.report_media_grant(project, now()),
+    )
+}
+
 /// One photo's bytes under a grant. No credential is read or sent.
 pub fn survey_photo_bytes(grants: &MediaGrants, object_path: &str) -> Result<SurveyPhoto, Failure> {
     ds_client_core::survey_media_fetch::fetch(&mut NativeTransport, grants, object_path)

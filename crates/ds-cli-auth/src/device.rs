@@ -736,6 +736,9 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<MediaGrants, ClientError> {
         fixed_device_call!(self, survey_media_grant, project, others)
     }
+    pub fn report_media_grant(&mut self, project: &str) -> Result<MediaGrants, ClientError> {
+        fixed_device_call!(self, report_media_grant, project)
+    }
     pub fn survey_entries_query(
         &mut self,
         project: &str,
