@@ -34,7 +34,12 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "focus-bounds",
             "<west,south,east,north>",
-            "Optional WGS84 plan-page bounds for acquiring and reading geographic context around one MV sheet.",
+            "Optional WGS84 plan-page bounds (up to 0.05 degrees) for acquiring context around one MV sheet; does not change the printed extent.",
+        ),
+        Arg::value(
+            "area-bounds",
+            "<west,south,east,north>",
+            "Optional WGS84 custom or district map rectangle (up to 0.5 degrees); acquires context and sets the printed extent. Cannot be combined with --focus-bounds.",
         ),
         Arg::value(
             "layout",
@@ -66,6 +71,32 @@ fn invalid(e: impl std::fmt::Display) -> Failure {
     Failure::invalid("report_inputs_invalid", e.to_string())
         .remedy("Correct the authored layout or reported source; use a fresh output directory")
 }
+fn parse_bounds(raw: &str, name: &str, max_span: f64) -> Result<[f64; 4], Failure> {
+    let values = raw
+        .split(',')
+        .map(|part| part.trim().parse::<f64>().map_err(invalid))
+        .collect::<Result<Vec<_>, _>>()?;
+    let bounds: [f64; 4] = values.try_into().map_err(|_| {
+        invalid(format!(
+            "--{name} needs four WGS84 coordinates: west,south,east,north"
+        ))
+    })?;
+    if bounds.iter().any(|value| !value.is_finite())
+        || !(-180.0..=180.0).contains(&bounds[0])
+        || !(-90.0..=90.0).contains(&bounds[1])
+        || !(-180.0..=180.0).contains(&bounds[2])
+        || !(-90.0..=90.0).contains(&bounds[3])
+        || bounds[2] <= bounds[0]
+        || bounds[3] <= bounds[1]
+        || bounds[2] - bounds[0] > max_span
+        || bounds[3] - bounds[1] > max_span
+    {
+        return Err(invalid(format!(
+            "--{name} needs a valid WGS84 rectangle no wider or taller than {max_span} degrees"
+        )));
+    }
+    Ok(bounds)
+}
 pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let mut bytes = Vec::new();
     std::fs::File::open(i.require("layout")?)
@@ -85,6 +116,19 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             "map output directory already exists",
         )
         .remedy("Choose a fresh --out-dir"));
+    }
+    let focus_bounds = i
+        .value("focus-bounds")
+        .map(|raw| parse_bounds(raw, "focus-bounds", 0.05))
+        .transpose()?;
+    let area_bounds = i
+        .value("area-bounds")
+        .map(|raw| parse_bounds(raw, "area-bounds", 0.5))
+        .transpose()?;
+    if focus_bounds.is_some() && area_bounds.is_some() {
+        return Err(invalid(
+            "--focus-bounds and --area-bounds select different map purposes; pass one",
+        ));
     }
     let lane = i.require("lane")?;
     let requested = ds_cli_auth::TransformerSet::default();
@@ -118,48 +162,34 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         })
         .map(|row| row.name().to_owned())
         .collect::<Vec<_>>();
-    let contexts = ds_cli_auth::transformer_contexts_for_project(lane, project, &active)?;
-    if contexts.identity() != identity || contexts.project_id() != project {
-        return Err(invalid("transformer context scope changed"));
-    }
-    for (name, response) in active.iter().zip(contexts.into_result()) {
-        let snapshot = &response;
-        if snapshot.ds_project() != project || snapshot.transformer_name() != name {
-            return Err(invalid("transformer scope changed"));
+    // A large district can contain hundreds of active transformers. Refresh
+    // the same fenced native project context between bounded groups so a
+    // long acquisition does not expire its authentication lease mid-batch.
+    for names in active.chunks(16) {
+        let contexts = ds_cli_auth::transformer_contexts_for_project(lane, project, names)?;
+        if contexts.identity() != identity || contexts.project_id() != project {
+            return Err(invalid("transformer context scope changed"));
         }
-        sources
-            .transformer(
-                name,
-                &serde_json::to_value(snapshot.layers()).map_err(invalid)?,
-            )
-            .map_err(invalid)?;
-        revisions.push(json!({"transformer":name,"version":snapshot.metadata().version(),"content_digest":snapshot.metadata().content_digest()}));
+        for (name, response) in names.iter().zip(contexts.into_result()) {
+            let snapshot = &response;
+            if snapshot.ds_project() != project || snapshot.transformer_name() != name {
+                return Err(invalid("transformer scope changed"));
+            }
+            sources
+                .transformer(
+                    name,
+                    &serde_json::to_value(snapshot.layers()).map_err(invalid)?,
+                )
+                .map_err(invalid)?;
+            revisions.push(json!({"transformer":name,"version":snapshot.metadata().version(),"content_digest":snapshot.metadata().content_digest()}));
+        }
     }
     let network = sources.layers();
     // Context coverage belongs to the physical page, while the overview's
     // complete design remains available to the shared map painter. An MV
     // route can span a district; its union rectangle is not a sheet extent.
-    let context_network = if let Some(raw) = i.value("focus-bounds") {
-        let values = raw
-            .split(',')
-            .map(|part| part.trim().parse::<f64>().map_err(invalid))
-            .collect::<Result<Vec<_>, _>>()?;
-        if values.len() != 4
-            || values.iter().any(|v| !v.is_finite())
-            || !(-180.0..=180.0).contains(&values[0])
-            || !(-90.0..=90.0).contains(&values[1])
-            || !(-180.0..=180.0).contains(&values[2])
-            || !(-90.0..=90.0).contains(&values[3])
-            || values[2] <= values[0]
-            || values[3] <= values[1]
-            || values[2] - values[0] > 0.05
-            || values[3] - values[1] > 0.05
-        {
-            return Err(invalid(
-                "--focus-bounds needs a valid WGS84 page rectangle no wider than 0.05 degrees",
-            ));
-        }
-        json!({"mv_sheet": {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"LineString","coordinates":[[values[0],values[1]],[values[2],values[3]]]}}]}})
+    let context_network = if let Some(bounds) = area_bounds.or(focus_bounds) {
+        json!({"mv_sheet": {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"LineString","coordinates":[[bounds[0],bounds[1]],[bounds[2],bounds[3]]]}}]}})
     } else {
         network.clone()
     };
@@ -213,7 +243,10 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         let document: Value = serde_json::from_slice(bytes).map_err(invalid)?;
         sources.collections(&document["layers"]).map_err(invalid)?;
     }
-    let extent = sources.overview_extent().map_err(invalid)?;
+    let extent = match area_bounds {
+        Some(bounds) => bounds,
+        None => sources.overview_extent().map_err(invalid)?,
+    };
     let contexts = contexts
         .into_iter()
         .filter(|c| c.id != "district_boundaries")
@@ -251,11 +284,25 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .map_err(invalid)?
         .write_all(&data)
         .map_err(invalid)?;
-    let result = json!({"project":project,"transformer_count":revisions.len(),"sources":revisions,"mv_models":super::mv_context::provenance(&models),"omitted":context.omitted.iter().map(|o|json!({"layer":o.layer,"reason":o.reason})).collect::<Vec<_>>(),"warnings":context.warnings,"request":path,"sha256":ds_command_kernel::report_export::sha256_hex(&data)});
+    let result = json!({"project":project,"transformer_count":revisions.len(),"sources":revisions,"mv_models":super::mv_context::provenance(&models),"area_bounds":area_bounds,"render_extent":extent,"omitted":context.omitted.iter().map(|o|json!({"layer":o.layer,"reason":o.reason})).collect::<Vec<_>>(),"warnings":context.warnings,"request":path,"sha256":ds_command_kernel::report_export::sha256_hex(&data)});
     std::fs::write(
         out.join("sources.json"),
         serde_json::to_vec_pretty(&result).map_err(invalid)?,
     )
     .map_err(invalid)?;
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_bounds;
+
+    #[test]
+    fn district_area_accepts_authority_extent_while_sheet_focus_stays_bounded() {
+        let nyamagabe = "29.2646534136055,-2.60032940893701,29.6660934836079,-2.19979084366594";
+        assert!(parse_bounds(nyamagabe, "area-bounds", 0.5).is_ok());
+        assert!(parse_bounds(nyamagabe, "focus-bounds", 0.05).is_err());
+        assert!(parse_bounds("29,-3,28,-2", "area-bounds", 0.5).is_err());
+        assert!(parse_bounds("29,-3,30,-2", "area-bounds", 0.5).is_err());
+    }
 }

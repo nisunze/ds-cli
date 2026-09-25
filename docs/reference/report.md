@@ -767,6 +767,13 @@ geographic context; `--seed` explicitly acquires missing coverage. For an MV
 plan/profile sheet, pass `--focus-bounds west,south,east,north` from that sheet's
 `plan_route_bounds_wgs84` manifest entry. The geographic context is then read
 around that page's route rather than the full project's bounding rectangle.
+For a district or custom area map, pass `--area-bounds west,south,east,north`
+from an exact authority polygon or reviewed viewport. Each axis may cover up
+to 0.5 degrees. This bounds context acquisition **and** sets the printed map
+extent; the full project design remains in the pinned source capture and is
+clipped by the map viewport. The command reports `area_bounds` and
+`render_extent` for review. `--area-bounds` and `--focus-bounds` are mutually
+exclusive. Leave both off for an overview fitted to the complete project.
 Read its omissions before passing the emitted request to `report.layout.render`.
 The request is a portable, editable print capture, not a model version.
 After visual review, `map.design.attach-print --scope mv` uploads a PDF or PNG
