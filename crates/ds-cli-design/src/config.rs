@@ -269,17 +269,23 @@ pub fn read(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 pub fn diff(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let (offset, limit) = page(i)?;
-    let baseline = file(i.require("file")?)?;
-    let current = read_current(i)?;
-    let mut result = design_config::apply(Request::DiffPage {
-        baseline,
-        current: sheet(&current.document, i.require("sheet")?)?.clone(),
+    let edited = file(i.require("file")?)?;
+    let stored = read_current(i)?;
+    let stored_sheet = sheet(&stored.document, i.require("sheet")?)?.clone();
+    let mut result = diff_page(stored_sheet, edited, offset, limit)?;
+    result["project"] = stored.summary["project"].clone();
+    Ok(result)
+}
+/// The stored sheet is "before" and the edited file "after", so a change
+/// reads the way `save` would apply it.
+fn diff_page(stored: Value, edited: Value, offset: usize, limit: usize) -> Result<Value, Failure> {
+    design_config::apply(Request::DiffPage {
+        baseline: stored,
+        current: edited,
         offset,
         limit,
     })
-    .map_err(invalid)?;
-    result["project"] = current.summary["project"].clone();
-    Ok(result)
+    .map_err(invalid)
 }
 pub fn set(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let change = Change::SetParameter {
@@ -318,4 +324,22 @@ pub fn render(data: &Value) -> String {
         "{}\n",
         serde_json::to_string_pretty(data).expect("JSON settings")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::diff_page;
+    use serde_json::json;
+
+    #[test]
+    fn a_diff_reads_the_stored_value_as_before_and_the_edit_as_after() {
+        let stored = json!([{"transfo_sizes": 315, "mv_fuze_15_kv_amp": 16}]);
+        let edited = json!([{"transfo_sizes": 315, "mv_fuze_15_kv_amp": 99}]);
+        let page = diff_page(stored, edited, 0, 50).unwrap();
+        let items = page["items"].as_array().expect("diff items");
+        assert_eq!(items.len(), 1, "{page}");
+        assert_eq!(items[0]["path"], "/0/mv_fuze_15_kv_amp");
+        assert_eq!(items[0]["before"], 16);
+        assert_eq!(items[0]["after"], 99);
+    }
 }
