@@ -72,7 +72,8 @@ map-independent background work — paired local-room materialization plus
 headless transformer inventory, reversible retirement/restoration, and the
 Combined Report deliverable. Room materialization uses the paired visible
 project because the application owns the cache, but never opens a map or edit
-context; the remaining commands use the CLI-selected project. Each includes `ds_catalog`,
+context; headless project commands name their project in each request. MCP has
+no active project of its own. Each profile includes `ds_catalog`,
 `ds_diagnostics`, and a bounded leaf set. `survey-migration` deliberately
 contains only the governed import leaf in addition to those bootstrap tools.
 Migration is per domain, never one cross-domain surface: `survey-migration`,
@@ -117,13 +118,16 @@ receipts expose metadata or aggregate counts only.
 `account.connect`: the person approves the request in their signed-in DS
 GridDesign Desktop under Account > Link a trusted device, and the tool is
 called again once approved. It publishes native identity status, fresh visible
-project inventory, exact project selection, and selected-project status from
-the live `auth` descriptors. It does not publish the terminal sign-in, logout,
-or any Desktop-owned device approval; those two are excluded from every
+project inventory, a device-local saved project address, and that address's
+status from the live `auth` descriptors. The saved address does not route current
+project commands; each command captures its explicit `--project`. It does not
+publish the terminal sign-in, logout, or any Desktop-owned device approval;
+those operations are excluded from every
 exposure, and no MCP answer names the terminal sign-in (see
 `docs/reference/auth.md`).
 
-`solar-input` is the narrow authenticated selected-project capture surface.
+`solar-input` is the narrow authenticated Solar capture surface; its project is
+named explicitly per call.
 The established `solar-run` profile retains seeding, preparation, execution,
 result inspection, and verification so existing MCP hosts do not lose tools.
 

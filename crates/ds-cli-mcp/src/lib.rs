@@ -10,15 +10,16 @@
 //!   descriptor by descriptor, so a command's typing can never drift from the
 //!   CLI it fronts. What *is* written here is the routing above that: under
 //!   the default `--exposure chapters` the bounded bootstrap and chapter tools
-//!   and their prose live in `surface.rs`, and four profiles select by
+//!   and their prose live in `surface.rs`, and bounded profiles select by
 //!   command id rather than by chapter. Those lists are held to the live
 //!   registry by tests rather than by assertion — see
 //!   `every_declared_chapter_except_the_catalog_is_routed` here and
 //!   `crates/ds/tests/mcp.rs`;
 //! - every `tools/call` is literally a `ds <path> … --output json` process,
 //!   and the CLI's typed envelope (result or refusal) is returned verbatim;
-//! - pairing with the running DS GridDesign stays the only authority. The
-//!   server adds no credential, no network listener and no cache.
+//! - each command keeps its declared authority: headless project calls carry
+//!   an explicit project and paired calls use the Desktop context. MCP adds
+//!   no credential, project selection, network listener or cache.
 //!
 //! What it deliberately does NOT do: batch calls, invent convenience tools,
 //! or expose anything `ds capabilities` does not list. The moment it grows a

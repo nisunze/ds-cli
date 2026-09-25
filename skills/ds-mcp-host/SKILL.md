@@ -37,8 +37,8 @@ Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory` owns global schemas and `survey-projects` owns governed
 aggregate/spatial reads, project-form settings, reusable templates, and
 create-from-template. `survey-migration` isolates governed bulk import and
-project-to-project copy, while `solar-input` isolates selected-project input
-capture. Each profile publishes
+project-to-project copy, while `solar-input` isolates input capture for the
+project named in each call. Each profile publishes
 both bootstrap tools, `ds_catalog` and `ds_diagnostics`, plus bounded fully
 typed leaves. Do not install every profile: that duplicates discovery and
 recreates selection ambiguity.
@@ -128,6 +128,10 @@ or identity.
 
 Use the advertised leaf tool directly after reading its schema and description.
 Its title is the canonical command id; its result is the same CLI envelope.
+The MCP session has no active project. Headless project tools require their own
+`--project` value; paired Desktop tools use only the paired application's
+visible project when their descriptor declares that authority. The saved
+`auth project use` address does not route current project commands.
 Omitted commands are unavailable through that profile, not forwarded through a
 generic call. Use `ds_catalog` only for bounded discovery inside the profile.
 Pass `confirm: true` only when the invocation's live descriptor conditionally
