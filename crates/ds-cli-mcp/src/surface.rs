@@ -1748,7 +1748,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Discover authorized projects and manage plans, tasks, assignments, and records for the project named in each request. Describe a command before invoking it."
         }
         Chapter::Assets => {
-            "Browse, preview, classify, promote, link and ingest the documents a project holds, in declared and auto-indexed folders. Describe a command before invoking it."
+            "Browse the timeline, folders and version history of the documents a project holds; preview, classify, promote, link and ingest them. Describe a command before invoking it."
         }
         Chapter::GridModel => {
             "Inspect, validate, project, revise, import, and export canonical grid models. Describe a command before invoking it."

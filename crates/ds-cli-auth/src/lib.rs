@@ -4477,7 +4477,9 @@ fn map_service_refusal(
 /// answer (`assetsRefusal`, ds-web `cli-assets.ts`), so a caller who planned
 /// for them on the desktop has planned for them headless: a 404 is
 /// `asset_not_found` (also a confidential row the caller may not know exists,
-/// by design), 401/403 `asset_class_forbidden`, 409 `asset_version_conflict`,
+/// by design), 401/403 `asset_class_forbidden`, 409 `ASSETS_INDEX_MOVED`
+/// `assets_index_moved` (an index page cursor from a rebuilt generation),
+/// any other 409 `asset_version_conflict`,
 /// a 400 the catalogue refused by rule `asset_refused`, any other 400
 /// `asset_request_invalid`, 501 `assets_not_implemented` and 5xx
 /// `assets_service_failed`. The server's sentence, code and the rule it
@@ -4504,6 +4506,12 @@ pub fn map_project_assets_refusal(
         (401 | 403, _) => Failure::unauthorized(ASSET_CLASS_FORBIDDEN_REFUSAL.code, sentence)
             .detail(detail)
             .remedy(ASSET_CLASS_FORBIDDEN_REFUSAL.remedy),
+        (409, Some("assets_index_moved")) => {
+            Failure::conflict(ASSETS_INDEX_MOVED_REFUSAL.code, sentence)
+                .detail(detail)
+                .remedy(ASSETS_INDEX_MOVED_REFUSAL.remedy)
+                .next("ds assets list --project <exact-id> --output json")
+        }
         (409, _) => Failure::conflict(ASSET_VERSION_CONFLICT_REFUSAL.code, sentence)
             .detail(detail)
             .remedy(ASSET_VERSION_CONFLICT_REFUSAL.remedy),
@@ -4643,6 +4651,11 @@ pub const ASSETS_SERVICE_FAILED_REFUSAL: Refusal = Refusal {
     code: "assets_service_failed",
     when: "the catalogue service faulted while serving the request",
     remedy: "retry once; nothing in the request changes the outcome while the service faults",
+};
+pub const ASSETS_INDEX_MOVED_REFUSAL: Refusal = Refusal {
+    code: "assets_index_moved",
+    when: "the index was rebuilt between two pages, so the cursor names a generation that is gone",
+    remedy: "restart from the first page without --cursor; two generations are never mixed",
 };
 
 /// The `pm` route's own refusal, rendered as the failure `ds pm` documents.
@@ -6598,6 +6611,31 @@ mod tests {
         );
         assert_eq!(bare.code(), "auth_rejected");
         assert!(bare.message().ends_with("(HTTP 403)"), "{bare:?}");
+    }
+
+    /// A moved index is not a moved row: restarting the listing is the
+    /// remedy, re-reading one row is not.
+    #[test]
+    fn an_index_that_moved_between_pages_is_its_own_conflict() {
+        use ds_client_core::ServiceRefusal;
+        let owner = "project assets refused a write against a row that moved";
+        let moved = map_service_refusal(
+            ErrorKind::InvalidInput,
+            &ServiceRefusal::new(
+                409,
+                Some("assets_index_moved"),
+                Some("the index moved to generation 8"),
+            ),
+            owner,
+        );
+        assert_eq!(moved.code(), ASSETS_INDEX_MOVED_REFUSAL.code);
+        assert_eq!(moved.remedy_text(), Some(ASSETS_INDEX_MOVED_REFUSAL.remedy));
+        let row = map_service_refusal(
+            ErrorKind::InvalidInput,
+            &ServiceRefusal::new(409, Some("conflict"), Some("expected_version 2, found 3")),
+            owner,
+        );
+        assert_eq!(row.code(), ASSET_VERSION_CONFLICT_REFUSAL.code);
     }
 
     #[test]

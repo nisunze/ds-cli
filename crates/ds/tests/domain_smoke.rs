@@ -9837,6 +9837,7 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
     let expected: BTreeSet<&str> = [
         "assets.list",
         "assets.tree",
+        "assets.versions",
         "assets.read",
         "assets.preview",
         "assets.classify",
@@ -9878,6 +9879,41 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "missing_input",
         "an asset read without --project must refuse before credential access"
     );
+    // The index (2026-09-25): an unqualified list is the project's timeline,
+    // and the version history answers only for an id the index can hold.
+    let list = ok(&["capabilities", "assets.list", "--output", "json"]);
+    let order = list["command"]["inputs"]
+        .as_array()
+        .and_then(|inputs| inputs.iter().find(|input| input["name"] == "order"))
+        .expect("assets.list declares --order");
+    assert_eq!(
+        order["default"], "recent",
+        "the timeline is the default read"
+    );
+    assert_eq!(order["choices"], serde_json::json!(["recent", "name"]));
+    let versions = ok(&["capabilities", "assets.versions", "--output", "json"]);
+    assert!(
+        versions["command"]["refusals"]
+            .as_array()
+            .expect("refusals")
+            .iter()
+            .any(|refusal| refusal["code"] == "assets_index_unavailable"),
+        "a lane without the index must be refused by name, never answered with an empty history"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "assets",
+            "versions",
+            "--asset",
+            "sys:",
+            "--project",
+            "test_project",
+            "--output",
+            "json",
+        ]),
+        "invalid_asset_id",
+        "a malformed id must be refused before credential access"
+    );
     // The effect class is what decides whether an unattended session may run
     // the command at all, and it is invisible until one does. `read` writes
     // one local file, `promote` adds a layer to this machine's prepared local
@@ -9886,8 +9922,8 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
     for command in commands {
         let id = command["id"].as_str().expect("id");
         let expected = match id {
-            "assets.list" | "assets.tree" | "assets.preview" | "assets.resolve" | "assets.maps"
-            | "assets.backup.plan" => "read_only",
+            "assets.list" | "assets.tree" | "assets.versions" | "assets.preview"
+            | "assets.resolve" | "assets.maps" | "assets.backup.plan" => "read_only",
             "assets.read" | "assets.promote" => "local_file_write",
             _ => "global_write",
         };
@@ -9943,6 +9979,17 @@ fn a_well_formed_assets_call_ends_at_the_native_credential_and_never_at_a_window
             "pm_task:t_4812",
         ],
         vec!["assets", "tree", "--into", "a_7kq3nr2v0b1c"],
+        vec![
+            "assets",
+            "list",
+            "--order",
+            "name",
+            "--folder",
+            "Transformers/TX-104",
+            "--refresh",
+        ],
+        vec!["assets", "tree", "--refresh", "--depth", "2"],
+        vec!["assets", "versions", "--asset", "sys:transformers:TX-104"],
         vec![
             "assets",
             "read",

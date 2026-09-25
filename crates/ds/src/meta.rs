@@ -993,6 +993,12 @@ mod tests {
             // (feedback 8a15ecf2).
             ("project management", "pm.plan"),
             ("pm", "pm.plan"),
+            // The assets index (2026-09-25): what changed lately is the
+            // timeline, and a document's earlier versions are its history.
+            ("timeline", "assets.list"),
+            ("recent changes", "assets.list"),
+            ("version history", "assets.versions"),
+            ("document history", "assets.versions"),
         ] {
             assert_eq!(
                 top_hit(query),

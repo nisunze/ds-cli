@@ -31,18 +31,29 @@
 //! audited, and a link points from the asset to the work — never the other
 //! way.
 //!
+//! ## The index (2026-09-25)
+//!
+//! ds-brain builds, caches and serves each project's assets index — the
+//! catalogued rows plus the `Transformers/`, `MV models/`, `Reports/` … rows
+//! it projects from the cloud sources it owns, redacted per caller
+//! (ds-brain `docs/contracts/assets-index.md`). `list` reads it as a page in
+//! `--order recent` (the timeline) or `name`, `tree` reads it whole, and
+//! `versions` reads one row's version history. Every answer says which it is
+//! in `index_status`: `served`, or `unavailable` when this lane's ds-brain
+//! predates the index — then the answer is the catalogue, as before, and says
+//! so. The four edge-only sources (`Local data/`, local `Prints/`) are not in
+//! the shared index; `tree` names them in `sources_omitted`.
+//!
 //! ## What is deliberately absent
 //!
 //! **An editor.** No command writes asset bytes, under any flag. **A durable
 //! link** to anything above `open`. **A second catalogue, uploader or
 //! digest** — this surface composes the paths the project already has.
-//! **The system-folder projection, headless.** The `Transformers/`,
-//! `MV models/`, `Reports/` … roots are projected over inventories the paired
-//! application holds; the headless tree renders them *not loaded* and answers
-//! the declared folders and catalogued assets. A projected `sys:` id is
-//! refused by name (`origin_read_unavailable`) rather than served from a
-//! window. **A window path.** `--desktop-descriptor` is not an input of any
-//! `ds assets` command; a caller that still passes it is told
+//! **A second projection.** The index is ds-brain's; nothing here projects a
+//! source. A projected `sys:` id is listed and versioned, but its bytes are
+//! refused by name (`origin_read_unavailable`) — a projected row is read from
+//! the surface that owns it. **A window path.** `--desktop-descriptor` is not
+//! an input of any `ds assets` command; a caller that still passes it is told
 //! `requires_window_retired` by the parser.
 
 pub mod attach;
@@ -57,6 +68,7 @@ pub mod promote;
 pub mod read;
 pub mod shared;
 pub mod tree;
+pub mod versions;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
@@ -81,6 +93,7 @@ pub static DOMAIN: Domain = Domain {
         &shared::REFERENCE,
         &list::COMMAND,
         &tree::COMMAND,
+        &versions::COMMAND,
         &read::COMMAND,
         &preview::COMMAND,
         &classify::COMMAND,
@@ -150,6 +163,92 @@ pub const fn refusals<const TOTAL: usize>(own: &[Refusal]) -> [Refusal; TOTAL] {
 /// One governed catalogue action on the named project.
 pub fn catalogue(lane: &str, project: &str, command: &CatalogueCommand) -> Result<Value, Failure> {
     Ok(ds_cli_auth::project_assets_for_project(lane, project, command, None)?.into_result())
+}
+
+pub use ds_client_core::project_assets::{
+    EDGE_ONLY_SOURCES, INDEX_SERVED, INDEX_UNAVAILABLE, IndexList, IndexOrder,
+};
+
+/// Whether an answer is the index (`index_status: "served"`), as the native
+/// client marked it — typed, never read from a sentence.
+pub fn index_served(answer: &Value) -> bool {
+    answer["index_status"] == INDEX_SERVED
+}
+
+/// What a person reads when this lane's ds-brain does not serve the index.
+pub const INDEX_UNAVAILABLE_NOTICE: &str = "! this lane's ds-brain does not serve the assets index yet: \
+     this is the catalogue (uploads only), not the index";
+
+/// The version chip of an index row: `v3 · 12 versions`, or `None` when the
+/// row has no versions.
+pub fn versions_chip(versions: &Value) -> Option<String> {
+    let count = versions["count"].as_u64().filter(|count| *count > 0)?;
+    let current = match &versions["current"] {
+        Value::Number(number) => Some(format!("v{number}")),
+        Value::String(label) if label.parse::<u64>().is_ok() => Some(format!("v{label}")),
+        Value::String(label) if !label.trim().is_empty() => Some(label.trim().to_owned()),
+        _ => None,
+    };
+    let count = plural(count, "version");
+    Some(match current {
+        Some(current) => format!("{} · {count}", truncate(&current, 16)),
+        None => count,
+    })
+}
+
+/// Seconds since the Unix epoch of an RFC 3339 instant: `2026-09-25T09:00:00Z`,
+/// fractional seconds and a `±hh:mm` offset allowed. `None` for anything else.
+pub fn epoch_seconds(stamp: &str) -> Option<i64> {
+    let stamp = stamp.trim();
+    if !stamp.is_ascii() {
+        return None;
+    }
+    let (date, time) = stamp.split_once(['T', 't', ' '])?;
+    if !calendar_date(date) || !clock_time(time) {
+        return None;
+    }
+    let number = |range: std::ops::Range<usize>, text: &str| text.get(range)?.parse::<i64>().ok();
+    let (year, month, day) = (
+        number(0..4, date)?,
+        number(5..7, date)?,
+        number(8..10, date)?,
+    );
+    let (hour, minute) = (number(0..2, time)?, number(3..5, time)?);
+    let second = if time.as_bytes().get(5) == Some(&b':') {
+        number(6..8, time)?
+    } else {
+        0
+    };
+    let offset = match time.rfind(['+', '-']) {
+        Some(at) => {
+            let sign = if time.as_bytes()[at] == b'-' { -1 } else { 1 };
+            let rest = &time[at + 1..];
+            sign * (number(0..2, rest)? * 3_600 + number(3..5, rest)? * 60)
+        }
+        None => 0,
+    };
+    let year = year - i64::from(month <= 2);
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let day_of_year = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = era * 146_097 + day_of_era - 719_468;
+    Some(days * 86_400 + hour * 3_600 + minute * 60 + second - offset)
+}
+
+/// How long before `now` an instant was, in one short word: `just now`,
+/// `12m ago`, `3h ago`, `5d ago`, `4mo ago`, `2y ago`. Both are RFC 3339;
+/// `None` when either is not.
+pub fn ago(then: &str, now: &str) -> Option<String> {
+    let seconds = (epoch_seconds(now)? - epoch_seconds(then)?).max(0);
+    Some(match seconds {
+        0..60 => "just now".to_owned(),
+        60..3_600 => format!("{}m ago", seconds / 60),
+        3_600..86_400 => format!("{}h ago", seconds / 3_600),
+        86_400..2_592_000 => format!("{}d ago", seconds / 86_400),
+        2_592_000..31_536_000 => format!("{}mo ago", seconds / 2_592_000),
+        _ => format!("{}y ago", seconds / 31_536_000),
+    })
 }
 
 /// One asset's row and its verified bytes. A projected `sys:` id has no
@@ -306,6 +405,13 @@ pub const ASSET_VERSION_CONFLICT: Refusal = ds_cli_auth::ASSET_VERSION_CONFLICT_
 pub const ASSET_REQUEST_INVALID: Refusal = ds_cli_auth::ASSET_REQUEST_INVALID_REFUSAL;
 pub const ASSET_RULE_REFUSED: Refusal = ds_cli_auth::ASSET_REFUSED_REFUSAL;
 pub const ASSETS_SERVICE_FAILED: Refusal = ds_cli_auth::ASSETS_SERVICE_FAILED_REFUSAL;
+/// A page cursor from an index generation that has since been rebuilt.
+pub const ASSETS_INDEX_MOVED: Refusal = ds_cli_auth::ASSETS_INDEX_MOVED_REFUSAL;
+pub const ASSETS_INDEX_UNAVAILABLE: Refusal = Refusal {
+    code: "assets_index_unavailable",
+    when: "this lane's ds-brain predates the assets index, the only holder of version history",
+    remedy: "read the row with `ds assets list`; versions arrive with the next ds-brain deployment on this lane",
+};
 pub const ASSET_BYTES_NOT_HELD: Refusal = Refusal {
     code: "asset_bytes_not_held",
     when: "an external reference has no bytes in DS",
@@ -1025,6 +1131,62 @@ mod tests {
                 "invalid_query"
             );
         }
+    }
+
+    #[test]
+    fn an_index_time_reads_as_how_long_ago_it_was() {
+        assert_eq!(epoch_seconds("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(epoch_seconds("2026-09-25T09:00:00Z"), Some(1_790_326_800));
+        assert_eq!(
+            epoch_seconds("2026-09-25T11:00:00.750+02:00"),
+            epoch_seconds("2026-09-25T09:00:00Z")
+        );
+        assert_eq!(epoch_seconds("2026-09-25T09:00Z"), Some(1_790_326_800));
+        for bad in [
+            "",
+            "2026-09-25",
+            "2026-13-01T00:00:00Z",
+            "yesterday",
+            "2026-09-25T09:00:00",
+        ] {
+            assert_eq!(epoch_seconds(bad), None, "`{bad}` read as a time");
+        }
+        let now = "2026-09-25T10:00:00Z";
+        for (then, expected) in [
+            ("2026-09-25T09:59:30Z", "just now"),
+            ("2026-09-25T09:48:00Z", "12m ago"),
+            ("2026-09-25T07:00:00Z", "3h ago"),
+            ("2026-09-20T10:00:00Z", "5d ago"),
+            ("2026-05-25T10:00:00Z", "4mo ago"),
+            ("2024-09-25T10:00:00Z", "2y ago"),
+            // A clock a little ahead of the index's is not the future.
+            ("2026-09-25T10:00:09Z", "just now"),
+        ] {
+            assert_eq!(ago(then, now).as_deref(), Some(expected), "{then}");
+        }
+        assert_eq!(ago("not a time", now), None);
+    }
+
+    #[test]
+    fn a_versions_chip_names_the_current_version_and_the_count() {
+        assert_eq!(
+            versions_chip(&json!({"count": 12, "current": "v3"})).as_deref(),
+            Some("v3 · 12 versions")
+        );
+        assert_eq!(
+            versions_chip(&json!({"count": 1, "current": 1})).as_deref(),
+            Some("v1 · 1 version")
+        );
+        assert_eq!(
+            versions_chip(&json!({"count": 2, "current": "7"})).as_deref(),
+            Some("v7 · 2 versions")
+        );
+        assert_eq!(
+            versions_chip(&json!({"count": 4})).as_deref(),
+            Some("4 versions")
+        );
+        assert_eq!(versions_chip(&json!({"count": 0})), None);
+        assert_eq!(versions_chip(&Value::Null), None);
     }
 
     #[test]

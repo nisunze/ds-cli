@@ -1039,6 +1039,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("assets.promote", "local_file_write", "headless_project"),
     ("assets.read", "local_file_write", "headless_project"),
     ("assets.tree", "read_only", "headless_project"),
+    // 2026-09-25: one asset's version history, read from the index
+    // ds-brain serves; changes nothing.
+    ("assets.versions", "read_only", "headless_project"),
     // Every `pm` command is a headless project command since 2026-09-20:
     // `POST /api/v1/pm` under the native credential, folded by the kernel.
     ("pm.plan", "read_only", "headless_project"),

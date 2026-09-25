@@ -6,7 +6,7 @@ all of them.
 
 ## Where the catalogue is
 
-In two places, and the difference is the one thing worth learning first.
+In three places, and the difference is the one thing worth learning first.
 
 **Declared folders and the documents filed in them** live behind ds-brain,
 which is the only authority on who may see them. A `restricted` or
@@ -14,18 +14,33 @@ which is the only authority on who may see them. A `restricted` or
 byte count, no date, no placeholder, and it is not in any folder's count. That
 is not a display rule this CLI could turn off — the row never arrives.
 
-**System folders are not stored anywhere.** `Transformers/…`, `MV models/…`,
-`Survey/…`, `Project work/…`, `Reports/…`, `Solar/…`, `Project data/…`,
-`My data/…`, `Local data/…`, `Prints/…` and `Unclassified/…` are projected at
-read time from the inventories the project already holds — in the application,
-through the same reads its own pages use. Their rows carry a `sys:` id instead
-of a minted `a_` one. **Headless, those inventories are not loaded**: `ds
-assets tree` renders every system root `not loaded` and names them in
-`sources_omitted`, and a `sys:` id given to `read`, `preview`, `promote` or
-`tree --into` is refused by name (`origin_read_unavailable`) — a projected row
-is read from the surface that owns it. The declared folders and every
-catalogued `a_` asset are the headless tree, computed by the same kernel the
-Assets tab uses.
+**System folders are the index ds-brain builds, caches and serves**
+(2026-09-25, ds-brain `docs/contracts/assets-index.md`). `Transformers/…`,
+`MV models/…`, `Survey/…`, `Project work/…`, `Reports/…`, `Solar/…`,
+`Project data/…`, `My data/…`, `Prints/…` and `Unclassified/…` are projected
+from the cloud sources ds-brain owns, stored once per project, rebuilt only
+when a source changed (or on `--refresh`), and redacted per caller on every
+read. Their rows carry a `sys:` id instead of a minted `a_` one. `ds assets
+list` and `ds assets tree` read that index headless; every answer carries
+ds-brain's `index` meta (`generation`, `built_at`, `checked_at`, `rebuilt`,
+`stale_sources`, `truncated_sources`) and `index_status: served`.
+
+**Edge-only sources are on this host, never in the shared index.**
+`dataset_rooms`, `national_datasets`, `report_rooms` (`Local data/…`) and
+`local_prints` (local `Prints/…`) exist only on a Desktop or Server. `tree`
+names them in `sources_omitted` with `reason: edge_only`; any other source
+the served tree itself did not load is named with `reason: not_in_index`.
+
+A lane whose ds-brain predates the index refuses the index request by strict
+decoding; the native client retries once as the catalogue call and marks the
+answer `index_status: unavailable`. `list` and `tree` then answer as they did
+before the index — catalogued uploads, declared folders, system roots `not
+loaded` with `reason: index_unavailable` — and say so; `versions` is refused
+`assets_index_unavailable`, because only the index holds a history. The
+catalogue answer is never presented as the index. A `sys:` id given to
+`read`, `preview`, `promote` or `tree --into` is refused by name
+(`origin_read_unavailable`) — a projected row's bytes are read from the
+surface that owns it.
 
 The bytes are somewhere else again — project storage, behind a fresh
 short-lived signed read minted per access after an authority check. Nothing
@@ -79,13 +94,15 @@ ds assets map publish --project <exact-id> --file /prints/Kyabe-A3.pdf --tag cit
 ## The shape of a session
 
 ```bash
+ds assets list --project <exact-id>                                     # what changed lately: the timeline
 ds assets tree --project <exact-id> --depth 2                          # what does this project hold
-ds assets list --project <exact-id> --folder contracts/2026 --status durable   # find the document
+ds assets list --project <exact-id> --folder Transformers/TX-104        # one folder, newest first
+ds assets versions --project <exact-id> --asset sys:transformers:TX-104 # its history, newest first
 ds assets preview --project <exact-id> --asset a_7kq3nr2v0b1c --output json    # look at it, cheaply
 ds assets read --project <exact-id> --asset a_7kq3nr2v0b1c --out /home/me/Downloads/EPC-Lot3.pdf
 ```
 
-`tree` and `list` are the two doors in: every other command needs an
+`list` and `tree` are the two doors in: every other command needs an
 `asset_id`, and this is where one comes from. A container is walked in place —
 
 ```bash
@@ -119,30 +136,41 @@ not give.
 
 ## Reads cost one page
 
-A read is one catalogue round trip — `list` one page, `tree` the declared
-folders plus the first page of the catalogue — folded by the kernel on this
-host; never polled.
+A read is one index round trip — `list` one page, `tree` the whole served
+tree, `versions` one row — answered from the generation ds-brain holds and
+never polled. ds-brain checks its sources' watermarks at most every 30
+seconds and rebuilds only when one moved; `--refresh` rebuilds regardless,
+and `index.stale_sources` names a source that changed without a rebuild.
+
+**The timeline.** `ds assets list` reads `--order recent` by default: newest
+`modified_at` first, across uploads and every projected source, so "what
+changed on this project" is one unqualified read. `--order name` sorts by
+name. A transformer's versions, an attachment label's revisions and a grid
+model's revisions are folded into one row whose `versions` chip —
+`v3 · 12 versions` — says how many; `ds assets versions --asset <id>` unfolds
+them, newest first, exactly as the Assets page shows them. `--folder` takes
+any index folder path (`Transformers/TX-104`, `MV models/Feeder 3`,
+`contracts/2026`) and lists that folder only, not its subfolders.
 
 `--limit` is a page, bounded at 200 and defaulted to 50. When a page is short
 of the whole answer, `more` says so and `next_cursor` continues it — page with
-the cursor rather than re-querying from the top, which is the difference
-between one read and one read per page you have already seen. `scanned` is how
-many rows the read considered, and `truncated` marks a scan that stopped at
-its own bound: narrow it with `--folder`, `--kind` or `--since` rather than
-raising the page.
+the cursor rather than re-querying from the top. An index cursor is bound to
+its generation: a cursor from before a rebuild is refused
+`assets_index_moved`, and the listing restarts from the first page rather
+than mixing two generations. `index.truncated_sources` names a source read
+past its bound, with both numbers.
 
-`tree` expands `--depth` levels (bounded at 8) and reports counts below that.
-A container walk lists 5,000 members before reporting `truncated`. `--link
-pm_task:<id>` or `--link ds_object:<type>:<id>` narrows a tree to the assets
-linked to one task or DS object; a read takes exactly one link filter, and a
+`tree` expands `--depth` levels (bounded at 8) and reports counts below that;
+`--folder` roots it at one exact path and `--kind` keeps system or user
+roots. A container walk lists 5,000 members before reporting `truncated`.
+`--query` and `--link pm_task:<id>` / `--link ds_object:<type>:<id>` are
+filters the kernel applies while it builds a tree; the served index takes
+none, so a search reads the catalogued uploads as before and says so
+(`index_status: not_read`). A read takes exactly one link filter, and a
 second is refused rather than quietly dropped.
 
-A `--folder` filter on `list` is answered by the catalogue's own folder query.
-On 2026-09-20 the canary catalogue answered that query with a 500
-(`assets_service_failed`): a Firestore composite index for
-`folder_id`+`created_at` is missing on that lane. `tree --folder <path>` lists
-the same rows from the kernel projection and is the workaround until the
-index lands.
+On a lane whose ds-brain predates the index, `list --folder` is answered by
+the catalogue's own folder query over declared folders only.
 
 ## Writes are explicit, confirmed and audited
 
@@ -197,10 +225,10 @@ minted per read, and no `download_url` is ever stored — the listing states an
 expiry instead.
 
 **Content search.** `--query` is a case-insensitive substring match over name,
-folder path, kind, format, status and owner, evaluated over the loaded tree so
-that this CLI, the Assets tab and the Project work mount answer the same query
-identically. It does not read inside documents, and there is no search
-endpoint behind it.
+folder path, kind, format, status and owner, evaluated by the kernel over the
+tree it builds from the catalogue — not over the served index, which takes no
+filter. It does not read inside documents, and there is no search endpoint
+behind it.
 
 **A second catalogue, uploader, digest or folder authority.** This surface
 composes the paths the project already has.
@@ -242,6 +270,8 @@ catalogue's.
 | `asset_refused` / `asset_request_invalid` | the catalogue's own rule or bound, named in the message (the rule in brackets) with the number |
 | `assets_not_implemented` | this lane's ds-brain does not serve this action yet |
 | `assets_service_failed` | the catalogue service faulted (HTTP 5xx, `detail.http_status`); retry once |
+| `assets_index_moved` | a `list --cursor` from an index generation that has since been rebuilt; restart from the first page without `--cursor` |
+| `assets_index_unavailable` | `versions` on a lane whose ds-brain predates the index, the only holder of version history |
 | `asset_too_large` | the bytes are above the 32 MiB read bound; open the asset from its own surface |
 | `origin_read_failed` | the signed read expired, the bytes did not match the row's digest, or the destination could not be written; retry once |
 | `origin_read_unavailable` | a projected `sys:` row was named; its bytes are served by the surface that owns it, not by the catalogue |
@@ -298,7 +328,7 @@ asset the caller may not read has no row and a thread with nothing readable
 has no folder. `ds assets tree --folder Correspondence` (or a thread under
 it) answers headless — the catalogue, the records and the parties through
 the native credential — and reports `indexed_from` (how many rows it read
-and whether any were cut); every other folder still needs the paired window.
+and whether any were cut); every other folder is read from the served index.
 
 ```bash
 ds assets ingest --project <exact-id> --path ./review.eml --folder correspondence/2026-09 --sensitivity internal --yes   # → a_mail

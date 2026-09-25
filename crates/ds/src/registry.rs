@@ -1904,6 +1904,11 @@ static ASSETS_ENTRIES: &[Entry] = &[
         render: ds_cli_assets::tree::render,
     },
     Entry {
+        command: &ds_cli_assets::versions::COMMAND,
+        handler: ds_cli_assets::versions::run,
+        render: ds_cli_assets::versions::render,
+    },
+    Entry {
         command: &ds_cli_assets::read::COMMAND,
         handler: ds_cli_assets::read::run,
         render: ds_cli_assets::read::render,

@@ -1237,6 +1237,7 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
     let expected: BTreeSet<&str> = [
         "assets.list",
         "assets.tree",
+        "assets.versions",
         "assets.read",
         "assets.preview",
         "assets.classify",

@@ -2,11 +2,18 @@
 //!
 //! Two answers behind one verb, because they are the same question asked at
 //! two depths: where does this project keep its documents, and what is inside
-//! this one. Without `--into` the answer is the folder tree the Assets tab
-//! renders — the declared folders and the catalogued assets, projected by the
-//! kernel; the system folders it projects over the application's inventories
-//! render *not loaded* here, because those inventories are the window's.
+//! this one. Without `--into` the answer is the project's assets index as
+//! ds-brain serves it (assets-index §5.1): the kernel's `ds.assets.tree/v1`,
+//! system folders included, redacted for the caller. `--folder`, `--kind` and
+//! `--depth` bound what is printed of it; nothing here projects a source.
 //! With `--into` it is one pack's central directory, read but never unpacked.
+//!
+//! Two reads are still the catalogue's, and say so in `index_status`: a lane
+//! whose ds-brain predates the index (`unavailable`), and `--query`/`--link`,
+//! which the kernel filters while it builds a tree and which the served index
+//! does not take (`not_read`). Both answer the declared folders and the
+//! catalogued uploads, projected by the kernel on this host, exactly as
+//! before the index.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -17,6 +24,21 @@ use ds_command_kernel::assets::{Asset, Folder, Link, TreeRequest};
 use serde_json::{Map, Value, json};
 
 use crate::{CatalogueCommand, DEPTH_ARG, FOLDER_ARG, LANE_ARG, PROJECT_ARG};
+
+const REFRESH_ARG: Arg = Arg::switch(
+    "refresh",
+    "Rebuild the project's index first, even when no source says it changed.",
+);
+
+/// `index_status` of a search: `--query`/`--link` read the catalogue, not
+/// the index.
+pub const INDEX_NOT_READ: &str = "not_read";
+
+/// Why a source is absent from a tree answer. Typed words, never a sentence.
+const EDGE_ONLY: &str = "edge_only";
+const NOT_IN_INDEX: &str = "not_in_index";
+const INDEX_UNAVAILABLE_REASON: &str = "index_unavailable";
+const INDEX_NOT_READ_REASON: &str = "index_not_read";
 
 const INTO_ARG: Arg = Arg::value(
     "into",
@@ -55,17 +77,17 @@ const MAX_LINES: usize = 400;
 pub static COMMAND: Command = Command {
     id: "assets.tree",
     path: &["assets", "tree"],
-    contract: 1,
+    contract: 2,
     summary: "Show the folder tree, or walk inside a pack or a mail asset.",
     purpose: "\
-Projects the named project's folder tree: the declared folders and the \
-catalogued assets in them, with counts, expanded to --depth, by the same \
-kernel the Assets tab uses. The system folders that tab also shows are \
-projected over inventories the application holds and render `not loaded` \
-here (`sources_omitted` names them). With --into it walks one `pack` asset's \
-central directory and lists its members with sizes, never unpacking to disk. \
---query and --link narrow to the same rows the Assets tab searches. Headless: \
-no window.",
+The named project's folder tree from the index ds-brain serves: system \
+folders (Transformers, MV models, Survey, Reports, Solar …) and declared \
+folders, with counts, to --depth. --folder roots it at one exact path; \
+--refresh rebuilds the index. `sources_omitted` names the edge-only Local \
+data and local prints the shared index never holds. --query and --link \
+search catalogued uploads only (`index_status: not_read`), as does a lane \
+whose ds-brain predates the index (`unavailable`). --into walks one `pack` \
+asset's members with sizes, never unpacking. Headless.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
@@ -77,14 +99,16 @@ no window.",
         QUERY_ARG,
         LINK_ARG,
         KIND_ARG,
+        REFRESH_ARG,
         LANE_ARG,
         PROJECT_ARG,
     ],
     output: "\
 `ds.assets.tree/v1`: `folders` nested to `depth`, each with `path`, `kind` \
-(system or user), `counts`, `default_sensitivity` and its matched `assets`; \
-`truncated` when a bound cut it. With --into, `ds.assets.container/v1`: the \
-`members` of one pack with `path`, `bytes`, `kind`, `format` and shapefile \
+(system or user), `counts` and its `assets`; `truncated` when a bound cut it; \
+ds-brain's `index` meta; `index_status` `served`, `not_read` or `unavailable`; \
+`sources_omitted` [{source, reason}]. With --into, `ds.assets.container/v1`: \
+the `members` of one pack with `path`, `bytes`, `kind`, `format` and shapefile \
 `companions`, plus `walked` and `truncated` (5,000 members, 8 levels).",
     examples: &[Example {
         command: "ds assets tree --project <exact-id> --into a_7kq3nr2v0b1c --output json",
@@ -138,6 +162,9 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
     if let Some(kind) = inputs.value("kind") {
         arguments.insert("kind".into(), json!(kind));
     }
+    if inputs.switch("refresh") {
+        arguments.insert("refresh".into(), json!(true));
+    }
     Ok(Value::Object(arguments))
 }
 
@@ -164,12 +191,153 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     {
         return crate::correspondence::tree(lane, project, &arguments);
     }
+    // A search is a filter the kernel applies while it builds a tree; the
+    // served index is built already and takes none. Deferred whole: a search
+    // reads the catalogue, as it always has, and says it did not read the
+    // index.
+    if arguments.get("query").is_some() || arguments.get("link").is_some() {
+        return catalogue_tree(lane, project, &arguments, None, INDEX_NOT_READ);
+    }
+    let served = crate::catalogue(
+        lane,
+        project,
+        &CatalogueCommand::IndexTree {
+            refresh: arguments["refresh"] == Value::Bool(true),
+        },
+    )?;
+    if crate::index_served(&served) {
+        return Ok(bounded_index(served, &arguments));
+    }
+    // This lane's ds-brain predates the index: the native client fell back
+    // to the declared folders, and the tree is the catalogue's.
+    catalogue_tree(
+        lane,
+        project,
+        &arguments,
+        Some(served),
+        crate::INDEX_UNAVAILABLE,
+    )
+}
 
+/// The served index tree, bounded for this caller: rooted at `--folder`
+/// (exact path; none when nothing is there, as the kernel answers), narrowed
+/// to `--kind` roots, and cut at `--depth` with the cut reported in
+/// `truncated`. Counts are the folders' own, as served; totals count what is
+/// returned. Nothing is projected here.
+fn bounded_index(mut served: Value, arguments: &Value) -> Value {
+    let mut folders: Vec<Value> = match std::mem::take(&mut served["folders"]) {
+        Value::Array(folders) => folders,
+        _ => Vec::new(),
+    };
+    if let Some(path) = arguments["folder"].as_str() {
+        folders = find_folder(&folders, path).into_iter().cloned().collect();
+    }
+    if let Some(kind) = arguments["kind"].as_str() {
+        folders.retain(|folder| folder["kind"] == kind);
+    }
+    let mut truncated = served["truncated"] == Value::Bool(true);
+    let depth = arguments["depth"]
+        .as_u64()
+        .unwrap_or(crate::MAX_TREE_DEPTH as u64);
+    for folder in &mut folders {
+        cut(folder, depth, &mut truncated);
+    }
+    served["total_assets"] = json!(folders.iter().map(total_assets).sum::<u64>());
+    served["total_folders"] = json!(folders.iter().map(total_folders).sum::<u64>());
+    served["folders"] = Value::Array(folders);
+    served["truncated"] = json!(truncated);
+    // Only what the shared index never holds is omitted by design; a cloud
+    // source the served tree itself marks not loaded is named too, with its
+    // own reason, rather than hidden.
+    let mut omitted: Vec<Value> = crate::EDGE_ONLY_SOURCES
+        .iter()
+        .map(|(source, root)| json!({"source": source, "root": root, "reason": EDGE_ONLY}))
+        .collect();
+    for source in served["not_loaded_sources"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        if !crate::EDGE_ONLY_SOURCES
+            .iter()
+            .any(|(edge, _)| *edge == source)
+        {
+            omitted.push(json!({"source": source, "reason": NOT_IN_INDEX}));
+        }
+    }
+    served["sources_omitted"] = Value::Array(omitted);
+    served["sources_unavailable"] = json!([]);
+    served["offline"] = json!(false);
+    served
+}
+
+/// The folder at exactly `path`, anywhere in the served tree.
+fn find_folder<'a>(folders: &'a [Value], path: &str) -> Option<&'a Value> {
+    folders.iter().find_map(|folder| {
+        if folder["path"] == path {
+            return Some(folder);
+        }
+        let prefix = folder["path"].as_str()?;
+        if !path.starts_with(&format!("{prefix}/")) {
+            return None;
+        }
+        find_folder(folder["children"].as_array()?, path)
+    })
+}
+
+/// Keep `depth` levels including this one; a cut is reported, never silent.
+fn cut(folder: &mut Value, depth: u64, truncated: &mut bool) {
+    let Some(children) = folder["children"].as_array_mut() else {
+        return;
+    };
+    if depth <= 1 {
+        if !children.is_empty() {
+            *truncated = true;
+            children.clear();
+        }
+        return;
+    }
+    for child in children {
+        cut(child, depth - 1, truncated);
+    }
+}
+
+fn total_assets(folder: &Value) -> u64 {
+    folder["assets"].as_array().map_or(0, Vec::len) as u64
+        + folder["children"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(total_assets)
+            .sum::<u64>()
+}
+
+fn total_folders(folder: &Value) -> u64 {
+    1 + folder["children"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(total_folders)
+        .sum::<u64>()
+}
+
+/// The catalogue's tree, as before the index: the declared folders and the
+/// first page of catalogued uploads, projected by the kernel on this host.
+/// `folders` is the declared-folder answer when the caller already holds it.
+fn catalogue_tree(
+    lane: &str,
+    project: &str,
+    arguments: &Value,
+    folders: Option<Value>,
+    status: &str,
+) -> Result<Value, Failure> {
     // One read per authority, both bounded: the declared folders, and the
     // first page of the catalogue (everything but archive, newest first).
-    // The projection is the kernel's; the application's own inventories are
-    // not loaded here and their roots say so.
-    let folders = crate::catalogue(lane, project, &CatalogueCommand::Folders)?;
+    let folders = match folders {
+        Some(folders) => folders,
+        None => crate::catalogue(lane, project, &CatalogueCommand::Folders)?,
+    };
     let page = crate::catalogue(
         lane,
         project,
@@ -222,12 +390,29 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let omitted = ds_command_kernel::assets::tree::not_loaded_sources(&request);
     let mut tree =
         ds_command_kernel::assets::tree::build_value(&request).map_err(crate::kernel_refused)?;
-    tree["sources_omitted"] = json!(omitted);
+    // Every source this tree did not load is named with why: edge-only ones
+    // are never in the shared index; the rest are the index's, which this
+    // read did not have.
+    let reason = if status == INDEX_NOT_READ {
+        INDEX_NOT_READ_REASON
+    } else {
+        INDEX_UNAVAILABLE_REASON
+    };
+    tree["sources_omitted"] = omitted
+        .iter()
+        .map(|source| {
+            let edge = crate::EDGE_ONLY_SOURCES
+                .iter()
+                .any(|(edge, _)| edge == source);
+            json!({"source": source, "reason": if edge { EDGE_ONLY } else { reason }})
+        })
+        .collect();
     tree["sources_unavailable"] = json!([]);
     tree["offline"] = json!(false);
     tree["catalogue_loaded"] = json!(true);
     tree["catalogue_more"] = json!(page["has_more"] == Value::Bool(true));
     tree["catalogue_error"] = Value::Null;
+    tree["index_status"] = json!(status);
     Ok(tree)
 }
 
@@ -297,10 +482,34 @@ fn render_tree(data: &Value) -> String {
         push_folder(folder, 0, &mut lines);
     }
     let mut out = format!(
-        "{} · {}\n",
+        "{} · {}",
         crate::plural(data["total_folders"].as_u64().unwrap_or(0), "folder"),
         crate::plural(data["total_assets"].as_u64().unwrap_or(0), "asset"),
     );
+    let index = &data["index"];
+    if crate::index_served(data)
+        && let Some(generation) = index["generation"].as_i64()
+    {
+        out.push_str(&format!(" · index generation {generation}"));
+        if let Some(built) = index["built_at"]
+            .as_str()
+            .zip(index["checked_at"].as_str())
+            .and_then(|(built, checked)| crate::ago(built, checked))
+        {
+            out.push_str(&format!(", built {built}"));
+        }
+    }
+    out.push('\n');
+    match data["index_status"].as_str() {
+        Some(crate::INDEX_UNAVAILABLE) => {
+            out.push_str(crate::INDEX_UNAVAILABLE_NOTICE);
+            out.push('\n');
+        }
+        Some(INDEX_NOT_READ) => out.push_str(
+            "! --query and --link search the catalogued uploads only; drop them to read the index\n",
+        ),
+        _ => {}
+    }
     let shown = lines.len().min(MAX_LINES);
     for line in &lines[..shown] {
         out.push_str(line);
@@ -310,6 +519,37 @@ fn render_tree(data: &Value) -> String {
     }
     if data["truncated"].as_bool().unwrap_or(false) {
         out.push_str("  ! the tree stopped at a bound; narrow with --folder, --depth or --query\n");
+    }
+    // What this answer does not hold, grouped by why — edge-only sources on
+    // every served read, the index's own sources on a catalogue read.
+    let mut reasons: Vec<(&str, Vec<&str>)> = Vec::new();
+    for omitted in data["sources_omitted"].as_array().into_iter().flatten() {
+        let (Some(source), Some(reason)) = (omitted["source"].as_str(), omitted["reason"].as_str())
+        else {
+            continue;
+        };
+        match reasons.iter_mut().find(|(known, _)| *known == reason) {
+            Some((_, sources)) => sources.push(source),
+            None => reasons.push((reason, vec![source])),
+        }
+    }
+    for (reason, sources) in reasons {
+        out.push_str(&format!(
+            "  · not in this answer ({reason}): {}\n",
+            crate::truncate(&sources.join(", "), 120)
+        ));
+    }
+    let stale: Vec<&str> = index["stale_sources"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if !stale.is_empty() {
+        out.push_str(&format!(
+            "  ! not rebuilt since they changed: {}; --refresh rebuilds\n",
+            crate::truncate(&stale.join(", "), 120)
+        ));
     }
     out
 }
@@ -322,12 +562,18 @@ fn push_folder(folder: &Value, level: usize, lines: &mut Vec<String>) {
         .unwrap_or("?");
     let counts = &folder["counts"];
     lines.push(format!(
-        "{indent}{}/  {} · {}{}\n",
+        "{indent}{}/  {} · {}{}{}\n",
         crate::truncate(name, 40),
         crate::plural(counts["assets"].as_u64().unwrap_or(0), "asset"),
         crate::plural(counts["folders"].as_u64().unwrap_or(0), "folder"),
         if folder["kind"].as_str() == Some("system") {
             "  [system]"
+        } else {
+            ""
+        },
+        // A root whose sources this answer does not hold is not empty.
+        if folder["not_loaded"] == Value::Bool(true) {
+            "  [not loaded]"
         } else {
             ""
         },
@@ -656,6 +902,131 @@ mod tests {
         assert!(
             out.contains("not expanded at depth 8"),
             "a nesting past the bound must be reported: {out}"
+        );
+    }
+
+    fn served_tree() -> Value {
+        let row =
+            |id: &str| json!({"schema":"ds.assets.asset/v1","asset_id":id,"name":id,"kind":"doc"});
+        json!({
+            "schema": "ds.assets.tree/v1", "total_assets": 3, "total_folders": 5, "truncated": false,
+            "not_loaded_sources": ["dataset_rooms", "local_prints", "national_datasets", "report_rooms", "user_data"],
+            "folders": [
+                {"kind":"system","path":"Transformers","name":"Transformers",
+                 "counts":{"assets":0,"folders":1},"assets":[],
+                 "children":[{"kind":"system","path":"Transformers/TX-104","name":"TX-104",
+                    "counts":{"assets":2,"folders":1},
+                    "assets":[row("sys:transformers:TX-104"), row("a_000000000001")],
+                    "children":[{"kind":"system","path":"Transformers/TX-104/reports","name":"reports",
+                        "counts":{"assets":1,"folders":0},"children":[],
+                        "assets":[row("sys:report_file:TX-104:a")]}]}]},
+                {"kind":"system","path":"Local data","name":"Local data","not_loaded":true,
+                 "counts":{"assets":0,"folders":0},"assets":[],"children":[]},
+                {"kind":"user","path":"contracts","name":"contracts",
+                 "counts":{"assets":0,"folders":0},"assets":[],"children":[]},
+            ],
+            "index": {"schema":"ds.assets.index/v1","generation":7,
+                      "built_at":"2026-09-25T09:05:00Z","checked_at":"2026-09-25T10:05:00Z",
+                      "stale_sources":["solar"]},
+            "index_status": "served",
+        })
+    }
+
+    #[test]
+    fn the_served_index_is_bounded_never_reprojected() {
+        let whole = bounded_index(served_tree(), &json!({"depth": 8}));
+        assert_eq!(
+            whole["folders"],
+            served_tree()["folders"],
+            "rows cross as served"
+        );
+        assert_eq!(whole["total_assets"], 3);
+        assert_eq!(whole["total_folders"], 5);
+        assert_eq!(whole["truncated"], false);
+        assert_eq!(whole["index"]["generation"], 7);
+        // Only the edge-only sources are omitted by design; a cloud source
+        // the served tree says it did not load is named with its own reason.
+        let omitted: Vec<(String, String)> = whole["sources_omitted"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| {
+                (
+                    o["source"].as_str().unwrap().to_owned(),
+                    o["reason"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            omitted,
+            [
+                ("dataset_rooms", "edge_only"),
+                ("national_datasets", "edge_only"),
+                ("report_rooms", "edge_only"),
+                ("local_prints", "edge_only"),
+                ("user_data", "not_in_index"),
+            ]
+            .map(|(s, r)| (s.to_owned(), r.to_owned()))
+        );
+
+        // --folder roots it at one exact path; --depth cuts below it and
+        // says so, keeping the folder's own counts.
+        let rooted = bounded_index(
+            served_tree(),
+            &json!({"folder": "Transformers/TX-104", "depth": 1}),
+        );
+        assert_eq!(rooted["folders"].as_array().unwrap().len(), 1);
+        assert_eq!(rooted["folders"][0]["path"], "Transformers/TX-104");
+        assert_eq!(rooted["folders"][0]["children"], json!([]));
+        assert_eq!(rooted["folders"][0]["counts"]["folders"], 1);
+        assert_eq!(rooted["truncated"], true);
+        assert_eq!(rooted["total_assets"], 2);
+        assert_eq!(rooted["total_folders"], 1);
+        let nowhere = bounded_index(
+            served_tree(),
+            &json!({"folder": "Transformers/TX-9", "depth": 3}),
+        );
+        assert_eq!(nowhere["folders"], json!([]));
+        let user = bounded_index(served_tree(), &json!({"kind": "user", "depth": 3}));
+        assert_eq!(user["folders"].as_array().unwrap().len(), 1);
+        assert_eq!(user["folders"][0]["path"], "contracts");
+    }
+
+    #[test]
+    fn a_served_tree_says_its_generation_and_what_it_does_not_hold() {
+        let out = render(&bounded_index(served_tree(), &json!({"depth": 8})));
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(
+            lines[0],
+            "5 folders · 3 assets · index generation 7, built 1h ago"
+        );
+        assert!(
+            out.contains("Local data/  0 assets · 0 folders  [system]  [not loaded]"),
+            "{out}"
+        );
+        assert!(out.contains(
+            "· not in this answer (edge_only): dataset_rooms, national_datasets, report_rooms, local_prints"
+        ));
+        assert!(out.contains("· not in this answer (not_in_index): user_data"));
+        assert!(out.contains("! not rebuilt since they changed: solar; --refresh rebuilds"));
+        assert!(!out.contains("catalogue"), "{out}");
+
+        let fallback = render(&json!({
+            "schema": "ds.assets.tree/v1", "folders": [], "total_assets": 0, "total_folders": 0,
+            "truncated": false, "index_status": "unavailable",
+            "sources_omitted": [{"source": "transformers", "reason": "index_unavailable"}],
+        }));
+        assert!(
+            fallback.contains(crate::INDEX_UNAVAILABLE_NOTICE),
+            "{fallback}"
+        );
+        let search = render(&json!({
+            "schema": "ds.assets.tree/v1", "folders": [], "total_assets": 0, "total_folders": 0,
+            "truncated": false, "index_status": "not_read",
+        }));
+        assert!(
+            search.contains("search the catalogued uploads only"),
+            "{search}"
         );
     }
 
