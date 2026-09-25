@@ -51,10 +51,13 @@ short path, close it, reopen the restored project, then run reference closure
 and the count checks against the restored result. Do not call the backup
 submittable until all of those pass.
 
-When native acceptance is requested or fails, read
+On the Windows desktop with PLS-CADD 16.81, `ds pls desktop qualify --bak
+<new.bak> --out <new folder>` runs that gate: two fresh native Restores
+around a PLS File > Backup, every restored file verified, no save. When
+native acceptance is requested or fails, read
 [references/windows-native-acceptance.md](references/windows-native-acceptance.md)
 and apply the `ds-pls-cadd-native-dialogs` skill to every native prompt.
-If the host's supported Windows controller is unavailable, stop at the
+If that controller is unavailable, stop at the
 validated candidate and give the operator the exact Restore/reopen action;
 never replace the missing controller with coordinate clicks, arbitrary
 keystrokes, or an ad hoc Win32 driver.
@@ -70,5 +73,6 @@ Keep these verdicts separate in the final receipt:
 
 No lower verdict implies a higher one.
 
-Stops at: native Restore — the fresh Restore and reopen are run in PLS-CADD by
-the operator, and no `ds` receipt substitutes for them.
+Stops at: native Restore — the fresh Restore and reopen run in PLS-CADD itself,
+through `ds pls desktop qualify` on the desktop or by the operator; the
+backup-create receipt never substitutes for them.

@@ -30,7 +30,7 @@ For a narrow role, explicitly install one typed profile:
 ds mcp install --host claude-code --exposure commands --profile pls --write --yes
 ```
 
-Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
+Profiles are `grid`, `pls`, `pls-desktop`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-migration`, `design-edit`,
 `design-run`, `map`, `layers`, `tiling`, `project`, `solar-input`, `solar-run`,
 `solar-delivery`, and `operations`. `survey` retains the map/local-data workflow;
@@ -44,7 +44,8 @@ typed leaves. Do not install every profile: that duplicates discovery and
 recreates selection ambiguity.
 
 Use `pls` for backup recovery, workspace diagnostics and native delivery; use
-`pls-library` for local immutable library verification, packing, seeding and
+`pls-desktop` on the Windows PLS-CADD desktop for native Restore,
+qualification, AutoSag, reports and sheets; use `pls-library` for local immutable library verification, packing, seeding and
 native resolution; use `library-governance` for global library/example upload,
 publication and lifecycle. The split keeps every surface bounded. They project
 live descriptors and never publish a generic
