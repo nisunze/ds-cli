@@ -211,7 +211,7 @@ not a second argument shape:
 |---|---|
 | `desktop` (default) | this machine's native client — exactly what these commands have always done |
 | `desktop:<instance>` | one named Desktop window; accepted and refused by name (`target_instance_unsupported`) until the instance registry lands |
-| `server` | the running `ds server serve` on this machine, over its protected loopback connection (`--state-dir` selects a non-default state directory) |
+| `server` | the running `ds server serve` on this machine, over its owner-only socket in the state directory (`--state-dir` selects a non-default state directory) |
 
 The answer is the same shape from either host, because both hosts call the same
 owner (`ds-layer-ops`) over the same shared kernel; the Server's typed refusals

@@ -12,7 +12,9 @@ established by `ds account connect` (device linking). Run both under the same Li
 user and lane. No browser, paired Desktop, ADC or service-account impersonation
 is involved. The Server is the desktop's own core without the desktop: it
 stands on the desktop's side of the one boundary with ds-brain, and the API is
-that owner's control over loopback. One authenticated owner per Server, always
+that owner's control over an owner-only Unix socket in the Server's state
+directory — no TCP port and no bearer (see [The door](#the-door-an-owner-only-socket)).
+One authenticated owner per Server, always
 — a Server on a rented machine is one the owner signs in on, works on and
 shuts down; many users are many machines, never many accounts in one process.
 
@@ -141,11 +143,12 @@ distinguishable where that is safe and identical where it is not.
 ### One owner per Server
 
 One `ds server serve` serves **one authenticated native account** and as many
-of that account's projects as it names. The owner-only loopback bearer is that
-account's; any other bearer is `server access denied`, and that is the whole
-enforcement — there is no header naming an account and no second identity for
-this process to have. A second account needs its own `ds server serve` with its
-own `--state-dir` and `--listen`. This is the model, not a gap to close: one
+of that account's projects as it names. Its socket answers processes of the
+operating-system account it runs as, by the kernel's word, and a process of any
+other account — root included — is `server_peer_refused`; that is the whole
+enforcement — there is no header naming an account, no bearer, and no second
+identity for this process to have. A second account needs its own
+`ds server serve` with its own `--state-dir`. This is the model, not a gap to close: one
 user per machine, many users are many machines. Nothing in the Server is built
 for many users in one process — no per-principal limits, no multi-user auth, no
 fairness beyond the owner's own projects sharing one machine.
@@ -210,9 +213,9 @@ should not have had two names.
 Nothing about the operation moved. Both hosts call ONE shared Rust owner
 (`ds-layer-ops` over `ds-command-kernel::layer_state`); the HTTP host and the
 CLI embed no rule of their own. What `ds-cli-server` keeps is the transport
-that genuinely is the Server's: the protected owner-only loopback connection
-(`connection.json` bearer, native authority renewed and revocation observed as
-for jobs), with `--target server` sending an explicit `project` on every layer
+that genuinely is the Server's: the owner-only socket (the kernel names the
+peer's account; native authority renewed and revocation observed as for jobs),
+with `--target server` sending an explicit `project` on every layer
 request. Preferences never become another account's visibility because both
 reached one host: a restart under another account reads that account's own
 scope and leaves the previous one untouched.
@@ -254,24 +257,74 @@ nothing is written. A project the account cannot read is refused where the
 account is established (`auth_rejected`), not filtered out of a directory this
 host does not hold.
 
-Browser-to-Server layer control is **not** provided: the connection bearer is
-an owner-only local control credential and must not reach a web visitor. The
-long-term direction is a browser UI talking to this Server in place of the
-kernel in WASM; nothing here assumes a short-lived process or that a webview
-is the only client, and nothing more is built for it yet.
+Browser-to-Server layer control is **not** provided: the door is an owner-only
+Unix socket, which a web page cannot reach and a web visitor is not the owner
+of. The long-term direction is a browser UI talking to this Server in place of
+the kernel in WASM; nothing here assumes a short-lived process or that a
+webview is the only client, and nothing more is built for it yet.
+
+## The door: an owner-only socket
+
+The Server listens on exactly one thing: `<state-dir>/server.sock`, a Unix
+domain socket (mode 0600) inside the owner-only state directory (0700). It
+opens no TCP port, and no bearer or other secret crosses the socket in either
+direction.
+
+- **The Server asks the kernel who is calling.** Every accepted connection's
+  peer account is read from the kernel (`SO_PEERCRED` on Linux, `getpeereid`
+  elsewhere), and a request is served only when that account is the one the
+  Server runs as. Anything else — another user, root, or a request that did not
+  come through the socket — is `401 server_peer_refused`, naming nobody.
+- **The client asks the same of the Server.** `ds` connects only to a socket
+  that is a socket, owned by its own account, in a state directory it owns
+  (0700, `connection.json` 0600), and refuses — sending nothing — when the
+  process answering runs as another account.
+- **One host per state directory.** `ds server serve` takes an advisory lock
+  (`server.lock`) before it touches the socket; a second host on the same state
+  is refused `a Server is already running on …`. A socket left by a host that
+  died is removed at the next start only when nothing answers on it; something
+  that does answer is never replaced. A stopped host removes its socket, so a
+  caller is told `no Server is listening … start ds server serve` at once.
+- **Which Server is which `--state-dir`.** There is no `--listen` any more
+  (`server.serve` contract 2). Two Servers on one machine — Stable beside
+  Canary, or a development Server beside the installed one — are two state
+  directories. A Unix socket path is limited to about 100 bytes, so a very long
+  `--state-dir` is refused at start with that reason.
+- **`connection.json` holds no credential.** It records
+  `{"schema": "ds.server-connection/v2", "owner", "lane"}`: whose Server this is
+  and on which lane. It is still owner-only, because it names the owner.
+
+**Moving from a `ds` that listened on TCP.** Servers before this one listened on
+`127.0.0.1:19766` (or `--listen`) and admitted a bearer stored in
+`connection.json`, unchanged across restarts. Both directions fail at once and
+say what to do; neither hangs:
+
+| Situation | What happens |
+|---|---|
+| New `ds` client, Server started by an older `ds` | `server_refused`: "started by an older ds that listens on <address>"; nothing is sent to that address. Stop that Server and start it again with the new `ds`. |
+| New `ds server serve` over an older record | The record is adopted (same owner and lane) and rewritten without the bearer, taking it off the disk. If the recorded address still accepts connections, an older Server may still be running on this state, so the start is refused `server_refused` naming the address — stop it first. If the port belongs to something else, remove `connection.json` (it holds only the retired bearer) and start again. |
+| Older `ds` client, Server started by the new `ds` | The older client cannot read the new record and fails at once with `invalid protected server connection`. Upgrade that `ds`. |
+| Older `ds server serve` over a new record | Refused at start with `invalid protected server connection`. Use the new `ds`. |
+
+**Where there are no Unix sockets.** `ds server serve` has only ever been
+available on Linux, and its protected state is Unix-only. On Windows nothing
+changes: the Server commands remain unavailable (`server_platform_unsupported`),
+nothing listens and nothing is sent. The Desktop does not use this Server; its
+own local bridge to `ds` is a separate transport (`ds desktop`).
 
 ## Protected state and authority
 
 The default state root is `$XDG_STATE_HOME/ds/server/<lane>` or
 `~/.local/state/ds/server/<lane>`. `--state-dir` overrides it explicitly. It must
-be owner-only. `connection.json` is a local control credential and must never
-be printed, copied into logs or exposed to a web visitor. It is distinct from
-the protected upstream DS login. Jobs are fenced by UID, lane, credential
-audience and project.
+be owner-only. It holds the durable queue, the socket, its lock and
+`connection.json`, which names the owner and lane and no credential. None of
+it is to be exposed to a web visitor, and it is distinct from the protected
+upstream DS login. Jobs are fenced by UID, lane, credential audience and
+project.
 
 **Authorization is local.** The host reads the credential this machine holds —
 the protected native state, no network and no saved selection — takes its owner
-fence (UID, lane, credential audience) from that, and binds its port. Every
+fence (UID, lane, credential audience) from that, and binds its socket. Every
 route and every worker then asks the same local question, at most once every 15
 seconds: is this still the credential that started me? A different credential, a
 different account, or a sign-out on this machine stops the host with

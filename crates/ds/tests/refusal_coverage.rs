@@ -747,9 +747,9 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-pls", &["pls"]),
         ("ds-cli-report", &["report"]),
         // Two surfaces, and it is the same crate on purpose. `ds server …` is
-        // host administration, and this crate also owns the protected loopback
-        // transport `ds map layer … --target server` calls: `connection.json`,
-        // its bearer and the lane fence live here and nowhere else. So the
+        // host administration, and this crate also owns the owner-only socket
+        // `ds map layer … --target server` calls: `connection.json`,
+        // the socket and the lane fence live here and nowhere else. So the
         // Server's own codes are declared by `ds server` commands and the
         // layer owner's, re-raised across that transport, by `ds map layer …`.
         // The working-area form owner's travel the same transport for

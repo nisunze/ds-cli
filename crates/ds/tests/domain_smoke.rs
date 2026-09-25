@@ -443,7 +443,7 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
             assert!(
                 !documented.contains(&unreachable),
                 "`{id}` documents `{unreachable}`: the layer drawer needs no rendered map, \
-                 and a second account never reaches an operation -- the owner-only bearer \
+                 and a second account never reaches an operation -- the owner-only socket \
                  stops it at the door"
             );
         }

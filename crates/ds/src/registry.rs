@@ -2757,7 +2757,7 @@ static SERVER_ENTRIES: &[Entry] = &[
     // command id whichever host executes it, so the drawer is
     // `ds map layer list|show|hide|reorder` with an explicit
     // `--target server|desktop[:instance]`; ds-cli-server keeps only the
-    // protected loopback transport those commands call for the Server target.
+    // owner-only socket those commands call for the Server target.
 ];
 
 static DOMAINS: &[Registered] = &[

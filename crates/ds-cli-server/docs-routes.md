@@ -261,18 +261,24 @@ same `needs_paired_map` code is what a map-bound command should raise from its
 descriptor before it calls out at all; this is the host-side half of it.
 
 ### One owner (all routes)
-One Server is signed in as exactly one owner, and its owner-only loopback
-bearer is that owner's. A request with any other bearer is
-`401 {"error": "server access denied"}` — that is the whole rule, and there is
-no header that names an account: a second identity is not something this
-process can have. Many users are many machines (`ds server serve` per machine,
-its own `--state-dir` and `--listen`), which is the deployment model, not a
-gap. The `x-ds-principal` header is **deleted**; a client that still sends it
-is simply not read, and no route answers `multi_principal_unsupported` —
-there is no request a second account can make here. That code survives in the
-one place a second account really does meet one Server: `ds server serve`
-refuses to adopt a protected state directory that already belongs to another
-owner, by that name, with the remedy of a host of its own.
+One Server is signed in as exactly one owner, and its only door is the
+owner-only socket `<state-dir>/server.sock` (0600, in the 0700 state
+directory; `src/transport.rs`). The kernel names the account of the process
+behind every accepted connection (`SO_PEERCRED`, `getpeereid`), and a request
+is served only when it is the account the Server runs as. Any other account —
+root included — or a request that did not come through the socket at all is
+`401` `server_peer_refused` (class `unauthorized`, remedy, and no account,
+uid or project named) — that is the whole rule. There is no TCP port, no
+bearer, and no header that names an account: a second identity is not
+something this process can have. Many users are many machines
+(`ds server serve` per machine, or its own `--state-dir`), which is the
+deployment model, not a gap. The `x-ds-principal` header is **deleted**, and
+the `authorization` header an older `ds` sent is not read either; no route
+answers `multi_principal_unsupported` — there is no request a second account
+can make here. That code survives in the one place a second account really
+does meet one Server: `ds server serve` refuses to adopt a protected state
+directory that already belongs to another owner, by that name, with the
+remedy of a host of its own.
 
 ## 3. `Job` gains `context`
 
@@ -418,8 +424,8 @@ already in that lock through `ds-sync-store`, so nothing new is compiled.
    `capture_layer_scope_fence` / `layer_config_fenced` stay for the one caller
    whose subject IS the selection: `ds map layer …` with no `--project`.
 2. **One owner per Server is the model, not a gap.** One authenticated owner,
-   enforced by the bearer alone; a second account is a second `ds server serve`
-   (its own `--state-dir` and `--listen`) or, in the owner's deployment model,
+   enforced by the socket's peer check alone; a second account is a second `ds server serve`
+   (its own `--state-dir`) or, in the owner's deployment model,
    a second machine. Nothing here is built for many users in one process: no
    per-principal limits, no multi-user auth, no fairness beyond the owner's own
    projects sharing one machine.
