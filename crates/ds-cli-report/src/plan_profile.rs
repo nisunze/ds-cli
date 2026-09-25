@@ -1,6 +1,7 @@
 //! `ds report plan-profile` — headless DS Grid sheet rendering through the
 //! reporter's typed task. The engine owns every projection and drawing byte.
 
+use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -19,7 +20,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "plan-profile"],
     contract: 1,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
-    purpose: "Produces SVG sheet previews and one combined vector PDF from exact DS Grid engine projections for the same model revision. Choose horizontal and vertical scale denominators independently; profile elevation breaks keep the preferred vertical scale where a steep section requires a new datum on the same sheet. An optional notes manifest adds custom text or PNG/JPEG images to vacant space in plan or profile panels. The task is local and headless; the result names every preview and its digest-pinned PDF.",
+    purpose: "Produces SVG previews and one vector PDF from paired DS Grid projections. Choose horizontal and vertical scales independently; elevation breaks preserve vertical scale on steep sheets. Feature-code labels are off by default and configurable when shown. A notes manifest adds text or PNG/JPEG images to free panel space. The result names every preview and its digest-pinned PDF.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -99,9 +100,9 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "obstacle-sticks",
             "<on|off>",
-            "Draw a short thin guide mark only where a measured obstacle rises above the standard ground offset.",
+            "Optional obstacle-excess ticks; off by default. Feature-code clearance hairs use --clearance.",
         )
-        .default("on")
+        .default("off")
         .choices(&["on", "off"]),
         Arg::value(
             "ink",
@@ -220,14 +221,39 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "feature-codes",
             "<auto|show|hide>",
-            "Show meaningful engine feature names at surveyed profile points; generic ground-point codes are suppressed.",
+            "Profile feature-code labels, off by default; show enables the configured codes.",
         )
-        .default("auto")
+        .default("hide")
         .choices(&["auto", "show", "hide"]),
+        Arg::value(
+            "feature-label-codes",
+            "<CODE,CODE,...>",
+            "Comma-separated surveyed codes; omitted means all eligible codes when labels are shown.",
+        ),
+        Arg::value(
+            "feature-label-orientation",
+            "<horizontal|vertical|follow_ground>",
+            "Profile feature-label text direction.",
+        )
+        .default("horizontal")
+        .choices(&["horizontal", "vertical", "follow_ground"]),
+        Arg::value(
+            "feature-label-size-pt",
+            "<4..12>",
+            "Profile feature-label font size in points.",
+        )
+        .default("5"),
+        Arg::value(
+            "feature-label-placement",
+            "<above|below|staggered>",
+            "Place feature-code labels relative to the ground line.",
+        )
+        .default("above")
+        .choices(&["above", "below", "staggered"]),
         Arg::value(
             "clearance",
             "<auto|show|hide>",
-            "Show required clearance thresholds at coded features.",
+            "Show thin hairs only for extra code-specific clearance above the standard ground offset; auto shows them.",
         )
         .default("auto")
         .choices(&["auto", "show", "hide"]),
@@ -325,6 +351,11 @@ pub static COMMAND: Command = Command {
             remedy: "use a positive integer in the printed scale range",
         },
         Refusal {
+            code: "invalid_feature_label_style",
+            when: "feature-code selection or font size is invalid",
+            remedy: "use 1..64 nonempty codes of at most 48 bytes and a font size from 4 to 12 pt",
+        },
+        Refusal {
             code: "context_manifest_invalid",
             when: "the context page manifest is unreadable or not a JSON array of paths",
             remedy: "provide ordered complete map capture paths for this model revision",
@@ -338,6 +369,47 @@ pub static COMMAND: Command = Command {
 
 fn availability() -> Availability {
     DS_REPORT.availability()
+}
+
+fn feature_label_style(inputs: &Inputs) -> Result<Value, Failure> {
+    let size = inputs
+        .value("feature-label-size-pt")
+        .unwrap_or("5")
+        .parse::<f64>()
+        .map_err(|_| {
+            Failure::invalid(
+                "invalid_feature_label_style",
+                "feature-label-size-pt must be a number",
+            )
+        })?;
+    if !size.is_finite() || !(4.0..=12.0).contains(&size) {
+        return Err(Failure::invalid(
+            "invalid_feature_label_style",
+            "feature-label-size-pt must be 4..12",
+        ));
+    }
+    let mut codes = Vec::new();
+    let mut seen = BTreeSet::new();
+    if let Some(value) = inputs.value("feature-label-codes") {
+        for raw in value.split(',') {
+            let code = raw.trim();
+            if code.is_empty() || code.len() > 48 || codes.len() == 64 {
+                return Err(Failure::invalid(
+                    "invalid_feature_label_style",
+                    "feature-label-codes needs 1..64 nonempty codes of at most 48 bytes each",
+                ));
+            }
+            if seen.insert(code.to_ascii_uppercase()) {
+                codes.push(code.to_string());
+            }
+        }
+    }
+    Ok(json!({
+        "codes": codes,
+        "orientation": inputs.value("feature-label-orientation").unwrap_or("horizontal"),
+        "font_size_pt": size,
+        "placement": inputs.value("feature-label-placement").unwrap_or("above")
+    }))
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -427,16 +499,16 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         None => Vec::new(),
     };
     let notes_path = inputs.value("notes").map(PathBuf::from);
-    if let Some(path) = &notes_path {
-        if !path.is_absolute() || !path.is_file() {
-            return Err(Failure::invalid(
-                "notes_manifest_invalid",
-                format!(
-                    "notes manifest must be an existing absolute file: {}",
-                    path.display()
-                ),
-            ));
-        }
+    if let Some(path) = &notes_path
+        && (!path.is_absolute() || !path.is_file())
+    {
+        return Err(Failure::invalid(
+            "notes_manifest_invalid",
+            format!(
+                "notes manifest must be an existing absolute file: {}",
+                path.display()
+            ),
+        ));
     }
     let label_rows: Value = match inputs.value("label-rows") {
         Some(path) => {
@@ -447,8 +519,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         None => json!([]),
     };
-    let mut settings = json!({"format":inputs.require("format")?,"ink_mode":inputs.value("ink").unwrap_or("monochrome"),"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"drawing_revision":inputs.value("drawing-revision").unwrap_or("v0"),"drawing_date":inputs.value("drawing-date").unwrap_or(""),"title_country":inputs.value("title-country").unwrap_or("Republic of Rwanda"),"title_employer":inputs.value("title-employer").unwrap_or("EDCL"),"title_contractor":inputs.value("title-contractor").unwrap_or(""),"title_programme":inputs.value("title-programme").unwrap_or(""),"title_subject":inputs.value("title-subject").unwrap_or(""),"show_obstacle_sticks":inputs.value("obstacle-sticks").unwrap_or("on")=="on"});
-    let geometry = json!({"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"plan_scale":scale("plan-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","plan_angle_policy":inputs.value("angle-policy").unwrap_or("preserve_if_fit"),"angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"plan_buffer_m":decimal("plan-buffer-m")?.unwrap_or(6.0),"show_profile_grid":inputs.value("profile-grid").unwrap_or("on")=="on","show_ds_branding":inputs.value("ds-branding").unwrap_or("on")=="on","profile_elevation_breaks":inputs.value("profile-elevation-breaks").unwrap_or("on")=="on","break_support_context":inputs.value("break-support-context").unwrap_or("once"),"show_profile_continuations":inputs.value("profile-continuations").unwrap_or("on")=="on","show_attachment_points":selection("attachments"),"show_span_labels":selection("span-labels"),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows});
+    let mut settings = json!({"format":inputs.require("format")?,"ink_mode":inputs.value("ink").unwrap_or("monochrome"),"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"drawing_revision":inputs.value("drawing-revision").unwrap_or("v0"),"drawing_date":inputs.value("drawing-date").unwrap_or(""),"title_country":inputs.value("title-country").unwrap_or("Republic of Rwanda"),"title_employer":inputs.value("title-employer").unwrap_or("EDCL"),"title_contractor":inputs.value("title-contractor").unwrap_or(""),"title_programme":inputs.value("title-programme").unwrap_or(""),"title_subject":inputs.value("title-subject").unwrap_or(""),"show_obstacle_sticks":inputs.value("obstacle-sticks").unwrap_or("off")=="on"});
+    let mut geometry = json!({"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"plan_scale":scale("plan-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","plan_angle_policy":inputs.value("angle-policy").unwrap_or("preserve_if_fit"),"angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"plan_buffer_m":decimal("plan-buffer-m")?.unwrap_or(6.0),"show_profile_grid":inputs.value("profile-grid").unwrap_or("on")=="on","show_ds_branding":inputs.value("ds-branding").unwrap_or("on")=="on","profile_elevation_breaks":inputs.value("profile-elevation-breaks").unwrap_or("on")=="on","break_support_context":inputs.value("break-support-context").unwrap_or("once"),"show_profile_continuations":inputs.value("profile-continuations").unwrap_or("on")=="on","show_attachment_points":selection("attachments"),"show_span_labels":selection("span-labels"),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows});
+    geometry["feature_label_style"] = feature_label_style(inputs)?;
     settings
         .as_object_mut()
         .expect("settings object")

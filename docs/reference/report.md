@@ -723,6 +723,69 @@ type. Fixed titles, scales and furniture belong in the map’s `fit_around` list
 
 ### Native project MV overview
 
+For a repeatable print set, `report.plan-profile-config --project <id> --config
+/absolute/print.json` reads one JSON configuration and runs the Rust reporter
+once per named ink variant. Scene, plan, map context, logos and drawing settings
+are shared; only the ink mode and output directory vary. Relative source paths
+resolve beside the configuration file. The output root must be fresh, so an
+earlier issued PDF cannot be replaced by a rerun. The command writes
+`print-receipt.json` with the configuration digest and each PDF's digest, model
+revision and page count. A failed later variant leaves a partial receipt and
+the completed variants intact.
+`report.plan-profile-config schema` returns the required fields and a minimal
+two-variant JSON example without starting the reporter.
+
+```json
+{
+  "schema": "ds.grid-plan-profile-print/v1",
+  "project_id": "gisagara",
+  "scene_path": "sources/profile-scene.json",
+  "plan_path": "sources/plan.json",
+  "output_root": "v0-output",
+  "model_crs": "EPSG:32735",
+  "context_page_files": [],
+  "logo_files": ["sources/employer.png"],
+  "settings": {
+    "format": "advanced",
+    "project_title": "Project name",
+    "sheet_title": "MV Line Plan and Profile Drawings",
+    "horizontal_scale": 1500,
+    "vertical_scale": 800,
+    "plan_scale": 1500,
+    "show_feature_codes": false,
+    "drawing_revision": "v0"
+  },
+  "variants": [
+    {"name": "color", "ink_mode": "reference_accents"},
+    {"name": "monochrome", "ink_mode": "monochrome"}
+  ]
+}
+```
+
+The `settings` object uses the Rust reporter's typed `SheetSettings` fields;
+the CLI supplies `ink_mode` from each variant and the reporter validates the
+remaining values. Optional `side_profiles_path`, `notes_path` and
+`sample_pages` follow the same typed print request. `sample_pages` is a top-level
+positive integer for a proof subset; omit it to print the entire project.
+`settings` requires `format`, `project_title` and `sheet_title`; variant
+`ink_mode` stays outside it. The configuration references
+held source files; it never silently selects a newer model revision.
+When map context is supplied, `context_page_files` contains one pinned capture
+per sheet in the reporter's computed order.
+
+Profile feature-code names are hidden by default. To show a selected set in a
+JSON print, add `"show_feature_codes": true` and, for example,
+`"feature_label_style": {"codes": ["ROAD", "RIVER"], "orientation":
+"horizontal", "font_size_pt": 5, "placement": "above"}` to `settings`.
+An empty `codes` array includes all eligible names. Orientation accepts
+`horizontal`, `vertical` or `follow_ground`; placement accepts `above`, `below`
+or `staggered`. The equivalent direct CLI controls are `--feature-codes show`,
+`--feature-label-codes ROAD,RIVER`, `--feature-label-orientation horizontal`,
+`--feature-label-size-pt 5` and `--feature-label-placement above`.
+The standard ground-offset guide stays continuous. Thin feature-clearance
+hairs appear only when a code adds height beyond that guide; ordinary obstacle
+excess ticks are off unless `--obstacle-sticks on` is requested.
+
 `report.plan-profile --project <id>` renders one revision-pinned DS Grid scene
 and plan headlessly. Its A3 profile and plan order, structure labels, horizontal
 and vertical scales, span annotations, 6 m corridor and grid are authored inputs.

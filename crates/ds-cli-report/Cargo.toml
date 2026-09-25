@@ -15,6 +15,8 @@ ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
 
 # The reserved computed report identities are the kernel's rule; the headless
 # scope lane applies the same predicate the offline lane already enforces.

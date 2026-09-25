@@ -707,6 +707,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.bundle", "local_file_write", "none"),
     ("report.artifact.remove", "global_write", "headless_project"),
     ("report.plan-profile", "local_file_write", "none"),
+    ("report.plan-profile-config", "local_file_write", "none"),
+    ("report.plan-profile-config.schema", "discovery", "none"),
     ("report.spatial.workbook", "local_file_write", "none"),
     ("report.engine", "discovery", "none"),
     ("report.layout.new", "discovery", "none"),
