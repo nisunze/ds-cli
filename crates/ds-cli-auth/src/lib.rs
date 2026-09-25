@@ -5456,6 +5456,32 @@ pub fn design_attachments_for_project(
         .design_attachments(&project, command, now())
         .map_err(map_client)
 }
+/// One design attachment revision's receipt and bytes for the caller's
+/// explicit project. The native client spends the server-signed,
+/// generation-pinned read and returns the bytes only once their size and
+/// SHA-256 match the revision's server-verified values; the locator never
+/// reaches the caller.
+pub fn design_attachment_bytes_for_project(
+    lane_value: &str,
+    project: &str,
+    attachment: &str,
+    revision: Option<&str>,
+) -> Result<(Value, Vec<u8>), Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device
+            .design_attachment_bytes(&project, attachment, revision)
+            .map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .design_attachment_bytes(&project, attachment, revision, now())
+        .map_err(map_client)
+}
 pub fn design_tags(
     lane: &str,
     project: &str,

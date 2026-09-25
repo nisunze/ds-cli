@@ -7124,12 +7124,12 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "design_attachments": {
                 "method": "POST",
                 "path": "/api/v1/design/attachments",
-                "actions": ["list", "get", "start_upload", "finalize_upload", "download", "archive", "archive_revision"]
+                "actions": ["list", "get", "start_upload", "finalize_upload", "download", "archive", "archive_revision", "set_latest", "list_project", "list_object_versions"]
             },
             "design_versions": {
                 "method": "POST",
                 "path": "/api/v1/design/versions",
-                "actions": ["list_versions", "get_version", "get_head", "create_version", "restore_version"]
+                "actions": ["list_versions", "get_version", "get_head", "create_version", "restore_version", "list_version_summaries", "create_versions"]
             },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
@@ -7137,7 +7137,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v29",
+            "schema_version": "ds.native-client-profiles/v30",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -7715,6 +7715,30 @@ fn every_design_write_refuses_without_confirmation() {
         vec!["design", "attachment", "retire", "--attachment", "att-1"],
         vec![
             "design",
+            "attachment",
+            "set-latest",
+            "--attachment",
+            "att-1",
+            "--revision",
+            "rev-1",
+        ],
+        vec![
+            "design",
+            "comment",
+            "redact",
+            "--project",
+            "test-project",
+            "--thread",
+            "thread-1",
+            "--comment",
+            "c-1",
+            "--expected-version",
+            "2",
+            "--reason",
+            "personal data",
+        ],
+        vec![
+            "design",
             "tag",
             "define",
             "--project",
@@ -8110,10 +8134,9 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        // 101 − `design sync status|cancel|resume`, `design transformer
-        // download` (2026-09-20) + `design version show|begin-batch|summaries`
-        // (2026-09-25).
-        100,
+        // Base 101, minus four retired commands, plus three version and five
+        // attachment/comment commands added on 2026-09-25.
+        105,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -8180,8 +8203,12 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.version.summaries"
                     | "design.version.restore"
                     | "design.attachment.list"
+                    | "design.attachment.list-project"
+                    | "design.attachment.show"
+                    | "design.attachment.versions"
                     | "design.attachment.publish"
                     | "design.attachment.download"
+                    | "design.attachment.set-latest"
                     | "design.attachment.retire"
                     | "design.conflict.list"
                     | "design.conflict.check"
@@ -8217,6 +8244,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.comment.post"
                     | "design.comment.resolve"
                     | "design.comment.promote"
+                    | "design.comment.redact"
                     | "design.known-columns.list"
                     | "design.known-columns.set"
                     | "design.materials.preview"
@@ -8251,6 +8279,247 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         "headless_signed_out",
         "a well-formed design read must end at the native credential"
     );
+}
+
+/// Versioned deliverables have a verb for every attachment action ds-brain
+/// serves, and each new verb refuses locally what it can before a credential
+/// is consulted: an existing `--out` file is never replaced, a digest pin is
+/// MV-only, a page and a fence are bounded, and a redaction needs the version
+/// the moderator read. Well-formed calls end at the native credential.
+#[test]
+fn attachment_versioning_verbs_refuse_locally_and_never_replace_a_file() {
+    // The kernel's policy offers `make_latest`; the verb behind it exists and
+    // is a governed write.
+    let set_latest = ok(&[
+        "capabilities",
+        "design.attachment.set-latest",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(set_latest["command"]["effect"], "global_write");
+
+    let root = temp_root("attachment-download");
+    std::fs::create_dir_all(&root).unwrap();
+    let existing = root.join("LINE_A_v2.bak");
+    std::fs::write(&existing, b"shipped").unwrap();
+    let download = |out: &std::path::Path| {
+        native_ds(&[
+            "design",
+            "attachment",
+            "download",
+            "--project",
+            "test-project",
+            "--attachment",
+            "att-line-a-bak",
+            "--revision",
+            "rev_2",
+            "--out",
+            out.to_str().unwrap(),
+            "--output",
+            "json",
+        ])
+    };
+    let refused = download(&existing);
+    assert_eq!(
+        refused.envelope["error"]["code"], "attachment_output_invalid",
+        "an existing destination is refused before any byte is authorized: {}",
+        refused.stdout
+    );
+    assert_eq!(std::fs::read(&existing).unwrap(), b"shipped");
+    let fresh = root.join("fresh.bak");
+    let signed_out = download(&fresh);
+    assert_eq!(
+        signed_out.envelope["error"]["code"],
+        "design_attachment_refused"
+    );
+    assert_eq!(
+        signed_out.envelope["error"]["detail"]["cause"], "headless_signed_out",
+        "a well-formed fetch ends at the native credential: {}",
+        signed_out.stdout
+    );
+    assert!(!fresh.exists(), "nothing is written without verified bytes");
+
+    // A version digest pins an MV content revision only; the owner refuses
+    // the transformer pin before any upload or credential.
+    let bak = root.join("sheet.pdf");
+    std::fs::write(&bak, b"bytes").unwrap();
+    let digest = "a".repeat(64);
+    let pinned = native_ds(&[
+        "design",
+        "attachment",
+        "publish",
+        "--project",
+        "test-project",
+        "--kind",
+        "lv_transformer",
+        "--object",
+        "kigali_a",
+        "--version",
+        "v2",
+        "--version-digest",
+        &digest,
+        "--path",
+        bak.to_str().unwrap(),
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        pinned.envelope["error"]["code"],
+        "design_attachment_refused"
+    );
+    assert_eq!(
+        pinned.envelope["error"]["detail"]["cause"],
+        "auth_input_invalid"
+    );
+    // The same flags on an MV pin reach the credential.
+    let mv = native_ds(&[
+        "design",
+        "attachment",
+        "publish",
+        "--project",
+        "test-project",
+        "--kind",
+        "mv_model",
+        "--object",
+        "line_a",
+        "--version",
+        "rev-2",
+        "--version-digest",
+        &digest,
+        "--media-type",
+        "application/octet-stream",
+        "--source-kind",
+        "pls_cadd",
+        "--source-ref",
+        "submission 2",
+        "--no-latest",
+        "--path",
+        bak.to_str().unwrap(),
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        mv.envelope["error"]["detail"]["cause"],
+        "headless_signed_out"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+
+    // Bounds a caller can read from help are enforced before a round trip.
+    for (args, code) in [
+        (
+            vec![
+                "design",
+                "attachment",
+                "list-project",
+                "--project",
+                "test-project",
+                "--limit",
+                "501",
+            ],
+            "invalid_number",
+        ),
+        (
+            vec![
+                "design",
+                "attachment",
+                "set-latest",
+                "--project",
+                "test-project",
+                "--attachment",
+                "att-1",
+                "--revision",
+                "rev-1",
+                "--expected-version",
+                "0",
+                "--yes",
+            ],
+            "invalid_number",
+        ),
+        (
+            vec![
+                "design",
+                "comment",
+                "redact",
+                "--project",
+                "test-project",
+                "--thread",
+                "thread-1",
+                "--comment",
+                "c-1",
+                "--expected-version",
+                "0",
+                "--reason",
+                "personal data",
+                "--yes",
+            ],
+            "invalid_number",
+        ),
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        assert_eq!(native_refusal(&argv), code, "`ds {}`", args.join(" "));
+    }
+    // A redaction without its reason is not a redaction.
+    assert_ne!(
+        native_refusal(&[
+            "design",
+            "comment",
+            "redact",
+            "--project",
+            "test-project",
+            "--thread",
+            "thread-1",
+            "--comment",
+            "c-1",
+            "--expected-version",
+            "2",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "headless_signed_out"
+    );
+    // Well-formed reads end at the native credential, never a window.
+    for args in [
+        vec![
+            "design",
+            "attachment",
+            "list-project",
+            "--project",
+            "test-project",
+        ],
+        vec![
+            "design",
+            "attachment",
+            "show",
+            "--project",
+            "test-project",
+            "--attachment",
+            "att-1",
+        ],
+        vec![
+            "design",
+            "attachment",
+            "versions",
+            "--project",
+            "test-project",
+            "--attachment",
+            "att-1",
+        ],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        let run = native_ds(&argv);
+        assert_eq!(
+            run.envelope["error"]["detail"]["cause"],
+            "headless_signed_out",
+            "`ds {}`: {}",
+            args.join(" "),
+            run.stdout
+        );
+    }
 }
 
 /// `design.transformer.download` and `design.sync.*` controlled a window's
@@ -8295,19 +8564,27 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
     // now, asserted in `saved_selections_are_native_and_ds_brain_still_decides`.
     for (id, effect) in [
         ("design.attachment.list", "read_only"),
-        ("design.attachment.download", "read_only"),
+        ("design.attachment.list-project", "read_only"),
+        ("design.attachment.show", "read_only"),
+        ("design.attachment.versions", "read_only"),
+        // `--out` writes the verified bytes to a new local file; the signed
+        // URL alone stays the no-`--out` answer. Nothing shared changes.
+        ("design.attachment.download", "local_file_write"),
         ("design.tag.list", "read_only"),
         ("design.tag.query", "read_only"),
         ("design.known-columns.list", "read_only"),
         ("design.comment.list", "read_only"),
         ("design.comment.read", "read_only"),
         ("design.attachment.publish", "global_write"),
+        ("design.attachment.set-latest", "global_write"),
         ("design.attachment.retire", "global_write"),
         ("design.tag.define", "global_write"),
         ("design.tag.set", "global_write"),
         ("design.known-columns.set", "global_write"),
         ("design.comment.post", "global_write"),
         ("design.comment.promote", "global_write"),
+        // Redaction clears text the server does not keep: a governed write.
+        ("design.comment.redact", "global_write"),
         // A governed group's preview and its report projection are reads: they
         // decide and describe, and neither writes a byte. That is what keeps
         // both usable on a project that accepts no changes.
@@ -8428,8 +8705,12 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.group.project-apply",
         "design.group.project-export",
         "design.attachment.list",
+        "design.attachment.list-project",
+        "design.attachment.show",
+        "design.attachment.versions",
         "design.attachment.publish",
         "design.attachment.download",
+        "design.attachment.set-latest",
         "design.attachment.retire",
         "design.tag.list",
         "design.tag.query",
@@ -8457,6 +8738,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.comment.post",
         "design.comment.resolve",
         "design.comment.promote",
+        "design.comment.redact",
     ]
     .into_iter()
     .collect();
@@ -8475,6 +8757,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.comment.post",
         "design.comment.resolve",
         "design.comment.promote",
+        "design.comment.redact",
         // The governed group's two committing actions. `list`, `preview` and
         // `export` are reads: they decide and describe, and neither writes a
         // byte, which is what keeps all three usable on a project that accepts
@@ -8681,6 +8964,21 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                         "thread-smoke",
                     ]
                 }
+                "design.comment.redact" => vec![
+                    "design",
+                    "comment",
+                    "redact",
+                    "--project",
+                    "test-project",
+                    "--thread",
+                    "thread-smoke",
+                    "--comment",
+                    "c-smoke",
+                    "--expected-version",
+                    "3",
+                    "--reason",
+                    "smoke",
+                ],
                 "design.group.apply" => vec![
                     "design",
                     "group",

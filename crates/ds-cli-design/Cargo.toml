@@ -23,5 +23,8 @@ sha2 = { workspace = true }
 ds-design-workspace = { workspace = true }
 ds-cli-exec = { workspace = true }
 ds-cli-report = { workspace = true }
+# `design attachment download --out` stages verified bytes beside the
+# destination and persists them without replacing an existing file.
+tempfile = "3"
 
 ds-command-kernel = { workspace = true }

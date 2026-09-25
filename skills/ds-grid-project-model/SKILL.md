@@ -2,7 +2,7 @@
 name: ds-grid-project-model
 description: Create, import, select, edit and publish DS Grid project models through the governed local-model lifecycle. Use for local `.dsgrid` working copies (including typed structure edits — describe, retype single poles to H-poles — and the structure list / staking table with REG rule findings) and immutable project versions, not PLS-CADD conversion.
 metadata:
-  ds-chapters: grid-model
+  ds-chapters: grid-model, design
   ds-mcp-profile: grid-local-model
 ---
 
@@ -125,7 +125,11 @@ checkpoints remain stable. A legacy head without lineage needs the server's stat
 recovery rather than guessing identity. Discover `design.version.*` for explicit-
 project MV governance metadata. MV attachments bind the exact content revision
 id from that descriptor, while LV attachments bind `vN`; neither attachment
-operation requires a paired Desktop.
+operation requires a paired Desktop. After publishing a submitted version,
+attach the delivered `.bak` with `design.attachment.publish --kind mv_model
+--version <revision_id>` (the model digest is pinned with it); read bindings
+with `design.attachment.versions`/`show` and fetch verified bytes with
+`design.attachment.download --out`.
 
 A version's package files: `dsgrid.asset.list|extract` (local package) and
 `dsgrid.project.asset.list|extract` (exact revision); v1's incoming backup is

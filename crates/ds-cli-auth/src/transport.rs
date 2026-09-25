@@ -1483,6 +1483,25 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    fn design_attachment_bytes(
+        &mut self,
+        call: ds_client_core::design_attachments::DownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        // A revision may be 512 MiB, twice a project model; the read is
+        // bounded by the declared size, and its time scales with it.
+        let seconds = 120 + (call.response_limit() as u64 / (1024 * 1024));
+        let response = ureq::get(call.url())
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(seconds)))
+            .build()
+            .call()
+            .map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
     fn solar_project(
         &mut self,
         call: ds_client_core::SolarProjectCall<'_>,

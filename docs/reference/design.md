@@ -495,7 +495,18 @@ ds design selection assign --project <id> --selection sel-week-32 \
 
 ds design attachment list --project <project-id> --kind mv_model --object mv_line_a
 ds design attachment publish --project <project-id> --kind mv_model --object mv_line_a \
-  --path ./MV_LINE_A.bak --version rev_2 --yes
+  --path ./MV_LINE_A.bak --version rev_2 --purpose native_workspace \
+  --source-kind pls_cadd --source-ref "submission 2" --yes
+
+# Which submitted model versions carry this .bak, one file's history, and
+# the verified bytes of the one that shipped.
+ds design attachment versions --project <project-id> --attachment att_7f3a…
+ds design attachment show --project <project-id> --attachment att_7f3a… --archived
+ds design attachment download --project <project-id> --attachment att_7f3a… \
+  --revision rev_… --out ./MV_LINE_A_v2.bak
+ds design attachment set-latest --project <project-id> --attachment att_7f3a… \
+  --revision rev_… --expected-version 4 --yes
+ds design attachment list-project --project <project-id> --limit 100
 
 ds design tag list --project <id> --kind lv_transformer --object kigali_a
 ds design tag set --project <id> --kind lv_transformer --object kigali_a \
@@ -787,17 +798,26 @@ editing the selection afterwards cannot change what somebody was asked to do.
 
 An attachment revision is immutable: each one owns its own storage object, its
 own server-verified SHA-256 and its own generation, so publishing a new `.bak`
-for a later model version sits alongside the earlier one. A comment is
-append-only; there is no `ds design comment edit`, because there is no such
-server action. Retiring an attachment or archiving a selection is soft and
-reversible, and `--restore` brings it back.
+for a later model version sits alongside the earlier one. On an MV model the
+`--version` pin is the content revision a submission was published as, and
+`publish` sends that revision's model digest beside it (read from the
+catalogue unless `--version-digest` names it), so ds-brain refuses a binding
+to a package that is not the one named. `--no-latest` records a historical
+file without moving `latest`; `set-latest` moves the pointer to one ready
+revision under the head's version fence. A comment is append-only; there is no
+`ds design comment edit`, because there is no such server action. Retiring an
+attachment or archiving a selection is soft and reversible, `--restore` brings
+it back, and `--reason` goes to the audit record.
 
 ## Bounds, and how they are reported
 
 Every list is bounded and every bound is reported. `--limit` is a page (1–200)
 and the matched `total` always comes back, so a short page says so rather than
 ending quietly. An attachment whose revisions exceed the server's page reports
-`more: true` on that attachment rather than looking complete.
+`more: true` on that attachment rather than looking complete. The one
+project-wide attachment read, `ds design attachment list-project`, pages up to
+500 heads — ds-brain's own ceiling for that listing — and reports `more` with
+the exact `next_cursor` to pass back, since it has no total to report.
 
 A comma-separated list flag is bounded locally as well as on the server, so an
 over-long `--transformers` or `--values` is refused before a round trip that
@@ -825,9 +845,11 @@ Storage URL before finalization. Larger files are refused with a bounded-file
 remedy; no revision is finalized from truncated bytes. Desktop pairing is not
 required.
 
-**Redacting a comment.** Redaction is a moderator's audited action that clears
-text the server does not retain. It stays in the application, where the
-moderator can read what they are about to remove before they remove it.
+**Undoing a redaction.** `ds design comment redact` clears text the server
+does not retain, so there is no unredact. The command is fenced on the thread
+version the moderator read the comment at (`--expected-version`, from
+`ds design comment read`), and it reads the thread again first: a thread that
+moved since, or a comment not in it, is refused rather than redacted blind.
 
 **Promoting a tag definition to a global template.** That is the one design
 action that leaves the project boundary, and it carries its own capability. It
@@ -846,6 +868,9 @@ belongs to the governance surface, not to a headless command.
 | `backend_unreachable` | the Data Solutions API did not answer the request the command needs |
 | `invalid_design_anchor` | the anchor names a reserved document or a kind that does not exist |
 | `attachment_too_large` | the file exceeds the bounded path reader |
+| `attachment_output_invalid` | `download --out` names a file that exists, or the verified bytes cannot be written there |
+| `design_attachment_refused` | the attachment owner refused identity, a version pin or digest, a storage grant or a pointer fence; the cause is nested |
+| `invalid_number` | `--limit` or `--expected-version` is not a whole number in its stated bound |
 | `design_route_unavailable` | this lane's API Gateway does not publish the known-columns route |
 | `requires_window_retired` | `--desktop-descriptor` was given to a command that runs headless now |
 | `invalid_value_list` | a comma-separated flag was given but carries no values |
@@ -1145,11 +1170,17 @@ rooms remain presentation adapters. Device-local snapshots are retained drafts,
 not governed history or queued publication work.
 
 `design.attachment` uses the native authenticated client and an explicit project,
-without Desktop state. It lists opaque revisions, uploads through a server grant
-and verified native transfer, finalizes immutable bytes, authorizes generation-
-pinned downloads and performs fenced soft retirement. LV attachment versions
-are assigned `vN`; MV attachment versions are exact content revision IDs. Read
-live capabilities for exact flags, limits and refusal remedies.
+without Desktop state. It lists opaque revisions per object (`list`), per
+project (`list-project`, paged) and per file (`show`), maps one file to every
+object version it was bound to (`versions`), uploads through a server grant and
+verified native transfer, finalizes immutable bytes with a media type and
+provenance, authorizes generation-pinned downloads or fetches and verifies them
+into a new file (`download --out`), moves the latest pointer under its fence
+(`set-latest`) and performs fenced soft retirement with a reason. LV attachment
+versions are assigned `vN`; MV attachment versions are exact content revision
+IDs, pinned with the model digest. Every action the kernel's attachment policy
+offers names its verb (`ds_command_kernel::design_attachments::ACTION_COMMANDS`).
+Read live capabilities for exact flags, limits and refusal remedies.
 
 For a prepared native Design workspace, `ds design project revisions` lists
 retained content digests and `ds design project compare` compares those exact

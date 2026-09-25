@@ -46,11 +46,11 @@
 //!   lv         project-export → process
 //!   transformer inventory → retire | restore; status; dashboard
 //!   selection  list → read → save | archive | assign
-//!   attachment list → publish | download | retire
+//!   attachment list | list-project | show | versions → publish | download | set-latest | retire
 //!   tag        list | query → define | set; enrich-preview → enrich-apply
 //!   group      list → preview → apply | unassign; export
 //!   consumer-grouping preview → apply; read | archive
-//!   comment    list → read → post | resolve | promote
+//!   comment    list → read → post | resolve | promote | redact
 //! ```
 //!
 //! ## What is deliberately absent
@@ -58,8 +58,8 @@
 //! **An edit.** A comment is append-only and an attachment revision is
 //! immutable; there is no `comment edit` and no `attachment replace` because
 //! there is no such server action. Removing comment text is a moderator's
-//! audited redaction, which stays in the application where the moderator can
-//! read what they are removing before they remove it.
+//! audited redaction, `comment redact`, fenced on the thread version the
+//! moderator read so what is removed is what was read.
 
 pub mod activities;
 pub mod attachment;
@@ -133,8 +133,12 @@ pub static DOMAIN: Domain = Domain {
         &selection::archive::COMMAND,
         &selection::assign::COMMAND,
         &attachment::list::COMMAND,
+        &attachment::list_project::COMMAND,
+        &attachment::show::COMMAND,
+        &attachment::versions::COMMAND,
         &attachment::publish::COMMAND,
         &attachment::download::COMMAND,
+        &attachment::set_latest::COMMAND,
         &attachment::retire::COMMAND,
         &tag::list::COMMAND,
         &tag::query::COMMAND,
@@ -170,6 +174,7 @@ pub static DOMAIN: Domain = Domain {
         &comment::post::COMMAND,
         &comment::resolve::COMMAND,
         &comment::promote::COMMAND,
+        &comment::redact::COMMAND,
         &lv::project_export::COMMAND,
         &lv::project_save::COMMAND,
         &lv::process::COMMAND,

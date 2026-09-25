@@ -360,7 +360,8 @@ impl Profile {
             // Alignment gap show and set join the same working-copy edits.
             // Versions and submissions add the head, revisions, exports, governance,
             // and pinned attachments to this same model workflow.
-            Self::GridLocalModel => 51,
+            // Four additional attachment reads and pointer edits complete the set.
+            Self::GridLocalModel => 55,
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
@@ -555,9 +556,10 @@ impl Profile {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::GridNative => chapter == Chapter::GridModel,
             Self::Printing => matches!(chapter, Chapter::Reports | Chapter::MapPresentation),
-            Self::GridLocalModel | Self::GridClearance | Self::GridCorrections => {
-                chapter == Chapter::GridModel
-            }
+            // Version attachments are Design commands carried by this model
+            // lifecycle profile beside publication.
+            Self::GridLocalModel => matches!(chapter, Chapter::GridModel | Chapter::Design),
+            Self::GridClearance | Self::GridCorrections => chapter == Chapter::GridModel,
             Self::Pls | Self::PlsDesktop | Self::PlsLibrary | Self::LibraryGovernance => {
                 chapter == Chapter::PlsCadd
             }
@@ -754,6 +756,10 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "design.attachment.list",
     "design.attachment.publish",
     "design.attachment.download",
+    "design.attachment.list-project",
+    "design.attachment.show",
+    "design.attachment.versions",
+    "design.attachment.set-latest",
     "design.attachment.retire",
 ];
 
@@ -2278,7 +2284,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Manage Form Factory schemas, project-form settings, project templates and project creation without map state; or work with survey/map-owned local data. Describe a command before invoking it."
         }
         Chapter::Design => {
-            "Read, stage, process, report, save, or discard transformer and LV design work; mark MV model versions (submissions) and attach files to exact MV revisions. Describe a command before invoking it."
+            "Read, stage, process, report, save, or discard transformer and LV design work; version, attach, tag and discuss transformers and MV DS Grid models (a submitted MV version's .bak binds to its content revision). Describe a command before invoking it."
         }
         Chapter::MapPresentation => {
             "Read or change project map styling and its secondary visual dimension. Describe a command before invoking it."

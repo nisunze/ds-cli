@@ -1671,7 +1671,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // the four `design attachment` leaves an MV revision carries — the
             // owner's order is that versioning and its attachments have no
             // missing verb, and they are one workflow with publication.
-            "grid-local-model" => 51,
+            // Four more attachment actions complete that workflow.
+            "grid-local-model" => 55,
             // The file-in/file-out engine workflow; `dsgrid replace-structure`
             // joined `import-structure` here on 2026-09-25.
             "grid-native" => 17,

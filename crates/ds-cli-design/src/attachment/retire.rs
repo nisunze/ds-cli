@@ -19,12 +19,18 @@ const RESTORE_ARG: Arg = Arg {
     summary: "Bring the retired file or revision back.",
 };
 
+const REASON_ARG: Arg = Arg::value(
+    "reason",
+    "<text>",
+    "Why, for the audit record (up to 2000 characters).",
+);
+
 pub static COMMAND: Command = Command {
     id: "design.attachment.retire",
     path: &["design", "attachment", "retire"],
     contract: 1,
     summary: "Retire an attachment or one of its revisions, reversibly.",
-    purpose: "Retire or restore a file or one exact revision for the explicit project. Records and bytes remain; latest points to the newest ready revision or clears. The captured pointer fence refuses concurrent changes.",
+    purpose: "Retire or restore a file or one exact revision for the explicit project. Records and bytes remain; latest points to the newest ready revision or clears. The captured pointer fence refuses concurrent changes. --reason goes to the audit record.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -35,10 +41,11 @@ pub static COMMAND: Command = Command {
         ATTACHMENT_ARG,
         REVISION_ARG,
         RESTORE_ARG,
+        REASON_ARG,
     ],
     output: "The project, the `attachment`, the `revision` if one was named, the file's `state`, the resulting `latest` pointer, and the committed `version`.",
     examples: &[Example {
-        command: "ds design attachment retire --project <id> --attachment att-site-a-bak --revision rev-2 --yes",
+        command: "ds design attachment retire --project <id> --attachment att-site-a-bak --revision rev-2 --reason \"superseded by the v2 submission\" --yes",
         note: "Omit --revision to retire the whole file.",
         runnable: false,
     }],
@@ -56,6 +63,7 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             attachment: inputs.require("attachment")?.into(),
             revision: inputs.value("revision").map(str::to_owned),
             restore: inputs.switch("restore"),
+            reason: inputs.value("reason").map(str::to_owned),
         },
     )
 }
