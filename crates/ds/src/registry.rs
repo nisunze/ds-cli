@@ -1309,6 +1309,11 @@ static SURVEY_ENTRIES: &[Entry] = &[
         render: ds_cli_survey::photo::render,
     },
     Entry {
+        command: &ds_cli_survey::photo_fetch::FETCH_COMMAND,
+        handler: ds_cli_survey::photo_fetch::fetch,
+        render: ds_cli_survey::photo_fetch::render,
+    },
+    Entry {
         command: &ds_cli_survey::moments::LIST_COMMAND,
         handler: ds_cli_survey::moments::list,
         render: ds_cli_survey::moments::render_list,

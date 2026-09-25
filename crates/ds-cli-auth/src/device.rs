@@ -20,7 +20,7 @@ use ds_client_core::{
     CompoundedReportRequest, DeviceAccessSession, DeviceAuthContext, DeviceAuthorizationStatus,
     DeviceBeginPublic, DeviceBeginRequest, DeviceBinding, DeviceCredential, DeviceError,
     DevicePendingAuthorization, DevicePrivateKey, DeviceProtectedCall, DeviceProtectedOperation,
-    DeviceSummary, DeviceTransport, ProjectDirectory, ProjectFormSettingsEditor,
+    DeviceSummary, DeviceTransport, MediaGrants, ProjectDirectory, ProjectFormSettingsEditor,
     ProjectFormsSnapshot, RetirementAction, RetirementReceipt, RetirementRequest,
     SecretRequestBody, SolarSnapshot, StoreError, SurveyEntriesChanges,
     SurveyEntriesChangesRequest, SurveyEntriesRead, SurveyEntriesReadRequest,
@@ -728,6 +728,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
         request: &SurveyEntriesReadRequest,
     ) -> Result<SurveyEntriesRead, ClientError> {
         fixed_device_call!(self, survey_entries_read, project, request)
+    }
+    pub fn survey_media_grant(
+        &mut self,
+        project: &str,
+        others: &[&str],
+    ) -> Result<MediaGrants, ClientError> {
+        fixed_device_call!(self, survey_media_grant, project, others)
     }
     pub fn survey_entries_changes(
         &mut self,

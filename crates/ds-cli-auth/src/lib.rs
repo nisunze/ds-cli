@@ -63,8 +63,9 @@ pub use context::{
     SessionState, arbitrate_provider,
 };
 pub use ds_client_core::{
-    BundleDownloadReceipt, ContourParameters, DataDistributionRequest, PrintContextKind,
-    SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry, SurveyEntryMedia,
+    BundleDownloadReceipt, ContourParameters, DataDistributionRequest, MediaGrant, MediaGrants,
+    PrintContextKind, SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry, SurveyEntryMedia,
+    SurveyPhoto, SurveyThumbnail,
 };
 pub use ds_client_core::{
     CompoundedArchive, CompoundedArchiveLayout, CompoundedReportReceipt, CompoundedReportRequest,
@@ -3116,6 +3117,38 @@ pub fn survey_entries_read(
     )
 }
 
+/// The report export grant for one fetch of survey photos: the named project
+/// first, then each other project the photos belong to.
+pub fn survey_media_grant(
+    lane_value: &str,
+    project: &str,
+    others: &[&str],
+) -> Result<HeadlessNamedProject<MediaGrants>, Failure> {
+    headless_named_project_with(
+        lane_value,
+        project,
+        map_survey_photo_error,
+        |device, project| device.survey_media_grant(project, others),
+        |client, project| client.survey_media_grant(project, others, now()),
+    )
+}
+
+/// One photo's bytes under a grant. No credential is read or sent.
+pub fn survey_photo_bytes(grants: &MediaGrants, object_path: &str) -> Result<SurveyPhoto, Failure> {
+    ds_client_core::survey_media_fetch::fetch(&mut NativeTransport, grants, object_path)
+        .map_err(map_survey_photo_error)
+}
+
+/// One photo's thumbnail under a grant, made from the original by the
+/// product's thumbnail procedure when the store never received one.
+pub fn survey_thumbnail_bytes(
+    grants: &MediaGrants,
+    object_path: &str,
+) -> Result<SurveyThumbnail, Failure> {
+    ds_client_core::survey_media_fetch::fetch_thumbnail(&mut NativeTransport, grants, object_path)
+        .map_err(map_survey_photo_error)
+}
+
 /// Read Survey entry changes since a clock in the caller's explicit project.
 pub fn survey_entries_changes(
     lane_value: &str,
@@ -3428,6 +3461,28 @@ fn map_survey_entries_read_error(error: ClientError) -> Failure {
         ErrorKind::Transient => Failure::unavailable("survey_entries_transient", message)
             .remedy("retry without changing the request"),
         ErrorKind::UnreadableResponse => Failure::unavailable("survey_entries_unreadable", message)
+            .remedy("retry once, then report it with `ds feedback submit`"),
+        _ => map_client(error),
+    }
+}
+
+/// Photo fetch refusals in their own words: a missing photo, a photo outside
+/// the grant, and a user without the export grant are three different next
+/// steps.
+fn map_survey_photo_error(error: ClientError) -> Failure {
+    let message = error.to_string();
+    match error.kind() {
+        ErrorKind::ResourceNotFound => Failure::invalid("survey_photo_not_found", message)
+            .remedy("check the reference with `ds survey entries read`; the photo may not have been uploaded"),
+        ErrorKind::InvalidInput => Failure::invalid("survey_photo_invalid", message)
+            .remedy("pass references exactly as `ds survey entries read` reports them"),
+        ErrorKind::AuthenticationRejected => Failure::unauthorized("survey_photo_forbidden", message)
+            .remedy("ask a project manager for reports.export on every project the photos belong to"),
+        ErrorKind::RouteUnavailable => Failure::unavailable("survey_photo_unavailable", message)
+            .remedy("report it with `ds feedback submit`; this deployment cannot sign media links"),
+        ErrorKind::Transient => Failure::unavailable("survey_photo_transient", message)
+            .remedy("run the same fetch again; photos already written are kept"),
+        ErrorKind::UnreadableResponse => Failure::unavailable("survey_photo_unreadable", message)
             .remedy("retry once, then report it with `ds feedback submit`"),
         _ => map_client(error),
     }

@@ -730,6 +730,7 @@ const SURVEY_MEDIA_COMMANDS: &[&str] = &[
     "survey.moments.list",
     "survey.moments.read",
     "survey.photo.rotate",
+    "survey.photo.fetch",
     "survey.photo.publish",
     "survey.photo.rotate-local",
 ];

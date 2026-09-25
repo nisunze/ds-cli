@@ -13,7 +13,7 @@ asset inventory.
 | Coverage gaps or where to visit next | `survey.query`, then `survey.entries.select` when locations are needed | An agreed target area, asset list or expected count. Without a denominator, coverage remains unknown. |
 | Missing observations before design review | `survey.query` with relevant form fields and bounded filters | Supported field names and a stated quality rule; results are review candidates, not permission to correct or delete. |
 | Surveyed assets for a design handoff | `survey.entries.select` | Area, exact identities, freshness, digest and completeness; explicitly identify required engineering attributes or photos absent from this projection. |
-| Field values and photos for a survey report | `survey.entries.read` | Exact project/form and filters; `total` versus `returned` (`truncated`), and each entry's `media` object and thumbnail paths. See [Entry values and photo references](#entry-values-and-photo-references). |
+| Field values and photos for a survey report | `survey.entries.read`, then `survey.photo.fetch` | Exact project/form and filters; `total` versus `returned` (`truncated`), and each entry's `media` object and thumbnail paths. See [Entry values and photo references](#entry-values-and-photo-references). |
 | Changes since a prior delivery | `survey.entries.changes` | Last completed replication checkpoint, retained cursors and tombstones; a partial page does not advance the checkpoint. |
 | Work without connectivity | Browser Survey capture | Cached project/forms, local media and durable IndexedDB entry/outbox commits; there is no separate native CLI capture workspace. |
 | Which survey photos this machine holds; a photo shot sideways | `survey.moments.list`, `survey.moments.read`, `survey.photo.rotate`, `survey.photo.publish` | The Server's survey-media store (rows in the lane's sync store, bundles under `survey-media/`): `waiting` is held and not yet published, `synced` equals the published head. See [Survey moments and the one rotation](#survey-moments-and-the-one-rotation). |
@@ -373,6 +373,46 @@ that failed part-way, or rows lost against the summary total are refused
 (`survey_entries_unreadable`, `survey_entries_transient`), never returned
 short. The route is `POST /api/v1/data` (`query_entries`) under the caller's
 JWT and named-project authority.
+
+### Photo files: thumbnails first
+
+`survey photo fetch` writes the photos `entries read` names to local files.
+Like the map, it previews: thumbnails by default (320 px JPEG, a few KB, fast
+to fetch and to read), and full-size originals only with `--original` for the
+photos whose detail matters (a nameplate, a meter reading). Look at the
+thumbnails first, then fetch the few originals you need.
+
+```text
+ds survey entries read --project <project-id> --form <form-slug> \
+  --limit 5000 --out entries.geojson
+ds survey photo fetch --project <project-id> --from entries.geojson \
+  --out-dir photos --output json
+```
+
+`--path <reference>` (repeatable) takes single references in any form
+`entries read` accepts; `--from` takes every `media[].object_path` of a GeoJSON
+it wrote. A thumbnail is the stored `_thunder.jpeg` companion; one the store
+never received is made from the original with the product's own thumbnail
+procedure, exactly as the map does on hover (kept locally, not uploaded), and
+marked `generated: true`. Each
+photo lands at `<out-dir>/<object path>`, written beside its name and renamed
+into place, so an existing file is always whole: a photo already present is
+kept and listed under `present`, and an interrupted fetch resumes by running
+again. Up to 5000 photos per fetch.
+
+Access is the report export grant. The CLI holds a DS token, not the browser's
+Firebase token, so it cannot read Storage directly; one `/report`
+`media_scope` call per fetch checks the JWT, project membership and
+`reports.export` on the named project and on every other project the photos
+belong to (a migrated entry keeps its source project's references; at most 32
+projects). Each photo is then read through the grant's resolver link with no
+credential attached. A grant covers `projects/<project>/` in the deployment's
+media bucket, which holds the field app's photos; a reference in the browser's
+older `<project>/forms/...` layout is reported as failed, not fetched from
+elsewhere.
+
+One photo's failure (`survey_photo_not_found`, `survey_photo_transient`, …)
+does not stop the rest; it is listed under `failed` and `complete` is false.
 
 ## Which forms the working area loads
 

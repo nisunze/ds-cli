@@ -14,6 +14,7 @@ pub mod import;
 pub mod migrate;
 pub mod moments;
 pub mod photo;
+pub mod photo_fetch;
 pub mod project_forms;
 pub mod query;
 pub mod read;
@@ -40,6 +41,7 @@ pub static DOMAIN: Domain = Domain {
         &photo::LOCAL_COMMAND,
         &photo::ROTATE_COMMAND,
         &photo::PUBLISH_COMMAND,
+        &photo_fetch::FETCH_COMMAND,
         &moments::LIST_COMMAND,
         &moments::READ_COMMAND,
         &project_forms::READ_COMMAND,

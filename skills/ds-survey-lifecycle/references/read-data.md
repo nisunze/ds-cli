@@ -56,6 +56,11 @@ Use `survey.entries.read` for one exact form: every property (form fields under
 `thumbnail_object_path`). Default 100, maximum 5000; `total` is the full count
 and `truncated` says whether you have all of it. Write `--out <file.geojson>`
 for a whole form. Filters: `--updated-after`, `--bbox`, `--include-deleted`.
+Then `survey.photo.fetch --from <file.geojson> --out-dir <dir>` writes every
+photo's thumbnail (320 px; made from the original when never uploaded, as the
+map does on hover) to `<dir>/<object path>`; rerun to resume. Read thumbnails
+first; add `--original` only for photos whose detail matters. It needs
+`reports.export` on each project the photos belong to.
 
 For viewing/holding survey rows in the existing map, use `map.survey.download`.
 It consumes the active Working Area; `--entire-project` is an explicit full-scope
