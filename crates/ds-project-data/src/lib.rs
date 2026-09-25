@@ -35,6 +35,7 @@ pub mod ensure;
 pub mod extents;
 pub mod held;
 pub mod print_context;
+pub mod survey_hold;
 
 pub use bundle::{install_bundle, BundleReceipt};
 pub use catalog::{facts, named, validate_resources, Named, ReferenceResource};

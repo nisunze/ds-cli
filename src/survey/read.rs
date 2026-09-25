@@ -10,7 +10,7 @@ const MAX_BATCH_ROWS: usize = 64;
 const MAX_PENDING_IDS: usize = 128;
 const RETRY_DELAYS_MS: [u64; 4] = [1_500, 5_000, 15_000, 30_000];
 
-pub fn evaluate(request: &Value) -> Result<Value, String> {
+pub(super) fn evaluate(request: &Value) -> Result<Value, String> {
     match request["kind"].as_str() {
         Some("pending_headers") => pending_headers(request),
         Some("plan") => plan(request),
@@ -668,7 +668,7 @@ fn nonnegative(value: &Value, key: &str) -> Result<u64, String> {
         .ok_or_else(|| format!("{key} is invalid"))
 }
 
-fn canonical_cutoff(value: &Value) -> Option<String> {
+pub(super) fn canonical_cutoff(value: &Value) -> Option<String> {
     let parsed = if let Some(raw) = value.as_str() {
         OffsetDateTime::parse(raw, &Rfc3339).ok()?
     } else {
@@ -732,7 +732,7 @@ fn feature_properties(feature: &Value) -> Option<&Map<String, Value>> {
         .or_else(|| feature.as_object())
 }
 
-fn doc_id(feature: &Value) -> Option<String> {
+pub(super) fn doc_id(feature: &Value) -> Option<String> {
     let properties = feature_properties(feature)?;
     for value in [
         properties.get("id"),
@@ -753,7 +753,7 @@ fn doc_id(feature: &Value) -> Option<String> {
     None
 }
 
-fn deleted(feature: &Value) -> bool {
+pub(super) fn deleted(feature: &Value) -> bool {
     let Some(properties) = feature_properties(feature) else {
         return false;
     };
@@ -764,7 +764,7 @@ fn deleted(feature: &Value) -> bool {
             == Some(true)
 }
 
-fn cutoff(feature: &Value) -> Option<String> {
+pub(super) fn cutoff(feature: &Value) -> Option<String> {
     canonical_cutoff(&feature_properties(feature)?["metadata"]["firestore_updated_at"])
 }
 

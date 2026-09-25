@@ -214,3 +214,21 @@ pub use ds_command_kernel::local_layers::{
     Scope as PreparedScope,
 };
 pub use prepared::{Op as PreparedOp, Register as PreparedRegister, StoreError as PreparedError};
+
+/// An exclusive advisory lock on `path`, held until the returned file drops.
+/// For a store beside these (the survey hold) that keeps its bytes under the
+/// same root and must not take a locking dependency of its own.
+pub fn exclusive_lock(path: &Path) -> Result<File, String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(io_error)?;
+    }
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(io_error)?;
+    lock.lock_exclusive().map_err(io_error)?;
+    Ok(lock)
+}

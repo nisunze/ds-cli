@@ -37,7 +37,9 @@ jobs. The guarantee is **durable progress and safe resumption in the owning
 native host**, not continuous execution in a browser.
 
 Keep Survey simple. Do not recreate the removed SQLite-based native Survey
-workspace. Web image/thumbnail preparation can use local Rust/WASM during
+workspace. The Server core's read-only survey copy
+([survey-hold.md](survey-hold.md)) is not that workspace: plain files, no
+edits, no outbox. Web image/thumbnail preparation can use local Rust/WASM during
 capture; Flutter retains its existing field workflow and backend thumbnail
 support. This direction does not migrate Flutter into this product.
 
