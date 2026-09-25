@@ -141,6 +141,7 @@ impl Workspace {
             "design.sqlite-wal",
             "design.sqlite-shm",
             "compute.lock",
+            "worker.log",
         ] {
             let _ = private(&root.join(name), 0o600);
         }
