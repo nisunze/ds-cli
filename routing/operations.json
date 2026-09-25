@@ -504,7 +504,7 @@
           "gateway": {
             "method": "POST",
             "path": "/api/v1/assets",
-            "backend": "ds_brain_url"
+            "backend": "ds_brain_bulk_url"
           },
           "resolution": { "web": "gateway", "desktop": "gateway" }
         }
