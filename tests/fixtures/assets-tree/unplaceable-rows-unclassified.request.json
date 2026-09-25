@@ -1,0 +1,13 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "transformers": [{"name": ""}],
+    "pm_attachments": [
+      {"id": "pa_c", "linkedEntityType": "comment", "linkedEntityId": "c_1", "originalName": "aside.txt"},
+      {"id": "pa_orphan", "linkedEntityType": "task", "linkedEntityId": "t_missing", "originalName": "orphan.pdf"}
+    ],
+    "grid_exports": [{"export_id": "exp_2", "items": [{"output_id": "o"}]}],
+    "design_attachments": [{"label": "no id", "file_name": "x.pdf"}],
+    "solar": [{"artifacts": [{"name": "orphan.png"}]}]
+  }
+}

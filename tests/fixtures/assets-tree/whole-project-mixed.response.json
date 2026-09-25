@@ -1,0 +1,4083 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 3
+      },
+      "children": [
+        {
+          "kind": "user",
+          "path": "Correspondence/2026-09",
+          "name": "2026-09",
+          "counts": {
+            "assets": 4,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_doc",
+              "project_id": "p_whole",
+              "folder": "Correspondence/2026-09",
+              "name": "GTP-001.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 10,
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+              "status": "durable",
+              "sensitivity": "restricted",
+              "dated": {
+                "document_date": "2026-09-10",
+                "received_at": null,
+                "created_at": "2026-09-12T00:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "team",
+                "id": "commercial",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [],
+              "document": {
+                "number": "GTP-001",
+                "revision_label": "B",
+                "state": "issued"
+              },
+              "created_by": "lead@ds.rw",
+              "updated_at": "2026-09-13T00:00:00Z",
+              "updated_by": "lead@ds.rw",
+              "version": 3
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_note",
+              "project_id": "p_whole",
+              "folder": "Correspondence/2026-09",
+              "name": "meeting.md",
+              "kind": "note",
+              "format": "md",
+              "bytes": 300,
+              "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "status": "fresh",
+              "sensitivity": "open",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": "2026-09-21T11:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "pm@ds.rw",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "pm_record",
+                  "id": "R5"
+                },
+                {
+                  "kind": "pm_task",
+                  "id": "t_1"
+                }
+              ],
+              "created_by": "pm@ds.rw",
+              "updated_at": "2026-09-21T11:00:00Z",
+              "updated_by": "pm@ds.rw",
+              "version": 1
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_ref",
+              "project_id": "p_whole",
+              "folder": "Correspondence/2026-09",
+              "name": "package.zip",
+              "kind": "pack",
+              "format": "zip",
+              "bytes": 900000,
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": "2026-09-18T00:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "lead@ds.rw",
+                "display": null
+              },
+              "source": {
+                "kind": "external_reference",
+                "detail": "google drive"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "pm_record",
+                  "id": "R2"
+                }
+              ],
+              "external": {
+                "url": "https://drive.google.com/file/d/abc",
+                "provider": "google_drive"
+              },
+              "bytes_held": false,
+              "created_by": "lead@ds.rw",
+              "updated_at": "2026-09-18T00:00:00Z",
+              "updated_by": "lead@ds.rw",
+              "version": 1
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_mail",
+              "project_id": "p_whole",
+              "folder": "Correspondence/2026-09",
+              "name": "review.eml",
+              "kind": "mail",
+              "format": "eml",
+              "bytes": 4200,
+              "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": "2026-09-14T09:05:00Z",
+                "created_at": "2026-09-14T10:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "lead@ds.rw",
+                "display": "Lead"
+              },
+              "source": {
+                "kind": "mail_import",
+                "detail": "assets tab"
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [],
+              "mail": {
+                "happened_at": "2026-09-14T09:00:00Z",
+                "from": "x@example.com",
+                "to": [
+                  "y@example.com"
+                ],
+                "cc": [],
+                "subject": "Review",
+                "message_id": "<m@example.com>",
+                "parts": [
+                  {
+                    "path": "part-1.txt",
+                    "section": "1",
+                    "content_type": "text/plain",
+                    "disposition": "body",
+                    "bytes": 12,
+                    "kind": "doc",
+                    "format": "txt",
+                    "named": false
+                  },
+                  {
+                    "path": "drawing.pdf",
+                    "section": "2",
+                    "content_type": "application/pdf",
+                    "disposition": "attachment",
+                    "bytes": 3000,
+                    "kind": "doc",
+                    "format": "pdf",
+                    "named": true
+                  }
+                ],
+                "parts_total": 2,
+                "truncated": false
+              },
+              "folder_id": "f_corr",
+              "content_type": "message/rfc822",
+              "created_by": "lead@ds.rw",
+              "updated_at": "2026-09-14T10:00:00Z",
+              "updated_by": "lead@ds.rw",
+              "version": 1
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+          "name": "Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+          "counts": {
+            "assets": 3,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)/review.eml",
+              "name": "review.eml",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:mail_part:a_mail:drawing.pdf",
+                  "project_id": "p_whole",
+                  "folder": "",
+                  "name": "drawing.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 3000,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": "2026-09-14T09:05:00Z",
+                    "created_at": "2026-09-14T10:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "lead@ds.rw",
+                    "display": "Lead"
+                  },
+                  "source": {
+                    "kind": "container",
+                    "detail": "mail part 2 of review.eml"
+                  },
+                  "classified_by": "kernel",
+                  "container": "a_mail",
+                  "links": [],
+                  "origin": {
+                    "source": "correspondence",
+                    "ref": {
+                      "thread_id": "R1",
+                      "asset_id": "a_mail",
+                      "member": "drawing.pdf",
+                      "section": "2",
+                      "disposition": "attachment",
+                      "content_type": "application/pdf"
+                    }
+                  },
+                  "content_type": "application/pdf"
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:mail_part:a_mail:part-1.txt",
+                  "project_id": "p_whole",
+                  "folder": "",
+                  "name": "part-1.txt",
+                  "kind": "note",
+                  "format": "txt",
+                  "bytes": 12,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": "2026-09-14T09:05:00Z",
+                    "created_at": "2026-09-14T10:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "lead@ds.rw",
+                    "display": "Lead"
+                  },
+                  "source": {
+                    "kind": "container",
+                    "detail": "mail part 1 of review.eml"
+                  },
+                  "classified_by": "kernel",
+                  "container": "a_mail",
+                  "links": [],
+                  "origin": {
+                    "source": "correspondence",
+                    "ref": {
+                      "thread_id": "R1",
+                      "asset_id": "a_mail",
+                      "member": "part-1.txt",
+                      "section": "1",
+                      "disposition": "body",
+                      "content_type": "text/plain"
+                    }
+                  },
+                  "content_type": "text/plain"
+                }
+              ]
+            }
+          ],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_doc",
+              "project_id": "p_whole",
+              "folder": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+              "name": "GTP-001.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 10,
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+              "status": "durable",
+              "sensitivity": "restricted",
+              "dated": {
+                "document_date": "2026-09-10",
+                "received_at": null,
+                "created_at": "2026-09-12T00:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "team",
+                "id": "commercial",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "correspondence",
+                "ref": {
+                  "thread_id": "R1",
+                  "record_id": "R1",
+                  "role": "document",
+                  "asset_id": "a_doc"
+                }
+              },
+              "document": {
+                "number": "GTP-001",
+                "revision_label": "B",
+                "state": "issued"
+              },
+              "created_by": "lead@ds.rw",
+              "updated_at": "2026-09-13T00:00:00Z",
+              "updated_by": "lead@ds.rw",
+              "version": 3
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_ref",
+              "project_id": "p_whole",
+              "folder": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+              "name": "package.zip",
+              "kind": "pack",
+              "format": "zip",
+              "bytes": 900000,
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": "2026-09-18T00:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "lead@ds.rw",
+                "display": null
+              },
+              "source": {
+                "kind": "external_reference",
+                "detail": "google drive"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "pm_record",
+                  "id": "R2"
+                }
+              ],
+              "origin": {
+                "source": "correspondence",
+                "ref": {
+                  "thread_id": "R1",
+                  "record_id": "R2",
+                  "role": "attachment",
+                  "asset_id": "a_ref"
+                }
+              },
+              "external": {
+                "url": "https://drive.google.com/file/d/abc",
+                "provider": "google_drive"
+              },
+              "bytes_held": false,
+              "created_by": "lead@ds.rw",
+              "updated_at": "2026-09-18T00:00:00Z",
+              "updated_by": "lead@ds.rw",
+              "version": 1
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_mail",
+              "project_id": "p_whole",
+              "folder": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+              "name": "review.eml",
+              "kind": "mail",
+              "format": "eml",
+              "bytes": 4200,
+              "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": "2026-09-14T09:05:00Z",
+                "created_at": "2026-09-14T10:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "lead@ds.rw",
+                "display": "Lead"
+              },
+              "source": {
+                "kind": "mail_import",
+                "detail": "assets tab"
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "correspondence",
+                "ref": {
+                  "thread_id": "R1",
+                  "record_id": "R1",
+                  "role": "source",
+                  "asset_id": "a_mail"
+                }
+              },
+              "mail": {
+                "happened_at": "2026-09-14T09:00:00Z",
+                "from": "x@example.com",
+                "to": [
+                  "y@example.com"
+                ],
+                "cc": [],
+                "subject": "Review",
+                "message_id": "<m@example.com>",
+                "parts": [
+                  {
+                    "path": "part-1.txt",
+                    "section": "1",
+                    "content_type": "text/plain",
+                    "disposition": "body",
+                    "bytes": 12,
+                    "kind": "doc",
+                    "format": "txt",
+                    "named": false
+                  },
+                  {
+                    "path": "drawing.pdf",
+                    "section": "2",
+                    "content_type": "application/pdf",
+                    "disposition": "attachment",
+                    "bytes": 3000,
+                    "kind": "doc",
+                    "format": "pdf",
+                    "named": true
+                  }
+                ],
+                "parts_total": 2,
+                "truncated": false
+              },
+              "folder_id": "f_corr",
+              "content_type": "message/rfc822",
+              "created_by": "lead@ds.rw",
+              "updated_at": "2026-09-14T10:00:00Z",
+              "updated_by": "lead@ds.rw",
+              "version": 1
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Correspondence/Transmittal (2026-09-21)",
+          "name": "Transmittal (2026-09-21)",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_note",
+              "project_id": "p_whole",
+              "folder": "Correspondence/Transmittal (2026-09-21)",
+              "name": "meeting.md",
+              "kind": "note",
+              "format": "md",
+              "bytes": 300,
+              "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "status": "fresh",
+              "sensitivity": "open",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": "2026-09-21T11:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "pm@ds.rw",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "pm_record",
+                  "id": "R5"
+                },
+                {
+                  "kind": "pm_task",
+                  "id": "t_1"
+                }
+              ],
+              "origin": {
+                "source": "correspondence",
+                "ref": {
+                  "thread_id": "R5",
+                  "record_id": "R5",
+                  "role": "meeting_note",
+                  "asset_id": "a_note"
+                }
+              },
+              "created_by": "pm@ds.rw",
+              "updated_at": "2026-09-21T11:00:00Z",
+              "updated_by": "pm@ds.rw",
+              "version": 1
+            }
+          ]
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 5
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "MV models/Feeder A",
+          "name": "Feeder A",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/Feeder A/exports",
+              "name": "exports",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "MV models/Feeder A/exports/exp_1",
+                  "name": "exp_1",
+                  "counts": {
+                    "assets": 3,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:grid_export:m_feeder_a:exp_1:model",
+                      "project_id": "p_whole",
+                      "folder": "MV models/Feeder A/exports/exp_1",
+                      "name": "model.dsgrid",
+                      "kind": "other",
+                      "format": "dsgrid",
+                      "bytes": 0,
+                      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-09-19T00:00:00Z",
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": "grid export"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [],
+                      "origin": {
+                        "source": "grid_exports",
+                        "ref": {
+                          "model_id": "m_feeder_a",
+                          "export_id": "exp_1",
+                          "output_id": "model"
+                        }
+                      }
+                    },
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:grid_export:m_feeder_a:exp_1:notes",
+                      "project_id": "p_whole",
+                      "folder": "MV models/Feeder A/exports/exp_1",
+                      "name": "notes",
+                      "kind": "other",
+                      "format": "unknown",
+                      "bytes": 0,
+                      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-09-19T00:00:00Z",
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": "grid export"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [],
+                      "origin": {
+                        "source": "grid_exports",
+                        "ref": {
+                          "model_id": "m_feeder_a",
+                          "export_id": "exp_1",
+                          "output_id": "notes"
+                        }
+                      }
+                    },
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:grid_export:m_feeder_a:exp_1:poles",
+                      "project_id": "p_whole",
+                      "folder": "MV models/Feeder A/exports/exp_1",
+                      "name": "poles.gpkg",
+                      "kind": "geo",
+                      "format": "gpkg",
+                      "bytes": 0,
+                      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-09-19T00:00:00Z",
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": "grid export"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [],
+                      "origin": {
+                        "source": "grid_exports",
+                        "ref": {
+                          "model_id": "m_feeder_a",
+                          "export_id": "exp_1",
+                          "output_id": "poles"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "MV models/Feeder A/revisions",
+              "name": "revisions",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_feeder_a:r_1",
+                  "project_id": "p_whole",
+                  "folder": "MV models/Feeder A/revisions",
+                  "name": "r_1.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "archive",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-01T00:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "mv@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_feeder_a",
+                      "revision_id": "r_1"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_feeder_a:r_2",
+                  "project_id": "p_whole",
+                  "folder": "MV models/Feeder A/revisions",
+                  "name": "r_2.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-17T00:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "mv@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_feeder_a",
+                      "revision_id": "r_2"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "MV models/Named export",
+          "name": "Named export",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/Named export/exports",
+              "name": "exports",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "MV models/Named export/exports/exp_2",
+                  "name": "exp_2",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:grid_export:m_unknown:exp_2:x",
+                      "project_id": "p_whole",
+                      "folder": "MV models/Named export/exports/exp_2",
+                      "name": "x.kml",
+                      "kind": "geo",
+                      "format": "kml",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": "grid export"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [],
+                      "origin": {
+                        "source": "grid_exports",
+                        "ref": {
+                          "model_id": "m_unknown",
+                          "export_id": "exp_2",
+                          "output_id": "x"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "MV models/Old line",
+          "name": "Old line",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/Old line/revisions",
+              "name": "revisions",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_old:r_9",
+                  "project_id": "p_whole",
+                  "folder": "MV models/Old line/revisions",
+                  "name": "r_9.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "archive",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": "2026-07-01T00:00:00Z"
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_old",
+                      "revision_id": "r_9"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "MV models/m_unknown2",
+          "name": "m_unknown2",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/m_unknown2/exports",
+              "name": "exports",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "MV models/m_unknown2/exports/exp_3",
+                  "name": "exp_3",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:grid_export:m_unknown2:exp_3:y",
+                      "project_id": "p_whole",
+                      "folder": "MV models/m_unknown2/exports/exp_3",
+                      "name": "y.shp",
+                      "kind": "geo",
+                      "format": "shp",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": "grid export"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [],
+                      "origin": {
+                        "source": "grid_exports",
+                        "ref": {
+                          "model_id": "m_unknown2",
+                          "export_id": "exp_3",
+                          "output_id": "y"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "MV models/m_versions",
+          "name": "m_versions",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/m_versions/revisions",
+              "name": "revisions",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_versions:v_1",
+                  "project_id": "p_whole",
+                  "folder": "MV models/m_versions/revisions",
+                  "name": "v_1.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "mv@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_versions",
+                      "revision_id": "v_1"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 3
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Prints/custom maps",
+          "name": "custom maps",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:TX-104:huye-centre.a1-portrait.pdf",
+              "project_id": "p_whole",
+              "folder": "Prints/custom maps",
+              "name": "huye-centre.a1-portrait.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 777,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "published printout"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "ds_object",
+                  "object_type": "transformer",
+                  "entity_id": "TX-104"
+                }
+              ],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "TX-104",
+                  "path": "gs://reports/custom/huye-centre.a1-portrait.pdf",
+                  "sha256": null,
+                  "family": "custom-map",
+                  "attachment_type": "printout",
+                  "paper_size": null
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Prints/setups",
+          "name": "setups",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:print_setup:layout_1",
+              "project_id": "p_whole",
+              "folder": "Prints/setups",
+              "name": "A1 landscape",
+              "kind": "note",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": "2026-09-16T00:00:00Z"
+              },
+              "owner": {
+                "kind": "user",
+                "id": "lead@ds.rw",
+                "display": null
+              },
+              "source": {
+                "kind": "system",
+                "detail": "print setup"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "print_setups",
+                "ref": {
+                  "layout_id": "layout_1",
+                  "scope": "project"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:print_setup:layout_2",
+              "project_id": "p_whole",
+              "folder": "Prints/setups",
+              "name": "layout_2",
+              "kind": "note",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "print setup"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "print_setups",
+                "ref": {
+                  "layout_id": "layout_2",
+                  "scope": null
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Prints/tag groups",
+          "name": "tag groups",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Prints/tag groups/city",
+              "name": "city",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Prints/tag groups/city/Butare",
+                  "name": "Butare",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "reference": {
+                        "work_id": "w_print",
+                        "output_id": "huye",
+                        "role": "city_map"
+                      },
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "a_citymap",
+                      "project_id": "p_whole",
+                      "folder": "",
+                      "name": "huye.a3-landscape.pdf",
+                      "kind": "geo",
+                      "format": "pdf",
+                      "bytes": 77,
+                      "digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+                      "status": "durable",
+                      "sensitivity": "open",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-09-24T00:00:00Z",
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": null
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "tag",
+                          "definition_id": "city",
+                          "value": "Huye"
+                        },
+                        {
+                          "kind": "tag",
+                          "definition_id": "city",
+                          "value": "Butare"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": [],
+      "not_loaded_sources": [
+        "local_prints"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 2,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [
+        {
+          "schema": "ds.assets.asset/v1",
+          "asset_id": "sys:project_data:u_1",
+          "project_id": "p_whole",
+          "folder": "Project data",
+          "name": "boundaries.geojson",
+          "kind": "geo",
+          "format": "geojson",
+          "bytes": 1000,
+          "digest": null,
+          "status": "fresh",
+          "sensitivity": "internal",
+          "dated": {
+            "document_date": null,
+            "received_at": null,
+            "created_at": "2026-09-02T00:00:00Z",
+            "source_modified_at": null
+          },
+          "owner": {
+            "kind": "user",
+            "id": "gis@ds.rw",
+            "display": null
+          },
+          "source": {
+            "kind": "upload",
+            "detail": "upload"
+          },
+          "classified_by": "kernel",
+          "container": null,
+          "links": [],
+          "origin": {
+            "source": "project_data",
+            "ref": {
+              "upload_id": "u_1",
+              "blob_path": "project_data/u_1/boundaries.geojson"
+            }
+          }
+        },
+        {
+          "schema": "ds.assets.asset/v1",
+          "asset_id": "sys:project_data:u_2",
+          "project_id": "p_whole",
+          "folder": "Project data",
+          "name": "roads.gpkg",
+          "kind": "geo",
+          "format": "gpkg",
+          "bytes": 0,
+          "digest": null,
+          "status": "fresh",
+          "sensitivity": "internal",
+          "dated": {
+            "document_date": null,
+            "received_at": null,
+            "created_at": null,
+            "source_modified_at": null
+          },
+          "owner": {
+            "kind": "user",
+            "id": "gis2@ds.rw",
+            "display": null
+          },
+          "source": {
+            "kind": "upload",
+            "detail": "upload"
+          },
+          "classified_by": "kernel",
+          "container": null,
+          "links": [],
+          "origin": {
+            "source": "project_data",
+            "ref": {
+              "upload_id": "u_2",
+              "blob_path": "project_data/u_2/roads.gpkg"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 2
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Project work/records",
+          "name": "records",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Project work/records/TRN-017",
+              "name": "TRN-017",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:pa_3",
+                  "project_id": "p_whole",
+                  "folder": "Project work/records/TRN-017",
+                  "name": "transmittal.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "archive",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "1772323200000",
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_record",
+                      "id": "R5"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "pa_3",
+                      "linked_entity_type": "record",
+                      "linked_entity_id": "R5",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Project work/tasks",
+          "name": "tasks",
+          "counts": {
+            "assets": 0,
+            "folders": 3
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Project work/tasks/1.2.3",
+              "name": "1.2.3",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:pa_1",
+                  "project_id": "p_whole",
+                  "folder": "Project work/tasks/1.2.3",
+                  "name": "method-statement.docx",
+                  "kind": "doc",
+                  "format": "docx",
+                  "bytes": 1200,
+                  "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-03T07:59:00Z",
+                    "source_modified_at": "2026-09-04T08:00:00Z"
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "pm@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_task",
+                      "id": "t_1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "pa_1",
+                      "linked_entity_type": "task",
+                      "linked_entity_id": "t_1",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Project work/tasks/Stringing",
+              "name": "Stringing",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:pa_2",
+                  "project_id": "p_whole",
+                  "folder": "Project work/tasks/Stringing",
+                  "name": "photo.JPG",
+                  "kind": "image",
+                  "format": "jpg",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_task",
+                      "id": "t_2"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "pa_2",
+                      "linked_entity_type": "task",
+                      "linked_entity_id": "t_2",
+                      "storage_path": "pm/attachments/pa_2/photo.JPG"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Project work/tasks/t_3",
+              "name": "t_3",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:pa_6",
+                  "project_id": "p_whole",
+                  "folder": "Project work/tasks/t_3",
+                  "name": "t3.txt",
+                  "kind": "note",
+                  "format": "txt",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_task",
+                      "id": "t_3"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "pa_6",
+                      "linked_entity_type": "task",
+                      "linked_entity_id": "t_3",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 3
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Reports/MV",
+          "name": "MV",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:mv_data:mv_data.a0-landscape.pdf",
+              "project_id": "p_whole",
+              "folder": "Reports/MV",
+              "name": "mv_data.a0-landscape.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 15000000,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "published printout"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "mv_data",
+                  "path": "gs://reports/mv_data.a0-landscape.pdf",
+                  "sha256": null,
+                  "family": "mv-map",
+                  "attachment_type": "printout",
+                  "paper_size": null
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Reports/combined",
+          "name": "combined",
+          "counts": {
+            "assets": 5,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:All Transformers:all.pdf",
+              "project_id": "p_whole",
+              "folder": "Reports/combined",
+              "name": "all.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "report artifact"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "ds_object",
+                  "object_type": "transformer",
+                  "entity_id": "All Transformers"
+                }
+              ],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "All Transformers",
+                  "output_id": null,
+                  "path": "gs://reports/combined/all.pdf"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:combined_transformer:lot3-combined.xlsx",
+              "project_id": "p_whole",
+              "folder": "Reports/combined",
+              "name": "lot3-combined.xlsx",
+              "kind": "sheet",
+              "format": "xlsx",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "report file"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "ds_object",
+                  "object_type": "transformer",
+                  "entity_id": "combined_transformer"
+                }
+              ],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "combined_transformer",
+                  "path": "gs://reports/combined/lot3-combined.xlsx"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:compounded:lot3",
+              "project_id": "p_whole",
+              "folder": "Reports/combined",
+              "name": "lot3.zip",
+              "kind": "pack",
+              "format": "zip",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": "2026-09-09T00:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "lead@ds.rw",
+                "display": null
+              },
+              "source": {
+                "kind": "report_output",
+                "detail": "compounded archive"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compounded",
+                "ref": {
+                  "stem": "lot3",
+                  "gcs_path": "gs://reports/compounded/lot3.zip"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:compounded:lot4",
+              "project_id": "p_whole",
+              "folder": "Reports/combined",
+              "name": "lot4.zip",
+              "kind": "pack",
+              "format": "zip",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "compounded archive"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compounded",
+                "ref": {
+                  "stem": "lot4",
+                  "gcs_path": null
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:combined_transformers:overview.pdf",
+              "project_id": "p_whole",
+              "folder": "Reports/combined",
+              "name": "overview.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "report file"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "ds_object",
+                  "object_type": "transformer",
+                  "entity_id": "combined_transformers"
+                }
+              ],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "combined_transformers",
+                  "path": "gs://reports/combined/overview.pdf"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Reports/compute",
+          "name": "compute",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Reports/compute/w_solar_1",
+              "name": "w_solar_1",
+              "counts": {
+                "assets": 3,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:compute_artifact:w_solar_1:draft",
+                  "project_id": "p_whole",
+                  "folder": "Reports/compute/w_solar_1",
+                  "name": "draft.md",
+                  "kind": "note",
+                  "format": "md",
+                  "bytes": 10,
+                  "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": "2026-09-11T00:00:00Z"
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "compute artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "compute_artifacts",
+                    "ref": {
+                      "work_id": "w_solar_1",
+                      "output_id": "draft",
+                      "engine": "solar",
+                      "operation": "report",
+                      "variant": "fr"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:compute_artifact:w_solar_1:figures",
+                  "project_id": "p_whole",
+                  "folder": "Reports/compute/w_solar_1",
+                  "name": "figures.zip",
+                  "kind": "pack",
+                  "format": "zip",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": "2026-09-11T00:00:00Z"
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "compute artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "compute_artifacts",
+                    "ref": {
+                      "work_id": "w_solar_1",
+                      "output_id": "figures",
+                      "engine": "solar",
+                      "operation": "report",
+                      "variant": "fr"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:compute_artifact:w_solar_1:raw",
+                  "project_id": "p_whole",
+                  "folder": "Reports/compute/w_solar_1",
+                  "name": "raw",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": "2026-09-11T00:00:00Z"
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "compute artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "compute_artifacts",
+                    "ref": {
+                      "work_id": "w_solar_1",
+                      "output_id": "raw",
+                      "engine": "solar",
+                      "operation": "report",
+                      "variant": "fr"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Solar/Huye",
+          "name": "Huye",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Solar/Huye/artifacts",
+              "name": "artifacts",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:solar_artifact:Huye:summary.pdf",
+                  "project_id": "p_whole",
+                  "folder": "Solar/Huye/artifacts",
+                  "name": "summary.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-13T00:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "solar artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "solar",
+                    "ref": {
+                      "city": "Huye",
+                      "name": "summary.pdf",
+                      "gcs_path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:solar_artifact:Huye:figures/yield.png",
+                  "project_id": "p_whole",
+                  "folder": "Solar/Huye/artifacts",
+                  "name": "yield.png",
+                  "kind": "image",
+                  "format": "png",
+                  "bytes": 300,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-13T00:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "solar artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "solar",
+                    "ref": {
+                      "city": "Huye",
+                      "name": "figures/yield.png",
+                      "gcs_path": "gs://solar/Huye/figures/yield.png"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Solar/Huye/results",
+              "name": "results",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:solar_result:Huye",
+                  "project_id": "p_whole",
+                  "folder": "Solar/Huye/results",
+                  "name": "report_input.json",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 9000,
+                  "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-13T00:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "solar result"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "solar",
+                    "ref": {
+                      "city": "Huye",
+                      "run_id": "run_7",
+                      "report_input_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 2
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Survey/customers",
+          "name": "customers",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Survey/customers/c_9",
+              "name": "c_9",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:customers:c/9:meter_photo",
+                  "project_id": "p_whole",
+                  "folder": "Survey/customers/c_9",
+                  "name": "meter.webp",
+                  "kind": "image",
+                  "format": "webp",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "customers",
+                      "entry_id": "c/9",
+                      "field": "meter_photo",
+                      "path": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Survey/lv_poles",
+          "name": "lv_poles",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Survey/lv_poles/e_1",
+              "name": "e_1",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv_poles:e_1:photo",
+                  "project_id": "p_whole",
+                  "folder": "Survey/lv_poles/e_1",
+                  "name": "pole.jpg",
+                  "kind": "image",
+                  "format": "jpg",
+                  "bytes": 5000,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-08T07:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "field@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv_poles",
+                      "entry_id": "e_1",
+                      "field": "photo",
+                      "path": "survey/lv_poles/e_1/pole.jpg"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv_poles:e_1:signature",
+                  "project_id": "p_whole",
+                  "folder": "Survey/lv_poles/e_1",
+                  "name": "signature.png",
+                  "kind": "image",
+                  "format": "png",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv_poles",
+                      "entry_id": "e_1",
+                      "field": "signature",
+                      "path": "survey/lv_poles/e_1/signature.png"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Survey/lv_poles/e_2",
+              "name": "e_2",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv_poles:e_2:photo",
+                  "project_id": "p_whole",
+                  "folder": "Survey/lv_poles/e_2",
+                  "name": "photo",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv_poles",
+                      "entry_id": "e_2",
+                      "field": "photo",
+                      "path": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 3
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Transformers/TX-104",
+          "name": "TX-104",
+          "counts": {
+            "assets": 0,
+            "folders": 5
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/TX-104/attachments",
+              "name": "attachments",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-104/attachments/permits",
+                  "name": "permits",
+                  "counts": {
+                    "assets": 3,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:design_attachment:att_permit:rev_1",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/TX-104/attachments/permits",
+                      "name": "r1.pdf",
+                      "kind": "doc",
+                      "format": "pdf",
+                      "bytes": 10,
+                      "digest": null,
+                      "status": "archive",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-08-01T00:00:00Z",
+                        "source_modified_at": null
+                      },
+                      "owner": {
+                        "kind": "user",
+                        "id": "legal@ds.rw",
+                        "display": null
+                      },
+                      "source": {
+                        "kind": "upload",
+                        "detail": "design attachment revision"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-104"
+                        }
+                      ],
+                      "origin": {
+                        "source": "design_attachments",
+                        "ref": {
+                          "attachment_id": "att_permit",
+                          "revision_id": "rev_1",
+                          "transformer": "TX-104"
+                        }
+                      }
+                    },
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:design_attachment:att_permit:rev_2",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/TX-104/attachments/permits",
+                      "name": "r2.pdf",
+                      "kind": "doc",
+                      "format": "pdf",
+                      "bytes": 20,
+                      "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                      "status": "archive",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-08-20T00:00:00Z",
+                        "source_modified_at": null
+                      },
+                      "owner": {
+                        "kind": "user",
+                        "id": "legal@ds.rw",
+                        "display": null
+                      },
+                      "source": {
+                        "kind": "upload",
+                        "detail": "design attachment revision"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-104"
+                        }
+                      ],
+                      "origin": {
+                        "source": "design_attachments",
+                        "ref": {
+                          "attachment_id": "att_permit",
+                          "revision_id": "rev_2",
+                          "transformer": "TX-104"
+                        }
+                      }
+                    },
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:design_attachment:att_permit:rev_3",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/TX-104/attachments/permits",
+                      "name": "r3.pdf",
+                      "kind": "doc",
+                      "format": "pdf",
+                      "bytes": 30,
+                      "digest": null,
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-09-05T00:00:00Z",
+                        "source_modified_at": null
+                      },
+                      "owner": {
+                        "kind": "user",
+                        "id": "lead@ds.rw",
+                        "display": null
+                      },
+                      "source": {
+                        "kind": "upload",
+                        "detail": "design attachment revision"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-104"
+                        }
+                      ],
+                      "origin": {
+                        "source": "design_attachments",
+                        "ref": {
+                          "attachment_id": "att_permit",
+                          "revision_id": "rev_3",
+                          "transformer": "TX-104"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "Transformers/TX-104/design",
+              "name": "design",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-104/design/current",
+                  "name": "current",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:transformer_design:TX-104",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/TX-104/design/current",
+                      "name": "current",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": "2026-09-20T08:00:00Z"
+                      },
+                      "owner": {
+                        "kind": "user",
+                        "id": "designer@ds.rw",
+                        "display": null
+                      },
+                      "source": {
+                        "kind": "system",
+                        "detail": "live design"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-104"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "TX-104",
+                          "read": "design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "Transformers/TX-104/reports",
+              "name": "reports",
+              "counts": {
+                "assets": 4,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:report_file:TX-104:C0FFEE00C0FFEE00C0FFEE00C0FFEE00C0FFEE00C0FFEE00C0FFEE00C0FFEE00",
+                  "project_id": "p_whole",
+                  "folder": "Transformers/TX-104/reports",
+                  "name": "TX-104-sld.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 1234,
+                  "digest": "sha256:c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": "2026-09-20T08:00:00Z"
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "designer@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "report artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-104"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformers",
+                    "ref": {
+                      "transformer": "TX-104",
+                      "output_id": "sld",
+                      "path": "/reports/TX-104-sld.pdf"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:report_file:TX-104:TX-104.a3-landscape.pdf",
+                  "project_id": "p_whole",
+                  "folder": "Transformers/TX-104/reports",
+                  "name": "TX-104.a3-landscape.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 5000,
+                  "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "published printout"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-104"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformers",
+                    "ref": {
+                      "transformer": "TX-104",
+                      "path": "gs://reports/TX-104/TX-104.a3-landscape.pdf",
+                      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                      "family": "transformer-map",
+                      "attachment_type": "printout",
+                      "paper_size": "A3"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:report_file:TX-104:TX-104_report.xlsx",
+                  "project_id": "p_whole",
+                  "folder": "Transformers/TX-104/reports",
+                  "name": "TX-104_report.xlsx",
+                  "kind": "sheet",
+                  "format": "xlsx",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": "2026-09-20T08:00:00Z"
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "designer@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "report file"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-104"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformers",
+                    "ref": {
+                      "transformer": "TX-104",
+                      "path": "gs://reports/TX-104/TX-104_report.xlsx"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:report_file:TX-104:boq.xlsx",
+                  "project_id": "p_whole",
+                  "folder": "Transformers/TX-104/reports",
+                  "name": "boq.xlsx",
+                  "kind": "sheet",
+                  "format": "xlsx",
+                  "bytes": 99,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": "2026-09-20T08:00:00Z"
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "designer@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "report artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-104"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformers",
+                    "ref": {
+                      "transformer": "TX-104",
+                      "output_id": "boq",
+                      "path": ""
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Transformers/TX-104/uploads",
+              "name": "uploads",
+              "counts": {
+                "assets": 0,
+                "folders": 3
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-104/uploads/draft",
+                  "name": "draft",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:upload:TX-104:uploads/TX-104/draft.xlsx",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/TX-104/uploads/draft",
+                      "name": "draft.xlsx",
+                      "kind": "sheet",
+                      "format": "xlsx",
+                      "bytes": 2048,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-09-01T10:00:00Z",
+                        "source_modified_at": null
+                      },
+                      "owner": {
+                        "kind": "user",
+                        "id": "field@ds.rw",
+                        "display": null
+                      },
+                      "source": {
+                        "kind": "upload",
+                        "detail": "transformer upload"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-104"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "TX-104",
+                          "slot": "draft",
+                          "blob_path": "uploads/TX-104/draft.xlsx"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-104/uploads/process",
+                  "name": "process",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:upload:TX-104:/b/uploads/TX-104/process.csv",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/TX-104/uploads/process",
+                      "name": "process.csv",
+                      "kind": "sheet",
+                      "format": "csv",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "upload",
+                        "detail": "transformer upload"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-104"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "TX-104",
+                          "slot": "process",
+                          "blob_path": "/b/uploads/TX-104/process.csv"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-104/uploads/sketch",
+                  "name": "sketch",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:upload:TX-104:gs://bucket/uploads/TX-104/sketch.kmz",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/TX-104/uploads/sketch",
+                      "name": "sketch.kmz",
+                      "kind": "geo",
+                      "format": "kmz",
+                      "bytes": 4096,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-08-30T10:00:00Z",
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "upload",
+                        "detail": "transformer upload"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-104"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "TX-104",
+                          "slot": "sketch",
+                          "blob_path": "gs://bucket/uploads/TX-104/sketch.kmz"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "Transformers/TX-104/versions",
+              "name": "versions",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-104:ver_a",
+                  "project_id": "p_whole",
+                  "folder": "Transformers/TX-104/versions",
+                  "name": "v1",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 1000,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-02T09:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "designer@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-104"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-104",
+                      "version_id": "ver_a",
+                      "playback_available": true,
+                      "reason": "issued for review"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-104:ver_b",
+                  "project_id": "p_whole",
+                  "folder": "Transformers/TX-104/versions",
+                  "name": "v2",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 2000,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-15T09:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "lead@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-104"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-104",
+                      "version_id": "ver_b",
+                      "playback_available": true,
+                      "reason": "as-built"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Transformers/TX-105",
+          "name": "TX-105",
+          "counts": {
+            "assets": 0,
+            "folders": 3
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/TX-105/attachments",
+              "name": "attachments",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-105/attachments/wayleave",
+                  "name": "wayleave",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:design_attachment:att_way:rev_w1",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/TX-105/attachments/wayleave",
+                      "name": "r1.pdf",
+                      "kind": "doc",
+                      "format": "pdf",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": "2026-09-06T00:00:00Z",
+                        "source_modified_at": "2026-09-07T00:00:00Z"
+                      },
+                      "owner": {
+                        "kind": "user",
+                        "id": "legal@ds.rw",
+                        "display": null
+                      },
+                      "source": {
+                        "kind": "upload",
+                        "detail": "design attachment"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-105"
+                        }
+                      ],
+                      "origin": {
+                        "source": "design_attachments",
+                        "ref": {
+                          "attachment_id": "att_way",
+                          "revision_id": "rev_w1",
+                          "transformer": "TX-105"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "Transformers/TX-105/design",
+              "name": "design",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-105/design/current",
+                  "name": "current",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:transformer_design:TX-105",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/TX-105/design/current",
+                      "name": "current",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": "2026-09-12T08:00:00Z"
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "system",
+                        "detail": "live design"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-105"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "TX-105",
+                          "read": "design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "Transformers/TX-105/versions",
+              "name": "versions",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-105:ver_c",
+                  "project_id": "p_whole",
+                  "folder": "Transformers/TX-105/versions",
+                  "name": "vver_c",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-09-10T09:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-105"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-105",
+                      "version_id": "ver_c",
+                      "playback_available": false,
+                      "reason": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Transformers/collisions_lv_lines",
+          "name": "collisions_lv_lines",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/collisions_lv_lines/design",
+              "name": "design",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/collisions_lv_lines/design/current",
+                  "name": "current",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:transformer_design:collisions_lv_lines",
+                      "project_id": "p_whole",
+                      "folder": "Transformers/collisions_lv_lines/design/current",
+                      "name": "current",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "system",
+                        "detail": "live design"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "collisions_lv_lines"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "collisions_lv_lines",
+                          "read": "design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Unclassified",
+      "name": "Unclassified",
+      "counts": {
+        "assets": 0,
+        "folders": 8
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Unclassified/assets",
+          "name": "assets",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_loose",
+              "project_id": "p_whole",
+              "folder": "",
+              "name": "loose.pdf",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 1,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": "2026-09-23T00:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": []
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/compute_artifacts",
+          "name": "compute_artifacts",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:compute_artifacts:row-2d4e341a334d",
+              "project_id": "p_whole",
+              "folder": "Unclassified/compute_artifacts",
+              "name": "row-2d4e341a334d",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "compute_artifacts"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compute_artifacts",
+                "ref": {
+                  "source": "compute_artifacts",
+                  "ref": "row-2d4e341a334d"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/design_attachments",
+          "name": "design_attachments",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:design_attachments:row-fcedbba691cd",
+              "project_id": "p_whole",
+              "folder": "Unclassified/design_attachments",
+              "name": "row-fcedbba691cd",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "design_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "design_attachments",
+                "ref": {
+                  "source": "design_attachments",
+                  "ref": "row-fcedbba691cd"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/grid_models",
+          "name": "grid_models",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:grid_models:row-b6928ce30a36",
+              "project_id": "p_whole",
+              "folder": "Unclassified/grid_models",
+              "name": "row-b6928ce30a36",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "grid_models"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "grid_models",
+                "ref": {
+                  "source": "grid_models",
+                  "ref": "row-b6928ce30a36"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/pm_attachments",
+          "name": "pm_attachments",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:pm_attachments:orphan.pdf",
+              "project_id": "p_whole",
+              "folder": "Unclassified/pm_attachments",
+              "name": "orphan.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "pm_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "pm_attachments",
+                "ref": {
+                  "source": "pm_attachments",
+                  "ref": "orphan.pdf"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:pm_attachments:pa_5",
+              "project_id": "p_whole",
+              "folder": "Unclassified/pm_attachments",
+              "name": "pa_5",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "pm_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "pm_attachments",
+                "ref": {
+                  "source": "pm_attachments",
+                  "ref": "pa_5"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/solar",
+          "name": "solar",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:solar:row-f4ba3ca8fa14",
+              "project_id": "p_whole",
+              "folder": "Unclassified/solar",
+              "name": "row-f4ba3ca8fa14",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "solar"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "solar",
+                "ref": {
+                  "source": "solar",
+                  "ref": "row-f4ba3ca8fa14"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/transformer_versions",
+          "name": "transformer_versions",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:transformer_versions:row-01a7eb51def3",
+              "project_id": "p_whole",
+              "folder": "Unclassified/transformer_versions",
+              "name": "row-01a7eb51def3",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "transformer_versions"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "transformer_versions",
+                "ref": {
+                  "source": "transformer_versions",
+                  "ref": "row-01a7eb51def3"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:transformer_versions:row-ee32c914f4b4",
+              "project_id": "p_whole",
+              "folder": "Unclassified/transformer_versions",
+              "name": "row-ee32c914f4b4",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "transformer_versions"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "transformer_versions",
+                "ref": {
+                  "source": "transformer_versions",
+                  "ref": "row-ee32c914f4b4"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/transformers",
+          "name": "transformers",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:collisions_2:collisions_2.geojson",
+              "project_id": "p_whole",
+              "folder": "Unclassified/transformers",
+              "name": "collisions_2.geojson",
+              "kind": "geo",
+              "format": "geojson",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "report file"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "ds_object",
+                  "object_type": "transformer",
+                  "entity_id": "collisions_2"
+                }
+              ],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "collisions_2",
+                  "path": "gs://reports/collisions/collisions_2.geojson"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:mv_data:mv_report.xlsx",
+              "project_id": "p_whole",
+              "folder": "Unclassified/transformers",
+              "name": "mv_report.xlsx",
+              "kind": "sheet",
+              "format": "xlsx",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "report file"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "ds_object",
+                  "object_type": "transformer",
+                  "entity_id": "mv_data"
+                }
+              ],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "mv_data",
+                  "path": "gs://reports/mv_data/mv_report.xlsx"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "user",
+      "path": "contracts",
+      "name": "contracts",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "user",
+          "path": "contracts/2026",
+          "name": "2026",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_contract",
+              "project_id": "p_whole",
+              "folder": "contracts/2026",
+              "name": "EPC-Lot3-signed.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 250000,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "restricted",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": "2026-09-01T00:00:00Z",
+                "source_modified_at": "2026-08-30T00:00:00Z"
+              },
+              "owner": {
+                "kind": "user",
+                "id": "commercial@ds.rw",
+                "display": "Aline"
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "ds_object",
+                  "object_type": "transformer",
+                  "entity_id": "TX-104"
+                }
+              ],
+              "updated_at": "2026-09-01T00:00:00Z",
+              "version": 2
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_payroll",
+              "project_id": "p_whole",
+              "folder": "contracts/2026",
+              "name": "payroll-09.xlsx",
+              "kind": "sheet",
+              "format": "xlsx",
+              "bytes": 5000,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "confidential",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": "2026-09-22T00:00:00Z",
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "hr@ds.rw",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "updated_at": "2026-09-22T00:00:00Z",
+              "version": 1
+            }
+          ]
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "user",
+      "path": "drawings",
+      "name": "drawings",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "user",
+          "path": "drawings/empty",
+          "name": "empty",
+          "counts": {
+            "assets": 0,
+            "folders": 0
+          },
+          "children": [],
+          "assets": []
+        }
+      ],
+      "assets": []
+    }
+  ],
+  "total_assets": 75,
+  "total_folders": 85,
+  "truncated": false,
+  "not_loaded_sources": [
+    "dataset_rooms",
+    "local_prints",
+    "national_datasets",
+    "report_rooms",
+    "user_data"
+  ]
+}

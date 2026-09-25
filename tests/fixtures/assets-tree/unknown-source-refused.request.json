@@ -1,0 +1,4 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {"transformer_uploads": []}
+}

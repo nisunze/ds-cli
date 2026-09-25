@@ -1,0 +1,39 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "pm_tasks": [
+      {"id": "t_wbs", "wbs": "2.1", "title": "Poles"},
+      {"id": "t_title", "title": "Stringing"},
+      {"id": "t_bare"},
+      {"id": "t_wbs", "wbs": "9.9"},
+      {"wbs": "no id"},
+      {"id": 42, "wbs": 7}
+    ],
+    "pm_records": [
+      {"id": "r_ref", "referenceNumber": "RFI-1", "subject": "S"},
+      {"id": "r_subject", "subject": "Only subject"},
+      {"id": "r_raw", "data": {"reference_number": "RAW-REF", "subject": "Raw subject"}},
+      {"id": "r_raw_camel", "data": {"referenceNumber": "CAMEL-REF"}},
+      {"id": "r_bare"},
+      {"id": "r_both", "threadId": "a", "thread_id": "b", "subject": "Dup alias"}
+    ],
+    "pm_parties": [{"id": "p_1", "name": "Named"}, {"id": "p_2", "data": {"name": "Inner"}}, {"id": "p_3"}],
+    "pm_attachments": [
+      {"id": "a_1", "linkedEntityType": "task", "linkedEntityId": "t_wbs", "originalName": "one.pdf"},
+      {"id": "a_2", "linkedEntityType": "task", "linkedEntityId": "t_title", "originalName": "two.pdf", "documentState": "issued"},
+      {"id": "a_3", "linkedEntityType": "task", "linkedEntityId": "t_bare", "storagePath": "https://s.example/pm/three.docx?sig=x"},
+      {"id": "a_4", "linkedEntityType": "task", "linkedEntityId": "42", "originalName": "numeric.pdf"},
+      {"id": "a_5", "linkedEntityType": "record", "linkedEntityId": "r_ref", "originalName": "five.pdf"},
+      {"id": "a_6", "linkedEntityType": "record", "linkedEntityId": "r_subject", "originalName": "six.pdf", "documentState": "approved"},
+      {"id": "a_7", "linkedEntityType": "record", "linkedEntityId": "r_raw", "originalName": "seven.pdf"},
+      {"id": "a_8", "linkedEntityType": "record", "linkedEntityId": "r_raw_camel", "originalName": "eight.pdf"},
+      {"id": "a_9", "linkedEntityType": "record", "linkedEntityId": "r_bare", "originalName": "nine.pdf"},
+      {"id": "a_10", "linkedEntityType": "record", "linkedEntityId": "r_both", "originalName": "ten.pdf"},
+      {"id": "a_11", "linked_entity_type": "task", "linked_entity_id": "t_wbs", "original_name": "snake.pdf"},
+      {"id": "a_12", "linkedEntityType": "Task", "linkedEntityId": "t_wbs", "originalName": "case.pdf"},
+      {"id": "a_13", "linkedEntityType": "task", "linkedEntityId": "t_wbs",
+       "metadata": {"createdAt": "2026-01-01T00:00:00Z", "createdBy": "pm@ds.rw", "updatedAt": "2026-02-01T00:00:00Z"},
+       "capture": {"capturedAt": ""}, "checksum": "not-hex", "sizeBytes": -3}
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "pm_attachments": [
+      {"id": "pa_none", "originalName": "loose.pdf"},
+      {"id": "pa_blank", "linkedEntityType": "", "linkedEntityId": "", "originalName": "blank.pdf"}
+    ],
+    "compounded": [{"filename": "nostem.zip", "gcs_path": "gs://x/nostem.zip"}, {}],
+    "pm_tasks": [{"id": "t_1"}]
+  }
+}

@@ -1,0 +1,3 @@
+{
+  "refusal": "user folder \"Reports\" collides with the system root Reports; system roots are projected from the sources, not declared — rename the folder"
+}

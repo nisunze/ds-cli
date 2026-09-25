@@ -1,0 +1,149 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded_sources": [
+        "local_prints"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    }
+  ],
+  "total_assets": 0,
+  "total_folders": 11,
+  "truncated": false,
+  "not_loaded_sources": [
+    "dataset_rooms",
+    "local_prints",
+    "national_datasets",
+    "report_rooms",
+    "user_data"
+  ]
+}

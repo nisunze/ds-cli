@@ -1,0 +1,253 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Reports/MV",
+          "name": "MV",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:mv_data:mv_data.a3-landscape.pdf",
+              "project_id": "",
+              "folder": "Reports/MV",
+              "name": "mv_data.a3-landscape.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 15000,
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "published printout"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "mv_data",
+                  "path": "gs://reports/mv_data.a3-landscape.pdf",
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "family": "mv-map",
+                  "attachment_type": "printout",
+                  "paper_size": null
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions"
+      ]
+    }
+  ],
+  "total_assets": 1,
+  "total_folders": 12,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "survey_media",
+    "transformer_versions",
+    "user_data"
+  ]
+}

@@ -1,0 +1,419 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "user",
+          "path": "Correspondence/inbox",
+          "name": "inbox",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_corr",
+              "project_id": "p_env",
+              "folder": "Correspondence/inbox",
+              "name": "in.pdf",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 5,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "bytes_held": false
+            }
+          ]
+        }
+      ],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions",
+        "transformers"
+      ]
+    },
+    {
+      "kind": "user",
+      "path": "letters",
+      "name": "letters",
+      "counts": {
+        "assets": 1,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "letters/2026",
+          "name": "2026",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_min",
+              "project_id": "p_env",
+              "folder": "letters/2026",
+              "name": "min.bin",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "container",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": []
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_min",
+              "project_id": "p_env",
+              "folder": "letters/2026",
+              "name": "min.bin",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 1,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "container",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": []
+            }
+          ]
+        }
+      ],
+      "assets": [
+        {
+          "reference": {
+            "work_id": "w",
+            "output_id": "o",
+            "role": "report"
+          },
+          "schema": "ds.assets.asset/v1",
+          "asset_id": "a_full",
+          "project_id": "p_env",
+          "folder": "letters",
+          "name": "full.eml",
+          "kind": "mail",
+          "format": "eml",
+          "bytes": 100,
+          "digest": null,
+          "status": "archive",
+          "sensitivity": "confidential",
+          "dated": {
+            "document_date": "2026-01-01",
+            "received_at": null,
+            "created_at": "2026-01-03T00:00:00Z",
+            "source_modified_at": "2026-01-02T00:00:00Z"
+          },
+          "owner": null,
+          "source": {
+            "kind": "mail_import",
+            "detail": null
+          },
+          "classified_by": "user",
+          "container": "a_pack",
+          "links": [
+            {
+              "kind": "ds_object",
+              "object_type": "transformer",
+              "entity_id": "TX-1"
+            },
+            {
+              "kind": "pm_task",
+              "id": "t_1"
+            },
+            {
+              "kind": "tag",
+              "definition_id": "d",
+              "value": "v"
+            }
+          ],
+          "origin": {
+            "source": "upload",
+            "ref": {
+              "any": [
+                "thing",
+                1,
+                2.5,
+                null
+              ]
+            }
+          },
+          "document": {
+            "number": "N-1",
+            "revision_label": "",
+            "state": ""
+          },
+          "mail": {
+            "from": "",
+            "to": [],
+            "cc": [],
+            "subject": "",
+            "message_id": "",
+            "parts": [
+              {
+                "path": "p.txt",
+                "section": "",
+                "content_type": "",
+                "disposition": "",
+                "bytes": 0,
+                "kind": "",
+                "format": "",
+                "named": false
+              }
+            ],
+            "parts_total": 0,
+            "truncated": false
+          },
+          "external": {
+            "url": "https://example.com/x",
+            "provider": ""
+          },
+          "folder_id": "f_1",
+          "content_type": "message/rfc822",
+          "created_by": "u",
+          "updated_at": "2026-01-04T00:00:00Z",
+          "updated_by": "u",
+          "version": 9
+        }
+      ]
+    }
+  ],
+  "total_assets": 4,
+  "total_folders": 14,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "survey_media",
+    "transformer_versions",
+    "transformers",
+    "user_data"
+  ]
+}

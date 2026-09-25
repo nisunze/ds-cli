@@ -1,0 +1,760 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Reports/compute",
+          "name": "compute",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Reports/compute/w",
+              "name": "w",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:compute_artifact:w:x",
+                  "project_id": "",
+                  "folder": "Reports/compute/w",
+                  "name": "x.ας β",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "compute artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "compute_artifacts",
+                    "ref": {
+                      "work_id": "w",
+                      "output_id": "x",
+                      "engine": null,
+                      "operation": null,
+                      "variant": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:compute_artifact:w:ΟΔΟΣ",
+                  "project_id": "",
+                  "folder": "Reports/compute/w",
+                  "name": "ΟΔΟΣ.σς",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "compute artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "compute_artifacts",
+                    "ref": {
+                      "work_id": "w",
+                      "output_id": "ΟΔΟΣ",
+                      "engine": null,
+                      "operation": null,
+                      "variant": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": [],
+      "not_loaded_sources": [
+        "compounded"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 4
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Transformers/###",
+          "name": "###",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/###/design",
+              "name": "design",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/###/design/current",
+                  "name": "current",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:transformer_design:###",
+                      "project_id": "",
+                      "folder": "Transformers/###/design/current",
+                      "name": "current",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "system",
+                        "detail": "live design"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "###"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "###",
+                          "read": "design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Transformers/9-lines",
+          "name": "9-lines",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/9-lines/design",
+              "name": "design",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/9-lines/design/current",
+                  "name": "current",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:transformer_design:9-lines",
+                      "project_id": "",
+                      "folder": "Transformers/9-lines/design/current",
+                      "name": "current",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "system",
+                        "detail": "live design"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "9-lines"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "9-lines",
+                          "read": "design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Transformers/COLLİSIONS",
+          "name": "COLLİSIONS",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/COLLİSIONS/design",
+              "name": "design",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/COLLİSIONS/design/current",
+                  "name": "current",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:transformer_design:COLLİSIONS",
+                      "project_id": "",
+                      "folder": "Transformers/COLLİSIONS/design/current",
+                      "name": "current",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "system",
+                        "detail": "live design"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "COLLİSIONS"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "COLLİSIONS",
+                          "read": "design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Transformers/TX-Ünïcödé",
+          "name": "TX-Ünïcödé",
+          "counts": {
+            "assets": 0,
+            "folders": 3
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/TX-Ünïcödé/attachments",
+              "name": "attachments",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-Ünïcödé/attachments/Lettres",
+                  "name": "Lettres",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:design_attachment:att_u:r",
+                      "project_id": "",
+                      "folder": "Transformers/TX-Ünïcödé/attachments/Lettres",
+                      "name": "r1.été",
+                      "kind": "other",
+                      "format": "unknown",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "upload",
+                        "detail": "design attachment revision"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-Ünïcödé"
+                        }
+                      ],
+                      "origin": {
+                        "source": "design_attachments",
+                        "ref": {
+                          "attachment_id": "att_u",
+                          "revision_id": "r",
+                          "transformer": "TX-Ünïcödé"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "Transformers/TX-Ünïcödé/design",
+              "name": "design",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-Ünïcödé/design/current",
+                  "name": "current",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:transformer_design:TX-Ünïcödé",
+                      "project_id": "",
+                      "folder": "Transformers/TX-Ünïcödé/design/current",
+                      "name": "current",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "system",
+                        "detail": "live design"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-Ünïcödé"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "TX-Ünïcödé",
+                          "read": "design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "Transformers/TX-Ünïcödé/reports",
+              "name": "reports",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:report_file:TX-Ünïcödé:carte.pdfς",
+                  "project_id": "",
+                  "folder": "Transformers/TX-Ünïcödé/reports",
+                  "name": "carte.pdfς",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "report artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-Ünïcödé"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformers",
+                    "ref": {
+                      "transformer": "TX-Ünïcödé",
+                      "output_id": "carte",
+                      "path": ""
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:report_file:TX-Ünïcödé:İmage.i̇",
+                  "project_id": "",
+                  "folder": "Transformers/TX-Ünïcödé/reports",
+                  "name": "İmage.i̇",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "report artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-Ünïcödé"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformers",
+                    "ref": {
+                      "transformer": "TX-Ünïcödé",
+                      "output_id": "İmage",
+                      "path": ""
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": [],
+      "not_loaded_sources": [
+        "transformer_versions"
+      ]
+    }
+  ],
+  "total_assets": 9,
+  "total_folders": 28,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "dataset_rooms",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "survey_media",
+    "transformer_versions",
+    "user_data"
+  ]
+}

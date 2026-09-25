@@ -1,0 +1,482 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Reports/combined",
+          "name": "combined",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:combined_transformer:lot3-combined.xlsx",
+              "project_id": "",
+              "folder": "Reports/combined",
+              "name": "lot3-combined.xlsx",
+              "kind": "sheet",
+              "format": "xlsx",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "report file"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "ds_object",
+                  "object_type": "transformer",
+                  "entity_id": "combined_transformer"
+                }
+              ],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "combined_transformer",
+                  "path": "gs://reports/combined/lot3-combined.xlsx"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Transformers/TX-1",
+          "name": "TX-1",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/TX-1/design",
+              "name": "design",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-1/design/current",
+                  "name": "current",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:transformer_design:TX-1",
+                      "project_id": "",
+                      "folder": "Transformers/TX-1/design/current",
+                      "name": "current",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "system",
+                        "detail": "live design"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-1"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "TX-1",
+                          "read": "design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Unclassified",
+      "name": "Unclassified",
+      "counts": {
+        "assets": 0,
+        "folders": 3
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Unclassified/design_attachments",
+          "name": "design_attachments",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:design_attachments:row-3f26ed9e0372",
+              "project_id": "",
+              "folder": "Unclassified/design_attachments",
+              "name": "row-3f26ed9e0372",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "design_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "design_attachments",
+                "ref": {
+                  "source": "design_attachments",
+                  "ref": "row-3f26ed9e0372"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/transformer_versions",
+          "name": "transformer_versions",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:transformer_versions:row-cb9d7db5b8f4",
+              "project_id": "",
+              "folder": "Unclassified/transformer_versions",
+              "name": "row-cb9d7db5b8f4",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "transformer_versions"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "transformer_versions",
+                "ref": {
+                  "source": "transformer_versions",
+                  "ref": "row-cb9d7db5b8f4"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/transformers",
+          "name": "transformers",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:report_file:mv_data:rows.csv",
+              "project_id": "",
+              "folder": "Unclassified/transformers",
+              "name": "rows.csv",
+              "kind": "sheet",
+              "format": "csv",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "report file"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "ds_object",
+                  "object_type": "transformer",
+                  "entity_id": "mv_data"
+                }
+              ],
+              "origin": {
+                "source": "transformers",
+                "ref": {
+                  "transformer": "mv_data",
+                  "path": "gs://x/mv_data/rows.csv"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": []
+    }
+  ],
+  "total_assets": 5,
+  "total_folders": 19,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "survey_media",
+    "user_data"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "transformers": [{"name": "TX-1"}],
+    "survey_media": []
+  }
+}

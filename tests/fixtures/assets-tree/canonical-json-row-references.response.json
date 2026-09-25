@@ -1,0 +1,591 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded_sources": [
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded_sources": [
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded_sources": [
+        "transformer_versions",
+        "transformers"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Unclassified",
+      "name": "Unclassified",
+      "counts": {
+        "assets": 0,
+        "folders": 4
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Unclassified/compounded",
+          "name": "compounded",
+          "counts": {
+            "assets": 4,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:compounded:row-3475f3da34b1",
+              "project_id": "",
+              "folder": "Unclassified/compounded",
+              "name": "row-3475f3da34b1",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "compounded"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compounded",
+                "ref": {
+                  "source": "compounded",
+                  "ref": "row-3475f3da34b1"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:compounded:row-6c827843ccd5",
+              "project_id": "",
+              "folder": "Unclassified/compounded",
+              "name": "row-6c827843ccd5",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "compounded"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compounded",
+                "ref": {
+                  "source": "compounded",
+                  "ref": "row-6c827843ccd5"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:compounded:row-89a11d042c5b",
+              "project_id": "",
+              "folder": "Unclassified/compounded",
+              "name": "row-89a11d042c5b",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "compounded"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compounded",
+                "ref": {
+                  "source": "compounded",
+                  "ref": "row-89a11d042c5b"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:compounded:row-fe7b27f2d7b9",
+              "project_id": "",
+              "folder": "Unclassified/compounded",
+              "name": "row-fe7b27f2d7b9",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "compounded"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compounded",
+                "ref": {
+                  "source": "compounded",
+                  "ref": "row-fe7b27f2d7b9"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/design_attachments",
+          "name": "design_attachments",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:design_attachments:row-dbc2c3d4db7f",
+              "project_id": "",
+              "folder": "Unclassified/design_attachments",
+              "name": "row-dbc2c3d4db7f",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "design_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "design_attachments",
+                "ref": {
+                  "source": "design_attachments",
+                  "ref": "row-dbc2c3d4db7f"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/pm_attachments",
+          "name": "pm_attachments",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:pm_attachments:pa_blankname",
+              "project_id": "",
+              "folder": "Unclassified/pm_attachments",
+              "name": "pa_blankname",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "pm_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "pm_attachments",
+                "ref": {
+                  "source": "pm_attachments",
+                  "ref": "pa_blankname"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:pm_attachments:row-4076b7c5af09",
+              "project_id": "",
+              "folder": "Unclassified/pm_attachments",
+              "name": "row-4076b7c5af09",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "pm_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "pm_attachments",
+                "ref": {
+                  "source": "pm_attachments",
+                  "ref": "row-4076b7c5af09"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/solar",
+          "name": "solar",
+          "counts": {
+            "assets": 3,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:solar:row-1520857fafa8",
+              "project_id": "",
+              "folder": "Unclassified/solar",
+              "name": "row-1520857fafa8",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "solar"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "solar",
+                "ref": {
+                  "source": "solar",
+                  "ref": "row-1520857fafa8"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:solar:row-1b0a10968f23",
+              "project_id": "",
+              "folder": "Unclassified/solar",
+              "name": "row-1b0a10968f23",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "solar"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "solar",
+                "ref": {
+                  "source": "solar",
+                  "ref": "row-1b0a10968f23"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:solar:row-2b0c6d8c86c3",
+              "project_id": "",
+              "folder": "Unclassified/solar",
+              "name": "row-2b0c6d8c86c3",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "solar"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "solar",
+                "ref": {
+                  "source": "solar",
+                  "ref": "row-2b0c6d8c86c3"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": []
+    }
+  ],
+  "total_assets": 10,
+  "total_folders": 16,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compute_artifacts",
+    "dataset_rooms",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "survey_media",
+    "transformer_versions",
+    "transformers",
+    "user_data"
+  ]
+}

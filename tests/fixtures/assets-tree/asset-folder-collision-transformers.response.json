@@ -1,0 +1,3 @@
+{
+  "refusal": "asset \"sneaky.pdf\" is filed in \"Transformers/TX-1\", which collides with the system root Transformers; system roots are projected from the sources, not declared — file it elsewhere"
+}

@@ -1,0 +1,1275 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Prints/setups",
+          "name": "setups",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:print_setup:l_1",
+              "project_id": "",
+              "folder": "Prints/setups",
+              "name": "Layout_One",
+              "kind": "note",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "print setup"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "print_setups",
+                "ref": {
+                  "layout_id": "l_1",
+                  "scope": "user"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:print_setup:l_2",
+              "project_id": "",
+              "folder": "Prints/setups",
+              "name": "l_2",
+              "kind": "note",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "print setup"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "print_setups",
+                "ref": {
+                  "layout_id": "l_2",
+                  "scope": null
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": [],
+      "not_loaded_sources": [
+        "local_prints"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 3,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [
+        {
+          "schema": "ds.assets.asset/v1",
+          "asset_id": "sys:project_data:u_b",
+          "project_id": "",
+          "folder": "Project data",
+          "name": "data.kml",
+          "kind": "geo",
+          "format": "kml",
+          "bytes": 20,
+          "digest": null,
+          "status": "fresh",
+          "sensitivity": "internal",
+          "dated": {
+            "document_date": null,
+            "received_at": null,
+            "created_at": null,
+            "source_modified_at": null
+          },
+          "owner": null,
+          "source": {
+            "kind": "upload",
+            "detail": "upload"
+          },
+          "classified_by": "kernel",
+          "container": null,
+          "links": [],
+          "origin": {
+            "source": "project_data",
+            "ref": {
+              "upload_id": "u_b",
+              "blob_path": "/project_data/u_b/data.kml"
+            }
+          }
+        },
+        {
+          "schema": "ds.assets.asset/v1",
+          "asset_id": "sys:project_data:u_a",
+          "project_id": "",
+          "folder": "Project data",
+          "name": "parcels.SHP",
+          "kind": "geo",
+          "format": "shp",
+          "bytes": 10,
+          "digest": null,
+          "status": "fresh",
+          "sensitivity": "internal",
+          "dated": {
+            "document_date": null,
+            "received_at": null,
+            "created_at": null,
+            "source_modified_at": null
+          },
+          "owner": null,
+          "source": {
+            "kind": "upload",
+            "detail": "upload"
+          },
+          "classified_by": "kernel",
+          "container": null,
+          "links": [],
+          "origin": {
+            "source": "project_data",
+            "ref": {
+              "upload_id": "u_a",
+              "blob_path": null
+            }
+          }
+        },
+        {
+          "schema": "ds.assets.asset/v1",
+          "asset_id": "sys:project_data:u_c",
+          "project_id": "",
+          "folder": "Project data",
+          "name": "u_c",
+          "kind": "other",
+          "format": "unknown",
+          "bytes": 0,
+          "digest": null,
+          "status": "fresh",
+          "sensitivity": "internal",
+          "dated": {
+            "document_date": null,
+            "received_at": null,
+            "created_at": null,
+            "source_modified_at": null
+          },
+          "owner": null,
+          "source": {
+            "kind": "upload",
+            "detail": "upload"
+          },
+          "classified_by": "kernel",
+          "container": null,
+          "links": [],
+          "origin": {
+            "source": "project_data",
+            "ref": {
+              "upload_id": "u_c",
+              "blob_path": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 2
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Reports/combined",
+          "name": "combined",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:compounded:lot1",
+              "project_id": "",
+              "folder": "Reports/combined",
+              "name": "lot1-final.zip",
+              "kind": "pack",
+              "format": "zip",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "compounded archive"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compounded",
+                "ref": {
+                  "stem": "lot1",
+                  "gcs_path": null
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:compounded:lot2",
+              "project_id": "",
+              "folder": "Reports/combined",
+              "name": "lot2.zip",
+              "kind": "pack",
+              "format": "zip",
+              "bytes": 0,
+              "digest": null,
+              "status": "durable",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": "5",
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": "compounded archive"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compounded",
+                "ref": {
+                  "stem": "lot2",
+                  "gcs_path": "/compounded/lot2.zip"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Reports/compute",
+          "name": "compute",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Reports/compute/w_1",
+              "name": "w_1",
+              "counts": {
+                "assets": 3,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:compute_artifact:w_1:o_json",
+                  "project_id": "",
+                  "folder": "Reports/compute/w_1",
+                  "name": "o_json.json",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "compute artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "compute_artifacts",
+                    "ref": {
+                      "work_id": "w_1",
+                      "output_id": "o_json",
+                      "engine": "reporter",
+                      "operation": null,
+                      "variant": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:compute_artifact:w_1:o_none",
+                  "project_id": "",
+                  "folder": "Reports/compute/w_1",
+                  "name": "o_none",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "compute artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "compute_artifacts",
+                    "ref": {
+                      "work_id": "w_1",
+                      "output_id": "o_none",
+                      "engine": "reporter",
+                      "operation": null,
+                      "variant": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:compute_artifact:w_1:o_pdf",
+                  "project_id": "",
+                  "folder": "Reports/compute/w_1",
+                  "name": "o_pdf.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 12,
+                  "digest": "sha256:already",
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "compute artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "compute_artifacts",
+                    "ref": {
+                      "work_id": "w_1",
+                      "output_id": "o_pdf",
+                      "engine": "reporter",
+                      "operation": null,
+                      "variant": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Reports/compute/w_3",
+              "name": "w_3",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:compute_artifact:w_3:x",
+                  "project_id": "",
+                  "folder": "Reports/compute/w_3",
+                  "name": "x",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 7,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": "2026-04-01T00:00:00Z"
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "compute artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "compute_artifacts",
+                    "ref": {
+                      "work_id": "w_3",
+                      "output_id": "x",
+                      "engine": null,
+                      "operation": null,
+                      "variant": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 4
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Solar/Huye",
+          "name": "Huye",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Solar/Huye/artifacts",
+              "name": "artifacts",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:solar_artifact:Huye:a.png",
+                  "project_id": "",
+                  "folder": "Solar/Huye/artifacts",
+                  "name": "a.png",
+                  "kind": "image",
+                  "format": "png",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "solar artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "solar",
+                    "ref": {
+                      "city": "Huye",
+                      "name": "a.png",
+                      "gcs_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Solar/Huye/results",
+              "name": "results",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:solar_result:Huye",
+                  "project_id": "",
+                  "folder": "Solar/Huye/results",
+                  "name": "report_input.json",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": "abc",
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "solar result"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "solar",
+                    "ref": {
+                      "city": "Huye",
+                      "run_id": null,
+                      "report_input_sha256": "abc"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Solar/Kigali_City",
+          "name": "Kigali_City",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Solar/Kigali_City/results",
+              "name": "results",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:solar_result:Kigali/City",
+                  "project_id": "",
+                  "folder": "Solar/Kigali_City/results",
+                  "name": "report_input.json",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "solar result"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "solar",
+                    "ref": {
+                      "city": "Kigali/City",
+                      "run_id": null,
+                      "report_input_sha256": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Solar/Musanze",
+          "name": "Musanze",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Solar/Musanze/artifacts",
+              "name": "artifacts",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:solar_artifact:Musanze:report.PDF",
+                  "project_id": "",
+                  "folder": "Solar/Musanze/artifacts",
+                  "name": "report.PDF",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "solar artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "solar",
+                    "ref": {
+                      "city": "Musanze",
+                      "name": "report.PDF",
+                      "gcs_path": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Solar/Nyanza",
+          "name": "Nyanza",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Solar/Nyanza/artifacts",
+              "name": "artifacts",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:solar_artifact:Nyanza:dir/sub/chart.svg",
+                  "project_id": "",
+                  "folder": "Solar/Nyanza/artifacts",
+                  "name": "chart.svg",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "solar artifact"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "solar",
+                    "ref": {
+                      "city": "Nyanza",
+                      "name": "dir/sub/chart.svg",
+                      "gcs_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Solar/Nyanza/results",
+              "name": "results",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:solar_result:Nyanza",
+                  "project_id": "",
+                  "folder": "Solar/Nyanza/results",
+                  "name": "report_input.json",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "report_output",
+                    "detail": "solar result"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "solar",
+                    "ref": {
+                      "city": "Nyanza",
+                      "run_id": "r",
+                      "report_input_sha256": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions",
+        "transformers"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Unclassified",
+      "name": "Unclassified",
+      "counts": {
+        "assets": 0,
+        "folders": 5
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Unclassified/compounded",
+          "name": "compounded",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:compounded:row-65cb8fed735f",
+              "project_id": "",
+              "folder": "Unclassified/compounded",
+              "name": "row-65cb8fed735f",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "compounded"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compounded",
+                "ref": {
+                  "source": "compounded",
+                  "ref": "row-65cb8fed735f"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/compute_artifacts",
+          "name": "compute_artifacts",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:compute_artifacts:row-c605efcb5260",
+              "project_id": "",
+              "folder": "Unclassified/compute_artifacts",
+              "name": "row-c605efcb5260",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "compute_artifacts"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compute_artifacts",
+                "ref": {
+                  "source": "compute_artifacts",
+                  "ref": "row-c605efcb5260"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:compute_artifacts:row-ec4955eb798c",
+              "project_id": "",
+              "folder": "Unclassified/compute_artifacts",
+              "name": "row-ec4955eb798c",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "compute_artifacts"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "compute_artifacts",
+                "ref": {
+                  "source": "compute_artifacts",
+                  "ref": "row-ec4955eb798c"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/print_setups",
+          "name": "print_setups",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:print_setups:No id",
+              "project_id": "",
+              "folder": "Unclassified/print_setups",
+              "name": "No id",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "print_setups"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "print_setups",
+                "ref": {
+                  "source": "print_setups",
+                  "ref": "No id"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/project_data",
+          "name": "project_data",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:project_data:row-2ce98d6d7b48",
+              "project_id": "",
+              "folder": "Unclassified/project_data",
+              "name": "row-2ce98d6d7b48",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "project_data"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "project_data",
+                "ref": {
+                  "source": "project_data",
+                  "ref": "row-2ce98d6d7b48"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:project_data:row-c2cdd9cb0d20",
+              "project_id": "",
+              "folder": "Unclassified/project_data",
+              "name": "row-c2cdd9cb0d20",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "project_data"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "project_data",
+                "ref": {
+                  "source": "project_data",
+                  "ref": "row-c2cdd9cb0d20"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/solar",
+          "name": "solar",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:solar:row-64989817d701",
+              "project_id": "",
+              "folder": "Unclassified/solar",
+              "name": "row-64989817d701",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "solar"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "solar",
+                "ref": {
+                  "source": "solar",
+                  "ref": "row-64989817d701"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": []
+    }
+  ],
+  "total_assets": 24,
+  "total_folders": 32,
+  "truncated": false,
+  "not_loaded_sources": [
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "report_rooms",
+    "survey_media",
+    "transformer_versions",
+    "transformers",
+    "user_data"
+  ]
+}

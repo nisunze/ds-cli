@@ -1,0 +1,18 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "transformer_versions": [
+      {"transformer_id": "TX-1", "version_id": "v_float", "version": 3.0, "room_bytes": 12.7, "playback_available": 1},
+      {"transformer_id": "TX-1", "version_id": "v_big", "version": 1e21, "room_bytes": 1e30, "playback_available": "No"},
+      {"transformer_id": "TX-1", "version_id": "v_neg", "version": -2, "room_bytes": -5, "playback_available": 2},
+      {"transformer_id": "TX-1", "version_id": "v_str", "version": "07", "room_bytes": " 42 ", "playback_available": " TRUE "},
+      {"transformer_id": "TX-1", "version_id": "v_bool", "version": true, "room_bytes": "+9", "playback_available": 0.5},
+      {"transformer_id": "TX-1", "version_id": 12345, "version": 0.000001, "room_bytes": -0.0},
+      {"transformer_id": "TX-1", "version_id": "v_tiny", "version": 1.5e-7, "room_bytes": "1e3", "created_at": 1700000000000},
+      {"transformer_id": "TX-1", "version_id": "v_obj", "version": {"n": 1}, "reason": ["x"], "created_by": false},
+      {"transformer_id": "TX-1", "version_id": "v_huge", "version": 18446744073709551616, "room_bytes": 18446744073709551615},
+      {"transformer_id": "TX-1", "version_id": "v_negzero", "version": -0, "room_bytes": 123456789012345678},
+      {"transformer_id": "TX-1", "version_id": "v_exp", "version": 12345678901234567890.0, "room_bytes": 0.1}
+    ]
+  }
+}

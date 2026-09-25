@@ -1,0 +1,274 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Transformers/TX-1",
+          "name": "TX-1",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/TX-1/design",
+              "name": "design",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Transformers/TX-1/design/current",
+                  "name": "current",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:transformer_design:TX-1",
+                      "project_id": "",
+                      "folder": "Transformers/TX-1/design/current",
+                      "name": "current",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "system",
+                        "detail": "live design"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "ds_object",
+                          "object_type": "transformer",
+                          "entity_id": "TX-1"
+                        }
+                      ],
+                      "origin": {
+                        "source": "transformers",
+                        "ref": {
+                          "transformer": "TX-1",
+                          "read": "design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": [],
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions"
+      ]
+    }
+  ],
+  "total_assets": 1,
+  "total_folders": 14,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "transformer_versions",
+    "user_data"
+  ]
+}
