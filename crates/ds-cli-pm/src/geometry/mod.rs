@@ -301,6 +301,7 @@ pub fn wire_link(link: &Value) -> Value {
         "form_slug",
         "object_type",
         "object_revision",
+        "version_id",
         "label",
         "attached_by",
         "attached_at",

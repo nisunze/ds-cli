@@ -54,6 +54,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "project",
     "correspondence",
     "work-attachments",
+    "model-pm",
     "solar-input",
     "solar-migration",
     "design-migration",
@@ -119,6 +120,7 @@ pub enum Profile {
     Project,
     Correspondence,
     WorkAttachments,
+    ModelPm,
     SolarInput,
     SolarMigration,
     DesignMigration,
@@ -162,6 +164,7 @@ impl Profile {
             "project" => Some(Self::Project),
             "correspondence" => Some(Self::Correspondence),
             "work-attachments" => Some(Self::WorkAttachments),
+            "model-pm" => Some(Self::ModelPm),
             "solar-input" => Some(Self::SolarInput),
             "solar-migration" => Some(Self::SolarMigration),
             "design-migration" => Some(Self::DesignMigration),
@@ -206,6 +209,7 @@ impl Profile {
             Self::Project => "project",
             Self::Correspondence => "correspondence",
             Self::WorkAttachments => "work-attachments",
+            Self::ModelPm => "model-pm",
             Self::SolarInput => "solar-input",
             Self::SolarMigration => "solar-migration",
             Self::DesignMigration => "design-migration",
@@ -304,6 +308,7 @@ impl Profile {
             Self::Project => 22,
             // Fifteen leaves plus bootstrap: discover, author, classify folder, attach and preview.
             Self::WorkAttachments => 17,
+            Self::ModelPm => 18,
             // Seventeen working-copy leaves plus both bootstrap tools. Raised
             // from the default on 2026-09-22 when the four 2026-09-21 leaves
             // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
@@ -408,11 +413,13 @@ impl Profile {
                 tool.chapter == Chapter::Project
                     && !tool.id.starts_with("auth.")
                     && !tool.id.starts_with("account.")
+                    && !tool.id.starts_with("pm.model.")
                     && !(CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str())
                         && tool.id != "pm.plan")
             }
             Self::Correspondence => CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str()),
             Self::WorkAttachments => WORK_ATTACHMENTS_COMMANDS.contains(&tool.id.as_str()),
+            Self::ModelPm => MODEL_PM_COMMANDS.contains(&tool.id.as_str()),
             Self::Operations => {
                 tool.chapter == Chapter::Operations
                     && !INSTALLATION_COMMANDS.contains(&tool.id.as_str())
@@ -472,6 +479,7 @@ impl Profile {
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
             Self::Correspondence => CORRESPONDENCE_COMMANDS,
             Self::WorkAttachments => WORK_ATTACHMENTS_COMMANDS,
+            Self::ModelPm => MODEL_PM_COMMANDS,
             Self::Grid
             | Self::GridNative
             | Self::Pls
@@ -510,6 +518,10 @@ impl Profile {
             Self::Map | Self::Styles | Self::PrintStyles => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project | Self::Correspondence => chapter == Chapter::Project,
+            Self::ModelPm => matches!(
+                chapter,
+                Chapter::Project | Chapter::Design | Chapter::GridModel
+            ),
             Self::WorkAttachments => matches!(
                 chapter,
                 Chapter::Project | Chapter::Assets | Chapter::Survey
@@ -878,6 +890,28 @@ const WORK_ATTACHMENTS_COMMANDS: &[&str] = &[
     "assets.attach",
     "assets.read",
     "map.ui.open",
+];
+
+// One bounded headless workflow from exact model discovery through governed
+// PM references and version evidence. The model-discovery lane supplies
+// dsgrid.project.list; no display name is accepted as a reference.
+const MODEL_PM_COMMANDS: &[&str] = &[
+    "dsgrid.project.list",
+    "design.version.list",
+    "design.version.read",
+    "design.version.status",
+    "design.version.revise",
+    "design.version.freeze",
+    "design.version.events",
+    "design.attachment.list",
+    "pm.task.list",
+    "pm.task.read",
+    "pm.record.list",
+    "pm.record.read",
+    "pm.model.references",
+    "pm.model.links",
+    "pm.model.link.add",
+    "pm.model.link.remove",
 ];
 
 const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[

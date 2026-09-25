@@ -79,6 +79,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "object_type": link["object_type"],
                 "entity_id": link["entity_id"],
                 "object_revision": link["object_revision"],
+                "version_id": link["version_id"],
                 "label": link["label"],
                 "attached_by": link["attached_by"],
                 "attached_at": link["attached_at"],

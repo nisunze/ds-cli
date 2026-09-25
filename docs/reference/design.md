@@ -1107,9 +1107,14 @@ Unknown archive coverage is explicit and does not justify regeneration.
 `design.version` names one explicit project and either an LV transformer or MV
 project model. The transformer flag remains the LV compatibility spelling.
 The server alone assigns governed `vN` identities; native Server and Web use
-shared Rust request planning and response validation. Creation snapshots saved
-server content, with an exact idempotency key, independently of an open map.
-LV comparisons use immutable snapshots; MV comparisons describe pinned content
+shared Rust request planning and response validation. A new MV marker starts
+open. Fenced revisions may update its reason, milestone and observed content
+head without changing its `vN` identity. An explicit freeze closes it before
+submission or a new version; historical MV markers remain frozen. The
+append-only event list records each revision and freeze with actor, time,
+reason and source change. Saved `.dsgrid` content revisions stay immutable
+through this lifecycle, and attachments retain their exact content-revision
+anchor. LV comparisons use immutable snapshots; MV comparisons describe source
 revision/digest/manifest lineage without claiming geometry comparison. Restore
 is LV-only and pins the source head before its fenced transaction.
 

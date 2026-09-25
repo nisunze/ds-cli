@@ -6661,7 +6661,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "design_versions": {
                 "method": "POST",
                 "path": "/api/v1/design/versions",
-                "actions": ["list_versions", "get_version", "get_head", "create_version", "restore_version"]
+                "actions": ["list_versions", "get_version", "get_head", "create_version", "restore_version", "revise_version", "freeze_version", "list_version_events"]
             },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
@@ -6669,7 +6669,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v29",
+            "schema_version": "ds.native-client-profiles/v30",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -7642,7 +7642,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        97, // 101 − `design sync status|cancel|resume`, `design transformer download` (2026-09-20).
+        101, // Includes exact MV version read, revise, freeze and events.
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -7702,6 +7702,10 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     // Published-version listing and comparison went headless
                     // on 2026-09-14 (no paired desktop): same native spine.
                     | "design.version.list"
+                    | "design.version.read"
+                    | "design.version.revise"
+                    | "design.version.freeze"
+                    | "design.version.events"
                     | "design.version.compare"
                     | "design.version.begin"
                     | "design.version.restore"
@@ -8801,6 +8805,10 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.task.geometry.read",
         "pm.task.geometry.set",
         "pm.task.geometry.clear",
+        "pm.model.references",
+        "pm.model.links",
+        "pm.model.link.add",
+        "pm.model.link.remove",
         "pm.task.block",
         "pm.task.unblock",
         "pm.record.list",
@@ -8849,6 +8857,8 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
                 | "pm.task.log-hours"
                 | "pm.task.geometry.set"
                 | "pm.task.geometry.clear"
+                | "pm.model.link.add"
+                | "pm.model.link.remove"
                 | "pm.task.block"
                 | "pm.task.unblock"
                 | "pm.record.create"
@@ -8862,6 +8872,22 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
             if write { "global_write" } else { "read_only" },
             "`{id}` declares the wrong effect class for its blast radius"
         );
+    }
+}
+
+#[test]
+fn exact_model_pm_links_are_headless_discoverable_and_governed() {
+    let read = ok(&["capabilities", "pm.model.references", "--output", "json"]);
+    let purpose = read["command"]["purpose"].as_str().unwrap_or("");
+    assert!(purpose.contains("governance vN") && purpose.contains("nextCursor"));
+    let version = ok(&["capabilities", "design.version.read", "--output", "json"]);
+    assert!(version["command"]["summary"].as_str().unwrap_or("").contains("exact"));
+    for source in [("task", "T4"), ("note", "N1")] {
+        let mut args = vec!["pm", "model", "link", "add",
+            "--model", "model-7", "--version", "v3"];
+        args.extend([if source.0 == "task" { "--task" } else { "--note" }, source.1]);
+        args.extend(["--output", "json"]);
+        assert_eq!(pm_refusal(&args), "confirmation_required");
     }
 }
 
@@ -9842,6 +9868,7 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "assets.classify",
         "assets.promote",
         "assets.attach",
+        "assets.author",
         "assets.ingest",
         "assets.folder",
         "assets.reference",
@@ -9855,6 +9882,11 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
     assert_eq!(
         actual, expected,
         "assets command coverage list changed; add a specific smoke assertion for the new command before accepting it"
+    );
+    assert_eq!(
+        native_refusal(&["assets", "author", "--project", "test-project", "--name", "Review.md", "--content", "Reviewed", "--output", "json"]),
+        "confirmation_required",
+        "direct report authoring must require confirmation before reaching the project"
     );
     for command in commands {
         assert_ne!(

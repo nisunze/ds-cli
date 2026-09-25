@@ -1778,6 +1778,26 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::geometry::set::render,
     },
     Entry {
+        command: &ds_cli_pm::model::REFERENCES,
+        handler: ds_cli_pm::model::references,
+        render: ds_cli_pm::model::render,
+    },
+    Entry {
+        command: &ds_cli_pm::model::LINKS,
+        handler: ds_cli_pm::model::links,
+        render: ds_cli_pm::model::render,
+    },
+    Entry {
+        command: &ds_cli_pm::model::ADD,
+        handler: ds_cli_pm::model::add,
+        render: ds_cli_pm::model::render,
+    },
+    Entry {
+        command: &ds_cli_pm::model::REMOVE,
+        handler: ds_cli_pm::model::remove,
+        render: ds_cli_pm::model::render,
+    },
+    Entry {
         command: &ds_cli_pm::geometry::clear::COMMAND,
         handler: ds_cli_pm::geometry::clear::run,
         render: ds_cli_pm::geometry::clear::render,
@@ -2372,6 +2392,26 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::preview::DOWNLOAD_PLAN,
         handler: ds_cli_design::preview::run_download_plan,
         render: ds_cli_design::preview::render_download_plan,
+    },
+    Entry {
+        command: &ds_cli_design::versions::REVISE,
+        handler: ds_cli_design::versions::revise,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
+        command: &ds_cli_design::versions::FREEZE,
+        handler: ds_cli_design::versions::freeze,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
+        command: &ds_cli_design::versions::EVENTS,
+        handler: ds_cli_design::versions::events,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
+        command: &ds_cli_design::versions::READ,
+        handler: ds_cli_design::versions::read,
+        render: ds_cli_design::versions::render,
     },
     Entry {
         command: &ds_cli_design::versions::LIST,
