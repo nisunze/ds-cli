@@ -19,6 +19,7 @@ Use the deployed CLI and read each command contract before invoking it:
 ds capabilities data.parcels.query --output json
 ds capabilities data.customers.query --output json
 ds capabilities data.upi.lookup --output json
+ds capabilities data.project-cache.status --output json
 ```
 
 ## Choose the bound
@@ -41,14 +42,22 @@ the buffer, never widen the cap.
 ## The corridor read
 
 ```
-ds data vector buffer --layer mv_lines --distance-m 15 --out ./corridor.geojson
+ds data vector buffer --source ./one-mv-span.geojson --radius-m 6 --out ./corridor.geojson --output json
 ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed.geojson --output json
 ```
+
+The buffer source is a GeoJSON file containing the actual line geometry.
+`data vector buffer` creates one polygon per source feature, while
+`parcels query --boundary` accepts one polygon per call. Split a longer route
+into bounded spans or sections; retain each bound and deduplicate UPI when
+combining results. A projected continuation or drawing viewport is not a
+line source.
 
 Read `rows_total` and `truncated` before reporting a count. `truncated: true`
 means the bound holds more than the cap answered; narrow the bound and read
 again — never sum two truncated answers. `--geometry-out` keeps the exact
-polygons; `ds map local register` takes that file as it stands. Customers
+polygons; inspect `ds map local register` for how to prepare that file as a
+local layer. Customers
 inside the same corridor are the same call with `customers query`.
 
 ## Seed instead of re-asking
@@ -58,9 +67,9 @@ revision, an offline site visit — seed the dataset into the project like
 building footprints:
 
 ```
-ds data project-cache status --output json
-ds data project-cache seed --dataset edcl_customers --output json
-ds data project-cache seed --dataset rwanda_upi_parcels --output json
+ds data project-cache status --project <id> --summary --output json
+ds data project-cache seed --project <id> --dataset edcl_customers --yes --output json
+ds data project-cache seed --project <id> --dataset rwanda_upi_parcels --yes --output json
 ```
 
 The seed plans the project's coverage cells from its design extents and

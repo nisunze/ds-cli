@@ -1,13 +1,12 @@
 //! Cloud-resident reference data, read where it lives.
 //!
 //! `rwanda_upi_parcels` (11.5 million cadastral polygons) and
-//! `edcl_customers` (one million anonymized connections) are never bundled,
-//! seeded or downloaded — BigQuery is their only holding
-//! (`docs/contracts/foundation-datasets.md`). These two commands are the
-//! bounded reads `ds` makes of them through ds-brain's data-distribution
-//! surface: one UPI → one parcel polygon; the customers of one village, one
-//! cell, one small rectangle, or one transformer's design area, capped at
-//! 5,000 and receipted with the dataset, the query, the bound and the counts.
+//! `edcl_customers` (one million anonymized connections) are never bundled or
+//! downloaded nationally. BigQuery is their source; project-scoped extents
+//! may be seeded through bounded reads (`docs/contracts/foundation-datasets.md`).
+//! The commands here read one UPI or one bounded area through ds-brain's
+//! data-distribution surface, capped at 5,000 area rows and receipted with
+//! the dataset, the query, the bound and the counts.
 //!
 //! Both run headlessly under the restored native user against the project the
 //! caller names with `--project`; membership is ds-brain's decision. As with
@@ -114,8 +113,8 @@ refusal!(
 refusal!(
     INVALID_SCOPE,
     "invalid_admin_scope",
-    "not exactly one of --village, --cell, --bbox, --transformer was given, or a code is not 8/6 digits",
-    "name one bound with the exact code from `ds data admin-bounds list`"
+    "not exactly one of --village, --cell, --bbox, --boundary or --transformer was given, or a code is not 8/6 digits",
+    "name one bound; use exact codes from `ds data admin-bounds list` or one WGS84 polygon file with --boundary"
 );
 refusal!(
     GEOMETRY_OUT_REFUSED,
@@ -292,8 +291,8 @@ pub static PARCELS_COMMAND: Command = Command {
     output: "Dataset (id, layer, source, residency cloud, version), the query bound, rows_cap/rows_returned/rows_total/truncated, counts per cell and the written path when --geometry-out was given.",
     examples: &[
         Example {
-            command: "ds data vector buffer --layer mv_lines --distance-m 15 --out ./corridor.geojson && ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed-parcels.geojson",
-            note: "Parcels crossed by a 15 m MV corridor, kept as a local layer.",
+            command: "ds data vector buffer --source ./mv-span.geojson --radius-m 6 --out ./corridor.geojson && ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed-parcels.geojson",
+            note: "Parcels crossed by one 6 m MV span corridor, kept as GeoJSON.",
             runnable: false,
         },
         Example {

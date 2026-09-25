@@ -66,6 +66,11 @@ const LANE_ARG: Arg = Arg::value(
 .default("stable")
 .choices(&["stable", "canary"]);
 
+const SUMMARY_ARG: Arg = Arg::switch(
+    "summary",
+    "Return compact dataset identities, source, readiness and coverage counts; omit coverage geometry and acquisition history. Full detail is the default.",
+);
+
 macro_rules! refusal {
     ($name:ident, $code:literal, $when:literal, $remedy:literal) => {
         const $name: Refusal = Refusal {
@@ -346,8 +351,8 @@ pub static STATUS_COMMAND: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PROJECT_ARG, DATASET_ARG, LANE_ARG],
-    output: "Per dataset: identity, seeded, ready, local_holding, source versions, stale coverage, buffer policy, requested and completed coverage, feature count, index state, pending and expired acquisitions and last error; plus `seeded`, `available` and `catalog`.",
+    args: &[PROJECT_ARG, DATASET_ARG, SUMMARY_ARG, LANE_ARG],
+    output: "Full by default: per-dataset identity, readiness, source versions, coverage geometry, query history and errors. --summary returns identity, source, residency, project seed/read command, row cap, readiness and coverage counts without coverage geometry or query history; both include `seeded`, `available` and `catalog`.",
     examples: &[
         Example {
             command: "ds data project-cache status --project gisagara --output json",
@@ -357,6 +362,11 @@ pub static STATUS_COMMAND: Command = Command {
         Example {
             command: "ds data project-cache status --project gisagara --dataset google_open_buildings --output json",
             note: "Reads one dataset's own coverage and readiness.",
+            runnable: false,
+        },
+        Example {
+            command: "ds data project-cache status --project gisagara --summary --output json",
+            note: "Find usable datasets and their bounded read commands without acquisition history.",
             runnable: false,
         },
     ],
@@ -683,7 +693,62 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
     if let Some(answered_as) = answered_as {
         overview["answered_as"] = answered_as;
     }
-    Ok(overview)
+    if inputs.switch("summary") {
+        Ok(compact_status(overview))
+    } else {
+        Ok(overview)
+    }
+}
+
+/// Agent-sized discovery over the same kernel overview. The full response
+/// remains the default for diagnosing one room's coverage and acquisitions.
+fn compact_status(mut overview: Value) -> Value {
+    let datasets = overview["datasets"].as_array().cloned().unwrap_or_default();
+    overview["view"] = json!("summary");
+    overview["datasets"] = Value::Array(
+        datasets
+            .iter()
+            .map(|row| {
+                let layer = row["parameters"]["layer"].as_str().unwrap_or("");
+                let cloud = row["residency"] == "cloud";
+                let read_command = match layer {
+                    "rwanda_upi_parcels" => Some("data.parcels.query"),
+                    "edcl_customers" => Some("data.customers.query"),
+                    _ => None,
+                };
+                let seed_available = (cloud && read_command.is_some())
+                    || (!cloud && row["ready_reason"] != "bundle_unpublished");
+                let cells = |name: &str| row[name]["cells"].as_array().map(Vec::len).unwrap_or(0);
+                json!({
+                    "dataset_id": row["dataset_id"],
+                    "layer": if layer.is_empty() { Value::Null } else { json!(layer) },
+                    "label": row["label"],
+                    "source": row["provider"],
+                    "residency": row["residency"],
+                    "read_command": read_command,
+                    "seed_available": seed_available,
+                    "seed_command": if seed_available { json!("data.project-cache.seed") } else { Value::Null },
+                    "row_cap": if read_command.is_some() { json!(5000) } else { Value::Null },
+                    "seeded": row["seeded"],
+                    "ready": row["ready"],
+                    "ready_reason": row["ready_reason"],
+                    "local_holding": row["local_holding"],
+                    "feature_count": row["feature_count"],
+                    "index_state": row["index_state"],
+                    "source_version": row["source_version"],
+                    "available_version": row["available_version"],
+                    "fresh": row["fresh"],
+                    "requested_cells": cells("requested"),
+                    "completed_cells": cells("completed"),
+                    "stale_cells": cells("stale"),
+                    "pending_queries": row["pending_queries"],
+                    "expired_queries": row["expired_queries"],
+                    "last_error": row["last_error"],
+                })
+            })
+            .collect(),
+    );
+    overview
 }
 
 /// The host's door to ds-brain's `query_print_context`, decoded by the kernel.
@@ -1236,6 +1301,30 @@ pub fn render_status(data: &Value) -> String {
         ));
     }
     for dataset in &datasets {
+        if data["view"] == "summary" {
+            out.push_str(&format!(
+                "  {} · {} · {} · {} feature(s) · {} / {} covered area(s){}\n",
+                dataset["parameters"]["layer"]
+                    .as_str()
+                    .or_else(|| dataset["layer"].as_str())
+                    .or_else(|| dataset["dataset_id"].as_str())
+                    .unwrap_or("?"),
+                dataset["residency"].as_str().unwrap_or("?"),
+                if dataset["ready"] == true {
+                    "ready"
+                } else {
+                    dataset["ready_reason"].as_str().unwrap_or("not ready")
+                },
+                dataset["feature_count"].as_u64().unwrap_or(0),
+                dataset["completed_cells"].as_u64().unwrap_or(0),
+                dataset["requested_cells"].as_u64().unwrap_or(0),
+                dataset["read_command"]
+                    .as_str()
+                    .map(|command| format!(" · {command}"))
+                    .unwrap_or_default(),
+            ));
+            continue;
+        }
         out.push_str(&dataset_lines(dataset));
         out.push('\n');
     }
@@ -1285,6 +1374,66 @@ pub fn render_seed(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compact_status_keeps_cloud_discovery_without_coverage_or_query_history() {
+        let summary = compact_status(json!({
+            "project": "p",
+            "seeded": 1,
+            "available": 2,
+            "catalog": {"read": true},
+            "datasets": [{
+                "dataset_id": "parcel-digest",
+                "label": "Land parcels (UPI)",
+                "provider": "bigquery",
+                "residency": "cloud",
+                "parameters": {"layer": "rwanda_upi_parcels"},
+                "seeded": false,
+                "ready": false,
+                "ready_reason": "cloud_resident",
+                "local_holding": false,
+                "feature_count": 0,
+                "requested": {"cells": []},
+                "completed": {"cells": []},
+                "stale": {"cells": []},
+                "queries": [{"area": {"large": "history"}}]
+            }, {
+                "dataset_id": "customers-digest",
+                "label": "EDCL customers",
+                "provider": "bigquery",
+                "residency": "cloud",
+                "parameters": {"layer": "edcl_customers"},
+                "seeded": true,
+                "ready": true,
+                "local_holding": true,
+                "feature_count": 12,
+                "requested": {"cells": [[0,0,1,1],[1,1,2,2]]},
+                "completed": {"cells": [[0,0,1,1]]},
+                "stale": {"cells": [[0,0,1,1]]},
+                "queries": [{"area": {"large": "history"}}]
+            }]
+        }));
+        assert_eq!(summary["view"], "summary");
+        assert_eq!(summary["seeded"], 1);
+        assert_eq!(summary["datasets"][0]["layer"], "rwanda_upi_parcels");
+        assert_eq!(summary["datasets"][0]["source"], "bigquery");
+        assert_eq!(summary["datasets"][0]["read_command"], "data.parcels.query");
+        assert_eq!(summary["datasets"][0]["seed_available"], true);
+        assert_eq!(
+            summary["datasets"][0]["seed_command"],
+            "data.project-cache.seed"
+        );
+        assert_eq!(summary["datasets"][0]["row_cap"], 5000);
+        assert_eq!(
+            summary["datasets"][1]["read_command"],
+            "data.customers.query"
+        );
+        assert_eq!(summary["datasets"][1]["requested_cells"], 2);
+        assert_eq!(summary["datasets"][1]["completed_cells"], 1);
+        assert_eq!(summary["datasets"][1]["stale_cells"], 1);
+        assert!(summary["datasets"][0].get("queries").is_none());
+        assert!(summary["datasets"][1].get("requested").is_none());
+    }
 
     #[test]
     fn reading_is_free_and_acquiring_is_confirmed() {

@@ -173,6 +173,10 @@ neighbouring transformers share one acquisition.
 
 `status` costs nothing and reaches no provider. `seed` is the one command here
 that queries a geographic source, so it is confirmed.
+For dataset discovery, `status --project <id> --summary --output json` returns
+identities, source, residency, supported project seed and bounded read
+commands, row caps, readiness, and coverage counts. The default response keeps
+the detailed coverage geometry and acquisition history for diagnosis.
 
 Both run headlessly, under the restored native user against the project
 named by `--project` (the saved selection is never read), on this machine's
@@ -330,9 +334,14 @@ query`, the same cap and receipt. The classic question, *which parcels does
 this line's corridor cross*, is two commands:
 
 ```
-ds data vector buffer --layer mv_lines --distance-m 15 --out ./corridor.geojson
+ds data vector buffer --source ./one-mv-span.geojson --radius-m 6 --out ./corridor.geojson
 ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed.geojson
 ```
+
+The source file must contain the actual line geometry. The buffer command
+creates one polygon per source feature; `parcels query --boundary` takes one
+polygon, so query bounded spans or sections separately and deduplicate UPI
+across responses. The boundary envelope must remain within 25 km².
 
 The terminal prints counts per sector/cell and the summed `source_area_m2`;
 `--geometry-out` keeps the polygons (UPI, parcel key, administrative names,
