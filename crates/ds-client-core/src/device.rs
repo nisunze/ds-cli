@@ -1516,6 +1516,16 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::survey_entries_read::run(self.profile, transport, self.authority(), project, request)
     }
+    pub fn survey_media_grant<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        others: &[&str],
+        now: u64,
+    ) -> Result<crate::MediaGrants, ClientError> {
+        self.ensure_active(now)?;
+        crate::survey_media_fetch::grant(self.profile, transport, self.authority(), project, others)
+    }
     pub fn admin_bounds<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

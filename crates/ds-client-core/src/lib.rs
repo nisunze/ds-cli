@@ -47,6 +47,9 @@ pub use survey_entries_read::{
     SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry, SurveyEntryMedia,
 };
 pub use transport::SurveyEntriesReadCall;
+pub mod survey_media_fetch;
+pub use survey_media_fetch::{MediaGrant, MediaGrants, SurveyPhoto, SurveyThumbnail};
+pub use transport::{SurveyMediaBytesCall, SurveyMediaGrantCall};
 pub mod survey_photo;
 mod survey_query;
 pub use transport::SurveyPhotoCall;

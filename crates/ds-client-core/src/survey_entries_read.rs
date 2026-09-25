@@ -290,10 +290,7 @@ fn media_of(feature: &Value) -> Vec<SurveyEntryMedia> {
             .map(str::trim)
             .filter(|token| !token.is_empty())
         {
-            let Some((path, bucket)) = object_reference(token) else {
-                continue;
-            };
-            let Ok(address) = survey_media_address::parse(&path) else {
+            let Some((address, bucket)) = media_address(token) else {
                 continue;
             };
             if !found
@@ -311,6 +308,18 @@ fn media_of(feature: &Value) -> Vec<SurveyEntryMedia> {
         }
     }
     found
+}
+
+/// The survey media address one stored reference names, and the bucket when
+/// the reference itself names one: a bare object path, a `gs://` reference or
+/// a Cloud Storage URL, read as the map reads it.
+pub fn media_address(
+    reference: &str,
+) -> Option<(survey_media_address::SurveyMediaAddress, Option<String>)> {
+    let (path, bucket) = object_reference(reference.trim())?;
+    survey_media_address::parse(&path)
+        .ok()
+        .map(|address| (address, bucket))
 }
 
 /// The object path (and the bucket, when the reference names one) of one

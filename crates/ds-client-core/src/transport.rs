@@ -1998,6 +1998,83 @@ impl SurveyEntriesReadCall<'_> {
     }
 }
 
+/// `POST /report` `media_scope`: one grant per project whose survey photos a
+/// headless reader fetches. Hard-coded like the other `/report` calls; the
+/// profile supplies origin and credentials, not the route.
+pub struct SurveyMediaGrantCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl SurveyMediaGrantCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub const fn path(&self) -> &'static str {
+        crate::survey_media_fetch::GRANT_PATH
+    }
+    pub const fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        crate::survey_media_fetch::GRANT_RESPONSE_LIMIT
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        crate::survey_media_fetch::GRANT_TIMEOUT_SECONDS
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed media grant request"))
+    }
+}
+
+/// `GET` one survey photo through a media grant's resolver link. The link is
+/// the only authority: no user credential, API key or identity header may
+/// accompany it. The resolver answers with one redirect to a short-lived
+/// storage signature, which an implementation follows (and only that one).
+pub struct SurveyMediaBytesCall<'a> {
+    pub(crate) url: &'a str,
+}
+
+impl SurveyMediaBytesCall<'_> {
+    pub fn url(&self) -> &str {
+        self.url
+    }
+    pub const fn max_redirects(&self) -> u32 {
+        1
+    }
+    pub const fn response_limit(&self) -> usize {
+        crate::survey_media_fetch::MAX_PHOTO_BYTES
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        crate::survey_media_fetch::PHOTO_TIMEOUT_SECONDS
+    }
+}
+
 /// The installation inventory and its two governed transitions.
 ///
 /// One route, one closed action vocabulary, and no project: an installation
@@ -2936,6 +3013,18 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn survey_media_bytes(
+        &mut self,
+        _call: SurveyMediaBytesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+    fn survey_media_grant(
+        &mut self,
+        _call: SurveyMediaGrantCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -3231,6 +3320,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn survey_media_grant(
+        &mut self,
+        _call: SurveyMediaGrantCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -3503,6 +3598,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: SurveyEntriesReadCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::survey_entries_read(self, call)
+    }
+    fn survey_media_grant(
+        &mut self,
+        call: SurveyMediaGrantCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::survey_media_grant(self, call)
     }
     fn shared_asset_bytes(
         &mut self,

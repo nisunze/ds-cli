@@ -1440,6 +1440,30 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One media grant per project whose survey photos this user fetches:
+    /// the report export grant, checked once per project.
+    pub fn survey_media_grant(
+        &mut self,
+        project: &str,
+        others: &[&str],
+        now: u64,
+    ) -> Result<crate::MediaGrants, ClientError> {
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::survey_media_fetch::grant(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            others,
+        )
+    }
+
     /// One bounded read of platform reliability.
     ///
     /// No project: a platform is not a project, and nothing about fleet health
