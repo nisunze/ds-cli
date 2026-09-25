@@ -323,6 +323,30 @@ the declared weight-span basis — and says why when the model does not
 determine it (an undeclared basis, say). `--limit` bounds the listed
 placements and `more.truncated` names what it withheld.
 
+## The multiple-alignment gap: `alignment gap show|set`
+
+PLS-CADD keeps a gap between alignments in the global station of a
+multi-alignment project (Terrain › Alignment › Multiple Alignment Options).
+In a `.dsgrid` it is `AlignmentRow.global_station_gap_m`, the gap before the
+alignment's first global station. The PLS-CADD export writes it on the NUM
+break row after the preceding run, and every later DON global station moves
+with it; positions, local stations and section assignments do not. Where no
+gap is authored the export writes its 1 m default, as before.
+
+```bash
+ds dsgrid alignment gap show --package ./model.dsgrid --output json
+ds dsgrid alignment gap set --package ./model.dsgrid --out ./model-gap.dsgrid --gap-m 100 --dry-run
+ds dsgrid alignment gap set --package ./model.dsgrid --out ./model-gap.dsgrid --gap-m 100 --yes --output json
+```
+
+`set` is a typed mutation (the `structure retype` vocabulary: `--model` or
+`--package`/`--out`, `--revision`, `--dry-run`/`--yes`) over the engine's
+`set_alignment_station_gaps`, ONE revision for every alignment or the ones
+named with `--alignment`; `--clear` removes the authored gap. `show` lists the
+alignments in the export's order with the authored gap, the gap the export
+writes before each and the global start and end stations the exporter's own
+NUM projection gives them.
+
 ## Feature codes and clearance (program contract 03)
 
 PLS-CADD's clearance check knows only what the feature-code table tells it:
@@ -401,6 +425,8 @@ identity still reaches it without loading exchange planning.
 | `model list/show/create-local/import-external/set-active` | `ds_command_kernel::local_models` over `ds_layer_store::local_models` (this machine's catalogue); `show` opens the package with `ds_grid_engine::GridSession` |
 | `import-structure` | `ds_grid_exchange::structure_import::import_structure_package` |
 | `replace-structure` | `ds_grid_exchange::structure_import::replace_structure_package` (engine `replace_structure_definition`, `compare_structure_type_screen`) |
+| `alignment gap show` | `ds_grid_exchange::pls_cadd_num_projection::project_snapshot_to_pls_cadd_num_runs` |
+| `alignment gap set` | `ds_grid_engine::GridSession::apply_transaction_at_head` (`set_alignment_station_gaps`), `ds_grid_exchange::dsgrid::emit`, `local_models::Op::Revise` |
 | `structure describe/retype` | `ds_grid_engine::GridSession::apply_transaction_at_head` (`describe_structure`, `retype_structure`), `ds_grid_engine::evaluate_structure_type`, `ds_grid_exchange::dsgrid::emit`, `local_models::Op::Revise` |
 | `report structures` | `ds_grid_engine::report_structures` (+ `structure_rules::load_standard`), `ds_io::layers_to_xlsx` |
 | `report staking` | `ds_grid_exchange::staking_table::build_staking_table`, `ds_io::table_to_xlsx` |

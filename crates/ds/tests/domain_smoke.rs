@@ -13968,6 +13968,113 @@ fn dsgrid_replace_structure_raises_a_placed_definition_as_one_revision() {
 }
 
 #[test]
+fn dsgrid_alignment_gap_is_authored_and_shown_in_export_order() {
+    let root = temp_root("dsgrid-alignment-gap");
+    std::fs::create_dir_all(&root).unwrap();
+    let model = common::fixture();
+    let show = |path: &str| {
+        ok(&[
+            "dsgrid",
+            "alignment",
+            "gap",
+            "show",
+            "--package",
+            path,
+            "--output",
+            "json",
+        ])
+    };
+    let shown = show(&model);
+    assert_eq!(shown["authored"], 0);
+    assert_eq!(shown["default_gap_m"], 1.0);
+    let alignments = shown["alignments"].as_array().unwrap();
+    assert_eq!(alignments.len(), 1);
+    assert_eq!(alignments[0]["global_station_start_m"], 0.0);
+    // The humble alignment runs 400 m, X 500000 -> 500400.
+    assert!((alignments[0]["global_station_end_m"].as_f64().unwrap() - 400.0).abs() < 1e-6);
+
+    let out = root.join("gap.dsgrid");
+    let set = |extra: &[&str]| {
+        let mut args = vec![
+            "dsgrid",
+            "alignment",
+            "gap",
+            "set",
+            "--package",
+            model.as_str(),
+            "--out",
+            out.to_str().unwrap(),
+            "--output",
+            "json",
+        ];
+        args.extend_from_slice(extra);
+        ds(&args)
+    };
+    let code = |run: Run| {
+        run.envelope["error"]["code"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    assert_eq!(code(set(&["--dry-run"])), "gap_required");
+    assert_eq!(
+        code(set(&["--gap-m", "100", "--clear", "--dry-run"])),
+        "gap_required"
+    );
+    assert_eq!(code(set(&["--gap-m", "-5", "--dry-run"])), "gap_invalid");
+    assert_eq!(code(set(&["--gap-m", "100"])), "confirmation_required");
+    assert_eq!(
+        code(set(&[
+            "--gap-m",
+            "100",
+            "--alignment",
+            "nowhere",
+            "--dry-run"
+        ])),
+        "alignment_unknown"
+    );
+
+    let dry = set(&["--gap-m", "100", "--dry-run"]);
+    assert_eq!(dry.code, 0, "{}", dry.stdout);
+    assert_eq!(dry.envelope["data"]["dry_run"], true);
+    assert_eq!(dry.envelope["data"]["changed"], true);
+    assert!(!out.exists());
+
+    let written = set(&["--gap-m", "100", "--yes"]);
+    assert_eq!(written.code, 0, "{}", written.stdout);
+    let data = &written.envelope["data"];
+    assert_eq!(data["persisted"], true);
+    assert_eq!(data["gap"]["authored_gap_m"], 100.0);
+    assert_eq!(
+        data["operations"][0]["operation_id"],
+        "set_alignment_station_gaps"
+    );
+    let reread = show(out.to_str().unwrap());
+    assert_eq!(reread["authored"], 1);
+    assert_eq!(reread["alignments"][0]["authored_gap_m"], 100.0);
+
+    // Clearing returns the authored content, and so the head, it began at.
+    let cleared_path = root.join("cleared.dsgrid");
+    let cleared = ok(&[
+        "dsgrid",
+        "alignment",
+        "gap",
+        "set",
+        "--package",
+        out.to_str().unwrap(),
+        "--out",
+        cleared_path.to_str().unwrap(),
+        "--clear",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(cleared["resulting_revision"], shown["revision"]);
+    assert_eq!(show(cleared_path.to_str().unwrap())["authored"], 0);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn dsgrid_profile_checkpoint_validates_output_before_touching_the_window() {
     for args in [
         vec![

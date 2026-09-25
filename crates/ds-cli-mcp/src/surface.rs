@@ -304,8 +304,11 @@ impl Profile {
             // `dsgrid profile labels set|show`) were routed here from the
             // broad `grid` router they had pushed past its own budget. Raised
             // to 22 on 2026-09-24 for the governed head's versions, retire and
-            // restore, routed here for the same reason (e62edf85).
-            Self::GridLocalModel => 22,
+            // restore, routed here for the same reason (e62edf85). Raised to
+            // 24 on 2026-09-25 for `dsgrid alignment gap show|set`, the
+            // multiple-alignment gap as a typed working-copy edit, routed
+            // here like the Profile labels rather than past `grid`'s budget.
+            Self::GridLocalModel => 24,
             // The file-in/file-out engine workflow: fifteen leaves plus both
             // bootstrap tools. Raised from the default on 2026-09-25 by
             // `dsgrid replace-structure`, which belongs beside
@@ -615,6 +618,10 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.project.retire",
     "dsgrid.project.restore",
     "dsgrid.profile.labels.show",
+    // The multiple-alignment gap (2026-09-25) is a typed edit of the working
+    // copy, read and set like its Profile labels.
+    "dsgrid.alignment.gap.show",
+    "dsgrid.alignment.gap.set",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -630,6 +637,8 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.structure.admin-refresh",
     "dsgrid.profile.labels.set",
     "dsgrid.profile.labels.show",
+    "dsgrid.alignment.gap.show",
+    "dsgrid.alignment.gap.set",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD

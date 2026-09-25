@@ -235,6 +235,16 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::profile::labels::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::alignment::gap::SHOW,
+        handler: ds_cli_dsgrid::alignment::gap::show,
+        render: ds_cli_dsgrid::alignment::gap::render_show,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::alignment::gap::SET,
+        handler: ds_cli_dsgrid::alignment::gap::set,
+        render: ds_cli_dsgrid::alignment::gap::render_set,
+    },
+    Entry {
         command: &ds_cli_dsgrid::profile::open::COMMAND,
         handler: ds_cli_dsgrid::profile::open::run,
         render: ds_cli_dsgrid::profile::open::render,

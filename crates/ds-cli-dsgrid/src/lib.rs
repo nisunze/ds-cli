@@ -30,6 +30,7 @@
 //! typed verb is its inputs, its engine commands and its render; nothing
 //! else.
 
+pub mod alignment;
 pub mod analyse;
 pub mod apply;
 pub mod apply_batch;
@@ -81,6 +82,8 @@ pub static DOMAIN: Domain = Domain {
         &apply_batch::CORRECTION,
         &profile::labels::SHOW,
         &profile::labels::SET,
+        &alignment::gap::SHOW,
+        &alignment::gap::SET,
         &model::list::COMMAND,
         &model::show::COMMAND,
         &model::create_local::COMMAND,

@@ -239,6 +239,23 @@ Three rules hold, and they are the reason this is safe to hand to an agent:
 `convert` is `local_file_write`, not `artifact_write`, so it does not require
 `--yes`. It writes into a directory the caller named, and publishes nothing.
 
+Three model facts a whole-design PLS-CADD export writes that used to need a
+post-export patch:
+
+- **The multiple-alignment gap.** Each alignment's authored
+  `global_station_gap_m` (`ds dsgrid alignment gap set`) is written on the
+  NUM break row after the preceding run, and the DON global stations follow
+  from it; an unauthored gap is the writer's 1 m default.
+- **An edited cable.** A cable changed with `update_cable_definition` has
+  its retained `.wir` member rewritten in place — only the rows the reader
+  maps into the canonical cable, the rest byte-for-byte — so the emitted
+  workspace carries the mechanics its DON catenaries were solved with. The
+  report names it `member[<leaf>].cable_definition`. Sections keep their
+  authored sag; nothing is re-sagged.
+- **A replaced structure definition.** A definition replaced with `ds dsgrid
+  replace-structure` is written as its exact new bytes in place of the
+  preserved source member.
+
 ## `sync` — writing back into the workspace you came from
 
 ```bash

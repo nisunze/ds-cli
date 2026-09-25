@@ -1646,7 +1646,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // here on 2026-09-22 from the broad `grid` router they had pushed
             // past its budget. The governed head's versions, retire and
             // restore joined on 2026-09-24 for the same reason (e62edf85).
-            "grid-local-model" => 22,
+            // `dsgrid alignment gap show|set` joined on 2026-09-25.
+            "grid-local-model" => 24,
             // The file-in/file-out engine workflow; `dsgrid replace-structure`
             // joined `import-structure` here on 2026-09-25.
             "grid-native" => 17,

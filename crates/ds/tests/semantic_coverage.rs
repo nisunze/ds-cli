@@ -534,6 +534,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.profile.open", "local_file_write", "desktop_pairing"),
     ("dsgrid.profile.labels.show", "read_only", "none"),
     ("dsgrid.profile.labels.set", "local_file_write", "none"),
+    ("dsgrid.alignment.gap.show", "read_only", "none"),
+    ("dsgrid.alignment.gap.set", "local_file_write", "none"),
     // The typed command family over the engine (program contract 01 §2):
     // authority none on a working copy or a package file, `local_file_write`
     // because a working copy's next revision — or a new package — lands on
