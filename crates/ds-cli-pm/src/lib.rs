@@ -56,6 +56,7 @@
 //! by the parser, with the remedy of dropping the flag.
 
 pub mod geometry;
+pub mod model;
 pub mod party;
 pub mod plan;
 pub mod record;
@@ -91,6 +92,10 @@ pub static DOMAIN: Domain = Domain {
         &geometry::read::COMMAND,
         &geometry::set::COMMAND,
         &geometry::clear::COMMAND,
+        &model::REFERENCES,
+        &model::LINKS,
+        &model::ADD,
+        &model::REMOVE,
         &record::list::COMMAND,
         &record::read::COMMAND,
         &record::thread::COMMAND,

@@ -172,6 +172,26 @@ The write is the ordinary `create_task` / `update_task_fields` command every
 other `ds pm` write sends, against the revision it read, through the same
 headless door.
 
+## DS Grid models and governance versions in PM
+
+A project can contain several MV models with arbitrary display names. A PM
+reference uses the exact opaque model ID from the project catalog. It may name
+a governance marker `vN`; if omitted, it refers to the model as a whole.
+The content revision saved in a `.dsgrid` snapshot is a separate source pin
+and never stands in for `vN`. A marker may be open during design and frozen
+later; adding a PM link does not freeze or modify it.
+
+Tasks, milestones and project notes own their outgoing links. Their link
+lists preserve other relationships, and the PM service stamps the actor and
+time, verifies a newly added target under the same project, and records exact
+additions or removals in project activity. Task changes use the graph revision
+fence; project notes use their record version fence. The target model and its
+versions store no PM backlink. `pm model references` builds model-side
+readback from the graph and a bounded page of project notes. Follow the
+returned record cursor while `more` is true; that answer does not silently
+claim to cover later pages. For `vN`, readback includes its reason, author,
+observed source revision and attachments indexed on that source revision.
+
 ## A third party proposes; the PM admits
 
 The plan is not only the schedule editor's to write. A member with the

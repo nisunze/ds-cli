@@ -1,10 +1,10 @@
-//! Headless version adapters: one explicit project and server-assigned history.
+//! Headless version adapters: one explicit project and server-assigned history and explicit MV freezing.
 use ds_cli_contract::{
-    Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
+    Context, Failure, Inputs,
 };
 use ds_client_core::design_versions::Command as Request;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 pub const PROJECT: Arg = Arg::value(
     "project",
     "<project-id>",
@@ -52,7 +52,7 @@ const fn command(
         path,
         contract: 2,
         summary,
-        purpose: "Use one explicit project and captured identity without Desktop or active-project state. ds-brain alone assigns vN ordinals. LV comparison uses exact snapshots; MV comparison reports pinned content-revision metadata without claiming geometry comparison. Local browser rooms are not published history. Restore is LV-only.",
+        purpose: "Use one explicit project and exact object ID without Desktop or active-project state. ds-brain alone assigns vN ordinals. New MV markers remain open for fenced design iterations until explicitly frozen; existing historical markers are frozen. LV comparison uses exact snapshots; MV comparison reads content-revision metadata. Restore is LV-only.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessProject,
@@ -76,6 +76,20 @@ pub static LIST: Command = command(
         KIND,
         OBJECT,
         TRANSFORMER,
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::ReadOnly,
+);
+pub static READ: Command = command(
+    "design.version.read",
+    &["design", "version", "read"],
+    "Read one exact governed LV or MV vN marker.",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
+        TRANSFORMER,
+        Arg::value("version", "<vN>", "Exact assigned governance marker.").required(),
         crate::transformer::LANE_ARG,
     ],
     Effect::ReadOnly,
@@ -138,6 +152,70 @@ pub static BEGIN: Command = command(
     ],
     Effect::GlobalWrite,
 );
+pub static REVISE: Command = command(
+    "design.version.revise",
+    &["design", "version", "revise"],
+    "Revise one open MV governance vN against exact marker and source fences.",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
+        Arg::value("version", "<vN>", "Exact open governance marker.").required(),
+        Arg::value("reason", "<text>", "Why this design iteration changed.").required(),
+        Arg::value(
+            "milestone",
+            "<text>",
+            "Optional updated milestone; omission keeps the existing value.",
+        ),
+        Arg::value(
+            "expected-revision",
+            "<number>",
+            "Marker revision read before editing.",
+        )
+        .required(),
+        Arg::value(
+            "expected-source",
+            "<content-revision|->",
+            "Observed model head revision, or - when no content exists.",
+        )
+        .required(),
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::GlobalWrite,
+);
+pub static FREEZE: Command = command(
+    "design.version.freeze",
+    &["design", "version", "freeze"],
+    "Freeze one exact MV governance vN before submission or a new version.",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
+        Arg::value("version", "<vN>", "Exact open governance marker.").required(),
+        Arg::value("reason", "<text>", "Why this version is ready to freeze.").required(),
+        Arg::value(
+            "expected-revision",
+            "<number>",
+            "Marker revision read before freezing.",
+        )
+        .required(),
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::GlobalWrite,
+);
+pub static EVENTS: Command = command(
+    "design.version.events",
+    &["design", "version", "events"],
+    "Read the audit trail of one exact MV governance vN.",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
+        Arg::value("version", "<vN>", "Exact governance marker.").required(),
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::ReadOnly,
+);
 pub static RESTORE: Command = command(
     "design.version.restore",
     &["design", "version", "restore"],
@@ -187,6 +265,15 @@ pub fn list(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         },
     )
 }
+pub fn read(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ask(
+        i,
+        Request::Read {
+            transformer: object(i)?,
+            version: i.require("version")?.into(),
+        },
+    )
+}
 pub fn status(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
@@ -212,6 +299,62 @@ pub fn begin(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             transformer: object(i)?,
             reason: i.require("reason")?.into(),
             idempotency_key: i.require("idempotency-key")?.into(),
+        },
+    )
+}
+fn mv_object(i: &Inputs) -> Result<String, Failure> {
+    if i.require("kind")? != "mv_model" {
+        return Err(Failure::invalid(
+            "invalid_input",
+            "this lifecycle action requires --kind mv_model",
+        )
+        .remedy("use the exact MV model ID and --kind mv_model"));
+    }
+    object(i)
+}
+fn expected_revision(i: &Inputs) -> Result<i64, Failure> {
+    i.require("expected-revision")?
+        .parse::<i64>()
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            Failure::invalid(
+                "invalid_input",
+                "expected-revision must be a positive number",
+            )
+            .remedy("read the exact vN marker and pass its revision")
+        })
+}
+pub fn revise(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ask(
+        i,
+        Request::ReviseModel {
+            transformer: mv_object(i)?,
+            version: i.require("version")?.into(),
+            reason: i.require("reason")?.into(),
+            expected_revision: expected_revision(i)?,
+            expected_source_revision: i.require("expected-source")?.into(),
+            milestone: i.value("milestone").map(str::to_owned),
+        },
+    )
+}
+pub fn freeze(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ask(
+        i,
+        Request::FreezeModel {
+            transformer: mv_object(i)?,
+            version: i.require("version")?.into(),
+            reason: i.require("reason")?.into(),
+            expected_revision: expected_revision(i)?,
+        },
+    )
+}
+pub fn events(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ask(
+        i,
+        Request::ModelEvents {
+            transformer: mv_object(i)?,
+            version: i.require("version")?.into(),
         },
     )
 }

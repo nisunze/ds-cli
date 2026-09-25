@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v29",
+  "schema_version": "ds.native-client-profiles/v30",
   "development": true,
   "profiles": {
     "stable": {
@@ -203,7 +203,10 @@
           "get_version",
           "get_head",
           "create_version",
-          "restore_version"
+          "restore_version",
+          "revise_version",
+          "freeze_version",
+          "list_version_events"
         ]
       },
       "design_attachments": {
@@ -421,7 +424,10 @@
           "get_version",
           "get_head",
           "create_version",
-          "restore_version"
+          "restore_version",
+          "revise_version",
+          "freeze_version",
+          "list_version_events"
         ]
       },
       "design_attachments": {

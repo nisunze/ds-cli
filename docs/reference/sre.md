@@ -94,7 +94,7 @@ beyond `--lane`.
 The declared routes are `domains.sre.overview` (`GET /api/v1/sre/overview`) and
 `domains.sre.events` (`POST /api/v1/data`, action `query_table`, table
 `sre_requests`). Both are in `ds-command-kernel/routing/operations.json`, and
-the client profile pins both at schema v29.
+the client profile pins both at schema v30.
 
 Until 2026-09-18 both commands travelled through a paired DS GridDesign window,
 which held the same signed-in user and made the same two requests. That put
