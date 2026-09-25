@@ -65,11 +65,7 @@ pub static COMMAND: Command = Command {
         crate::ASSETS_UNREADABLE,
     ]),
     reference: Some("docs/reference/assets.md"),
-    search: &[
-        "write markdown project note attachment",
-        "author html report asset",
-        "attach report to PM task or note",
-    ],
+    search: &["compose", "note", "write"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
