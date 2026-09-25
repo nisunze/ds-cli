@@ -171,9 +171,18 @@ pub fn run(inputs: &Inputs, path: &str) -> Result<Value, Failure> {
         receipt["source_conversion"] = source;
     }
     let revision = receipt["revision"].as_str().unwrap_or_default().to_owned();
+    let revision_digest = receipt["digest"].as_str().map(str::to_owned);
     position(&mut receipt, lane, project, &model, &revision);
     if !attachments.is_empty() {
-        attach(&mut receipt, lane, project, &model, &revision, attachments);
+        attach(
+            &mut receipt,
+            lane,
+            project,
+            &model,
+            &revision,
+            revision_digest.as_deref(),
+            attachments,
+        );
     }
     Ok(receipt)
 }
@@ -289,6 +298,7 @@ fn attach(
     project: &str,
     model: &str,
     revision: &str,
+    revision_digest: Option<&str>,
     files: Vec<Attachment>,
 ) {
     let mut reported = Vec::with_capacity(files.len());
@@ -298,11 +308,16 @@ fn attach(
                 kind: "mv_model".into(),
                 id: model.into(),
                 version: Some(revision.into()),
+                version_digest: revision_digest.map(str::to_owned),
             },
             attachment: None,
             file: file.file.clone(),
             label: None,
             purpose: file.purpose.clone(),
+            media_type: None,
+            source_kind: None,
+            source_reference: None,
+            make_latest: true,
             bytes: file.bytes,
         };
         reported.push(

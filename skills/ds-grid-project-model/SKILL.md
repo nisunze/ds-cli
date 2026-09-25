@@ -52,21 +52,14 @@ Do not retry a moved-head conflict or change projects to force publication. Re-r
 Each publish is a revision of the model's current version; only `--bump-version` starts the next one (a submission). Put `--milestone`, `--approval submitted` and `--attach <delivered.bak>` on that revision, then mark it with `design version begin --kind mv_model --milestone <m> --expected-source <revision>`. Read history with `dsgrid project show|versions|compare`; `dsgrid project exports` holds immutable delivered files.
 
 
-To import replacement content as the next version of an existing project
-model, discover the live `dsgrid.publish-version` descriptor. Use one
+To import replacement content into an existing model, use one
 `ds dsgrid publish-version --path <incoming.dsgrid|incoming.bak>
 --replace-content --project <id> --project-model <existing-id>
 --expected-head <reviewed-revision> --kind mv_line --reason <text> --yes`
-operation. A PLS-CADD `.bak` also needs explicit `--crs`; a backup with
-several projects needs exact `--select-project <don-leaf>`. The command
-converts a backup in memory, downloads and verifies the immutable head,
-imports the source under that head's native identity at the next revision,
-then performs normal expected-head publication and exact readback. Inspect
-the receipt's source/head/result attestations, backup warnings or losses,
-new revision and digest. A changed head, invalid source or conversion loss
-refuses. No manual manifest ID rewrite, extra local Desktop model or third
-project model is part of this flow. Verify V1 is unchanged and the active
-local model did not change.
+operation. A `.bak` also needs `--crs` and, for multiple projects,
+`--select-project <don-leaf>`. Check the receipt's source, head, result,
+warnings, revision and digest. Verify the earlier version and active local
+model did not change.
 
 ## Typed edits of a working copy (structure list, descriptions, H-poles)
 
@@ -106,29 +99,21 @@ Procedure, in this order:
 5. `ds dsgrid report structures …` again — the receipt is the evidence
    (`resulting_revision`, counts, the file digest).
 
-Never pass `--yes` and `--dry-run` together; never edit the package file
-beside the catalogue by hand; a package refused `package_decode_failed` is
-damaged or carries a table schema this build does not decode, and is
-re-converted from its PLS-CADD source, not repaired (a package that merely
-predates an appended column opens — `model show` lists it under
-`head.prior_schema_members`). These are proposals (`verification_level: proposal`): PLS-CADD
-confirms after `ds dsgrid-exchange sync` (contract 02).
+Never combine `--yes` with `--dry-run` or edit the package by hand. For
+`package_decode_failed`, re-convert the PLS-CADD source; older additive
+schemas still open (`head.prior_schema_members`). These edits are proposals
+until PLS-CADD confirms after `ds dsgrid-exchange sync`.
 
 ## PLS-CADD sources
 
 A PLS-CADD workspace or `.bak` is not a local-model import. Discover and use `dsgrid-exchange.inspect`, `dsgrid-exchange.plan`, and `dsgrid-exchange.convert` to produce a new `.dsgrid`; validate it, then acquire that package with `model import-external`. Never add a second convert-and-publish route to this workflow.
 
-Native package lineage is separate from governance `vN`: publish preserves the
-validated manifest model id and nonnegative revision (including zero). An append
-must retain model identity and advance changed package content; repeated identical
-checkpoints remain stable. A legacy head without lineage needs the server's stated
-recovery rather than guessing identity. Discover `design.version.*` for explicit-
-project MV governance metadata. MV attachments bind the exact content revision
-id from that descriptor, while LV attachments bind `vN`; neither attachment
-operation requires a paired Desktop. After publishing a submitted version,
-attach the delivered `.bak` with `design.attachment.publish --kind mv_model
---version <revision_id>` (the model digest is pinned with it); read bindings
-with `design.attachment.versions`/`show` and fetch verified bytes with
+Native package lineage and governance `vN` are separate. Keep the validated
+manifest identity and advance changed package content; ask the server how to
+recover a legacy head. MV attachments pin a content revision and its digest;
+LV attachments pin `vN`. After submission, publish the `.bak` with
+`design.attachment.publish --kind mv_model --version <revision_id>`; inspect
+its bindings with `design.attachment.versions|show` and verified bytes with
 `design.attachment.download --out`.
 
 A version's package files: `dsgrid.asset.list|extract` (local package) and

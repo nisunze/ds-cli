@@ -3447,6 +3447,9 @@ fn every_offline_command_is_available_without_any_engine_binary() {
             // Native, like `dsgrid.project.*`: honestly unavailable in a build
             // with no digest-pinned release catalog, never for want of a binary.
             && id != "dsgrid.model.prepare-project"
+            // These verbs drive an installed Windows PLS-CADD application;
+            // only the embedded dialog catalogue is host-independent.
+            && !(id.starts_with("pls.desktop.") && id != "pls.desktop.dialogs")
         {
             checked += 1;
             assert_eq!(

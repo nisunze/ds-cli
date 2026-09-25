@@ -13,6 +13,33 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
+    // Exact effect and authority reviewed from the integrated CLI descriptors.
+    ("assets.versions", "read_only", "headless_project"),
+    ("data.project-cache.query", "local_file_write", "headless_project"),
+    ("data.spatial.execute", "local_file_write", "headless_project"),
+    ("data.spatial.plan", "local_file_write", "headless_project"),
+    ("dsgrid.alignment.gap.set", "local_file_write", "none"),
+    ("dsgrid.alignment.gap.show", "read_only", "none"),
+    ("dsgrid.asset.attach", "local_file_write", "none"),
+    ("dsgrid.asset.detach", "local_file_write", "none"),
+    ("dsgrid.asset.extract", "local_file_write", "none"),
+    ("dsgrid.asset.list", "read_only", "none"),
+    ("dsgrid.project.geojson", "local_file_write", "headless_project"),
+    ("dsgrid.replace-structure", "local_file_write", "none"),
+    ("pls.desktop.autosag", "local_file_write", "none"),
+    ("pls.desktop.check", "read_only", "none"),
+    ("pls.desktop.deliver", "local_file_write", "none"),
+    ("pls.desktop.dialogs", "discovery", "none"),
+    ("pls.desktop.qualify", "local_file_write", "none"),
+    ("pls.desktop.reports", "local_file_write", "none"),
+    ("pls.desktop.restore", "local_file_write", "none"),
+    ("pls.desktop.sheets-pdf", "local_file_write", "none"),
+    ("report.plan-profile-config", "local_file_write", "none"),
+    ("report.plan-profile-config.schema", "discovery", "none"),
+    ("report.spatial.workbook", "local_file_write", "none"),
+    ("survey.entries.read", "local_auth_state", "headless_project"),
+    ("survey.local.status", "read_only", "none"),
+    ("survey.photo.fetch", "local_file_write", "headless_project"),
     (
         "design.group.project-preview",
         "local_auth_state",

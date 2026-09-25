@@ -275,7 +275,7 @@ impl Profile {
             // file-in/file-out sibling of `import-structure` that sits beside
             // it: a router that can add a definition but not replace one
             // leaves raised allowable tables to post-export patches.
-            Self::Grid => 29,
+            Self::Grid => 30,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -360,8 +360,9 @@ impl Profile {
             // Alignment gap show and set join the same working-copy edits.
             // Versions and submissions add the head, revisions, exports, governance,
             // and pinned attachments to this same model workflow.
-            // Four additional attachment reads and pointer edits complete the set.
-            Self::GridLocalModel => 55,
+            // The integrated profile contains 55 lifecycle leaves and two
+            // bootstrap tools; each leaf belongs to this model workflow.
+            Self::GridLocalModel => 57,
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.

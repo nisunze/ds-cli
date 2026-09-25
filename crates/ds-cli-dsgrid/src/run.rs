@@ -619,6 +619,35 @@ fn dispatch(
             ds_grid_engine::spotting_graph::spotting_graph(session.snapshot())
                 .map_err(|error| engine_error(operation_id, error))?,
         ),
+        "spotting_settings" => serialize(
+            operation_id,
+            ds_grid_engine::spotting::requests::spotting_settings_projection(session.snapshot()),
+        ),
+        "derive_spotting_requests" => {
+            let request: ds_grid_engine::spotting::requests::DeriveSpottingRequestsParams =
+                parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                ds_grid_engine::spotting::requests::derive_spotting_requests_with(
+                    session.snapshot(),
+                    &request,
+                )
+                .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
+        "spotting_layout_application" => {
+            let request: ds_grid_engine::spotting::apply::SpottingLayoutApplyRequest =
+                parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                ds_grid_engine::spotting::apply::spotting_layout_application(
+                    session.snapshot(),
+                    session.current_revision(),
+                    &request,
+                )
+                .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
         "plan_optimum_spotting_batch" => {
             let mut request: ds_grid_engine::spotting::batch::SpottingBatchRequest =
                 parse(operation_id, params)?;

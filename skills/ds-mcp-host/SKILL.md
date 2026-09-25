@@ -40,7 +40,7 @@ aggregate/spatial reads, project-form settings, reusable templates, and
 create-from-template. `survey-migration` isolates governed bulk import and
 project-to-project copy, while `solar-input` isolates input capture for the
 project named in each call. Each profile publishes
-both bootstrap tools, `ds_catalog` and `ds_diagnostics`, plus bounded fully
+both bootstrap tools, `ds_catalog` and `ds_diagnostics`, plus bounded
 typed leaves. Do not install every profile: that duplicates discovery and
 recreates selection ambiguity.
 
