@@ -966,6 +966,33 @@ published_version is the governance ordinal; manifest_model_revision is the
 native package's separate nonnegative lineage counter. Status never inspects
 an unsaved room or guesses whether its local contents need publication.
 
+`ds design version show --project <id> --kind <kind> --object <id> --version vN`
+reads one assigned version without its playback content. For MV it names
+`content_revision`, the exact revision attachments bind to — the answer to
+"which revision did submission v2 pin". `ds design version begin` takes
+`--milestone <text>` (at most 120 bytes, echoed back or refused) and
+`--expected-source <revision|->`: for MV the head revision you reviewed, or
+`-` for a model with no content yet; for LV the transformer's RFC3339 update
+time. A head that moved since is refused rather than pinned.
+
+`ds design version begin-batch --project <id> --file batch.json` versions up
+to 200 LV and MV objects in one request. The file is
+`{"reason"?, "milestone"?, "items": [{"object": {"kind", "id"}, "reason"?,
+"milestone"?, "expected_source_revision"?, "idempotency_key"}]}` and nothing
+else; every item needs its own replay key and a reason (its own or the shared
+one), and an object named twice is refused (the Server would skip it
+silently). Items succeed or fail on their own: the receipt has one result per
+item in order, `ok_count` and `failed_count`, and a failed item carries the
+Server's code. `ds design version summaries --project <id> --kind <kind>
+--object <id> [--object <id>…]` answers the latest vN and count per object in
+one read; a per-object read failure is that row's `error`, not the call's. Both
+need the native client profile that declares `create_versions` and
+`list_version_summaries` (schema v30).
+
+MV versions are the governance half of a submission; the content half — the
+revisions, their versions and what each carries — is `ds dsgrid project`. See
+[`dsgrid.md` § Versions and submissions](dsgrid.md#versions-and-submissions).
+
 `ds design conflict list --project <id>` and `ds design conflict check --project <id> --transformer <name>`
 answer overwrite admissibility. `list` applies the kernel's detection rule —
 a room this browser holds, dirty and server-known, whose save counter moved

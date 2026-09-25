@@ -37,6 +37,8 @@ Publish separately with `ds dsgrid publish-version`. For a new project model, na
 
 Do not retry a moved-head conflict or change projects to force publication. Re-read the project model, review the new head, and ask for a fresh publication decision.
 
+Each publish is a revision of the model's current version; only `--bump-version` starts the next one (a submission). Put `--milestone`, `--approval submitted` and `--attach <delivered.bak>` on that revision, then mark it with `design version begin --kind mv_model --milestone <m> --expected-source <revision>`. Read history with `dsgrid project show|versions|compare`; `dsgrid project exports` holds immutable delivered files.
+
 
 To import replacement content as the next version of an existing project
 model, discover the live `dsgrid.publish-version` descriptor. Use one

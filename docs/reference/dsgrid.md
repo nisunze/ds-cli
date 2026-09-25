@@ -47,14 +47,25 @@ These words are deliberately not interchangeable:
 | `ds dsgrid model prepare-project` | Show which exact governed MV heads of the named project this machine holds and, with `--download-missing`, fill the rest as project-pinned working copies. | headless_project |
 | `ds dsgrid project retire` | Retire one superseded project model with explicit project, head revision, digest and reason; a byte-verified separate backup is mandatory and immutable revisions remain. | headless_project + `--yes` |
 | `ds dsgrid project restore` | Restore the exact retired head after verifying its separate backup; version-bound attachments retain their pins. | headless_project + `--yes` |
-| `ds dsgrid project list --include-deleted` | Include retired heads and their exact revision and digest for restoration. | headless_project |
-| `ds dsgrid project versions` | List immutable versions of an active or retired model for exact download. | headless_project |
-| `ds dsgrid publish-version` | Register one immutable revision in a project's catalogue; never changes local activity. | project + `--yes` |
+| `ds dsgrid project list --include-deleted` | Include retired heads and their exact revision and digest for restoration; every row carries `head_version`, approval and update/retirement fields. | headless_project |
+| `ds dsgrid project show` | One model's current version, its revision count and the head's ordinal; with `--revision`, one revision's metadata. No bytes. | headless_project |
+| `ds dsgrid project versions` | A model's versions, each with its revisions in save order and their ordinals. | headless_project |
+| `ds dsgrid project compare` | Entities added, changed and removed between two revisions or local packages. | headless_project |
+| `ds dsgrid project exports list\|publish\|download` | The immutable export files one revision carries. | headless_project (+ `--yes` to publish) |
+| `ds dsgrid project bump-version` | Start the next version from the head's exact bytes, uploading nothing. | headless_project + `--yes` |
+| `ds dsgrid project update` | Rename or re-describe a model; revisions keep the name they were saved under. | headless_project + `--yes` |
+| `ds dsgrid project set-approval` | Append a review decision to one existing revision (head or historic). | headless_project + `--yes` |
+| `ds dsgrid project backup download` | Read a retired model's byte-verified backup into a new local file. | headless_project |
+| `ds dsgrid publish-version` | Save one immutable revision into the model's current version, or `--bump-version` to start the next; never changes local activity. | headless_project + `--yes` |
 
 The local commands never accept a project. Publication never accepts arbitrary
-model bytes: it names an absolute `.dsgrid` path with an explicit `--project`,
-or an opaque local model of the paired Desktop, which supplies its own selected
-project.
+model bytes: it names an absolute `.dsgrid` path (or, with
+`--replace-content`, a PLS-CADD `.bak` with `--crs`) with an explicit
+`--project`, or an opaque local model of the
+paired Desktop, which supplies its own selected project. The descriptor
+declares the native route (`headless_project`); dispatch arbitrates the paired
+fallback without `--path` as a `project` command, so the Desktop's project
+must be the caller's.
 
 `prepare-project` is the headless form of the desktop's project MV cache:
 a head is *held* when a working copy pinned to exactly that project, model,
@@ -74,6 +85,108 @@ ds dsgrid model list --lane canary --account <uid>       # the copies, origin "p
 PLS-CADD workspaces and `.bak` files remain under `ds dsgrid-exchange inspect`,
 `plan`, and `convert`; there is no second conversion verb here.
 
+## Versions and submissions
+
+Four things are called a "version" somewhere in the stack. They are kept
+apart deliberately:
+
+| Word | What it is | Where it lives | Commands |
+|---|---|---|---|
+| **Revision** | One save: exact, immutable, content-addressed `.dsgrid` bytes (`revision_id` `rev-…`, model digest). | Project catalog | `publish-version`, `project show --revision`, `project download`, `project compare` |
+| **Version** (`head_version`, the app's v1, v2) | An ordered run of revisions. A save joins the current version; only `--bump-version` starts the next. A version is never frozen: it takes saves until a higher version supersedes it. | Project catalog | `project show`, `project versions`, `publish-version --bump-version` |
+| **Governance vN** | A deliberate marker over the model identity (a submission) that pins the head revision and digest it observed. A separate counter from the version above. | `/api/v1/design/versions` | `design version begin\|show\|list\|status\|compare\|begin-batch\|summaries --kind mv_model` |
+| **Attachment / export** | A file carried by one exact content revision — never by a vN. An attachment is revisioned and archivable; an export is an immutable derived output pinned to the revision's digest. | `/api/v1/design/attachments`, catalog exports | `publish-version --attach`, `design attachment …`, `project exports …` |
+
+A designer saves thousands of times within one version: each
+`publish-version` is a revision, and its receipt says where it landed —
+`version`, `revision_ordinal_within_version` (1 for the revision that started
+the version), `version_revision_count` and `version_started`. The Server
+stores the ordinal on every revision and the count on the head, and those are
+used as they are. Against a Server that predates stored ordinals, the ordinal
+is read from the parent chain (that Server orders revisions inside a version
+by content hash, not by time); when a version holds more saves than the
+bounded walk reads (2000), the count is a lower bound (`count_exact: false`)
+and no ordinal is claimed. `project versions` groups one page by version,
+newest first, each version's revisions in save order; only against an older
+Server can the last group of a page with `more: true` report null ordinals.
+
+A revision records its own governance: `--milestone`, `--description`,
+`--design-stage`, `--detail-level`, `--approval draft|submitted|approved|rejected`
+(a decision needs `--approval-level` and `--approval-reason` and the approving
+capability), repeated `--operation-summary`, and ordered
+`--composition-source <model:revision>` (2 to 100; each digest is read from the
+catalog). A NEW model published from a package that `ds dsgrid-exchange
+convert` produced records typed `migration_source` from the package's own
+origin record — kind `pls_cadd_workspace`, the source leaf, the SHA-256 of the
+exact preserved workspace and the manifest id. The catalog admits that on a
+model's first revision only, so a `.bak` or `.dsgrid` imported with
+`--replace-content` states the same lineage (kind `pls_cadd_bak` or
+`dsgrid_package`, the file name, its SHA-256) as one `operation_summary` line.
+
+### The submission recipe
+
+v1 is the incoming model; v2 is our submitted design on top of it.
+
+```bash
+# v1: convert the incoming .bak, then publish it as a new model; the
+# package's origin record becomes the revision's migration_source.
+ds dsgrid-exchange convert --source /work/incoming.bak --target dsgrid \
+  --crs EPSG:32735 --out /work/v1
+ds dsgrid publish-version --path /work/v1/incoming.dsgrid \
+  --project <p> --name "Kamonyi MV" --kind mv_line --yes
+
+# Iterate: every save is a revision of the current version (no bump).
+ds dsgrid publish-version --path /work/route.dsgrid --project <p> \
+  --project-model <m> --expected-head <head> --kind mv_line \
+  --reason "Respotted span 14" --yes
+
+# Submit: start the next version with the submitted revision, record the
+# milestone and review state, and attach the delivered backup to it.
+ds dsgrid publish-version --path /work/route.dsgrid --project <p> \
+  --project-model <m> --expected-head <head> --kind mv_line --bump-version \
+  --milestone "Submission 2 to REG" --approval submitted \
+  --attach /work/delivered.bak:native_workspace --yes
+
+# Mark the submission as a governance vN pinned to exactly that revision.
+ds design version begin --project <p> --kind mv_model --object <m> \
+  --reason "Submitted to REG" --milestone "Submission 2" \
+  --expected-source <revision-from-the-receipt> --idempotency-key submission-2 --yes
+```
+
+`--attach` runs after the revision commits and targets the NEW revision; the
+revision stands whatever happens to an attachment, and the receipt names each
+file with its outcome (`attachments_failed`, and a `retry` command for any that
+failed). Every `--attach` file is read and bounded before anything is
+uploaded. To record a file as an immutable derived output instead, use
+`ds dsgrid project exports publish --model <m> --revision <rev> --file
+delivered.bak --output-id pls-delivered-workspace --format pls_cadd_bak --yes`;
+an export id can never be rewritten, and `exports download` reads it back
+digest-verified.
+
+`ds design version show --kind mv_model --object <m> --version v2` resolves a
+vN to the content revision (`content_revision`) that its attachments bind to.
+
+When the content that goes out is already the head, start the version without
+uploading anything: `ds dsgrid project bump-version --model <m> --expected-head
+<head> --reason "Submitted to REG" --milestone "Submission 2" --yes`. Its first
+revision re-pins the head's exact bytes (`content_changed: false`), its
+approval restarts as `draft`, and one head can start at most one next version.
+A decision taken after the fact is `ds dsgrid project set-approval --model <m>
+--revision <rev> --expected-head <head> --status approved --level <id>
+--reason <text> --yes`: the revision stays immutable, the decision is appended
+beside it, and `project show --revision` reports `effective_approval` and every
+`approval_decisions` entry. `ds dsgrid project update --name` renames a model
+(`publish-version --name` never does).
+
+### Older Servers
+
+`--bump-version`, `exports download`, `project bump-version`, `update`,
+`set-approval` and `backup download` use a field or an action newer than some
+deployed Servers. Such a Server refuses them as `server_action_unsupported`;
+nothing is retried or reshaped. A Server that predates explicit bumps also
+numbers every save as a new version, which the receipt shows as
+`version_started: true` on a plain save.
+
 ## The link to a PLS-CADD workspace
 
 ```bash
@@ -90,7 +203,10 @@ version (`DON 57`, `NUM 14`, `CRI 94`, `FEA 15`, `STRUCT 13`, `XYZ 5`, `TIN
 5`, `PPS 57` …), the member count and when. The folder must digest to the
 workspace the package was imported from; any other folder is
 `workspace_not_this_package`, because a sync into it would write edits
-computed against a different baseline. Relinking replaces the link.
+computed against a different baseline. Relinking replaces the link;
+`ds dsgrid model unlink --model local-<id>` removes it (the copy, its package
+and the folder are untouched, and a copy with no link is refused as
+`local_model_request_invalid`).
 
 `import-external` links automatically when the package sits beside the
 `exchange-report.json` `convert` wrote, the report names one PLS-CADD folder
