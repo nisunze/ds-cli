@@ -50,6 +50,8 @@ pub const MAX_ENRICHMENT_TRANSFORMERS: usize = 50;
 pub const MAX_QUERY_FILTERS: usize = 20;
 /// The most rows one tag query returns.
 pub const MAX_QUERY_ROWS: i64 = 2_000;
+/// The longest moderation reason (`designCollabMaxReason`).
+pub const MAX_REASON: usize = 2_000;
 /// The largest structured input (a definition, a filter list, bindings) in
 /// serialised bytes.
 const MAX_STRUCTURED_BYTES: usize = 64 * 1024;
@@ -230,6 +232,15 @@ pub enum Command {
         expected_version: i64,
         reopen: bool,
     },
+    /// Redact one comment's body under the thread version the moderator
+    /// read, with the reason the audit keeps. Irreversible by construction:
+    /// ds-brain does not retain the text it clears.
+    RedactComment {
+        thread_id: String,
+        comment_id: String,
+        expected_version: i64,
+        reason: String,
+    },
     /// Promote one thread to a Project Management task, at its current
     /// version, against the plan's current revision.
     PromoteThread {
@@ -283,6 +294,7 @@ impl Command {
             Self::CreateThread { .. } => "create_thread",
             Self::AddComment { .. } => "add_comment",
             Self::ResolveThread { .. } => "resolve_thread",
+            Self::RedactComment { .. } => "redact_comment",
             Self::PromoteThread { .. } => "promote_thread",
         }
     }
@@ -425,6 +437,17 @@ impl Command {
                     expected_version,
                     ..
                 } => id(thread_id) && *expected_version >= 0,
+                Self::RedactComment {
+                    thread_id,
+                    comment_id,
+                    expected_version,
+                    reason,
+                } => {
+                    id(thread_id)
+                        && id(comment_id)
+                        && *expected_version >= 1
+                        && text(reason, MAX_REASON)
+                }
                 Self::PromoteThread {
                     thread_id,
                     expected_version,
@@ -624,6 +647,19 @@ impl Command {
                 }
                 put(&mut payload, "resolution", resolution);
             }
+            Self::RedactComment {
+                thread_id,
+                comment_id,
+                expected_version,
+                reason,
+            } => put(
+                &mut payload,
+                "redaction",
+                json!({
+                    "thread_id": thread_id, "comment_id": comment_id,
+                    "expected_version": expected_version, "reason": reason.trim(),
+                }),
+            ),
             Self::PromoteThread {
                 thread_id,
                 expected_version,
@@ -667,6 +703,7 @@ impl Command {
             | Self::CreateThread { .. }
             | Self::AddComment { .. }
             | Self::ResolveThread { .. }
+            | Self::RedactComment { .. }
             | Self::PromoteThread { .. } => return Some(data.clone()),
         };
         let value = data.get(member)?;
@@ -844,6 +881,53 @@ mod tests {
             include_resolved: false,
         };
         assert!(threads.payload("p").get("include_resolved").is_none());
+    }
+
+    /// The moderation action carries the version the moderator read and the
+    /// reason, exactly as `redactDesignComment` builds it; a missing reason
+    /// or an unread (zero) version never leaves this owner.
+    #[test]
+    fn a_redaction_names_the_comment_the_version_and_the_reason() {
+        let redact = Command::RedactComment {
+            thread_id: "thread-1".into(),
+            comment_id: "c-9".into(),
+            expected_version: 4,
+            reason: "  personal data  ".into(),
+        };
+        assert_eq!(redact.action(), "redact_comment");
+        assert!(redact.validate("p").is_ok());
+        assert_eq!(
+            redact.payload("p")["redaction"],
+            json!({"thread_id": "thread-1", "comment_id": "c-9", "expected_version": 4, "reason": "personal data"})
+        );
+        for refused in [
+            Command::RedactComment {
+                thread_id: "thread-1".into(),
+                comment_id: "c-9".into(),
+                expected_version: 0,
+                reason: "why".into(),
+            },
+            Command::RedactComment {
+                thread_id: "thread-1".into(),
+                comment_id: "c-9".into(),
+                expected_version: 4,
+                reason: "   ".into(),
+            },
+            Command::RedactComment {
+                thread_id: "thread-1".into(),
+                comment_id: "c/9".into(),
+                expected_version: 4,
+                reason: "why".into(),
+            },
+            Command::RedactComment {
+                thread_id: "thread-1".into(),
+                comment_id: "c-9".into(),
+                expected_version: 4,
+                reason: "x".repeat(MAX_REASON + 1),
+            },
+        ] {
+            assert!(refused.validate("p").is_err());
+        }
     }
 
     #[test]
