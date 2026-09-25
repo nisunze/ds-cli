@@ -54,6 +54,44 @@ pub static COMMAND: Command = Command {
         Arg::value("title", "<text>", "Project title printed on every page.").required(),
         Arg::value("sheet-title", "<text>", "Drawing title.").default("MV plan & profile"),
         Arg::value(
+            "drawing-revision",
+            "<issue>",
+            "Human-readable drawing issue in the title block; model hash remains in PDF metadata.",
+        )
+        .default("v0"),
+        Arg::value(
+            "drawing-date",
+            "<YYYY-MM-DD>",
+            "Optional date beside the drawing revision.",
+        ),
+        Arg::value(
+            "title-country",
+            "<name>",
+            "Country or authority caption beneath the first logo.",
+        )
+        .default("Republic of Rwanda"),
+        Arg::value(
+            "title-employer",
+            "<name>",
+            "Employer caption beneath the second logo.",
+        )
+        .default("EDCL"),
+        Arg::value(
+            "title-contractor",
+            "<name>",
+            "Contractor caption beneath the third logo.",
+        ),
+        Arg::value(
+            "title-programme",
+            "<text>",
+            "Optional project programme wording from the project printing setup.",
+        ),
+        Arg::value(
+            "title-subject",
+            "<text>",
+            "Optional full project subject; arranged in two lines in the title block.",
+        ),
+        Arg::value(
             "ink",
             "<monochrome|reference_accents>",
             "Mostly black pens or restrained conductor and structure accents from the approved 120 ACSR reference.",
@@ -222,7 +260,7 @@ pub static COMMAND: Command = Command {
         Refusal {
             code: "logo_manifest_invalid",
             when: "the logo manifest cannot be read as a JSON array",
-            remedy: "provide a valid JSON array of one or two absolute PNG/JPEG paths",
+            remedy: "provide a valid JSON array of one to three absolute PNG/JPEG paths",
         },
         Refusal {
             code: "label_rows_invalid",
@@ -375,7 +413,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         None => json!([]),
     };
-    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"out_dir":out_dir,"sample_pages":scale("sample-pages")?,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":{"format":inputs.require("format")?,"ink_mode":inputs.value("ink").unwrap_or("monochrome"),"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"plan_scale":scale("plan-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","plan_angle_policy":inputs.value("angle-policy").unwrap_or("preserve_if_fit"),"angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"plan_buffer_m":decimal("plan-buffer-m")?.unwrap_or(6.0),"show_profile_grid":inputs.value("profile-grid").unwrap_or("on")=="on","show_ds_branding":inputs.value("ds-branding").unwrap_or("on")=="on","profile_elevation_breaks":inputs.value("profile-elevation-breaks").unwrap_or("on")=="on","break_support_context":inputs.value("break-support-context").unwrap_or("once"),"show_profile_continuations":inputs.value("profile-continuations").unwrap_or("on")=="on","show_attachment_points":selection("attachments"),"show_span_labels":selection("span-labels"),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows}});
+    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"out_dir":out_dir,"sample_pages":scale("sample-pages")?,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":{"format":inputs.require("format")?,"ink_mode":inputs.value("ink").unwrap_or("monochrome"),"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"drawing_revision":inputs.value("drawing-revision").unwrap_or("v0"),"drawing_date":inputs.value("drawing-date").unwrap_or(""),"title_country":inputs.value("title-country").unwrap_or("Republic of Rwanda"),"title_employer":inputs.value("title-employer").unwrap_or("EDCL"),"title_contractor":inputs.value("title-contractor").unwrap_or(""),"title_programme":inputs.value("title-programme").unwrap_or(""),"title_subject":inputs.value("title-subject").unwrap_or(""),"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"plan_scale":scale("plan-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","plan_angle_policy":inputs.value("angle-policy").unwrap_or("preserve_if_fit"),"angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"plan_buffer_m":decimal("plan-buffer-m")?.unwrap_or(6.0),"show_profile_grid":inputs.value("profile-grid").unwrap_or("on")=="on","show_ds_branding":inputs.value("ds-branding").unwrap_or("on")=="on","profile_elevation_breaks":inputs.value("profile-elevation-breaks").unwrap_or("on")=="on","break_support_context":inputs.value("break-support-context").unwrap_or("once"),"show_profile_continuations":inputs.value("profile-continuations").unwrap_or("on")=="on","show_attachment_points":selection("attachments"),"show_span_labels":selection("span-labels"),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows}});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     std::fs::write(&request_path, bytes)

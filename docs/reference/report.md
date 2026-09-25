@@ -724,6 +724,16 @@ adjusts its actual vertical denominator and prints it. Large holes in the
 pinned ground or conductor source are marked instead of interpolated.
 `--profile-continuations` controls matched page cuts. A short last page is
 balanced across the final pair. The manifest records each printed window.
+The compact drawing block carries the conventional revision, logo, project,
+sign-off and sheet fields without reducing either drawing panel.
+`--drawing-revision` defaults to `v0`; `--drawing-date` and
+`--title-country`, `--title-employer`, `--title-contractor`,
+`--title-programme` and `--title-subject` come from the project's printing
+identity. Up to three `--logos` keep their native aspect ratios. Alignment,
+station and scale notes sit in the free lower margin. The exact model
+revision stays in the result receipt and PDF information metadata; the
+visible revision is the human drawing issue. `--ds-branding off` omits the
+discrete margin credit.
 Each default vertical label row holds one entity field: structure number,
 structure type, then comments in the advanced format. `--ink monochrome` is
 the default; `--ink reference_accents` applies
