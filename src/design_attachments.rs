@@ -37,6 +37,20 @@ use serde_json::Value;
 
 pub const SCHEMA: &str = "ds.design-attachments/v1";
 
+/// The `ds` command that performs each action kind this module can emit.
+///
+/// An action a surface renders must have a verb behind it, or an operator is
+/// offered a button an agent cannot press: `make_latest` was offered here and
+/// in the browser long before `ds design attachment set-latest` existed. The
+/// CLI's own test holds every entry to a registered command. `restore` is
+/// `retire --restore`: the verb stays one, the switch is the argument.
+pub const ACTION_COMMANDS: [(&str, &str); 4] = [
+    ("download", "design.attachment.download"),
+    ("make_latest", "design.attachment.set-latest"),
+    ("retire", "design.attachment.retire"),
+    ("restore", "design.attachment.retire"),
+];
+
 /// What a caller may do to this project's attachments at all.
 #[derive(Deserialize, Debug, Clone, Copy, Default)]
 #[serde(deny_unknown_fields)]
@@ -536,6 +550,52 @@ mod tests {
         assert_eq!(
             keys(&file["actions"]),
             ["dsa_action_download_latest", "dsa_action_retire"],
+        );
+    }
+
+    /// Every kind any row can carry — a live file with an older revision, a
+    /// retired file with a retired revision, a truncated file — is named in
+    /// [`ACTION_COMMANDS`], so none is offered without a command behind it.
+    #[test]
+    fn every_emitted_action_kind_names_its_command() {
+        let reply = run(
+            json!([
+                {
+                    "attachment": {"attachment_id": "a", "label": "a.bak", "state": "ready",
+                                   "latest_revision_id": "rev-2", "revision_count": 3},
+                    "revisions": [
+                        {"revision_id": "rev-3", "revision": 3, "deleted_at": "2026-09-19T00:00:00Z"},
+                        {"revision_id": "rev-2", "revision": 2},
+                        {"revision_id": "rev-1", "revision": 1},
+                    ],
+                },
+                {
+                    "attachment": {"attachment_id": "b", "label": "b.bak", "state": "archived",
+                                   "latest_revision_id": null, "revision_count": 1},
+                    "revisions": [{"revision_id": "rev-1", "revision": 1, "deleted_at": "2026-09-19T00:00:00Z"}],
+                },
+            ]),
+            true,
+            false,
+        );
+        let mut kinds = std::collections::BTreeSet::new();
+        for file in reply["files"].as_array().expect("files") {
+            for action in file["actions"].as_array().expect("actions") {
+                kinds.insert(action["kind"].as_str().expect("kind").to_string());
+            }
+            for revision in file["revisions"].as_array().expect("revisions") {
+                for action in revision["actions"].as_array().expect("actions") {
+                    kinds.insert(action["kind"].as_str().expect("kind").to_string());
+                }
+            }
+        }
+        let named: std::collections::BTreeSet<String> = ACTION_COMMANDS
+            .iter()
+            .map(|(kind, _)| kind.to_string())
+            .collect();
+        assert_eq!(
+            kinds, named,
+            "an emitted kind has no command, or a command names no kind"
         );
     }
 

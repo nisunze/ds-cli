@@ -1255,6 +1255,36 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             command,
         )
     }
+    /// One attachment revision's receipt and its verified bytes, through the
+    /// signed read the `download` action authorizes.
+    pub fn design_attachment_bytes(
+        &mut self,
+        project: &str,
+        attachment: &str,
+        revision: Option<&str>,
+        now: u64,
+    ) -> Result<(serde_json::Value, Vec<u8>), ClientError> {
+        crate::design_attachments::Command::Download {
+            attachment: attachment.to_owned(),
+            revision: revision.map(str::to_owned),
+        }
+        .validate(project)?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::design_attachments::fetch(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            attachment,
+            revision,
+        )
+    }
     pub fn design_tags(
         &mut self,
         project: &str,

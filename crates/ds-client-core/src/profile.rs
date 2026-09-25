@@ -3,7 +3,7 @@ use std::fmt;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v29";
+pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v30";
 pub const DEVICE_CREDENTIAL_AUDIENCE_SCHEMA: &str = "ds.native-client-credential-audience/v1";
 pub const NATIVE_CLIENT_ID: &str = "ds-native-client";
 pub const AUTH_LINK_BEGIN_METHOD: &str = "POST";
@@ -51,7 +51,8 @@ pub const SURVEY_CONTROL_ROUTES: [&str; 7] = [
     "POST /api/v1/projects/templates: list,create,set_public,delete",
     "GET /api/v1/projects/templates/{slug}",
     "POST /api/v1/projects: apply_template",
-    "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete",
+    "POST /api/v1/projects/from-template",
+    "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete",
 ];
 pub const STYLES_METHOD: &str = "POST";
 pub const STYLES_PATH: &str = "/api/v1/styles";
@@ -119,7 +120,12 @@ pub const PROJECT_REPORT_ACTIONS: [&str; 6] = [
 ];
 pub const DESIGN_ATTACHMENTS_METHOD: &str = "POST";
 pub const DESIGN_ATTACHMENTS_PATH: &str = "/api/v1/design/attachments";
-pub const DESIGN_ATTACHMENTS_ACTIONS: [&str; 7] = [
+/// The closed `/api/v1/design/attachments` action vocabulary. The last three
+/// — moving the latest pointer, the project-wide listing and the reverse
+/// "which object versions carry this file" map — are what the operator's
+/// versioned deliverables need beside publish, download and retire; declaring
+/// them bumped the schema to v30. Order is part of the profile identity.
+pub const DESIGN_ATTACHMENTS_ACTIONS: [&str; 10] = [
     "list",
     "get",
     "start_upload",
@@ -127,15 +133,23 @@ pub const DESIGN_ATTACHMENTS_ACTIONS: [&str; 7] = [
     "download",
     "archive",
     "archive_revision",
+    "set_latest",
+    "list_project",
+    "list_object_versions",
 ];
 pub const DESIGN_VERSIONS_METHOD: &str = "POST";
 pub const DESIGN_VERSIONS_PATH: &str = "/api/v1/design/versions";
-pub const DESIGN_VERSIONS_ACTIONS: [&str; 5] = [
+/// The closed `/api/v1/design/versions` action vocabulary. The per-object
+/// summary read and the batched create joined in v30, beside the attachment
+/// actions above. Order is part of the profile identity.
+pub const DESIGN_VERSIONS_ACTIONS: [&str; 7] = [
     "list_versions",
     "get_version",
     "get_head",
     "create_version",
     "restore_version",
+    "list_version_summaries",
+    "create_versions",
 ];
 pub const DESIGN_SELECTIONS_METHOD: &str = "POST";
 pub const DESIGN_SELECTIONS_PATH: &str = "/api/v1/design/selections";
@@ -558,6 +572,9 @@ impl ClientProfile {
             DESIGN_ATTACHMENTS_ACTIONS[4],
             DESIGN_ATTACHMENTS_ACTIONS[5],
             DESIGN_ATTACHMENTS_ACTIONS[6],
+            DESIGN_ATTACHMENTS_ACTIONS[7],
+            DESIGN_ATTACHMENTS_ACTIONS[8],
+            DESIGN_ATTACHMENTS_ACTIONS[9],
             DESIGN_VERSIONS_METHOD,
             DESIGN_VERSIONS_PATH,
             DESIGN_VERSIONS_ACTIONS[0],
@@ -565,6 +582,8 @@ impl ClientProfile {
             DESIGN_VERSIONS_ACTIONS[2],
             DESIGN_VERSIONS_ACTIONS[3],
             DESIGN_VERSIONS_ACTIONS[4],
+            DESIGN_VERSIONS_ACTIONS[5],
+            DESIGN_VERSIONS_ACTIONS[6],
             DESIGN_SELECTIONS_METHOD,
             DESIGN_SELECTIONS_PATH,
             DESIGN_SELECTIONS_ACTIONS[0],

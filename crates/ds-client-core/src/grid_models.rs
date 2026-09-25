@@ -926,6 +926,54 @@ pub(crate) fn run<T: AuthorizedTransport>(
         _ => unreachable!("composite commands dispatched before single reads"),
     }
 }
+/// The model digest of one exact governed revision, read from the catalogue
+/// and never fetched as bytes: what a design attachment pins beside the
+/// content revision id, so the binding names the package it was published
+/// against. The signed locator in the same answer is discarded here.
+pub(crate) fn revision_digest<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    model: &str,
+    revision: &str,
+) -> Result<String, ClientError> {
+    if !id(project) || !id(model) || !id(revision) {
+        return Err(invalid());
+    }
+    let response = transport.grid_models(GridModelsCall {
+        profile,
+        authority: authority.call(),
+        payload: json!({"action":"get_version","project_id":project,"model_id":model,"revision_id":revision}),
+    })?;
+    if response.status != 200 {
+        return Err(classify_tile_error(response.status));
+    }
+    if response.body.len() > 8 * 1024 * 1024 {
+        return Err(bad());
+    }
+    let body: Value = serde_json::from_slice(&response.body).map_err(|_| bad())?;
+    let v = body["data"]
+        .get("revision")
+        .or_else(|| body["data"].get("version"))
+        .filter(|_| body["success"] == true)
+        .ok_or_else(bad)?;
+    if v["project_id"] != project || v["model_id"] != model || v["revision_id"] != revision {
+        return Err(bad());
+    }
+    let digest = v["model"]["digest"]
+        .as_str()
+        .ok_or_else(bad)?
+        .trim_start_matches("sha256:");
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(bad());
+    }
+    Ok(digest.to_owned())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
