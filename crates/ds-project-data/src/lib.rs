@@ -41,6 +41,9 @@ pub use bundle::{install_bundle, BundleReceipt};
 pub use catalog::{facts, named, validate_resources, Named, ReferenceResource};
 pub use datasets::{buildings_dataset, catalog_dataset, contours_dataset, ContourSettings};
 pub use declared::{declared, Declared, DeclaredSource};
+/// The DS-owned file privacy rule (0700 directories, 0600 files), for a
+/// crate that reaches ds-layer-store only through this one.
+pub use ds_layer_store::private;
 pub use ensure::{ensure, Acquisition, EnsureOutcome, Hosts, Mode, Provider};
 pub use extents::design_extents;
 pub use print_context::{read_print_context, Omission, PrintContext};

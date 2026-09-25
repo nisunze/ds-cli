@@ -9,7 +9,11 @@
 //! platform's ordinary permissions, so only DS-owned locations route here.
 //!
 //! Modes exist on unix only. Elsewhere every function is the plain `std`
-//! operation it replaces, so behaviour there is unchanged.
+//! operation it replaces, so behaviour there is unchanged. A mode given at
+//! creation is the kernel's to apply and never fails; tightening an entry
+//! that already exists is best effort, because a volume that cannot hold unix
+//! modes (a FAT or NTFS disk an operator relocated data to) refuses `chmod`,
+//! and that must never fail the operation that asked for the directory.
 //!
 //! A crate that cannot reach this one without a new dependency edge applies
 //! the same two modes inline with `std::os::unix::fs` and names this rule.
@@ -38,7 +42,9 @@ pub fn create_dir_all(path: &Path) -> io::Result<()> {
             .recursive(true)
             .mode(DIR_MODE)
             .create(path)?;
-        tighten_dir(path)
+        // Best effort, like every change to an existing entry here.
+        let _ = tighten_dir(path);
+        Ok(())
     }
     #[cfg(not(unix))]
     {
@@ -79,7 +85,7 @@ pub fn create_file(path: &Path) -> io::Result<File> {
         .create(true)
         .truncate(true)
         .open(path)?;
-    set_file_mode(&file)?;
+    let _ = set_file_mode(&file);
     Ok(file)
 }
 
@@ -99,7 +105,7 @@ pub fn write_atomic(path: &Path, bytes: impl AsRef<[u8]>) -> io::Result<()> {
     // `tempfile` creates the staged file `0600` on unix already; the explicit
     // mode keeps that true whatever its default becomes.
     let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-    set_file_mode(staged.as_file())?;
+    let _ = set_file_mode(staged.as_file());
     staged.write_all(bytes.as_ref())?;
     staged.flush()?;
     staged.as_file().sync_all()?;
@@ -110,10 +116,16 @@ pub fn write_atomic(path: &Path, bytes: impl AsRef<[u8]>) -> io::Result<()> {
 /// A DS-owned file a library opens by name (SQLite): created empty `0600`
 /// when absent, tightened when present, before the library opens it. SQLite
 /// creates its `-wal`, `-shm` and `-journal` files with the mode of the
-/// database file, so they follow.
+/// database file, so new ones follow; ones left from before are tightened.
 pub fn prepare_file(path: &Path) -> io::Result<()> {
     let file = open_options().write(true).create(true).open(path)?;
-    set_file_mode(&file)
+    let _ = set_file_mode(&file);
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut sidecar = path.as_os_str().to_owned();
+        sidecar.push(suffix);
+        let _ = tighten(Path::new(&sidecar));
+    }
+    Ok(())
 }
 
 /// Strip group and other access from one DS-owned entry, never following a

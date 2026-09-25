@@ -133,7 +133,7 @@ pub fn install_bundle(
         let bundle_path = staging.join("bundle.geojsonl.gz");
         fetch(receipt, &bundle_path).map_err(Failure::BundleUnavailable)?;
         // The host's fetch wrote the file; it is DS-owned, so it is private.
-        private::tighten(&bundle_path).map_err(unavailable)?;
+        let _ = private::tighten(&bundle_path);
         let (digest, bytes) = file_digest(&bundle_path)?;
         if bytes != receipt.compressed_bytes || digest != receipt.bundle_sha256 {
             return Err(Failure::BundleUnavailable(format!(
