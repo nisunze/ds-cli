@@ -48,6 +48,7 @@ pub mod objects;
 pub mod package;
 pub mod profile;
 pub mod project;
+pub mod replace_structure;
 pub mod report;
 pub mod run;
 pub mod structure;
@@ -70,6 +71,7 @@ pub static DOMAIN: Domain = Domain {
         &template::COMMAND,
         &template::APPLY,
         &import_structure::COMMAND,
+        &replace_structure::COMMAND,
         &inspect::COMMAND,
         &validate::COMMAND,
         &describe::COMMAND,

@@ -157,6 +157,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::import_structure::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::replace_structure::COMMAND,
+        handler: ds_cli_dsgrid::replace_structure::run,
+        render: ds_cli_dsgrid::replace_structure::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::create::COMMAND,
         handler: ds_cli_dsgrid::create::run,
         render: ds_cli_dsgrid::create::render,

@@ -17,7 +17,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "import-structure"],
     contract: 1,
     summary: "Add one native structure and its exact bytes to a model.",
-    purpose: "Backfills a missing structure definition, its attachments and imported analytical strength tables into one existing .dsgrid package. The exchange owner retains exact source bytes and all existing assets and provenance. Duplicate names refuse; this command neither replaces definitions nor authors spotting eligibility, prices or engineering approval. Pinned packages require a separate release-aware operation and refuse here. Writes a new package revision, never the source.",
+    purpose: "Backfills a missing structure definition, its attachments and imported analytical strength tables into one existing .dsgrid package. The exchange owner retains exact source bytes and all existing assets and provenance. Duplicate names refuse (`ds dsgrid replace-structure` replaces an existing definition); this command authors no spotting eligibility, prices or engineering approval. Pinned packages require a separate release-aware operation and refuse here. Writes a new package revision, never the source.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -87,7 +87,7 @@ pub static COMMAND: Command = Command {
         Refusal {
             code: "structure_conflict",
             when: "the native name or imported entity IDs already exist",
-            remedy: "use this command only for a missing definition; replacement is a separate operation",
+            remedy: "use this command only for a missing definition; replace an existing one with `ds dsgrid replace-structure`",
         },
         Refusal {
             code: "structure_import_refused",
@@ -172,8 +172,9 @@ fn owner_failure(error: StructureImportError) -> Failure {
                 .remedy("restore the exact resolved native member")
         }
         StructureImportError::Native(PlsCaddLibraryError::Conflict(_)) => {
-            Failure::invalid("structure_conflict", message)
-                .remedy("import only a missing definition; replacement is separate")
+            Failure::invalid("structure_conflict", message).remedy(
+                "import only a missing definition; replace an existing one with `ds dsgrid replace-structure`",
+            )
         }
         StructureImportError::Native(_) | StructureImportError::NotStructure => {
             Failure::invalid("structure_import_refused", message)
@@ -190,7 +191,7 @@ fn owner_failure(error: StructureImportError) -> Failure {
     }
 }
 
-fn read_source(path: &str) -> Result<Vec<u8>, Failure> {
+pub(crate) fn read_source(path: &str) -> Result<Vec<u8>, Failure> {
     const MAX: u64 = 64 * 1024 * 1024;
     let unreadable = |error: std::io::Error| {
         Failure::invalid("source_unreadable", format!("cannot read {path}: {error}"))

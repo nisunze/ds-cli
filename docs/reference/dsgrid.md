@@ -286,6 +286,43 @@ still open: the column is additive, every description reads as absent, and
 `structure retype`, any revision) carries the current schema; nothing is
 re-converted. `package_decode_failed` is kept for a package that is damaged
 or carries a table schema this build does not decode at all.
+## Replacing a structure definition: `replace-structure`
+
+`import-structure` adds a definition the model does not hold and refuses a
+name it does. `replace-structure` is its sibling for a name the model already
+holds — raised allowable tables, a corrected attachment set — and changes the
+definition through the engine's `replace_structure_definition` as ONE
+revision:
+
+```bash
+ds dsgrid replace-structure --package ./model.dsgrid --source ./native/a-w-S255.012 --dry-run --output json
+ds dsgrid replace-structure --package ./model.dsgrid --source ./native/a-w-S255.012 \
+  --revision rev:… --expect-sha256 sha256:… --out ./model-raised.dsgrid --output json
+```
+
+The source filename names the type. The type id is kept, so every placed
+structure and strung support stays bound: supports rebind by attachment set
+label and slot, exactly as a retype rebinds them, and a set or slot a section
+is strung on that the new file drops refuses `replacement_refused` naming the
+structures. The resource digest, support properties, pole components,
+geometry, attachment points and analytical capacity are derived from the new
+bytes with import-structure's own translator; a weight-span basis and case
+bindings the model declared on the old capacity survive where the new
+capacity keeps the same id and ordinal (the file cannot state them). The
+previous bytes stay in the package as history; the resource row pins the new
+ones, and the PLS-CADD export writes them in place of the preserved source
+member.
+
+The receipt carries the span-limit table before and after and a capacity
+screen of the type's placements on both revisions (`capacity_screen`): the
+placements whose status, usage or blockers moved, with both states, and the
+unchanged count. The screen runs under the request a model-wide usage screen
+makes — the one criterion set the placements are strung under, every resolved
+capacity-binding case plus the set's maximum-wind and minimum-weight cases,
+the declared weight-span basis — and says why when the model does not
+determine it (an undeclared basis, say). `--limit` bounds the listed
+placements and `more.truncated` names what it withheld.
+
 ## Feature codes and clearance (program contract 03)
 
 PLS-CADD's clearance check knows only what the feature-code table tells it:
@@ -362,6 +399,8 @@ identity still reaches it without loading exchange planning.
 | `run` | the operation selected from `ds_grid_engine::operation_descriptors` and its typed native engine API |
 | `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
 | `model list/show/create-local/import-external/set-active` | `ds_command_kernel::local_models` over `ds_layer_store::local_models` (this machine's catalogue); `show` opens the package with `ds_grid_engine::GridSession` |
+| `import-structure` | `ds_grid_exchange::structure_import::import_structure_package` |
+| `replace-structure` | `ds_grid_exchange::structure_import::replace_structure_package` (engine `replace_structure_definition`, `compare_structure_type_screen`) |
 | `structure describe/retype` | `ds_grid_engine::GridSession::apply_transaction_at_head` (`describe_structure`, `retype_structure`), `ds_grid_engine::evaluate_structure_type`, `ds_grid_exchange::dsgrid::emit`, `local_models::Op::Revise` |
 | `report structures` | `ds_grid_engine::report_structures` (+ `structure_rules::load_standard`), `ds_io::layers_to_xlsx` |
 | `report staking` | `ds_grid_exchange::staking_table::build_staking_table`, `ds_io::table_to_xlsx` |

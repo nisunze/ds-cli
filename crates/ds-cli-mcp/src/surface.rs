@@ -228,7 +228,11 @@ impl Profile {
             // import from PLS-CADD but never deliver to it.
             // Reviewed batch corrections and native sync now have separate
             // routes, keeping this broad typed profile within its budget.
-            Self::Grid => 28,
+            // Raised to 29 on 2026-09-25 for `dsgrid replace-structure`, the
+            // file-in/file-out sibling of `import-structure` that sits beside
+            // it: a router that can add a definition but not replace one
+            // leaves raised allowable tables to post-export patches.
+            Self::Grid => 29,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -302,6 +306,11 @@ impl Profile {
             // to 22 on 2026-09-24 for the governed head's versions, retire and
             // restore, routed here for the same reason (e62edf85).
             Self::GridLocalModel => 22,
+            // The file-in/file-out engine workflow: fifteen leaves plus both
+            // bootstrap tools. Raised from the default on 2026-09-25 by
+            // `dsgrid replace-structure`, which belongs beside
+            // `import-structure` in the same file workflow.
+            Self::GridNative => 17,
             _ => 16,
         }
     }

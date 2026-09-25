@@ -13811,6 +13811,162 @@ fn dsgrid_import_structure_preserves_exact_native_and_refuses_overwrite() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+/// Replace the one occurrence of `needle` in native (not UTF-8) bytes.
+fn replace_native(haystack: &[u8], needle: &str, replacement: &str) -> Vec<u8> {
+    let needle = needle.as_bytes();
+    let at = haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .expect("needle is in the native file");
+    [
+        &haystack[..at],
+        replacement.as_bytes(),
+        &haystack[at + needle.len()..],
+    ]
+    .concat()
+}
+
+#[test]
+fn dsgrid_replace_structure_raises_a_placed_definition_as_one_revision() {
+    let root = temp_root("dsgrid-replace-structure");
+    std::fs::create_dir_all(root.join("unchanged")).unwrap();
+    let model = common::fixture();
+    let native = std::fs::read(workspace_file("structures/hp-m1-strain.012")).unwrap();
+    let raised = replace_native(
+        &replace_native(&native, "0 300 400 -200 400 400", "0 300 600 -200 600 600"),
+        "90 250 350 -180 350 350",
+        "90 250 550 -180 550 550",
+    );
+    let source = root.join("hp-m1-strain.012");
+    std::fs::write(&source, &raised).unwrap();
+    let out = root.join("raised.dsgrid");
+    let source_arg = source.to_str().unwrap();
+
+    // The dry run shows the whole effect and writes nothing.
+    let dry = ok(&[
+        "dsgrid",
+        "replace-structure",
+        "--package",
+        &model,
+        "--source",
+        source_arg,
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(dry["persisted"], false);
+    assert_eq!(dry["dry_run"], true);
+    assert!(!out.exists());
+    assert_eq!(dry["engineering_name"], "hp-m1-strain.012");
+    assert!(dry["placed_structures"].as_u64().unwrap() >= 1);
+    assert!(dry["strung_supports"].as_u64().unwrap() >= 1);
+    assert_eq!(
+        dry["capacity"]["before"][0]["maximum_signed_weight_spans_m"],
+        json!([400.0, 400.0, 400.0])
+    );
+    assert_eq!(
+        dry["capacity"]["after"][0]["maximum_signed_weight_spans_m"],
+        json!([600.0, 600.0, 600.0])
+    );
+    assert_eq!(
+        dry["capacity"]["after"][1]["maximum_signed_weight_spans_m"],
+        json!([550.0, 550.0, 550.0])
+    );
+    // The committed model never declared a weight-span basis: the screen says
+    // so rather than guessing one.
+    assert!(
+        dry["capacity_screen"]["unavailable"]
+            .as_str()
+            .unwrap()
+            .contains("weight-span basis")
+    );
+
+    // The write is pinned to the head and the exact bytes the dry run read.
+    let written = ok(&[
+        "dsgrid",
+        "replace-structure",
+        "--package",
+        &model,
+        "--source",
+        source_arg,
+        "--revision",
+        dry["source_revision"].as_str().unwrap(),
+        "--expect-sha256",
+        dry["native_sha256"].as_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(written["persisted"], true);
+    assert_eq!(written["resulting_revision"], dry["resulting_revision"]);
+    let before = unpack(&std::fs::read(&model).unwrap()).unwrap();
+    let after = unpack(&std::fs::read(&out).unwrap()).unwrap();
+    assert_eq!(
+        after.manifest.model.model_revision,
+        before.manifest.model.model_revision + 1
+    );
+    assert_eq!(after.snapshot.structures, before.snapshot.structures);
+    assert_eq!(
+        after.snapshot.tension_section_supports,
+        before.snapshot.tension_section_supports
+    );
+    assert!(after.snapshot.resources.iter().any(|row| {
+        row.invariant_leaf == "hp-m1-strain.012" && row.content_digest == written["native_sha256"]
+    }));
+    assert!(
+        after
+            .assets
+            .iter()
+            .any(|asset| asset.invariant_leaf == "hp-m1-strain.012" && asset.bytes == raised)
+    );
+
+    // Refusals, each by name and nothing written.
+    let unchanged = root.join("unchanged").join("hp-m1-strain.012");
+    std::fs::write(&unchanged, &native).unwrap();
+    let args = |source: &str, out: &str| {
+        vec![
+            "dsgrid".to_string(),
+            "replace-structure".to_string(),
+            "--package".to_string(),
+            model.clone(),
+            "--source".to_string(),
+            source.to_string(),
+            "--out".to_string(),
+            out.to_string(),
+            "--output".to_string(),
+            "json".to_string(),
+        ]
+    };
+    let refused = |args: Vec<String>| {
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        ds(&args).envelope["error"]["code"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    let spare = root.join("spare.dsgrid");
+    assert_eq!(
+        refused(args(unchanged.to_str().unwrap(), spare.to_str().unwrap())),
+        "definition_unchanged"
+    );
+    let absent = root.join("absent.012");
+    std::fs::write(&absent, &raised).unwrap();
+    assert_eq!(
+        refused(args(absent.to_str().unwrap(), spare.to_str().unwrap())),
+        "structure_not_found"
+    );
+    assert_eq!(
+        refused(args(source_arg, out.to_str().unwrap())),
+        "output_exists"
+    );
+    let mut no_out = args(source_arg, "");
+    no_out.drain(6..8);
+    assert_eq!(refused(no_out), "output_required");
+    assert!(!spare.exists());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn dsgrid_profile_checkpoint_validates_output_before_touching_the_window() {
     for args in [
