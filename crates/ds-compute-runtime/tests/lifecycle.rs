@@ -1119,6 +1119,11 @@ fn a_host_learns_its_limits_make_no_share_before_it_starts_workers_not_per_claim
 /// over its own dependency record rather than over its prose. A transport
 /// arriving through a feature flag, a default that flips, or a new dependency
 /// is caught here on the day it lands, not by a reader.
+///
+/// tokio (and mio beneath it) is in the closure on purpose: the tile runtime
+/// drives its engine subprocesses through tokio's `process` pipes. That is
+/// process IPC, not a network transport, so the lock check names the HTTP and
+/// TLS stacks and the source check below proves no socket is ever opened.
 #[test]
 fn nothing_in_this_crate_s_dependency_closure_can_open_a_socket() {
     const LOCK: &str = include_str!("../Cargo.lock");
@@ -1129,19 +1134,54 @@ fn nothing_in_this_crate_s_dependency_closure_can_open_a_socket() {
         "curl",
         "isahc",
         "surf",
-        "tokio",
         "async-std",
         "h2",
         "native-tls",
         "rustls",
         "openssl",
         "socket2",
-        "mio",
     ] {
         assert!(
             !LOCK.contains(&format!("\nname = \"{transport}\"\n")),
             "{transport} is in this crate's closure; the Solar runtime's http-provider feature \
              is off for exactly this reason, and admission, execution and recovery are local"
         );
+    }
+}
+
+/// The runtimes that bring tokio in never use it (or std) to open a socket.
+#[test]
+fn neither_runtime_opens_a_socket_in_its_own_source() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut sources = Vec::new();
+    for dir in [root.join("src"), root.join("../ds-tile-runtime/src")] {
+        let mut stack = vec![dir];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("source directory") {
+                let path = entry.expect("source entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    sources.push(path);
+                }
+            }
+        }
+    }
+    assert!(!sources.is_empty(), "no runtime sources were found");
+    for path in sources {
+        let text = std::fs::read_to_string(&path).expect("source file");
+        for socket in [
+            "tokio::net",
+            "std::net",
+            "TcpStream",
+            "TcpListener",
+            "UdpSocket",
+        ] {
+            assert!(
+                !text.contains(socket),
+                "{} uses `{socket}`; admission, execution and recovery are local",
+                path.display()
+            );
+        }
     }
 }
