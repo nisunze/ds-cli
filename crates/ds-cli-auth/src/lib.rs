@@ -3149,6 +3149,65 @@ pub fn survey_thumbnail_bytes(
         .map_err(map_survey_photo_error)
 }
 
+/// Run the core's survey hold for the caller's named project. `hold` receives
+/// the signed-in account (the hold's scope) and a fetch that sends one
+/// `query_entries` body the hold built, under this lane's JWT. The hold, not
+/// this crate, decides whether to fetch at all.
+pub fn survey_hold<T>(
+    lane_value: &str,
+    project: &str,
+    hold: impl FnOnce(&str, &mut dyn FnMut(&Value) -> Result<Vec<u8>, Failure>) -> Result<T, Failure>,
+) -> Result<HeadlessNamedProject<T>, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        let uid = device.context().uid().to_owned();
+        let result = {
+            let mut fetch = |body: &Value| {
+                device
+                    .survey_entries_query(&project, body)
+                    .map_err(map_survey_entries_read_error)
+            };
+            hold(&uid, &mut fetch)?
+        };
+        return Ok(HeadlessNamedProject {
+            identity: ProviderIdentity::new(
+                lane.token(),
+                device.profile().credential_audience_sha256(),
+                device.context().uid(),
+            )?,
+            user_email: device.context().email().to_owned(),
+            lane: lane.token(),
+            project_id: project,
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let uid = user.uid().to_owned();
+    let result = {
+        let mut fetch = |body: &Value| {
+            client
+                .survey_entries_query(&project, body, now())
+                .map_err(map_survey_entries_read_error)
+        };
+        hold(&uid, &mut fetch)?
+    };
+    Ok(HeadlessNamedProject {
+        identity: ProviderIdentity::new(
+            lane.token(),
+            client.profile().credential_audience_sha256(),
+            user.uid(),
+        )?,
+        user_email: user.email().to_owned(),
+        lane: lane.token(),
+        project_id: project,
+        result,
+    })
+}
+
 /// Read Survey entry changes since a clock in the caller's explicit project.
 pub fn survey_entries_changes(
     lane_value: &str,

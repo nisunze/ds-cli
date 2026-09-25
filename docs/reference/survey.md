@@ -14,6 +14,7 @@ asset inventory.
 | Missing observations before design review | `survey.query` with relevant form fields and bounded filters | Supported field names and a stated quality rule; results are review candidates, not permission to correct or delete. |
 | Surveyed assets for a design handoff | `survey.entries.select` | Area, exact identities, freshness, digest and completeness; explicitly identify required engineering attributes or photos absent from this projection. |
 | Field values and photos for a survey report | `survey.entries.read`, then `survey.photo.fetch` | Exact project/form and filters; `total` versus `returned` (`truncated`), and each entry's `media` object and thumbnail paths. See [Entry values and photo references](#entry-values-and-photo-references). |
+| What survey data this machine holds, and how fresh | `survey.local.status` | Offline: each form held with its filter, rows, refresh time and cursor, and the photos held. See [Survey data held on this machine](#survey-data-held-on-this-machine). |
 | Changes since a prior delivery | `survey.entries.changes` | Last completed replication checkpoint, retained cursors and tombstones; a partial page does not advance the checkpoint. |
 | Work without connectivity | Browser Survey capture | Cached project/forms, local media and durable IndexedDB entry/outbox commits; there is no separate native CLI capture workspace. |
 | Which survey photos this machine holds; a photo shot sideways | `survey.moments.list`, `survey.moments.read`, `survey.photo.rotate`, `survey.photo.publish` | The Server's survey-media store (rows in the lane's sync store, bundles under `survey-media/`): `waiting` is held and not yet published, `synced` equals the published head. See [Survey moments and the one rotation](#survey-moments-and-the-one-rotation). |
@@ -339,6 +340,24 @@ Four related objects have separate lifecycles:
    `survey project create-from-template`. Applying a template instead modifies
    an existing project.
 
+## Survey data held on this machine
+
+The Server core (the Desktop's core) holds one read-only copy of each survey
+form it has read, per account and project: the rows, the working-area filter
+they were read under, when they were refreshed, and the cursor a refresh
+continues from; held photos sit beside it. Every decision over the copy is the
+kernel's (`ds-command-kernel/docs/contracts/survey-hold.md`); the CLI and the
+Desktop window read the same copy.
+
+```text
+ds survey local status --project <project-id> --output json
+```
+
+`survey local status` answers offline: each form held (filter and whether it is
+the whole form, rows, refreshed time and age, cursor, last read), photos and
+thumbnails held per form, the working-area form choice, and where held photos
+live. Use it to know whether a read will be local before making one.
+
 ## Entry values and photo references
 
 `survey entries read` returns what the map loads for one project form: each
@@ -349,16 +368,29 @@ the survey photos the entry references. It is the read a survey report needs;
 ```text
 ds survey entries read --project <project-id> --form <form-slug> --output json
 ds survey entries read --project <project-id> --form <form-slug> \
-  --limit 5000 --out entries.geojson
+  --refresh local --limit 5000 --out entries.geojson
 ```
 
-Filters are the map loader's own: `--updated-after <rfc3339>`, `--bbox
-'<west,south,east,north>'`, and `--include-deleted` (deleted entries are
-excluded by default). `--limit` (1–5000, default 100) bounds what is returned;
-`total` is always the form's full count under the filters, and `truncated`
-says whether the returned entries are all of them. `--out` writes a new
-GeoJSON FeatureCollection (never overwriting) whose features are the streamed
-rows unchanged, each with a `media` member.
+It answers from the held copy. `--refresh auto` (default) reuses a copy younger
+than five minutes without going online, else fetches only the changes since
+its cursor, else reads the form; `delta` refreshes the changes now, `full`
+reads the form again, and `local` never goes online (`survey_hold_not_held`
+when nothing covering is held). `source` names what happened (`held`,
+`delta`, `replace`) and `held` describes the copy: filter, rows, created and
+refreshed times, cursor and last read. A fresh read costs milliseconds; a
+refresh costs one `query_entries` call.
+
+Filters are the map's working area: `--bbox '<west,south,east,north>'`,
+`--admin-boundary <code>`, `--boundary <polygon.geojson>`, `--date-from`,
+`--date-to` and `--surveyor` (repeatable). A copy answers the same filter, or,
+when it is the whole form, a read narrowed only by a box, which is applied
+locally; any other filter is read under that filter and becomes the held copy.
+`--updated-after <rfc3339>` narrows the held rows locally. `--include-deleted`
+reads the cloud directly (`source: cloud`): deleted entries are never held.
+`--limit` (1–5000, default 100) bounds what is returned; `total` is always the
+count under the filters, and `truncated` says whether the returned entries are
+all of them. `--out` writes a new GeoJSON FeatureCollection (never
+overwriting) whose features are the rows unchanged, each with a `media` member.
 
 Each `media` item names the dotted `property` it was found in (`data.photo`),
 the `reference` as stored, the `bucket` when the reference names one, the
@@ -368,37 +400,38 @@ Cloud Storage URLs, several per value separated by newline, `,`, `;` or `|`,
 admitted only when they resolve to a survey media address in any of its three
 layouts. A migrated entry keeps the project in its original references.
 
-The stream is verified against its closing summary: a cut-off stream, a form
-that failed part-way, or rows lost against the summary total are refused
-(`survey_entries_unreadable`, `survey_entries_transient`), never returned
-short. The route is `POST /api/v1/data` (`query_entries`) under the caller's
-JWT and named-project authority.
+Every refresh is verified against the stream's closing summary: a cut-off
+stream, a form that failed part-way, or rows lost against the summary total
+are refused (`survey_entries_unreadable`, `survey_entries_transient`) and the
+held copy is left as it was. The route is `POST /api/v1/data`
+(`query_entries`) under the caller's JWT and named-project authority.
 
 ### Photo files: thumbnails first
 
-`survey photo fetch` writes the photos `entries read` names to local files.
-Like the map, it previews: thumbnails by default (320 px JPEG, a few KB, fast
-to fetch and to read), and full-size originals only with `--original` for the
-photos whose detail matters (a nameplate, a meter reading). Look at the
-thumbnails first, then fetch the few originals you need.
+`survey photo fetch` fetches the photos `entries read` names. Like the map, it
+previews: thumbnails by default (320 px JPEG, a few KB, fast to fetch and to
+read), and full-size originals only with `--original` for the photos whose
+detail matters (a nameplate, a meter reading). Look at the thumbnails first,
+then fetch the few originals you need.
 
 ```text
 ds survey entries read --project <project-id> --form <form-slug> \
   --limit 5000 --out entries.geojson
-ds survey photo fetch --project <project-id> --from entries.geojson \
-  --out-dir photos --output json
+ds survey photo fetch --project <project-id> --from entries.geojson --output json
 ```
 
-`--path <reference>` (repeatable) takes single references in any form
-`entries read` accepts; `--from` takes every `media[].object_path` of a GeoJSON
-it wrote. A thumbnail is the stored `_thunder.jpeg` companion; one the store
-never received is made from the original with the product's own thumbnail
-procedure, exactly as the map does on hover (kept locally, not uploaded), and
-marked `generated: true`. Each
-photo lands at `<out-dir>/<object path>`, written beside its name and renamed
-into place, so an existing file is always whole: a photo already present is
-kept and listed under `present`, and an interrupted fetch resumes by running
-again. Up to 5000 photos per fetch.
+Photos join the core's held copy by default (`held: true`; `survey local
+status` counts them and names the directory); `--out-dir <dir>` writes them
+elsewhere instead. `--path <reference>` (repeatable) takes single references in
+any form `entries read` accepts; `--from` takes every `media[].object_path` of
+a GeoJSON it wrote. A thumbnail is the stored `_thunder.jpeg` companion; one
+the store never received is made from the original with the product's own
+thumbnail procedure, exactly as the map does on hover (kept locally, not
+uploaded), and marked `generated: true`. Each photo lands at
+`<dir>/<object path>`, written beside its name and renamed into place, so an
+existing file is always whole: a photo already present is kept and listed
+under `present`, and an interrupted fetch resumes by running again. Up to 5000
+photos per fetch.
 
 Access is the report export grant. The CLI holds a DS token, not the browser's
 Firebase token, so it cannot read Storage directly; one `/report`

@@ -11,6 +11,7 @@ pub mod create;
 pub mod entries;
 pub mod forms;
 pub mod import;
+pub mod local;
 pub mod migrate;
 pub mod moments;
 pub mod photo;
@@ -53,6 +54,7 @@ pub static DOMAIN: Domain = Domain {
         &query::COMMAND,
         &entries::COMMAND,
         &read::COMMAND,
+        &local::STATUS_COMMAND,
         &changes::COMMAND,
         &create::COMMAND,
         &import::COMMAND,

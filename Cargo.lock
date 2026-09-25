@@ -1230,6 +1230,8 @@ dependencies = [
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-layer-ops",
+ "ds-layer-store",
+ "ds-project-data",
  "ds-sync-store",
  "libc",
  "serde",

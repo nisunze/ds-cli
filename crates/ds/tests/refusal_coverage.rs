@@ -31,6 +31,12 @@ mod common;
 /// Codes a caller cannot reach, with why.
 const NOT_A_REFUSAL: &[(&str, &str)] = &[
     (
+        "survey_hold_needs_cloud",
+        "the offline first pass of `survey entries read` hands this to its own \
+         caller when the kernel asks for the cloud; the read then restores the \
+         credential and refreshes, so it never reaches the user",
+    ),
+    (
         "design_operation_unowned",
         "raised only if `ds design`'s headless dispatcher is handed a command id \
          its match does not own — every registered design command is an arm, \

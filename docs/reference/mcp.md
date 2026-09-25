@@ -62,8 +62,8 @@ retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns governed
 aggregate/spatial/change-feed reads, project-form settings, reusable templates, and
 create-from-template; `survey-media` owns a form's entries with their photo references
-(`survey.entries.read`) and their photo files (`survey.photo.fetch`), the
-survey photos this machine holds
+(`survey.entries.read`), their photo files (`survey.photo.fetch`), what this
+machine holds of them (`survey.local.status`), the survey photos this machine holds
 (`survey.moments.list|read`), the one rotation and its publication
 (`survey.photo.rotate|publish`) and the offline file rotation. `layers` isolates
 project ordering and desktop-local remote overlays; `tiling` owns governed

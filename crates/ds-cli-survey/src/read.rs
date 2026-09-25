@@ -1,10 +1,14 @@
 //! One survey form's entries, with every field value and the survey media
-//! each entry references: the rows the map loads, read headlessly.
+//! each entry references, answered from the core's copy of the form.
 //!
 //! `entries select` deliberately returns geometry and identities only. A
 //! survey report needs the values and the photos, and the operator's rule is
 //! that what the UI can do under the user's JWT, the CLI does too (feedback
-//! ee3f371f, 2026-09-25).
+//! ee3f371f, 2026-09-25). The core holds one copy per account, project and
+//! form (docs/contracts/survey-hold.md in ds-command-kernel): every decision
+//! — reuse, refresh the changes, read again, which filter — is the kernel's
+//! `survey::hold`, and the bytes are `ds_project_data::survey_hold`'s. This
+//! command parses flags and renders.
 
 use std::io::Write;
 
@@ -13,8 +17,12 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_client_core::survey_entries_read::SURVEY_ENTRIES_READ_MAX_LIMIT;
+use ds_client_core::survey_entries_read::{SURVEY_ENTRIES_READ_MAX_LIMIT, entry_media};
 use ds_client_core::{SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry};
+use ds_command_kernel::project_dataset_cache::Scope;
+use ds_command_kernel::survey::hold::{self, AdminBoundary, Filter, Manifest, Refresh, View};
+use ds_command_kernel::time::OffsetDateTime;
+use ds_project_data::survey_hold::{self as store, HoldError};
 use serde_json::{Value, json};
 
 const FORM: Arg = Arg::value(
@@ -33,13 +41,36 @@ const BBOX: Arg = Arg::value(
     "<west,south,east,north>",
     "Only entries inside this WGS84 box.",
 );
+const ADMIN_BOUNDARY: Arg = Arg::value(
+    "admin-boundary",
+    "<code>",
+    "Only entries in this administrative boundary.",
+);
+const BOUNDARY: Arg = Arg::value(
+    "boundary",
+    "<polygon.geojson>",
+    "Only entries inside this drawn GeoJSON polygon.",
+);
+const DATE_FROM: Arg = Arg::value("date-from", "<YYYY-MM-DD>", "Only entries from this day.");
+const DATE_TO: Arg = Arg::value("date-to", "<YYYY-MM-DD>", "Only entries until this day.");
+const SURVEYOR: Arg = Arg::repeated("surveyor", "<name>", "Only this surveyor's entries.");
+const REFRESH: Arg = Arg::value(
+    "refresh",
+    "<auto|delta|full|local>",
+    "Reuse, refresh or re-read the held copy; local never goes online.",
+)
+.default("auto")
+.choices(&["auto", "delta", "full", "local"]);
 const LIMIT: Arg = Arg::value(
     "limit",
     "<1-5000>",
     "Most entries returned; the total is always reported.",
 )
 .default("100");
-const INCLUDE_DELETED: Arg = Arg::switch("include-deleted", "Also return deleted entries.");
+const INCLUDE_DELETED: Arg = Arg::switch(
+    "include-deleted",
+    "Also return deleted entries (read from the cloud; never held).",
+);
 const OUT: Arg = Arg::value(
     "out",
     "<file.geojson>",
@@ -57,7 +88,17 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entries_invalid",
         when: "a flag violates the local grammar",
-        remedy: "pass one exact form slug, an RFC 3339 instant, four ordered WGS84 coordinates, and a limit from 1 through 5000",
+        remedy: "read `ds survey entries read --help` and pass only its typed flags",
+    },
+    Refusal {
+        code: "survey_hold_not_held",
+        when: "--refresh local and this machine holds no copy of the form under that filter",
+        remedy: "drop --refresh local to read it once; `ds survey local status` lists what is held",
+    },
+    Refusal {
+        code: "survey_hold_store",
+        when: "the core's survey copy could not be read or written",
+        remedy: "check disk space and the layer root, then retry",
     },
     Refusal {
         code: "survey_entries_scope_not_found",
@@ -76,7 +117,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_entries_unreadable",
-        when: "the stream was cut off, lost rows against its summary, or broke its line grammar",
+        when: "the stream was cut off, lost rows against its summary, or broke its line grammar; the held copy is unchanged",
         remedy: "retry once, then report it with `ds feedback submit`",
     },
     Refusal {
@@ -105,10 +146,10 @@ const REFUSALS: &[Refusal] = &[
 pub static COMMAND: Command = Command {
     id: "survey.entries.read",
     path: &["survey", "entries", "read"],
-    contract: 1,
+    contract: 2,
     chapter: Chapter::Survey,
     summary: "Read a survey form's entries: field values and photo references.",
-    purpose: "Use to report on surveyed assets: every field value the map shows for one project form, and each entry's survey photos (object path and thumbnail) ready for `ds survey photo fetch`. Filters are the map's own: changed after an instant, inside a box, deleted or not. The total is always reported; raise --limit or write --out for the whole form.",
+    purpose: "Use to report on surveyed assets: every field value the map shows for one project form, and each entry's photos (object and thumbnail path) for `ds survey photo fetch`. Answered from this machine's copy of the form: reused when fresh, else only the changes are fetched; `source` says which and `held` says under which filter and when. Filters are the map's working area. The total is always reported.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
@@ -117,12 +158,18 @@ pub static COMMAND: Command = Command {
         FORM,
         UPDATED_AFTER,
         BBOX,
+        ADMIN_BOUNDARY,
+        BOUNDARY,
+        DATE_FROM,
+        DATE_TO,
+        SURVEYOR,
+        REFRESH,
         LIMIT,
         INCLUDE_DELETED,
         OUT,
         LANE,
     ],
-    output: "The project, form and filters; the total, how many were returned and whether that is all; each entry's geometry, properties and photos (property, object path, thumbnail path). With --out, the entries go to a GeoJSON file and the output names it.",
+    output: "The project, form and filter; source (held, delta, replace or cloud) and the held copy (filter, rows, refreshed, cursor); the total, how many were returned and whether that is all; each entry's geometry, properties and photos. With --out, the entries go to a GeoJSON file.",
     examples: &[
         Example {
             command: "ds survey entries read --project <exact-id> --form <form-slug> --output json",
@@ -130,8 +177,8 @@ pub static COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds survey entries read --project <exact-id> --form <form-slug> --limit 5000 --out entries.geojson",
-            note: "The whole form to a GeoJSON file; each feature lists its photos under `media`.",
+            command: "ds survey entries read --project <exact-id> --form <form-slug> --refresh local --limit 5000 --out entries.geojson",
+            note: "The whole held form to a GeoJSON file without going online; each feature lists its photos under `media`.",
             runnable: false,
         },
     ],
@@ -142,6 +189,7 @@ pub static COMMAND: Command = Command {
         "survey values",
         "survey report",
         "entries attributes",
+        "held survey",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -150,28 +198,161 @@ pub static COMMAND: Command = Command {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // Every caller-controlled byte is checked before any credential is read.
     let request = parse(inputs)?;
-    let out = inputs.value("out");
+    if inputs.switch("include-deleted") {
+        return cloud(inputs, &request);
+    }
+    let filter = parse_filter(inputs)?;
+    let refresh = match inputs.require("refresh")? {
+        "delta" => Refresh::Delta,
+        "full" => Refresh::Full,
+        "local" => Refresh::Local,
+        _ => Refresh::Auto {
+            max_age_seconds: hold::DEFAULT_MAX_AGE_SECONDS,
+        },
+    };
+    let view = View {
+        bbox: filter.bbox,
+        updated_after: request.updated_after().map(str::to_owned),
+    };
+    let root = ds_layer_store::default_root().map_err(store_failure)?;
+    let now = OffsetDateTime::now_utc();
+    let lane = inputs.require("lane")?;
+    let project = inputs.require("project")?;
+    let form = request.form();
+    let answer = |uid: &str, fetch: &mut dyn FnMut(&Value) -> Result<Vec<u8>, Failure>| {
+        let scope = Scope {
+            principal: uid.to_owned(),
+            project: project.to_owned(),
+        };
+        let held = store::refresh(&root, &scope, form, &filter, refresh, now, |body| {
+            fetch(body)
+        })
+        .map_err(hold_failure)?;
+        let rows = store::view(&root, &scope, &held.manifest, &view).map_err(store_failure)?;
+        Ok::<_, Failure>((held.source, held.manifest, rows))
+    };
+    // Offline first: the account is observed from this machine's providers
+    // and the kernel decides over what is held. A fresh copy (or `local`)
+    // answers without restoring a credential; only when the kernel asks for
+    // the cloud does the read restore the lane's JWT and fetch.
+    let observed = match refresh {
+        Refresh::Local | Refresh::Auto { .. } => {
+            ds_cli_auth::probe_headless_identity_for_named_project(lane)?
+        }
+        _ => None,
+    };
+    let offline_answer = match &observed {
+        Some(identity) => {
+            let mut offline = |_: &Value| -> Result<Vec<u8>, Failure> {
+                Err(Failure::failed(
+                    "survey_hold_needs_cloud",
+                    "the held copy needs a refresh",
+                ))
+            };
+            match answer(identity.uid(), &mut offline) {
+                Ok(held) => Some((identity.lane().to_owned(), project.to_owned(), held)),
+                Err(failure) if failure.code() == "survey_hold_needs_cloud" => None,
+                Err(failure) => return Err(failure),
+            }
+        }
+        None if matches!(refresh, Refresh::Local) => {
+            return Err(Failure::unauthorized(
+                "headless_signed_out",
+                "this machine has no signed-in account on this lane",
+            )
+            .remedy("run `ds account connect`"));
+        }
+        None => None,
+    };
+    let (lane_token, project_id, (source, manifest, rows)) = match offline_answer {
+        Some(held) => held,
+        None => {
+            let headless = ds_cli_auth::survey_hold(lane, project, answer)?;
+            (
+                headless.lane().to_owned(),
+                headless.project_id().to_owned(),
+                headless.into_result(),
+            )
+        }
+    };
+    let limit = request.limit();
+    let read = SurveyEntriesRead {
+        project: project_id.clone(),
+        form: form.to_owned(),
+        total: rows.len() as u64,
+        truncated: rows.len() > limit,
+        entries: rows
+            .into_iter()
+            .take(limit)
+            .map(|feature| SurveyEntry {
+                media: entry_media(&feature),
+                feature,
+            })
+            .collect(),
+        sync: None,
+    };
+    let mut data = answer_json(&lane_token, &read, inputs, &request);
+    data["source"] = json!(source.as_str());
+    data["held"] = held_json(&manifest);
+    finish(data, &read, inputs.value("out"))
+}
+
+/// Deleted entries are never held, so a read that wants them asks the cloud
+/// directly, as before the hold, and says so.
+fn cloud(inputs: &Inputs, request: &SurveyEntriesReadRequest) -> Result<Value, Failure> {
     let headless = ds_cli_auth::survey_entries_read(
         inputs.require("lane")?,
         inputs.require("project")?,
-        &request,
+        request,
     )?;
     let read = headless.result();
-    let mut data = json!({
-        "lane": headless.lane(),
-        "project": {"ds_project": headless.project_id()},
+    let mut data = answer_json(headless.lane(), read, inputs, request);
+    data["source"] = json!("cloud");
+    data["sync"] = json!(read.sync);
+    finish(data, read, inputs.value("out"))
+}
+
+fn answer_json(
+    lane: &str,
+    read: &SurveyEntriesRead,
+    inputs: &Inputs,
+    request: &SurveyEntriesReadRequest,
+) -> Value {
+    json!({
+        "lane": lane,
+        "project": {"ds_project": read.project},
         "form": read.form,
         "filters": {
             "updated_after": request.updated_after(),
             "bbox": inputs.value("bbox"),
+            "admin_boundary": inputs.value("admin-boundary"),
+            "boundary": inputs.value("boundary"),
+            "date_from": inputs.value("date-from"),
+            "date_to": inputs.value("date-to"),
+            "surveyors": inputs.repeated("surveyor"),
             "include_deleted": inputs.switch("include-deleted"),
         },
         "total": read.total,
         "returned": read.entries.len(),
         "truncated": read.truncated,
         "media_count": read.entries.iter().map(|entry| entry.media.len()).sum::<usize>(),
-        "sync": read.sync,
-    });
+    })
+}
+
+fn held_json(manifest: &Manifest) -> Value {
+    json!({
+        "filter": manifest.filter,
+        "whole_form": manifest.filter.is_whole_form(),
+        "filter_sha256": manifest.filter_sha256,
+        "rows": manifest.rows,
+        "created_at": manifest.created_at,
+        "refreshed_at": manifest.refreshed_at,
+        "cursor": manifest.cursor,
+        "last": manifest.last,
+    })
+}
+
+fn finish(mut data: Value, read: &SurveyEntriesRead, out: Option<&str>) -> Result<Value, Failure> {
     match out {
         Some(path) => {
             write_new(path, read)?;
@@ -180,6 +361,58 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         None => data["entries"] = read.entries.iter().map(entry_json).collect(),
     }
     Ok(data)
+}
+
+fn hold_failure(error: HoldError<Failure>) -> Failure {
+    match error {
+        HoldError::Fetch(failure) => failure,
+        HoldError::NotHeld => Failure::invalid(
+            "survey_hold_not_held",
+            "this machine holds no copy of the form under that filter",
+        )
+        .remedy(
+            "drop --refresh local to read it once; `ds survey local status` lists what is held",
+        ),
+        HoldError::Refused(message) => Failure::unavailable("survey_entries_unreadable", message)
+            .remedy("retry once, then report it with `ds feedback submit`"),
+        HoldError::Store(message) => store_failure(message),
+    }
+}
+
+fn store_failure(message: String) -> Failure {
+    Failure::unavailable("survey_hold_store", message)
+        .remedy("check disk space and the layer root, then retry")
+}
+
+/// The working-area filter, canonical, checked before any credential is read.
+fn parse_filter(inputs: &Inputs) -> Result<Filter, Failure> {
+    let boundary = inputs
+        .value("boundary")
+        .map(|path| {
+            let bytes = std::fs::read(path)
+                .map_err(|error| invalid(format!("`--boundary` {path}: {error}")))?;
+            let value: Value = serde_json::from_slice(&bytes)
+                .map_err(|_| invalid("`--boundary` is not GeoJSON"))?;
+            // A Feature or a bare geometry; the filter holds the geometry.
+            Ok::<_, Failure>(match value.get("geometry") {
+                Some(geometry) if value["type"] == "Feature" => geometry.clone(),
+                _ => value,
+            })
+        })
+        .transpose()?;
+    Filter {
+        bbox: inputs.value("bbox").map(parse_bbox).transpose()?,
+        admin_boundary: inputs.value("admin-boundary").map(|code| AdminBoundary {
+            code: code.to_owned(),
+            name: String::new(),
+        }),
+        boundary,
+        date_from: inputs.value("date-from").map(str::to_owned),
+        date_to: inputs.value("date-to").map(str::to_owned),
+        surveyors: inputs.repeated("surveyor").to_vec(),
+    }
+    .canonical()
+    .map_err(invalid)
 }
 
 fn entry_json(entry: &SurveyEntry) -> Value {

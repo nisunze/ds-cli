@@ -952,6 +952,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
             "ds_catalog",
             "ds_diagnostics",
             "survey_entries_read",
+            "survey_local_status",
             "survey_moments_list",
             "survey_moments_read",
             "survey_photo_fetch",
@@ -1658,7 +1659,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "survey-projects" => 21,
             // Held survey photos (list, read), the one rotation and its
             // publication, and the offline file rotation, plus bootstrap.
-            "survey-media" => 9,
+            "survey-media" => 10,
             "design-edit" => 23,
             // Twenty-six printing leaves plus bootstrap: city-vector input,
             // local rendering and standalone map delivery complete the headless

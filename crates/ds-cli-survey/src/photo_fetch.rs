@@ -112,9 +112,8 @@ pub static FETCH_COMMAND: Command = Command {
         Arg::value(
             "out-dir",
             "<dir>",
-            "Directory the photos are written under.",
-        )
-        .required(),
+            "Write here instead of the core's held photos (see `survey local status`).",
+        ),
         Arg::value(
             "lane",
             "<stable|canary>",
@@ -146,19 +145,33 @@ pub static FETCH_COMMAND: Command = Command {
 pub fn fetch(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = inputs.require("project")?;
     let thumbnail = !inputs.switch("original");
-    let wanted = wanted(inputs, thumbnail)?;
-    let out_dir = PathBuf::from(inputs.require("out-dir")?);
-    std::fs::create_dir_all(&out_dir).map_err(output)?;
-
-    let projects: Vec<&str> = wanted
-        .keys()
-        .filter_map(|path| path.strip_prefix("projects/")?.split('/').next())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
+    let (wanted, owners) = wanted(inputs, thumbnail)?;
+    // Each photo's project is the kernel address's, not a string prefix.
+    let projects: Vec<&str> = owners
+        .iter()
+        .map(String::as_str)
         .filter(|other| *other != project)
         .collect();
     let headless = ds_cli_auth::survey_media_grant(inputs.require("lane")?, project, &projects)?;
     let grants = headless.result();
+    // By default the photos join the core's copy of the project, where
+    // `survey local status` counts them and a report finds them.
+    let held = inputs.value("out-dir").is_none();
+    let out_dir = match inputs.value("out-dir") {
+        Some(dir) => PathBuf::from(dir),
+        None => {
+            let root = ds_layer_store::default_root()
+                .map_err(|message| Failure::unavailable("survey_photo_output", message))?;
+            ds_project_data::survey_hold::media_dir(
+                &root,
+                &ds_command_kernel::project_dataset_cache::Scope {
+                    principal: headless.identity().uid().to_owned(),
+                    project: project.to_owned(),
+                },
+            )
+        }
+    };
+    std::fs::create_dir_all(&out_dir).map_err(output)?;
 
     let (mut fetched, mut present, mut failed) = (Vec::new(), Vec::new(), Vec::new());
     let mut missing = Vec::new();
@@ -210,6 +223,7 @@ pub fn fetch(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "lane": headless.lane(),
         "project": {"ds_project": headless.project_id()},
         "out_dir": out_dir,
+        "held": held,
         "thumbnail": thumbnail,
         "requested": wanted.len(),
         "complete": failed.is_empty(),
@@ -271,7 +285,11 @@ fn one(
 
 /// What to write (the target object path: the original, or its thumbnail)
 /// mapped to the original it comes from, each once, in a stable order.
-fn wanted(inputs: &Inputs, thumbnail: bool) -> Result<BTreeMap<String, String>, Failure> {
+#[allow(clippy::type_complexity)]
+fn wanted(
+    inputs: &Inputs,
+    thumbnail: bool,
+) -> Result<(BTreeMap<String, String>, BTreeSet<String>), Failure> {
     let mut references: Vec<String> = inputs.repeated("path").to_vec();
     if let Some(from) = inputs.value("from") {
         references.extend(from_file(from)?);
@@ -280,6 +298,7 @@ fn wanted(inputs: &Inputs, thumbnail: bool) -> Result<BTreeMap<String, String>, 
         return Err(invalid("pass --path or --from with at least one photo"));
     }
     let mut wanted = BTreeMap::new();
+    let mut owners = BTreeSet::new();
     for reference in &references {
         let (address, _) = media_address(reference).ok_or_else(|| {
             invalid(format!(
@@ -300,6 +319,7 @@ fn wanted(inputs: &Inputs, thumbnail: bool) -> Result<BTreeMap<String, String>, 
         {
             return Err(invalid("a photo path is not a plain relative path"));
         }
+        owners.insert(address.project.clone());
         wanted.insert(path, address.object_path);
     }
     if wanted.len() > MAX_PHOTOS {
@@ -307,7 +327,7 @@ fn wanted(inputs: &Inputs, thumbnail: bool) -> Result<BTreeMap<String, String>, 
             "more than 5000 photos; fetch a narrower read (--bbox, --updated-after) at a time",
         ));
     }
-    Ok(wanted)
+    Ok((wanted, owners))
 }
 
 /// Every `media[].object_path` in a GeoJSON written by `entries read --out`.
@@ -427,7 +447,8 @@ mod tests {
             "--from",
             from.to_str().unwrap(),
         ];
-        let wanted = wanted(&inputs(&arguments), false).unwrap();
+        let (wanted, owners) = wanted(&inputs(&arguments), false).unwrap();
+        assert_eq!(owners.into_iter().collect::<Vec<_>>(), ["p0", "p1"]);
         assert_eq!(
             wanted.into_keys().collect::<Vec<_>>(),
             [
@@ -435,7 +456,7 @@ mod tests {
                 "projects/p1/forms/f/e1/photo/a.jpg"
             ]
         );
-        let thumbnails = super::wanted(&inputs(&arguments), true).unwrap();
+        let (thumbnails, _) = super::wanted(&inputs(&arguments), true).unwrap();
         assert!(
             thumbnails
                 .iter()

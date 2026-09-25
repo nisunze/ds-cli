@@ -51,16 +51,21 @@ Never invent conductor sizes, asset ratings, connections or source provenance.
 
 ## Values and photos for a report
 
-Use `survey.entries.read` for one exact form: every property (form fields under
+Start with `survey.local.status`: offline, it lists each form this machine
+holds (filter, rows, refreshed when) and the photos held. Then
+`survey.entries.read` for one exact form: every property (form fields under
 `data`) plus each entry's `media` (property, `object_path`,
-`thumbnail_object_path`). Default 100, maximum 5000; `total` is the full count
-and `truncated` says whether you have all of it. Write `--out <file.geojson>`
-for a whole form. Filters: `--updated-after`, `--bbox`, `--include-deleted`.
-Then `survey.photo.fetch --from <file.geojson> --out-dir <dir>` writes every
-photo's thumbnail (320 px; made from the original when never uploaded, as the
-map does on hover) to `<dir>/<object path>`; rerun to resume. Read thumbnails
-first; add `--original` only for photos whose detail matters. It needs
-`reports.export` on each project the photos belong to.
+`thumbnail_object_path`). It answers from the held copy — reused when fresh,
+else only changes are fetched; `source` says which, `--refresh local` never
+goes online. Default 100, maximum 5000; `total` is the full count and
+`truncated` says whether you have all of it. Write `--out <file.geojson>` for
+a whole form. Filters are the map's working area (`--bbox`, `--admin-boundary`,
+`--boundary`, `--date-from/--date-to`, `--surveyor`); `--updated-after` narrows
+locally. Then `survey.photo.fetch --from <file.geojson>` adds every photo's
+thumbnail (320 px; made from the original when never uploaded, as the map does
+on hover) to the held copy; rerun to resume. Read thumbnails first; add
+`--original` only where detail matters. It needs `reports.export` on each
+project the photos belong to.
 
 For viewing/holding survey rows in the existing map, use `map.survey.download`.
 It consumes the active Working Area; `--entire-project` is an explicit full-scope

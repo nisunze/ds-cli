@@ -727,6 +727,7 @@ const FORM_FACTORY_COMMANDS: &[&str] = &[
 // that profile past its bound.
 const SURVEY_MEDIA_COMMANDS: &[&str] = &[
     "survey.entries.read",
+    "survey.local.status",
     "survey.moments.list",
     "survey.moments.read",
     "survey.photo.rotate",

@@ -22,6 +22,10 @@ ds-cli-server = { workspace = true }
 ds-command-kernel = { workspace = true }
 ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }
 ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
+# The core's survey hold: decisions in the kernel, bytes in ds-project-data,
+# under the same layer root as the working-area form choice.
+ds-project-data = { path = "../../../ds-command-kernel/crates/ds-project-data" }
+ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
