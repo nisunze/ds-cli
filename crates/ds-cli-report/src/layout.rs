@@ -1050,7 +1050,10 @@ pub fn copy(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 }
 pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     // Copy input to a private scratch file so the bytes cannot change between validation and dispatch.
-    let raw = bytes(i.require("request")?, 32 * 1024 * 1024)?;
+    // Governed district captures include thousands of road, river and network
+    // features. Keep the immutable local request bounded, but large enough for
+    // the output of report.project.map-inputs itself.
+    let raw = bytes(i.require("request")?, 128 * 1024 * 1024)?;
     let scratch = tempfile::tempdir().map_err(invalid)?;
     let request = scratch.path().join("request.json");
     let result = scratch.path().join("result.json");
