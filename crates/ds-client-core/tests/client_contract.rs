@@ -7125,8 +7125,9 @@ fn status_intake_upload_is_project_fenced_then_processes_one_file() {
         &transport,
         serde_json::json!({
             "session_uri":"https://storage.googleapis.com/upload/storage/v1/b/test-bucket/o?upload_id=private-token",
-            "blob_path":"projects/project_a/process_uploads/v2/lv_process/receipt/a.zip",
-            "upload_domain":"lv_process"
+            "blob_path":"project_a/lv_process/uploads/receipt/a.zip",
+            "upload_domain":"lv_process",
+            "upload_receipt":"receipt"
         }),
     );
     transport
@@ -7151,7 +7152,7 @@ fn status_intake_upload_is_project_fenced_then_processes_one_file() {
         .unwrap();
     assert_eq!(
         uploaded.data()["blob_path"],
-        "projects/project_a/process_uploads/v2/lv_process/receipt/a.zip"
+        "project_a/lv_process/uploads/receipt/a.zip"
     );
     push_status_processing(
         &transport,
@@ -7193,7 +7194,7 @@ fn status_intake_refuses_foreign_storage_target_before_byte_transfer() {
         &transport,
         serde_json::json!({
             "session_uri":"https://storage.googleapis.com/upload/storage/v1/b/test-bucket/o?upload_id=private-token",
-            "blob_path":"projects/other/process_uploads/v2/lv_process/receipt/a.zip",
+            "blob_path":"other/lv_process/uploads/receipt/a.zip",
             "upload_domain":"lv_process"
         }),
     );

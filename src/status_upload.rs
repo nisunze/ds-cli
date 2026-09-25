@@ -269,7 +269,23 @@ pub fn validate_upload_target(
         return Err(invalid());
     }
     let url = url::Url::parse(session_uri).map_err(|_| invalid())?;
-    let prefix = format!("projects/{project_id}/process_uploads/v2/{}/", mode.wire());
+    let receipt = descriptor
+        .get("upload_receipt")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty() && value.len() <= 128)
+        .filter(|value| {
+            value
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        })
+        .ok_or_else(invalid)?;
+    let root = match mode {
+        UploadMode::LvDrafting => "lv_drafting",
+        UploadMode::SketchLv => "lv_sketches",
+        UploadMode::LvProcess => "lv_process",
+    };
+    let prefix = format!("{project_id}/{root}/uploads/{receipt}/");
+    let file_name = blob_path.strip_prefix(&prefix).ok_or_else(invalid)?;
     if url.scheme() != "https"
         || url.host_str() != Some("storage.googleapis.com")
         || url.port().is_some()
@@ -280,8 +296,9 @@ pub fn validate_upload_target(
         || !url
             .query_pairs()
             .any(|(key, value)| key == "upload_id" && !value.is_empty())
-        || !blob_path.starts_with(&prefix)
-        || blob_path.split('/').any(|part| matches!(part, "." | ".."))
+        || file_name.is_empty()
+        || file_name.contains('/')
+        || matches!(file_name, "." | "..")
     {
         return Err(invalid());
     }
@@ -863,15 +880,17 @@ mod tests {
     fn upload_target_is_project_domain_and_storage_origin_fenced() {
         let valid = json!({
             "session_uri":"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=secret",
-            "blob_path":"projects/gisagara/process_uploads/v2/lv_process/r/a.zip",
-            "upload_domain":"lv_process"
+            "blob_path":"gisagara/lv_process/uploads/receipt-1/a.zip",
+            "upload_domain":"lv_process",
+            "upload_receipt":"receipt-1"
         });
         let target = validate_upload_target("gisagara", UploadMode::LvProcess, &valid).unwrap();
         assert_eq!(target.blob_path, valid["blob_path"]);
         for bad in [
             json!({"session_uri":"https://evil.test/upload/storage/v1/b/b/o?upload_id=x","blob_path":valid["blob_path"],"upload_domain":"lv_process"}),
-            json!({"session_uri":valid["session_uri"],"blob_path":"projects/other/process_uploads/v2/lv_process/r/a.zip","upload_domain":"lv_process"}),
+            json!({"session_uri":valid["session_uri"],"blob_path":"other/lv_process/uploads/receipt-1/a.zip","upload_domain":"lv_process"}),
             json!({"session_uri":valid["session_uri"],"blob_path":valid["blob_path"],"upload_domain":"lv_drafting"}),
+            json!({"session_uri":valid["session_uri"],"blob_path":"gisagara/lv_process/uploads/wrong/a.zip","upload_domain":"lv_process","upload_receipt":"receipt-1"}),
         ] {
             assert!(validate_upload_target("gisagara", UploadMode::LvProcess, &bad).is_err());
         }

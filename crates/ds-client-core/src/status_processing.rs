@@ -83,12 +83,20 @@ fn content_type(value: &str) -> bool {
 }
 
 fn blob_path(value: &str, project: &str, domain: StatusUploadDomain) -> bool {
+    let root = match domain {
+        StatusUploadDomain::LvDrafting => "lv_drafting",
+        StatusUploadDomain::SketchLv => "lv_sketches",
+        StatusUploadDomain::LvProcess => "lv_process",
+    };
+    let parts: Vec<_> = value.split('/').collect();
     value.len() <= 2_048
-        && value.starts_with(&format!(
-            "projects/{project}/process_uploads/v2/{}/",
-            domain.token()
-        ))
-        && !value.split('/').any(|part| matches!(part, "." | ".."))
+        && parts.len() == 5
+        && parts[0] == project
+        && parts[1] == root
+        && parts[2] == "uploads"
+        && !parts[3].is_empty()
+        && !parts[4].is_empty()
+        && !parts.iter().any(|part| matches!(*part, "." | ".."))
 }
 
 fn response(response: TransportResponse) -> Result<Value, ClientError> {
@@ -226,17 +234,17 @@ mod tests {
     #[test]
     fn blob_scope_is_project_and_domain_fenced() {
         assert!(blob_path(
-            "projects/p/process_uploads/v2/lv_process/r/a.zip",
+            "p/lv_process/uploads/r/a.zip",
             "p",
             StatusUploadDomain::LvProcess
         ));
         assert!(!blob_path(
-            "projects/q/process_uploads/v2/lv_process/r/a.zip",
+            "q/lv_process/uploads/r/a.zip",
             "p",
             StatusUploadDomain::LvProcess
         ));
         assert!(!blob_path(
-            "projects/p/process_uploads/v2/lv_drafting/r/a.zip",
+            "p/lv_drafting/uploads/r/a.zip",
             "p",
             StatusUploadDomain::LvProcess
         ));
