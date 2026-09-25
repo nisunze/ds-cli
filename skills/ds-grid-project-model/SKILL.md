@@ -14,6 +14,18 @@ Use the `ds` skill first. Keep three states distinct:
 - active means one local model occupies Profile and editing;
 - publication registers one immutable revision in the selected project and does not change the active model.
 
+## Discover a project's models and their versions
+
+A project may have several independently versioned DS Grid models. Their
+display names are arbitrary and must not be parsed as version numbers. Discover
+`dsgrid.project.list` and `dsgrid.project.versions` through the live
+descriptors. List the explicit project, following every `next_cursor` while
+`more` is true. For each returned opaque `model_id`, list its versions and
+follow that command's cursor too. Use `--include-deleted` only when retired
+models are relevant. Report the model name, ID, head revision, and actual
+version values separately; pin later downloads or prints to an exact revision.
+Both leaves are in the `grid-local-model` MCP profile.
+
 Read the live descriptor before each command:
 
 ```text
