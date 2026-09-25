@@ -1,0 +1,27 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {},
+  "folders": [
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_1",
+      "project_id": "p",
+      "path": "unclassified/x",
+      "name": "x",
+      "parent": null,
+      "kind": "user",
+      "default_sensitivity": null,
+      "default_status": null,
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      }
+    }
+  ],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

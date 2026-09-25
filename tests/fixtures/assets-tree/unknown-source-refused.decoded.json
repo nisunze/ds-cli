@@ -1,0 +1,13 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "transformer_uploads": []
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

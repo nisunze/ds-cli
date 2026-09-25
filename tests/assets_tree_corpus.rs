@@ -9,6 +9,13 @@
 //! as `build_value` accepts it, and `<case>.response.json` is its answer. A
 //! refused request records `{"refusal": "<message>"}`.
 //!
+//! `<case>.decoded.json` is the same request after the kernel decoded it and
+//! encoded it again: the serde defaults filled in, the skip rules applied.
+//! ds-brain builds its requests in Go, so its types must round-trip exactly
+//! this way before the kernel and the Go builder can be said to read the same
+//! request. The row-bound case alone has none: its 20,001 empty rows prove a
+//! refusal, not an encoding.
+//!
 //! The requests carry only what the index is built from: the cloud sources
 //! ds-brain owns, catalogued assets and declared folders. The edge-only
 //! sources (`dataset_rooms`, `national_datasets`, `report_rooms`,
@@ -68,10 +75,14 @@ const FILTERS: [&str; 5] = ["query", "link", "folder", "depth", "kind"];
 /// The case that must hold every cloud source, catalogue rows and folders.
 const WHOLE_PROJECT: &str = "whole-project-mixed";
 
+/// The case whose rows are too many to be worth a decoded form.
+const ROW_BOUND: &str = "source-row-bound-refused";
+
 struct Case {
     name: String,
     request_path: PathBuf,
     response_path: PathBuf,
+    decoded_path: PathBuf,
 }
 
 fn cases() -> Vec<Case> {
@@ -82,10 +93,12 @@ fn cases() -> Vec<Case> {
             let file = path.file_name()?.to_str()?.to_string();
             let name = file.strip_suffix(".request.json")?.to_string();
             let response_path = path.with_file_name(format!("{name}.response.json"));
+            let decoded_path = path.with_file_name(format!("{name}.decoded.json"));
             Some(Case {
                 name,
                 request_path: path,
                 response_path,
+                decoded_path,
             })
         })
         .collect();
@@ -99,17 +112,41 @@ fn read_json(path: &Path) -> Value {
     serde_json::from_str(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
 
-/// The kernel's answer to one recorded request: decoded exactly as the wire
-/// decodes a `TreeRequest`, then `build_value`, or the refusal it names.
-fn answer(case: &Case) -> Value {
+/// One recorded request decoded exactly as the wire decodes a `TreeRequest`.
+fn decode(case: &Case) -> TreeRequest {
     let text = fs::read_to_string(&case.request_path)
         .unwrap_or_else(|error| panic!("{}: {error}", case.name));
-    let request: TreeRequest = serde_json::from_str(&text)
-        .unwrap_or_else(|error| panic!("{}: the request does not decode: {error}", case.name));
-    match build_value(&request) {
+    serde_json::from_str(&text)
+        .unwrap_or_else(|error| panic!("{}: the request does not decode: {error}", case.name))
+}
+
+/// The kernel's answer to one decoded request: `build_value`, or the refusal
+/// it names.
+fn answer(request: &TreeRequest) -> Value {
+    match build_value(request) {
         Ok(value) => value,
         Err(refusal) => json!({ "refusal": refusal }),
     }
+}
+
+fn write_json(path: &Path, value: &Value) {
+    let mut text = serde_json::to_string_pretty(value).expect("value encodes");
+    text.push('\n');
+    fs::write(path, text).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+}
+
+fn check_recorded(case: &Case, path: &Path, actual: &Value, what: &str) {
+    assert!(
+        path.exists(),
+        "{} has no recorded {what}; run with {WRITE_ENV}=1",
+        case.name
+    );
+    assert_eq!(
+        actual,
+        &read_json(path),
+        "{} differs from its recorded {what}",
+        case.name
+    );
 }
 
 #[test]
@@ -118,33 +155,33 @@ fn every_recorded_request_answers_its_recorded_response() {
     assert!(cases.len() >= 40, "the corpus lost cases: {}", cases.len());
     let write = std::env::var(WRITE_ENV).is_ok_and(|value| value == "1");
     for case in &cases {
-        let answer = answer(case);
+        let request = decode(case);
+        let answer = answer(&request);
+        let decoded = (case.name != ROW_BOUND)
+            .then(|| serde_json::to_value(&request).expect("the request encodes"));
         if write {
-            let mut text = serde_json::to_string_pretty(&answer).expect("answer encodes");
-            text.push('\n');
-            fs::write(&case.response_path, text).expect("response written");
+            write_json(&case.response_path, &answer);
+            if let Some(decoded) = &decoded {
+                write_json(&case.decoded_path, decoded);
+            }
             continue;
         }
-        assert!(
-            case.response_path.exists(),
-            "{} has no recorded response; run with {WRITE_ENV}=1",
-            case.name
-        );
-        let recorded = read_json(&case.response_path);
-        assert_eq!(
-            answer, recorded,
-            "{} answers differently from its recording",
-            case.name
-        );
+        check_recorded(case, &case.response_path, &answer, "response");
+        if let Some(decoded) = &decoded {
+            check_recorded(case, &case.decoded_path, decoded, "decoded form");
+        }
     }
-    // No stray response without its request.
+    // No stray response or decoded form without its request.
     for entry in fs::read_dir(CORPUS_DIR).expect("corpus directory") {
         let path = entry.expect("entry").path();
         let file = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default();
-        if let Some(name) = file.strip_suffix(".response.json") {
+        let name = file
+            .strip_suffix(".response.json")
+            .or_else(|| file.strip_suffix(".decoded.json"));
+        if let Some(name) = name {
             assert!(
                 cases.iter().any(|case| case.name == name),
                 "{file} has no request"

@@ -1,0 +1,56 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "design_attachments": [
+      {
+        "label": "no id",
+        "file_name": "x.pdf"
+      }
+    ],
+    "grid_exports": [
+      {
+        "export_id": "exp_2",
+        "items": [
+          {
+            "output_id": "o"
+          }
+        ]
+      }
+    ],
+    "pm_attachments": [
+      {
+        "id": "pa_c",
+        "linkedEntityType": "comment",
+        "linkedEntityId": "c_1",
+        "originalName": "aside.txt"
+      },
+      {
+        "id": "pa_orphan",
+        "linkedEntityType": "task",
+        "linkedEntityId": "t_missing",
+        "originalName": "orphan.pdf"
+      }
+    ],
+    "solar": [
+      {
+        "artifacts": [
+          {
+            "name": "orphan.png"
+          }
+        ]
+      }
+    ],
+    "transformers": [
+      {
+        "name": ""
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

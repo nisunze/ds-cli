@@ -1,0 +1,121 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "design_attachments": [
+      {
+        "attachment_id": "att_latest_only",
+        "object": {
+          "id": "TX-1"
+        },
+        "label": "permits",
+        "file_name": "permit.PDF",
+        "latest_revision_id": "rev_9",
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-02-01T00:00:00Z"
+      },
+      {
+        "attachment_id": "att_no_rev",
+        "object": {
+          "id": "TX-1"
+        },
+        "file_name": "no-rev.pdf"
+      },
+      {
+        "attachment_id": "att_no_label",
+        "object": {
+          "id": "TX-1"
+        },
+        "latest_revision": 4
+      },
+      {
+        "attachment_id": "att_media",
+        "object": {
+          "id": "TX-1"
+        },
+        "label": "scan",
+        "media_type": "pdf",
+        "latest_revision_id": "rev_m"
+      },
+      {
+        "attachment": {
+          "attachment_id": "att_by_number",
+          "object": {
+            "id": "TX-2"
+          },
+          "label": "maps",
+          "file_name": "map.png",
+          "latest_revision": 2
+        },
+        "revisions": [
+          {
+            "revision_id": "a",
+            "revision": 1
+          },
+          {
+            "revision_id": "b",
+            "revision": 2,
+            "file_name": "map-v2.JPG"
+          },
+          {
+            "revision": 3,
+            "file_name": "map.tar.gz"
+          },
+          {
+            "revision_id": "d",
+            "file_name": "odd.name."
+          }
+        ]
+      },
+      {
+        "attachment": {
+          "attachment_id": "att_ext",
+          "object": {
+            "id": "TX-2"
+          },
+          "label": "a/b",
+          "file_name": "x.bak",
+          "latest_revision_id": "z"
+        },
+        "revisions": [
+          {
+            "revision_id": "z",
+            "revision": "7",
+            "file_name": "report.xlsx.bak"
+          }
+        ]
+      },
+      {
+        "attachment": {
+          "attachment_id": "att_bad_revs",
+          "object": {
+            "id": "TX-2"
+          },
+          "label": "bad",
+          "latest_revision_id": "q"
+        },
+        "revisions": "not a list"
+      },
+      {
+        "attachment": {
+          "object": {
+            "id": "TX-2"
+          },
+          "label": "noid"
+        },
+        "revisions": []
+      },
+      {
+        "attachment_id": "att_key_only",
+        "object_key": "lv_transformer:",
+        "label": "k"
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

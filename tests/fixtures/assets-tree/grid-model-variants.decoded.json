@@ -1,0 +1,140 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "grid_exports": [
+      {
+        "model_id": "m_head",
+        "export_id": "e_1",
+        "items": [
+          {
+            "output_id": "full",
+            "format": "DsGrid"
+          },
+          {
+            "output_id": ""
+          },
+          {
+            "format": "gpkg"
+          }
+        ]
+      },
+      {
+        "model_id": "m_alias",
+        "export_id": "e_2",
+        "items": [
+          {
+            "output_id": "o",
+            "format": "geojson"
+          }
+        ]
+      },
+      {
+        "model_id": "m/slash",
+        "export_id": "e/3",
+        "display_name": "",
+        "items": [
+          {
+            "output_id": "o",
+            "format": "kmz"
+          }
+        ]
+      },
+      {
+        "model_id": "m_head",
+        "items": [
+          {
+            "output_id": "noexport"
+          }
+        ]
+      },
+      {
+        "model_id": "m_head",
+        "export_id": "e_4",
+        "items": "nope"
+      }
+    ],
+    "grid_models": [
+      {
+        "model_id": "m_head",
+        "display_name": "Head only",
+        "head_revision_id": "r_5",
+        "head_model_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+        "updated_at": "2026-05-01T00:00:00Z"
+      },
+      {
+        "model_id": "m_deleted",
+        "display_name": "Gone",
+        "state": "deleted",
+        "head_revision_id": "r_1",
+        "revisions": [
+          {
+            "revision_id": "r_1",
+            "created_at": "2026-01-01T00:00:00Z"
+          },
+          {
+            "revision_id": "r_0"
+          }
+        ]
+      },
+      {
+        "model_id": "m_alias",
+        "versions": [
+          {
+            "revision_id": "v_1"
+          },
+          {
+            "revision_id": "v_2"
+          }
+        ],
+        "head_revision_id": "v_2"
+      },
+      {
+        "model_id": "m_both",
+        "revisions": [
+          {
+            "revision_id": "r_x"
+          }
+        ],
+        "versions": [
+          {
+            "revision_id": "v_y"
+          }
+        ],
+        "head_revision_id": "r_x"
+      },
+      {
+        "model_id": "m_blank_rev",
+        "revisions": [
+          {
+            "revision_id": ""
+          },
+          {
+            "actor": "x"
+          },
+          {
+            "revision_id": "ok"
+          }
+        ]
+      },
+      {
+        "model_id": "m_no_head"
+      },
+      {
+        "display_name": "No id",
+        "head_revision_id": "r_1"
+      },
+      {
+        "model_id": "m/slash",
+        "display_name": "A/B line",
+        "head_revision_id": "h"
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

@@ -1,0 +1,980 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "compounded": [
+      {
+        "stem": "lot3",
+        "filename": "lot3.zip",
+        "gcs_path": "gs://reports/compounded/lot3.zip",
+        "created_at": "2026-09-09T00:00:00Z",
+        "created_by": "lead@ds.rw"
+      },
+      {
+        "stem": "lot4"
+      }
+    ],
+    "compute_artifacts": [
+      {
+        "work_id": "w_solar_1",
+        "engine": "solar",
+        "operation": "report",
+        "variant": "fr",
+        "updated_at": "2026-09-11T00:00:00Z",
+        "outputs": [
+          {
+            "output_id": "draft",
+            "format": "md",
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "size_bytes": 10
+          },
+          {
+            "output_id": "figures",
+            "format": "zip"
+          },
+          {
+            "output_id": "raw"
+          }
+        ]
+      },
+      {
+        "work_id": "w_empty",
+        "outputs": []
+      }
+    ],
+    "design_attachments": [
+      {
+        "attachment": {
+          "attachment_id": "att_permit",
+          "object": {
+            "kind": "lv_transformer",
+            "id": "TX-104"
+          },
+          "object_key": "lv_transformer:TX-104",
+          "label": "permits",
+          "file_name": "permit.pdf",
+          "latest_revision_id": "rev_3",
+          "latest_revision": 3,
+          "created_by": "legal@ds.rw",
+          "created_at": "2026-08-01T00:00:00Z",
+          "updated_at": "2026-09-05T00:00:00Z"
+        },
+        "revisions": [
+          {
+            "revision_id": "rev_1",
+            "revision": 1,
+            "file_name": "permit.pdf",
+            "byte_size": 10,
+            "created_at": "2026-08-01T00:00:00Z",
+            "created_by": "legal@ds.rw"
+          },
+          {
+            "revision_id": "rev_2",
+            "revision": 2,
+            "file_name": "permit-signed.PDF",
+            "byte_size": 20,
+            "media_type": "application/pdf",
+            "byte_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "created_at": "2026-08-20T00:00:00Z",
+            "created_by": "legal@ds.rw"
+          },
+          {
+            "revision_id": "rev_3",
+            "revision": 3,
+            "file_name": "permit-final.pdf",
+            "byte_size": 30,
+            "created_at": "2026-09-05T00:00:00Z",
+            "created_by": "lead@ds.rw"
+          }
+        ]
+      },
+      {
+        "attachment_id": "att_way",
+        "object_key": "lv_transformer:TX-105",
+        "label": "wayleave",
+        "file_name": "wayleave.PDF",
+        "media_type": "application/pdf",
+        "latest_revision_id": "rev_w1",
+        "latest_revision": 1,
+        "created_by": "legal@ds.rw",
+        "created_at": "2026-09-06T00:00:00Z",
+        "updated_at": "2026-09-07T00:00:00Z"
+      },
+      {
+        "attachment_id": "att_mv",
+        "object": {
+          "kind": "mv_model",
+          "id": "mv_data"
+        },
+        "label": "profile",
+        "file_name": "profile.pdf",
+        "latest_revision_id": "rev_p1"
+      }
+    ],
+    "grid_exports": [
+      {
+        "model_id": "m_feeder_a",
+        "export_id": "exp_1",
+        "model_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "created_at": "2026-09-19T00:00:00Z",
+        "items": [
+          {
+            "output_id": "model",
+            "format": "DSGRID"
+          },
+          {
+            "output_id": "poles",
+            "format": "gpkg"
+          },
+          {
+            "output_id": "notes"
+          }
+        ]
+      },
+      {
+        "model_id": "m_unknown",
+        "display_name": "Named export",
+        "export_id": "exp_2",
+        "items": [
+          {
+            "output_id": "x",
+            "format": "kml"
+          }
+        ]
+      },
+      {
+        "model_id": "m_unknown2",
+        "export_id": "exp_3",
+        "items": [
+          {
+            "output_id": "y",
+            "format": "shp"
+          }
+        ]
+      }
+    ],
+    "grid_models": [
+      {
+        "model_id": "m_feeder_a",
+        "display_name": "Feeder A",
+        "head_revision_id": "r_2",
+        "head_model_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "updated_at": "2026-09-18T00:00:00Z",
+        "revisions": [
+          {
+            "revision_id": "r_1",
+            "actor": "mv@ds.rw",
+            "created_at": "2026-09-01T00:00:00Z"
+          },
+          {
+            "revision_id": "r_2",
+            "actor": "mv@ds.rw",
+            "created_at": "2026-09-17T00:00:00Z"
+          }
+        ]
+      },
+      {
+        "model_id": "m_old",
+        "display_name": "Old line",
+        "state": "deleted",
+        "head_revision_id": "r_9",
+        "updated_at": "2026-07-01T00:00:00Z"
+      },
+      {
+        "model_id": "m_versions",
+        "head_revision_id": "v_1",
+        "versions": [
+          {
+            "revision_id": "v_1",
+            "actor": "mv@ds.rw"
+          }
+        ]
+      },
+      {
+        "model_id": "m_empty"
+      }
+    ],
+    "pm_attachments": [
+      {
+        "id": "pa_1",
+        "linkedEntityType": "task",
+        "linkedEntityId": "t_1",
+        "originalName": "method-statement.docx",
+        "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "sizeBytes": 1200,
+        "checksum": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "documentState": "approved",
+        "metadata": {
+          "createdBy": "pm@ds.rw",
+          "createdAt": "2026-09-03T08:00:00Z",
+          "updatedAt": "2026-09-04T08:00:00Z"
+        },
+        "capture": {
+          "capturedAt": "2026-09-03T07:59:00Z"
+        }
+      },
+      {
+        "id": "pa_2",
+        "linkedEntityType": "task",
+        "linkedEntityId": "t_2",
+        "storagePath": "pm/attachments/pa_2/photo.JPG",
+        "documentState": "final"
+      },
+      {
+        "id": "pa_3",
+        "linkedEntityType": "record",
+        "linkedEntityId": "R5",
+        "originalName": "transmittal.pdf",
+        "documentState": "superseded",
+        "metadata": {
+          "createdAt": 1772323200000
+        }
+      },
+      {
+        "id": "pa_4",
+        "linkedEntityType": "record",
+        "linkedEntityId": "R_missing",
+        "originalName": "orphan.pdf"
+      },
+      {
+        "id": "pa_5",
+        "linkedEntityType": "comment",
+        "linkedEntityId": "c_1"
+      },
+      {
+        "id": "pa_6",
+        "linkedEntityType": "task",
+        "linkedEntityId": "t_3",
+        "originalName": "t3.txt"
+      }
+    ],
+    "pm_parties": [
+      {
+        "id": "p_acme",
+        "data": {
+          "name": "Acme Consultancy"
+        }
+      },
+      {
+        "id": "p_zed",
+        "name": "Zed Ltd"
+      }
+    ],
+    "pm_records": [
+      {
+        "id": "R1",
+        "data": {
+          "subject": "Review of the MV design",
+          "reference_number": "RFI-004",
+          "thread_id": "R1",
+          "happened_at": "2026-09-14T09:00:00Z",
+          "external_party_ids": [
+            "p_acme",
+            "p_zed"
+          ],
+          "source_asset_id": "a_mail",
+          "document_ids": [
+            "a_doc",
+            "a_hidden"
+          ]
+        }
+      },
+      {
+        "id": "R2",
+        "data": {
+          "subject": "Re: Review",
+          "thread_id": "R1",
+          "happened_at": "2026-09-18T09:00:00Z",
+          "external_party_ids": [
+            "p_zed"
+          ],
+          "source_asset_id": "a_mail"
+        }
+      },
+      {
+        "id": "R5",
+        "referenceNumber": "TRN-017",
+        "subject": "Transmittal",
+        "threadId": "R5",
+        "happenedAt": "2026-09-21T10:00:00Z",
+        "meetingNoteAssetId": "a_note"
+      }
+    ],
+    "pm_tasks": [
+      {
+        "id": "t_1",
+        "wbs": "1.2.3",
+        "title": "Survey"
+      },
+      {
+        "id": "t_2",
+        "title": "Stringing"
+      },
+      {
+        "id": "t_3"
+      }
+    ],
+    "print_setups": [
+      {
+        "id": "layout_1",
+        "name": "A1 landscape",
+        "scope": "project",
+        "updated_at": "2026-09-16T00:00:00Z",
+        "updated_by": "lead@ds.rw"
+      },
+      {
+        "id": "layout_2"
+      }
+    ],
+    "project_data": [
+      {
+        "upload_id": "u_1",
+        "file_name": "boundaries.geojson",
+        "created_at": "2026-09-02T00:00:00Z",
+        "uploaded_by": "gis@ds.rw",
+        "blob_path": "project_data/u_1/boundaries.geojson",
+        "total_bytes": 1000
+      },
+      {
+        "upload_id": "u_2",
+        "blob_path": "project_data/u_2/roads.gpkg",
+        "user_email": "gis2@ds.rw"
+      }
+    ],
+    "solar": [
+      {
+        "city": "Huye",
+        "head": {
+          "run_id": "run_7",
+          "report_input_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "report_input_bytes": 9000,
+          "published_at": "2026-09-13T00:00:00Z"
+        },
+        "artifacts": [
+          {
+            "name": "figures/yield.png",
+            "gcs_path": "gs://solar/Huye/figures/yield.png",
+            "size_bytes": 300,
+            "content_type": "image/png"
+          },
+          {
+            "name": "summary.pdf"
+          }
+        ]
+      },
+      {
+        "city": "Nyanza",
+        "artifacts": []
+      }
+    ],
+    "survey_media": [
+      {
+        "form": "lv_poles",
+        "entry_id": "e_1",
+        "field": "photo",
+        "name": "pole.jpg",
+        "path": "survey/lv_poles/e_1/pole.jpg",
+        "content_type": "image/jpeg",
+        "captured_at": "2026-09-08T07:00:00Z",
+        "created_by": "field@ds.rw",
+        "size_bytes": 5000
+      },
+      {
+        "form": "lv_poles",
+        "entry_id": "e_1",
+        "field": "signature",
+        "path": "survey/lv_poles/e_1/signature.png",
+        "content_type": "image/png"
+      },
+      {
+        "form": "lv_poles",
+        "entry_id": "e_2",
+        "field": "photo"
+      },
+      {
+        "form": "customers",
+        "entry_id": "c/9",
+        "field": "meter_photo",
+        "name": "meter.webp"
+      }
+    ],
+    "transformer_versions": [
+      {
+        "transformer_id": "TX-104",
+        "version_id": "ver_a",
+        "version": 1,
+        "reason": "issued for review",
+        "created_at": "2026-09-02T09:00:00Z",
+        "created_by": "designer@ds.rw",
+        "playback_available": true,
+        "room_bytes": 1000
+      },
+      {
+        "transformer_id": "TX-104",
+        "version_id": "ver_b",
+        "version": 2,
+        "reason": "as-built",
+        "created_at": "2026-09-15T09:00:00Z",
+        "created_by": "lead@ds.rw",
+        "playback_available": "yes",
+        "room_bytes": "2000"
+      },
+      {
+        "object": {
+          "kind": "lv_transformer",
+          "id": "TX-105"
+        },
+        "version_id": "ver_c",
+        "created_at": "2026-09-10T09:00:00Z"
+      },
+      {
+        "transformer_id": "mv_data",
+        "version_id": "ver_m",
+        "version": 1
+      },
+      {
+        "transformer_id": "collisions_2",
+        "version_id": "ver_x"
+      }
+    ],
+    "transformers": [
+      {
+        "name": "TX-104",
+        "metadata": {
+          "updated_at": "2026-09-20T08:00:00Z",
+          "updated_by": "designer@ds.rw"
+        },
+        "uploads": {
+          "draft": [
+            {
+              "filename": "draft.xlsx",
+              "blob_path": "uploads/TX-104/draft.xlsx",
+              "uploaded_at": "2026-09-01T10:00:00Z",
+              "uploaded_by": "field@ds.rw",
+              "size_bytes": 2048
+            }
+          ],
+          "sketch": [
+            {
+              "filename": "sketch.kmz",
+              "blob_path": "gs://bucket/uploads/TX-104/sketch.kmz",
+              "uploaded_at": "2026-08-30T10:00:00Z",
+              "bytes": 4096
+            }
+          ],
+          "process": [
+            {
+              "blob_path": "https://storage.googleapis.com/b/uploads/TX-104/process.csv?X-Goog-Signature=abc"
+            }
+          ]
+        },
+        "report_files": [
+          "gs://reports/TX-104/TX-104_report.xlsx"
+        ],
+        "print_files": [
+          "gs://reports/TX-104/TX-104.a3-landscape.pdf"
+        ],
+        "report_artifacts": [
+          {
+            "url": "https://storage.example/reports/TX-104-sld.pdf?sig=1",
+            "output_id": "sld",
+            "format": "PDF",
+            "sha256": "C0FFEE00C0FFEE00C0FFEE00C0FFEE00C0FFEE00C0FFEE00C0FFEE00C0FFEE00",
+            "size_bytes": 1234
+          },
+          {
+            "output_id": "boq",
+            "format": "XLSX",
+            "size_bytes": 99
+          }
+        ],
+        "report_metadata": {
+          "print_urls": [
+            {
+              "gcs_path": "gs://reports/TX-104/TX-104.a3-landscape.pdf",
+              "map_family": "transformer-map",
+              "size_bytes": 5000,
+              "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "paper_size": "A3",
+              "format": "pdf"
+            },
+            {
+              "gcs_path": "gs://reports/custom/huye-centre.a1-portrait.pdf",
+              "map_family": "custom-map",
+              "size_bytes": 777
+            },
+            {
+              "map_family": "custom-map"
+            }
+          ]
+        }
+      },
+      {
+        "name": "TX-105",
+        "metadata": {
+          "updated_at": "2026-09-12T08:00:00Z"
+        }
+      },
+      {
+        "name": "collisions_lv_lines"
+      },
+      {
+        "name": "mv_data",
+        "report_files": [
+          "gs://reports/mv_data/mv_report.xlsx"
+        ],
+        "report_metadata": {
+          "print_urls": [
+            {
+              "gcs_path": "gs://reports/mv_data.a0-landscape.pdf",
+              "map_family": "mv-map",
+              "size_bytes": 15000000
+            }
+          ]
+        }
+      },
+      {
+        "name": "combined_transformer",
+        "report_files": [
+          "gs://reports/combined/lot3-combined.xlsx"
+        ]
+      },
+      {
+        "name": "All Transformers",
+        "report_artifacts": [
+          {
+            "url": "gs://reports/combined/all.pdf"
+          }
+        ]
+      },
+      {
+        "name": "combined_transformers",
+        "print_files": [
+          "gs://reports/combined/overview.pdf"
+        ]
+      },
+      {
+        "name": "collisions"
+      },
+      {
+        "name": "collisions_2",
+        "report_files": [
+          "gs://reports/collisions/collisions_2.geojson"
+        ]
+      }
+    ]
+  },
+  "folders": [
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_contracts",
+      "project_id": "p_whole",
+      "path": "contracts",
+      "name": "contracts",
+      "parent": null,
+      "kind": "user",
+      "default_sensitivity": "restricted",
+      "default_status": null,
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "version": 2
+    },
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_c2026",
+      "project_id": "p_whole",
+      "path": "contracts/2026",
+      "name": "2026",
+      "parent": "f_contracts",
+      "kind": "user",
+      "default_sensitivity": null,
+      "default_status": null,
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "created_at": "2026-08-01T00:00:00Z"
+    },
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_corr",
+      "project_id": "p_whole",
+      "path": "correspondence/2026-09",
+      "name": "2026-09",
+      "parent": null,
+      "kind": "user",
+      "default_sensitivity": null,
+      "default_status": null,
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      }
+    },
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_empty",
+      "project_id": "p_whole",
+      "path": "drawings/empty",
+      "name": "empty",
+      "parent": null,
+      "kind": "user",
+      "default_sensitivity": null,
+      "default_status": "durable",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "hidden_assets": 0
+    }
+  ],
+  "assets": [
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_mail",
+      "project_id": "p_whole",
+      "folder": "correspondence/2026-09",
+      "name": "review.eml",
+      "kind": "mail",
+      "format": "eml",
+      "bytes": 4200,
+      "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": "2026-09-14T09:05:00Z",
+        "created_at": "2026-09-14T10:00:00Z",
+        "source_modified_at": null
+      },
+      "owner": {
+        "kind": "user",
+        "id": "lead@ds.rw",
+        "display": "Lead"
+      },
+      "source": {
+        "kind": "mail_import",
+        "detail": "assets tab"
+      },
+      "classified_by": "user",
+      "container": null,
+      "links": [],
+      "mail": {
+        "happened_at": "2026-09-14T09:00:00Z",
+        "from": "x@example.com",
+        "to": [
+          "y@example.com"
+        ],
+        "cc": [],
+        "subject": "Review",
+        "message_id": "<m@example.com>",
+        "parts": [
+          {
+            "path": "part-1.txt",
+            "section": "1",
+            "content_type": "text/plain",
+            "disposition": "body",
+            "bytes": 12,
+            "kind": "doc",
+            "format": "txt",
+            "named": false
+          },
+          {
+            "path": "drawing.pdf",
+            "section": "2",
+            "content_type": "application/pdf",
+            "disposition": "attachment",
+            "bytes": 3000,
+            "kind": "doc",
+            "format": "pdf",
+            "named": true
+          }
+        ],
+        "parts_total": 2,
+        "truncated": false
+      },
+      "folder_id": "f_corr",
+      "content_type": "message/rfc822",
+      "created_by": "lead@ds.rw",
+      "updated_at": "2026-09-14T10:00:00Z",
+      "updated_by": "lead@ds.rw",
+      "version": 1
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_doc",
+      "project_id": "p_whole",
+      "folder": "correspondence/2026-09",
+      "name": "GTP-001.pdf",
+      "kind": "doc",
+      "format": "pdf",
+      "bytes": 10,
+      "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "status": "durable",
+      "sensitivity": "restricted",
+      "dated": {
+        "document_date": "2026-09-10",
+        "received_at": null,
+        "created_at": "2026-09-12T00:00:00Z",
+        "source_modified_at": null
+      },
+      "owner": {
+        "kind": "team",
+        "id": "commercial",
+        "display": null
+      },
+      "source": {
+        "kind": "upload",
+        "detail": null
+      },
+      "classified_by": "user",
+      "container": null,
+      "links": [],
+      "document": {
+        "number": "GTP-001",
+        "revision_label": "B",
+        "state": "issued"
+      },
+      "created_by": "lead@ds.rw",
+      "updated_at": "2026-09-13T00:00:00Z",
+      "updated_by": "lead@ds.rw",
+      "version": 3
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_ref",
+      "project_id": "p_whole",
+      "folder": "correspondence/2026-09",
+      "name": "package.zip",
+      "kind": "pack",
+      "format": "zip",
+      "bytes": 900000,
+      "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": "2026-09-18T00:00:00Z",
+        "source_modified_at": null
+      },
+      "owner": {
+        "kind": "user",
+        "id": "lead@ds.rw",
+        "display": null
+      },
+      "source": {
+        "kind": "external_reference",
+        "detail": "google drive"
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [
+        {
+          "kind": "pm_record",
+          "id": "R2"
+        }
+      ],
+      "external": {
+        "url": "https://drive.google.com/file/d/abc",
+        "provider": "google_drive"
+      },
+      "bytes_held": false,
+      "created_by": "lead@ds.rw",
+      "updated_at": "2026-09-18T00:00:00Z",
+      "updated_by": "lead@ds.rw",
+      "version": 1
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_note",
+      "project_id": "p_whole",
+      "folder": "correspondence/2026-09",
+      "name": "meeting.md",
+      "kind": "note",
+      "format": "md",
+      "bytes": 300,
+      "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "status": "fresh",
+      "sensitivity": "open",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": "2026-09-21T11:00:00Z",
+        "source_modified_at": null
+      },
+      "owner": {
+        "kind": "user",
+        "id": "pm@ds.rw",
+        "display": null
+      },
+      "source": {
+        "kind": "upload",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [
+        {
+          "kind": "pm_record",
+          "id": "R5"
+        },
+        {
+          "kind": "pm_task",
+          "id": "t_1"
+        }
+      ],
+      "created_by": "pm@ds.rw",
+      "updated_at": "2026-09-21T11:00:00Z",
+      "updated_by": "pm@ds.rw",
+      "version": 1
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_contract",
+      "project_id": "p_whole",
+      "folder": "contracts/2026",
+      "name": "EPC-Lot3-signed.pdf",
+      "kind": "doc",
+      "format": "pdf",
+      "bytes": 250000,
+      "digest": null,
+      "status": "durable",
+      "sensitivity": "restricted",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": "2026-09-01T00:00:00Z",
+        "source_modified_at": "2026-08-30T00:00:00Z"
+      },
+      "owner": {
+        "kind": "user",
+        "id": "commercial@ds.rw",
+        "display": "Aline"
+      },
+      "source": {
+        "kind": "upload",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [
+        {
+          "kind": "ds_object",
+          "object_type": "transformer",
+          "entity_id": "TX-104"
+        }
+      ],
+      "updated_at": "2026-09-01T00:00:00Z",
+      "version": 2
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_payroll",
+      "project_id": "p_whole",
+      "folder": "contracts/2026",
+      "name": "payroll-09.xlsx",
+      "kind": "sheet",
+      "format": "xlsx",
+      "bytes": 5000,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "confidential",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": "2026-09-22T00:00:00Z",
+        "source_modified_at": null
+      },
+      "owner": {
+        "kind": "user",
+        "id": "hr@ds.rw",
+        "display": null
+      },
+      "source": {
+        "kind": "upload",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [],
+      "updated_at": "2026-09-22T00:00:00Z",
+      "version": 1
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_loose",
+      "project_id": "p_whole",
+      "folder": "",
+      "name": "loose.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 1,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": "2026-09-23T00:00:00Z",
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "upload",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": []
+    },
+    {
+      "reference": {
+        "work_id": "w_print",
+        "output_id": "huye",
+        "role": "city_map"
+      },
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_citymap",
+      "project_id": "p_whole",
+      "folder": "",
+      "name": "huye.a3-landscape.pdf",
+      "kind": "geo",
+      "format": "pdf",
+      "bytes": 77,
+      "digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "status": "durable",
+      "sensitivity": "open",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": "2026-09-24T00:00:00Z",
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "report_output",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [
+        {
+          "kind": "tag",
+          "definition_id": "city",
+          "value": "Huye"
+        },
+        {
+          "kind": "tag",
+          "definition_id": "city",
+          "value": "Butare"
+        }
+      ]
+    }
+  ],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}
