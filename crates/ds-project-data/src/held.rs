@@ -920,7 +920,10 @@ mod tests {
                 omission("dsgrid_mv_lines", "retained with other parameters"),
                 omission("dsgrid_mv_structures", "retained with other parameters"),
                 omission("dsgrid_mv_angle_points", "retained with other parameters"),
-                omission("dsgrid_mv_prohibited_zones", "retained with other parameters"),
+                omission(
+                    "dsgrid_mv_prohibited_zones",
+                    "retained with other parameters"
+                ),
             ]
         );
 
