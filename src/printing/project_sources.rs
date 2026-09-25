@@ -1,5 +1,5 @@
 //! Bounded overview projection. Source geometry and engineering identities stay intact.
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 #[derive(Default)]
@@ -8,10 +8,10 @@ pub struct Sources {
     count: usize,
 }
 impl Sources {
-    /// Print context carries the new LV network and its poles, while omitting
-    /// customer and schedule detail that would overwhelm a district sheet.
+    /// Print context carries the complete new LV network with the project's
+    /// existing print pens. Schedules remain outside the plan view.
     pub fn transformer(&mut self, name: &str, layers: &Value) -> Result<(), String> {
-        for id in ["tr", "lv_lines", "lv_poles"] {
+        for id in ["tr", "lv_lines", "lv_poles", "service_cables", "customers"] {
             if let Some(features) = layers[id]["features"].as_array() {
                 let mut collection = Vec::with_capacity(features.len());
                 for feature in features {
@@ -126,14 +126,17 @@ mod tests {
         assert_eq!(sources.overview_extent().unwrap(), [29., -3., 31., -1.]);
     }
     #[test]
-    fn overview_preserves_lv_poles_and_namespaces_room_ids_without_customer_clutter() {
+    fn overview_preserves_printable_lv_layers_and_namespaces_room_ids() {
         let feature = json!({"id":1,"type":"Feature","properties":{"name":"T1"},"geometry":{"type":"Point","coordinates":[30.,-2.]}});
-        let source = json!({"tr":{"features":[feature.clone()]},"lv_poles":{"features":[feature.clone()]},"customers":{"features":[feature.clone()]}});
+        let source = json!({"tr":{"features":[feature.clone()]},"lv_lines":{"features":[feature.clone()]},"lv_poles":{"features":[feature.clone()]},"service_cables":{"features":[feature.clone()]},"customers":{"features":[feature.clone()]}});
         let mut out = Sources::default();
         out.transformer("first", &source).unwrap();
         out.transformer("second", &source).unwrap();
         let layers = out.layers();
-        assert!(layers.get("customers").is_none());
+        for id in ["tr", "lv_lines", "lv_poles", "service_cables", "customers"] {
+            assert_eq!(layers[id]["features"].as_array().unwrap().len(), 2);
+            assert_eq!(layers[id]["features"][0]["geometry"], feature["geometry"]);
+        }
         assert_eq!(layers["lv_poles"]["features"].as_array().unwrap().len(), 2);
         assert_eq!(
             layers["lv_poles"]["features"][0]["properties"]["print_transformer"],
