@@ -29,7 +29,7 @@ pub static COMMAND: Command = Command {
     contract: 4,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Serve chapter or typed `ds` tools over MCP.",
-    purpose: "Serve CLI contracts as chapters or typed tools; load skills on demand.",
+    purpose: "Serve CLI contracts as chapters or typed tools.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,

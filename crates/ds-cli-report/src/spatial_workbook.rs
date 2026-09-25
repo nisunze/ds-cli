@@ -42,7 +42,7 @@ pub static COMMAND: Command = Command {
     id: "report.spatial.workbook",
     path: &["report", "spatial", "workbook"],
     contract: 1,
-    summary: "Create an Excel parcel count by sector from one planned spatial result.",
+    summary: "Create an Excel parcel count by sector from a spatial result.",
     purpose: "Turns one complete `data.spatial.execute` distinct-UPI sector-count JSON receipt into a two-sheet XLSX with counts and query provenance. The reporter verifies the source, project, authority version, plan hash and count semantics. This is local presentation of a prior authorized read; it performs no BigQuery query and reads no active project.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
