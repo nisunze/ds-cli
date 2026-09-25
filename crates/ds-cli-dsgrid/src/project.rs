@@ -242,9 +242,10 @@ pub static GEOJSON: Command = Command {
     refusals: GEOJSON_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[
-        "MV alignment GeoJSON",
-        "model route corridor",
-        "parcel buffer source",
+        "mv alignment",
+        "alignment geojson",
+        "route corridor",
+        "parcel buffer",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
