@@ -77,6 +77,7 @@ pub struct Layout {
     /// sheet (docs/printing.md, "Combined report output"). Still accepted so
     /// stored layouts, which all carry it, keep parsing; never written, never read.
     #[serde(default, skip_serializing)]
+    #[schemars(skip)]
     pub project_overview: bool,
     /// Round an automatic fit denominator upward to this increment; explicit cameras stay exact.
     #[serde(default, skip_serializing_if = "Option::is_none")]
