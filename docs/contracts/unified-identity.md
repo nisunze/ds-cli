@@ -204,8 +204,9 @@ or interrupted switches stop the command. A `HeadlessProject` operation uses its
 selected project independently and must not attach to or mutate a different
 open map.
 
-`map survey download` retains legacy `Project` authority while it depends on
-the UI's survey loader and IndexedDB. It follows the same target selection
+`map survey download` retains legacy `Project` authority while it applies the
+window's Working Area (the Desktop reads the core's held survey copy; a
+browser holds rows in memory only). It follows the same target selection
 and UI-switch rule as other project commands using that runtime.
 `DesktopUser` operations (such as project listing) do not switch projects.
 

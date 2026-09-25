@@ -92,8 +92,8 @@ refuses a room operation without a registered headless owner.
 | `map design upload inspect` / `stage` | `design intake upload` |
 | `map design layer-to-local` / `upload-to-local` | `design project read` + `map local register` |
 
-`map survey download` warms the window's survey cache (`survey entries select`
-is the headless read). Survey migration left the window on 2026-09-23: it is
+`map survey download` fills the window's survey rows (`survey entries read`
+is the headless read, from the same held copy). Survey migration left the window on 2026-09-23: it is
 `survey migrate plan|apply`, headless, with `--source-project` and the
 destination `--project` both explicit (`migration.md`).
 
@@ -326,11 +326,12 @@ effective settings are never truncated.
 ## Survey Working Area materialization
 
 `ds map survey download --entire-project` applies the paired desktop's
-full-project Working Area and waits for its existing sequential survey loader
-to materialize every configured survey form. The application owns
-authentication, Working Area state, API calls, IndexedDB and feature rows. The
-CLI sends only `{ entireProject: true }` and returns bounded cache counts; it
-never receives raw rows.
+full-project Working Area and reads every survey form of the project whole.
+The Desktop reads through the core's held copy (`survey_hold_read`; the kernel
+decides reuse, delta or replace); a browser streams the rows into session
+memory, never IndexedDB. The application owns authentication, Working Area
+state, API calls and feature rows. The CLI sends only `{ entireProject: true }`
+and returns bounded before/after held-row counts; it never receives raw rows.
 
 The CLI's selected project is the target when present; otherwise the paired
 desktop supplies its active project. If the UI is showing another project,
