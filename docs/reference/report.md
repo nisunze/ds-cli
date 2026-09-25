@@ -740,6 +740,16 @@ profile, in black ink with a white halo in either colour mode.
 crossings. A heavy dashed stick flags a value below the scene's ground-offset
 visualization guide; it does not assert a feature-specific engineering
 clearance where the model has no resolved requirement.
+`--side-profiles /absolute/traces.json` is optional and off when omitted. The
+file must be `ds.grid-side-profiles/v1` with the same model revision and
+measured, station-ordered trace segments:
+
+```json
+{"schema":"ds.grid-side-profiles/v1","model_revision":"rev:...","traces":[{"alignment_id":"aln-...","side":"left","points":[{"station_m":0,"elevation_m":1500},{"station_m":50,"elevation_m":1501}]}]}
+```
+
+`left` and `right` print with different dash patterns; gaps use separate trace
+segments so the drawing never invents terrain between missing observations.
 Each default vertical label row holds one entity field: structure number,
 structure type, then comments in the advanced format. `--ink monochrome` is
 the default; `--ink reference_accents` applies
