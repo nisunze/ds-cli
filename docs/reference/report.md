@@ -561,6 +561,25 @@ from the project's saved printing setups inside the same engine run; a Rwanda
 project is stamped with the installed villages asset
 (`--admin-bounds` names one explicitly).
 
+Survey forms the project appends to delivered reports
+(`include_survey_data_in_transformer_exports`,
+`survey_forms_in_transformer_exports`) come from this machine's held copy of
+each form, the one `ds survey entries read` and `ds survey local status`
+answer from. The batch refreshes each form once under the whole-form filter
+(`--survey-refresh auto`, the default; `local` never goes online for survey
+rows), and the kernel stages each transformer's rows around its room
+(`report_export::survey`). The engine keeps the rows intersecting the
+transformer's bounding rectangle — the rectangle the cloud export clips by —
+as a `survey_<form>` layer in the geographic outputs, with the survey view's
+columns, the Rwanda `admin_*` columns and `form_slug`, and writes each photo
+as the durable `/api/v1/media/link/<token>?o=` link under the project's
+report media grant (six months, the browser's request). `.data.survey` names
+the forms held (`source`, `refreshed_at`, `rows`) and omitted; each result row
+carries `survey_layers` (features kept per form) and, for a form this machine
+could not hold or refresh, `survey_layers_omitted` with the reason. A form
+that cannot be held never stops a sheet. The Combined report appends no survey
+form, as in the cloud.
+
 For local template review, repeat `--print-layout ./layout.json` for existing
 selected layout IDs. Each replacement keeps its paper identity; the kernel
 first verifies the original server receipt, then derives a print-only receipt.

@@ -93,6 +93,17 @@ const SERVER_STATE_DIR_ARG: Arg = Arg::value(
     "<absolute-path>",
     "Matching `ds server serve --state-dir` directory when the Server uses a custom state root.",
 );
+/// How the project's survey forms are read from this machine's held copy
+/// (`ds survey entries read`'s refresh vocabulary, narrowed to the two a
+/// report run means): `auto` refreshes a stale copy, `local` never goes online
+/// for survey rows and names every form it does not hold.
+const SURVEY_REFRESH_ARG: Arg = Arg::value(
+    "survey-refresh",
+    "<auto|local>",
+    "auto refreshes held survey forms; local reads only what is held.",
+)
+.default("auto")
+.choices(&["auto", "local"]);
 
 /// The staging directory a batch keeps below its output root while engines
 /// run; each run's scratch is removed when it ends.
@@ -306,13 +317,14 @@ pub static COMMAND: Command = Command {
         SEED_ARG,
         DRY_RUN_ARG,
         SERVER_STATE_DIR_ARG,
+        SURVEY_REFRESH_ARG,
         LANE_ARG,
         super::PROJECT_ARG,
     ],
     output: "\
 Lane, project, scope, engine identity, publication state, batch counts and receipt \
-(partial_formats), context diagnostics and ordered transformer results: artifact \
-inventory, survey_layers_omitted, failed_formats (output_id, code, remedy, layout knob: \
+(partial_formats), context diagnostics, survey and ordered transformer results: artifact \
+inventory, survey_layers(_omitted), failed_formats (output_id, code, remedy, layout knob: \
 overflow/panels/row_mm), or typed error. `publication.stage` is `queued`, or \
 `nothing_published` for a dry run.",
     examples: &[
@@ -1340,6 +1352,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         );
     }
 
+    // The survey forms the project appends to a delivered report, from the
+    // core's held copy of each: refreshed once for the whole batch, then cut
+    // per transformer by the kernel. Their photos become links under one
+    // report grant, the same links the cloud export writes.
+    let survey_forms =
+        ds_command_kernel::report_export::survey_forms(&receipt).map_err(|error| {
+            Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
+        })?;
+    let survey_refresh = inputs.require("survey-refresh")?;
+    let (held_survey, survey_omitted, survey_grant) =
+        survey_append_inputs(lane, &project_id, &survey_forms, survey_refresh)?;
+    output["survey"] = survey_json(survey_refresh, &survey_forms, &held_survey, &survey_omitted);
+
     let settings = BatchSettings {
         run: RunSettings {
             project_id: &project_id,
@@ -1350,7 +1375,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         },
         lane,
         concurrency: plan.concurrency,
-        media_grant: None,
+        media_grant: survey_grant.as_deref(),
     };
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
         let (context, server_version) = fetch_room(name).map_err(failure_to_host)?;
@@ -1427,6 +1452,18 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             print_context
         };
         let sheet = sheet_positions.get(name).copied();
+        let survey = if survey_forms.is_empty() {
+            None
+        } else {
+            Some(
+                ds_command_kernel::report_export::survey_append(
+                    snapshot.layers(),
+                    &held_survey,
+                    &survey_omitted,
+                )
+                .map_err(|error| HostFailure::new(INPUTS_INVALID.code, error))?,
+            )
+        };
         Ok(TransformerReportInputs {
             transformer: name.to_string(),
             server_version,
@@ -1435,7 +1472,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             selection: None,
             print_context,
             sheet,
-            survey: None,
+            survey,
         })
     };
     let outcome = run_batch(&CliEngine, &settings, &plan.names, fetch).map_err(host_failure)?;
@@ -1569,6 +1606,175 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "notes": transformer_context_notes,
     });
     Ok(output)
+}
+
+/// The project's survey forms as this machine holds them, for a whole batch:
+/// each form refreshed once under the whole-form filter (the kernel's
+/// `survey::hold` decides reuse, delta or a fresh read; `local` never reads),
+/// the forms it could not hold with their reasons, and — when anything is
+/// held — the report media grant the engine derives photo links under. A
+/// form that cannot be held, or a grant that cannot be minted, never stops
+/// the batch: the sheets are produced and the receipt names what they lack.
+#[allow(clippy::type_complexity)]
+fn survey_append_inputs(
+    lane: &str,
+    project: &str,
+    forms: &[String],
+    refresh: &str,
+) -> Result<
+    (
+        Vec<ds_command_kernel::report_export::HeldSurveyForm>,
+        Vec<ds_command_kernel::report_export::SurveyFormOmission>,
+        Option<Vec<u8>>,
+    ),
+    Failure,
+> {
+    use ds_command_kernel::report_export::survey::{
+        SURVEY_LAYER_NOT_HELD_REASON, survey_layer_unrefreshed_reason,
+    };
+    use ds_command_kernel::report_export::{HeldSurveyForm, SurveyFormOmission};
+    use ds_command_kernel::survey::hold::{self, Filter, Refresh};
+    use ds_project_data::survey_hold::{self as store, HoldError};
+
+    let omit_all = |reason: &str| {
+        forms
+            .iter()
+            .map(|form| SurveyFormOmission {
+                form: form.clone(),
+                reason: reason.to_string(),
+            })
+            .collect::<Vec<_>>()
+    };
+    if forms.is_empty() {
+        return Ok((Vec::new(), Vec::new(), None));
+    }
+    let policy = match refresh {
+        "local" => Refresh::Local,
+        _ => Refresh::Auto {
+            max_age_seconds: hold::DEFAULT_MAX_AGE_SECONDS,
+        },
+    };
+    let root = match ds_layer_store::default_root() {
+        Ok(root) => root,
+        Err(error) => {
+            let reason = survey_layer_unrefreshed_reason(&error);
+            return Ok((Vec::new(), omit_all(&reason), None));
+        }
+    };
+    let now = ds_command_kernel::time::OffsetDateTime::now_utc();
+    let answer = |uid: &str, fetch: &mut dyn FnMut(&Value) -> Result<Vec<u8>, Failure>| {
+        let scope = ds_command_kernel::project_dataset_cache::Scope {
+            principal: uid.to_owned(),
+            project: project.to_owned(),
+        };
+        let mut held = Vec::new();
+        let mut omitted = Vec::new();
+        for form in forms {
+            // A weak link blinks; a refresh the world refused (the fetch's
+            // own retryable class) is asked again before the form is written
+            // off. The copy is left as it was by every failed attempt.
+            let mut attempt = 0;
+            let read = loop {
+                match store::refresh(
+                    &root,
+                    &scope,
+                    form,
+                    &Filter::default(),
+                    policy,
+                    now,
+                    |body| fetch(body),
+                ) {
+                    Err(HoldError::Fetch(failure))
+                        if failure.class().retryable() && attempt < WEAK_NETWORK_DELAYS.len() =>
+                    {
+                        std::thread::sleep(WEAK_NETWORK_DELAYS[attempt]);
+                        attempt += 1;
+                    }
+                    other => break other,
+                }
+            };
+            let held_copy =
+                match read {
+                    Ok(copy) => store::rows(&root, &scope, &copy.manifest).and_then(|rows| {
+                        HeldSurveyForm::new(copy.source.as_str(), &copy.manifest, rows)
+                    }),
+                    Err(HoldError::NotHeld) => Err(SURVEY_LAYER_NOT_HELD_REASON.to_string()),
+                    Err(HoldError::Fetch(failure)) => Err(survey_layer_unrefreshed_reason(
+                        &format!("{}: {}", failure.code(), failure.message()),
+                    )),
+                    Err(HoldError::Refused(message) | HoldError::Store(message)) => {
+                        Err(survey_layer_unrefreshed_reason(&message))
+                    }
+                };
+            match held_copy {
+                Ok(copy) => held.push(copy),
+                Err(reason) if reason == SURVEY_LAYER_NOT_HELD_REASON => {
+                    omitted.push(SurveyFormOmission {
+                        form: form.clone(),
+                        reason,
+                    })
+                }
+                Err(reason) => omitted.push(SurveyFormOmission {
+                    form: form.clone(),
+                    reason: if reason.starts_with("survey layer:") {
+                        reason
+                    } else {
+                        survey_layer_unrefreshed_reason(&reason)
+                    },
+                }),
+            }
+        }
+        Ok::<_, Failure>((held, omitted))
+    };
+    let (mut held, mut omitted) = ds_cli_auth::survey_hold(lane, project, answer)?.into_result();
+    if held.iter().all(|form| form.rows.is_empty()) {
+        return Ok((held, omitted, None));
+    }
+    // One grant for the batch: the named project's photo tree, for the life
+    // a delivered report's links carry.
+    let grant = match ds_cli_auth::report_media_grant(lane, project) {
+        Ok(grant) => grant
+            .result()
+            .report_grant_document()
+            .map_err(|error| error.to_string()),
+        Err(failure) => Err(format!("{}: {}", failure.code(), failure.message())),
+    };
+    match grant {
+        Ok(document) => Ok((held, omitted, Some(document))),
+        Err(detail) => {
+            // Without a grant a photo cannot become a link, and the engine
+            // never writes a bare storage path: the held forms are named
+            // omitted with the reason, and the sheets are still produced.
+            let reason = format!("survey layer: its photo links could not be granted ({detail})");
+            omitted.extend(held.drain(..).map(|form| SurveyFormOmission {
+                form: form.form,
+                reason: reason.clone(),
+            }));
+            Ok((held, omitted, None))
+        }
+    }
+}
+
+/// What the batch read of the project's survey forms: the refresh mode, the
+/// forms held (and how each copy was read) and the forms named omitted.
+fn survey_json(
+    refresh: &str,
+    forms: &[String],
+    held: &[ds_command_kernel::report_export::HeldSurveyForm],
+    omitted: &[ds_command_kernel::report_export::SurveyFormOmission],
+) -> Value {
+    json!({
+        "refresh": refresh,
+        "forms": forms,
+        "held": held.iter().map(|form| json!({
+            "form": form.form,
+            "layer": ds_command_kernel::report_export::survey_layer_name(&form.form),
+            "source": form.source,
+            "refreshed_at": form.refreshed_at,
+            "rows": form.rows.len(),
+        })).collect::<Vec<_>>(),
+        "omitted": omitted,
+    })
 }
 
 /// What this host says about itself beside the preview answer: the project
@@ -1950,6 +2156,24 @@ pub fn render(data: &Value) -> String {
                 row["error"]["message"].as_str().unwrap_or(""),
             ));
         }
+        if let Some(layers) = row["survey_layers"].as_array() {
+            let carried = layers
+                .iter()
+                .filter_map(|layer| {
+                    Some(format!(
+                        "{} ({})",
+                        layer["form"].as_str()?,
+                        layer["features"].as_u64()?
+                    ))
+                })
+                .collect::<Vec<_>>();
+            if !carried.is_empty() {
+                out.push_str(&format!(
+                    "           survey appended: {}\n",
+                    carried.join(", ")
+                ));
+            }
+        }
         if let Some(forms) = row["survey_layers_omitted"]["forms"].as_array() {
             let names = forms.iter().filter_map(Value::as_str).collect::<Vec<_>>();
             if !names.is_empty() {
@@ -2042,7 +2266,8 @@ mod tests {
                  }]},
                 {"transformer": "tx_b", "status": "ok", "receipt": "tx_b/report-run.json",
                  "artifacts": 5,
-                 "survey_layers_omitted": {"code": "print_survey_layers_omitted", "forms": ["field_notes", "transformer_survey"]}},
+                 "survey_layers_omitted": {"code": "print_survey_layers_omitted", "forms": ["field_notes", "transformer_survey"]},
+                 "survey_layers": [{"form": "customer_survey", "layer": "survey_customer_survey", "features": 3}]},
             ],
         });
         let screen = super::render(&data);
@@ -2060,6 +2285,10 @@ mod tests {
         assert!(screen.contains("  ok     tx_b"), "{screen}");
         assert!(
             screen.contains("survey omitted: field_notes, transformer_survey"),
+            "{screen}"
+        );
+        assert!(
+            screen.contains("survey appended: customer_survey (3)"),
             "{screen}"
         );
     }
@@ -2405,6 +2634,7 @@ mod tests {
             }],
             warnings: vec![],
             survey_layers_omitted: None,
+            survey_layers: Vec::new(),
             engine: ds_command_kernel::report_export::EngineIdentity {
                 engine_version: format!("ds-network-reporter@0.1.0+{}", "c".repeat(40)),
                 build_manifest_sha256: "d".repeat(64),
