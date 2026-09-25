@@ -2,6 +2,15 @@
 
 Read this before changing anything here. It is short on purpose.
 
+## The CLI is the driver
+
+Owner ruling, 2026-09-25 (workspace `AGENTS.md`): the product is driven by `ds`
+and its MCP surface over the Rust kernel, not by the UI. Design a command for
+the operator and the agent; never bend a command or the kernel to fit an
+existing UI screen. Where the CLI does a job correctly and the UI for it is
+confusing, the UI is cut to read-only or removed in ds-web and rethought later
+on this repository's contracts.
+
 ## What this repository is
 
 The `ds` executable: one door into the Data Solutions stack, for a person in a
