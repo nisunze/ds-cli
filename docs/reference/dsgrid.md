@@ -52,6 +52,14 @@ These words are deliberately not interchangeable:
 | `ds dsgrid project geojson` | Verify one immutable project revision and export its authored MV alignments as WGS84 GeoJSON. | headless_project |
 | `ds dsgrid publish-version` | Register one immutable revision in a project's catalogue; never changes local activity. | project + `--yes` |
 
+One project may have many models, and each model has its own version history.
+Display names are arbitrary: a name such as “Model 2” does not mean version 2.
+For a complete inventory, page through `dsgrid project list`, then page
+through `dsgrid project versions` for every returned opaque model ID. The
+focused `grid-local-model` MCP profile exposes both leaves for this workflow.
+Pin a subsequent download or print to the chosen immutable revision, not to a
+display name.
+
 The local commands never accept a project. Publication never accepts arbitrary
 model bytes: it names an absolute `.dsgrid` path with an explicit `--project`,
 or an opaque local model of the paired Desktop, which supplies its own selected

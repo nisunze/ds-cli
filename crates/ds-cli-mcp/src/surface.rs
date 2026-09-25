@@ -313,7 +313,9 @@ impl Profile {
             // restore, routed here for the same reason (e62edf85).
             // Exact project-model GeoJSON export is the read half of the
             // governed head workflow and keeps its source revision attached.
-            Self::GridLocalModel => 23,
+            // The project list is the bounded entry to each model's separate
+            // version history; without it the profile cannot choose an ID.
+            Self::GridLocalModel => 24,
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
@@ -611,12 +613,9 @@ const PRINT_STYLE_COMMANDS: &[&str] = &[
     "style.print.create",
 ];
 
-// The paired application's DS Grid model lifecycle, in the order the work
-// happens. Deliberately narrow: an agent acquiring a model, choosing which one
-// occupies Profile and publishing one revision needs these five leaves and
-// nothing else, and the four local ones reach no project at all. The one
-// project act is published beside them because it is where the workflow ends,
-// and it stays confirmation-gated exactly as the CLI declares it.
+// DS Grid working copies and governed project model lifecycle. Discover every
+// project model by opaque ID before asking for that model's versions; display
+// names are not identifiers and do not encode version numbers.
 const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.model.list",
     "dsgrid.model.show",
@@ -631,6 +630,7 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     // the one door from this machine's catalogue into the window.
     "dsgrid.profile.open",
     "dsgrid.model.prepare-project",
+    "dsgrid.project.list",
     "dsgrid.publish-version",
     // The typed edits of a working copy and its structure list (program
     // contract 01 §2, 2026-09-20) are the working-copy workflow: read the
