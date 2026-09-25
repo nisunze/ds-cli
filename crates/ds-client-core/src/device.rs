@@ -1506,6 +1506,16 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::sre::run(self.profile, transport, self.authority(), command)
     }
+    pub fn survey_entries_read<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        request: &crate::SurveyEntriesReadRequest,
+        now: u64,
+    ) -> Result<crate::SurveyEntriesRead, ClientError> {
+        self.ensure_active(now)?;
+        crate::survey_entries_read::run(self.profile, transport, self.authority(), project, request)
+    }
     pub fn admin_bounds<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

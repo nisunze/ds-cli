@@ -1416,6 +1416,30 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One bounded read of a survey form's entries: every field value and
+    /// the survey media each entry references, as the map reads them.
+    pub fn survey_entries_read(
+        &mut self,
+        project: &str,
+        request: &crate::SurveyEntriesReadRequest,
+        now: u64,
+    ) -> Result<crate::SurveyEntriesRead, ClientError> {
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::survey_entries_read::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            request,
+        )
+    }
+
     /// One bounded read of platform reliability.
     ///
     /// No project: a platform is not a project, and nothing about fleet health

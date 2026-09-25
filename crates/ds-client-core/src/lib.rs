@@ -39,9 +39,14 @@ pub use solar_snapshot::SolarMediaDownloadCall;
 mod status_processing;
 mod styles;
 mod survey_entries_changes;
+pub mod survey_entries_read;
 mod survey_entries_select;
 mod survey_entry_create;
 mod survey_form_read;
+pub use survey_entries_read::{
+    SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry, SurveyEntryMedia,
+};
+pub use transport::SurveyEntriesReadCall;
 pub mod survey_photo;
 mod survey_query;
 pub use transport::SurveyPhotoCall;

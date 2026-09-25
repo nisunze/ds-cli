@@ -1939,6 +1939,65 @@ impl SreEventsCall<'_> {
     }
 }
 
+/// One bounded read of a survey form's entries, as the map reads them.
+///
+/// The route streams one GeoJSON feature per line and closes with a summary;
+/// the transport keeps the whole body under the response limit and hands it
+/// back, and [`crate::survey_entries_read`] owns the line grammar.
+pub struct SurveyEntriesReadCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl SurveyEntriesReadCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub const fn path(&self) -> &'static str {
+        crate::survey_entries_read::SURVEY_ENTRIES_READ_PATH
+    }
+    pub const fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn accept(&self) -> &'static str {
+        "application/x-ndjson"
+    }
+    pub const fn response_limit(&self) -> usize {
+        crate::survey_entries_read::SURVEY_ENTRIES_READ_RESPONSE_LIMIT
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        crate::survey_entries_read::SURVEY_ENTRIES_READ_TIMEOUT_SECONDS
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed survey entries request"))
+    }
+}
+
 /// The installation inventory and its two governed transitions.
 ///
 /// One route, one closed action vocabulary, and no project: an installation
@@ -2871,6 +2930,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn survey_entries_read(
+        &mut self,
+        _call: SurveyEntriesReadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -3160,6 +3225,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn survey_entries_read(
+        &mut self,
+        _call: SurveyEntriesReadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -3426,6 +3497,12 @@ impl<T: Transport> AuthorizedTransport for T {
     }
     fn sre_events(&mut self, call: SreEventsCall<'_>) -> Result<TransportResponse, TransportError> {
         Transport::sre_events(self, call)
+    }
+    fn survey_entries_read(
+        &mut self,
+        call: SurveyEntriesReadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::survey_entries_read(self, call)
     }
     fn shared_asset_bytes(
         &mut self,
