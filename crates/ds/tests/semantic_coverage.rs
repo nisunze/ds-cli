@@ -50,6 +50,52 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("dsgrid.project.retire", "global_write", "headless_project"),
     ("dsgrid.project.restore", "global_write", "headless_project"),
+    // Versions and submissions (2026-09-25): the head and one revision read
+    // without bytes, a revision-to-revision diff held in memory, and the
+    // immutable exports a revision carries.
+    (
+        "dsgrid.project.show",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.compare",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.exports.list",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.exports.publish",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.exports.download",
+        "local_file_write",
+        "headless_project",
+    ),
+    // Governance that uploads nothing: a content-less version bump, a head
+    // rename, an appended review decision and the retirement backup read.
+    (
+        "dsgrid.project.bump-version",
+        "global_write",
+        "headless_project",
+    ),
+    ("dsgrid.project.update", "global_write", "headless_project"),
+    (
+        "dsgrid.project.set-approval",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.backup.download",
+        "local_file_write",
+        "headless_project",
+    ),
     ("server.engine", "read_only", "none"),
     // The native server requires its owner's headless identity. The control
     // credential only connects to that host; it grants no Desktop authority.
@@ -349,6 +395,13 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.version.list", "read_only", "headless_project"),
     ("design.version.compare", "read_only", "headless_project"),
     ("design.version.begin", "global_write", "headless_project"),
+    ("design.version.show", "read_only", "headless_project"),
+    (
+        "design.version.begin-batch",
+        "global_write",
+        "headless_project",
+    ),
+    ("design.version.summaries", "read_only", "headless_project"),
     ("design.version.restore", "global_write", "headless_project"),
     ("design.project.status", "read_only", "none"),
     ("design.project.process", "local_file_write", "none"),
@@ -521,6 +574,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.model.create-local", "local_file_write", "none"),
     ("dsgrid.model.import-external", "local_file_write", "none"),
     ("dsgrid.model.link", "local_file_write", "none"),
+    ("dsgrid.model.unlink", "local_file_write", "none"),
     ("dsgrid.model.list", "read_only", "none"),
     ("dsgrid.model.forget", "local_file_write", "none"),
     ("dsgrid.model.show", "read_only", "none"),
@@ -553,7 +607,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // `project` authority: it registers one immutable revision in the paired
     // session's own selected project's catalogue, so it is `global_write` and
     // confirmation-gated. It activates nothing locally.
-    ("dsgrid.publish-version", "global_write", "project"),
+    // The native `--path` route is the one this executable owns; the paired
+    // fallback is arbitrated as `project` at dispatch (registry.rs).
+    ("dsgrid.publish-version", "global_write", "headless_project"),
     // Program contract 03: the feature-code table and the clearance criteria
     // of a model, against the owner-issued standard. Reads over a working
     // copy or a package; the writes are one revision of a working copy (in

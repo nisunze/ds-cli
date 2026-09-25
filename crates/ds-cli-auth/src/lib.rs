@@ -5100,17 +5100,90 @@ pub fn grid_models_for_project(
         .map_err(map_grid_publication)
 }
 
+/// The refusals every project-model operation over the native owner can
+/// return beyond authentication: each is the Server's own answer, named.
+pub const GRID_MODEL_REFUSALS: [Refusal; 5] = [
+    Refusal {
+        code: "grid_request_invalid",
+        when: "an id, bound or governance field fails the catalog's own rules before any request is sent",
+        remedy: "read the named rule in the message; catalog ids match ^[a-z0-9][a-z0-9_-]{1,127}$",
+    },
+    Refusal {
+        code: "grid_model_not_found",
+        when: "the project holds no such model, revision, export or export output (a retired model reads as absent)",
+        remedy: "list models (with --include-deleted), versions and exports of the exact project, then name exact ids",
+    },
+    Refusal {
+        code: "grid_request_refused",
+        when: "the DS Grid model service refused the request by its own validation",
+        remedy: "read the service sentence carried in the failure and correct the named field",
+    },
+    Refusal {
+        code: "server_action_unsupported",
+        when: "this lane's Server predates the requested action or field (an export read, an explicit version bump)",
+        remedy: "the client is ready; update the lane's ds-brain, or drop the option the Server does not know",
+    },
+    Refusal {
+        code: "export_conflict",
+        when: "the export id already exists on the revision with different content; export records are immutable",
+        remedy: "list the revision's exports and publish under a new export id",
+    },
+];
+
 fn map_grid_publication(error: ClientError) -> Failure {
-    if error
-        .service_refusal()
-        .is_some_and(|r| r.status() == 409 && r.code() == Some("grid_publication_conflict"))
-    {
-        return Failure::conflict("publish_conflict", "the model publication conflicts with stored state; the request was not changed or retried")
-            .remedy("read the exact model head and stored revision, review the conflict, then publish deliberately");
+    let Some(refusal) = error.service_refusal() else {
+        // The owner refused locally, before any request: its sentence names
+        // the rule, and the refusal belongs to the model domain, not to auth.
+        if error.kind() == ErrorKind::InvalidInput {
+            return Failure::invalid("grid_request_invalid", error.to_string())
+                .remedy(GRID_MODEL_REFUSALS[0].remedy);
+        }
+        return map_client(error);
+    };
+    let said = |fallback: &str| match refusal.message() {
+        Some(sentence) => format!("{fallback} (HTTP {}): {sentence}", refusal.status()),
+        None => format!("{fallback} (HTTP {})", refusal.status()),
+    };
+    let detail = json!({"http_status":refusal.status(),"service_code":refusal.code(),
+        "service_message":refusal.message()});
+    match refusal.code() {
+        Some("grid_publication_conflict") => Failure::conflict(
+            "publish_conflict",
+            said("the model publication conflicts with stored state; the request was not changed or retried"),
+        )
+        .detail(detail)
+        .remedy("read the exact model head and stored revision, review the conflict, then publish deliberately"),
+        Some("grid_export_conflict") => {
+            Failure::conflict("export_conflict", said("the export id is taken on this revision"))
+                .detail(detail)
+                .remedy(GRID_MODEL_REFUSALS[4].remedy)
+        }
+        Some("grid_model_not_found") => Failure::invalid(
+            "grid_model_not_found",
+            said("the project holds no such model, revision or export"),
+        )
+        .detail(detail)
+        .remedy(GRID_MODEL_REFUSALS[1].remedy)
+        .next("ds dsgrid project list --project <exact-id> --include-deleted"),
+        Some("server_action_unsupported") => Failure::unavailable(
+            "server_action_unsupported",
+            said("this lane's Server predates the requested DS Grid model action or field"),
+        )
+        .detail(detail)
+        .remedy(GRID_MODEL_REFUSALS[3].remedy),
+        Some("grid_request_refused") => Failure::invalid(
+            "grid_request_refused",
+            said("the DS Grid model service refused the request"),
+        )
+        .detail(detail)
+        .remedy(GRID_MODEL_REFUSALS[2].remedy),
+        _ => map_client(error),
     }
-    map_client(error)
 }
 
+pub use ds_client_core::design_attachments::{
+    Command as DesignAttachmentsCommand, Object as DesignAttachmentObject,
+};
 pub use ds_client_core::grid_models::Command as GridModelsCommand;
 pub use ds_client_core::report_artifact::{
     Command as ReportArtifactCommand, RemoveCommand as RemoveReportArtifactCommand,

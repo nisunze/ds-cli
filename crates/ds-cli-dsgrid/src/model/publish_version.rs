@@ -71,8 +71,67 @@ const REASON_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Why this version exists. Stored with the revision.",
+    summary: "Why this revision exists. Stored with the revision.",
 };
+
+/// The governance a revision can carry, stored by the catalog with it.
+const GOVERNANCE_ARGS: [Arg; 10] = [
+    Arg::switch(
+        "bump-version",
+        "Start the next version with this revision; without it the save joins the current version.",
+    ),
+    Arg::value(
+        "milestone",
+        "<text>",
+        "Milestone label, e.g. a submission (at most 300 characters).",
+    ),
+    Arg::value(
+        "description",
+        "<text>",
+        "Revision description (at most 2000 characters).",
+    ),
+    Arg::value(
+        "design-stage",
+        "<id>",
+        "Design stage id recorded on the revision.",
+    ),
+    Arg::value(
+        "detail-level",
+        "<id>",
+        "Detail level id recorded on the revision.",
+    ),
+    Arg::value(
+        "approval",
+        "<status>",
+        "Review state recorded on the revision.",
+    )
+    .choices(&["draft", "submitted", "approved", "rejected"]),
+    Arg::value(
+        "approval-level",
+        "<id>",
+        "Approval level id; required for approved or rejected.",
+    ),
+    Arg::value(
+        "approval-reason",
+        "<text>",
+        "Decision reason; required for approved or rejected.",
+    ),
+    Arg::repeated(
+        "operation-summary",
+        "<text>",
+        "One line of what this revision did; repeat up to 100.",
+    ),
+    Arg::repeated(
+        "composition-source",
+        "<model:revision>",
+        "Ordered project revision this one composes; repeat 2..100.",
+    ),
+];
+const ATTACH_ARG: Arg = Arg::repeated(
+    "attach",
+    "<path[:purpose]>",
+    "File to attach to the NEW revision after it commits, e.g. the delivered .bak; repeatable.",
+);
 
 pub const AMBIGUOUS_SOURCE: Refusal = Refusal {
     code: "ambiguous_publish_source",
@@ -82,7 +141,7 @@ pub const AMBIGUOUS_SOURCE: Refusal = Refusal {
 pub const RENAME_UNSUPPORTED: Refusal = Refusal {
     code: "project_model_rename_unsupported",
     when: "--name is given with --project-model",
-    remedy: "drop --name; rename an existing project model through its own metadata authority",
+    remedy: "drop --name; rename an existing project model with ds dsgrid project update --name",
 };
 pub const NEW_PROJECT_MODEL_INCOMPLETE: Refusal = Refusal {
     code: "new_project_model_incomplete",
@@ -98,6 +157,16 @@ pub const HEAD_CONFLICT: Refusal = Refusal {
     code: "publish_head_conflict",
     when: "the project model's head moved away from --expected-head",
     remedy: "re-read the head, review what changed, and publish again deliberately",
+};
+pub const GOVERNANCE_INVALID: Refusal = Refusal {
+    code: "publish_governance_invalid",
+    when: "a milestone, stage, detail, approval, operation summary, composition source or bump is outside the catalog's rules",
+    remedy: "read the named field in the message; ids match ^[a-z0-9][a-z0-9_-]{1,127}$, a decision needs --approval-level and --approval-reason",
+};
+pub const ATTACHMENT_INVALID: Refusal = Refusal {
+    code: "attachment_file_invalid",
+    when: "an --attach file is missing, unreadable, empty or above 512 MiB",
+    remedy: "name existing files; each is checked before anything is published",
 };
 pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     code: "confirmation_required",
@@ -130,6 +199,8 @@ const LOCAL_REFUSALS: &[Refusal] = &[
     },
     LOCAL_MODEL_NOT_FOUND,
     CONFIRMATION_REQUIRED,
+    GOVERNANCE_INVALID,
+    ATTACHMENT_INVALID,
     Refusal {
         code: "replace_content_target_required",
         when: "--replace-content lacks --path, --project, --project-model or --expected-head",
@@ -196,103 +267,124 @@ const LOCAL_REFUSALS: &[Refusal] = &[
         remedy: "use a matching Network release",
     },
 ];
-const fn publication_refusals()
--> [Refusal; LOCAL_REFUSALS.len() + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()] {
-    let mut result = [CONFIRMATION_REQUIRED;
-        LOCAL_REFUSALS.len() + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()];
+const fn publication_refusals() -> [Refusal; LOCAL_REFUSALS.len() + crate::project::SHARED] {
+    let mut result = [CONFIRMATION_REQUIRED; LOCAL_REFUSALS.len() + crate::project::SHARED];
     let mut i = 0;
     while i < LOCAL_REFUSALS.len() {
         result[i] = LOCAL_REFUSALS[i];
         i += 1;
     }
-    let mut j = 0;
-    while j < ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() {
-        result[i + j] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals[j];
-        j += 1;
-    }
-    result
+    crate::project::with_shared(result, LOCAL_REFUSALS.len())
 }
+
+const SOURCE_ARGS: [Arg; 14] = [
+    MODEL_ARG,
+    PATH_ARG,
+    Arg::switch(
+        "replace-content",
+        "Import incoming .dsgrid or .bak content as the next revision of an existing project model.",
+    ),
+    Arg::value(
+        "crs",
+        "<code>",
+        "Declared projected CRS required for a PLS-CADD .bak source.",
+    ),
+    Arg::value(
+        "select-project",
+        "<don-leaf>",
+        "Exact .don project leaf when a .bak holds several projects.",
+    ),
+    Arg::switch(
+        "swap-xy",
+        "Apply the explicit X/Y correction while importing a PLS-CADD .bak.",
+    ),
+    PROJECT_MODEL_ARG,
+    KIND_ARG,
+    NAME_ARG,
+    EXPECTED_HEAD_ARG,
+    REASON_ARG,
+    Arg {
+        name: "project",
+        kind: ArgKind::Value,
+        value: "<project-id>",
+        required: false,
+        default: None,
+        choices: &[],
+        summary: "Explicit project for native --path publication; never changes active selection.",
+    },
+    Arg {
+        name: "lane",
+        kind: ArgKind::Value,
+        value: "<stable|canary>",
+        required: false,
+        default: Some("stable"),
+        choices: &["stable", "canary"],
+        summary: "Native publication deployment lane.",
+    },
+    ATTACH_ARG,
+];
+const ARG_COUNT: usize = SOURCE_ARGS.len() + GOVERNANCE_ARGS.len() + 1;
+/// Source, then governance, then the paired descriptor: one declaration.
+const fn publication_args() -> [Arg; ARG_COUNT] {
+    let mut all = [DESCRIPTOR_ARG; ARG_COUNT];
+    let mut i = 0;
+    while i < SOURCE_ARGS.len() {
+        all[i] = SOURCE_ARGS[i];
+        i += 1;
+    }
+    let mut g = 0;
+    while g < GOVERNANCE_ARGS.len() {
+        all[i + g] = GOVERNANCE_ARGS[g];
+        g += 1;
+    }
+    all
+}
+const ARGS: [Arg; ARG_COUNT] = publication_args();
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.publish-version",
     path: &["dsgrid", "publish-version"],
-    contract: 2,
-    summary: "Publish a verified model revision from a file or Desktop.",
-    purpose: "With --path and --project, validate and publish exact model bytes without Desktop. For incoming .dsgrid or PLS-CADD .bak content replacing an existing model, --replace-content downloads the reviewed head, converts a backup in memory with explicit --crs, imports the source as the next native version, and commits under --expected-head. It preserves the existing project model and immutable prior versions. Without --path, publishes the selected Desktop working copy. Publication never changes the active local model.",
+    contract: 3,
+    summary: "Save a verified model revision into its project version.",
+    purpose: "With --path and --project, validate and save exact model bytes as a new revision without Desktop. A save joins the model's current version; --bump-version deliberately starts the next one (for example a submission), and a superseded version never takes new saves. --milestone, --approval, --design-stage, --detail-level, --description, --operation-summary and --composition-source are stored on the revision; --attach adds files (the delivered .bak) to the new revision after it commits. A new model converted from PLS-CADD records the package's own workspace origin as typed migration evidence; --replace-content imports incoming .dsgrid or .bak content (a .bak needs explicit --crs) as the next revision of an existing model, its provenance recorded in the operation summary. Without --path, publishes the selected Desktop working copy. Publication never changes the active local model.",
     chapter: Chapter::GridModel,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
-        MODEL_ARG,
-        PATH_ARG,
-        Arg::switch(
-            "replace-content",
-            "Import incoming .dsgrid or .bak content as the next version of an existing project model.",
-        ),
-        Arg::value(
-            "crs",
-            "<code>",
-            "Declared projected CRS required for a PLS-CADD .bak source.",
-        ),
-        Arg::value(
-            "select-project",
-            "<don-leaf>",
-            "Exact .don project leaf when a .bak holds several projects.",
-        ),
-        Arg::switch(
-            "swap-xy",
-            "Apply the explicit X/Y correction while importing a PLS-CADD .bak.",
-        ),
-        PROJECT_MODEL_ARG,
-        KIND_ARG,
-        NAME_ARG,
-        EXPECTED_HEAD_ARG,
-        REASON_ARG,
-        Arg {
-            name: "project",
-            kind: ArgKind::Value,
-            value: "<project-id>",
-            required: false,
-            default: None,
-            choices: &[],
-            summary: "Explicit project for native --path publication; never changes active selection.",
-        },
-        Arg {
-            name: "lane",
-            kind: ArgKind::Value,
-            value: "<stable|canary>",
-            required: false,
-            default: Some("stable"),
-            choices: &["stable", "canary"],
-            summary: "Native publication deployment lane.",
-        },
-        DESCRIPTOR_ARG,
-    ],
-    output: "Published project/model/revision, kind, parent head, exact digest and byte length. Replacement adds source/head/result attestations and any backup conversion receipt. Native replacement reports active_model_changed=false.",
+    args: &ARGS,
+    output: "Published project/model/revision, version, revision_ordinal_within_version, version_revision_count, version_started, milestone, approval, kind, parent head, exact digest and byte length, and attachments[] with any attachment that failed named (the revision stands). Replacement adds source/head/result attestations and any backup conversion receipt; active_model_changed=false.",
     examples: &[
         Example {
             command: "ds dsgrid publish-version --path /work/route.dsgrid --project <exact-id> --name \"Kamonyi MV\" --kind mv_line --yes",
-            note: "Publish a new model without Desktop.",
+            note: "Publish a new model (v1) without Desktop.",
+            runnable: false,
+        },
+        Example {
+            command: "ds dsgrid publish-version --path /work/route.dsgrid --project <p> --project-model <m> --expected-head <rev> --kind mv_line --reason \"Respotted span 14\" --yes",
+            note: "Save a design iteration into the current version.",
+            runnable: false,
+        },
+        Example {
+            command: "ds dsgrid publish-version --path /work/route.dsgrid --project <p> --project-model <m> --expected-head <rev> --kind mv_line --bump-version --milestone \"Submission 2\" --approval submitted --attach /work/delivered.bak:native_workspace --yes",
+            note: "Start the submitted version and attach the delivered backup.",
             runnable: false,
         },
         Example {
             command: "ds dsgrid publish-version --path /work/replacement.bak --replace-content --crs EPSG:32735 --project <project> --project-model <model> --expected-head <revision> --kind mv_line --yes",
-            note: "Import a backup as the next version of an existing model.",
+            note: "Import a backup as the next revision of an existing model.",
             runnable: false,
         },
     ],
     refusals: &publication_refusals(),
     reference: Some("docs/reference/dsgrid.md"),
-    // The only command in the CLI that reaches the paired window without
-    // declaring a paired availability: `--path` publishes through the native
-    // owner with no application at all, and omitting it falls back to the
-    // Desktop working copy. `requires` answers "can this run on a server",
-    // and with `--path` it can — so `server` is the true answer, and the
-    // paired route is the part still owed a headless form. Do not "fix" this
-    // to `window`: that would report the native path as unavailable on the
-    // machine it was built for.
-    search: &[],
+    // One command, two routes. The declared authority is the route this
+    // executable owns: `--path` publishes through the native owner with an
+    // explicit project and no application at all. Without `--path` the
+    // selected Desktop working copy is published through the paired
+    // application, and dispatch still arbitrates that fallback exactly as a
+    // `project` command (registry.rs `scope_headless_identity`), so the
+    // Desktop's project must match the caller's.
+    search: &["save revision", "bump version", "submission", "milestone"],
     requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };
@@ -326,6 +418,27 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     if let Some(model) = model {
         arguments.insert("model".into(), json!(model));
+    }
+    // Revision governance, an explicit bump and attachments are stored by the
+    // native owner; the paired route's closed operation carries none of them.
+    if path.is_none()
+        && let Some(flag) = GOVERNANCE_ARGS
+            .iter()
+            .chain([&ATTACH_ARG])
+            .find(|arg| match arg.kind {
+                ArgKind::Switch => inputs.switch(arg.name),
+                ArgKind::Repeated => !inputs.repeated(arg.name).is_empty(),
+                _ => inputs.value(arg.name).is_some(),
+            })
+    {
+        return Err(Failure::invalid(
+            "publish_native_path_required",
+            format!(
+                "--{} is stored by native publication, which needs --path and --project",
+                flag.name
+            ),
+        )
+        .remedy("provide --path and --project for native publication"));
     }
     if let Some(path) = path {
         arguments.insert(
@@ -421,12 +534,24 @@ fn replace_source_path(raw: &str) -> Result<String, Failure> {
 }
 
 pub fn render(data: &Value) -> String {
+    let ordinal = data["revision_ordinal_within_version"]
+        .as_u64()
+        .map_or_else(|| "?".to_owned(), |n| n.to_string());
     let mut out = format!(
-        "published {} v{} in {}\n",
+        "published {} v{} revision {} in {}{}\n",
         data["project_model"].as_str().unwrap_or("?"),
         data["version"].as_u64().unwrap_or(0),
+        ordinal,
         data["project"].as_str().unwrap_or("?"),
+        if data["version_started"] == true {
+            " (new version)"
+        } else {
+            ""
+        },
     );
+    if let Some(milestone) = data["milestone"].as_str().filter(|m| !m.is_empty()) {
+        out.push_str(&format!("  milestone  {milestone}\n"));
+    }
     out.push_str(&format!(
         "  revision   {}\n  kind       {}\n  digest     {}\n  bytes      {}\n  from       {}\n",
         data["revision"].as_str().unwrap_or("—"),
@@ -447,6 +572,19 @@ pub fn render(data: &Value) -> String {
     }
     if data["binding_recorded"] == false {
         out.push_str("  note       the version is committed; the local binding was not written\n");
+    }
+    for attached in data["attachments"].as_array().into_iter().flatten() {
+        match attached["error"].as_str() {
+            None => out.push_str(&format!(
+                "  attached   {} ({} bytes)\n",
+                attached["file"].as_str().unwrap_or("?"),
+                attached["bytes"]
+            )),
+            Some(code) => out.push_str(&format!(
+                "  NOT attached {}: {code}\n",
+                attached["file"].as_str().unwrap_or("?")
+            )),
+        }
     }
     out
 }

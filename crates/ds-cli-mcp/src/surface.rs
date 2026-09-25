@@ -300,8 +300,16 @@ impl Profile {
             // `dsgrid profile labels set|show`) were routed here from the
             // broad `grid` router they had pushed past its own budget. Raised
             // to 22 on 2026-09-24 for the governed head's versions, retire and
-            // restore, routed here for the same reason (e62edf85).
-            Self::GridLocalModel => 22,
+            // restore, routed here for the same reason (e62edf85). Raised to
+            // 43 on 2026-09-25 for versions and submissions: `dsgrid project
+            // show|compare|exports list|publish|download|bump-version|update|
+            // set-approval|backup download`, `dsgrid model unlink`, seven MV
+            // governance `design version` leaves and four `design attachment`
+            // leaves. The owner's order is that model
+            // versioning and its attachments have no missing verb; they are
+            // one workflow with publication, and splitting them across
+            // profiles would leave each half unable to finish a submission.
+            Self::GridLocalModel => 43,
             _ => 16,
         }
     }
@@ -356,10 +364,11 @@ impl Profile {
                     // outside this engineering-model profile. The global
                     // catalogue and Grid Model chapter retain its command.
                     && tool.id != "dsgrid.backup.preview"
-                    // The governed head lifecycle (versions, retire, restore)
-                    // lives with publication in `grid-local-model`.
-                    && !matches!(tool.id.as_str(),
-                        "dsgrid.project.versions" | "dsgrid.project.retire" | "dsgrid.project.restore")
+                    // The governed head lifecycle (versions, retire, restore,
+                    // show, compare, exports) lives with publication in
+                    // `grid-local-model`; list and download stay here.
+                    && !(tool.id.starts_with("dsgrid.project.")
+                        && GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()))
             }
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
@@ -606,6 +615,32 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.project.retire",
     "dsgrid.project.restore",
     "dsgrid.profile.labels.show",
+    // Versions and submissions (2026-09-25): one workflow from saving a
+    // revision to marking the submitted version and reading back what it
+    // carries — the head and a revision without bytes, a revision diff, the
+    // revision's exports, the working copy's PLS-CADD unlink, the MV
+    // governance vN and the attachments pinned to a content revision.
+    "dsgrid.project.show",
+    "dsgrid.project.compare",
+    "dsgrid.project.exports.list",
+    "dsgrid.project.exports.publish",
+    "dsgrid.project.exports.download",
+    "dsgrid.project.bump-version",
+    "dsgrid.project.update",
+    "dsgrid.project.set-approval",
+    "dsgrid.project.backup.download",
+    "dsgrid.model.unlink",
+    "design.version.list",
+    "design.version.status",
+    "design.version.show",
+    "design.version.compare",
+    "design.version.begin",
+    "design.version.begin-batch",
+    "design.version.summaries",
+    "design.attachment.list",
+    "design.attachment.publish",
+    "design.attachment.download",
+    "design.attachment.retire",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -621,6 +656,7 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.structure.admin-refresh",
     "dsgrid.profile.labels.set",
     "dsgrid.profile.labels.show",
+    "dsgrid.model.unlink",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD
@@ -1718,7 +1754,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Manage Form Factory schemas, project-form settings, project templates and project creation without map state; or work with survey/map-owned local data. Describe a command before invoking it."
         }
         Chapter::Design => {
-            "Read, stage, process, report, save, or discard transformer and LV design work. Describe a command before invoking it."
+            "Read, stage, process, report, save, or discard transformer and LV design work; mark MV model versions (submissions) and attach files to exact MV revisions. Describe a command before invoking it."
         }
         Chapter::MapPresentation => {
             "Read or change project map styling and its secondary visual dimension. Describe a command before invoking it."

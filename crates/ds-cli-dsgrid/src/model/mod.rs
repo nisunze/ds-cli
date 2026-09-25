@@ -58,6 +58,7 @@ mod publish_native;
 pub mod publish_version;
 pub mod set_active;
 pub mod show;
+pub mod unlink;
 pub mod workspace;
 
 use std::path::Path;

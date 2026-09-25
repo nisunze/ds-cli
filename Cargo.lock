@@ -850,6 +850,7 @@ dependencies = [
  "ds-command-kernel",
  "ds-grid-engine",
  "ds-grid-exchange",
+ "ds-layer-store",
  "ds-solar-contracts",
  "ds-sync-store",
  "serde_json",

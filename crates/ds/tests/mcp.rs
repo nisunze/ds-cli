@@ -1645,7 +1645,14 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // here on 2026-09-22 from the broad `grid` router they had pushed
             // past its budget. The governed head's versions, retire and
             // restore joined on 2026-09-24 for the same reason (e62edf85).
-            "grid-local-model" => 22,
+            // 2026-09-25, versions and submissions (+21): `dsgrid project
+            // show|compare|exports list|publish|download|bump-version|update|
+            // set-approval|backup download`, `dsgrid model unlink`, the seven
+            // MV governance `design version` leaves and
+            // the four `design attachment` leaves an MV revision carries — the
+            // owner's order is that versioning and its attachments have no
+            // missing verb, and they are one workflow with publication.
+            "grid-local-model" => 43,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
