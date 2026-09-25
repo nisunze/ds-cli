@@ -141,6 +141,12 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         return Err(invalid("configuration scope changed"));
     }
     let receipt = InputReceipt::from_config(&config.result().document).map_err(invalid)?;
+    let receipt = super::export::complete_proof_print_styles(
+        lane,
+        project,
+        receipt,
+        std::slice::from_ref(&layout),
+    )?;
     let sheets = receipt.sheets().map_err(invalid)?;
     printing::style_overrides::preflight(&layout, &sheets["printing_styles"]).map_err(invalid)?;
     let mut models = super::mv_context::load(lane, identity, project)?;

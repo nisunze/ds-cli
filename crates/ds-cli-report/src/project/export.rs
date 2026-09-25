@@ -817,7 +817,7 @@ fn unsealed_print_styles_refusal(held: &[&String], absent: &[&String], what: &st
 /// server's receipt), and refuses — naming the source it looked in — for a
 /// style published nowhere, or a symbol style whose icon the receipt never
 /// sealed (the engine needs the held vector asset, which only ds-brain seals).
-fn complete_proof_print_styles(
+pub(super) fn complete_proof_print_styles(
     lane: &str,
     project: &str,
     proof: InputReceipt,

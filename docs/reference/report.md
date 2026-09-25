@@ -763,7 +763,9 @@ WGS84 route bounds.
 `report.project.map-inputs --project <id>` captures the named project's active LV
 overview and complete promoted MV geometry through native fenced reads. Add
 `--mv-model <absolute.dsgrid>` for one local draft. An authored layout selects
-geographic context; `--seed` explicitly acquires missing coverage. For an MV
+geographic context; any governed `_print` refs absent from the selected setups'
+sealed style sheet are completed from the same style catalogue as local layout
+proofs. `--seed` explicitly acquires missing coverage. For an MV
 plan/profile sheet, pass `--focus-bounds west,south,east,north` from that sheet's
 `plan_route_bounds_wgs84` manifest entry. The geographic context is then read
 around that page's route rather than the full project's bounding rectangle.
