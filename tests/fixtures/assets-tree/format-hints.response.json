@@ -1,0 +1,1341 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Survey/f",
+          "name": "f",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Survey/f/e",
+              "name": "e",
+              "counts": {
+                "assets": 31,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:v",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": ".bak",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "v",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:f",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "archive.tar.gz",
+                  "kind": "pack",
+                  "format": "tar.gz",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "f",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:g",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "archive.tgz",
+                  "kind": "pack",
+                  "format": "tar.gz",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "g",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:x",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "dir\\win\\x.KML",
+                  "kind": "geo",
+                  "format": "kml",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "x",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:d",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "file.unknownext",
+                  "kind": "image",
+                  "format": "tif",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "d",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:a",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "noext",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "a",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:b",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "noext",
+                  "kind": "image",
+                  "format": "jpg",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "b",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:c",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "noext",
+                  "kind": "image",
+                  "format": "png",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "c",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:e",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "photo.jpeg.bak",
+                  "kind": "image",
+                  "format": "jpg",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "e",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:w",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "w",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:m",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.7z",
+                  "kind": "pack",
+                  "format": "7z",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "m",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:r",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.doc",
+                  "kind": "doc",
+                  "format": "doc",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "r",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:ac",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.download.backup.old.tmp.part.bak.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "ac",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:aa",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.gz",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "aa",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:j",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.htm",
+                  "kind": "note",
+                  "format": "html",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "j",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:ab",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.html",
+                  "kind": "note",
+                  "format": "html",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "ab",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:k",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.log",
+                  "kind": "note",
+                  "format": "txt",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "k",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:i",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.markdown",
+                  "kind": "note",
+                  "format": "md",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "i",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:n",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.msg",
+                  "kind": "mail",
+                  "format": "msg",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "n",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:p",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.ods",
+                  "kind": "sheet",
+                  "format": "ods",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "p",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:o",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.odt",
+                  "kind": "doc",
+                  "format": "odt",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "o",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:z",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.part",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "z",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:ae",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.pdf.bak.bak.bak.bak.bak.bak.bak",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "ae",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:ad",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.pdf.download.backup.old.tmp.part.bak",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "ad",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:q",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.rtf",
+                  "kind": "doc",
+                  "format": "rtf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "q",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:y",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.shp",
+                  "kind": "geo",
+                  "format": "shp",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "y",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:h",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.tab",
+                  "kind": "sheet",
+                  "format": "tsv",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "h",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:l",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.tiff",
+                  "kind": "image",
+                  "format": "tif",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "l",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:t",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.tsv",
+                  "kind": "sheet",
+                  "format": "tsv",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "t",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:u",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.txt.old.tmp",
+                  "kind": "note",
+                  "format": "txt",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "u",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:f:e:s",
+                  "project_id": "",
+                  "folder": "Survey/f/e",
+                  "name": "x.xls",
+                  "kind": "sheet",
+                  "format": "xls",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "f",
+                      "entry_id": "e",
+                      "field": "s",
+                      "path": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions",
+        "transformers"
+      ]
+    }
+  ],
+  "total_assets": 31,
+  "total_folders": 13,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "transformer_versions",
+    "transformers",
+    "user_data"
+  ]
+}

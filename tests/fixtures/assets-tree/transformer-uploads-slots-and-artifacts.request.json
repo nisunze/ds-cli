@@ -1,0 +1,32 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "transformers": [
+      {"name": "TX-9",
+       "metadata": {"updated_at": 1772323200, "updated_by": "  "},
+       "uploads": {
+         "draft": [{"filename": "a/b/c.csv", "uploaded_at": "2026-01-01T00:00:00Z", "size_bytes": "12"},
+                   {"blob_path": "gs://b/x/?", "filename": ""},
+                   {}],
+         "sketch": [{"filename": "sketch.KMZ", "blob_path": "https://host/path/sketch.kmz#frag", "size_bytes": 1.9}],
+         "process": [{"filename": "process.bak", "blob_path": "uploads/process.bak"}]
+       },
+       "report_files": ["", "gs://r/", "https://signed.example/report.xlsx?X-Goog-Signature=1", 7],
+       "print_files": ["gs://r/print.pdf"],
+       "report_artifacts": [
+         {"url": "", "output_id": "only-id"},
+         {"output_id": "fmt", "format": "Pdf"},
+         {"sha256": "abc"},
+         {"url": "https://x.example/a/b.pdf", "sha256": "ABCDEFabcdef0123456789ABCDEFabcdef0123456789ABCDEFabcdef01234567"}
+       ],
+       "report_metadata": {"print_urls": [
+         {"gcs_path": "gs://r/print.pdf", "map_family": "custom-map", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size_bytes": 10, "paper_size": {"w": 1}},
+         {"gcs_path": "", "map_family": "mv-map"},
+         {"gcs_path": 5},
+         {"gcs_path": "gs://r/other.png", "map_family": 3, "format": "png"}
+       ]}},
+      {"name": "TX-10", "uploads": {"draft": [{"filename": "ok.csv"}, "not an upload"]}},
+      {"name": "TX-11", "report_artifacts": [{"url": "gs://x/one.pdf"}, 5]}
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "solar": [
+      {"city": "Huye", "head": {"report_input_sha256": "abc"}, "artifacts": [{"name": "a.png"}, {"name": ""}, {"gcs_path": "x"}]},
+      {"city": "Nyanza", "head": {"run_id": "r"}, "artifacts": [{"name": "dir/sub/chart.svg", "content_type": "image/svg+xml"}]},
+      {"city": "Musanze", "head": {"published_at": "2026-01-01T00:00:00Z"}, "artifacts": [{"name": "report.PDF", "size_bytes": 0}]},
+      {"city": "Kigali/City", "head": {"run_id": "", "report_input_sha256": null}, "artifacts": [{"name": "k.webp"}, "bad"]},
+      {"city": "  ", "artifacts": [{"name": "blank-city.png"}]}
+    ],
+    "compute_artifacts": [
+      {"work_id": "w_1", "engine": "reporter", "outputs": [
+        {"output_id": "o_pdf", "format": "PDF", "size_bytes": 12, "sha256": "sha256:already"},
+        {"output_id": "o_none"},
+        {"format": "zip"},
+        {"output_id": "o_json", "format": "json"}
+      ]},
+      {"work_id": "w/2", "outputs": "not a list"},
+      {"outputs": [{"output_id": "no-work"}]},
+      {"work_id": "w_3", "updated_at": "2026-04-01T00:00:00Z", "outputs": [{"output_id": "x", "bytes": 7}]}
+    ],
+    "compounded": [
+      {"stem": "lot1", "filename": "https://signed.example/compounded/lot1-final.zip?sig=1"},
+      {"stem": "lot2", "gcs_path": "https://signed.example/compounded/lot2.zip?sig=2", "created_at": 5},
+      {"stem": " ", "filename": "blank-stem.zip"}
+    ],
+    "project_data": [
+      {"upload_id": "u_a", "file_name": "dir/parcels.SHP", "size_bytes": 10},
+      {"upload_id": "u_b", "bytes": "20", "blob_path": "https://signed.example/project_data/u_b/data.kml?sig=3"},
+      {"upload_id": "u_c"},
+      {"upload_id": "u_d", "total_bytes": 1, "size_bytes": 2, "file_name": "dup-alias.csv"},
+      {"file_name": "no-id.csv"}
+    ],
+    "print_setups": [
+      {"id": "l_1", "name": "Layout/One", "scope": "user"},
+      {"id": "l_2", "name": ""},
+      {"name": "No id"}
+    ]
+  }
+}

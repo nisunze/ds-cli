@@ -1,0 +1,863 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 2
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Project work/records",
+          "name": "records",
+          "counts": {
+            "assets": 0,
+            "folders": 5
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Project work/records/CAMEL-REF",
+              "name": "CAMEL-REF",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_8",
+                  "project_id": "",
+                  "folder": "Project work/records/CAMEL-REF",
+                  "name": "eight.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_record",
+                      "id": "r_raw_camel"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_8",
+                      "linked_entity_type": "record",
+                      "linked_entity_id": "r_raw_camel",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Project work/records/Only subject",
+              "name": "Only subject",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_6",
+                  "project_id": "",
+                  "folder": "Project work/records/Only subject",
+                  "name": "six.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_record",
+                      "id": "r_subject"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_6",
+                      "linked_entity_type": "record",
+                      "linked_entity_id": "r_subject",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Project work/records/RFI-1",
+              "name": "RFI-1",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_5",
+                  "project_id": "",
+                  "folder": "Project work/records/RFI-1",
+                  "name": "five.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_record",
+                      "id": "r_ref"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_5",
+                      "linked_entity_type": "record",
+                      "linked_entity_id": "r_ref",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Project work/records/Raw subject",
+              "name": "Raw subject",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_7",
+                  "project_id": "",
+                  "folder": "Project work/records/Raw subject",
+                  "name": "seven.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_record",
+                      "id": "r_raw"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_7",
+                      "linked_entity_type": "record",
+                      "linked_entity_id": "r_raw",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Project work/records/r_bare",
+              "name": "r_bare",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_9",
+                  "project_id": "",
+                  "folder": "Project work/records/r_bare",
+                  "name": "nine.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_record",
+                      "id": "r_bare"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_9",
+                      "linked_entity_type": "record",
+                      "linked_entity_id": "r_bare",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "Project work/tasks",
+          "name": "tasks",
+          "counts": {
+            "assets": 0,
+            "folders": 4
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Project work/tasks/2.1",
+              "name": "2.1",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_13",
+                  "project_id": "",
+                  "folder": "Project work/tasks/2.1",
+                  "name": "a_13",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": "not-hex",
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "source_modified_at": "2026-02-01T00:00:00Z"
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "pm@ds.rw",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_task",
+                      "id": "t_wbs"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_13",
+                      "linked_entity_type": "task",
+                      "linked_entity_id": "t_wbs",
+                      "storage_path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_1",
+                  "project_id": "",
+                  "folder": "Project work/tasks/2.1",
+                  "name": "one.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_task",
+                      "id": "t_wbs"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_1",
+                      "linked_entity_type": "task",
+                      "linked_entity_id": "t_wbs",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Project work/tasks/7",
+              "name": "7",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_4",
+                  "project_id": "",
+                  "folder": "Project work/tasks/7",
+                  "name": "numeric.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_task",
+                      "id": "42"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_4",
+                      "linked_entity_type": "task",
+                      "linked_entity_id": "42",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Project work/tasks/Stringing",
+              "name": "Stringing",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_2",
+                  "project_id": "",
+                  "folder": "Project work/tasks/Stringing",
+                  "name": "two.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_task",
+                      "id": "t_title"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_2",
+                      "linked_entity_type": "task",
+                      "linked_entity_id": "t_title",
+                      "storage_path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Project work/tasks/t_bare",
+              "name": "t_bare",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:pm_attachment:a_3",
+                  "project_id": "",
+                  "folder": "Project work/tasks/t_bare",
+                  "name": "three.docx",
+                  "kind": "doc",
+                  "format": "docx",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "task_attachment",
+                    "detail": "project work attachment"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "pm_task",
+                      "id": "t_bare"
+                    }
+                  ],
+                  "origin": {
+                    "source": "pm_attachments",
+                    "ref": {
+                      "attachment_id": "a_3",
+                      "linked_entity_type": "task",
+                      "linked_entity_id": "t_bare",
+                      "storage_path": "/pm/three.docx"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions",
+        "transformers"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Unclassified",
+      "name": "Unclassified",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Unclassified/pm_attachments",
+          "name": "pm_attachments",
+          "counts": {
+            "assets": 3,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:pm_attachments:a_11",
+              "project_id": "",
+              "folder": "Unclassified/pm_attachments",
+              "name": "a_11",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "pm_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "pm_attachments",
+                "ref": {
+                  "source": "pm_attachments",
+                  "ref": "a_11"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:pm_attachments:case.pdf",
+              "project_id": "",
+              "folder": "Unclassified/pm_attachments",
+              "name": "case.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "pm_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "pm_attachments",
+                "ref": {
+                  "source": "pm_attachments",
+                  "ref": "case.pdf"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:pm_attachments:ten.pdf",
+              "project_id": "",
+              "folder": "Unclassified/pm_attachments",
+              "name": "ten.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "pm_attachments"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "pm_attachments",
+                "ref": {
+                  "source": "pm_attachments",
+                  "ref": "ten.pdf"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": []
+    }
+  ],
+  "total_assets": 13,
+  "total_folders": 24,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "survey_media",
+    "transformer_versions",
+    "transformers",
+    "user_data"
+  ]
+}

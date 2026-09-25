@@ -1,0 +1,27 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "pm_attachments": [
+      {
+        "id": "pa_3",
+        "linkedEntityType": "task",
+        "linkedEntityId": "t_1",
+        "originalName": "draft.docx",
+        "documentState": "draft"
+      }
+    ],
+    "pm_tasks": [
+      {
+        "id": "t_1",
+        "wbs": "1.2.3"
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

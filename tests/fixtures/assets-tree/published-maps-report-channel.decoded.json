@@ -1,0 +1,46 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "transformers": [
+      {
+        "name": "combined_transformer",
+        "print_files": [
+          "gs://reports/huye.a0-landscape.pdf"
+        ],
+        "report_metadata": {
+          "print_urls": [
+            {
+              "gcs_path": "gs://reports/huye.a0-landscape.pdf",
+              "map_family": "custom-map",
+              "size_bytes": 500,
+              "sha256": "abc"
+            }
+          ]
+        }
+      },
+      {
+        "name": "mv_data",
+        "print_files": [
+          "gs://reports/mv_data.a3-landscape.pdf"
+        ],
+        "report_metadata": {
+          "print_urls": [
+            {
+              "gcs_path": "gs://reports/mv_data.a3-landscape.pdf",
+              "map_family": "mv-map",
+              "size_bytes": 15000000,
+              "sha256": "abc"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

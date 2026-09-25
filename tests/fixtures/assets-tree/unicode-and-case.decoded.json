@@ -1,0 +1,74 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "compute_artifacts": [
+      {
+        "work_id": "w",
+        "outputs": [
+          {
+            "output_id": "ΟΔΟΣ",
+            "format": "ΣΣ"
+          },
+          {
+            "output_id": "x",
+            "format": "ΑΣ Β"
+          }
+        ]
+      }
+    ],
+    "design_attachments": [
+      {
+        "attachment": {
+          "attachment_id": "att_u",
+          "object": {
+            "id": "TX-Ünïcödé"
+          },
+          "label": "Lettres",
+          "file_name": "lettre.PDFΣ",
+          "latest_revision_id": "r"
+        },
+        "revisions": [
+          {
+            "revision_id": "r",
+            "revision": 1,
+            "file_name": "lettre.ÉTÉ"
+          }
+        ]
+      }
+    ],
+    "transformers": [
+      {
+        "name": "TX-Ünïcödé",
+        "report_artifacts": [
+          {
+            "output_id": "carte",
+            "format": "PDFΣ"
+          },
+          {
+            "output_id": "İmage",
+            "format": "İ"
+          }
+        ]
+      },
+      {
+        "name": "COLLİSIONS"
+      },
+      {
+        "name": "Collisions_07"
+      },
+      {
+        "name": "9-lines"
+      },
+      {
+        "name": "###"
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

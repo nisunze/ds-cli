@@ -1,0 +1,964 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 6
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "MV models/A_B line",
+          "name": "A_B line",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/A_B line/exports",
+              "name": "exports",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "MV models/A_B line/exports/e_3",
+                  "name": "e_3",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:grid_export:m/slash:e/3:o",
+                      "project_id": "",
+                      "folder": "MV models/A_B line/exports/e_3",
+                      "name": "o.kmz",
+                      "kind": "geo",
+                      "format": "kmz",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": "grid export"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [],
+                      "origin": {
+                        "source": "grid_exports",
+                        "ref": {
+                          "model_id": "m/slash",
+                          "export_id": "e/3",
+                          "output_id": "o"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "MV models/A_B line/revisions",
+              "name": "revisions",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m/slash:h",
+                  "project_id": "",
+                  "folder": "MV models/A_B line/revisions",
+                  "name": "h.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m/slash",
+                      "revision_id": "h"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "MV models/Gone",
+          "name": "Gone",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/Gone/revisions",
+              "name": "revisions",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_deleted:r_0",
+                  "project_id": "",
+                  "folder": "MV models/Gone/revisions",
+                  "name": "r_0.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "archive",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_deleted",
+                      "revision_id": "r_0"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_deleted:r_1",
+                  "project_id": "",
+                  "folder": "MV models/Gone/revisions",
+                  "name": "r_1.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "archive",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_deleted",
+                      "revision_id": "r_1"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "MV models/Head only",
+          "name": "Head only",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/Head only/exports",
+              "name": "exports",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "MV models/Head only/exports/e_1",
+                  "name": "e_1",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:grid_export:m_head:e_1:full",
+                      "project_id": "",
+                      "folder": "MV models/Head only/exports/e_1",
+                      "name": "full.dsgrid",
+                      "kind": "other",
+                      "format": "dsgrid",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": "grid export"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [],
+                      "origin": {
+                        "source": "grid_exports",
+                        "ref": {
+                          "model_id": "m_head",
+                          "export_id": "e_1",
+                          "output_id": "full"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "MV models/Head only/revisions",
+              "name": "revisions",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_head:r_5",
+                  "project_id": "",
+                  "folder": "MV models/Head only/revisions",
+                  "name": "r_5.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": "2026-05-01T00:00:00Z"
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_head",
+                      "revision_id": "r_5"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "MV models/m_alias",
+          "name": "m_alias",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/m_alias/exports",
+              "name": "exports",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "MV models/m_alias/exports/e_2",
+                  "name": "e_2",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "sys:grid_export:m_alias:e_2:o",
+                      "project_id": "",
+                      "folder": "MV models/m_alias/exports/e_2",
+                      "name": "o.geojson",
+                      "kind": "geo",
+                      "format": "geojson",
+                      "bytes": 0,
+                      "digest": null,
+                      "status": "durable",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": "grid export"
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [],
+                      "origin": {
+                        "source": "grid_exports",
+                        "ref": {
+                          "model_id": "m_alias",
+                          "export_id": "e_2",
+                          "output_id": "o"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "MV models/m_alias/revisions",
+              "name": "revisions",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_alias:v_1",
+                  "project_id": "",
+                  "folder": "MV models/m_alias/revisions",
+                  "name": "v_1.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "archive",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_alias",
+                      "revision_id": "v_1"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_alias:v_2",
+                  "project_id": "",
+                  "folder": "MV models/m_alias/revisions",
+                  "name": "v_2.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_alias",
+                      "revision_id": "v_2"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "MV models/m_blank_rev",
+          "name": "m_blank_rev",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/m_blank_rev/revisions",
+              "name": "revisions",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_blank_rev:ok",
+                  "project_id": "",
+                  "folder": "MV models/m_blank_rev/revisions",
+                  "name": "ok.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "archive",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_blank_rev",
+                      "revision_id": "ok"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        },
+        {
+          "kind": "system",
+          "path": "MV models/m_both",
+          "name": "m_both",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "MV models/m_both/revisions",
+              "name": "revisions",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:grid_revision:m_both:r_x",
+                  "project_id": "",
+                  "folder": "MV models/m_both/revisions",
+                  "name": "r_x.dsgrid",
+                  "kind": "other",
+                  "format": "dsgrid",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "upload",
+                    "detail": "grid model revision"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "grid_models",
+                    "ref": {
+                      "model_id": "m_both",
+                      "revision_id": "r_x"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions",
+        "transformers"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Unclassified",
+      "name": "Unclassified",
+      "counts": {
+        "assets": 0,
+        "folders": 2
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Unclassified/grid_exports",
+          "name": "grid_exports",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:grid_exports:row-02b8db567a30",
+              "project_id": "",
+              "folder": "Unclassified/grid_exports",
+              "name": "row-02b8db567a30",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "grid_exports"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "grid_exports",
+                "ref": {
+                  "source": "grid_exports",
+                  "ref": "row-02b8db567a30"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:grid_exports:row-0bb3eba75d4e",
+              "project_id": "",
+              "folder": "Unclassified/grid_exports",
+              "name": "row-0bb3eba75d4e",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "grid_exports"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "grid_exports",
+                "ref": {
+                  "source": "grid_exports",
+                  "ref": "row-0bb3eba75d4e"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Unclassified/grid_models",
+          "name": "grid_models",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:grid_models:row-78ba502612b1",
+              "project_id": "",
+              "folder": "Unclassified/grid_models",
+              "name": "row-78ba502612b1",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "grid_models"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "grid_models",
+                "ref": {
+                  "source": "grid_models",
+                  "ref": "row-78ba502612b1"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:grid_models:row-d8a4f07c305d",
+              "project_id": "",
+              "folder": "Unclassified/grid_models",
+              "name": "row-d8a4f07c305d",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "grid_models"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "grid_models",
+                "ref": {
+                  "source": "grid_models",
+                  "ref": "row-d8a4f07c305d"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": []
+    }
+  ],
+  "total_assets": 15,
+  "total_folders": 32,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "survey_media",
+    "transformer_versions",
+    "transformers",
+    "user_data"
+  ]
+}

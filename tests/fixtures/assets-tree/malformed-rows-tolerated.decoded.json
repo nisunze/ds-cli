@@ -1,0 +1,46 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "pm_records": [
+      42
+    ],
+    "pm_tasks": [
+      "not a task"
+    ],
+    "solar": [
+      {
+        "city": "Kigali",
+        "head": "not an object",
+        "artifacts": 3
+      }
+    ],
+    "transformer_versions": [
+      {
+        "transformer_id": [
+          "TX-1"
+        ],
+        "version_id": "v"
+      }
+    ],
+    "transformers": [
+      "oops",
+      12,
+      [],
+      null,
+      {
+        "name": 7,
+        "uploads": "not an object",
+        "report_files": {
+          "a": 1
+        }
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

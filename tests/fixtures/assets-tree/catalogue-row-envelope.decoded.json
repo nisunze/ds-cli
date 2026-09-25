@@ -1,0 +1,253 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {},
+  "folders": [
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_1",
+      "project_id": "p_env",
+      "path": "letters",
+      "name": "letters",
+      "parent": null,
+      "kind": "user",
+      "default_sensitivity": "internal",
+      "default_status": "fresh",
+      "counts": {
+        "assets": 3,
+        "folders": 0
+      },
+      "hidden_assets": 1,
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-02T00:00:00Z",
+      "version": 4
+    },
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_2",
+      "project_id": "p_env",
+      "path": " /letters//2026/ ",
+      "name": "2026",
+      "parent": null,
+      "kind": "system",
+      "default_sensitivity": null,
+      "default_status": null,
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      }
+    },
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_3",
+      "project_id": "p_env",
+      "path": "",
+      "name": "root",
+      "parent": null,
+      "kind": "user",
+      "default_sensitivity": null,
+      "default_status": null,
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      }
+    },
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_4",
+      "project_id": "p_env",
+      "path": "Correspondence",
+      "name": "c",
+      "parent": null,
+      "kind": "user",
+      "default_sensitivity": null,
+      "default_status": null,
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      }
+    }
+  ],
+  "assets": [
+    {
+      "reference": {
+        "work_id": "w",
+        "output_id": "o",
+        "role": "report"
+      },
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_full",
+      "project_id": "p_env",
+      "folder": "letters",
+      "name": "full.eml",
+      "kind": "mail",
+      "format": "eml",
+      "bytes": 100,
+      "digest": null,
+      "status": "archive",
+      "sensitivity": "confidential",
+      "dated": {
+        "document_date": "2026-01-01",
+        "received_at": null,
+        "created_at": "2026-01-03T00:00:00Z",
+        "source_modified_at": "2026-01-02T00:00:00Z"
+      },
+      "owner": null,
+      "source": {
+        "kind": "mail_import",
+        "detail": null
+      },
+      "classified_by": "user",
+      "container": "a_pack",
+      "links": [
+        {
+          "kind": "ds_object",
+          "object_type": "transformer",
+          "entity_id": "TX-1"
+        },
+        {
+          "kind": "pm_task",
+          "id": "t_1"
+        },
+        {
+          "kind": "tag",
+          "definition_id": "d",
+          "value": "v"
+        }
+      ],
+      "origin": {
+        "source": "upload",
+        "ref": {
+          "any": [
+            "thing",
+            1,
+            2.5,
+            null
+          ]
+        }
+      },
+      "document": {
+        "number": "N-1",
+        "revision_label": "",
+        "state": ""
+      },
+      "mail": {
+        "from": "",
+        "to": [],
+        "cc": [],
+        "subject": "",
+        "message_id": "",
+        "parts": [
+          {
+            "path": "p.txt",
+            "section": "",
+            "content_type": "",
+            "disposition": "",
+            "bytes": 0,
+            "kind": "",
+            "format": "",
+            "named": false
+          }
+        ],
+        "parts_total": 0,
+        "truncated": false
+      },
+      "external": {
+        "url": "https://example.com/x",
+        "provider": ""
+      },
+      "folder_id": "f_1",
+      "content_type": "message/rfc822",
+      "created_by": "u",
+      "updated_at": "2026-01-04T00:00:00Z",
+      "updated_by": "u",
+      "version": 9
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_min",
+      "project_id": "p_env",
+      "folder": "letters/2026",
+      "name": "min.bin",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 0,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "container",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": []
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_corr",
+      "project_id": "p_env",
+      "folder": "CORRESPONDENCE/inbox",
+      "name": "in.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 5,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "upload",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [],
+      "bytes_held": false
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_min",
+      "project_id": "p_env",
+      "folder": "letters/2026",
+      "name": "min.bin",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 1,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "container",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": []
+    }
+  ],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

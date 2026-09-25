@@ -1,0 +1,491 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Prints/tag groups",
+          "name": "tag groups",
+          "counts": {
+            "assets": 0,
+            "folders": 2
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Prints/tag groups/city",
+              "name": "city",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Prints/tag groups/city/Huye",
+                  "name": "Huye",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "reference": {
+                        "work_id": "w",
+                        "output_id": "o",
+                        "role": "city_map"
+                      },
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "a_city",
+                      "project_id": "p",
+                      "folder": "",
+                      "name": "huye.pdf",
+                      "kind": "other",
+                      "format": "unknown",
+                      "bytes": 1,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": null
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "tag",
+                          "definition_id": "zone/a",
+                          "value": "B/C"
+                        },
+                        {
+                          "kind": "tag",
+                          "definition_id": "city",
+                          "value": "Huye"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            },
+            {
+              "kind": "system",
+              "path": "Prints/tag groups/unnamed",
+              "name": "unnamed",
+              "counts": {
+                "assets": 0,
+                "folders": 1
+              },
+              "children": [
+                {
+                  "kind": "system",
+                  "path": "Prints/tag groups/unnamed/unnamed",
+                  "name": "unnamed",
+                  "counts": {
+                    "assets": 1,
+                    "folders": 0
+                  },
+                  "children": [],
+                  "assets": [
+                    {
+                      "reference": {
+                        "work_id": "w",
+                        "output_id": "o5",
+                        "role": "tag_group_map"
+                      },
+                      "schema": "ds.assets.asset/v1",
+                      "asset_id": "a_tag_group",
+                      "project_id": "p",
+                      "folder": "  ",
+                      "name": "grouped.pdf",
+                      "kind": "other",
+                      "format": "unknown",
+                      "bytes": 1,
+                      "digest": null,
+                      "status": "fresh",
+                      "sensitivity": "internal",
+                      "dated": {
+                        "document_date": null,
+                        "received_at": null,
+                        "created_at": null,
+                        "source_modified_at": null
+                      },
+                      "owner": null,
+                      "source": {
+                        "kind": "report_output",
+                        "detail": null
+                      },
+                      "classified_by": "kernel",
+                      "container": null,
+                      "links": [
+                        {
+                          "kind": "tag",
+                          "definition_id": "",
+                          "value": ""
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "assets": []
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions",
+        "transformers"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Unclassified",
+      "name": "Unclassified",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Unclassified/assets",
+          "name": "assets",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "reference": {
+                "work_id": "w",
+                "output_id": "o2",
+                "role": "district_map"
+              },
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_district",
+              "project_id": "p",
+              "folder": "",
+              "name": "district.pdf",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 1,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": []
+            },
+            {
+              "reference": {
+                "work_id": "w",
+                "output_id": "o3",
+                "role": "report"
+              },
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_other_role",
+              "project_id": "p",
+              "folder": "",
+              "name": "other.pdf",
+              "kind": "other",
+              "format": "unknown",
+              "bytes": 1,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "report_output",
+                "detail": null
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [
+                {
+                  "kind": "tag",
+                  "definition_id": "city",
+                  "value": "Huye"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "user",
+      "path": "maps",
+      "name": "maps",
+      "counts": {
+        "assets": 1,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [
+        {
+          "reference": {
+            "work_id": "w",
+            "output_id": "o4",
+            "role": "mv_map"
+          },
+          "schema": "ds.assets.asset/v1",
+          "asset_id": "a_filed",
+          "project_id": "p",
+          "folder": "maps",
+          "name": "filed.pdf",
+          "kind": "other",
+          "format": "unknown",
+          "bytes": 1,
+          "digest": null,
+          "status": "fresh",
+          "sensitivity": "internal",
+          "dated": {
+            "document_date": null,
+            "received_at": null,
+            "created_at": null,
+            "source_modified_at": null
+          },
+          "owner": null,
+          "source": {
+            "kind": "report_output",
+            "detail": null
+          },
+          "classified_by": "kernel",
+          "container": null,
+          "links": [
+            {
+              "kind": "tag",
+              "definition_id": "city",
+              "value": "Huye"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "total_assets": 5,
+  "total_folders": 19,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "survey_media",
+    "transformer_versions",
+    "transformers",
+    "user_data"
+  ]
+}

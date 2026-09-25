@@ -1,0 +1,18 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "survey_media": [
+      {"form": "lv_poles", "entry_id": "e_1", "field": "photo", "name": "pole.jpg", "size_bytes": 10},
+      {"form": "lv_poles", "entry_id": "e_1", "field": "photo_2", "name": "pole.jpg", "bytes": 11},
+      {"form": "lv_poles", "entry_id": "e_1", "field": "signature", "path": "https://cdn.example/survey/sig.png?token=secret",
+       "content_type": "image/png"},
+      {"form": "lv_poles", "entry_id": "e_1", "path": "survey/lv_poles/e_1/"},
+      {"form": "lv_poles", "entry_id": "e_1", "field": "photo", "name": "duplicate-of-photo.jpg"},
+      {"form": "lv/poles", "entry_id": " e_3 ", "field": "photo", "name": "slash.jpg"},
+      {"form": "", "entry_id": "e_4", "field": "photo", "name": "noform.jpg"},
+      {"form": "lv_poles", "field": "photo", "name": "noentry.jpg"},
+      {"form": "lv_poles", "entry_id": "e_5", "field": "photo", "name": "x", "content_type": "jpg"},
+      {"form": "lv_poles", "entry_id": "e_6", "field": "photo", "name": "raw", "content_type": "image/jpeg"}
+    ]
+  }
+}

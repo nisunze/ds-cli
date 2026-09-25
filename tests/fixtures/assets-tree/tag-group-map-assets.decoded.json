@@ -1,0 +1,201 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {},
+  "folders": [],
+  "assets": [
+    {
+      "reference": {
+        "work_id": "w",
+        "output_id": "o",
+        "role": "city_map"
+      },
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_city",
+      "project_id": "p",
+      "folder": "",
+      "name": "huye.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 1,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "report_output",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [
+        {
+          "kind": "tag",
+          "definition_id": "zone/a",
+          "value": "B/C"
+        },
+        {
+          "kind": "tag",
+          "definition_id": "city",
+          "value": "Huye"
+        }
+      ]
+    },
+    {
+      "reference": {
+        "work_id": "w",
+        "output_id": "o2",
+        "role": "district_map"
+      },
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_district",
+      "project_id": "p",
+      "folder": "",
+      "name": "district.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 1,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "report_output",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": []
+    },
+    {
+      "reference": {
+        "work_id": "w",
+        "output_id": "o3",
+        "role": "report"
+      },
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_other_role",
+      "project_id": "p",
+      "folder": "",
+      "name": "other.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 1,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "report_output",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [
+        {
+          "kind": "tag",
+          "definition_id": "city",
+          "value": "Huye"
+        }
+      ]
+    },
+    {
+      "reference": {
+        "work_id": "w",
+        "output_id": "o4",
+        "role": "mv_map"
+      },
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_filed",
+      "project_id": "p",
+      "folder": "maps",
+      "name": "filed.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 1,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "report_output",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [
+        {
+          "kind": "tag",
+          "definition_id": "city",
+          "value": "Huye"
+        }
+      ]
+    },
+    {
+      "reference": {
+        "work_id": "w",
+        "output_id": "o5",
+        "role": "tag_group_map"
+      },
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_tag_group",
+      "project_id": "p",
+      "folder": "  ",
+      "name": "grouped.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 1,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "report_output",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": [
+        {
+          "kind": "tag",
+          "definition_id": "",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

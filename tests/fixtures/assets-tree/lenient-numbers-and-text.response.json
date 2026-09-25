@@ -1,0 +1,693 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Transformers/TX-1",
+          "name": "TX-1",
+          "counts": {
+            "assets": 0,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Transformers/TX-1/versions",
+              "name": "versions",
+              "counts": {
+                "assets": 11,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_negzero",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "v-0.0",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 123456789012345678,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_negzero",
+                      "playback_available": false,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_neg",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "v-2",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_neg",
+                      "playback_available": true,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_str",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "v07",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 42,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_str",
+                      "playback_available": true,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_exp",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "v1.2345678901234567e+19",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_exp",
+                      "playback_available": false,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_tiny",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "v1.5e-7",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": "1700000000000",
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_tiny",
+                      "playback_available": false,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_huge",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "v1.8446744073709552e+19",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 18446744073709551615,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_huge",
+                      "playback_available": false,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_big",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "v1e+21",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 18446744073709551615,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_big",
+                      "playback_available": false,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:12345",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "v1e-6",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "12345",
+                      "playback_available": false,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_float",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "v3.0",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 12,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_float",
+                      "playback_available": true,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_bool",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "vtrue",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 9,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_bool",
+                      "playback_available": false,
+                      "reason": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:transformer_version:TX-1:v_obj",
+                  "project_id": "",
+                  "folder": "Transformers/TX-1/versions",
+                  "name": "vv_obj",
+                  "kind": "geo",
+                  "format": "geojson",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "false",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "system",
+                    "detail": "transformer version"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [
+                    {
+                      "kind": "ds_object",
+                      "object_type": "transformer",
+                      "entity_id": "TX-1"
+                    }
+                  ],
+                  "origin": {
+                    "source": "transformer_versions",
+                    "ref": {
+                      "transformer": "TX-1",
+                      "version_id": "v_obj",
+                      "playback_available": false,
+                      "reason": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": [],
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformers"
+      ]
+    }
+  ],
+  "total_assets": 11,
+  "total_folders": 13,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "survey_media",
+    "transformers",
+    "user_data"
+  ]
+}

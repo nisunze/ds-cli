@@ -1,0 +1,308 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "compounded": [
+      {
+        "stem": "lot3",
+        "filename": "lot3.zip",
+        "gcs_path": "gs://reports/lot3.zip",
+        "created_at": "2026-03-03T00:00:00Z",
+        "created_by": "lead@ds.rw"
+      }
+    ],
+    "compute_artifacts": [
+      {
+        "work_id": "w_1",
+        "engine": "solar",
+        "operation": "report",
+        "variant": "en",
+        "updated_at": "2026-03-04T00:00:00Z",
+        "outputs": [
+          {
+            "output_id": "o_1",
+            "format": "pdf",
+            "size_bytes": 5
+          }
+        ]
+      }
+    ],
+    "design_attachments": [
+      {
+        "attachment": {
+          "attachment_id": "att_1",
+          "object": {
+            "kind": "lv_transformer",
+            "id": "TX-1"
+          },
+          "object_key": "lv_transformer:TX-1",
+          "label": "permits",
+          "file_name": "permit.pdf",
+          "latest_revision_id": "rev_2",
+          "latest_revision": 2,
+          "created_by": "legal@ds.rw"
+        },
+        "revisions": [
+          {
+            "revision_id": "rev_1",
+            "revision": 1,
+            "file_name": "permit.pdf",
+            "byte_size": 10
+          },
+          {
+            "revision_id": "rev_2",
+            "revision": 2,
+            "file_name": "permit.pdf",
+            "byte_size": 20
+          }
+        ]
+      }
+    ],
+    "grid_exports": [
+      {
+        "model_id": "m_1",
+        "export_id": "exp_1",
+        "items": [
+          {
+            "output_id": "out_1",
+            "format": "gpkg"
+          }
+        ]
+      }
+    ],
+    "grid_models": [
+      {
+        "model_id": "m_1",
+        "display_name": "Feeder A",
+        "head_revision_id": "r_2",
+        "revisions": [
+          {
+            "revision_id": "r_1"
+          },
+          {
+            "revision_id": "r_2"
+          }
+        ]
+      }
+    ],
+    "pm_attachments": [
+      {
+        "id": "pa_2",
+        "linkedEntityType": "record",
+        "linkedEntityId": "rec_1",
+        "originalName": "reply.pdf",
+        "documentState": "superseded",
+        "metadata": {}
+      },
+      {
+        "id": "pa_1",
+        "linkedEntityType": "task",
+        "linkedEntityId": "t_1",
+        "originalName": "note.docx",
+        "sizeBytes": 12,
+        "documentState": "issued",
+        "metadata": {
+          "createdBy": "pm@ds.rw",
+          "createdAt": 1772323200000
+        }
+      }
+    ],
+    "pm_records": [
+      {
+        "id": "rec_1",
+        "referenceNumber": "RFI-004",
+        "subject": "Access"
+      }
+    ],
+    "pm_tasks": [
+      {
+        "id": "t_1",
+        "wbs": "1.2.3",
+        "title": "Survey"
+      }
+    ],
+    "print_setups": [
+      {
+        "id": "layout_1",
+        "name": "A1 landscape",
+        "scope": "project",
+        "updated_at": "2026-03-06T00:00:00Z",
+        "updated_by": "lead@ds.rw"
+      }
+    ],
+    "project_data": [
+      {
+        "upload_id": "u_1",
+        "file_name": "boundaries.geojson",
+        "created_at": "2026-01-10T00:00:00Z",
+        "uploaded_by": "gis@ds.rw",
+        "blob_path": "project_data/boundaries.geojson"
+      }
+    ],
+    "solar": [
+      {
+        "city": "Kigali",
+        "head": {
+          "run_id": "run_1",
+          "report_input_bytes": 9,
+          "report_input_sha256": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+          "published_at": "2026-03-05T00:00:00Z"
+        },
+        "artifacts": [
+          {
+            "name": "chart.png",
+            "gcs_path": "gs://solar/Kigali/chart.png",
+            "size_bytes": 3,
+            "content_type": "image/png"
+          }
+        ]
+      }
+    ],
+    "survey_media": [
+      {
+        "form": "poles",
+        "entry_id": "e_1",
+        "field": "photo",
+        "name": "pole.jpg",
+        "path": "survey/poles/e_1/pole.jpg",
+        "content_type": "image/jpeg",
+        "captured_at": "2026-01-09T07:00:00Z",
+        "created_by": "field@ds.rw"
+      }
+    ],
+    "transformer_versions": [
+      {
+        "transformer_id": "TX-1",
+        "version_id": "ver_9",
+        "version": 3,
+        "reason": "as-built",
+        "created_at": "2026-03-02T00:00:00Z",
+        "created_by": "lead@ds.rw",
+        "playback_available": true,
+        "room_bytes": 4096
+      }
+    ],
+    "transformers": [
+      {
+        "name": "TX-1",
+        "metadata": {
+          "updated_at": "2026-03-01T00:00:00Z",
+          "updated_by": "lead@ds.rw"
+        },
+        "uploads": {
+          "draft": [
+            {
+              "filename": "survey.csv",
+              "blob_path": "uploads/TX-1/survey.csv",
+              "uploaded_at": "2026-02-01T00:00:00Z",
+              "uploaded_by": "field@ds.rw"
+            }
+          ]
+        },
+        "report_files": [
+          "gs://reports/TX-1/report.xlsx"
+        ],
+        "report_artifacts": [
+          {
+            "url": "https://storage.example/reports/TX-1-map.pdf?X-Goog-Signature=secret",
+            "output_id": "map",
+            "format": "pdf",
+            "size_bytes": 2048
+          }
+        ]
+      }
+    ]
+  },
+  "folders": [
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_2",
+      "project_id": "p",
+      "path": "contracts",
+      "name": "contracts",
+      "parent": null,
+      "kind": "user",
+      "default_sensitivity": null,
+      "default_status": null,
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      }
+    },
+    {
+      "schema": "ds.assets.folder/v1",
+      "folder_id": "f_1",
+      "project_id": "p",
+      "path": "contracts/2026",
+      "name": "2026",
+      "parent": null,
+      "kind": "user",
+      "default_sensitivity": null,
+      "default_status": null,
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      }
+    }
+  ],
+  "assets": [
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_1",
+      "project_id": "p",
+      "folder": "contracts/2026",
+      "name": "epc.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 11,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "upload",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": []
+    },
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_2",
+      "project_id": "p",
+      "folder": "contracts/2026",
+      "name": "epc.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 10,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "upload",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": []
+    }
+  ],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}
