@@ -8462,6 +8462,301 @@ fn shared_assets_verify_producer_bytes_without_returning_signed_urls() {
     }
 }
 
+fn index_meta() -> serde_json::Value {
+    serde_json::json!({
+        "schema": "ds.assets.index/v1", "generation": 7,
+        "built_at": "2026-09-25T10:00:00Z", "checked_at": "2026-09-25T10:05:00Z",
+        "rebuilt": false, "stale_sources": ["solar"],
+        "truncated_sources": [{"source": "survey_media", "bound": 20000, "actual": 20431}]
+    })
+}
+
+fn old_ds_brain() -> TransportResponse {
+    TransportResponse::new(
+        400,
+        br#"{"success":false,"error":{"code":"VALIDATION_FAILED","message":"Invalid assets request"}}"#,
+    )
+}
+
+#[test]
+fn project_assets_index_list_carries_the_meta_through_and_refuses_a_foreign_row() {
+    use ds_client_core::project_assets::{Command, IndexList, IndexOrder};
+    use serde_json::json;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let command = Command::IndexList(IndexList {
+        order: IndexOrder::Recent,
+        folder: Some("Transformers/TX-104".into()),
+        kind: None,
+        status: None,
+        sensitivity: None,
+        since: None,
+        limit: 2,
+        cursor: None,
+        refresh: true,
+    });
+    let design = json!({"schema":"ds.assets.asset/v1","asset_id":"sys:transformers:TX-104:design",
+        "project_id":"p-1","folder_path":"Transformers/TX-104","modified_at":"2026-09-25T09:00:00Z",
+        "versions":{"count":12,"current":"v3","latest_at":"2026-09-25T09:00:00Z"}});
+    let upload = json!({"schema":"ds.assets.asset/v1","asset_id":"a_000000000001","project_id":"p-1",
+        "folder_path":"Transformers/TX-104","modified_at":null});
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .shared_assets
+        .push_back(project_response(json!({
+            "assets": [design, upload], "more": true, "next_cursor": "g7:2", "index": index_meta(),
+        })));
+    let page = client
+        .project_assets("p-1", &command, None, NOW + 1)
+        .unwrap();
+    assert_eq!(page["index"], index_meta(), "the meta crosses untouched");
+    assert_eq!(page["index_status"], "served");
+    assert_eq!(page["assets"][0]["versions"]["count"], 12);
+    assert_eq!(page["next_cursor"], "g7:2");
+    assert_eq!(
+        transport.0.lock().unwrap().asset_bodies[0],
+        json!({"action":"list","ds_project":"p-1","view":"index","order":"recent",
+               "folder":"Transformers/TX-104","limit":2,"refresh":true})
+    );
+
+    // A row of another project, a page longer than asked, or an answer
+    // without the index meta is not an index page.
+    let foreign = json!({"schema":"ds.assets.asset/v1","asset_id":"sys:transformers:TX-9","project_id":"other"});
+    let own = json!({"schema":"ds.assets.asset/v1","asset_id":"a_000000000002","project_id":"p-1"});
+    for answer in [
+        json!({"assets":[foreign],"more":false,"index":index_meta()}),
+        json!({"assets":[own.clone(), own.clone(), own.clone()],"more":false,"index":index_meta()}),
+        json!({"assets":[own.clone()],"more":false}),
+        json!({"assets":[own],"more":false,"index":{"schema":"ds.assets.index/v2","generation":7}}),
+    ] {
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .shared_assets
+            .push_back(project_response(answer));
+        assert_eq!(
+            client
+                .project_assets("p-1", &command, None, NOW + 1)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+    }
+}
+
+#[test]
+fn project_assets_index_tree_and_versions_are_served_with_their_rows_checked() {
+    use ds_client_core::project_assets::Command;
+    use serde_json::json;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let row = |id: &str| json!({"schema":"ds.assets.asset/v1","asset_id":id,"project_id":"p-1"});
+    let tree = json!({
+        "schema": "ds.assets.tree/v1", "total_assets": 2, "total_folders": 3, "truncated": false,
+        "folders": [{"kind":"system","path":"Transformers","name":"Transformers",
+            "counts":{"assets":0,"folders":1},"assets":[],
+            "children":[{"kind":"system","path":"Transformers/TX-104","name":"TX-104",
+                "counts":{"assets":2,"folders":0},"children":[],
+                "assets":[row("sys:transformers:TX-104"), row("a_000000000001")]}]}],
+        "index": index_meta(),
+    });
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .shared_assets
+        .push_back(project_response(tree.clone()));
+    let served = client
+        .project_assets("p-1", &Command::IndexTree { refresh: false }, None, NOW + 1)
+        .unwrap();
+    assert_eq!(served["index_status"], "served");
+    assert_eq!(served["folders"], tree["folders"]);
+    assert_eq!(served["index"]["generation"], 7);
+    let mut deep_foreign = tree.clone();
+    deep_foreign["folders"][0]["children"][0]["assets"][0]["project_id"] = json!("other");
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .shared_assets
+        .push_back(project_response(deep_foreign));
+    assert!(client
+        .project_assets("p-1", &Command::IndexTree { refresh: true }, None, NOW + 1)
+        .is_err());
+    assert_eq!(
+        transport.0.lock().unwrap().asset_bodies[1],
+        json!({"action":"tree","ds_project":"p-1","view":"index","refresh":true})
+    );
+
+    let get = Command::IndexGet {
+        asset_id: "sys:transformers:TX-104".into(),
+    };
+    let versions = json!([
+        {"asset_id":"sys:transformer_versions:TX-104:v3","label":"v3","created_at":"2026-09-25T09:00:00Z",
+         "created_by":"lead@ds.rw","milestone":"IFC","current":true},
+        {"asset_id":"sys:transformer_versions:TX-104:v2","label":"v2","created_at":"2026-09-20T09:00:00Z",
+         "created_by":"lead@ds.rw","current":false}
+    ]);
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .shared_assets
+        .push_back(project_response(
+            json!({"asset":row("sys:transformers:TX-104"),"versions":versions}),
+        ));
+    let answer = client.project_assets("p-1", &get, None, NOW + 1).unwrap();
+    assert_eq!(answer["versions"], versions, "newest first, as served");
+    assert_eq!(answer["index_status"], "served");
+    // The row the server answered must be the row that was asked for.
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .shared_assets
+        .push_back(project_response(
+            json!({"asset":row("sys:transformers:TX-9"),"versions":[]}),
+        ));
+    assert!(client.project_assets("p-1", &get, None, NOW + 1).is_err());
+}
+
+#[test]
+fn project_assets_index_falls_back_once_and_says_so_on_an_old_ds_brain() {
+    use ds_client_core::project_assets::{Command, IndexList, IndexOrder};
+    use serde_json::json;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let push = |response: TransportResponse| {
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .shared_assets
+            .push_back(response)
+    };
+    let bodies = || transport.0.lock().unwrap().asset_bodies.clone();
+    let list = |folder: Option<&str>| {
+        Command::IndexList(IndexList {
+            order: IndexOrder::Name,
+            folder: folder.map(str::to_owned),
+            kind: Some("doc".into()),
+            status: None,
+            sensitivity: None,
+            since: None,
+            limit: 50,
+            cursor: None,
+            refresh: true,
+        })
+    };
+    let upload =
+        json!({"schema":"ds.assets.asset/v1","asset_id":"a_000000000001","project_id":"p-1"});
+
+    // list: the same filters, without view, order, folder or refresh.
+    push(old_ds_brain());
+    push(project_response(
+        json!({"assets":[upload.clone()],"has_more":false,"scanned":1}),
+    ));
+    let page = client
+        .project_assets("p-1", &list(None), None, NOW + 1)
+        .unwrap();
+    assert_eq!(page["index_status"], "unavailable");
+    assert!(
+        page.get("index").is_none(),
+        "a catalogue page is never the index"
+    );
+    assert_eq!(page["assets"][0]["asset_id"], "a_000000000001");
+    assert_eq!(bodies()[0]["view"], "index");
+    assert_eq!(
+        bodies()[1],
+        json!({"action":"list","ds_project":"p-1","kind":"doc","limit":50})
+    );
+
+    // tree: the declared folders.
+    push(old_ds_brain());
+    push(project_response(json!({"folders":[]})));
+    let tree = client
+        .project_assets("p-1", &Command::IndexTree { refresh: false }, None, NOW + 1)
+        .unwrap();
+    assert_eq!(tree, json!({"folders":[],"index_status":"unavailable"}));
+    assert_eq!(bodies()[3], json!({"action":"tree","ds_project":"p-1"}));
+
+    // get of a catalogued row: the row, and no claim about its versions.
+    push(old_ds_brain());
+    push(project_response(json!({"asset": upload.clone()})));
+    let got = client
+        .project_assets(
+            "p-1",
+            &Command::IndexGet {
+                asset_id: "a_000000000001".into(),
+            },
+            None,
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(got["asset"], upload);
+    assert_eq!(got["index_status"], "unavailable");
+    assert!(got.get("versions").is_none());
+    assert_eq!(
+        bodies()[5],
+        json!({"action":"get","ds_project":"p-1","asset_id":"a_000000000001"})
+    );
+
+    // No catalogue form — a folder path, a projected id — no retry: the
+    // marker alone.
+    for command in [
+        list(Some("Transformers/TX-104")),
+        Command::IndexGet {
+            asset_id: "sys:transformers:TX-104".into(),
+        },
+    ] {
+        let before = bodies().len();
+        push(old_ds_brain());
+        assert_eq!(
+            client
+                .project_assets("p-1", &command, None, NOW + 1)
+                .unwrap(),
+            json!({"index_status":"unavailable"})
+        );
+        assert_eq!(bodies().len(), before + 1);
+    }
+
+    // Once: a refused retry crosses as it is, and is not retried again.
+    let before = bodies().len();
+    push(old_ds_brain());
+    push(old_ds_brain());
+    let error = client
+        .project_assets("p-1", &list(None), None, NOW + 1)
+        .unwrap_err();
+    assert_eq!(
+        error.service_refusal().and_then(|r| r.code()),
+        Some("validation_failed")
+    );
+    assert_eq!(bodies().len(), before + 2);
+
+    // Any other refusal is the index's own: no fallback.
+    for (status, body) in [
+        (
+            409,
+            &br#"{"success":false,"error":{"code":"ASSETS_INDEX_MOVED","message":"the index moved; restart"}}"#[..],
+        ),
+        (
+            400,
+            br#"{"success":false,"error":{"code":"ASSET_REFUSED","message":"no"}}"#,
+        ),
+    ] {
+        let before = bodies().len();
+        push(TransportResponse::new(status, body));
+        let error = client
+            .project_assets("p-1", &list(None), None, NOW + 1)
+            .unwrap_err();
+        assert_eq!(error.service_refusal().map(|r| r.status()), Some(status));
+        assert_eq!(bodies().len(), before + 1);
+    }
+}
+
 #[test]
 fn shared_map_publish_uploads_classifies_links_and_reuses_without_another_upload() {
     use ds_client_core::shared_assets::Command;

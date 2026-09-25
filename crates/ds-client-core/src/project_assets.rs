@@ -21,6 +21,22 @@
 //! owner can send, every payload is built here, and ds-brain decodes with
 //! `DisallowUnknownFields`, so a key this file does not write is a key the
 //! request cannot carry.
+//!
+//! ## The assets index (ds-brain `docs/contracts/assets-index.md` §5.1)
+//!
+//! Since 2026-09-25 ds-brain builds, caches and serves each project's assets
+//! index: the catalogued rows plus the `sys:` rows it projects from the cloud
+//! sources it owns, redacted per caller at serve time. [`Command::IndexList`],
+//! [`Command::IndexTree`] and [`Command::IndexGet`] are the index forms of
+//! `list`, `tree` and `get`; each carries `view: "index"`. Their answers carry
+//! ds-brain's `index` meta untouched, plus `index_status: "served"`.
+//!
+//! A ds-brain that predates the index refuses `view` by strict decoding with
+//! 400 `VALIDATION_FAILED`. On exactly that typed refusal an index form is
+//! retried ONCE as its catalogue form, and the answer is marked
+//! `index_status: "unavailable"` — never presented as the index. A request
+//! with no catalogue form (a folder path, a projected `sys:` id) is not
+//! retried: the answer is the marker alone and the caller decides.
 
 use std::io::Read;
 
@@ -46,6 +62,32 @@ pub const MAX_INGEST_BYTES: u64 = 256 * 1024 * 1024;
 pub const RECOGNISE_HEAD_BYTES: usize = 64 * 1024;
 /// The longest catalogue answer this owner reads.
 const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+/// The schema ds-brain stamps on the `index` meta of every index answer.
+pub const INDEX_SCHEMA: &str = "ds.assets.index/v1";
+/// The schema of the index tree answer: the kernel's own tree.
+pub const TREE_SCHEMA: &str = "ds.assets.tree/v1";
+/// `index_status` when the answer is the index.
+pub const INDEX_SERVED: &str = "served";
+/// `index_status` when this deployment's ds-brain does not serve the index:
+/// the answer is the catalogue's, or the marker alone.
+pub const INDEX_UNAVAILABLE: &str = "unavailable";
+/// The sources the shared index never holds (assets-index §2), with the
+/// root each feeds: they exist only on a Desktop or Server, which projects
+/// them and merges them under the index it read. Pinned to the kernel's own
+/// source names and roots by this module's tests.
+pub const EDGE_ONLY_SOURCES: [(&str, &str); 4] = [
+    ("dataset_rooms", "Local data"),
+    ("national_datasets", "Local data"),
+    ("report_rooms", "Local data"),
+    ("local_prints", "Prints"),
+];
+/// The longest opaque index cursor this owner carries. It binds project,
+/// generation, order and filters, so it is longer than a catalogue cursor.
+pub const MAX_INDEX_CURSOR_CHARS: usize = 2048;
+/// The longest projected `sys:` id this owner sends.
+const MAX_PROJECTED_ID_BYTES: usize = 1024;
+/// The deepest index tree this owner walks when it checks row identity.
+const MAX_TREE_NESTING: usize = 64;
 
 fn invalid(message: &'static str) -> ClientError {
     ClientError::new(ErrorKind::InvalidInput, message)
@@ -70,6 +112,21 @@ fn minted(id: &str) -> bool {
                 .bytes()
                 .all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
     })
+}
+/// A projected system id: `sys:<source>:<reference>`, the source a lowercase
+/// word, the reference non-empty.
+fn projected(id: &str) -> bool {
+    id.len() <= MAX_PROJECTED_ID_BYTES
+        && id.trim() == id
+        && !id.chars().any(char::is_control)
+        && id
+            .strip_prefix("sys:")
+            .and_then(|rest| rest.split_once(':'))
+            .is_some_and(|(source, reference)| {
+                !source.is_empty()
+                    && source.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+                    && !reference.is_empty()
+            })
 }
 fn folder_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
@@ -136,6 +193,15 @@ pub enum Command {
     },
     /// One catalogue row.
     Get { asset_id: String },
+    /// One page of the project's assets index: catalogued and projected rows,
+    /// versions folded into their object, in `order`.
+    IndexList(IndexList),
+    /// The whole index tree — the kernel's `ds.assets.tree/v1`, system
+    /// folders included — as ds-brain serves it after redaction.
+    IndexTree { refresh: bool },
+    /// One index row, catalogued (`a_…`) or projected (`sys:…`), with its
+    /// version rows newest first.
+    IndexGet { asset_id: String },
     /// One signed read: the row, a V4 URL pinned to the verified generation,
     /// and its expiry. The bytes are fetched by [`read_bytes`].
     Download { asset_id: String },
@@ -180,6 +246,52 @@ pub enum Command {
     Ingest(IngestRequest),
 }
 
+/// The order one index page is read in (assets-index §5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum IndexOrder {
+    /// Newest `modified_at` first: the project's timeline.
+    #[default]
+    Recent,
+    /// By name.
+    Name,
+}
+
+impl IndexOrder {
+    /// The wire word.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Recent => "recent",
+            Self::Name => "name",
+        }
+    }
+
+    /// The order a wire word names, if it names one.
+    pub fn parse(word: &str) -> Option<Self> {
+        match word {
+            "recent" => Some(Self::Recent),
+            "name" => Some(Self::Name),
+            _ => None,
+        }
+    }
+}
+
+/// One index page request (assets-index §5.1). The filters are the
+/// catalogue list's own vocabularies; `folder` is an exact index folder path
+/// (`Transformers/TX-104`), never a prefix and never a catalogue folder id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexList {
+    pub order: IndexOrder,
+    pub folder: Option<String>,
+    pub kind: Option<String>,
+    pub status: Option<String>,
+    pub sensitivity: Option<String>,
+    pub since: Option<String>,
+    pub limit: u16,
+    pub cursor: Option<String>,
+    /// Rebuild the index regardless of its source watermarks.
+    pub refresh: bool,
+}
+
 /// What an ingest names. The bytes are streamed from `reader` by [`run`];
 /// the caller opens the file and computes its digest and size first.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,9 +309,9 @@ pub struct IngestRequest {
 impl Command {
     fn action(&self) -> &'static str {
         match self {
-            Self::Folders => "tree",
-            Self::List { .. } => "list",
-            Self::Get { .. } => "get",
+            Self::Folders | Self::IndexTree { .. } => "tree",
+            Self::List { .. } | Self::IndexList(_) => "list",
+            Self::Get { .. } | Self::IndexGet { .. } => "get",
             Self::Download { .. } => "download",
             Self::FolderCreate { .. } => "folder_create",
             Self::FolderUpdate { .. } => "folder_update",
@@ -216,7 +328,19 @@ impl Command {
         if !token(project) {
             return Err(invalid("project assets need the project they act on"));
         }
-        let ok = match self {
+        if self.well_formed() {
+            Ok(())
+        } else {
+            Err(invalid(
+                "invalid project assets request: an id, a path, a class, a bound or a link is outside the catalogue's vocabulary",
+            ))
+        }
+    }
+
+    /// Whether every id, path, class, bound and link is inside the
+    /// catalogue's vocabulary.
+    fn well_formed(&self) -> bool {
+        match self {
             Self::Folders => true,
             Self::List {
                 folder_id,
@@ -236,6 +360,17 @@ impl Command {
                     && optional(cursor, 512)
             }
             Self::Get { asset_id } | Self::Download { asset_id } => minted(asset_id),
+            Self::IndexList(list) => {
+                (1..=MAX_PAGE_SIZE).contains(&list.limit)
+                    && list.folder.as_deref().is_none_or(folder_path)
+                    && choice(&list.kind, &KINDS)
+                    && choice(&list.status, &STATUSES)
+                    && choice(&list.sensitivity, &SENSITIVITIES)
+                    && optional(&list.since, 64)
+                    && optional(&list.cursor, MAX_INDEX_CURSOR_CHARS)
+            }
+            Self::IndexTree { .. } => true,
+            Self::IndexGet { asset_id } => minted(asset_id) || projected(asset_id),
             Self::FolderCreate {
                 path,
                 default_sensitivity,
@@ -303,13 +438,6 @@ impl Command {
                     && KINDS.contains(&ingest.kind.as_str())
                     && bounded_text(&ingest.format, 16)
             }
-        };
-        if ok {
-            Ok(())
-        } else {
-            Err(invalid(
-                "invalid project assets request: an id, a path, a class, a bound or a link is outside the catalogue's vocabulary",
-            ))
         }
     }
 
@@ -340,6 +468,30 @@ impl Command {
                 put(&mut payload, "cursor", cursor);
             }
             Self::Get { asset_id } => payload["asset_id"] = json!(asset_id),
+            Self::IndexList(list) => {
+                payload["view"] = json!("index");
+                payload["order"] = json!(list.order.as_str());
+                put(&mut payload, "folder", &list.folder);
+                put(&mut payload, "kind", &list.kind);
+                put(&mut payload, "status", &list.status);
+                put(&mut payload, "sensitivity", &list.sensitivity);
+                put(&mut payload, "since", &list.since);
+                payload["limit"] = json!(list.limit);
+                put(&mut payload, "cursor", &list.cursor);
+                if list.refresh {
+                    payload["refresh"] = json!(true);
+                }
+            }
+            Self::IndexTree { refresh } => {
+                payload["view"] = json!("index");
+                if *refresh {
+                    payload["refresh"] = json!(true);
+                }
+            }
+            Self::IndexGet { asset_id } => {
+                payload["view"] = json!("index");
+                payload["asset_id"] = json!(asset_id);
+            }
             Self::Download { asset_id } => {
                 payload["asset_id"] = json!(asset_id);
                 payload["surface"] = json!("cli");
@@ -407,6 +559,41 @@ impl Command {
             }
         }
         payload
+    }
+
+    /// Whether this is an index form, which an old ds-brain refuses by
+    /// strict decoding.
+    pub fn is_index(&self) -> bool {
+        matches!(
+            self,
+            Self::IndexList(_) | Self::IndexTree { .. } | Self::IndexGet { .. }
+        )
+    }
+
+    /// The old catalogue call an index form falls back to: the same request
+    /// without the index fields. `None` when there is none — a folder path
+    /// names an index folder the catalogue cannot address, a projected id is
+    /// a row the catalogue never held — and for anything not an index form.
+    pub fn catalogue_form(&self) -> Option<Self> {
+        let form = match self {
+            Self::IndexList(list) if list.folder.is_none() => Self::List {
+                folder_id: None,
+                kind: list.kind.clone(),
+                status: list.status.clone(),
+                sensitivity: list.sensitivity.clone(),
+                since: list.since.clone(),
+                limit: list.limit,
+                cursor: list.cursor.clone(),
+            },
+            Self::IndexTree { .. } => Self::Folders,
+            Self::IndexGet { asset_id } if minted(asset_id) => Self::Get {
+                asset_id: asset_id.clone(),
+            },
+            _ => return None,
+        };
+        // An index cursor may be longer than any catalogue cursor; one the
+        // catalogue could not take has no catalogue form either.
+        form.well_formed().then_some(form)
     }
 }
 
@@ -501,11 +688,131 @@ fn own_row(row: &Value, project: &str) -> Result<(), ClientError> {
     Ok(())
 }
 
+/// An index row: the `ds.assets.asset/v1` row as the kernel projects it. A
+/// catalogued row is this project's by its `project_id`; a projected row may
+/// carry an empty one (the kernel stamps the project its request named), but
+/// never another project's.
+fn own_index_row(row: &Value, project: &str) -> Result<(), ClientError> {
+    let id = row["asset_id"].as_str().unwrap_or_default();
+    let owner = row["project_id"].as_str();
+    let own = if minted(id) {
+        owner == Some(project)
+    } else {
+        projected(id) && owner.is_none_or(|owner| owner.is_empty() || owner == project)
+    };
+    if row["schema"] != "ds.assets.asset/v1" || !own {
+        return Err(bad());
+    }
+    Ok(())
+}
+
+/// ds-brain's `index` meta: its schema and generation are checked, the rest
+/// crosses untouched.
+fn index_meta(data: &Value) -> Result<(), ClientError> {
+    let meta = &data["index"];
+    if meta["schema"] != INDEX_SCHEMA || !meta["generation"].is_number() {
+        return Err(bad());
+    }
+    Ok(())
+}
+
+/// Every asset row of an index tree, walked to [`MAX_TREE_NESTING`].
+fn own_tree_rows(folders: &Value, project: &str, level: usize) -> Result<(), ClientError> {
+    if level > MAX_TREE_NESTING {
+        return Err(bad());
+    }
+    for folder in folders.as_array().ok_or_else(bad)? {
+        for row in folder["assets"].as_array().into_iter().flatten() {
+            own_index_row(row, project)?;
+        }
+        if !folder["children"].is_null() {
+            own_tree_rows(&folder["children"], project, level + 1)?;
+        }
+    }
+    Ok(())
+}
+
+/// The one refusal an old ds-brain answers an index form with: strict
+/// decoding of `view`, 400 `VALIDATION_FAILED`. Matched on the typed status
+/// and code, never on the sentence.
+fn index_refused(error: &ClientError) -> bool {
+    error.service_refusal().is_some_and(|refusal| {
+        refusal.status() == 400 && refusal.code() == Some("validation_failed")
+    })
+}
+
+/// Serve an index form: the index when ds-brain serves it, otherwise ONE
+/// retry as its catalogue form marked `index_status: "unavailable"`, or the
+/// marker alone when it has no catalogue form.
+fn run_index<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    command: &Command,
+) -> Result<Value, ClientError> {
+    let mut data = match call(profile, transport, authority, command.payload(project)) {
+        Ok(data) => data,
+        Err(error) if index_refused(&error) => {
+            let Some(catalogue) = command.catalogue_form() else {
+                return Ok(json!({ "index_status": INDEX_UNAVAILABLE }));
+            };
+            // The catalogue form is never an index form, so this is the one
+            // retry: a refusal of it crosses as it is.
+            let answer = run(profile, transport, authority, project, &catalogue, None)?;
+            let mut data = match command {
+                Command::IndexGet { .. } => json!({ "asset": answer }),
+                _ => answer,
+            };
+            data["index_status"] = json!(INDEX_UNAVAILABLE);
+            return Ok(data);
+        }
+        Err(error) => return Err(error),
+    };
+    match command {
+        Command::IndexList(list) => {
+            let rows = data["assets"].as_array().ok_or_else(bad)?;
+            if rows.len() > usize::from(list.limit) || !data["more"].is_boolean() {
+                return Err(bad());
+            }
+            for row in rows {
+                own_index_row(row, project)?;
+            }
+            if !(data["next_cursor"].is_null() || data["next_cursor"].is_string()) {
+                return Err(bad());
+            }
+            index_meta(&data)?;
+        }
+        Command::IndexTree { .. } => {
+            if data["schema"] != TREE_SCHEMA {
+                return Err(bad());
+            }
+            own_tree_rows(&data["folders"], project, 0)?;
+            index_meta(&data)?;
+        }
+        Command::IndexGet { asset_id } => {
+            own_index_row(&data["asset"], project)?;
+            let versions = data["versions"].as_array().ok_or_else(bad)?;
+            if data["asset"]["asset_id"] != *asset_id || !versions.iter().all(Value::is_object) {
+                return Err(bad());
+            }
+            // §5.1 names `{asset, versions}`; the meta crosses when served.
+            if !data["index"].is_null() {
+                index_meta(&data)?;
+            }
+        }
+        _ => return Err(bad()),
+    }
+    data["index_status"] = json!(INDEX_SERVED);
+    Ok(data)
+}
+
 /// Send one governed action for one project and return its `data`.
 ///
 /// `Ingest` is the one transaction: `ingest_start`, the upload, then
 /// `ingest_finalize`, verified against the name, digest and size the caller
-/// declared. The reader is consumed once.
+/// declared. The reader is consumed once. An index form is served by
+/// [`run_index`], with its one fallback.
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
@@ -515,6 +822,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
     reader: Option<&mut dyn Read>,
 ) -> Result<Value, ClientError> {
     command.validate(project)?;
+    if command.is_index() {
+        return run_index(profile, transport, authority, project, command);
+    }
     let data = call(profile, transport, authority, command.payload(project))?;
     match command {
         Command::Folders => {
@@ -582,6 +892,8 @@ pub(crate) fn run<T: AuthorizedTransport>(
             }
             Ok(json!({ "asset": row }))
         }
+        // Served by `run_index` above; never reached.
+        Command::IndexList(_) | Command::IndexTree { .. } | Command::IndexGet { .. } => Err(bad()),
         Command::Ingest(ingest) => {
             let id = data["asset_id"]
                 .as_str()
@@ -819,6 +1131,248 @@ mod tests {
         })
         .validate("p")
         .is_ok());
+    }
+
+    fn index_list() -> IndexList {
+        IndexList {
+            order: IndexOrder::default(),
+            folder: None,
+            kind: None,
+            status: None,
+            sensitivity: None,
+            since: None,
+            limit: 50,
+            cursor: None,
+            refresh: false,
+        }
+    }
+
+    #[test]
+    fn the_index_forms_carry_view_index_and_only_the_keys_they_set() {
+        // The timeline is the default: a bare index page asks for `recent`.
+        let bare = Command::IndexList(index_list());
+        assert_eq!(bare.action(), "list");
+        assert_eq!(
+            bare.payload("p"),
+            json!({"action":"list","ds_project":"p","view":"index","order":"recent","limit":50})
+        );
+        let full = Command::IndexList(IndexList {
+            order: IndexOrder::Name,
+            folder: Some("Transformers/TX-104".into()),
+            kind: Some("doc".into()),
+            status: Some("durable".into()),
+            sensitivity: Some("internal".into()),
+            since: Some("2026-09-01".into()),
+            limit: 200,
+            cursor: Some("g7.c".into()),
+            refresh: true,
+        });
+        assert_eq!(
+            full.payload("p"),
+            json!({"action":"list","ds_project":"p","view":"index","order":"name",
+                   "folder":"Transformers/TX-104","kind":"doc","status":"durable",
+                   "sensitivity":"internal","since":"2026-09-01","limit":200,
+                   "cursor":"g7.c","refresh":true})
+        );
+        let tree = Command::IndexTree { refresh: false };
+        assert_eq!(tree.action(), "tree");
+        assert_eq!(
+            tree.payload("p"),
+            json!({"action":"tree","ds_project":"p","view":"index"})
+        );
+        assert_eq!(
+            Command::IndexTree { refresh: true }.payload("p")["refresh"],
+            true
+        );
+        let get = Command::IndexGet {
+            asset_id: "sys:transformers:TX-104".into(),
+        };
+        assert_eq!(get.action(), "get");
+        assert_eq!(
+            get.payload("p"),
+            json!({"action":"get","ds_project":"p","view":"index","asset_id":"sys:transformers:TX-104"})
+        );
+        assert!(get.is_index() && tree.is_index() && full.is_index());
+        assert!(!list().is_index() && !Command::Folders.is_index());
+        assert_eq!(IndexOrder::parse("name"), Some(IndexOrder::Name));
+        assert_eq!(IndexOrder::parse("oldest"), None);
+    }
+
+    #[test]
+    fn an_index_request_outside_its_vocabulary_is_refused_before_it_is_sent() {
+        let ok = |command: Command| command.validate("p").is_ok();
+        assert!(ok(Command::IndexGet {
+            asset_id: "a_7kq3nr2v0b1c".into()
+        }));
+        assert!(ok(Command::IndexGet {
+            asset_id: "sys:design_attachment:att_1:rev_2".into()
+        }));
+        for bad in [
+            "",
+            "sys:",
+            "sys:Transformers:T1",
+            "sys::T1",
+            "sys:x:",
+            " sys:x:1",
+            "t_1",
+        ] {
+            assert!(
+                !ok(Command::IndexGet {
+                    asset_id: bad.into()
+                }),
+                "`{bad}` was accepted"
+            );
+        }
+        let with = |edit: fn(&mut IndexList)| {
+            let mut list = index_list();
+            edit(&mut list);
+            Command::IndexList(list)
+        };
+        assert!(ok(with(|l| l.folder = Some("MV models/Feeder 3".into()))));
+        assert!(!ok(with(|l| l.folder = Some("/Transformers".into()))));
+        assert!(!ok(with(|l| l.folder = Some("Transformers//TX".into()))));
+        assert!(!ok(with(|l| l.limit = 0)));
+        assert!(!ok(with(|l| l.limit = 201)));
+        assert!(!ok(with(|l| l.kind = Some("pdf".into()))));
+        assert!(ok(with(
+            |l| l.cursor = Some("c".repeat(MAX_INDEX_CURSOR_CHARS))
+        )));
+        assert!(!ok(with(
+            |l| l.cursor = Some("c".repeat(MAX_INDEX_CURSOR_CHARS + 1))
+        )));
+        assert!(Command::IndexTree { refresh: true }.validate("").is_err());
+    }
+
+    #[test]
+    fn an_index_form_falls_back_only_to_a_catalogue_call_that_says_the_same() {
+        let mut filtered = index_list();
+        filtered.kind = Some("doc".into());
+        filtered.cursor = Some("c_9".into());
+        filtered.order = IndexOrder::Name;
+        filtered.refresh = true;
+        assert_eq!(
+            Command::IndexList(filtered).catalogue_form(),
+            Some(Command::List {
+                folder_id: None,
+                kind: Some("doc".into()),
+                status: None,
+                sensitivity: None,
+                since: None,
+                limit: 50,
+                cursor: Some("c_9".into()),
+            })
+        );
+        // An index folder path is not a catalogue folder id; an index cursor
+        // longer than any catalogue cursor is not one either.
+        let mut folder = index_list();
+        folder.folder = Some("Transformers/TX-104".into());
+        assert_eq!(Command::IndexList(folder).catalogue_form(), None);
+        let mut long = index_list();
+        long.cursor = Some("c".repeat(600));
+        assert_eq!(Command::IndexList(long).catalogue_form(), None);
+        assert_eq!(
+            Command::IndexTree { refresh: true }.catalogue_form(),
+            Some(Command::Folders)
+        );
+        assert_eq!(
+            Command::IndexGet {
+                asset_id: "a_7kq3nr2v0b1c".into()
+            }
+            .catalogue_form(),
+            Some(Command::Get {
+                asset_id: "a_7kq3nr2v0b1c".into()
+            })
+        );
+        assert_eq!(
+            Command::IndexGet {
+                asset_id: "sys:transformers:TX-104".into()
+            }
+            .catalogue_form(),
+            None
+        );
+        assert_eq!(list().catalogue_form(), None);
+    }
+
+    #[test]
+    fn only_the_strict_decoding_refusal_reads_as_an_old_ds_brain() {
+        let old = refusal(
+            400,
+            br#"{"success":false,"error":{"code":"VALIDATION_FAILED","message":"Invalid assets request"}}"#,
+        );
+        assert!(index_refused(&old));
+        for (status, body) in [
+            (
+                400,
+                &br#"{"success":false,"error":{"code":"ASSET_REFUSED","message":"x"}}"#[..],
+            ),
+            (
+                409,
+                br#"{"success":false,"error":{"code":"ASSETS_INDEX_MOVED","message":"x"}}"#,
+            ),
+            (
+                422,
+                br#"{"success":false,"error":{"code":"VALIDATION_FAILED","message":"x"}}"#,
+            ),
+            (400, b"{}"),
+        ] {
+            assert!(!index_refused(&refusal(status, body)), "{status}");
+        }
+        let moved = refusal(
+            409,
+            br#"{"success":false,"error":{"code":"ASSETS_INDEX_MOVED","message":"the index moved"}}"#,
+        );
+        assert_eq!(
+            moved.service_refusal().and_then(|r| r.code()),
+            Some("assets_index_moved")
+        );
+    }
+
+    #[test]
+    fn the_edge_only_sources_are_the_kernels_own_names_and_roots() {
+        use ds_command_kernel::assets::{tree, TreeRequest, REQUEST_SCHEMA, TREE_SOURCE_NAMES};
+        // A tree of no sources marks every root with the sources that feed
+        // it; each edge-only source must feed the root this table names.
+        let empty = tree::build_value(&TreeRequest {
+            schema: REQUEST_SCHEMA.to_owned(),
+            sources: Default::default(),
+            folders: Vec::new(),
+            assets: Vec::new(),
+            query: None,
+            link: None,
+            folder: None,
+            depth: Some(1),
+            kind: None,
+        })
+        .expect("an empty tree");
+        for (source, root) in EDGE_ONLY_SOURCES {
+            assert!(TREE_SOURCE_NAMES.contains(&source), "{source}");
+            let folder = empty["folders"]
+                .as_array()
+                .expect("roots")
+                .iter()
+                .find(|folder| folder["path"] == root)
+                .unwrap_or_else(|| panic!("no root {root}"));
+            assert!(
+                folder["not_loaded_sources"]
+                    .as_array()
+                    .is_some_and(|sources| sources.contains(&json!(source))),
+                "{source} does not feed {root}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_index_row_is_this_projects_or_a_projected_row_of_none() {
+        let row = |id: &str, project: Value| json!({"schema":"ds.assets.asset/v1","asset_id":id,"project_id":project});
+        assert!(own_index_row(&row("a_7kq3nr2v0b1c", json!("p")), "p").is_ok());
+        assert!(own_index_row(&row("a_7kq3nr2v0b1c", json!("")), "p").is_err());
+        assert!(own_index_row(&row("sys:transformers:T1", json!("")), "p").is_ok());
+        assert!(own_index_row(&row("sys:transformers:T1", Value::Null), "p").is_ok());
+        assert!(own_index_row(&row("sys:transformers:T1", json!("other")), "p").is_err());
+        assert!(own_index_row(&row("T1", json!("p")), "p").is_err());
+        let mut foreign_schema = row("a_7kq3nr2v0b1c", json!("p"));
+        foreign_schema["schema"] = json!("ds.assets.asset/v2");
+        assert!(own_index_row(&foreign_schema, "p").is_err());
     }
 
     #[test]
