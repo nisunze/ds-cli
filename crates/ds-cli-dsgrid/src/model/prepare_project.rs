@@ -19,6 +19,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::local_models::{GovernedHead, Op, Origin, ProjectPin, Scope};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 
 use crate::model::workspace;
 
@@ -126,6 +127,31 @@ fn heads_of(rows: &[Value]) -> Vec<GovernedHead> {
         .collect()
 }
 
+fn local_name(name: &str, revision: &str, taken: &HashSet<String>) -> String {
+    if !taken.contains(&name.to_ascii_lowercase()) {
+        return name.to_owned();
+    }
+    // An older revision commonly holds the governed display name already.
+    // Keep both exact working copies and give the new one a readable revision.
+    let short_revision: String = revision.chars().take(12).collect();
+    for number in 1.. {
+        let suffix = if number == 1 {
+            format!(" · {short_revision}")
+        } else {
+            format!(" · {short_revision} ({number})")
+        };
+        let prefix: String = name
+            .chars()
+            .take(ds_command_kernel::local_models::MAX_NAME_CHARS - suffix.chars().count())
+            .collect();
+        let candidate = format!("{prefix}{suffix}");
+        if !taken.contains(&candidate.to_ascii_lowercase()) {
+            return candidate;
+        }
+    }
+    unreachable!("a finite local catalogue cannot occupy every suffix")
+}
+
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.value("lane").unwrap_or("stable");
     let download = inputs.switch("download-missing");
@@ -176,6 +202,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let catalogue = workspace::read_in(&scope)?;
     let mut rows = ds_command_kernel::local_models::project_readiness(&project, &heads, &catalogue);
+    let mut taken_names: HashSet<String> = catalogue
+        .models
+        .iter()
+        .map(|model| model.display_name.to_ascii_lowercase())
+        .collect();
 
     // 3. Fill the missing heads, one verified download and one registration
     // at a time, each pinned to where it came from.
@@ -210,11 +241,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .remedy(HEAD_UNVERIFIED.remedy));
             }
             let id = workspace::mint_id();
+            let display_name = local_name(&row.name, &row.revision, &taken_names);
             let outcome = workspace::execute_in(
                 &scope,
                 Op::Register {
                     id: id.clone(),
-                    display_name: row.name.clone(),
+                    display_name: display_name.clone(),
                     origin: Origin::Project,
                     crs: identity.crs,
                     model_revision: identity.model_revision,
@@ -239,6 +271,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             row.cached = true;
             row.local_id = Some(held.id.clone());
             row.bytes = Some(held.bytes);
+            taken_names.insert(display_name.to_ascii_lowercase());
             downloaded.push(id);
         }
     }
@@ -339,6 +372,32 @@ mod tests {
         assert_eq!(
             heads[1].display_name, "c",
             "a nameless row is named by its id"
+        );
+    }
+
+    #[test]
+    fn preparation_names_new_revisions_without_replacing_old_copies() {
+        let mut taken = HashSet::from(["model 1".to_owned()]);
+        let name = local_name("Model 1", "rev-eeb3de8887c31583", &taken);
+        assert_eq!(name, "Model 1 · rev-eeb3de88");
+        taken.insert(name.to_ascii_lowercase());
+        assert_eq!(
+            local_name("Model 1", "rev-eeb3de8887c31583", &taken),
+            "Model 1 · rev-eeb3de88 (2)"
+        );
+        assert_eq!(
+            local_name("Another model", "rev-1", &taken),
+            "Another model"
+        );
+        assert!(
+            local_name(
+                &"X".repeat(200),
+                "rev-eeb3de8887c31583",
+                &HashSet::from(["x".repeat(200)])
+            )
+            .chars()
+            .count()
+                <= ds_command_kernel::local_models::MAX_NAME_CHARS
         );
     }
 }

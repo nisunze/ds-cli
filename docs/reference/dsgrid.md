@@ -74,6 +74,8 @@ edited since it was pinned is not the head. The receipt names each head's
 rather than fold a partial listing as complete; a head whose bytes do not
 match its declared digest is `grid_project_head_unverified` and nothing is
 registered for it.
+When an older working copy already uses a model's display name, preparation
+keeps it and gives the new revision a readable revision-qualified local name.
 
 ```bash
 ds dsgrid model prepare-project --lane canary --project <exact-id> --output json
