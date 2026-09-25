@@ -380,6 +380,7 @@ made but not returned inline. `--out` writes every one of them.",
     ],
     reference: Some("docs/reference/data.md"),
     search: &[
+        "polygons",
         "geoprocessing",
         "gis",
         "geometry",

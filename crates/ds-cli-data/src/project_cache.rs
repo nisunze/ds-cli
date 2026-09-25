@@ -68,7 +68,7 @@ const LANE_ARG: Arg = Arg::value(
 
 const SUMMARY_ARG: Arg = Arg::switch(
     "summary",
-    "Return compact dataset identities, source, readiness and coverage counts; omit coverage geometry and acquisition history. Full detail is the default.",
+    "Compact identities, source, readiness and coverage counts, without coverage geometry or history.",
 );
 const QUERY_DATASET_ARG: Arg = Arg::value(
     "dataset",
@@ -432,13 +432,13 @@ pub static STATUS_COMMAND: Command = Command {
     path: &["data", "project-cache", "status"],
     contract: 1,
     summary: "Report the project's held extracts of canonical geographic datasets.",
-    purpose: "Reads what the explicitly named project holds on this machine, per dataset: requested and completed coverage (kept separate, so a failed acquisition never reads as a holding), feature count, index state, source versions, buffer policy and last error. Stale coverage is reported, never deleted; abandoned acquisitions read as expired. Declared datasets held nowhere yet are listed as not seeded. No provider, no cost: only the reference catalogue is read, and held rooms are reported even when it cannot be. Saved active-project selection is ignored.",
+    purpose: "Reads what the named project holds on this machine, per dataset: requested and completed coverage (kept apart: a failed acquisition is never a holding), feature count, index state, source versions, buffer policy and last error. Stale coverage is reported, never deleted; abandoned acquisitions read as expired; declared datasets held nowhere yet read as not seeded. Only the reference catalogue is read (no provider, no cost), and held rooms still report without it.",
     chapter: Chapter::Data,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[PROJECT_ARG, DATASET_ARG, SUMMARY_ARG, LANE_ARG],
-    output: "Full by default: per-dataset identity, readiness, source versions, coverage geometry, query history and errors. --summary returns identity, source, residency, project seed/read command, row cap, readiness and coverage counts without coverage geometry or query history; both include `seeded`, `available` and `catalog`.",
+    output: "Full by default: per-dataset identity, readiness, source versions, coverage geometry, query history and errors. --summary drops coverage geometry and query history and adds residency, the seed/read command and row cap; both include `seeded`, `available` and `catalog`.",
     examples: &[
         Example {
             command: "ds data project-cache status --project gisagara --output json",
