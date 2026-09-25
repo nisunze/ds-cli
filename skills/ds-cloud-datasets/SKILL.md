@@ -1,17 +1,18 @@
 ---
 name: ds-cloud-datasets
-description: Answer bounded questions against the cloud-resident foundation datasets (UPI parcels, EDCL customers) through `ds` — which parcels a corridor crosses, which customers a boundary holds — and seed a project's own extents for reuse instead of downloading a national table.
+description: Discover project-visible BigQuery geography, plan bounded costed spatial reads, execute pinned GeoJSON or sector counts, and use direct UPI, parcel and customer questions through `ds`.
 metadata:
   ds-chapters: data
 ---
 
-# Read the cloud datasets bounded; seed a project's need
+# Plan and read project-visible BigQuery geography
 
-The parcels and customers authorities are national tables held in BigQuery.
-They are never installed on a desktop and never downloaded as a bundle:
-moving them defeats the reason they live in the cloud. Every read is one
-question inside one bound, capped at 5,000 rows, and the receipt says how
-many rows the bound really holds.
+Parcels and customers are cloud-resident national tables. Other
+project-visible BigQuery geography includes administrative boundaries and
+LV/MV/HV lines; some of those layers also have local project holdings. Read
+the catalog before choosing the cloud or held-layer route. Every cloud
+request names its own authorized project; no server-wide active project is
+used.
 
 Use the deployed CLI and read each command contract before invoking it:
 
@@ -20,6 +21,9 @@ ds capabilities data.parcels.query --output json
 ds capabilities data.customers.query --output json
 ds capabilities data.upi.lookup --output json
 ds capabilities data.project-cache.status --output json
+ds capabilities data.project-cache.query --output json
+ds capabilities data.spatial.plan --output json
+ds capabilities data.spatial.execute --output json
 ```
 
 ## Choose the bound
@@ -59,6 +63,29 @@ again — never sum two truncated answers. `--geometry-out` keeps the exact
 polygons; inspect `ds map local register` for how to prepare that file as a
 local layer. Customers
 inside the same corridor are the same call with `customers query`.
+
+For a costed, complete aggregate or for another project-visible BigQuery
+layer, plan the exact catalog dataset before execution:
+
+```
+ds data project-cache status --project <id> --summary --output json
+ds data spatial plan --project <id> --dataset rwanda_upi_parcels \
+  --boundary ./corridor.geojson --result count --group-by sector \
+  --out ./parcel-plan.json --output json
+ds data spatial execute --project <id> --plan ./parcel-plan.json \
+  --out ./parcel-sector-counts.json --output json
+```
+
+Inspect estimated bytes and the billing guard in the plan. Execution checks
+the source version and plan hash again. Parcel aggregates count distinct UPI;
+other datasets count rows. A sector group uses exact geometry and may count a
+feature in each sector it touches. `--result features` can write GeoJSON only
+when `truncated` is false; split a dense boundary and deduplicate by stable
+identity rather than treating a partial page as complete.
+For analytics, convert a complete GeoJSON feature set through `ds data
+convert` to GeoParquet. Use `ds data conversion-matrix` to inspect the
+installed format contract before an external handoff; never rename a file
+extension to imply a conversion that has not run.
 
 ## Seed instead of re-asking
 

@@ -630,6 +630,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::plan_profile::render,
     },
     Entry {
+        command: &ds_cli_report::spatial_workbook::COMMAND,
+        handler: ds_cli_report::spatial_workbook::run,
+        render: ds_cli_report::spatial_workbook::render,
+    },
+    Entry {
         command: &ds_cli_report::project::scope::COMMAND,
         handler: ds_cli_report::project::scope::run,
         render: ds_cli_report::project::scope::render,
@@ -1619,6 +1624,16 @@ static DATA_ENTRIES: &[Entry] = &[
         command: &ds_cli_data::foundation::PARCELS_COMMAND,
         handler: ds_cli_data::foundation::run_parcels,
         render: ds_cli_data::foundation::render_parcels,
+    },
+    Entry {
+        command: &ds_cli_data::spatial::PLAN_COMMAND,
+        handler: ds_cli_data::spatial::run_plan,
+        render: ds_cli_data::spatial::render_plan,
+    },
+    Entry {
+        command: &ds_cli_data::spatial::EXECUTE_COMMAND,
+        handler: ds_cli_data::spatial::run_execute,
+        render: ds_cli_data::spatial::render_execute,
     },
     // Vector processing, in the order a caller meets it: look at the
     // document first, then act on it. `measure` leads because it is the

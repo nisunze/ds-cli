@@ -162,6 +162,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("data.parcels.query", "local_file_write", "headless_project"),
+    ("data.spatial.plan", "local_file_write", "headless_project"),
+    (
+        "data.spatial.execute",
+        "local_file_write",
+        "headless_project",
+    ),
     (
         "data.elevation.extract",
         "local_file_write",
@@ -701,6 +707,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.bundle", "local_file_write", "none"),
     ("report.artifact.remove", "global_write", "headless_project"),
     ("report.plan-profile", "local_file_write", "none"),
+    ("report.spatial.workbook", "local_file_write", "none"),
     ("report.engine", "discovery", "none"),
     ("report.layout.new", "discovery", "none"),
     ("report.layout.edit", "read_only", "none"),

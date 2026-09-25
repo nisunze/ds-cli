@@ -847,6 +847,26 @@ clipping. Notes retain layer, reason and count without implying missing data.
 The shared Rust owner deduplicates repeated output assessments; UI displays its
 messages without implementing a separate warning policy.
 
+## Spatial parcel counts workbook
+
+`ds report spatial workbook` presents one complete `ds data spatial execute`
+sector count as XLSX. The source must be a direct distinct-UPI parcel result
+with an exact sector-boundary authority and a `project_id` matching the
+explicit `--project`. The reporter writes counts and provenance on separate
+sheets; it performs no BigQuery query or project selection.
+
+```
+ds report spatial workbook --project <id> \
+  --receipt ./parcel-sector-counts.json \
+  --out ./parcel-sector-counts.xlsx --output json
+```
+
+The receipt reports the workbook digest, dataset and authority versions,
+plan hash and counts. One workbook represents one bounded query. Counts from
+overlapping corridors cannot be summed because the same UPI can occur in
+several corridors; a full-model total needs one authoritative union or UPI
+deduplication before a workbook is issued.
+
 ## The publication queue
 
 A produced report is not finished when the engine stops: its verified bytes

@@ -30,10 +30,11 @@ For a narrow role, explicitly install one typed profile:
 ds mcp install --host claude-code --exposure commands --profile pls --write --yes
 ```
 
-Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
+Profiles are `datasets`, `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-migration`, `design-edit`,
 `design-run`, `map`, `layers`, `tiling`, `project`, `solar-input`, `solar-run`,
-`solar-delivery`, and `operations`. `survey` retains the map/local-data workflow;
+`solar-delivery`, and `operations`. `datasets` groups bounded geospatial
+planning, query, GeoJSON and sector workbook tools; `survey` retains the map/local-data workflow;
 `form-factory` owns global schemas and `survey-projects` owns governed
 aggregate/spatial reads, project-form settings, reusable templates, and
 create-from-template. `survey-migration` isolates governed bulk import and
@@ -130,8 +131,8 @@ Use the advertised leaf tool directly after reading its schema and description.
 Its title is the canonical command id; its result is the same CLI envelope.
 The MCP session has no active project. Headless project tools require their own
 `--project` value; paired Desktop tools use only the paired application's
-visible project when their descriptor declares that authority. The saved
-`auth project use` address does not route current project commands.
+visible project when their descriptor declares that authority. MCP does not
+expose the legacy device-local `auth project use` address.
 Omitted commands are unavailable through that profile, not forwarded through a
 generic call. Use `ds_catalog` only for bounded discovery inside the profile.
 Pass `confirm: true` only when the invocation's live descriptor conditionally

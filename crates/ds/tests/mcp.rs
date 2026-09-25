@@ -1968,8 +1968,6 @@ fn auth_context_profile_hands_off_only_non_secret_native_identity_commands() {
             "auth_link_complete",
             "auth_link_status",
             "auth_project_list",
-            "auth_project_status",
-            "auth_project_use",
             "auth_status",
         ]
     );
