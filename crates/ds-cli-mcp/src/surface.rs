@@ -301,7 +301,9 @@ impl Profile {
             // broad `grid` router they had pushed past its own budget. Raised
             // to 22 on 2026-09-24 for the governed head's versions, retire and
             // restore, routed here for the same reason (e62edf85).
-            Self::GridLocalModel => 22,
+            // Exact project-model GeoJSON export is the read half of the
+            // governed head workflow and keeps its source revision attached.
+            Self::GridLocalModel => 23,
             _ => 16,
         }
     }
@@ -359,7 +361,7 @@ impl Profile {
                     // The governed head lifecycle (versions, retire, restore)
                     // lives with publication in `grid-local-model`.
                     && !matches!(tool.id.as_str(),
-                        "dsgrid.project.versions" | "dsgrid.project.retire" | "dsgrid.project.restore")
+                        "dsgrid.project.versions" | "dsgrid.project.retire" | "dsgrid.project.restore" | "dsgrid.project.geojson")
             }
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
@@ -603,6 +605,7 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     // `grid` router to 31 against 28; they live here with `publish-version`
     // and `prepare-project`, and the chapter router carries them regardless.
     "dsgrid.project.versions",
+    "dsgrid.project.geojson",
     "dsgrid.project.retire",
     "dsgrid.project.restore",
     "dsgrid.profile.labels.show",

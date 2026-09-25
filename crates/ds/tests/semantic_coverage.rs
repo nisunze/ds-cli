@@ -44,6 +44,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
+        "dsgrid.project.geojson",
+        "local_file_write",
+        "headless_project",
+    ),
+    (
         "dsgrid.project.versions",
         "local_auth_state",
         "headless_project",

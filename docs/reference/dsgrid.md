@@ -49,6 +49,7 @@ These words are deliberately not interchangeable:
 | `ds dsgrid project restore` | Restore the exact retired head after verifying its separate backup; version-bound attachments retain their pins. | headless_project + `--yes` |
 | `ds dsgrid project list --include-deleted` | Include retired heads and their exact revision and digest for restoration. | headless_project |
 | `ds dsgrid project versions` | List immutable versions of an active or retired model for exact download. | headless_project |
+| `ds dsgrid project geojson` | Verify one immutable project revision and export its authored MV alignments as WGS84 GeoJSON. | headless_project |
 | `ds dsgrid publish-version` | Register one immutable revision in a project's catalogue; never changes local activity. | project + `--yes` |
 
 The local commands never accept a project. Publication never accepts arbitrary
@@ -73,6 +74,29 @@ ds dsgrid model list --lane canary --account <uid>       # the copies, origin "p
 ```
 PLS-CADD workspaces and `.bak` files remain under `ds dsgrid-exchange inspect`,
 `plan`, and `convert`; there is no second conversion verb here.
+
+## An exact MV corridor source
+
+`project geojson` downloads the named immutable revision through the native
+project owner and projects only its authored routed alignments. The GeoJSON
+contains 2D longitude/latitude LineStrings with the governed project, model,
+revision and verified package digest on every feature. It does not include
+existing power lines, roads, or the model's context layers. The output is a
+source document for local vector operations such as `data vector buffer`.
+
+```bash
+ds dsgrid project list --project <project> --lane canary --output json
+ds dsgrid project geojson --project <project> --lane canary \
+  --model <model-id> --revision <revision-id> --out ./mv-alignments.geojson --output json
+ds data vector buffer --source ./mv-alignments.geojson --radius-m 6 \
+  --out ./mv-corridor.geojson --output json
+```
+
+For a large model, `--limit` exports a bounded page of alignments. Use the
+receipt's `next_cursor` as `--cursor` with a fresh `--out` path for the next
+page. `--alignment` exports one exact routed alignment when a caller needs a
+single branch. Each page is a complete GeoJSON FeatureCollection and the
+receipt reports whether more alignments remain.
 
 ## The link to a PLS-CADD workspace
 

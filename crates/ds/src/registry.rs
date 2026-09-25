@@ -142,6 +142,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::project::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::project::GEOJSON,
+        handler: ds_cli_dsgrid::project::geojson,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::project::RETIRE,
         handler: ds_cli_dsgrid::project::retire,
         render: ds_cli_dsgrid::project::render,

@@ -1648,7 +1648,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // here on 2026-09-22 from the broad `grid` router they had pushed
             // past its budget. The governed head's versions, retire and
             // restore joined on 2026-09-24 for the same reason (e62edf85).
-            "grid-local-model" => 22,
+            "grid-local-model" => 23,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
@@ -1781,6 +1781,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             && published["grid-local-model"].contains("dsgrid_model_import-external")
             && published["grid-local-model"].contains("dsgrid_model_set-active")
             && published["grid-local-model"].contains("dsgrid_model_prepare-project")
+            && published["grid-local-model"].contains("dsgrid_project_geojson")
             && published["grid-local-model"].contains("dsgrid_publish-version"),
         "the grid-local-model profile must project the complete model and project-cache lifecycle"
     );

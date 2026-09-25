@@ -63,6 +63,7 @@ pub static DOMAIN: Domain = Domain {
         &project::LIST,
         &project::VERSIONS,
         &project::DOWNLOAD,
+        &project::GEOJSON,
         &project::RETIRE,
         &project::RESTORE,
         &create::COMMAND,

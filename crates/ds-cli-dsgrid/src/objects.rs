@@ -75,12 +75,23 @@ pub fn index(
     display_name: Option<String>,
 ) -> Result<ObjectIndex, Failure> {
     let bytes = package::read_bytes(raw_path)?;
-    let package = package::decode(raw_path, &bytes)?;
+    index_bytes(r#ref, raw_path, &bytes, display_name)
+}
+
+/// Index verified package bytes without creating an intermediate local model.
+/// The project download owner supplies these bytes after its digest check.
+pub fn index_bytes(
+    r#ref: &str,
+    source: &str,
+    bytes: &[u8],
+    display_name: Option<String>,
+) -> Result<ObjectIndex, Failure> {
+    let package = package::decode(source, bytes)?;
     let declared = package.manifest.model.coordinate_system.to_string();
     let crs = GridModelCrs::parse(&declared).map_err(|error| {
         Failure::invalid(
             MODEL_CRS_UNSUPPORTED.code,
-            format!("`{raw_path}` declares `{declared}`, which cannot be reprojected to WGS84"),
+            format!("`{source}` declares `{declared}`, which cannot be reprojected to WGS84"),
         )
         .remedy(MODEL_CRS_UNSUPPORTED.remedy)
         .detail(json!({ "crs": declared, "detail": error.to_string() }))
@@ -89,7 +100,7 @@ pub fn index(
         crs.to_map([x, y]).map_err(|error| {
             Failure::invalid(
                 MODEL_CRS_UNSUPPORTED.code,
-                format!("a position of `{raw_path}` does not reproject from `{declared}`"),
+                format!("a position of `{source}` does not reproject from `{declared}`"),
             )
             .remedy(MODEL_CRS_UNSUPPORTED.remedy)
             .detail(json!({ "crs": declared, "detail": error.to_string() }))
