@@ -1,4 +1,5 @@
 //! Bounded overview projection. Source geometry and engineering identities stay intact.
+use ds_geo_lite::spatial_predicate::{intersects_area, validate_area};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -77,6 +78,34 @@ impl Sources {
     pub fn vectors(&self) -> Vec<Value> {
         self.layers.iter().map(|(id, features)| json!({"id":id,"label":id,"geojson":{"type":"FeatureCollection","features":features}})).collect()
     }
+    /// Retain source features that touch the requested map area, including
+    /// lines that cross it without a vertex inside. The geometry is not cut:
+    /// the map painter still receives the feature's true course.
+    pub fn vectors_in_area(&self, bounds: [f64; 4]) -> Result<Vec<Value>, String> {
+        let [w, s, e, n] = bounds;
+        let area = json!({"type":"Polygon","coordinates":[[[w,s],[e,s],[e,n],[w,n],[w,s]]]});
+        validate_area(&area)?;
+        self.layers
+            .iter()
+            .map(|(id, features)| {
+                let features = features
+                    .iter()
+                    .filter_map(|feature| {
+                        if feature["geometry"].is_null() {
+                            return None;
+                        }
+                        Some(intersects_area(&feature["geometry"], &area).map(|inside| {
+                            inside.then(|| feature.clone())
+                        }))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>();
+                Ok(json!({"id":id,"label":id,"geojson":{"type":"FeatureCollection","features":features}}))
+            })
+            .collect()
+    }
     /// A district overview fits its complete authority polygon as well as
     /// the project network; national routes outside that scope do not widen it.
     pub fn overview_extent(&self) -> Result<[f64; 4], String> {
@@ -102,6 +131,32 @@ impl Sources {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn page_capture_keeps_crossing_cables_and_drops_distant_features() {
+        let mut sources = Sources::default();
+        sources
+            .collections(&json!({
+                "service_cables":{"features":[{"type":"Feature","id":"crossing","properties":{},"geometry":{"type":"LineString","coordinates":[[29.69,-2.5],[29.71,-2.5]]}}]},
+                "customers":{"features":[{"type":"Feature","id":"distant","properties":{},"geometry":{"type":"Point","coordinates":[29.8,-2.5]}}]}
+            }))
+            .unwrap();
+        let page = sources
+            .vectors_in_area([29.699, -2.501, 29.701, -2.499])
+            .unwrap();
+        let cables = page
+            .iter()
+            .find(|layer| layer["id"] == "service_cables")
+            .unwrap();
+        let customers = page
+            .iter()
+            .find(|layer| layer["id"] == "customers")
+            .unwrap();
+        assert_eq!(cables["geojson"]["features"][0]["id"], "crossing");
+        assert_eq!(
+            customers["geojson"]["features"].as_array().unwrap().len(),
+            0
+        );
+    }
     #[test]
     fn mv_overview_preserves_routes_structures_and_angle_points() {
         let feature = json!({"type":"Feature","id":"S-7","properties":{"source_model_id":"model","source_revision":3},"geometry":{"type":"Point","coordinates":[29.7,-2.5]}});
