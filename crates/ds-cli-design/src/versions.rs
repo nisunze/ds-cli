@@ -4,6 +4,7 @@ use ds_cli_contract::{
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use ds_client_core::design_versions::Command as Request;
+use ds_command_kernel::design_versions_headless::{BatchItem, Create, ObjectRef, Shared};
 use serde_json::{Value, json};
 pub const PROJECT: Arg = Arg::value(
     "project",
@@ -52,7 +53,7 @@ const fn command(
         path,
         contract: 2,
         summary,
-        purpose: "Use one explicit project and captured identity without Desktop or active-project state. ds-brain alone assigns vN ordinals. LV comparison uses exact snapshots; MV comparison reports pinned content-revision metadata without claiming geometry comparison. Local browser rooms are not published history. Restore is LV-only.",
+        purpose: "Use one explicit project and captured identity without Desktop or active-project state. ds-brain alone assigns vN ordinals. An MV vN marks a milestone such as a submission; show names the content revision its attachments bind to. LV comparison uses exact snapshots; MV comparison reports pinned content-revision metadata without claiming geometry comparison. Local browser rooms are not published history. Restore is LV-only.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessProject,
@@ -113,6 +114,20 @@ pub static COMPARE: Command = command(
     ],
     Effect::ReadOnly,
 );
+pub static SHOW: Command = command(
+    "design.version.show",
+    &["design", "version", "show"],
+    "Show one governed LV or MV version and, for MV, its content revision.",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
+        TRANSFORMER,
+        Arg::value("version", "<vN>", "Exact assigned version.").required(),
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::ReadOnly,
+);
 pub static BEGIN: Command = command(
     "design.version.begin",
     &["design", "version", "begin"],
@@ -134,9 +149,47 @@ pub static BEGIN: Command = command(
             "Stable key for retries of this exact object/reason.",
         )
         .required(),
+        Arg::value(
+            "milestone",
+            "<text>",
+            "Milestone label, e.g. the submission this marks (at most 120 bytes).",
+        ),
+        Arg::value(
+            "expected-source",
+            "<revision|->",
+            "MV: the head revision you reviewed, or - for no content yet. LV: its RFC3339 update time.",
+        ),
         crate::transformer::LANE_ARG,
     ],
     Effect::GlobalWrite,
+);
+pub static BEGIN_BATCH: Command = command(
+    "design.version.begin-batch",
+    &["design", "version", "begin-batch"],
+    "Create governed versions for many LV/MV objects at once (needs --yes).",
+    &[
+        PROJECT,
+        Arg::value(
+            "file",
+            "<batch.json>",
+            "JSON {reason?, milestone?, items[]} of 1..200 objects; shape in design.md.",
+        )
+        .required(),
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::GlobalWrite,
+);
+pub static SUMMARIES: Command = command(
+    "design.version.summaries",
+    &["design", "version", "summaries"],
+    "Latest governed version and count for many LV/MV objects.",
+    &[
+        PROJECT,
+        KIND,
+        Arg::repeated("object", "<id>", "Object of --kind; repeat for up to 200."),
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::ReadOnly,
 );
 pub static RESTORE: Command = command(
     "design.version.restore",
@@ -205,13 +258,101 @@ pub fn compare(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         },
     )
 }
+pub fn show(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ask(
+        i,
+        Request::Show {
+            transformer: object(i)?,
+            version: i.require("version")?.into(),
+        },
+    )
+}
 pub fn begin(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::Begin {
             transformer: object(i)?,
-            reason: i.require("reason")?.into(),
-            idempotency_key: i.require("idempotency-key")?.into(),
+            create: Create {
+                reason: i.require("reason")?.into(),
+                milestone: i.value("milestone").map(str::to_owned),
+                expected_source: i.value("expected-source").map(str::to_owned),
+                idempotency_key: i.require("idempotency-key")?.into(),
+            },
+        },
+    )
+}
+/// The batch file: `{reason?, milestone?, items:[BatchItem]}`, no other keys.
+/// Items are the kernel's own closed type, so the file and the request
+/// cannot describe an object two different ways.
+fn batch(value: Value) -> Result<(Vec<BatchItem>, Shared), String> {
+    let mut object = match value {
+        Value::Object(object) => object,
+        _ => return Err("the batch file must be one JSON object".into()),
+    };
+    let text = |object: &mut serde_json::Map<String, Value>, key: &str| match object.remove(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(text)) => Ok(Some(text)),
+        Some(_) => Err(format!("`{key}` must be text")),
+    };
+    let shared = Shared {
+        reason: text(&mut object, "reason")?,
+        milestone: text(&mut object, "milestone")?,
+    };
+    let items = object
+        .remove("items")
+        .ok_or("the batch file needs `items`")?;
+    if let Some(unknown) = object.keys().next() {
+        return Err(format!("unknown key `{unknown}`"));
+    }
+    let items: Vec<BatchItem> = serde_json::from_value(items).map_err(|e| e.to_string())?;
+    Ok((items, shared))
+}
+/// A selection spans objects, so it is not wrapped in one `--kind`.
+fn ask_selection(i: &Inputs, request: Request) -> Result<Value, Failure> {
+    ds_cli_auth::design_versions_for_project(i.require("lane")?, i.require("project")?, &request)
+        .map_err(|error| {
+            Failure::failed("design_version_refused", error.to_string())
+                .detail(json!({"cause":error.code(),"detail":error.detail_value()}))
+                .remedy(error.remedy_text().unwrap_or(
+                    "Read each item's own outcome; fix the named object and retry only it.",
+                ))
+        })
+}
+pub fn begin_batch(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let path = i.require("file")?;
+    let text = std::fs::metadata(path)
+        .ok()
+        .filter(|meta| meta.len() <= 1024 * 1024)
+        .and_then(|_| std::fs::read(path).ok())
+        .ok_or_else(|| {
+            Failure::invalid(
+                "invalid_input",
+                format!("{path}: unreadable or above 1 MiB"),
+            )
+            .remedy("Name a readable JSON batch file of at most 1 MiB")
+        })?;
+    let (items, shared) = serde_json::from_slice(&text)
+        .map_err(|e| e.to_string())
+        .and_then(batch)
+        .map_err(|e| {
+            Failure::invalid("invalid_input", format!("{path}: {e}"))
+                .remedy("Write {reason?, milestone?, items:[{object:{kind,id}, idempotency_key, …}]} with no other keys")
+        })?;
+    ask_selection(i, Request::BeginBatch { items, shared })
+}
+pub fn summaries(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let kind = i.require("kind")?;
+    ask_selection(
+        i,
+        Request::Summaries {
+            objects: i
+                .repeated("object")
+                .iter()
+                .map(|id| ObjectRef {
+                    kind: kind.into(),
+                    id: id.clone(),
+                })
+                .collect(),
         },
     )
 }

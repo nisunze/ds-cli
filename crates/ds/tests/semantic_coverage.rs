@@ -44,17 +44,58 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
-        "dsgrid.project.geojson",
-        "local_file_write",
-        "headless_project",
-    ),
-    (
         "dsgrid.project.versions",
         "local_auth_state",
         "headless_project",
     ),
     ("dsgrid.project.retire", "global_write", "headless_project"),
     ("dsgrid.project.restore", "global_write", "headless_project"),
+    // Versions and submissions (2026-09-25): the head and one revision read
+    // without bytes, a revision-to-revision diff held in memory, and the
+    // immutable exports a revision carries.
+    (
+        "dsgrid.project.show",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.compare",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.exports.list",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.exports.publish",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.exports.download",
+        "local_file_write",
+        "headless_project",
+    ),
+    // Governance that uploads nothing: a content-less version bump, a head
+    // rename, an appended review decision and the retirement backup read.
+    (
+        "dsgrid.project.bump-version",
+        "global_write",
+        "headless_project",
+    ),
+    ("dsgrid.project.update", "global_write", "headless_project"),
+    (
+        "dsgrid.project.set-approval",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.backup.download",
+        "local_file_write",
+        "headless_project",
+    ),
     // A governed revision's package assets: download, verify, then list or
     // save one. Listing writes nothing but may rotate the native credential,
     // exactly as `dsgrid project versions` does.
@@ -157,11 +198,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("data.elevation.plan", "read_only", "desktop_pairing"),
     ("data.project-cache.status", "read_only", "headless_project"),
     (
-        "data.project-cache.query",
-        "local_file_write",
-        "headless_project",
-    ),
-    (
         "data.project-cache.seed",
         "artifact_write",
         "headless_project",
@@ -175,12 +211,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("data.parcels.query", "local_file_write", "headless_project"),
-    ("data.spatial.plan", "local_file_write", "headless_project"),
-    (
-        "data.spatial.execute",
-        "local_file_write",
-        "headless_project",
-    ),
     (
         "data.elevation.extract",
         "local_file_write",
@@ -378,6 +408,13 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.version.list", "read_only", "headless_project"),
     ("design.version.compare", "read_only", "headless_project"),
     ("design.version.begin", "global_write", "headless_project"),
+    ("design.version.show", "read_only", "headless_project"),
+    (
+        "design.version.begin-batch",
+        "global_write",
+        "headless_project",
+    ),
+    ("design.version.summaries", "read_only", "headless_project"),
     ("design.version.restore", "global_write", "headless_project"),
     ("design.project.status", "read_only", "none"),
     ("design.project.process", "local_file_write", "none"),
@@ -532,7 +569,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.apply-correction", "local_file_write", "none"),
     ("dsgrid.create", "local_file_write", "none"),
     ("dsgrid.import-structure", "local_file_write", "none"),
-    ("dsgrid.replace-structure", "local_file_write", "none"),
     ("dsgrid.describe", "discovery", "none"),
     ("dsgrid.inspect", "discovery", "none"),
     ("dsgrid.run", "read_only", "none"),
@@ -542,12 +578,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // Archived transformer preview writes only its explicit local output;
     // recorded origin is file evidence, not a live project authority.
     ("dsgrid.backup.preview", "local_file_write", "none"),
-    // A local package's assets: read, save one, or write a new package with
-    // one attachment added or removed. The source file is never modified.
-    ("dsgrid.asset.list", "read_only", "none"),
-    ("dsgrid.asset.extract", "local_file_write", "none"),
-    ("dsgrid.asset.attach", "local_file_write", "none"),
-    ("dsgrid.asset.detach", "local_file_write", "none"),
     // The paired application's local model lifecycle. `desktop_pairing` is
     // the exact authority and the load-bearing half of this family's
     // contract: a local model is browser-local state, so none of these four
@@ -557,6 +587,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.model.create-local", "local_file_write", "none"),
     ("dsgrid.model.import-external", "local_file_write", "none"),
     ("dsgrid.model.link", "local_file_write", "none"),
+    ("dsgrid.model.unlink", "local_file_write", "none"),
     ("dsgrid.model.list", "read_only", "none"),
     ("dsgrid.model.forget", "local_file_write", "none"),
     ("dsgrid.model.show", "read_only", "none"),
@@ -569,8 +600,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.profile.open", "local_file_write", "desktop_pairing"),
     ("dsgrid.profile.labels.show", "read_only", "none"),
     ("dsgrid.profile.labels.set", "local_file_write", "none"),
-    ("dsgrid.alignment.gap.show", "read_only", "none"),
-    ("dsgrid.alignment.gap.set", "local_file_write", "none"),
     // The typed command family over the engine (program contract 01 §2):
     // authority none on a working copy or a package file, `local_file_write`
     // because a working copy's next revision — or a new package — lands on
@@ -591,7 +620,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // `project` authority: it registers one immutable revision in the paired
     // session's own selected project's catalogue, so it is `global_write` and
     // confirmation-gated. It activates nothing locally.
-    ("dsgrid.publish-version", "global_write", "project"),
+    // The native `--path` route is the one this executable owns; the paired
+    // fallback is arbitrated as `project` at dispatch (registry.rs).
+    ("dsgrid.publish-version", "global_write", "headless_project"),
     // Program contract 03: the feature-code table and the clearance criteria
     // of a model, against the owner-issued standard. Reads over a working
     // copy or a package; the writes are one revision of a working copy (in
@@ -726,24 +757,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pls.structure-inventory", "discovery", "none"),
     ("pls.shading-variants", "local_file_write", "none"),
     ("pls.terrain-reconcile", "local_file_write", "none"),
-    // PLS-CADD itself on its Windows desktop, through the embedded drivers
-    // (2026-09-25). `check` only reads the install; `dialogs` only reads the
-    // embedded catalogue. Every other verb writes into a new folder off C:
-    // and, for `autosag`, saves the named project in place.
-    ("pls.desktop.check", "read_only", "none"),
-    ("pls.desktop.dialogs", "discovery", "none"),
-    ("pls.desktop.restore", "local_file_write", "none"),
-    ("pls.desktop.qualify", "local_file_write", "none"),
-    ("pls.desktop.deliver", "local_file_write", "none"),
-    ("pls.desktop.autosag", "local_file_write", "none"),
-    ("pls.desktop.reports", "local_file_write", "none"),
-    ("pls.desktop.sheets-pdf", "local_file_write", "none"),
     ("report.bundle", "local_file_write", "none"),
     ("report.artifact.remove", "global_write", "headless_project"),
     ("report.plan-profile", "local_file_write", "none"),
-    ("report.plan-profile-config", "local_file_write", "none"),
-    ("report.plan-profile-config.schema", "discovery", "none"),
-    ("report.spatial.workbook", "local_file_write", "none"),
     ("report.engine", "discovery", "none"),
     ("report.layout.new", "discovery", "none"),
     ("report.layout.edit", "read_only", "none"),
@@ -973,18 +989,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
-        "survey.entries.read",
-        "local_auth_state",
-        "headless_project",
-    ),
-    (
         "survey.entries.changes",
         "local_auth_state",
         "headless_project",
     ),
     ("survey.entries.create", "global_write", "headless_project"),
-    ("survey.photo.fetch", "local_file_write", "headless_project"),
-    ("survey.local.status", "read_only", "none"),
     ("survey.entries.import", "global_write", "headless_project"),
     // Stateless project-to-project copy: both projects are explicit operands.
     ("survey.migrate.apply", "global_write", "headless_project"),
@@ -1075,9 +1084,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("assets.promote", "local_file_write", "headless_project"),
     ("assets.read", "local_file_write", "headless_project"),
     ("assets.tree", "read_only", "headless_project"),
-    // 2026-09-25: one asset's version history, read from the index
-    // ds-brain serves; changes nothing.
-    ("assets.versions", "read_only", "headless_project"),
     // Every `pm` command is a headless project command since 2026-09-20:
     // `POST /api/v1/pm` under the native credential, folded by the kernel.
     ("pm.plan", "read_only", "headless_project"),

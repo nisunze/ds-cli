@@ -2281,7 +2281,9 @@ fn publishing_a_version_is_confirmation_gated_and_never_implies_local_activation
     let publish =
         ok(&["capabilities", "dsgrid.publish-version", "--output", "json"])["command"].clone();
     assert_eq!(publish["effect"], "global_write");
-    assert_eq!(publish["authority"], "project");
+    // The declared route is native publication with an explicit project;
+    // the paired fallback is arbitrated as `project` at dispatch.
+    assert_eq!(publish["authority"], "headless_project");
     assert_eq!(publish["confirmation_required"], true);
     let output = publish["output"].as_str().expect("output");
     assert!(
@@ -2409,9 +2411,11 @@ fn no_dsgrid_model_command_can_carry_model_content() {
     // records digests, never bytes. The count is here so a new command cannot
     // join unexamined — it did its job: each command above was read against
     // the content rule before this number moved.
+    // Ten since `dsgrid.model.unlink` joined on 2026-09-25: it takes a local
+    // id and account scope and removes a link row; no bytes cross it.
     assert_eq!(
-        checked, 9,
-        "the DS Grid model family must be nine commands; this check would \
+        checked, 10,
+        "the DS Grid model family must be ten commands; this check would \
          otherwise silently stop covering one"
     );
 }
@@ -5943,6 +5947,8 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
             .iter()
             .map(|input| input["name"].as_str().expect("input name"))
             .collect::<BTreeSet<_>>(),
+        // `--milestone` and `--expected-source` (2026-09-25): an MV submission
+        // marker carries its label and pins the head revision it reviewed.
         BTreeSet::from([
             "idempotency-key",
             "lane",
@@ -5950,7 +5956,9 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
             "transformer",
             "project",
             "kind",
-            "object"
+            "object",
+            "milestone",
+            "expected-source"
         ])
     );
 
@@ -8102,7 +8110,10 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        97, // 101 − `design sync status|cancel|resume`, `design transformer download` (2026-09-20).
+        // 101 − `design sync status|cancel|resume`, `design transformer
+        // download` (2026-09-20) + `design version show|begin-batch|summaries`
+        // (2026-09-25).
+        100,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -8164,6 +8175,9 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.version.list"
                     | "design.version.compare"
                     | "design.version.begin"
+                    | "design.version.show"
+                    | "design.version.begin-batch"
+                    | "design.version.summaries"
                     | "design.version.restore"
                     | "design.attachment.list"
                     | "design.attachment.publish"
@@ -14883,4 +14897,445 @@ fn dsgrid_apply_batch_refuses_late_failure_stale_head_and_mixed_pins_without_out
     ]);
     assert_eq!(retry["commands"], 1);
     assert_eq!(retry["persisted"], true);
+}
+
+// ---------------------------------------------------------------------------
+// Versions and submissions (2026-09-25)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn project_compare_reports_the_engines_diff_between_two_real_packages() {
+    let model = common::fixture();
+    let bytes = std::fs::read(&model).expect("read fixture package");
+    let package = unpack(&bytes).expect("decode fixture package");
+    let alignment = package
+        .snapshot
+        .alignments
+        .first()
+        .expect("fixture has an alignment")
+        .id
+        .clone();
+    let session = GridSession::open(package.snapshot);
+    let envelope = CommandEnvelope::new(
+        "ds-cli-domain-smoke-compare",
+        session.current_revision().revision_id.clone(),
+        GridCommand::SetAlignmentSurveyFacts {
+            alignment_id: alignment.clone(),
+            terrain_corridor_half_width_m: None,
+            route_buffer_half_width_m: None,
+            terrain_gap_tolerance_m: None,
+            survey_note: Some("ds-cli compare smoke".to_string()),
+        },
+    );
+    let root = temp_root("dsgrid-project-compare");
+    std::fs::create_dir_all(&root).expect("create smoke dir");
+    let envelope_path = root.join("command.json");
+    std::fs::write(
+        &envelope_path,
+        serde_json::to_vec_pretty(&envelope).expect("encode envelope"),
+    )
+    .expect("write envelope");
+    let revised = root.join("revised.dsgrid").display().to_string();
+    ok(&[
+        "dsgrid",
+        "apply",
+        "--model",
+        &model,
+        "--envelope",
+        &envelope_path.display().to_string(),
+        "--out",
+        &revised,
+        "--output",
+        "json",
+    ]);
+
+    // One package against itself: the engine says nothing changed.
+    let same = ok(&[
+        "dsgrid",
+        "project",
+        "compare",
+        "--from-path",
+        &model,
+        "--to-path",
+        &model,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(same["identical"], true);
+    assert_eq!(same["totals"]["changed"], 0);
+
+    // The survey-facts edit changes exactly that alignment, and the diff
+    // names it by id in its own table with complete counts.
+    let diff = ok(&[
+        "dsgrid",
+        "project",
+        "compare",
+        "--from-path",
+        &model,
+        "--to-path",
+        &revised,
+        "--limit",
+        "5",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(diff["identical"], false);
+    assert_eq!(diff["from"]["kind"], "path");
+    assert_ne!(
+        diff["from"]["snapshot_fingerprint"],
+        diff["to"]["snapshot_fingerprint"]
+    );
+    let changed: Vec<&Value> = diff["tables"]
+        .as_array()
+        .expect("tables")
+        .iter()
+        .filter(|table| table["changed_count"].as_u64().unwrap_or(0) > 0)
+        .collect();
+    assert!(
+        changed.iter().any(|table| table["changed"]
+            .as_array()
+            .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(alignment.as_str())))),
+        "the edited alignment {alignment} is not named as changed: {diff}"
+    );
+
+    // A revision side needs the project it lives in; nothing is downloaded.
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "project",
+            "compare",
+            "--from",
+            "rev-abc",
+            "--to-path",
+            &model,
+            "--output",
+            "json",
+        ]),
+        "compare_side_invalid"
+    );
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "project",
+            "compare",
+            "--from-path",
+            &model,
+            "--from",
+            "rev-abc",
+            "--to-path",
+            &model,
+            "--output",
+            "json",
+        ]),
+        "compare_side_invalid"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn unlink_removes_exactly_the_recorded_link_and_refuses_an_unlinked_copy() {
+    use ds_command_kernel::local_models::{Op, Origin, PlsSourceLink, Scope};
+    let home = temp_root("dsgrid-unlink");
+    std::fs::create_dir_all(&home).expect("create store root");
+    let scope = Scope {
+        lane: "stable".into(),
+        uid: "uid-unlink".into(),
+    };
+    ds_layer_store::local_models::execute_at(
+        &home,
+        &scope,
+        Op::Register {
+            id: "local-unlinksmoke".into(),
+            display_name: "Nyamagabe".into(),
+            origin: Origin::Imported,
+            crs: "EPSG:32735".into(),
+            model_revision: 0,
+            bytes: 4,
+            sha256: "c".repeat(64),
+            created_at: None,
+            project: None,
+            head_revision: None,
+            activate: false,
+        },
+        Some(b"pkg1"),
+    )
+    .expect("register a working copy");
+    ds_layer_store::local_models::execute_at(
+        &home,
+        &scope,
+        Op::Link {
+            id: "local-unlinksmoke".into(),
+            pls_source: PlsSourceLink {
+                path: "/srv/pls/Nyamagabe".into(),
+                digest: format!("sha256:{}", "7".repeat(64)),
+                pls_version: "16.81".into(),
+                member_versions: [("DON".to_string(), "57".to_string())].into(),
+                member_count: 42,
+                linked_at: "2026-09-20T10:00:00Z".into(),
+            },
+        },
+        None,
+    )
+    .expect("link the working copy");
+    let unlink = || {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args([
+                "dsgrid",
+                "model",
+                "unlink",
+                "--model",
+                "local-unlinksmoke",
+                "--lane",
+                "stable",
+                "--account",
+                "uid-unlink",
+                "--output",
+                "json",
+            ])
+            .env("DS_LAYER_HOME", &home)
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("ds binary runs");
+        serde_json::from_slice::<Value>(&output.stdout).expect("json envelope")
+    };
+    let first = unlink();
+    assert_eq!(first["data"]["status"], "unlinked", "{first}");
+    assert_eq!(first["data"]["removed"]["path"], "/srv/pls/Nyamagabe");
+    assert!(first["data"]["model"]["pls_source"].is_null());
+    // Nothing is left to remove: refused by name, not reported as done.
+    let second = unlink();
+    assert_eq!(second["error"]["code"], "local_model_request_invalid");
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn revision_governance_is_checked_before_anything_is_uploaded() {
+    let model = common::fixture();
+    let publish = |extra: &[&str]| {
+        let mut args = vec![
+            "dsgrid",
+            "publish-version",
+            "--path",
+            &model,
+            "--project",
+            "project-smoke",
+            "--kind",
+            "mv_line",
+            "--yes",
+            "--output",
+            "json",
+        ];
+        args.extend_from_slice(extra);
+        refusal(&args)
+    };
+    // A new model starts at v1: a bump needs an existing head.
+    assert_eq!(
+        publish(&["--name", "Route", "--bump-version"]),
+        "publish_governance_invalid"
+    );
+    // Ids are the catalog's own grammar; a decision needs level and reason.
+    assert_eq!(
+        publish(&["--name", "Route", "--design-stage", "Detailed Design"]),
+        "publish_governance_invalid"
+    );
+    assert_eq!(
+        publish(&["--name", "Route", "--approval", "approved"]),
+        "publish_governance_invalid"
+    );
+    assert_eq!(
+        publish(&["--name", "Route", "--approval-level", "board"]),
+        "publish_governance_invalid"
+    );
+    // An unreadable attachment stops the publication before it starts.
+    assert_eq!(
+        publish(&["--name", "Route", "--attach", "/nonexistent/delivered.bak"]),
+        "attachment_file_invalid"
+    );
+    // Governance is stored by native publication; the paired route has none.
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "publish-version",
+            "--name",
+            "Route",
+            "--kind",
+            "mv_line",
+            "--milestone",
+            "Submission 2",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "publish_native_path_required"
+    );
+}
+
+#[test]
+fn exports_and_version_markers_refuse_malformed_requests_before_authentication() {
+    let root = temp_root("dsgrid-exports-refusals");
+    std::fs::create_dir_all(&root).expect("create smoke dir");
+    let file = root.join("delivered.bak");
+    std::fs::write(&file, b"bak").expect("write export file");
+    let file = file.display().to_string();
+    assert_eq!(
+        native_refusal(&[
+            "dsgrid",
+            "project",
+            "exports",
+            "publish",
+            "--project",
+            "project-smoke",
+            "--model",
+            "model-1",
+            "--revision",
+            "rev-1",
+            "--file",
+            &file,
+            "--output-id",
+            "Delivered Workspace",
+            "--format",
+            "pls_cadd_bak",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "export_id_invalid"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "dsgrid",
+            "project",
+            "exports",
+            "download",
+            "--project",
+            "project-smoke",
+            "--model",
+            "model-1",
+            "--revision",
+            "rev-1",
+            "--export",
+            "submission-2",
+            "--output-id",
+            "pls-delivered-workspace",
+            "--out",
+            &file,
+            "--output",
+            "json",
+        ]),
+        "grid_project_output_invalid",
+        "an existing file is never overwritten"
+    );
+    // Governance writes are checked with the catalog's own rules before a
+    // credential is read: a decision names its level, a fence is a catalog
+    // id, and an update names what it changes.
+    let governance = |extra: &[&str]| {
+        let mut args = vec!["dsgrid", "project"];
+        args.extend_from_slice(extra);
+        args.extend_from_slice(&[
+            "--project",
+            "project-smoke",
+            "--model",
+            "model-1",
+            "--yes",
+            "--output",
+            "json",
+        ]);
+        native_refusal(&args)
+    };
+    assert_eq!(
+        governance(&[
+            "set-approval",
+            "--revision",
+            "rev-1",
+            "--expected-head",
+            "rev-2",
+            "--status",
+            "approved",
+            "--reason",
+            "Reviewed",
+        ]),
+        "grid_request_invalid"
+    );
+    assert_eq!(
+        governance(&[
+            "bump-version",
+            "--expected-head",
+            "Rev Two",
+            "--reason",
+            "Submitted",
+        ]),
+        "grid_request_invalid"
+    );
+    assert_eq!(
+        governance(&["update", "--expected-head", "rev-2"]),
+        "grid_project_output_invalid"
+    );
+    // An MV fence is a revision id or `-`; the shared Rust validation refuses
+    // anything else before a credential is read.
+    let fenced = native_ds(&[
+        "design",
+        "version",
+        "begin",
+        "--project",
+        "project-smoke",
+        "--kind",
+        "mv_model",
+        "--object",
+        "model-1",
+        "--reason",
+        "Submitted",
+        "--idempotency-key",
+        "k-1",
+        "--expected-source",
+        "Rev ABC",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(fenced.envelope["error"]["code"], "design_version_refused");
+    assert_eq!(
+        fenced.envelope["error"]["detail"]["cause"], "invalid_input",
+        "{:?}",
+        fenced.envelope
+    );
+    // A batch that names one object twice is refused rather than half-applied.
+    let batch = root.join("batch.json");
+    std::fs::write(
+        &batch,
+        serde_json::to_vec(&json!({"reason":"Submission 2","items":[
+            {"object":{"kind":"mv_model","id":"model-1"},"idempotency_key":"a"},
+            {"object":{"kind":"mv_model","id":"model-1"},"idempotency_key":"b"}]}))
+        .unwrap(),
+    )
+    .unwrap();
+    let repeated = native_ds(&[
+        "design",
+        "version",
+        "begin-batch",
+        "--project",
+        "project-smoke",
+        "--file",
+        &batch.display().to_string(),
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(repeated.envelope["error"]["code"], "design_version_refused");
+    std::fs::write(&batch, br#"{"items":[],"extra":1}"#).unwrap();
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "version",
+            "begin-batch",
+            "--project",
+            "project-smoke",
+            "--file",
+            &batch.display().to_string(),
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "invalid_input"
+    );
+    std::fs::remove_dir_all(&root).ok();
 }

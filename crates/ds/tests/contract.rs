@@ -184,14 +184,12 @@ fn every_command_is_fully_described() {
 /// to make impossible. The reverse hides a command a server could have run.
 #[test]
 fn where_a_command_runs_agrees_with_the_authority_it_needs() {
-    // One command has two routes and so cannot satisfy the rule: with --path
-    // `ds dsgrid publish-version` publishes through the native owner with no
-    // application at all, and without it falls back to the Desktop working
-    // copy. `server` is the true answer to "can this run on a server", and
-    // the `project` authority describes the paired route it still owns.
-    // Giving that route a headless owner removes this exception with it; a
-    // second entry here is a design decision, not a refactor.
-    const HYBRID: &[&str] = &["dsgrid.publish-version"];
+    // `ds dsgrid publish-version` once needed an exception here: it declared
+    // `project` for its paired fallback while `--path` runs on a server. It
+    // now declares the native route it owns (`headless_project`) and dispatch
+    // arbitrates the fallback as `project`, so no command is exempt. A new
+    // entry here is a design decision, not a refactor.
+    const HYBRID: &[&str] = &[];
 
     let mut wrong = Vec::new();
     for command in descriptors() {
@@ -228,6 +226,27 @@ fn declared_inputs_are_documented_and_unique() {
             assert!(
                 input["summary"].as_str().unwrap_or("").len() > 5,
                 "`{id}` input `--{name}` has no summary"
+            );
+        }
+    }
+}
+
+#[test]
+fn no_command_declares_a_global_flag() {
+    // `ds` consumes these before any command parses its arguments
+    // (crates/ds/src/main.rs), so a command input with the same name is
+    // unreachable: `--output <id>` on a command reads as the output format
+    // and is refused. It happened to `dsgrid project exports download` before
+    // this rule existed. `--yes` is left out: it is the global confirmation,
+    // and the typed mutations declare it only to document that switch.
+    const GLOBAL: &[&str] = &["output", "pretty", "no-color", "help"];
+    for command in descriptors() {
+        let id = command["id"].as_str().expect("id");
+        for input in command["inputs"].as_array().expect("inputs") {
+            let name = input["name"].as_str().expect("input name");
+            assert!(
+                !GLOBAL.contains(&name),
+                "`{id}` declares `--{name}`, which ds consumes as a global flag"
             );
         }
     }

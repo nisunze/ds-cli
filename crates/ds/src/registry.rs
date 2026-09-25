@@ -132,9 +132,34 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::project::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::project::SHOW,
+        handler: ds_cli_dsgrid::project::show,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::project::VERSIONS,
         handler: ds_cli_dsgrid::project::versions,
         render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::COMPARE,
+        handler: ds_cli_dsgrid::project::compare::run,
+        render: ds_cli_dsgrid::project::compare::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::exports::LIST,
+        handler: ds_cli_dsgrid::project::exports::list,
+        render: ds_cli_dsgrid::project::exports::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::exports::PUBLISH,
+        handler: ds_cli_dsgrid::project::exports::publish,
+        render: ds_cli_dsgrid::project::exports::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::exports::DOWNLOAD,
+        handler: ds_cli_dsgrid::project::exports::download,
+        render: ds_cli_dsgrid::project::exports::render,
     },
     Entry {
         command: &ds_cli_dsgrid::project::DOWNLOAD,
@@ -145,6 +170,26 @@ static DSGRID_ENTRIES: &[Entry] = &[
         command: &ds_cli_dsgrid::project::GEOJSON,
         handler: ds_cli_dsgrid::project::geojson,
         render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::governance::BUMP_VERSION,
+        handler: ds_cli_dsgrid::project::governance::bump_version,
+        render: ds_cli_dsgrid::project::governance::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::governance::UPDATE,
+        handler: ds_cli_dsgrid::project::governance::update,
+        render: ds_cli_dsgrid::project::governance::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::governance::SET_APPROVAL,
+        handler: ds_cli_dsgrid::project::governance::set_approval,
+        render: ds_cli_dsgrid::project::governance::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::governance::BACKUP_DOWNLOAD,
+        handler: ds_cli_dsgrid::project::governance::backup_download,
+        render: ds_cli_dsgrid::project::governance::render,
     },
     Entry {
         command: &ds_cli_dsgrid::project::RETIRE,
@@ -291,6 +336,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         command: &ds_cli_dsgrid::model::link::COMMAND,
         handler: ds_cli_dsgrid::model::link::run,
         render: ds_cli_dsgrid::model::link::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::unlink::COMMAND,
+        handler: ds_cli_dsgrid::model::unlink::run,
+        render: ds_cli_dsgrid::model::unlink::render,
     },
     Entry {
         command: &ds_cli_dsgrid::model::create_local::COMMAND,
@@ -2482,8 +2532,23 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::versions::render,
     },
     Entry {
+        command: &ds_cli_design::versions::SHOW,
+        handler: ds_cli_design::versions::show,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
         command: &ds_cli_design::versions::BEGIN,
         handler: ds_cli_design::versions::begin,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
+        command: &ds_cli_design::versions::BEGIN_BATCH,
+        handler: ds_cli_design::versions::begin_batch,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
+        command: &ds_cli_design::versions::SUMMARIES,
+        handler: ds_cli_design::versions::summaries,
         render: ds_cli_design::versions::render,
     },
     Entry {
@@ -3099,8 +3164,18 @@ fn scope_headless_identity(
     // named here rather than by its authority, and a probe that cannot answer
     // leaves it reporting the instances without marking any of them.
     let enumeration = command.id == ds_cli_desktop::list::COMMAND.id;
+    // `ds dsgrid publish-version` declares the route it owns — native
+    // publication with `--path` and an explicit project. Its paired fallback
+    // without `--path` publishes the Desktop's working copy and is arbitrated
+    // exactly as a `project` command always was: the Desktop's project must
+    // be the caller's.
+    let authority = if command.id == "dsgrid.publish-version" && inputs.value("path").is_none() {
+        ds_cli_contract::Authority::Project
+    } else {
+        command.authority
+    };
     if (!matches!(
-        command.authority,
+        authority,
         ds_cli_contract::Authority::DesktopUser | ds_cli_contract::Authority::Project
     ) && !enumeration)
         || command.id == "auth.link.approve"
@@ -3119,7 +3194,7 @@ fn scope_headless_identity(
             lane: identity.lane().to_owned(),
             credential_audience_sha256: identity.credential_audience_sha256().to_owned(),
             project,
-            command_authority: command.authority,
+            command_authority: authority,
             // The host this invocation named. Dispatch is the one place that
             // holds both the command's declared inputs and the seam that will
             // route on them, so the target rides with the identity rather than

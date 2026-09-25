@@ -1664,7 +1664,14 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // The six package-asset leaves (a version's original PLS-CADD
             // upload and its delivered backup) joined on 2026-09-25.
             // `dsgrid alignment gap show|set` joined on 2026-09-25.
-            "grid-local-model" => 30,
+            // 2026-09-25, versions and submissions (+21): `dsgrid project
+            // show|compare|exports list|publish|download|bump-version|update|
+            // set-approval|backup download`, `dsgrid model unlink`, the seven
+            // MV governance `design version` leaves and
+            // the four `design attachment` leaves an MV revision carries — the
+            // owner's order is that versioning and its attachments have no
+            // missing verb, and they are one workflow with publication.
+            "grid-local-model" => 51,
             // The file-in/file-out engine workflow; `dsgrid replace-structure`
             // joined `import-structure` here on 2026-09-25.
             "grid-native" => 17,

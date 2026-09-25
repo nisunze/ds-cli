@@ -358,7 +358,9 @@ impl Profile {
             // delivered backup belong with the version lifecycle, and the
             // broad `grid` router cannot absorb six more.
             // Alignment gap show and set join the same working-copy edits.
-            Self::GridLocalModel => 30,
+            // Versions and submissions add the head, revisions, exports, governance,
+            // and pinned attachments to this same model workflow.
+            Self::GridLocalModel => 51,
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
@@ -424,10 +426,11 @@ impl Profile {
                     // outside this engineering-model profile. The global
                     // catalogue and Grid Model chapter retain its command.
                     && tool.id != "dsgrid.backup.preview"
-                    // The governed head lifecycle (versions, retire, restore)
-                    // lives with publication in `grid-local-model`.
-                    && !matches!(tool.id.as_str(),
-                        "dsgrid.project.versions" | "dsgrid.project.retire" | "dsgrid.project.restore" | "dsgrid.project.geojson")
+                    // The governed head lifecycle (versions, retire, restore,
+                    // show, compare, exports) lives with publication in
+                    // `grid-local-model`; list and download stay here.
+                    && !(tool.id.starts_with("dsgrid.project.")
+                        && GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()))
             }
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
@@ -726,6 +729,32 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     // copy, read and set like its Profile labels.
     "dsgrid.alignment.gap.show",
     "dsgrid.alignment.gap.set",
+    // Versions and submissions (2026-09-25): one workflow from saving a
+    // revision to marking the submitted version and reading back what it
+    // carries — the head and a revision without bytes, a revision diff, the
+    // revision's exports, the working copy's PLS-CADD unlink, the MV
+    // governance vN and the attachments pinned to a content revision.
+    "dsgrid.project.show",
+    "dsgrid.project.compare",
+    "dsgrid.project.exports.list",
+    "dsgrid.project.exports.publish",
+    "dsgrid.project.exports.download",
+    "dsgrid.project.bump-version",
+    "dsgrid.project.update",
+    "dsgrid.project.set-approval",
+    "dsgrid.project.backup.download",
+    "dsgrid.model.unlink",
+    "design.version.list",
+    "design.version.status",
+    "design.version.show",
+    "design.version.compare",
+    "design.version.begin",
+    "design.version.begin-batch",
+    "design.version.summaries",
+    "design.attachment.list",
+    "design.attachment.publish",
+    "design.attachment.download",
+    "design.attachment.retire",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -749,6 +778,7 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.project.asset.extract",
     "dsgrid.alignment.gap.show",
     "dsgrid.alignment.gap.set",
+    "dsgrid.model.unlink",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD
@@ -2248,7 +2278,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Manage Form Factory schemas, project-form settings, project templates and project creation without map state; or work with survey/map-owned local data. Describe a command before invoking it."
         }
         Chapter::Design => {
-            "Read, stage, process, report, save, or discard transformer and LV design work, and govern MV model versions and their attachments. Describe a command before invoking it."
+            "Read, stage, process, report, save, or discard transformer and LV design work; mark MV model versions (submissions) and attach files to exact MV revisions. Describe a command before invoking it."
         }
         Chapter::MapPresentation => {
             "Read or change project map styling and its secondary visual dimension. Describe a command before invoking it."

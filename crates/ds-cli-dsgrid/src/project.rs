@@ -1,4 +1,9 @@
 //! Governed model discovery and exact-byte download through the native owner.
+//!
+//! A project model has versions (v1, v2, …) and every save is a revision of
+//! the version current when it was saved; only an explicit bump starts the
+//! next version. `show`, `versions` and `compare` read that history; each
+//! revision may also carry immutable exports ([`exports`]).
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
@@ -6,21 +11,35 @@ use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::task_geometry::ObjectIndex;
 use serde_json::{Value, json};
 use std::io::Write;
+
+pub mod compare;
+pub mod exports;
+pub mod governance;
+pub use compare::COMMAND as COMPARE;
+
 const LOCAL: Refusal = Refusal {
     code: "grid_project_output_invalid",
     when: "the destination exists or cannot be written, or paging input is invalid",
     remedy: "use a fresh .dsgrid path and a page limit from 1 to 100",
 };
-const fn refusals() -> [Refusal; 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()] {
-    let mut r = [LOCAL; 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()];
-    let mut n = 0;
-    while n < ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() {
-        r[n + 1] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals[n];
-        n += 1;
+/// Refusals every project-model call can return beyond its own.
+pub(crate) const SHARED: usize =
+    ds_cli_auth::GRID_MODEL_REFUSALS.len() + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len();
+/// Fill `r[at..]` with the shared refusals; `r[..at]` keeps the command's own.
+pub(crate) const fn with_shared<const M: usize>(mut r: [Refusal; M], at: usize) -> [Refusal; M] {
+    let mut g = 0;
+    while g < ds_cli_auth::GRID_MODEL_REFUSALS.len() {
+        r[at + g] = ds_cli_auth::GRID_MODEL_REFUSALS[g];
+        g += 1;
+    }
+    let mut p = 0;
+    while p < ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() {
+        r[at + g + p] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals[p];
+        p += 1;
     }
     r
 }
-const REFUSALS: &[Refusal] = &refusals();
+const REFUSALS: &[Refusal] = &with_shared([LOCAL; 1 + SHARED], 1);
 const GEOJSON_OUTPUT: Refusal = Refusal {
     code: "grid_geojson_output_invalid",
     when: "the GeoJSON destination exists or cannot be written",
@@ -60,10 +79,10 @@ const fn geojson_refusals() -> [Refusal; 6 + ds_cli_auth::PROJECT_STATUS_COMMAND
     r
 }
 const GEOJSON_REFUSALS: &[Refusal] = &geojson_refusals();
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
+pub(crate) const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
     .default("stable")
     .choices(&["stable", "canary"]);
-const PROJECT: Arg =
+pub(crate) const PROJECT: Arg =
     Arg::value("project", "<ds-project>", "Exact project for this request.").required();
 pub static RETIRE: Command = Command {
     id: "dsgrid.project.retire",
@@ -132,7 +151,7 @@ pub static LIST: Command = Command {
     path: &["dsgrid", "project", "list"],
     contract: 1,
     summary: "List one explicitly named project's saved MV models headlessly.",
-    purpose: "Enumerate every governed DS Grid model in one explicit project, regardless of its display name. Each model has its own opaque ID, current head revision and digest; use that ID with dsgrid project versions to inspect its independent history. Follow next_cursor when more is true, including an empty page. Local unpublished Desktop models are outside this inventory.",
+    purpose: "Discover governed DS Grid model heads for MV maps and Solar network seeding without a Desktop. Returns exact revision and digest identifiers and each model's current version (head_version, the app's v1/v2), approval, stage and update/retirement fields. Follow next_cursor when more is true, including an empty page. Local unpublished Desktop models are outside this inventory.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -151,7 +170,7 @@ pub static LIST: Command = Command {
             "Include retired model heads so they can be restored.",
         ),
     ],
-    output: "Selected project, bounded models with head revisions/digests, more and next_cursor.",
+    output: "Selected project, bounded models with head revision/digest, head_version, approval_status, updated_at/by, deleted_at/by and delete_reason, more and next_cursor.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
@@ -162,9 +181,9 @@ pub static LIST: Command = Command {
 pub static VERSIONS: Command = Command {
     id: "dsgrid.project.versions",
     path: &["dsgrid", "project", "versions"],
-    contract: 1,
-    summary: "List immutable versions of one project DS Grid model.",
-    purpose: "List the immutable versions of one project model identified by the opaque model ID from dsgrid project list; a model's display name is not its version. Returns exact revision IDs and artifact digests, including versions of a retired model. Attachments remain assigned to their own version; download one exact revision with dsgrid project download.",
+    contract: 2,
+    summary: "List a project DS Grid model's versions and their saved revisions.",
+    purpose: "Groups one catalog page by version, newest version first; inside a version its revisions run in save order (parent chain) with revision_ordinal_within_version. Includes versions of a retired model. Attachments and exports stay with their own revision; download one exact revision with dsgrid project download.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -180,7 +199,7 @@ pub static VERSIONS: Command = Command {
             "Exact next cursor from the previous page.",
         ),
     ],
-    output: "Bounded immutable versions with revision IDs, model digests, and next cursor.",
+    output: "versions[] {version, revisions_listed, ordinals_exact, revisions[] (each catalog row verbatim plus revision_ordinal_within_version)}, revisions_listed, more and next_cursor. The last group of a page with more=true may continue on the next page; its ordinals are null.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
@@ -213,6 +232,72 @@ pub static DOWNLOAD: Command = Command {
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
+pub static SHOW: Command = Command {
+    id: "dsgrid.project.show",
+    path: &["dsgrid", "project", "show"],
+    contract: 1,
+    summary: "Show one project DS Grid model: current version and head.",
+    purpose: "Read one model head without downloading bytes: its current version, how many revisions that version holds and the head's ordinal in it, plus approval, stage, detail and update fields. With --revision, read one revision's metadata instead: parent, reason, milestone, approval, digest, publisher, time, migration and composition sources. A retired model reads as not found; restore it first or name one of its revisions.",
+    chapter: Chapter::GridModel,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        PROJECT,
+        LANE,
+        Arg::value("model", "<id>", "Exact project model ID.").required(),
+        Arg::value(
+            "revision",
+            "<id>",
+            "Show this revision's metadata instead of the head (no bytes fetched).",
+        ),
+    ],
+    output: "Head: model {head_revision_id, head_version, head_model_digest, approval_status, design_stage_id, updated_at, …} and current_version {version, version_revision_count, revision_ordinal_within_version, count_exact}. Revision: the revision record and its position in its version. Never a signed locator.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/dsgrid.md"),
+    search: &["model head", "current version", "revision metadata"],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
+pub fn show(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let lane = i.require("lane")?;
+    let project = i.require("project")?;
+    let model = i.require("model")?;
+    let Some(revision) = i.value("revision") else {
+        return Ok(ds_cli_auth::grid_models_for_project(
+            lane,
+            project,
+            &ds_cli_auth::GridModelsCommand::Show {
+                model: model.into(),
+            },
+        )?
+        .data);
+    };
+    let mut shown = ds_cli_auth::grid_models_for_project(
+        lane,
+        project,
+        &ds_cli_auth::GridModelsCommand::ShowVersion {
+            model: model.into(),
+            revision: revision.into(),
+        },
+    )?
+    .data;
+    // The position is a second, bounded read. It cannot change what the
+    // revision is, so a walk that fails is reported, not raised.
+    shown["position"] = match ds_cli_auth::grid_models_for_project(
+        lane,
+        project,
+        &ds_cli_auth::GridModelsCommand::Position {
+            model: model.into(),
+            revision: revision.into(),
+        },
+    ) {
+        Ok(position) => position.data,
+        Err(error) => json!({"unavailable": error.code(), "message": error.to_string()}),
+    };
+    Ok(shown)
+}
 pub static GEOJSON: Command = Command {
     id: "dsgrid.project.geojson",
     path: &["dsgrid", "project", "geojson"],

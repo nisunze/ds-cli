@@ -60,6 +60,10 @@ ds-command-kernel = { workspace = true }
 # `ds survey photo rotate` writes them, then proves the read side and the
 # clean through the binary with no gateway.
 ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
+# tests/domain_smoke.rs seeds a working copy's PLS-CADD link through the same
+# store `ds dsgrid model link` writes, then proves `ds dsgrid model unlink`
+# removes exactly that link through the binary.
+ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
 ds-solar-contracts = { workspace = true }
