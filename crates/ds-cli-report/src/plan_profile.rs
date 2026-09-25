@@ -19,7 +19,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "plan-profile"],
     contract: 1,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
-    purpose: "Produces A3 SVG sheet previews and one combined vector PDF. Both inputs must be exact DS Grid engine projections for the same model revision. Choose horizontal and vertical scale denominators independently; profile elevation breaks keep the preferred vertical scale where a steep section requires a new datum on the same sheet. The task is local and headless; the result names every preview and its digest-pinned PDF.",
+    purpose: "Produces SVG sheet previews and one combined vector PDF from exact DS Grid engine projections for the same model revision. Choose horizontal and vertical scale denominators independently; profile elevation breaks keep the preferred vertical scale where a steep section requires a new datum on the same sheet. An optional notes manifest adds custom text or PNG/JPEG images to vacant space in plan or profile panels. The task is local and headless; the result names every preview and its digest-pinned PDF.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -99,7 +99,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "obstacle-sticks",
             "<on|off>",
-            "Draw measured obstacle-to-wire sticks and mark values below the visual ground guide.",
+            "Draw a short thin guide mark only where a measured obstacle rises above the standard ground offset.",
         )
         .default("on")
         .choices(&["on", "off"]),
@@ -247,6 +247,11 @@ pub static COMMAND: Command = Command {
             "JSON array of one to three absolute PNG/JPEG logo paths for the bottom title block.",
         ),
         Arg::value(
+            "notes",
+            "<absolute.json>",
+            "Optional ds.grid-plan-profile-notes/v1 manifest of scoped text or PNG/JPEG images placed in free plan/profile space.",
+        ),
+        Arg::value(
             "label-rows",
             "<json-file>",
             "One to three ordered structure label lines built from canonical staking fields.",
@@ -262,7 +267,7 @@ pub static COMMAND: Command = Command {
             "Keep the reporter receipt here; must not exist.",
         ),
     ],
-    output: "Model revision, projection SHA-256 digests, page count, SVG preview paths, PDF path and PDF SHA-256.",
+    output: "Model revision, projection SHA-256 digests, page count, SVG preview paths, PDF path and PDF SHA-256; notes and image digests when supplied.",
     examples: &[Example {
         command: "ds report plan-profile --project gisagara --scene /tmp/profile.json --plan /tmp/plan.json --format simple --title Gisagara --out-dir /tmp/gisagara-sheets --output json",
         note: "Render a new simple A3 set from held engine projections.",
@@ -273,6 +278,11 @@ pub static COMMAND: Command = Command {
             code: "logo_manifest_invalid",
             when: "the logo manifest cannot be read as a JSON array",
             remedy: "provide a valid JSON array of one to three absolute PNG/JPEG paths",
+        },
+        Refusal {
+            code: "notes_manifest_invalid",
+            when: "the notes manifest path is not an absolute readable file",
+            remedy: "pass an existing absolute JSON path; the reporter validates the note schema and image bytes",
         },
         Refusal {
             code: "label_rows_invalid",
@@ -416,6 +426,18 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         None => Vec::new(),
     };
+    let notes_path = inputs.value("notes").map(PathBuf::from);
+    if let Some(path) = &notes_path {
+        if !path.is_absolute() || !path.is_file() {
+            return Err(Failure::invalid(
+                "notes_manifest_invalid",
+                format!(
+                    "notes manifest must be an existing absolute file: {}",
+                    path.display()
+                ),
+            ));
+        }
+    }
     let label_rows: Value = match inputs.value("label-rows") {
         Some(path) => {
             let bytes = std::fs::read(path)
@@ -431,7 +453,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .as_object_mut()
         .expect("settings object")
         .extend(geometry.as_object().expect("geometry object").clone());
-    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"out_dir":out_dir,"sample_pages":scale("sample-pages")?,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":settings});
+    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":notes_path,"out_dir":out_dir,"sample_pages":scale("sample-pages")?,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":settings});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     std::fs::write(&request_path, bytes)

@@ -711,10 +711,11 @@ The plan retains true geographic bends at the horizontal scale; profile station
 ordinates are a separate axis. `--plan-scale`, when set, must equal
 `--horizontal-scale`. `--angle-policy preserve_if_fit` keeps an angled span
 whole when its footprint fits; `split_at_authored` forces angle cuts.
-The trace uses rounded station targets and a clear edge inset. At H 1:1500,
-it aims for 0+500, 1+000, and so on, then cuts at a nearby structure with
-less local terrain relief. That structure closes one page and opens the next;
-incoming and outgoing conductors extend across the matched station marks.
+The renderer plans all feasible windows for an alignment before drawing any
+sheet. It minimizes the sheet count, then balances used widths without forcing
+a true plan bend straight. Ordinary page continuations share a structure;
+steep sections may add a midspan cut to preserve vertical scale. Incoming and
+outgoing conductors extend across matched station marks.
 `--profile-elevation-breaks on` keeps the preferred vertical scale by resetting
 the labeled elevation datum at a midspan station within the same sheet. The
 measured wire elevations are labeled on both sides of the cut. Each structure
@@ -722,8 +723,8 @@ is drawn once; `--break-support-context repeat_labels` adds the identities of
 the two bounding supports beside both rulers. A section that still cannot fit
 adjusts its actual vertical denominator and prints it. Large holes in the
 pinned ground or conductor source are marked instead of interpolated.
-`--profile-continuations` controls matched page cuts. A short last page is
-balanced across the final pair. The manifest records each printed window.
+`--profile-continuations` controls matched page cuts. The manifest records
+each printed window.
 The compact drawing block carries the conventional revision, logo, project,
 sign-off and sheet fields without reducing either drawing panel.
 `--drawing-revision` defaults to `v0`; `--drawing-date` and
@@ -736,10 +737,10 @@ visible revision is the human drawing issue. `--ds-branding off` omits the
 discrete margin credit.
 `--span-labels show` prints each physical span length in both plan and
 profile, in black ink with a white halo in either colour mode.
-`--obstacle-sticks on` shows measured wire-to-obstacle gaps at surveyed
-crossings. A heavy dashed stick flags a value below the scene's ground-offset
-visualization guide; it does not assert a feature-specific engineering
-clearance where the model has no resolved requirement.
+`--obstacle-sticks on` adds a short, thin mark at surveyed crossings only when
+the obstacle top rises above the scene's standard ground-offset guide. It does
+not assert a feature-specific engineering clearance where the model has no
+resolved requirement.
 `--side-profiles /absolute/traces.json` is optional and off when omitted. The
 file must be `ds.grid-side-profiles/v1` with the same model revision and
 measured, station-ordered trace segments:
@@ -756,6 +757,26 @@ the default; `--ink reference_accents` applies
 green OPGW, plum phase and red route and structure pens inspired by the
 approved CJIC 120 ACSR sheets. Context is gray except the featured transformer
 and new LV design pens.
+
+`--notes /absolute/notes.json` places project-authored text or images in vacant
+space within the plan or profile panel. The manifest is independent of the
+model and optional; with no manifest the drawing stays unchanged. Each note
+may target an alignment and station interval, or omit selectors to apply to
+every sheet. Exactly one of `text` or an absolute PNG/JPEG `image_path` is
+required. Width is 20–120 mm and height is 8–60 mm; the renderer refuses a
+note that cannot fit without covering drawing content. For example:
+
+```json
+{
+  "schema": "ds.grid-plan-profile-notes/v1",
+  "notes": [
+    {"id":"site-note","panel":"profile","alignment_id":"aln-1c5562f3d96eb293-5","from_station_m":500,"to_station_m":1000,"text":"Survey access via existing road","width_mm":55,"height_mm":15},
+    {"id":"field-logo","panel":"plan","alignment_id":"aln-1c5562f3d96eb293-5","image_path":"/absolute/path/company.png","width_mm":30,"height_mm":14}
+  ]
+}
+```
+
+The result pins the manifest and image digests for a reproducible print.
 `--sample-pages 5` selects representative original sheets and records their
 source sheet numbers. With `--model-crs`, the manifest also gives each sheet's
 WGS84 route bounds.
