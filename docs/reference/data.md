@@ -373,10 +373,52 @@ for that bound. The returned source version and generation identify the held
 snapshot, and the output is a GeoJSON FeatureCollection ready for local-layer
 registration.
 
+## `spatial plan` and `spatial execute`: governed BigQuery geography
+
+Use the same workflow for parcels, customers, village boundaries, power lines
+and other project-visible BigQuery geography. `project-cache status --summary`
+discovers exact catalogue layers and IDs. Each call names its authorized
+`--project`; neither command reads a saved active project. The server chooses
+the table and fields from its catalog, not from caller SQL.
+
+`plan` accepts one WGS84 Polygon or MultiPolygon whose envelope is at most
+25 km². It dry-runs the exact query and writes a plan containing the source
+version, optional sector-boundary authority version, estimated bytes, billing
+guard, geometry, result shape and plan hash. It does not bill a source scan.
+`execute` rechecks those pins and executes that plan under its billing guard;
+a changed source or query requires a fresh plan.
+
+```
+ds data spatial plan --project <id> --dataset rwanda_upi_parcels \
+  --boundary ./corridor.geojson --result count --group-by sector \
+  --out ./parcel-plan.json --output json
+ds data spatial execute --project <id> --plan ./parcel-plan.json \
+  --out ./parcel-sector-counts.json --output json
+```
+
+Parcel counts are distinct UPI, including parcels whose polygons cross the
+corridor. Customer and other dataset counts are source rows. Sector grouping
+uses exact intersections with the governed sector boundaries; a feature
+touching two sectors contributes to both, while `overall_count` counts it
+once. Count results are complete. For `--result features`, use `--limit`
+(at most 5,000) and optional `--geometry-out`; execution reports the exact
+`rows_total` and `truncated`. A truncated result cannot become a complete
+GeoJSON local layer. Partition the geography and deduplicate by stable source
+identity when the result exceeds the cap. A complete GeoJSON file can be
+registered with `ds map local register`.
+For analytics, convert that complete feature set with `ds data convert`
+to GeoParquet; the shared columnar owner also provides bounded Arrow IPC/WKB
+batches internally. The query receipt remains the source identity and cost
+evidence regardless of the presentation format. The current IPC/WKB path is
+not yet a GeoArrow extension array. A requested external delivery format needs
+an explicit adapter and its own completeness check; changing the output format
+does not require another BigQuery query.
+
 ## What this is not
 
-Not a query engine. `ds data` writes formats; reading and reducing them is a
-separate decision, and deliberately not made yet.
+Not a caller-supplied SQL engine. Dataset, geometry and aggregation choices
+remain typed and bounded; the source table, projection and billing guard are
+server owned.
 
 `convert` is not a DEM converter. A DEM is a surface, not a table — one value
 per cell and no attributes — so it stays a Cloud-Optimized GeoTIFF read by byte

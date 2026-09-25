@@ -23,8 +23,8 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_command_kernel::project_dataset_cache::{self as policy, Scope, buffer_policy};
-use serde_json::{Value, json};
+use ds_command_kernel::project_dataset_cache::{self as policy, buffer_policy, Scope};
+use serde_json::{json, Value};
 
 const UPI_ARG: Arg = Arg {
     name: "upi",
@@ -143,8 +143,8 @@ refusal!(
 
 /// The native-user refusals every headless read can return, composed after
 /// this command's own (as `admin_bounds` composes them).
-const AUTH_REFUSALS: usize = ds_cli_auth::PROJECT_LIST_COMMAND.refusals.len();
-const fn with_native_refusals<const N: usize, const TOTAL: usize>(
+pub(crate) const AUTH_REFUSALS: usize = ds_cli_auth::PROJECT_LIST_COMMAND.refusals.len();
+pub(crate) const fn with_native_refusals<const N: usize, const TOTAL: usize>(
     own: [Refusal; N],
 ) -> [Refusal; TOTAL] {
     let mut all = [UPI_INVALID; TOTAL];

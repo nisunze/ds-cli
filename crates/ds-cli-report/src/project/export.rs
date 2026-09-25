@@ -1350,6 +1350,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         },
         lane,
         concurrency: plan.concurrency,
+        // This CLI path has no media grant input. The host records omitted
+        // survey media explicitly rather than inventing an ungoverned read.
         media_grant: None,
     };
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
@@ -1435,6 +1437,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             selection: None,
             print_context,
             sheet,
+            // The existing CLI export does not acquire the new held-survey
+            // append. The host names unsupplied forms in its batch receipt.
             survey: None,
         })
     };

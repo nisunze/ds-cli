@@ -29,6 +29,7 @@ pub const TERMINAL_SIGN_IN_WORDS: &[&str] = &["auth login", "password"];
 pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
     "admin-bounds",
+    "datasets",
     "grid",
     "grid-native",
     "grid-corrections",
@@ -91,6 +92,7 @@ impl Exposure {
 pub enum Profile {
     AuthContext,
     AdminBounds,
+    Datasets,
     Installations,
     Grid,
     GridNative,
@@ -132,6 +134,7 @@ impl Profile {
         match token {
             "auth-context" => Some(Self::AuthContext),
             "admin-bounds" => Some(Self::AdminBounds),
+            "datasets" => Some(Self::Datasets),
             "installations" => Some(Self::Installations),
             "grid" => Some(Self::Grid),
             "grid-native" => Some(Self::GridNative),
@@ -174,6 +177,7 @@ impl Profile {
         match self {
             Self::AuthContext => "auth-context",
             Self::AdminBounds => "admin-bounds",
+            Self::Datasets => "datasets",
             Self::Installations => "installations",
             Self::Grid => "grid",
             Self::GridNative => "grid-native",
@@ -304,6 +308,10 @@ impl Profile {
             // Exact project-model GeoJSON export is the read half of the
             // governed head workflow and keeps its source revision attached.
             Self::GridLocalModel => 23,
+            // Seventeen geospatial leaves plus bootstrap: the same answer
+            // can be kept as GeoJSON or converted to the analytical
+            // GeoParquet format without switching MCP profiles.
+            Self::Datasets => 19,
             _ => 16,
         }
     }
@@ -312,6 +320,7 @@ impl Profile {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS.contains(&tool.id.as_str()),
             Self::AdminBounds => ADMIN_BOUNDS_COMMANDS.contains(&tool.id.as_str()),
+            Self::Datasets => DATASET_COMMANDS.contains(&tool.id.as_str()),
             Self::Installations => INSTALLATION_COMMANDS.contains(&tool.id.as_str()),
             Self::GridNative => {
                 tool.authority == ds_cli_contract::spec::Authority::None
@@ -338,6 +347,7 @@ impl Profile {
                     && !matches!(tool.id.as_str(),
                         "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
+                    && tool.id != "report.spatial.workbook"
                     // Printing has its own workflow profile and Reports router;
                     // changing that profile must not expand the Grid surface.
                     && !PRINTING_COMMANDS.contains(&tool.id.as_str())
@@ -424,6 +434,7 @@ impl Profile {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS,
             Self::AdminBounds => ADMIN_BOUNDS_COMMANDS,
+            Self::Datasets => DATASET_COMMANDS,
             Self::Installations => INSTALLATION_COMMANDS,
             Self::Printing => PRINTING_COMMANDS,
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
@@ -465,6 +476,10 @@ impl Profile {
         match self {
             Self::AuthContext => chapter == Chapter::Project,
             Self::AdminBounds => chapter == Chapter::Data,
+            Self::Datasets => matches!(
+                chapter,
+                Chapter::Data | Chapter::GridModel | Chapter::MapPresentation | Chapter::Reports
+            ),
             Self::Installations => chapter == Chapter::Operations,
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::GridNative => chapter == Chapter::GridModel,
@@ -500,9 +515,9 @@ impl Profile {
 
 // Principal handoff for an MCP host uses only the protected native session a
 // person established in a trusted terminal. Password login is intentionally
-// absent: an MCP child may inspect the non-secret AuthContext, refresh the
-// visible project directory, and select one exact visible project, but it may
-// never receive password, approval authority, or credential material. Device
+// absent: an MCP child may inspect the non-secret AuthContext and refresh the
+// visible project directory, but it may never receive password, approval
+// authority, credential material, or a device-local project selector. Device
 // begin/status/complete and inventory operate only through protected native
 // state; `auth.link.approve` remains human-only and globally excluded.
 const AUTH_CONTEXT_COMMANDS: &[&str] = &[
@@ -515,8 +530,6 @@ const AUTH_CONTEXT_COMMANDS: &[&str] = &[
     "auth.device.read",
     "auth.device.revoke",
     "auth.project.list",
-    "auth.project.use",
-    "auth.project.status",
 ];
 
 /// The installation inventory is its own operator workflow, not part of the
@@ -535,6 +548,29 @@ const ADMIN_BOUNDS_COMMANDS: &[&str] = &[
     "data.admin-bounds.list",
     "data.admin-bounds.read",
     "data.admin-bounds.attach",
+];
+
+// One geospatial question can start in a held project layer or a governed
+// BigQuery dataset and end as a GeoJSON layer or an aggregate workbook.
+// These are typed commands, not an arbitrary SQL or file-system tool.
+const DATASET_COMMANDS: &[&str] = &[
+    "data.project-cache.status",
+    "data.project-cache.query",
+    "data.spatial.plan",
+    "data.spatial.execute",
+    "data.parcels.query",
+    "data.customers.query",
+    "data.upi.lookup",
+    "data.vector.buffer",
+    "data.admin-bounds.list",
+    "data.admin-bounds.read",
+    "data.inspect",
+    "data.convert",
+    "data.conversion-matrix",
+    "dsgrid.project.geojson",
+    "map.local.register",
+    "map.local.list",
+    "report.spatial.workbook",
 ];
 
 /// Guided Style Center workflows have their own bounded MCP profile. Keeping
@@ -792,7 +828,7 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
 ];
 
 // Background project operations: no map or room activation. Retirement and
-// reports use the CLI-selected headless project. (`design.transformer.download`
+// reports name their project on each headless request. (`design.transformer.download`
 // left on 2026-09-20: it only ever warmed a window's private room cache, and
 // the native report path reads rooms from the service.) Kept out of
 // `design-edit` (already at its bound) and out of the `grid` chapter router
@@ -1706,10 +1742,10 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
     match chapter {
         Chapter::Catalog => "Discover DS chapters, commands, and one exact live contract.",
         Chapter::Data => {
-            "Prepare local data for analysis, and hold the country's geographic reference datasets on this computer. Inspect a source file, then convert it to the analytical GeoParquet format; conversion is an explicit step that runs before analysis, never inside it, and needs no project or paired desktop. Downloading and indexing datasets is routine and reversible: it spends disk and nothing else, changes nothing in the cloud, is undone by `desktop data rwanda remove`, and is safe to run on the way to a report, a map or any other action without asking anyone first. Describe a command before invoking it."
+            "Discover project-visible geographic datasets, plan bounded BigQuery reads with a cost estimate, and query held local layers as GeoJSON. Name the authorized project on every project data request. Local file inspection and conversion need no project. Describe a command before invoking it."
         }
         Chapter::Project => {
-            "Establish project context and manage project plans, tasks, assignments, and records. Describe a command before invoking it."
+            "Discover authorized projects and manage plans, tasks, assignments, and records for the project named in each request. Describe a command before invoking it."
         }
         Chapter::Assets => {
             "Browse, preview, classify, promote, link and ingest the documents a project holds, in declared and auto-indexed folders. Describe a command before invoking it."
@@ -1736,7 +1772,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Prepare, run, inspect, publish, and export Solar work. Describe a command before invoking it."
         }
         Chapter::Reports => {
-            "Discover report tasks, export or bundle verified report artifacts, and publish the selected project's Combined Report in the background. Describe a command before invoking it."
+            "Discover report tasks, export or bundle verified report artifacts, and publish the explicitly named project's Combined Report in the background. Describe a command before invoking it."
         }
         Chapter::Operations => {
             "Inspect platform health, manage shell reachability, and report product gaps. Describe a command before invoking it."

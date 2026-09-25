@@ -49,12 +49,15 @@ Specialized profiles publish conventional typed leaf tools for one workflow:
 ds mcp serve --exposure commands --profile pls
 ```
 
-Profiles include `auth-context`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-library`, `library-governance`, `survey`,
+Profiles include `auth-context`, `datasets`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-media`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
 `tiling`, `project`, `correspondence`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
 `solar-portfolio-batch`, `solar-migration`, `design-migration`,
 `operations`, and `project-operations`. `project` owns the plan and the task
-workflow; `correspondence` owns the parties, the records and threads and the
+workflow; `datasets` groups catalog discovery, held-layer GeoJSON, planned
+BigQuery geography, model-line export, local-layer registration and sector
+workbook delivery. Each headless read names its authorized project.
+`correspondence` owns the parties, the records and threads and the
 task blockers (`pm.party.*`, `pm.record.*`, `pm.task.block|unblock`) with the
 plan for their vocabularies — filing letters and scheduling tasks are two
 jobs, so they are two profiles. `survey`
@@ -117,10 +120,9 @@ receipts expose metadata or aggregate counts only.
 `auth-context` is the principal handoff for MCP hosts. Its sign-in is
 `account.connect`: the person approves the request in their signed-in DS
 GridDesign Desktop under Account > Link a trusted device, and the tool is
-called again once approved. It publishes native identity status, fresh visible
-project inventory, a device-local saved project address, and that address's
-status from the live `auth` descriptors. The saved address does not route current
-project commands; each command captures its explicit `--project`. It does not
+called again once approved. It publishes native identity status and fresh visible
+project inventory. It does not expose the legacy device-local project selector;
+each project command captures its explicit `--project`. It does not
 publish the terminal sign-in, logout, or any Desktop-owned device approval;
 those operations are excluded from every
 exposure, and no MCP answer names the terminal sign-in (see
