@@ -132,13 +132,12 @@ A `project_dsgrid_mv` context source accepts `corridor` with `distance_m`,
 on each side. The separate `buffer_m` selects nearby models and must not be
 confused with the drawn corridor. Model geometry is preserved.
 
-Set layout `project_overview: true` and export with `--transformer
-combined_transformer` to render a single sheet for all held canonical project
-rooms. Without that option, combined printing retains the transformer atlas.
-The overview retains outliers and refuses inputs exceeding 128 MiB or 200,000
-features. The combined workflow requires the matching active project and all
-requested rooms to be prepared. Its receipt explicitly states that reference
-context is not yet staged by that exporter.
+Nothing prints the Combined report. Combined is a data-only export (SHP, XLSX,
+GeoJSON sequence); no host renders a project overview sheet or a concatenated
+transformer atlas, because a project-wide print does not fit in memory
+(ds-command-kernel `docs/printing.md`, "Combined report output"). For a print
+package, export each chosen transformer individually and assemble those PDFs
+outside the product, by hand or through the CLI or MCP.
 
 Save a layout and select its output using `desktop printing prepare --request
 setup.json --yes`. Read settings back, export, and copy each artifact using its

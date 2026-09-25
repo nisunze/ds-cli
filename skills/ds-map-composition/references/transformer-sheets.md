@@ -84,5 +84,6 @@ collisions, frame overflow and omitted schedule rows still need attention.
 Use the live title-block bindings for paper, current sheet, and total sheets.
 Check the rendered number against the complete project drawing set, including
 when an individual transformer is exported. A literal “1 of 1” in a published
-default is authored text to replace, not an engine limitation. Combined PDF
-assembly must retain these existing page contents and canonical order.
+default is authored text to replace, not an engine limitation. No combined PDF
+is ever rendered; when individual PDFs are assembled into a package by hand,
+keep their page contents and canonical order.
