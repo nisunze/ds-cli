@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory = $true)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $Label,
     [string] $SourceRoot,
     [double] $AlignmentGap = 100,
-    [int] $ReportTimeoutSeconds = 1800
+    [int] $ReportTimeoutSeconds = 1800,
+    [switch] $NoSheets
 )
 # Deliverable chain for a DS-exported .bak, unattended, every step a proven driver; any refusal stops it.
 #  A. working session (restore r1):
@@ -22,6 +23,8 @@ param(
 #        40014 Structure Usage, 40016 Terrain Clearances (all feature codes), 40020 Wind & Weight Span,
 #        40019 Summary, 40403 Sag Tension; verdict lines read from each;
 #     7. every plan & profile sheet to one PDF (Sheets View; pls-save-sheets-pdf.ps1); Exit without saving;
+#        -NoSheets skips the sheet PDF (owner 2026-09-25: PLS plan & profile is no longer printed) and
+#        deliver.json then carries sheets = null; everything else is unchanged;
 #     8. the RTFs to A3 landscape PDFs (pls-rtf-to-pdf.ps1).
 # Everything under -RunDirectory on the Drive (C: refused). Writes deliver.log and deliver.json.
 $ErrorActionPreference = 'Stop'
@@ -121,6 +124,8 @@ foreach ($r in @(@{ k = 'Section Usage'; id = 40015; p = 'Section Usage Report';
     $reports[$r.k] = [ordered]@{ rtf = $x.output; bytes = $x.bytes; sha256 = $x.sha256; verdict = (Verdict $x.output) }
     Log "report $($r.k) $($x.bytes) $($reports[$r.k].verdict | ConvertTo-Json -Compress)"
 }
+$sheets = $null
+if ($NoSheets) { Log 'sheets skipped (-NoSheets)' } else {
 for ($i = 0; $i -lt 12 -and (Title) -notmatch '\[Sheets View\]$'; $i++) {
     & (Join-Path $here 'pls-command.ps1') -WindowHandle $frame -CommandId 61504 -Post | Out-Null; Start-Sleep -Milliseconds 1500
 }
@@ -131,6 +136,7 @@ if ((Title) -notmatch '\[Sheets View\]$') {
 }
 $sheets = & (Join-Path $here 'pls-save-sheets-pdf.ps1') -ProcessId $procId -MainWindowHandle $frame -OutputPdf (Join-Path $run 'pdf\Plan and Profile.pdf') -JournalPath (Join-Path $run 'watch-journal.jsonl') | ConvertFrom-Json
 Log "sheets $($sheets.bytes) bytes in $($sheets.seconds) s"
+}
 ExitPls 'r2'
 
 # ---- report PDFs
@@ -139,13 +145,13 @@ foreach ($p in @($pdfs)) { $k = [System.IO.Path]::GetFileNameWithoutExtension($p
 Log "report pdfs $(@($pdfs).Count)"
 
 $result = [ordered]@{
-    schema = 'ds.pls.deliver_autosag.v3'; label = $Label; source = [ordered]@{ path = $BackupPath; sha256 = $ExpectedBackupSha256 }
+    schema = 'ds.pls.deliver_autosag.v4'; label = $Label; source = [ordered]@{ path = $BackupPath; sha256 = $ExpectedBackupSha256 }
     working_session = [ordered]@{ restored_files = $o.pre_open_presence.verified_files
         autosag = [ordered]@{ evidence_directory = $autosag.evidence_directory; fill = $autosag.fill; watcher = $autosag.watcher_after_ok.outcome }
         paging = $paging.after; gate_section_usage = $gate }
     backup = [ordered]@{ path = $bakOut; sha256 = $bakSha; bytes = (Get-Item -LiteralPath $bakOut).Length }
     deliverables_from_fresh_restore = [ordered]@{ restored_files = $o2.pre_open_presence.verified_files; reports = $reports
-        sheets = [ordered]@{ pdf = $sheets.pdf; bytes = $sheets.bytes } }
+        sheets = $(if ($sheets) { [ordered]@{ pdf = $sheets.pdf; bytes = $sheets.bytes } } else { $null }) }
 }
 [System.IO.File]::WriteAllText((Join-Path $run 'deliver.json'), ($result | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
 Log 'DONE'
