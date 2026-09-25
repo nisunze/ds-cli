@@ -55,7 +55,13 @@ pub const BUNDLE_DOWNLOAD_MAX_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
 /// The foundation reads: registry-pinned (`domains.data_distribution.foundation`),
 /// never profile-pinned. Order is the order of the request variants.
-pub const FOUNDATION_ACTIONS: [&str; 3] = ["upi_lookup", "customers_query", "parcels_query"];
+pub const FOUNDATION_ACTIONS: [&str; 5] = [
+    "upi_lookup",
+    "customers_query",
+    "parcels_query",
+    "spatial_plan",
+    "spatial_execute",
+];
 /// The most customers one read answers; ds-brain caps at the same number.
 pub const CUSTOMERS_ROW_CAP: u64 = 5_000;
 /// A UPI is 8–20 digits; the printed form `2/05/06/01/2183` is accepted and
@@ -173,6 +179,88 @@ pub enum DataDistributionRequest {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         limit: Option<u64>,
     },
+    /// Cost and scope preflight for a catalogue-visible cloud geography.
+    /// The answer pins the exact source and authority versions and gives the
+    /// hash that a later execution must present with identical options.
+    SpatialPlan {
+        resource_id: String,
+        boundary: Value,
+        result: SpatialResult,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        distinct_field: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_by: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u64>,
+    },
+    /// Execute only the previously planned, identical, version-pinned query.
+    SpatialExecute {
+        resource_id: String,
+        resource_version: String,
+        boundary: Value,
+        result: SpatialResult,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        distinct_field: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_by: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u64>,
+        plan_hash: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpatialResult {
+    Features,
+    Count,
+}
+
+fn digest(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|c| c.is_ascii_hexdigit())
+}
+
+fn validate_spatial(
+    resource_id: &str,
+    resource_version: Option<&str>,
+    boundary: &Value,
+    result: SpatialResult,
+    distinct_field: Option<&str>,
+    group_by: Option<&str>,
+    limit: Option<u64>,
+    plan_hash: Option<&str>,
+) -> Result<(), ClientError> {
+    let invalid = |message| ClientError::new(ErrorKind::InvalidInput, message);
+    if !digest(resource_id) || resource_version.is_some_and(|version| !digest(version)) {
+        return Err(invalid(
+            "A spatial query needs exact catalogue resource and version digests",
+        ));
+    }
+    validate_bound(None, None, None, Some(boundary), limit)?;
+    match result {
+        SpatialResult::Features if distinct_field.is_none() && group_by.is_none() => {}
+        SpatialResult::Count if limit.is_none() => {
+            if distinct_field.is_some_and(|field| field != "upi") {
+                return Err(invalid(
+                    "The only distinct field this spatial contract admits is upi",
+                ));
+            }
+            if group_by.is_some_and(|group| group != "sector") {
+                return Err(invalid(
+                    "The only spatial group this contract admits is sector",
+                ));
+            }
+        }
+        _ => {
+            return Err(invalid(
+                "Features accept a limit; counts accept distinct upi and sector grouping",
+            ));
+        }
+    }
+    if plan_hash.is_some_and(|hash| !digest(hash)) {
+        return Err(invalid("Execution needs the exact 64-character plan hash"));
+    }
+    Ok(())
 }
 
 fn exact_digits(value: &str, digits: usize, what: &'static str) -> Result<(), ClientError> {
@@ -285,6 +373,8 @@ impl DataDistributionRequest {
             Self::UpiLookup { .. } => "upi_lookup",
             Self::CustomersQuery { .. } => "customers_query",
             Self::ParcelsQuery { .. } => "parcels_query",
+            Self::SpatialPlan { .. } => "spatial_plan",
+            Self::SpatialExecute { .. } => "spatial_execute",
         }
     }
 
@@ -292,7 +382,11 @@ impl DataDistributionRequest {
     pub const fn is_foundation(&self) -> bool {
         matches!(
             self,
-            Self::UpiLookup { .. } | Self::CustomersQuery { .. } | Self::ParcelsQuery { .. }
+            Self::UpiLookup { .. }
+                | Self::CustomersQuery { .. }
+                | Self::ParcelsQuery { .. }
+                | Self::SpatialPlan { .. }
+                | Self::SpatialExecute { .. }
         )
     }
 
@@ -349,6 +443,42 @@ impl DataDistributionRequest {
                 boundary.as_ref(),
                 *limit,
             ),
+            Self::SpatialPlan {
+                resource_id,
+                boundary,
+                result,
+                distinct_field,
+                group_by,
+                limit,
+            } => validate_spatial(
+                resource_id,
+                None,
+                boundary,
+                *result,
+                distinct_field.as_deref(),
+                group_by.as_deref(),
+                *limit,
+                None,
+            ),
+            Self::SpatialExecute {
+                resource_id,
+                resource_version,
+                boundary,
+                result,
+                distinct_field,
+                group_by,
+                limit,
+                plan_hash,
+            } => validate_spatial(
+                resource_id,
+                Some(resource_version),
+                boundary,
+                *result,
+                distinct_field.as_deref(),
+                group_by.as_deref(),
+                *limit,
+                Some(plan_hash),
+            ),
         }
     }
 
@@ -379,6 +509,18 @@ impl DataDistributionRequest {
             boundary: Option<&'a Value>,
             #[serde(skip_serializing_if = "Option::is_none")]
             limit: Option<u64>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            resource_id: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            resource_version: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            result: Option<SpatialResult>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            distinct_field: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            group_by: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            plan_hash: Option<&'a str>,
         }
         let base = Body {
             action: self.action(),
@@ -422,6 +564,41 @@ impl DataDistributionRequest {
                 limit: *limit,
                 ..base
             },
+            Self::SpatialPlan {
+                resource_id,
+                boundary,
+                result,
+                distinct_field,
+                group_by,
+                limit,
+            }
+            | Self::SpatialExecute {
+                resource_id,
+                boundary,
+                result,
+                distinct_field,
+                group_by,
+                limit,
+                ..
+            } => Body {
+                resource_id: Some(resource_id),
+                resource_version: match self {
+                    Self::SpatialExecute {
+                        resource_version, ..
+                    } => Some(resource_version),
+                    _ => None,
+                },
+                boundary: Some(boundary),
+                result: Some(*result),
+                distinct_field: distinct_field.as_deref(),
+                group_by: group_by.as_deref(),
+                limit: *limit,
+                plan_hash: match self {
+                    Self::SpatialExecute { plan_hash, .. } => Some(plan_hash),
+                    _ => None,
+                },
+                ..base
+            },
         };
         serde_json::to_vec(&body).expect("closed validated data distribution request")
     }
@@ -452,7 +629,7 @@ pub(crate) fn decode(
             return Err(ClientError::new(
                 ErrorKind::UnreadableResponse,
                 "Invalid data distribution response",
-            ))
+            ));
         }
         (status, parsed) => return Err(refusal(status, &parsed.unwrap_or(Value::Null))),
     };
@@ -509,6 +686,27 @@ pub(crate) fn decode(
                 })
             {
                 return Err(bad());
+            }
+        }
+        DataDistributionRequest::SpatialPlan { .. } => {
+            if !data["dataset"].is_object()
+                || !data["query"].is_object()
+                || !data["estimate"].is_object()
+                || data["plan_hash"].as_str().is_none_or(|hash| !digest(hash))
+            {
+                return Err(bad());
+            }
+        }
+        DataDistributionRequest::SpatialExecute { result, .. } => {
+            if !data["dataset"].is_object() || !data["query"].is_object() {
+                return Err(bad());
+            }
+            match result {
+                SpatialResult::Features if !data["features"].is_array() => return Err(bad()),
+                SpatialResult::Count if data["overall_count"].as_u64().is_none() => {
+                    return Err(bad());
+                }
+                _ => {}
             }
         }
     }
@@ -779,8 +977,8 @@ mod tests {
             limit: None,
         };
         assert_eq!(
-            [upi.action(), village.action(), parcels.action()],
-            FOUNDATION_ACTIONS
+            &[upi.action(), village.action(), parcels.action()],
+            &FOUNDATION_ACTIONS[..3]
         );
         assert!(upi.is_foundation() && !DataDistributionRequest::ListDatasets {}.is_foundation());
         // Never in the profile-pinned seeding vocabulary.
@@ -1556,5 +1754,55 @@ mod tests {
             limit: None,
         };
         assert!(two.validate().is_err());
+    }
+
+    #[test]
+    fn spatial_plan_and_execution_are_bound_to_the_same_closed_options() {
+        let boundary = serde_json::json!({
+            "type": "Polygon",
+            "coordinates": [[[29.57,-2.53],[29.59,-2.53],[29.59,-2.51],[29.57,-2.51],[29.57,-2.53]]]
+        });
+        let resource_id = "a".repeat(64);
+        let resource_version = "b".repeat(64);
+        let plan_hash = "c".repeat(64);
+        let plan = DataDistributionRequest::SpatialPlan {
+            resource_id: resource_id.clone(),
+            boundary: boundary.clone(),
+            result: SpatialResult::Count,
+            distinct_field: Some("upi".into()),
+            group_by: Some("sector".into()),
+            limit: None,
+        };
+        plan.validate().unwrap();
+        let body: Value = serde_json::from_slice(&plan.body("project-1")).unwrap();
+        assert_eq!(body["action"], "spatial_plan");
+        assert_eq!(body["resource_id"], resource_id);
+        assert!(body.get("resource_version").is_none());
+        assert!(body.get("plan_hash").is_none());
+        let execute = DataDistributionRequest::SpatialExecute {
+            resource_id,
+            resource_version,
+            boundary,
+            result: SpatialResult::Count,
+            distinct_field: Some("upi".into()),
+            group_by: Some("sector".into()),
+            limit: None,
+            plan_hash,
+        };
+        execute.validate().unwrap();
+        let body: Value = serde_json::from_slice(&execute.body("project-1")).unwrap();
+        assert_eq!(body["action"], "spatial_execute");
+        assert_eq!(body["resource_version"], "b".repeat(64));
+        assert_eq!(body["plan_hash"], "c".repeat(64));
+        assert!(DataDistributionRequest::SpatialPlan {
+            resource_id: "a".repeat(64),
+            boundary: serde_json::json!({"type":"Point","coordinates":[29.5,-2.5]}),
+            result: SpatialResult::Features,
+            distinct_field: None,
+            group_by: None,
+            limit: Some(50),
+        }
+        .validate()
+        .is_err());
     }
 }
