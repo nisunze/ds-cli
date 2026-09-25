@@ -30,11 +30,17 @@ sharing and expected-revision saves. This module owns no storage or network IO.
 
 The Combined Report is a project-wide data export. It always selects SHP, XLSX,
 and GeoJSON sequence, with GPKG and Network Information when selected. A saved
-PDF selection applies to individual transformer reports only. Combined never
-renders a project-wide PDF or requires a print layout. Operators print an
-individual report on demand, then assemble chosen individual PDFs separately
-when a print package is needed. The Combined workbook and geospatial outputs
-remain one project-wide set.
+PDF selection applies to individual transformer reports only. The Combined
+workbook and geospatial outputs remain one project-wide set.
+
+No host ever renders a combined PDF: not Cloud Run, not the Server, not the
+Desktop, not the CLI or MCP. There is no project overview sheet and no
+concatenation of transformer pages, in the Combined export or anywhere else.
+A project-wide print does not fit in memory; the owner's ruling (2026-09-24,
+restated 2026-09-25) is that it is never attempted. A print package is
+assembled by hand: print each chosen transformer individually (`ds report
+project export` per transformer, from the CLI or through MCP) and combine
+those PDFs outside the product. Nothing may add a combined print path back.
 
 `new` accepts optional `id`, `name`, `paper` (A0–A5 or bounded custom paper,
 default A3) and

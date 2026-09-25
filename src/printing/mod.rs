@@ -73,8 +73,10 @@ pub struct Layout {
     /// The generated transformer_bounds layer retains the identity feature's properties.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transformer_bounds: Option<TransformerBounds>,
-    /// Combined exports: render all held project features on one sheet instead of an atlas.
-    #[serde(default)]
+    /// Retired 2026-09-25: no host prints a project overview or any combined
+    /// sheet (docs/printing.md, "Combined report output"). Still accepted so
+    /// stored layouts, which all carry it, keep parsing; never written, never read.
+    #[serde(default, skip_serializing)]
     pub project_overview: bool,
     /// Round an automatic fit denominator upward to this increment; explicit cameras stay exact.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2685,7 +2687,6 @@ mod tests {
             min_font_scale: 1.,
             collision_margin_mm: 1.,
         });
-        layout.project_overview = true;
         validate(&layout).unwrap();
         assert_eq!(
             serde_json::from_slice::<Layout>(&serde_json::to_vec(&layout).unwrap()).unwrap(),

@@ -1329,7 +1329,7 @@ mod export_tests {
     }
 
     #[test]
-    fn a_project_overview_uses_only_the_request_project_and_a_batch_reports_in_order() {
+    fn a_combined_export_uses_only_the_request_project_and_a_batch_reports_in_order() {
         for project in ["p1", "p2"] {
             let request = serde_json::json!({"command":"export","project":project,"transformer":"combined_transformer","transformers":["a","b"]});
             let output = evaluate(&serde_json::to_vec(&request).unwrap()).unwrap();
