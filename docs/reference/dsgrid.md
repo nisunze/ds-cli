@@ -103,6 +103,63 @@ identity as its bytes declare it now, and the link in full.
 The link is what `ds dsgrid-exchange sync` writes into; see
 [`dsgrid-exchange.md`](dsgrid-exchange.md).
 
+## Package assets: the files a version carries
+
+A `.dsgrid` carries content-addressed files beside its tables. A PLS-CADD
+import keeps the exact upload as `pls-original-workspace.bak` (v1's incoming
+backup), the round-trip baseline `pls-source-workspace.bak`, every native
+resource file, and its evidence registries. A version delivered back to its
+owner can also carry the submitted backup as an **attachment**,
+`pls-delivered-workspace.bak`, bound to the snapshot it describes.
+
+| Command | Meaning | Authority |
+|---|---|---|
+| `ds dsgrid asset list --path <f.dsgrid>` | Every asset: leaf, SHA-256, size, owner role, protected, and for an attachment its bound snapshot and `stale`. | none |
+| `ds dsgrid asset extract --path --leaf --out` | The exact bytes of one asset, verified against the manifest, to a new file. | none |
+| `ds dsgrid asset attach --path --leaf --file --role [--replace] --out` | A new package carrying one attachment bound to the current snapshot. | none |
+| `ds dsgrid asset detach --path --leaf --out` | A new package without one attachment. | none |
+| `ds dsgrid project asset list --project --model --revision` | The same listing for an exact governed revision, downloaded and verified headlessly; nothing is written. | headless_project |
+| `ds dsgrid project asset extract --project --model --revision --leaf --out` | One asset of an exact governed revision, e.g. v1's `pls-original-workspace.bak`. | headless_project |
+
+```bash
+ds dsgrid project versions --project <p> --model <m>                 # pick v1's revision
+ds dsgrid project asset extract --project <p> --model <m> --revision <rev> \
+  --leaf pls-original-workspace.bak --out ./v1-original.bak
+ds dsgrid asset attach --path ./v2.dsgrid --leaf pls-delivered-workspace.bak \
+  --file ./submitted.bak --role pls_cadd_delivered_workspace --out ./v2-delivered.dsgrid
+```
+
+Only attachments are ever written. Everything a model owns is protected and
+refused with `asset_leaf_protected`: the original and round-trip backups and
+the baseline digest, origin authorities, ingest options, attribute evidence,
+composition sources, structural reports, GIS context, the LV transformer
+profile, prohibited-zone sidecars, the attachment registry, every resource
+and origin leaf, any case variant of those, and any asset no attachment
+record claims. A leaf ending in one of the three PLS-CADD source leaves is
+`asset_leaf_collides`, because older readers matched them by suffix.
+
+`attach` and `detach` never modify `--path`. They check the package digest
+(`--expected-sha256` pins the one you inspected), repack under the same model
+id, revision, CRS, presentation and bindings, reopen the result and refuse
+with `asset_content_changed` unless the model and every other asset came back
+unchanged. A package written at a historical table schema is carried to the
+current one, as every write is, and the receipt says `schema_upgraded`.
+
+A `pls_cadd_*` role must be a PLS-CADD backup whose DON members all resolve to
+one characterised application/DON pair (16.x with DON 57, 19.01 with DON 68,
+20.x/21.x with DON 68 or 72); anything else is `asset_pls_invalid`. The
+delivered workspace takes exactly the leaf `pls-delivered-workspace.bak` and
+the role `pls_cadd_delivered_workspace`.
+
+Every later revision inherits a package's assets. An attachment's record keeps
+the snapshot fingerprint it was attached to, so `list` reports `stale: true`
+once a revision has moved past it; re-attach with `--replace` to bind the
+delivery to the new snapshot, or `detach` it. Attach **before** `ds dsgrid
+publish-version`: a published version's revision id is its snapshot, so the
+same snapshot with an extra asset cannot be published again. A delivery for a
+version that is already published goes through `ds design attachment publish
+--kind mv_model --object <model> --version <revision>`.
+
 ## `validate` answers two questions, not one
 
 A `.dsgrid` can be a sound container holding an unsound model, and the two are

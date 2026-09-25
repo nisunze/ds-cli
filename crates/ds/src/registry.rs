@@ -151,6 +151,39 @@ static DSGRID_ENTRIES: &[Entry] = &[
         handler: ds_cli_dsgrid::project::restore,
         render: ds_cli_dsgrid::project::render,
     },
+    // The files a package carries (the original PLS-CADD upload, attachments
+    // bound to the snapshot they describe), for an exact project revision or
+    // a local package.
+    Entry {
+        command: &ds_cli_dsgrid::asset::PROJECT_LIST,
+        handler: ds_cli_dsgrid::asset::project_list,
+        render: ds_cli_dsgrid::asset::render_list,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::asset::PROJECT_EXTRACT,
+        handler: ds_cli_dsgrid::asset::project_extract,
+        render: ds_cli_dsgrid::asset::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::asset::LIST,
+        handler: ds_cli_dsgrid::asset::list,
+        render: ds_cli_dsgrid::asset::render_list,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::asset::EXTRACT,
+        handler: ds_cli_dsgrid::asset::extract,
+        render: ds_cli_dsgrid::asset::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::asset::ATTACH,
+        handler: ds_cli_dsgrid::asset::attach,
+        render: ds_cli_dsgrid::asset::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::asset::DETACH,
+        handler: ds_cli_dsgrid::asset::detach,
+        render: ds_cli_dsgrid::asset::render,
+    },
     Entry {
         command: &ds_cli_dsgrid::import_structure::COMMAND,
         handler: ds_cli_dsgrid::import_structure::run,

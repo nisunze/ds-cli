@@ -1439,6 +1439,279 @@ fn dsgrid_inspect_and_validate_expose_the_authored_revision() {
     );
 }
 
+/// The real package's assets: the original PLS-CADD upload comes out
+/// byte-for-byte as the committed backup, a delivered backup attaches bound
+/// to the snapshot and detaches back to the exact package, and the model's own
+/// files are never writable.
+#[test]
+fn dsgrid_asset_extracts_the_original_bak_and_round_trips_a_delivery() {
+    use sha2::{Digest, Sha256};
+    let model = common::fixture();
+    let committed_bak = PathBuf::from(&model).with_file_name("humble-pole-16.81.bak");
+    let listed = ok(&[
+        "dsgrid", "asset", "list", "--path", &model, "--output", "json",
+    ]);
+    assert_eq!(listed["counts"]["assets"], 17);
+    assert_eq!(listed["counts"]["attachments"], 0);
+    let original = listed["assets"]
+        .as_array()
+        .expect("assets")
+        .iter()
+        .find(|asset| asset["leaf"] == "pls-original-workspace.bak")
+        .expect("the PLS import keeps its original upload")
+        .clone();
+    assert_eq!(original["role"], "pls_cadd_original_workspace");
+    assert_eq!(original["protected"], true);
+
+    let root = temp_root("dsgrid-asset");
+    std::fs::create_dir_all(&root).unwrap();
+    let bak = root.join("v1-original.bak");
+    let bak_text = bak.display().to_string();
+    let extracted = ok(&[
+        "dsgrid",
+        "asset",
+        "extract",
+        "--path",
+        &model,
+        "--leaf",
+        "pls-original-workspace.bak",
+        "--out",
+        &bak_text,
+        "--output",
+        "json",
+    ]);
+    let written = std::fs::read(&bak).unwrap();
+    assert_eq!(written, std::fs::read(&committed_bak).unwrap());
+    assert_eq!(
+        format!("{:x}", Sha256::digest(&written)),
+        original["sha256"].as_str().unwrap()
+    );
+    assert_eq!(extracted["sha256"], original["sha256"]);
+    assert_eq!(extracted["verified"], true);
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "asset",
+            "extract",
+            "--path",
+            &model,
+            "--leaf",
+            "pls-original-workspace.bak",
+            "--out",
+            &bak_text,
+            "--output",
+            "json",
+        ]),
+        "output_exists"
+    );
+
+    let delivered = root.join("delivered.dsgrid").display().to_string();
+    let attached = ok(&[
+        "dsgrid",
+        "asset",
+        "attach",
+        "--path",
+        &model,
+        "--leaf",
+        "pls-delivered-workspace.bak",
+        "--file",
+        &bak_text,
+        "--role",
+        "pls_cadd_delivered_workspace",
+        "--out",
+        &delivered,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(attached["content_preserved"], true);
+    assert_eq!(attached["pls_cadd"]["declared_program_version"], "16.81");
+    assert_eq!(attached["pls_cadd"]["don_version"], "57");
+    assert_eq!(
+        attached["input"]["snapshot_fingerprint"],
+        attached["result"]["snapshot_fingerprint"]
+    );
+    assert_eq!(
+        attached["record"]["bound_content_root"],
+        listed["model"]["fingerprint"]
+    );
+    let relisted = ok(&[
+        "dsgrid", "asset", "list", "--path", &delivered, "--output", "json",
+    ]);
+    assert_eq!(relisted["counts"]["attachments"], 1);
+    assert_eq!(relisted["counts"]["stale_attachments"], 0);
+
+    // The model's own files, a pinned digest that is not this package, and a
+    // file that is not a PLS-CADD backup under a PLS-CADD role all refuse.
+    let refused = root.join("refused.dsgrid").display().to_string();
+    for (args, code) in [
+        (
+            vec![
+                "--leaf",
+                "pls-original-workspace.bak",
+                "--role",
+                "submission_note",
+            ],
+            "asset_leaf_protected",
+        ),
+        (
+            vec![
+                "--leaf",
+                "v2-pls-source-workspace.bak",
+                "--role",
+                "submission_note",
+            ],
+            "asset_leaf_collides",
+        ),
+        (
+            vec![
+                "--leaf",
+                "pls-delivered-workspace.bak",
+                "--role",
+                "pls_cadd_delivered_workspace",
+                "--expected-sha256",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            ],
+            "asset_package_digest_mismatch",
+        ),
+    ] {
+        let mut call = vec![
+            "dsgrid", "asset", "attach", "--path", &model, "--file", &bak_text, "--out", &refused,
+        ];
+        call.extend(args);
+        call.extend(["--output", "json"]);
+        assert_eq!(refusal(&call), code, "{call:?}");
+    }
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "asset",
+            "attach",
+            "--path",
+            &model,
+            "--leaf",
+            "field.bak",
+            "--file",
+            &model,
+            "--role",
+            "pls_cadd_field_copy",
+            "--out",
+            &refused,
+            "--output",
+            "json",
+        ]),
+        "asset_pls_invalid"
+    );
+    assert!(
+        !PathBuf::from(&refused).exists(),
+        "a refusal writes nothing"
+    );
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "asset",
+            "detach",
+            "--path",
+            &model,
+            "--leaf",
+            "pls-original-workspace.bak",
+            "--out",
+            &refused,
+            "--output",
+            "json",
+        ]),
+        "asset_leaf_protected"
+    );
+
+    let restored = root.join("restored.dsgrid").display().to_string();
+    let detached = ok(&[
+        "dsgrid",
+        "asset",
+        "detach",
+        "--path",
+        &delivered,
+        "--leaf",
+        "pls-delivered-workspace.bak",
+        "--out",
+        &restored,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(detached["role"], "pls_cadd_delivered_workspace");
+    assert_eq!(
+        std::fs::read(&restored).unwrap(),
+        std::fs::read(&model).unwrap(),
+        "detaching the delivery restores the exact package"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A governed revision's assets need the project owner, but an output that
+/// already exists is refused before any credential or network, and a
+/// signed-out machine gets a code the command declares.
+#[test]
+fn dsgrid_project_asset_refuses_locally_before_it_reaches_the_owner() {
+    let root = temp_root("dsgrid-project-asset");
+    std::fs::create_dir_all(&root).unwrap();
+    let existing = root.join("existing.bak");
+    std::fs::write(&existing, b"keep").unwrap();
+    let existing_text = existing.display().to_string();
+    let run = native_ds(&[
+        "dsgrid",
+        "project",
+        "asset",
+        "extract",
+        "--project",
+        "test-project",
+        "--model",
+        "model-1",
+        "--revision",
+        "rev-1",
+        "--leaf",
+        "pls-original-workspace.bak",
+        "--out",
+        &existing_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        run.envelope["error"]["code"], "output_exists",
+        "{}",
+        run.stdout
+    );
+    assert_eq!(std::fs::read(&existing).unwrap(), b"keep");
+
+    let code = native_refusal(&[
+        "dsgrid",
+        "project",
+        "asset",
+        "list",
+        "--project",
+        "test-project",
+        "--model",
+        "model-1",
+        "--revision",
+        "rev-1",
+        "--output",
+        "json",
+    ]);
+    let declared = ok(&[
+        "capabilities",
+        "dsgrid.project.asset.list",
+        "--output",
+        "json",
+    ])["command"]["refusals"]
+        .as_array()
+        .expect("refusals")
+        .iter()
+        .map(|refusal| refusal["code"].as_str().unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    assert!(
+        !code.is_empty() && declared.contains(&code),
+        "a signed-out project asset list refuses with a declared code, got {code:?}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn dsgrid_create_edit_and_reopen_require_no_typescript_or_pairing() {
     let root = temp_root("dsgrid-native-create");

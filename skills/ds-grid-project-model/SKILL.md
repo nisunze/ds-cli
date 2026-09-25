@@ -113,5 +113,10 @@ project MV governance metadata. MV attachments bind the exact content revision
 id from that descriptor, while LV attachments bind `vN`; neither attachment
 operation requires a paired Desktop.
 
+A version's package files: `dsgrid.asset.list|extract` (local package) and
+`dsgrid.project.asset.list|extract` (exact revision); v1's incoming backup is
+`pls-original-workspace.bak`. Attach the delivered backup with
+`dsgrid.asset.attach` before publishing; a later revision marks it `stale`.
+
 Stops at: native PLS-CADD — opening, spotting or solving a model happens in the
 application; `ds` publishes and reads the files around it.

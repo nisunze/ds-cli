@@ -91,8 +91,9 @@ all-command publication temporarily for compatibility.
 validation, command discovery, reads/solves, revision-gated edits and exchange.
 Its command leaves require no desktop, TypeScript runtime or signed-in
 project. `grid-local-model` retains the paired application lifecycle,
-project publication and the governed head's lifecycle (`dsgrid project
-versions|retire|restore`); `clearance` is the feature-code and clearance
+project publication, the governed head's lifecycle (`dsgrid project
+versions|retire|restore`) and a version's package assets (`dsgrid asset
+list|extract|attach|detach`, `dsgrid project asset list|extract`); `clearance` is the feature-code and clearance
 workflow over one working copy (`dsgrid feature-codes report|import|migrate|
 export`, `dsgrid criteria show|clearance set`, `dsgrid analyse clearance`);
 the broad `grid` router keeps its budget and leaves the typed edits and the
