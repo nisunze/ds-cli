@@ -184,10 +184,20 @@ fn the_installed_engine_produces_prints_and_data_the_host_proves_and_places() {
     assert_eq!(batch.receipt["status"], "completed");
     assert_eq!(batch.receipt["completed"], 2);
     assert_eq!(batch.receipt["results"][0]["transformer"], "tr_example_a");
-    assert!(batch_out
-        .join("tr_example_b")
-        .join("tr_example_b.a3.pdf")
-        .is_file());
+    // The engine names a print after the transformer as the sheet titles it
+    // (title case), so the placed file is the one the run declared.
+    let a3 = batch
+        .runs
+        .iter()
+        .find(|run| run.transformer == "tr_example_b")
+        .and_then(|run| {
+            run.artifacts
+                .iter()
+                .find(|artifact| artifact.format == "pdf_a3")
+        })
+        .expect("tr_example_b's A3 was delivered");
+    assert!(a3.filename.ends_with(".a3.pdf"), "{}", a3.filename);
+    assert!(batch_out.join("tr_example_b").join(&a3.filename).is_file());
     assert!(batch_out.join("report-batch.json").is_file());
 }
 
@@ -246,6 +256,123 @@ fn a_survey_policy_delivers_the_print_and_names_every_omitted_form() {
         .artifacts
         .iter()
         .any(|artifact| artifact.format == "pdf_a3"));
+}
+
+/// A held survey form reaches the delivered geographic outputs through the
+/// real engine: staged by the kernel around the room, clipped by the engine
+/// to the transformer's rectangle, its photo linked under the batch's grant
+/// (the engine refuses a photo it cannot link); the form this machine does
+/// not hold is named with its reason. The KMZ's content — the folder and the
+/// durable link — is the reporter's own test
+/// (`plain_local_delivery_appends_held_survey_forms_with_photo_links`).
+#[test]
+#[ignore = "requires DS_REPORT_BIN and the reporter printing fixtures"]
+fn a_held_survey_form_is_appended_with_its_photo_links_and_the_rest_named() {
+    use ds_command_kernel::report_export::{
+        survey::SURVEY_LAYER_NOT_HELD_REASON, survey_append, HeldSurveyForm, SurveyFormOmission,
+    };
+    let binary = std::env::var_os("DS_REPORT_BIN")
+        .map(PathBuf::from)
+        .expect("DS_REPORT_BIN must name the locally built reporter");
+    let examples = examples().expect("the reporter printing examples must be present");
+    let engine = ProcessEngine { binary };
+    let mut receipt = receipt_from_example(&examples.join("network-config.a0-a3.example.json"));
+    let mut sheets: Value = serde_json::from_str(&receipt.sheets_json).unwrap();
+    let settings = sheets["project_settings"].as_array_mut().unwrap();
+    settings[0]["value"] = serde_json::json!("kmz,shp");
+    settings.push(
+        serde_json::json!({"parameter":"include_survey_data_in_transformer_exports","value":true}),
+    );
+    settings.push(serde_json::json!({"parameter":"survey_forms_in_transformer_exports","value":["field_notes","transformer_survey"]}));
+    receipt.sheets_json = serde_json::to_string(&sheets).unwrap();
+    receipt.sheets_sha256 = format!("{:x}", Sha256::digest(receipt.sheets_json.as_bytes()));
+
+    let entry = |id: &str, x: f64, y: f64| {
+        serde_json::json!({"type":"Feature","geometry":{"type":"Point","coordinates":[x,y]},
+            "properties":{"id":id,"doc_id":id,"form_slug":"transformer_survey",
+                "data":{"photo":format!("projects/example-project/forms/transformer_survey/{id}/photo/1.jpg"),
+                        "transformer_name":format!("Held {id}")},
+                "detailed_location":{"accuracy":2.5,"altitude":1700.0,"speed":0.0,"picked":false},
+                "metadata":{"created_at":"2025-12-03T11:33:33.984Z","created_by":"a@b.c"}}})
+    };
+    let manifest: ds_command_kernel::survey::hold::Manifest =
+        serde_json::from_value(serde_json::json!({
+            "schema": ds_command_kernel::survey::hold::SCHEMA, "project": "example-project",
+            "form": "transformer_survey", "filter": {},
+            "filter_sha256": ds_command_kernel::survey::hold::Filter::default().fingerprint().unwrap(),
+            "rows": 2, "cursor": null, "created_at": "2026-09-25T00:00:00Z",
+            "refreshed_at": "2026-09-25T06:48:34Z",
+            "last": {"mode":"replace","at":"2026-09-25T06:48:34Z","received":2,"upserts":2,"deletes":0},
+            "rows_sha256": "0".repeat(64),
+        }))
+        .unwrap();
+    let held = HeldSurveyForm::new(
+        "held",
+        &manifest,
+        vec![entry("inside", 30.0030, -2.0005), entry("far", 30.2, -2.2)],
+    )
+    .unwrap();
+    let omitted = vec![SurveyFormOmission {
+        form: "field_notes".into(),
+        reason: SURVEY_LAYER_NOT_HELD_REASON.into(),
+    }];
+    let grant = serde_json::to_vec(&serde_json::json!({
+        "resolver_origin": "https://api.example.com", "bucket": "photos",
+        "prefix": "projects/example-project/", "token": "payload.mac",
+        "expires_at": "2027-03-24T00:00:00Z",
+    }))
+    .unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let staging = temp.path().join("staging");
+    let reports = temp.path().join("reports");
+    let outcome = run_batch(
+        &engine,
+        &BatchSettings {
+            run: RunSettings {
+                project_id: "example-project",
+                receipt: &receipt,
+                admin_bounds: None,
+                staging_root: &staging,
+                out_root: &reports,
+            },
+            lane: "stable",
+            concurrency: 1,
+            media_grant: Some(&grant),
+        },
+        &["tr_example_a".to_string()],
+        |name| {
+            let mut inputs = room(&examples.join(format!("rooms/{name}.json")), name);
+            inputs.survey = Some(
+                survey_append(&inputs.layers, std::slice::from_ref(&held), &omitted)
+                    .map_err(|error| HostFailure::new("report_inputs_invalid", error))?,
+            );
+            Ok(inputs)
+        },
+    )
+    .unwrap_or_else(|failure| panic!("{failure:?}"));
+    assert_eq!(
+        outcome.receipt["status"], "completed",
+        "{}",
+        outcome.receipt
+    );
+    let run = &outcome.runs[0];
+    assert_eq!(run.survey_layers.len(), 1);
+    assert_eq!(run.survey_layers[0].layer, "survey_transformer_survey");
+    assert_eq!(run.survey_layers[0].staged, 1, "the far row is not staged");
+    assert_eq!(run.survey_layers[0].features, 1);
+    assert_eq!(run.receipt["survey_layers"][0]["source"], "held");
+    assert_eq!(
+        run.receipt["survey_layers_omitted"]["forms"],
+        serde_json::json!(["field_notes"])
+    );
+    assert_eq!(
+        outcome.receipt["results"][0]["survey_layers"][0]["features"],
+        1
+    );
+    assert!(run
+        .artifacts
+        .iter()
+        .any(|artifact| artifact.format == "kmz"));
 }
 
 #[test]
