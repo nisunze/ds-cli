@@ -49,6 +49,14 @@ photos or an engineering network model. Name required missing attributes before
 claiming a design-ready handoff; use their declared owner operation if available.
 Never invent conductor sizes, asset ratings, connections or source provenance.
 
+## Values and photos for a report
+
+Use `survey.entries.read` for one exact form: every property (form fields under
+`data`) plus each entry's `media` (property, `object_path`,
+`thumbnail_object_path`). Default 100, maximum 5000; `total` is the full count
+and `truncated` says whether you have all of it. Write `--out <file.geojson>`
+for a whole form. Filters: `--updated-after`, `--bbox`, `--include-deleted`.
+
 For viewing/holding survey rows in the existing map, use `map.survey.download`.
 It consumes the active Working Area; `--entire-project` is an explicit full-scope
 request and can replace that scope. Verify the map project before invoking it.

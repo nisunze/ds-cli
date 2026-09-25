@@ -13,6 +13,7 @@ asset inventory.
 | Coverage gaps or where to visit next | `survey.query`, then `survey.entries.select` when locations are needed | An agreed target area, asset list or expected count. Without a denominator, coverage remains unknown. |
 | Missing observations before design review | `survey.query` with relevant form fields and bounded filters | Supported field names and a stated quality rule; results are review candidates, not permission to correct or delete. |
 | Surveyed assets for a design handoff | `survey.entries.select` | Area, exact identities, freshness, digest and completeness; explicitly identify required engineering attributes or photos absent from this projection. |
+| Field values and photos for a survey report | `survey.entries.read` | Exact project/form and filters; `total` versus `returned` (`truncated`), and each entry's `media` object and thumbnail paths. See [Entry values and photo references](#entry-values-and-photo-references). |
 | Changes since a prior delivery | `survey.entries.changes` | Last completed replication checkpoint, retained cursors and tombstones; a partial page does not advance the checkpoint. |
 | Work without connectivity | Browser Survey capture | Cached project/forms, local media and durable IndexedDB entry/outbox commits; there is no separate native CLI capture workspace. |
 | Which survey photos this machine holds; a photo shot sideways | `survey.moments.list`, `survey.moments.read`, `survey.photo.rotate`, `survey.photo.publish` | The Server's survey-media store (rows in the lane's sync store, bundles under `survey-media/`): `waiting` is held and not yet published, `synced` equals the published head. See [Survey moments and the one rotation](#survey-moments-and-the-one-rotation). |
@@ -337,6 +338,41 @@ Four related objects have separate lifecycles:
 4. A **project created from a template** is a new, independent project. Use
    `survey project create-from-template`. Applying a template instead modifies
    an existing project.
+
+## Entry values and photo references
+
+`survey entries read` returns what the map loads for one project form: each
+entry's geometry, every property (the form's own fields sit under `data`), and
+the survey photos the entry references. It is the read a survey report needs;
+`entries select` stays the geometry-only spatial selection.
+
+```text
+ds survey entries read --project <project-id> --form <form-slug> --output json
+ds survey entries read --project <project-id> --form <form-slug> \
+  --limit 5000 --out entries.geojson
+```
+
+Filters are the map loader's own: `--updated-after <rfc3339>`, `--bbox
+'<west,south,east,north>'`, and `--include-deleted` (deleted entries are
+excluded by default). `--limit` (1–5000, default 100) bounds what is returned;
+`total` is always the form's full count under the filters, and `truncated`
+says whether the returned entries are all of them. `--out` writes a new
+GeoJSON FeatureCollection (never overwriting) whose features are the streamed
+rows unchanged, each with a `media` member.
+
+Each `media` item names the dotted `property` it was found in (`data.photo`),
+the `reference` as stored, the `bucket` when the reference names one, the
+canonical `object_path` and its `thumbnail_object_path`. References are read
+the way the map reads them: bare object paths, `gs://` references and
+Cloud Storage URLs, several per value separated by newline, `,`, `;` or `|`,
+admitted only when they resolve to a survey media address in any of its three
+layouts. A migrated entry keeps the project in its original references.
+
+The stream is verified against its closing summary: a cut-off stream, a form
+that failed part-way, or rows lost against the summary total are refused
+(`survey_entries_unreadable`, `survey_entries_transient`), never returned
+short. The route is `POST /api/v1/data` (`query_entries`) under the caller's
+JWT and named-project authority.
 
 ## Which forms the working area loads
 

@@ -920,6 +920,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
+        "survey.entries.read",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
         "survey.entries.changes",
         "local_auth_state",
         "headless_project",

@@ -16,6 +16,7 @@ pub mod moments;
 pub mod photo;
 pub mod project_forms;
 pub mod query;
+pub mod read;
 pub mod templates;
 pub mod working_area;
 
@@ -49,6 +50,7 @@ pub static DOMAIN: Domain = Domain {
         &project_forms::APPLY_COMMAND,
         &query::COMMAND,
         &entries::COMMAND,
+        &read::COMMAND,
         &changes::COMMAND,
         &create::COMMAND,
         &import::COMMAND,

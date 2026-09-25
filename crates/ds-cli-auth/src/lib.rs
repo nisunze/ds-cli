@@ -64,6 +64,7 @@ pub use context::{
 };
 pub use ds_client_core::{
     BundleDownloadReceipt, ContourParameters, DataDistributionRequest, PrintContextKind,
+    SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry, SurveyEntryMedia,
 };
 pub use ds_client_core::{
     CompoundedArchive, CompoundedArchiveLayout, CompoundedReportReceipt, CompoundedReportRequest,
@@ -3099,6 +3100,22 @@ pub fn survey_entries_select(
     })
 }
 
+/// Read one survey form's entries in the caller's explicit project: every
+/// field value the map shows and the survey media each entry references.
+pub fn survey_entries_read(
+    lane_value: &str,
+    project: &str,
+    request: &SurveyEntriesReadRequest,
+) -> Result<HeadlessNamedProject<SurveyEntriesRead>, Failure> {
+    headless_named_project_with(
+        lane_value,
+        project,
+        map_survey_entries_read_error,
+        |device, project| device.survey_entries_read(project, request),
+        |client, project| client.survey_entries_read(project, request, now()),
+    )
+}
+
 /// Read Survey entry changes since a clock in the caller's explicit project.
 pub fn survey_entries_changes(
     lane_value: &str,
@@ -3393,6 +3410,29 @@ fn map_survey_entries_changes_service_code(code: SurveyEntriesChangesServiceCode
 /// The same absent form therefore refused as `survey_entries_scope_not_found`
 /// headlessly and as `transformer_not_found` beside a running application,
 /// which is one operation with two vocabularies. Both branches now call this.
+/// The survey read's own words, in the entries vocabulary. The core's
+/// messages here are static and say which contract a stream broke (cut off,
+/// rows lost, a form failed part-way), which is the difference between
+/// "retry" and "report it"; the generic mapping would say "authentication".
+fn map_survey_entries_read_error(error: ClientError) -> Failure {
+    let message = error.to_string();
+    match error.kind() {
+        ErrorKind::ResourceNotFound => Failure::invalid("survey_entries_scope_not_found", message)
+            .remedy("verify --project and pass one exact slug from `ds survey project-forms list`"),
+        ErrorKind::InvalidInput => Failure::invalid("survey_entries_invalid", message)
+            .remedy("read `ds survey entries read --help` and pass only its typed flags"),
+        ErrorKind::AuthenticationRejected => {
+            Failure::unauthorized("survey_entries_auth_rejected", message)
+                .remedy("verify account and form authority in the project")
+        }
+        ErrorKind::Transient => Failure::unavailable("survey_entries_transient", message)
+            .remedy("retry without changing the request"),
+        ErrorKind::UnreadableResponse => Failure::unavailable("survey_entries_unreadable", message)
+            .remedy("retry once, then report it with `ds feedback submit`"),
+        _ => map_client(error),
+    }
+}
+
 fn map_survey_entries_select_error(error: ClientError) -> Failure {
     if let Some(code) = error.survey_form_read_service_code() {
         return map_survey_form_read_service_code(code);

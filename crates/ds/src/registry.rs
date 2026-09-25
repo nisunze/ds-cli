@@ -1359,6 +1359,11 @@ static SURVEY_ENTRIES: &[Entry] = &[
         render: ds_cli_survey::entries::render,
     },
     Entry {
+        command: &ds_cli_survey::read::COMMAND,
+        handler: ds_cli_survey::read::run,
+        render: ds_cli_survey::read::render,
+    },
+    Entry {
         command: &ds_cli_survey::changes::COMMAND,
         handler: ds_cli_survey::changes::run,
         render: ds_cli_survey::changes::render,

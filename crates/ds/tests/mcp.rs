@@ -951,6 +951,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         BTreeSet::from([
             "ds_catalog",
             "ds_diagnostics",
+            "survey_entries_read",
             "survey_moments_list",
             "survey_moments_read",
             "survey_photo_publish",
@@ -1656,7 +1657,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "survey-projects" => 21,
             // Held survey photos (list, read), the one rotation and its
             // publication, and the offline file rotation, plus bootstrap.
-            "survey-media" => 7,
+            "survey-media" => 8,
             "design-edit" => 23,
             // Twenty-six printing leaves plus bootstrap: city-vector input,
             // local rendering and standalone map delivery complete the headless

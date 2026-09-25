@@ -23,10 +23,11 @@ use ds_client_core::{
     DeviceSummary, DeviceTransport, ProjectDirectory, ProjectFormSettingsEditor,
     ProjectFormsSnapshot, RetirementAction, RetirementReceipt, RetirementRequest,
     SecretRequestBody, SolarSnapshot, StoreError, SurveyEntriesChanges,
-    SurveyEntriesChangesRequest, SurveyEntriesSelectRequest, SurveyEntriesSelection,
-    SurveyEntryCreateReceipt, SurveyEntryCreateRequest, SurveyQueryRequest, SurveyQueryResult,
-    TileOperationResult, TilePreflight, TileType, TransformerContext, TransformerInventory,
-    TransformerSet, TransformerStatusList, TransportError, TransportResponse, device_secret_json,
+    SurveyEntriesChangesRequest, SurveyEntriesRead, SurveyEntriesReadRequest,
+    SurveyEntriesSelectRequest, SurveyEntriesSelection, SurveyEntryCreateReceipt,
+    SurveyEntryCreateRequest, SurveyQueryRequest, SurveyQueryResult, TileOperationResult,
+    TilePreflight, TileType, TransformerContext, TransformerInventory, TransformerSet,
+    TransformerStatusList, TransportError, TransportResponse, device_secret_json,
     parse_device_begin, parse_device_list, parse_device_read, parse_device_refresh,
     parse_device_revoke, parse_device_status,
 };
@@ -720,6 +721,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
         request: &SurveyEntriesSelectRequest,
     ) -> Result<SurveyEntriesSelection, ClientError> {
         fixed_device_call!(self, survey_entries_select, project, request)
+    }
+    pub fn survey_entries_read(
+        &mut self,
+        project: &str,
+        request: &SurveyEntriesReadRequest,
+    ) -> Result<SurveyEntriesRead, ClientError> {
+        fixed_device_call!(self, survey_entries_read, project, request)
     }
     pub fn survey_entries_changes(
         &mut self,

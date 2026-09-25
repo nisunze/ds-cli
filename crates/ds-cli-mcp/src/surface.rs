@@ -726,6 +726,7 @@ const FORM_FACTORY_COMMANDS: &[&str] = &[
 // `survey-projects` on 2026-09-20 when the moments leaves would have taken
 // that profile past its bound.
 const SURVEY_MEDIA_COMMANDS: &[&str] = &[
+    "survey.entries.read",
     "survey.moments.list",
     "survey.moments.read",
     "survey.photo.rotate",
