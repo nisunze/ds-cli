@@ -27,6 +27,15 @@
 *.cmd  text eol=crlf
 *.ps1  text eol=crlf
 
+# The PLS-CADD desktop drivers are embedded into `ds` byte for byte and each
+# file's sha256 is pinned in crates/ds-cli-pls/src/desktop/bundle.rs. Their
+# bytes must be the same on every checkout, so they are never converted —
+# not even the CRLF rule for *.ps1 above, which would change every digest on
+# the next checkout.
+crates/ds-cli-pls/desktop/** -text -eol
+# Driver receipts recorded as Windows PowerShell 5.1 writes them (CRLF).
+crates/ds-cli-pls/tests/fixtures/desktop/** -text -eol
+
 # Binary — never touched, never diffed as text.
 *.png  binary
 *.jpg  binary
