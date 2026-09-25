@@ -37,7 +37,9 @@ webview (the owner's boundary ruling of 2026-09-12, quoted in
 Server instance with a webview; the desktop descriptor and the Server
 `connection.json` converge into one instance registry"). So this owner's
 `Descriptor` and `Candidate` are one shape for both: the Server's
-`connection.json` fields (address, owner, lane, token) and the Desktop's
+`connection.json` fields (owner, lane — since 2026-09-25 the Server answers only
+on its owner-only `server.sock` with a peer-uid check, so the record carries no
+address and no token: `ds.server-connection/v2`) and the Desktop's
 `cli-bridge.json` fields (version, url, token, pid) are the same record with
 `instance_id`, `build`, `started_at_ms`, `profile` and `windows` added. One
 enumeration answers `ds desktop list` and `ds server status`; one
