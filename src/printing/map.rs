@@ -474,13 +474,14 @@ pub fn model_room(owner: &str, project: &str, model: Model) -> Result<Value, Str
 }
 
 /// The layers one MV projection prints as, in the order [`mv_layers`] emits
-/// them: alignments, structures, and the canonical angle points with their
-/// roles and numbers. A context retained from this projection carries
+/// them: alignments, structures, canonical angle points, and prohibited zones.
+/// A context retained from this projection carries
 /// exactly these ids.
-pub const MV_PRINT_LAYER_IDS: [&str; 3] = [
+pub const MV_PRINT_LAYER_IDS: [&str; 4] = [
     "dsgrid_mv_lines",
     "dsgrid_mv_structures",
     "dsgrid_mv_angle_points",
+    "dsgrid_mv_prohibited_zones",
 ];
 
 pub fn mv_layers(projection: Value, model: Model, bounds: [f64; 4]) -> Result<Value, String> {
@@ -496,10 +497,13 @@ pub fn mv_layers(projection: Value, model: Model, bounds: [f64; 4]) -> Result<Va
     let mut lines = Vec::new();
     let mut poles = Vec::new();
     let mut angle_points = Vec::new();
+    let mut prohibited_zones = Vec::new();
     for feature in features {
         let layer = feature["properties"]["_layer"].as_str().unwrap_or("");
-        if !matches!(layer, "alignments" | "structures" | "angle_points")
-            || feature["geometry"].is_null()
+        if !matches!(
+            layer,
+            "alignments" | "structures" | "angle_points" | "prohibited_zones"
+        ) || feature["geometry"].is_null()
             || !intersects_area(&feature["geometry"], &area)?
         {
             continue;
@@ -524,15 +528,18 @@ pub fn mv_layers(projection: Value, model: Model, bounds: [f64; 4]) -> Result<Va
             lines.push(f);
         } else if layer == "structures" {
             poles.push(f);
-        } else {
+        } else if layer == "angle_points" {
             angle_points.push(f);
+        } else {
+            prohibited_zones.push(f);
         }
     }
-    let [lines_id, structures_id, angle_points_id] = MV_PRINT_LAYER_IDS;
+    let [lines_id, structures_id, angle_points_id, zones_id] = MV_PRINT_LAYER_IDS;
     Ok(json!({
         lines_id: {"type": "FeatureCollection", "features": lines},
         structures_id: {"type": "FeatureCollection", "features": poles},
         angle_points_id: {"type": "FeatureCollection", "features": angle_points},
+        zones_id: {"type": "FeatureCollection", "features": prohibited_zones},
     }))
 }
 
@@ -629,6 +636,30 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn mv_print_keeps_model_prohibited_zones_with_provenance() {
+        let projection = json!({"features":[
+            {"type":"Feature","id":"zone-1","geometry":{"type":"Polygon","coordinates":[[[29.4,-2.1],[29.6,-2.1],[29.6,-1.9],[29.4,-1.9],[29.4,-2.1]]]},"properties":{"_layer":"prohibited_zones","label":"Wetland","category":"wetland","active":true}},
+            {"type":"Feature","id":"zone-out","geometry":{"type":"Polygon","coordinates":[[[30.4,-2.1],[30.6,-2.1],[30.6,-1.9],[30.4,-1.9],[30.4,-2.1]]]},"properties":{"_layer":"prohibited_zones","label":"Other","active":true}}
+        ]});
+        let model = Model {
+            id: "model-a".into(),
+            label: "Model 1".into(),
+            revision_id: "rev".into(),
+            digest: "a".repeat(64),
+        };
+        let layers = mv_layers(projection, model, [29., -3., 30., -1.]).unwrap();
+        let zones = layers["dsgrid_mv_prohibited_zones"]["features"]
+            .as_array()
+            .unwrap();
+        assert_eq!(zones.len(), 1);
+        let p = &zones[0]["properties"];
+        assert_eq!(p["label"], "Wetland");
+        assert_eq!(p["category"], "wetland");
+        assert_eq!(p["active"], true);
+        assert_eq!(p["model_digest"], "a".repeat(64));
     }
     #[test]
     fn authored_district_context_survives_paper_planning() {

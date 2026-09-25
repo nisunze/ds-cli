@@ -2,8 +2,8 @@
 //! and whether a catalogue layer may be selected — decided once.
 //!
 //! The Printing setup page authored these as literals: the three derived
-//! sources with their buffers, thresholds and intervals, five complete
-//! physical print styles for the layers those sources expand into, the rule
+//! sources with their buffers, thresholds and intervals, complete physical
+//! print styles for the layers those sources expand into, the rule
 //! that a new project template starts with every ready or downloadable
 //! catalogue layer except parcels, and the rule that a layer with no dataset
 //! cannot be switched on. The kernel already bounded every parameter; now it
@@ -196,6 +196,39 @@ pub fn fallback_styles() -> BTreeMap<String, PrintStyle> {
                 "number",
                 5.5,
             ),
+        ),
+        (
+            "dsgrid_mv_prohibited_zones".into(),
+            PrintStyle {
+                color_field: "category".into(),
+                colors: BTreeMap::from([
+                    ("road".into(), "#dc2626".into()),
+                    ("wetland".into(), "#0891b2".into()),
+                    ("river".into(), "#2563eb".into()),
+                    ("other".into(), "#b45309".into()),
+                ]),
+                hatch: Some(super::PrintHatch {
+                    color: "#8b8174".into(),
+                    width_mm: 0.08,
+                    spacing_mm: 2.4,
+                    angle_deg: 45.,
+                    match_field: String::new(),
+                    match_values: Vec::new(),
+                }),
+                ..style(
+                    "#8c5b27",
+                    0.24,
+                    0.85,
+                    "#efd6aa",
+                    0.18,
+                    "",
+                    0.,
+                    &[1.5, 0.8],
+                    0.5,
+                    "label",
+                    5.5,
+                )
+            },
         ),
         (
             "buildings_context".into(),
@@ -653,7 +686,7 @@ mod tests {
                 assert!(fallbacks.contains_key(&id), "{id}");
             }
         }
-        assert_eq!(fallbacks.len(), 6);
+        assert_eq!(fallbacks.len(), 7);
         assert_eq!(
             fallbacks["dsgrid_mv_lines"].dash_mm,
             vec![6., 1.4, 1.2, 1.4]
@@ -942,9 +975,8 @@ mod tests {
 
     #[test]
     fn a_retained_mv_projection_carries_every_layer_the_kernel_emits() {
-        // The browser retains exactly what `map_mv_layers` answered: lines,
-        // structures and angle points. Reuse must take all three, and an
-        // empty structures collection with them.
+        // Reuse must keep all four emitted model layers, including an empty
+        // prohibited-zones collection when this model has none.
         let mv = derived_layers().remove(0);
         let mut held = retained(&mv, &super::super::map::MV_PRINT_LAYER_IDS);
         held.layers["dsgrid_mv_angle_points"]["features"] = serde_json::json!([{
@@ -959,6 +991,7 @@ mod tests {
                     [
                         "dsgrid_mv_angle_points",
                         "dsgrid_mv_lines",
+                        "dsgrid_mv_prohibited_zones",
                         "dsgrid_mv_structures"
                     ]
                 );

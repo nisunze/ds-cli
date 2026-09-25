@@ -53,7 +53,7 @@ pub fn project(bytes: &[u8], revision: &str) -> Result<Value, String> {
     features.retain(|f| {
         matches!(
             f["properties"]["_layer"].as_str(),
-            Some("alignments" | "structures" | "angle_points")
+            Some("alignments" | "structures" | "angle_points" | "prohibited_zones")
         ) && !f["geometry"].is_null()
     });
     for feature in features {

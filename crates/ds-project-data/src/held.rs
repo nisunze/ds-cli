@@ -878,6 +878,7 @@ mod tests {
             "dsgrid_mv_lines": collection(vec![feature("line")]),
             "dsgrid_mv_structures": collection(vec![feature("pole")]),
             "dsgrid_mv_angle_points": collection(vec![]),
+            "dsgrid_mv_prohibited_zones": collection(vec![]),
         });
         let held = HeldPreviewState {
             retained: BTreeMap::from([(mv.id.clone(), retained_for(&mv, prepared))]),
@@ -919,6 +920,7 @@ mod tests {
                 omission("dsgrid_mv_lines", "retained with other parameters"),
                 omission("dsgrid_mv_structures", "retained with other parameters"),
                 omission("dsgrid_mv_angle_points", "retained with other parameters"),
+                omission("dsgrid_mv_prohibited_zones", "retained with other parameters"),
             ]
         );
 
@@ -930,7 +932,7 @@ mod tests {
             context.omitted[0],
             omission("dsgrid_mv_lines", "not retained on this computer")
         );
-        assert_eq!(context.omitted.len(), 3);
+        assert_eq!(context.omitted.len(), 4);
     }
 
     #[test]
