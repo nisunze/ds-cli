@@ -1664,6 +1664,31 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::design_attachments::run(self.profile, transport, self.authority(), project, command)
     }
+    /// One attachment revision's receipt and its verified bytes, on a device
+    /// session.
+    pub fn design_attachment_bytes<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        attachment: &str,
+        revision: Option<&str>,
+        now: u64,
+    ) -> Result<(serde_json::Value, Vec<u8>), ClientError> {
+        crate::design_attachments::Command::Download {
+            attachment: attachment.to_owned(),
+            revision: revision.map(str::to_owned),
+        }
+        .validate(project)?;
+        self.ensure_active(now)?;
+        crate::design_attachments::fetch(
+            self.profile,
+            transport,
+            self.authority(),
+            project,
+            attachment,
+            revision,
+        )
+    }
     pub fn design_tags<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

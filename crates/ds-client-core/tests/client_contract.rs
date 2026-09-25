@@ -126,13 +126,9 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
             .to_vec(),
         design_versions_method: "POST".into(),
         design_versions_path: "/api/v1/design/versions".into(),
-        design_versions_actions: vec![
-            "list_versions".into(),
-            "get_version".into(),
-            "get_head".into(),
-            "create_version".into(),
-            "restore_version".into(),
-        ],
+        design_versions_actions: ds_client_core::DESIGN_VERSIONS_ACTIONS
+            .map(str::to_owned)
+            .to_vec(),
         design_selections_method: "POST".to_owned(),
         design_selections_path: "/api/v1/design/selections".to_owned(),
         design_selections_actions: vec![
@@ -217,6 +213,7 @@ struct TransportState {
     grid_uploaded: Vec<Vec<u8>>,
     grid_upload_fail: bool,
     grid_bytes: VecDeque<TransportResponse>,
+    attachment_bytes: VecDeque<TransportResponse>,
     tag_bodies: Vec<serde_json::Value>,
     configurations: VecDeque<TransportResponse>,
     configuration_bodies: Vec<serde_json::Value>,
@@ -563,6 +560,19 @@ impl Transport for FixtureTransport {
         assert!(call.url().starts_with("https://storage.googleapis.com/"));
         assert_eq!(call.response_limit(), 5);
         Ok(self.0.lock().unwrap().grid_bytes.pop_front().unwrap())
+    }
+    fn design_attachment_bytes(
+        &mut self,
+        call: ds_client_core::design_attachments::DownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert!(call.url().starts_with("https://storage.googleapis.com/"));
+        let mut state = self.0.lock().unwrap();
+        state.calls.push(format!(
+            "attachment_bytes url={} limit={}",
+            call.url(),
+            call.response_limit()
+        ));
+        Ok(state.attachment_bytes.pop_front().unwrap())
     }
 
     fn device_approve(
@@ -1718,13 +1728,19 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
     // the full profile authority.
     assert_eq!(
         stable.profile_sha256(),
-        "2de71a82a7680da77dc7015c15921c8424df945fbfef43e6f1db227889dbbac5"
+        "deba7531d30a2ea9c545c123cb98bd2adb2e4b656c874d411306a73e6b45b196"
     );
     // A profile is a digest over the closed vocabulary, so adding one route is
     // a new identity. Profile v27 added the reviewed closed design-attachment
-    // workflow, v28 the national administrative hierarchy, and v29 the two
-    // platform reliability reads. These are the v27 and v28 vectors a build
-    // must no longer produce.
+    // workflow, v28 the national administrative hierarchy, v29 the two
+    // platform reliability reads, and v30 the attachment pointer move, the
+    // project-wide and reverse attachment reads, and the version summaries
+    // and batch. These are the v27, v28 and v29 vectors a build must no
+    // longer produce.
+    assert_ne!(
+        stable.profile_sha256(),
+        "2de71a82a7680da77dc7015c15921c8424df945fbfef43e6f1db227889dbbac5"
+    );
     assert_ne!(
         stable.profile_sha256(),
         "2a2c7954f468eb5068d958e9c188c70ac0a08c530e400c9ceeef06199396081b"
@@ -1846,13 +1862,9 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
             .to_vec(),
         design_versions_method: "POST".into(),
         design_versions_path: "/api/v1/design/versions".into(),
-        design_versions_actions: vec![
-            "list_versions".into(),
-            "get_version".into(),
-            "get_head".into(),
-            "create_version".into(),
-            "restore_version".into(),
-        ],
+        design_versions_actions: ds_client_core::DESIGN_VERSIONS_ACTIONS
+            .map(str::to_owned)
+            .to_vec(),
         design_selections_method: "POST".to_owned(),
         design_selections_path: "/api/v1/design/selections".to_owned(),
         design_selections_actions: vec![
@@ -10203,7 +10215,12 @@ fn native_attachment_publication_preserves_bytes_and_one_original_pointer_fence(
         kind: "mv_model".into(),
         id: "line".into(),
         version: Some("rev_native".into()),
+        version_digest: None,
     };
+    // The MV pin names a content revision; its model digest is read from the
+    // catalogue before anything is uploaded, and never fetched as bytes.
+    let model_digest = "c".repeat(64);
+    push_grid_revision(&transport, "line", "rev_native", &model_digest);
     let head = json!({"project_id":"project_a","attachment_id":"file_one","object":{"kind":"mv_model","id":"line"},"version":4,"state":"ready"});
     transport.push_design_attachments(200, &selection_envelope(json!({"attachment":head})));
     let bytes = b"opaque native backup".to_vec();
@@ -10224,13 +10241,31 @@ fn native_attachment_publication_preserves_bytes_and_one_original_pointer_fence(
         file: "model.bak".into(),
         label: None,
         purpose: None,
+        media_type: None,
+        source_kind: None,
+        source_reference: None,
+        make_latest: true,
         bytes,
     };
     let refused = client
         .design_attachments("project_a", &command, NOW + 1)
         .unwrap_err();
     assert_eq!(refused.kind(), ErrorKind::InvalidInput);
-    let calls = &transport.0.lock().unwrap().calls;
+    let state = transport.0.lock().unwrap();
+    assert_eq!(
+        state.grid_bodies,
+        vec![
+            json!({"action":"get_version","project_id":"project_a","model_id":"line","revision_id":"rev_native"})
+        ]
+    );
+    let calls = &state.calls;
+    assert!(calls
+        .iter()
+        .filter(|call| call.contains("start_upload") || call.contains("finalize_upload"))
+        .all(|call| call.contains(&format!("\"version_digest\":\"{model_digest}\""))));
+    // The pointer choice is finalize's alone and the default moves it, so the
+    // wire is what it was before the choice existed.
+    assert!(!calls.iter().any(|call| call.contains("make_latest")));
     assert!(calls
         .iter()
         .any(|call| call.contains("attachment_upload bytes=20")));
@@ -10242,4 +10277,584 @@ fn native_attachment_publication_preserves_bytes_and_one_original_pointer_fence(
     assert!(finalize[0].contains("\"expected_version\":4"));
     assert!(finalize[0].contains("\"version_id\":\"rev_native\""));
     assert!(finalize[0].contains(&digest));
+}
+
+/// One `get_version` answer for the catalogue read an MV pin resolves through.
+fn push_grid_revision(transport: &FixtureTransport, model: &str, revision: &str, digest: &str) {
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .grid_models
+        .push_back(TransportResponse::new(
+            200,
+            serde_json::to_vec(&json!({"success":true,"data":{
+                "revision":{"project_id":"project_a","model_id":model,"revision_id":revision,
+                    "model":{"digest":digest,"object":format!("ds-grid/objects/sha256/{digest}"),"byte_length":5}},
+                "download_url":"https://storage.googleapis.com/bucket/ds-grid/objects/sha256/x",
+                "expires_at":"2026-09-25T10:15:00Z"}}))
+            .unwrap(),
+        ));
+}
+
+fn attachment_head(version: u64, latest: &str) -> serde_json::Value {
+    json!({"project_id":"project_a","attachment_id":"file_one","object":{"kind":"mv_model","id":"line"},
+           "version":version,"state":"active","latest_revision_id":latest,"latest_revision":1,"revision_count":2})
+}
+
+fn attachment_revision(revision: &str, version_id: &str) -> serde_json::Value {
+    json!({"project_id":"project_a","attachment_id":"file_one","revision_id":revision,"revision":1,
+           "object":{"kind":"mv_model","id":"line","version_id":version_id},"file_name":"model.bak",
+           "media_type":"application/octet-stream","byte_size":5,"byte_digest":"e".repeat(64),
+           "storage_generation":9,"readiness":"ready"})
+}
+
+fn attachment_bodies(transport: &FixtureTransport) -> Vec<serde_json::Value> {
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .calls
+        .iter()
+        .filter_map(|call| {
+            let body = call.strip_prefix("design_attachments ")?;
+            let start = body.find("body=")? + 5;
+            let end = body.find(" limit=")?;
+            serde_json::from_str(&body[start..end]).ok()
+        })
+        .collect()
+}
+
+#[test]
+fn attachment_reads_name_one_file_the_project_page_and_the_versions_that_carry_it() {
+    use ds_client_core::design_attachments::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+
+    // show: the head and its revisions, archived included on request.
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(json!({"attachment":attachment_head(3,"rev_2"),
+            "revisions":[attachment_revision("rev_2","rev-b"),attachment_revision("rev_1","rev-a")]})),
+    );
+    let shown = client
+        .design_attachments(
+            "project_a",
+            &Command::Show {
+                attachment: "file_one".into(),
+                archived: true,
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(shown["attachment"]["latest_revision_id"], "rev_2");
+    assert_eq!(shown["revisions"].as_array().unwrap().len(), 2);
+    assert_eq!(shown["truncated"], false);
+    assert_eq!(
+        attachment_bodies(&transport).last().unwrap(),
+        &json!({"action":"get","project_id":"project_a","attachment_id":"file_one","include_archived":true})
+    );
+    // A revision that belongs to another file is not this file's history.
+    let mut foreign = attachment_revision("rev_9", "rev-a");
+    foreign["attachment_id"] = json!("file_two");
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(json!({"attachment":attachment_head(3,"rev_2"),"revisions":[foreign]})),
+    );
+    assert_eq!(
+        client
+            .design_attachments(
+                "project_a",
+                &Command::Show {
+                    attachment: "file_one".into(),
+                    archived: false,
+                },
+                NOW + 1,
+            )
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+
+    // list-project: one bounded page, its continuation reported, never silent.
+    let mut other = attachment_head(1, "rev_x");
+    other["attachment_id"] = json!("file_two");
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(
+            json!({"attachments":[{"attachment":attachment_head(3,"rev_2")},{"attachment":other}],
+            "has_more":true,"limit":2,"next_cursor":"cursor-2"}),
+        ),
+    );
+    let page = client
+        .design_attachments(
+            "project_a",
+            &Command::ListProject {
+                archived: false,
+                limit: 2,
+                cursor: Some("cursor-1".into()),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(page["total"], 2);
+    assert_eq!(page["more"], true);
+    assert_eq!(page["next_cursor"], "cursor-2");
+    assert_eq!(page["attachments"][1]["attachment_id"], "file_two");
+    assert_eq!(
+        attachment_bodies(&transport).last().unwrap(),
+        &json!({"action":"list_project","project_id":"project_a","page_size":2,"cursor":"cursor-1","include_archived":false})
+    );
+    // More rows than the page, or "more" with nowhere to continue, is refused.
+    for bad_page in [
+        json!({"attachments":[{"attachment":attachment_head(3,"rev_2")},{"attachment":attachment_head(3,"rev_2")},{"attachment":attachment_head(3,"rev_2")}],"has_more":false,"limit":2}),
+        json!({"attachments":[],"has_more":true,"limit":2}),
+    ] {
+        transport.push_design_attachments(200, &selection_envelope(bad_page));
+        assert_eq!(
+            client
+                .design_attachments(
+                    "project_a",
+                    &Command::ListProject {
+                        archived: false,
+                        limit: 2,
+                        cursor: None,
+                    },
+                    NOW + 1,
+                )
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+    }
+
+    // versions: which model versions carry this file, one row per binding.
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(json!({"object_versions":[
+            {"object":{"kind":"mv_model","id":"line","version_id":"rev-b"},"revision_ids":["rev_2"],"latest_upload":"2026-09-25T00:00:00Z","revision_count":1},
+            {"object":{"kind":"mv_model","id":"line","version_id":"rev-a"},"revision_ids":["rev_1","rev_0"],"latest_upload":"2026-09-20T00:00:00Z","revision_count":2}]})),
+    );
+    let carried = client
+        .design_attachments(
+            "project_a",
+            &Command::Versions {
+                attachment: "file_one".into(),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(carried["total"], 2);
+    assert_eq!(
+        carried["object_versions"][1]["object"]["version_id"],
+        "rev-a"
+    );
+    assert_eq!(
+        attachment_bodies(&transport).last().unwrap(),
+        &json!({"action":"list_object_versions","project_id":"project_a","attachment_id":"file_one"})
+    );
+    // One file stays anchored to one object; a row naming another is refused.
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(json!({"object_versions":[
+            {"object":{"kind":"mv_model","id":"line","version_id":"rev-b"},"revision_ids":["rev_2"],"revision_count":1},
+            {"object":{"kind":"mv_model","id":"other","version_id":"rev-a"},"revision_ids":["rev_1"],"revision_count":1}]})),
+    );
+    assert_eq!(
+        client
+            .design_attachments(
+                "project_a",
+                &Command::Versions {
+                    attachment: "file_one".into(),
+                },
+                NOW + 1,
+            )
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+}
+
+#[test]
+fn set_latest_moves_the_pointer_under_the_fence_it_read_or_was_given() {
+    use ds_client_core::design_attachments::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+
+    // No fence given: the head is read and its version is the fence.
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(json!({"attachment":attachment_head(4,"rev_2")})),
+    );
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(json!({"attachment":attachment_head(5,"rev_1")})),
+    );
+    let moved = client
+        .design_attachments(
+            "project_a",
+            &Command::SetLatest {
+                attachment: "file_one".into(),
+                revision: "rev_1".into(),
+                expected_version: None,
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(moved["latest"], "rev_1");
+    assert_eq!(moved["previous_version"], 4);
+    assert_eq!(moved["version"], 5);
+    let bodies = attachment_bodies(&transport);
+    assert_eq!(bodies[0]["action"], "get");
+    assert_eq!(
+        bodies[1],
+        json!({"action":"set_latest","project_id":"project_a","latest":{"project_id":"project_a","attachment_id":"file_one","revision_id":"rev_1","expected_version":4}})
+    );
+
+    // The caller's fence is sent as given, with no read in between.
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(json!({"attachment":attachment_head(8,"rev_1")})),
+    );
+    client
+        .design_attachments(
+            "project_a",
+            &Command::SetLatest {
+                attachment: "file_one".into(),
+                revision: "rev_1".into(),
+                expected_version: Some(7),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    let bodies = attachment_bodies(&transport);
+    assert_eq!(bodies.len(), 3);
+    assert_eq!(bodies[2]["latest"]["expected_version"], 7);
+
+    // A pointer the answer did not move is not a receipt.
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(json!({"attachment":attachment_head(8,"rev_2")})),
+    );
+    assert_eq!(
+        client
+            .design_attachments(
+                "project_a",
+                &Command::SetLatest {
+                    attachment: "file_one".into(),
+                    revision: "rev_1".into(),
+                    expected_version: Some(7),
+                },
+                NOW + 1,
+            )
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+    // A moved fence is ds-brain's conflict, surfaced once and never retried.
+    transport.push_design_attachments(
+        409,
+        &serde_json::to_vec(&json!({"success":false,"error":{"code":"design_collab_conflict","message":"attachment is at version 9, not 7"}})).unwrap(),
+    );
+    let conflict = client
+        .design_attachments(
+            "project_a",
+            &Command::SetLatest {
+                attachment: "file_one".into(),
+                revision: "rev_1".into(),
+                expected_version: Some(7),
+            },
+            NOW + 1,
+        )
+        .unwrap_err();
+    assert_eq!(conflict.kind(), ErrorKind::InvalidInput);
+    assert_eq!(conflict.service_refusal().unwrap().status(), 409);
+    assert_eq!(attachment_bodies(&transport).len(), 5);
+}
+
+#[test]
+fn publish_declares_media_type_provenance_and_a_backfill_that_leaves_latest_alone() {
+    use ds_client_core::design_attachments::{Command, Object};
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let object = Object {
+        kind: "lv_transformer".into(),
+        id: "kigali_a".into(),
+        version: Some("v2".into()),
+        version_digest: None,
+    };
+    let bytes = b"lv deliverable".to_vec();
+    let digest = format!("{:x}", sha2::Sha256::digest(&bytes));
+    let key = serde_json::to_vec(&(
+        "project_a",
+        json!({"kind":"lv_transformer","id":"kigali_a","version_id":"v2"}),
+        "sheet.pdf",
+        &digest,
+    ))
+    .unwrap();
+    let attachment = format!("att_{:x}", sha2::Sha256::digest(&key));
+    let revision = format!("rev_{:x}", sha2::Sha256::digest(&key));
+    transport.push_design_attachments(200, &selection_envelope(json!({"attachment_id":attachment,"revision_id":revision,
+        "session_uri":"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=issued",
+        "blob_path":format!("design-attachments/v1/projects/project_a/lv_transformer/kigali_a/{attachment}/{revision}/sheet.pdf")})));
+    // A new file back-filled without moving latest has no latest at all.
+    let stored = json!({"project_id":"project_a","attachment_id":attachment,"revision_id":revision,"revision":1,
+        "object":{"kind":"lv_transformer","id":"kigali_a","version_id":"v2"},"file_name":"sheet.pdf",
+        "media_type":"application/pdf","byte_size":bytes.len(),"byte_digest":digest,"storage_generation":3,"readiness":"ready"});
+    transport.push_design_attachments(200, &selection_envelope(json!({"attachment":{"project_id":"project_a","attachment_id":attachment,
+        "object":{"kind":"lv_transformer","id":"kigali_a"},"version":1,"state":"active","latest_revision":0,"revision_count":1},
+        "revisions":[stored]})));
+    let published = client
+        .design_attachments(
+            "project_a",
+            &Command::Publish {
+                object,
+                attachment: None,
+                file: "sheet.pdf".into(),
+                label: None,
+                purpose: Some("client_deliverable".into()),
+                media_type: Some("Application/PDF".into()),
+                source_kind: Some("report".into()),
+                source_reference: Some(" printout batch 7 ".into()),
+                make_latest: false,
+                bytes,
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(published["latest"], false);
+    assert_eq!(published["media_type"], "application/pdf");
+    assert_eq!(published["verified"], true);
+    // A transformer version carries no digest, so nothing was resolved.
+    assert!(transport.0.lock().unwrap().grid_bodies.is_empty());
+    let bodies = attachment_bodies(&transport);
+    let upload = &bodies[0]["upload"];
+    assert_eq!(upload["media_type"], "application/pdf");
+    assert_eq!(
+        upload["source"],
+        json!({"kind":"report","reference":"printout batch 7"})
+    );
+    assert!(
+        upload.get("make_latest").is_none(),
+        "the grant declaration has no pointer choice"
+    );
+    assert!(upload["object"].get("version_digest").is_none());
+    let finalize = &bodies[1]["finalize"];
+    assert_eq!(finalize["make_latest"], false);
+    assert_eq!(finalize["source"], upload["source"]);
+    assert!(
+        finalize.get("expected_version").is_none(),
+        "a new file carries no fence"
+    );
+}
+
+#[test]
+fn an_mv_publish_sends_the_callers_digest_pin_and_refuses_a_foreign_catalogue_answer() {
+    use ds_client_core::design_attachments::{Command, Object};
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let pinned = "d".repeat(64);
+    let publish = |object: Object| Command::Publish {
+        object,
+        attachment: None,
+        file: "delivered.bak".into(),
+        label: None,
+        purpose: Some("native_workspace".into()),
+        media_type: None,
+        source_kind: Some("pls_cadd".into()),
+        source_reference: None,
+        make_latest: true,
+        bytes: b"delivered".to_vec(),
+    };
+    let object = Object {
+        kind: "mv_model".into(),
+        id: "line".into(),
+        version: Some("rev-b".into()),
+        version_digest: Some(pinned.clone()),
+    };
+    let digest = format!("{:x}", sha2::Sha256::digest(b"delivered"));
+    let key = serde_json::to_vec(&(
+        "project_a",
+        json!({"kind":"mv_model","id":"line","version_id":"rev-b"}),
+        "delivered.bak",
+        &digest,
+    ))
+    .unwrap();
+    let attachment = format!("att_{:x}", sha2::Sha256::digest(&key));
+    let revision = format!("rev_{:x}", sha2::Sha256::digest(&key));
+    transport.push_design_attachments(200, &selection_envelope(json!({"attachment_id":attachment,"revision_id":revision,
+        "session_uri":"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=issued",
+        "blob_path":format!("design-attachments/v1/projects/project_a/mv_model/line/{attachment}/{revision}/delivered.bak")})));
+    let stored = json!({"project_id":"project_a","attachment_id":attachment,"revision_id":revision,"revision":1,
+        "object":{"kind":"mv_model","id":"line","version_id":"rev-b","version_digest":pinned},"file_name":"delivered.bak",
+        "media_type":"application/octet-stream","byte_size":9,"byte_digest":digest,"storage_generation":3,"readiness":"ready"});
+    transport.push_design_attachments(200, &selection_envelope(json!({"attachment":{"project_id":"project_a","attachment_id":attachment,
+        "object":{"kind":"mv_model","id":"line"},"version":1,"state":"active","latest_revision_id":revision,"latest_revision":1,"revision_count":1},
+        "revisions":[stored]})));
+    let published = client
+        .design_attachments("project_a", &publish(object.clone()), NOW + 1)
+        .unwrap();
+    assert_eq!(published["object_version"], "rev-b");
+    assert_eq!(published["object_version_digest"], pinned);
+    assert_eq!(published["latest"], true);
+    // The caller's pin is the fence ds-brain compares; nothing re-reads it.
+    assert!(transport.0.lock().unwrap().grid_bodies.is_empty());
+    assert_eq!(
+        attachment_bodies(&transport)[0]["upload"]["object"]["version_digest"],
+        pinned
+    );
+
+    // A catalogue answer about another revision resolves nothing, and no
+    // byte is uploaded against it.
+    push_grid_revision(&transport, "line", "rev-z", &"c".repeat(64));
+    let refused = client
+        .design_attachments(
+            "project_a",
+            &publish(Object {
+                version_digest: None,
+                ..object
+            }),
+            NOW + 1,
+        )
+        .unwrap_err();
+    assert_eq!(refused.kind(), ErrorKind::UnreadableResponse);
+    assert_eq!(attachment_bodies(&transport).len(), 2);
+    assert_eq!(
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .calls
+            .iter()
+            .filter(|call| call.starts_with("attachment_upload"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn an_attachment_fetch_verifies_size_and_digest_and_spends_its_locator() {
+    use ds_client_core::design_attachments::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let body = b"hello".to_vec();
+    let digest = format!("{:x}", sha2::Sha256::digest(&body));
+    let authorized = |url: &str| {
+        let mut revision = attachment_revision("rev_1", "rev-a");
+        revision["byte_digest"] = json!(digest);
+        selection_envelope(
+            json!({"attachment":attachment_head(3,"rev_1"),"revision":revision,
+            "download_url":url,"expires_at":"2026-09-25T10:15:00Z"}),
+        )
+    };
+    let pinned = "https://storage.googleapis.com/bucket/design-attachments/v1/x?generation=9&X-Goog-Signature=abc";
+    transport.push_design_attachments(200, &authorized(pinned));
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .attachment_bytes
+        .push_back(TransportResponse::new(200, body.clone()));
+    let (receipt, bytes) = client
+        .design_attachment_bytes("project_a", "file_one", Some("rev_1"), NOW + 1)
+        .unwrap();
+    assert_eq!(bytes, body);
+    assert_eq!(receipt["verified"], true);
+    assert_eq!(receipt["digest"], digest);
+    assert!(
+        receipt.get("url").is_none(),
+        "the signed locator never leaves the owner"
+    );
+    assert!(transport
+        .0
+        .lock()
+        .unwrap()
+        .calls
+        .iter()
+        .any(|call| call == &format!("attachment_bytes url={pinned} limit=5")));
+
+    // Changed bytes and short bytes are both refused.
+    for served in [b"hellO".to_vec(), b"hell".to_vec()] {
+        transport.push_design_attachments(200, &authorized(pinned));
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .attachment_bytes
+            .push_back(TransportResponse::new(200, served));
+        assert_eq!(
+            client
+                .design_attachment_bytes("project_a", "file_one", Some("rev_1"), NOW + 1)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+    }
+    // A locator not pinned to the verified generation is refused before a
+    // byte is fetched.
+    transport.push_design_attachments(
+        200,
+        &authorized("https://storage.googleapis.com/bucket/design-attachments/v1/x?generation=8"),
+    );
+    assert!(client
+        .design_attachment_bytes("project_a", "file_one", Some("rev_1"), NOW + 1)
+        .is_err());
+    assert_eq!(
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .calls
+            .iter()
+            .filter(|call| call.starts_with("attachment_bytes"))
+            .count(),
+        3
+    );
+    // An unreadable id is refused before any request.
+    assert_eq!(
+        client
+            .design_attachments(
+                "project_a",
+                &Command::Download {
+                    attachment: "a/b".into(),
+                    revision: None,
+                },
+                NOW + 1,
+            )
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidInput
+    );
+}
+
+#[test]
+fn retire_carries_its_reason_to_the_audit() {
+    use ds_client_core::design_attachments::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    transport.push_design_attachments(
+        200,
+        &selection_envelope(json!({"attachment":attachment_head(3,"rev_1")})),
+    );
+    let mut retired = attachment_head(4, "rev_1");
+    retired["state"] = json!("archived");
+    transport.push_design_attachments(200, &selection_envelope(json!({"attachment":retired})));
+    let receipt = client
+        .design_attachments(
+            "project_a",
+            &Command::Retire {
+                attachment: "file_one".into(),
+                revision: None,
+                restore: false,
+                reason: Some(" superseded by the v2 submission ".into()),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(receipt["state"], "archived");
+    let bodies = attachment_bodies(&transport);
+    assert_eq!(
+        bodies[1]["archive"],
+        json!({"project_id":"project_a","attachment_id":"file_one","expected_version":3,"restore":false,"reason":"superseded by the v2 submission"})
+    );
 }

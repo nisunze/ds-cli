@@ -2954,6 +2954,14 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    /// One design attachment revision's bytes through its server-signed,
+    /// generation-pinned read. No credential is sent to Storage.
+    fn design_attachment_bytes(
+        &mut self,
+        _call: crate::design_attachments::DownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
 
     fn solar_reference(
         &mut self,
@@ -3249,6 +3257,14 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    /// One design attachment revision's bytes through its server-signed,
+    /// generation-pinned read. No credential is sent to Storage.
+    fn design_attachment_bytes(
+        &mut self,
+        _call: crate::design_attachments::DownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
 
     fn solar_reference(
         &mut self,
@@ -3521,6 +3537,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: crate::grid_models::DownloadCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::grid_model_bytes(self, call)
+    }
+    fn design_attachment_bytes(
+        &mut self,
+        call: crate::design_attachments::DownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::design_attachment_bytes(self, call)
     }
 
     fn solar_reference(
