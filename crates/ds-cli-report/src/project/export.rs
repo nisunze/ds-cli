@@ -1350,6 +1350,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         },
         lane,
         concurrency: plan.concurrency,
+        media_grant: None,
     };
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
         let (context, server_version) = fetch_room(name).map_err(failure_to_host)?;
@@ -1434,6 +1435,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             selection: None,
             print_context,
             sheet,
+            survey: None,
         })
     };
     let outcome = run_batch(&CliEngine, &settings, &plan.names, fetch).map_err(host_failure)?;
