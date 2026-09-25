@@ -45,6 +45,7 @@ fn decode(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, String> 
     let format = request.format;
     match format {
         Format::Md => text::markdown(bytes, request),
+        Format::Html => Err("HTML is rendered only in a sandboxed attachment viewer; the kernel does not execute or decode it".into()),
         Format::Txt => text::plain(bytes, request),
         Format::Csv | Format::Tsv => tabular::delimited(bytes, request),
         Format::Xlsx => xlsx::workbook(bytes, request),

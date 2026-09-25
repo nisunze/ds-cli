@@ -70,7 +70,7 @@ pub fn kind_of(format: Format) -> Kind {
         Format::Pdf | Format::Docx | Format::Doc | Format::Odt | Format::Rtf => Kind::Doc,
         Format::Xlsx | Format::Xls | Format::Ods | Format::Csv | Format::Tsv => Kind::Sheet,
         Format::Eml | Format::Msg => Kind::Mail,
-        Format::Md | Format::Txt => Kind::Note,
+        Format::Md | Format::Html | Format::Txt => Kind::Note,
         Format::Shp | Format::Kmz | Format::Kml | Format::Gpkg | Format::Geojson => Kind::Geo,
         Format::Jpg | Format::Png | Format::Webp | Format::Tif => Kind::Image,
         Format::Zip | Format::SevenZ | Format::TarGz => Kind::Pack,
@@ -100,7 +100,8 @@ pub fn previewable(format: Format) -> bool {
         | Format::Png
         | Format::Webp
         | Format::Tif => true,
-        Format::Doc
+        Format::Html
+        | Format::Doc
         | Format::Rtf
         | Format::Xls
         | Format::Odt
@@ -123,7 +124,7 @@ pub fn format_cap_bytes(format: Format) -> u64 {
         Format::Xlsx | Format::Xls | Format::Ods => MAX_WORKBOOK_BYTES,
         Format::Csv | Format::Tsv => MAX_DELIMITED_BYTES,
         Format::Eml | Format::Msg => MAX_MAIL_BYTES,
-        Format::Md | Format::Txt => MAX_TEXT_BYTES,
+        Format::Md | Format::Html | Format::Txt => MAX_TEXT_BYTES,
         Format::Jpg | Format::Png | Format::Webp | Format::Tif => MAX_IMAGE_BYTES,
         Format::Shp | Format::Kmz | Format::Kml | Format::Gpkg | Format::Geojson => MAX_GEO_BYTES,
         Format::Zip | Format::SevenZ | Format::TarGz | Format::Dsgrid | Format::Unknown => {
@@ -139,6 +140,9 @@ fn preview_note(format: Format) -> Option<&'static str> {
     Some(match format {
         Format::Pdf => {
             "pdf is rendered by pdf.js in the host (decision D8); the kernel recognises and bounds it"
+        }
+        Format::Html => {
+            "HTML is rendered only in a sandboxed attachment viewer; the kernel does not execute or decode it"
         }
         Format::Msg => {
             "msg is recognised as mail by its OLE compound-file magic; its decoder is slice 2"
@@ -234,6 +238,7 @@ fn claimed_format(suffix: &str) -> Option<Format> {
         "eml" => Format::Eml,
         "msg" => Format::Msg,
         "md" | "markdown" => Format::Md,
+        "html" | "htm" => Format::Html,
         "txt" | "text" | "log" => Format::Txt,
         "shp" => Format::Shp,
         "kmz" => Format::Kmz,
@@ -634,6 +639,9 @@ fn sniff_text(hint: &NameHint, text: &str) -> (Format, Vec<String>) {
         return (Format::Geojson, Vec::new());
     }
     if trimmed.starts_with('<') {
+        if is_html(trimmed) {
+            return (Format::Html, Vec::new());
+        }
         if is_kml(trimmed) {
             return (Format::Kml, Vec::new());
         }
@@ -683,6 +691,11 @@ fn is_geojson(text: &str) -> bool {
             && (text.contains("\"Feature\"")
                 || text.contains("\"coordinates\"")
                 || text.contains("\"geometry\"")))
+}
+
+fn is_html(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.starts_with("<!doctype html") || lower.starts_with("<html")
 }
 
 fn is_kml(text: &str) -> bool {
@@ -806,6 +819,7 @@ fn describe_signature(format: Format) -> &'static str {
         Format::Tsv => "tab-separated text",
         Format::Eml => "an RFC 5322 message",
         Format::Md => "markdown text",
+        Format::Html => "HTML document",
         Format::Txt => "plain text",
         Format::Shp => "a shapefile header",
         Format::Kmz | Format::Zip | Format::Dsgrid => "a ZIP archive",
@@ -835,6 +849,7 @@ fn expected_signature(format: Format) -> &'static str {
         Format::Csv
         | Format::Tsv
         | Format::Md
+        | Format::Html
         | Format::Txt
         | Format::Kml
         | Format::Geojson
@@ -905,6 +920,25 @@ mod tests {
 
     fn reason(recognition: &Recognition) -> String {
         recognition.reason.clone().unwrap_or_default()
+    }
+
+    #[test]
+    fn html_needs_html_document_bytes_and_is_not_a_kernel_preview() {
+        let html = seen(
+            Some("report.html"),
+            b"<!doctype html><html><head></head><body>Report</body></html>",
+        );
+        assert_eq!(html.format, Format::Html);
+        assert_eq!(html.kind, Kind::Note);
+        assert!(!html.previewable);
+        assert_eq!(
+            seen(Some("report.html"), b"<root>XML</root>").format,
+            Format::Txt
+        );
+        assert_eq!(
+            seen(Some("report.txt"), b"<html><body>Report</body></html>").format,
+            Format::Html
+        );
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
