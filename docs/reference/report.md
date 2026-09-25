@@ -864,19 +864,21 @@ source sheet numbers. With `--model-crs`, the manifest also gives each sheet's
 WGS84 route bounds.
 
 `report.project.map-inputs --project <id>` captures the named project's active LV
-overview and complete promoted MV geometry through native fenced reads. Add
+lines, poles, service cables, customers and transformers, plus complete promoted
+MV geometry, through native fenced reads. Add
 `--mv-model <absolute.dsgrid>` for one local draft. An authored layout selects
 geographic context; any governed `_print` refs absent from the selected setups'
 sealed style sheet are completed from the same style catalogue as local layout
 proofs. `--seed` explicitly acquires missing coverage. For an MV
 plan/profile sheet, pass `--focus-bounds west,south,east,north` from that sheet's
-`plan_route_bounds_wgs84` manifest entry. The geographic context is then read
-around that page's route rather than the full project's bounding rectangle.
+`plan_route_bounds_wgs84` manifest entry. Geographic context is read around
+that page's route and emitted design vectors are limited to the sheet area
+plus a 0.002-degree margin. Crossing lines retain their original geometry.
 For a district or custom area map, pass `--area-bounds west,south,east,north`
 from an exact authority polygon or reviewed viewport. Each axis may cover up
 to 0.5 degrees. This bounds context acquisition **and** sets the printed map
-extent; the full project design remains in the pinned source capture and is
-clipped by the map viewport. The command reports `area_bounds` and
+extent; design vectors outside that area and its 0.002-degree margin are omitted
+from the emitted capture. The command reports `area_bounds` and
 `render_extent` for review. `--area-bounds` and `--focus-bounds` are mutually
 exclusive. Leave both off for an overview fitted to the complete project.
 Read its omissions before passing the emitted request to `report.layout.render`.

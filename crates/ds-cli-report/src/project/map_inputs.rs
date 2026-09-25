@@ -14,7 +14,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "map-inputs"],
     contract: 1,
     summary: "Prepare a district MV overview for headless PDF/PNG printing.",
-    purpose: "Reads all active LV transformers and exact current MV models, preserving revisions and geometry. Includes new LV lines, poles, service cables and customers with their saved print styles. Applies an authored layout to held geographic context and writes a replayable report.layout.render request. No design writes or publication. --seed explicitly acquires missing context. Missing context is named in the receipt; inspect it before rendering.",
+    purpose: "Reads all active LV transformers and exact current MV models, preserving revisions and geometry. Includes new LV lines, poles, service cables and customers with their saved print styles. --focus-bounds or --area-bounds keeps the emitted design vectors near that map area without straightening crossing lines. Applies an authored layout to held geographic context and writes a replayable report.layout.render request. No design writes or publication. --seed explicitly acquires missing context. Missing context is named in the receipt; inspect it before rendering.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -34,12 +34,12 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "focus-bounds",
             "<west,south,east,north>",
-            "Optional WGS84 plan-page bounds (up to 0.05 degrees) for acquiring context around one MV sheet; does not change the printed extent.",
+            "Optional WGS84 plan-page bounds (up to 0.05 degrees) for acquiring context and retaining design vectors around one MV sheet; does not change the printed extent.",
         ),
         Arg::value(
             "area-bounds",
             "<west,south,east,north>",
-            "Optional WGS84 custom or district map rectangle (up to 0.5 degrees); acquires context and sets the printed extent. Cannot be combined with --focus-bounds.",
+            "Optional WGS84 custom or district map rectangle (up to 0.5 degrees); acquires context, retains design vectors in that area and sets the printed extent. Cannot be combined with --focus-bounds.",
         ),
         Arg::value(
             "layout",
@@ -289,7 +289,15 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     context.warnings.extend(boundary_context.warnings);
     std::fs::create_dir_all(&out).map_err(invalid)?;
     let out = out.canonicalize().map_err(invalid)?;
-    let render = json!({"schema":"ds.print-layout-export/v1","render":{"layout":layout,"layers":sources.vectors(),"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
+    let render_layers = if let Some([w, s, e, n]) = focus_bounds.or(area_bounds) {
+        let margin = 0.002;
+        sources
+            .vectors_in_area([w - margin, s - margin, e + margin, n + margin])
+            .map_err(invalid)?
+    } else {
+        sources.vectors()
+    };
+    let render = json!({"schema":"ds.print-layout-export/v1","render":{"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
     let path = out.join("render-request.json");
     let data = serde_json::to_vec(&render).map_err(invalid)?;
     std::fs::OpenOptions::new()
