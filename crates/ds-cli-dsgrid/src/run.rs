@@ -144,7 +144,7 @@ descriptor identity, a typed bounded result, staged:false and persisted:false. \
         },
         Refusal {
             code: "invalid_limit",
-            when: "--limit is not a whole number in 1..5000",
+            when: "--limit is not a whole number in 1..10000",
             remedy: "pass a limit inside the range, or omit it for the default of 50",
         },
     ],
@@ -213,7 +213,18 @@ struct RequestParams<T> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let raw_path = inputs.require("model")?;
     let operation_id = inputs.require("operation")?;
-    let limit = package::parse_limit(inputs.value("limit"))?;
+    // Read-only projections may contain more than 5,000 rows even for one
+    // ordinary MV model. Keep this ceiling local to run; mutation/list bounds
+    // retain their smaller contract.
+    let limit = match inputs.value("limit").unwrap_or("50").parse::<usize>() {
+        Ok(value @ 1..=10_000) => value,
+        _ => {
+            return Err(Failure::invalid(
+                "invalid_limit",
+                "--limit must be 1..10000",
+            ));
+        }
+    };
     let descriptor = operation_descriptor(operation_id)?;
     admit(&descriptor)?;
     let params = read_params(inputs.value("params"))?;
