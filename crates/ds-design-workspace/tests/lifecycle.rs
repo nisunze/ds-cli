@@ -238,3 +238,30 @@ fn headless_revision_comparison_is_read_only_scoped_and_bounded() {
     assert_eq!(next["more"], false);
     assert_ne!(page["revisions"][0], next["revisions"][0]);
 }
+
+/// A Design workspace is the user's private offline data: the directory is
+/// 0700 and the database 0600, and one from before the rule is tightened on open.
+#[cfg(unix)]
+#[test]
+fn a_workspace_is_private_to_its_account() {
+    use std::os::unix::fs::PermissionsExt;
+    let mode =
+        |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("private");
+    Workspace::init(&root, "p").unwrap();
+    assert_eq!(mode(&root), 0o700);
+    assert_eq!(mode(&root.join("design.sqlite")), 0o600);
+    drop(Workspace::open(&root).unwrap());
+    for entry in std::fs::read_dir(&root).unwrap() {
+        let path = entry.unwrap().path();
+        assert_eq!(mode(&path), 0o600, "{}", path.display());
+    }
+
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o775)).unwrap();
+    let database = root.join("design.sqlite");
+    std::fs::set_permissions(&database, std::fs::Permissions::from_mode(0o644)).unwrap();
+    drop(Workspace::open(&root).unwrap());
+    assert_eq!(mode(&root), 0o700);
+    assert_eq!(mode(&database), 0o600);
+}

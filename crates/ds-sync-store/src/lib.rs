@@ -118,13 +118,56 @@ fn scope_key(scope: &Scope) -> String {
     }
 }
 
+/// The store holds signed work grants and queued user data, so its directory
+/// is created `0700` and the database file is `0600` before SQLite opens it
+/// (SQLite creates `-wal`/`-shm` with the database's mode; ones left from
+/// before are tightened, best effort — a volume without unix modes refuses
+/// `chmod` and must not stop the store opening). Owner rule:
+/// `ds_layer_store::private`, applied inline because this crate does not
+/// depend on it. Unix only.
+fn prepare_private(path: &Path) -> std::io::Result<()> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+        if let Some(parent) = parent {
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(parent)?;
+        }
+        let private = std::fs::Permissions::from_mode(0o600);
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .mode(0o600)
+            .open(path)?;
+        let _ = file.set_permissions(private.clone());
+        for suffix in ["-wal", "-shm", "-journal"] {
+            let mut sidecar = path.as_os_str().to_owned();
+            sidecar.push(suffix);
+            match std::fs::symlink_metadata(&sidecar) {
+                Ok(meta) if meta.is_file() && meta.permissions().mode() & 0o077 != 0 => {
+                    let _ = std::fs::set_permissions(&sidecar, private.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    if let Some(parent) = parent {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(())
+}
+
 impl Store {
     /// Open (or create) the store at `path`. A newer schema on disk is
     /// refused, never rewritten.
     pub fn open(path: &Path) -> Result<Self> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| Error::Open(error.to_string()))?;
-        }
+        prepare_private(path).map_err(|error| Error::Open(error.to_string()))?;
         let connection = Connection::open(path).map_err(|error| Error::Open(error.to_string()))?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.pragma_update(None, "journal_mode", "WAL")?;

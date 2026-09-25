@@ -104,11 +104,24 @@ pub(crate) fn execute(
         let compute = async {
             let tools = Tools::resolve(&resources, &cancel).await?;
             let runtime = Runtime::new(state.join("tile-cache"), tools)?;
+            // The layers are project data in the Server's state directory:
+            // the scratch is 0700 and each file 0600 (owner rule
+            // `ds_layer_store::private`, inline: no dependency on it here).
             let work = tempfile::tempdir_in(state)?;
             let mut layers = BTreeMap::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ =
+                    std::fs::set_permissions(work.path(), std::fs::Permissions::from_mode(0o700));
+            }
             for (name, bytes) in &request.layers {
                 let path = work.path().join(format!("{name}.geojsonl"));
-                std::fs::write(&path, bytes)?;
+                let mut options = std::fs::OpenOptions::new();
+                options.write(true).create(true).truncate(true);
+                #[cfg(unix)]
+                std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+                std::io::Write::write_all(&mut options.open(&path)?, AsRef::<[u8]>::as_ref(bytes))?;
                 layers.insert(name.clone(), path);
             }
             let result = runtime

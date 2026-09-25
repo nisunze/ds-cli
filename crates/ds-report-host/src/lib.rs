@@ -289,6 +289,21 @@ fn staging_failed(message: impl Into<String>) -> HostFailure {
     HostFailure::new(CODE_STAGING_FAILED, message)
 }
 
+/// The staging root is DS-owned scratch and private (`0700`). Its parent is
+/// the host's — it may be the user's `--out-dir` — so it keeps ordinary modes.
+pub(crate) fn create_staging_root(path: &Path) -> Result<(), HostFailure> {
+    let failed = |error: std::io::Error| {
+        staging_failed(format!("could not create {}: {error}", path.display()))
+    };
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(failed)?;
+    }
+    ds_project_data::private::create_dir_all(path).map_err(failed)
+}
+
 fn create_private_dir(path: &Path) -> Result<(), HostFailure> {
     let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
@@ -614,12 +629,7 @@ pub fn run_transformer_report_with(
     }
 
     let client_run_id = random_run_id();
-    fs::create_dir_all(settings.staging_root).map_err(|error| {
-        staging_failed(format!(
-            "could not create {}: {error}",
-            settings.staging_root.display()
-        ))
-    })?;
+    create_staging_root(settings.staging_root)?;
     let staging = Staging {
         path: settings.staging_root.join(&client_run_id),
     };
@@ -1441,6 +1451,13 @@ pub(crate) mod tests {
         ));
         // Staging is gone; only the placed report remains.
         assert!(fs::read_dir(&staging).unwrap().next().is_none());
+        // The staging root is DS-owned scratch and private (owner rule).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&staging).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o700);
+        }
         let mut names: Vec<_> = fs::read_dir(out.join("tx_a"))
             .unwrap()
             .map(|e| e.unwrap().file_name().into_string().unwrap())

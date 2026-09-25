@@ -47,6 +47,40 @@ pub(crate) fn invalid(e: impl ToString) -> Error {
     Error::Invalid(e.to_string())
 }
 
+// A workspace is the user's private offline Design data: its directory is
+// 0700 and the files DS keeps in it 0600 (SQLite creates -journal/-wal with
+// the database's mode). Owner rule: `ds_layer_store::private`, applied inline
+// because this crate does not depend on it. Unix only.
+pub(crate) fn private_options() -> OpenOptions {
+    #[allow(unused_mut)]
+    let mut options = OpenOptions::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+}
+
+/// `mode` on one workspace entry, never through a link; absent is fine.
+fn private(path: &Path, mode: u32) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = match fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        if !metadata.file_type().is_symlink() && metadata.permissions().mode() & 0o777 != mode {
+            fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = (path, mode);
+    Ok(())
+}
+
 pub struct Workspace {
     root: PathBuf,
     db: Connection,
@@ -62,7 +96,15 @@ impl Workspace {
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
         let stage = tempfile::tempdir_in(parent)?;
-        let db = Connection::open(stage.path().join("design.sqlite"))?;
+        let _ = private(stage.path(), 0o700);
+        let database = stage.path().join("design.sqlite");
+        drop(
+            private_options()
+                .write(true)
+                .create_new(true)
+                .open(&database)?,
+        );
+        let db = Connection::open(&database)?;
         db.execute_batch("PRAGMA synchronous=FULL;
             CREATE TABLE meta(project TEXT NOT NULL, schema_version INTEGER NOT NULL);
             CREATE TABLE revisions(revision TEXT PRIMARY KEY, transformer TEXT NOT NULL, document BLOB NOT NULL);
@@ -90,6 +132,18 @@ impl Workspace {
         let root = fs::canonicalize(root)?;
         let path = root.join("design.sqlite");
         regular(&path)?;
+        // A workspace from before the privacy rule is tightened when opened;
+        // best effort, so a volume without unix modes still opens.
+        let _ = private(&root, 0o700);
+        for name in [
+            "design.sqlite",
+            "design.sqlite-journal",
+            "design.sqlite-wal",
+            "design.sqlite-shm",
+            "compute.lock",
+        ] {
+            let _ = private(&root.join(name), 0o600);
+        }
         let db = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;")?;

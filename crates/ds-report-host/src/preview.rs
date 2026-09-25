@@ -253,12 +253,7 @@ pub fn transformer_page(
 
     // The page root is private scratch of its own; the run's staging lives
     // beside it and goes with the run, the page root goes with this guard.
-    fs::create_dir_all(settings.staging_root).map_err(|error| {
-        crate::staging_failed(format!(
-            "could not create {}: {error}",
-            settings.staging_root.display()
-        ))
-    })?;
+    crate::create_staging_root(settings.staging_root)?;
     let page_root = Staging {
         path: settings
             .staging_root

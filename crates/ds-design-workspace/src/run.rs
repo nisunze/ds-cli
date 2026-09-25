@@ -128,7 +128,7 @@ impl Workspace {
         if lock_path.symlink_metadata().is_ok() {
             regular(&lock_path)?;
         }
-        let lock = OpenOptions::new()
+        let lock = private_options()
             .create(true)
             .truncate(false)
             .read(true)

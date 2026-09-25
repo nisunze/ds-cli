@@ -30,6 +30,68 @@ pub const TOOLCHAIN: &str = include_str!("../toolchain.json");
 const MAX_INPUT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_RECORD_BYTES: usize = 16 * 1024 * 1024;
 
+// Tile archives are built from project data, so the cache is private: its
+// directories 0700 and its files 0600. Owner rule: `ds_layer_store::private`,
+// applied inline because this crate has no DS dependency. Unix only; a mode
+// change to an existing entry is best effort (a volume without unix modes
+// refuses chmod, and that never fails a build).
+fn private_dir_all(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)?;
+        let _ = set_private(path, 0o700);
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(path)
+    }
+}
+
+fn private_options() -> OpenOptions {
+    #[allow(unused_mut)]
+    let mut options = OpenOptions::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+}
+
+fn private_create(path: &Path) -> std::io::Result<File> {
+    let file = private_options()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = file.set_permissions(std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(file)
+}
+
+/// `mode` on one entry this crate made, never through a link.
+fn set_private(path: &Path, mode: u32) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = std::fs::symlink_metadata(path)?;
+        if !metadata.file_type().is_symlink() && metadata.permissions().mode() & 0o777 != mode {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = (path, mode);
+    Ok(())
+}
+
 #[derive(Clone, Default)]
 pub struct Cancel(Arc<AtomicBool>);
 impl Cancel {
@@ -251,7 +313,7 @@ impl Runtime {
         if !root.is_absolute() {
             bail!("tile cache root must be absolute");
         }
-        std::fs::create_dir_all(&root)?;
+        private_dir_all(&root)?;
         Ok(Self { root, tools })
     }
     /// Snapshot first, hash what will actually execute, then serialize identical
@@ -260,6 +322,7 @@ impl Runtime {
         validate_request(request)?;
         cancel.check()?;
         let work = TempDir::new_in(&self.root)?;
+        let _ = set_private(work.path(), 0o700);
         let (layers, digests, features) = snapshot(request, work.path(), cancel)?;
         let key = digest(&serde_json::to_vec(&json!({
             "schema": "ds.tiles.cache/v1", "scope": request.scope,
@@ -268,8 +331,8 @@ impl Runtime {
             "implementation": digest(concat!(include_str!("lib.rs"), include_str!("archive.rs")).as_bytes())
         }))?);
         let entry = self.root.join(&key);
-        std::fs::create_dir_all(&entry)?;
-        let lock = OpenOptions::new()
+        private_dir_all(&entry)?;
+        let lock = private_options()
             .create(true)
             .truncate(false)
             .read(true)
@@ -341,10 +404,12 @@ impl Runtime {
         // Both renames are inside one filesystem and under the key lock. A
         // crash between them is rejected by digest validation on the next read.
         let staged_receipt = work.path().join("receipt.json");
-        let mut file = File::create(&staged_receipt)?;
+        let mut file = private_create(&staged_receipt)?;
         file.write_all(&serde_json::to_vec(&receipt)?)?;
         file.sync_all()?;
         File::open(&archive_path)?.sync_all()?;
+        // The external converter wrote the archive with its own mode.
+        let _ = set_private(&archive_path, 0o600);
         std::fs::rename(&archive_path, &path)?;
         std::fs::rename(&staged_receipt, &receipt_path)?;
         self.trim_cache(2 * 1024 * 1024 * 1024)?;
@@ -455,7 +520,7 @@ fn snapshot(
             bail!("tile source must be a regular file");
         }
         let path = root.join(format!("{name}.geojsonl"));
-        let mut writer = File::create(&path)?;
+        let mut writer = private_create(&path)?;
         let mut hash = Sha256::new();
         let mut record = Vec::new();
         let mut buf = [0u8; 64 * 1024];
@@ -610,6 +675,36 @@ mod tests {
         assert_eq!(value["geometry"]["coordinates"][0], 29.8);
         assert_eq!(value["properties"]["cable"], "3x50");
         assert_eq!(value["id"], "pole-01");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn the_tile_cache_and_its_snapshots_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let work = TempDir::new().unwrap();
+        let root = work.path().join("state").join("tile-cache");
+        let tools = Tools {
+            tippecanoe: "tippecanoe".into(),
+            pmtiles: "pmtiles".into(),
+            identity: String::new(),
+        };
+        Runtime::new(root.clone(), tools).unwrap();
+        assert_eq!(mode(&root), 0o700);
+        assert_eq!(mode(root.parent().unwrap()), 0o700);
+        // A cache from before the rule is tightened when it is opened again.
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o775)).unwrap();
+        let tools = Tools {
+            tippecanoe: "tippecanoe".into(),
+            pmtiles: "pmtiles".into(),
+            identity: String::new(),
+        };
+        Runtime::new(root.clone(), tools).unwrap();
+        assert_eq!(mode(&root), 0o700);
+
+        let original = work.path().join("input.geojsonl");
+        std::fs::write(&original, feature(29.8)).unwrap();
+        let (layers, _, _) = snapshot(&request(original), &root, &Cancel::default()).unwrap();
+        assert_eq!(mode(&layers["poles"]), 0o600);
     }
     #[test]
     fn corrupt_sources_never_become_an_authoritative_empty_result() {

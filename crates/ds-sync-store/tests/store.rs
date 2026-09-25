@@ -502,3 +502,38 @@ fn invariant_5_a_store_fenced_by_account_deployment_and_install_shows_another_fe
     assert_eq!(mine_again.artifacts[0].state, ArtifactState::Published);
     assert_eq!(mine_again.lease.unwrap().worker_id, "w");
 }
+
+/// Signed work grants live here: the directory is 0700 and the database and
+/// its WAL sidecars 0600, and a store from before the rule is tightened on open.
+#[cfg(unix)]
+#[test]
+fn the_store_and_its_directory_are_private_to_the_account() {
+    use std::os::unix::fs::PermissionsExt;
+    let mode =
+        |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sync").join("store.sqlite");
+    let mut store = Store::open(&path).unwrap();
+    store
+        .apply(
+            &fence("alice"),
+            10,
+            Event::LocalProduced {
+                row: row("a", "k1"),
+            },
+        )
+        .unwrap();
+    assert_eq!(mode(&dir.path().join("sync")), 0o700);
+    assert_eq!(mode(&path), 0o600);
+    for sidecar in ["store.sqlite-wal", "store.sqlite-shm"] {
+        let sidecar = dir.path().join("sync").join(sidecar);
+        assert!(sidecar.exists(), "WAL mode keeps {}", sidecar.display());
+        assert_eq!(mode(&sidecar), 0o600, "{}", sidecar.display());
+    }
+    drop(store);
+
+    let old = std::fs::Permissions::from_mode(0o644);
+    std::fs::set_permissions(&path, old).unwrap();
+    drop(Store::open(&path).unwrap());
+    assert_eq!(mode(&path), 0o600, "an existing store is tightened on open");
+}
