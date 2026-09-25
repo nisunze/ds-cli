@@ -24,7 +24,12 @@ pub fn start_design_project_process(
     {
         return Err(fail());
     }
-    let log = std::fs::OpenOptions::new()
+    // The log sits in the private Design workspace, so it is 0600 (owner rule
+    // `ds_layer_store::private`, inline: this crate does not depend on it).
+    let mut options = std::fs::OpenOptions::new();
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let log = options
         .create(true)
         .append(true)
         .open(workspace.join("worker.log"))

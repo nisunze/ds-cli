@@ -171,7 +171,11 @@ pub fn fetch(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )
         }
     };
-    std::fs::create_dir_all(&out_dir).map_err(output)?;
+    if held {
+        ds_layer_store::private::create_dir_all(&out_dir).map_err(output)?;
+    } else {
+        std::fs::create_dir_all(&out_dir).map_err(output)?;
+    }
 
     let (mut fetched, mut present, mut failed) = (Vec::new(), Vec::new(), Vec::new());
     let mut missing = Vec::new();
@@ -195,7 +199,7 @@ pub fn fetch(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     let Some((original, file)) = missing.get(index) else {
                         break;
                     };
-                    let outcome = one(grants, original, file, thumbnail);
+                    let outcome = one(grants, original, file, thumbnail, held);
                     outcomes
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -244,6 +248,7 @@ fn one(
     original: &str,
     file: &Path,
     thumbnail: bool,
+    held: bool,
 ) -> (bool, Value) {
     let fetched = if thumbnail {
         ds_cli_auth::survey_thumbnail_bytes(grants, original)
@@ -252,7 +257,7 @@ fn one(
         ds_cli_auth::survey_photo_bytes(grants, original).map(|photo| (photo, false))
     };
     match fetched {
-        Ok((photo, generated)) => match write(file, &photo.bytes) {
+        Ok((photo, generated)) => match write(file, &photo.bytes, held) {
             Ok(()) => (
                 true,
                 json!({
@@ -361,13 +366,25 @@ fn from_file(raw: &str) -> Result<Vec<String>, Failure> {
 }
 
 /// Written beside its final name and renamed into place, so a file that
-/// exists is always a whole photo.
-fn write(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+/// exists is always a whole photo. A held photo is the core's copy of
+/// respondents' media: its directories are 0700 and the file 0600
+/// (`ds_layer_store::private`); a photo written to the user's `--out-dir`
+/// keeps ordinary modes.
+fn write(file: &Path, bytes: &[u8], held: bool) -> std::io::Result<()> {
     if let Some(parent) = file.parent() {
-        std::fs::create_dir_all(parent)?;
+        if held {
+            ds_layer_store::private::create_dir_all(parent)?;
+        } else {
+            std::fs::create_dir_all(parent)?;
+        }
     }
     let partial = file.with_extension("part");
-    let result = std::fs::File::create(&partial)
+    let created = if held {
+        ds_layer_store::private::create_file(&partial)
+    } else {
+        std::fs::File::create(&partial)
+    };
+    let result = created
         .and_then(|mut handle| handle.write_all(bytes).and_then(|()| handle.sync_all()))
         .and_then(|()| std::fs::rename(&partial, file));
     if result.is_err() {
@@ -491,5 +508,32 @@ mod tests {
             "failed":[{"object_path":"projects/p/forms/f/e/x.jpg","code":"survey_photo_not_found","message":"the photo is not stored"}]}));
         assert!(text.contains("3 photos under photos: 1 fetched, 1 already present, 1 failed"));
         assert!(text.contains("FAILED projects/p/forms/f/e/x.jpg  survey_photo_not_found"));
+    }
+
+    /// A held photo is private to the account (owner rule); one the user
+    /// asked for in their own `--out-dir` keeps the platform's ordinary modes.
+    #[cfg(unix)]
+    #[test]
+    fn held_photos_are_private_and_user_output_is_not() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let dir = std::env::temp_dir().join(format!("ds-photo-modes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let held = dir.join("media/projects/p1/forms/f/e1/photo/a.jpg");
+        write(&held, b"jpeg", true).unwrap();
+        assert_eq!(mode(&held), 0o600);
+        for folder in held.ancestors().skip(1).take(6) {
+            assert_eq!(mode(folder), 0o700, "{}", folder.display());
+        }
+        let exported = dir.join("out/a.jpg");
+        write(&exported, b"jpeg", false).unwrap();
+        let control = dir.join("out/control");
+        std::fs::File::create(&control).unwrap();
+        assert_eq!(
+            mode(&exported),
+            mode(&control),
+            "a user export keeps ordinary modes"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

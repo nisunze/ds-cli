@@ -456,7 +456,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":notes_path,"out_dir":out_dir,"sample_pages":scale("sample-pages")?,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":settings});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
-    std::fs::write(&request_path, bytes)
+    ds_layer_store::private::write(&request_path, bytes)
         .map_err(|e| Failure::failed("request_write_failed", e.to_string()))?;
     let args = vec![
         OsString::from("--request"),

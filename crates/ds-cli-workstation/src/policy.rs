@@ -6,6 +6,61 @@ use sha2::{Digest, Sha256};
 
 use crate::detect::{Component, Platform};
 
+// The component root and DS's scratch are DS-owned: directories 0700, files
+// 0600. Owner rule `ds_layer_store::private`, applied inline because this
+// crate does not depend on it. Unix only; an existing directory is tightened
+// best effort.
+pub(crate) fn private_dir_all(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)?;
+        if let Ok(meta) = std::fs::symlink_metadata(path)
+            && meta.is_dir()
+            && meta.permissions().mode() & 0o077 != 0
+        {
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(path)
+    }
+}
+
+/// `fs::create_dir` for a DS-owned directory: exclusive, created 0700.
+pub(crate) fn private_dir(path: &Path) -> std::io::Result<()> {
+    #[allow(unused_mut)]
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(path)
+}
+
+/// `OpenOptions` whose created file is 0600 on unix.
+pub(crate) fn private_options() -> std::fs::OpenOptions {
+    #[allow(unused_mut)]
+    let mut options = std::fs::OpenOptions::new();
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options
+}
+
+/// `fs::write` for a DS-owned file, created 0600.
+pub(crate) fn private_write(path: &Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
+    use std::io::Write;
+    private_options()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)?
+        .write_all(bytes.as_ref())
+}
+
 #[derive(Debug, Deserialize)]
 struct ReferenceReceipt {
     component: String,
@@ -207,7 +262,7 @@ pub fn ensure_install_receipt_slot(platform: Platform, component: &str) -> Resul
     let parent = path
         .parent()
         .ok_or_else(|| "the ownership receipt has no parent directory".to_string())?;
-    std::fs::create_dir_all(parent)
+    private_dir_all(parent)
         .map_err(|error| format!("receipt directory is not writable: {}", error.kind()))?;
     Ok(path)
 }
@@ -220,7 +275,7 @@ pub fn write_install_receipt(path: &Path, receipt: &InstallReceipt) -> Result<()
     if bytes.len() > 8 * 1024 {
         return Err("ownership receipt exceeds 8 KiB".to_string());
     }
-    let mut file = std::fs::OpenOptions::new()
+    let mut file = private_options()
         .create_new(true)
         .write(true)
         .open(path)

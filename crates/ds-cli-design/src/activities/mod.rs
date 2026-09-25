@@ -252,7 +252,21 @@ pub fn state_root(inputs: &ds_cli_contract::Inputs) -> Result<PathBuf, Failure> 
             )
             .remedy(STORE_UNAVAILABLE.remedy)
         })?;
-    Ok(base.join("ds"))
+    let root = base.join("ds");
+    // DS's own state namespace is private (owner rule
+    // `ds_layer_store::private`, inline): one an older build created with
+    // ordinary modes is tightened, best effort and never through a link.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::symlink_metadata(&root)
+            && meta.is_dir()
+            && meta.permissions().mode() & 0o077 != 0
+        {
+            let _ = std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700));
+        }
+    }
+    Ok(root)
 }
 
 /// The kernel's `key` for one capture, as a path under `root`.
@@ -544,9 +558,24 @@ fn create_new_private(path: &Path) -> std::io::Result<std::fs::File> {
         .open(path)
 }
 
-/// The store is the operator's own: owner-only, created as such.
+/// The store is the operator's own: owner-only, created as such — every
+/// directory it creates is 0700 (owner rule `ds_layer_store::private`,
+/// applied inline: this crate does not depend on it). A directory from before
+/// the rule is tightened from `path` back up to the store's root segment,
+/// best effort and never through a link; nothing above that segment is
+/// touched.
 pub fn secure_dir(path: &Path) -> Result<(), Failure> {
-    std::fs::create_dir_all(path).map_err(|error| {
+    #[cfg(unix)]
+    let created = {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)
+    };
+    #[cfg(not(unix))]
+    let created = std::fs::create_dir_all(path);
+    created.map_err(|error| {
         Failure::failed(
             STORE_UNAVAILABLE.code,
             format!("the capture store directory could not be created: {error}"),
@@ -556,7 +585,19 @@ pub fn secure_dir(path: &Path) -> Result<(), Failure> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+        let root = std::ffi::OsStr::new(ds_command_kernel::design_activities_store::ROOT_SEGMENT);
+        let depth = path
+            .ancestors()
+            .position(|dir| dir.file_name() == Some(root))
+            .map_or(1, |index| index + 1);
+        for dir in path.ancestors().take(depth) {
+            match std::fs::symlink_metadata(dir) {
+                Ok(meta) if meta.is_dir() && meta.permissions().mode() & 0o077 != 0 => {
+                    let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+                }
+                _ => {}
+            }
+        }
     }
     Ok(())
 }
@@ -661,5 +702,38 @@ mod tests {
         assert!(!spelled.contains("uid-of-a-real-person"), "{spelled}");
         assert!(spelled.contains("design-activities/canary/"), "{spelled}");
         assert_eq!(key.file_name, "1758000000000.json");
+    }
+
+    /// The capture store is private: a capture's directories are 0700 and the
+    /// file 0600, an intermediate directory from before the rule is tightened
+    /// back to the store's root segment, and nothing above it is touched.
+    #[cfg(unix)]
+    #[test]
+    fn the_capture_store_is_private_and_stops_at_its_root_segment() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let base = std::env::temp_dir().join(format!("ds-activities-modes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let outside = base.join("state");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let store = outside.join("design-activities");
+        let lane = store.join("canary");
+        std::fs::create_dir_all(&lane).unwrap();
+        std::fs::set_permissions(&store, std::fs::Permissions::from_mode(0o775)).unwrap();
+        std::fs::set_permissions(&lane, std::fs::Permissions::from_mode(0o775)).unwrap();
+
+        let capture = lane.join("digest").join("project").join("1.json");
+        atomic_write(&capture, b"{}").unwrap();
+        assert_eq!(mode(&capture), 0o600);
+        for dir in capture.ancestors().skip(1).take(4) {
+            assert_eq!(mode(dir), 0o700, "{}", dir.display());
+        }
+        assert_eq!(
+            mode(&outside),
+            0o755,
+            "above the store's root segment is untouched"
+        );
+        std::fs::remove_dir_all(&base).unwrap();
     }
 }

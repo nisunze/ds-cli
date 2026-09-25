@@ -187,7 +187,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         std::process::id(),
         asset_id.trim_start_matches("a_")
     ));
-    std::fs::write(&staging, &payload).map_err(|error| {
+    ds_layer_store::private::write(&staging, &payload).map_err(|error| {
         Failure::failed(
             "origin_read_failed",
             format!(

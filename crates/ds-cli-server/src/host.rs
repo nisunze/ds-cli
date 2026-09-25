@@ -806,7 +806,12 @@ pub fn prepare_directory(path: &Path) -> Result<(), String> {
             );
         }
     }
-    protected(path, true)
+    protected(path, true)?;
+    // Everything the Server keeps below its protected directory is private
+    // too (owner rule, ds_layer_store::private): an install from before the
+    // rule — store.sqlite, the tile cache, held media — is tightened once.
+    ds_layer_store::private::tighten_root_once(path);
+    Ok(())
 }
 fn protected(path: &Path, directory: bool) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
@@ -2935,5 +2940,26 @@ pub(crate) mod tests {
         assert_eq!(meta.permissions().mode() & 0o777, 0o600);
         assert!(!dir.path().join("connection.json.new").exists());
         assert_eq!(load_connection(dir.path()).unwrap().legacy_address, None);
+    }
+
+    /// The Server's protected directory is private all the way down: state
+    /// written before the owner rule (a 0644 store, a 0755 cache) is
+    /// tightened when the Server prepares the directory.
+    #[cfg(unix)]
+    #[test]
+    fn preparing_the_state_directory_tightens_what_is_already_there() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let dir = tempfile::tempdir().unwrap();
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let cache = dir.path().join("tile-cache");
+        fs::create_dir(&cache).unwrap();
+        fs::set_permissions(&cache, fs::Permissions::from_mode(0o755)).unwrap();
+        let store = dir.path().join("store.sqlite");
+        fs::write(&store, b"").unwrap();
+        fs::set_permissions(&store, fs::Permissions::from_mode(0o644)).unwrap();
+        prepare_directory(dir.path()).unwrap();
+        assert_eq!(mode(&cache), 0o700);
+        assert_eq!(mode(&store), 0o600);
     }
 }

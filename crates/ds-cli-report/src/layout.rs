@@ -1055,9 +1055,12 @@ pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     // the output of report.project.map-inputs itself.
     let raw = bytes(i.require("request")?, 128 * 1024 * 1024)?;
     let scratch = tempfile::tempdir().map_err(invalid)?;
+    // Private per the owner rule: the directory 0700 (the engine writes its
+    // result inside it) and the request 0600.
+    ds_layer_store::private::create_dir_all(scratch.path()).map_err(invalid)?;
     let request = scratch.path().join("request.json");
     let result = scratch.path().join("result.json");
-    std::fs::write(&request, raw).map_err(invalid)?;
+    ds_layer_store::private::write(&request, raw).map_err(invalid)?;
     let completed = crate::DS_REPORT.call(
         "render-print-layout",
         &[

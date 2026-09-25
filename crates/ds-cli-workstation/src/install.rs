@@ -356,7 +356,7 @@ fn install_tiling_tools(platform: Platform, before: &Value) -> Result<Value, Fai
         std::process::id(),
         unix_seconds()
     ));
-    std::fs::create_dir(&staging).map_err(|error| {
+    policy::private_dir(&staging).map_err(|error| {
         cleanup_empty_receipt_parent(&receipt_path);
         Failure::failed(
             "workstation_package_manager_failed",
@@ -365,7 +365,7 @@ fn install_tiling_tools(platform: Platform, before: &Value) -> Result<Value, Fai
         .remedy(PACKAGE_MANAGER_FAILED.remedy)
     })?;
     let installer = staging.join("install-tiling-tools.sh");
-    let staged = std::fs::write(
+    let staged = policy::private_write(
         &installer,
         include_bytes!("../resources/install-tiling-tools.sh"),
     );
@@ -449,7 +449,7 @@ fn acquire_rwanda(platform: Platform, before: &Value) -> Result<Value, Failure> 
         )
         .remedy(DATASET_ACQUISITION_FAILED.remedy)
     })?;
-    std::fs::create_dir_all(&root).map_err(|error| dataset_failure("component root", error))?;
+    policy::private_dir_all(&root).map_err(|error| dataset_failure("component root", error))?;
     let destination = root.join("rwanda-reference");
     if destination.exists() {
         return Err(Failure::conflict(
@@ -466,7 +466,7 @@ fn acquire_rwanda(platform: Platform, before: &Value) -> Result<Value, Failure> 
         std::process::id(),
         unix_seconds()
     ));
-    std::fs::create_dir(&staging).map_err(|error| dataset_failure("staging directory", error))?;
+    policy::private_dir(&staging).map_err(|error| dataset_failure("staging directory", error))?;
     let data_path = staging.join("villages.geojson");
     let acquisition = download_rwanda_geojson(&data_path);
     let feature_count = match acquisition {
@@ -493,8 +493,8 @@ fn acquire_rwanda(platform: Platform, before: &Value) -> Result<Value, Failure> 
         "task_owned": true,
         "files": [{"path": "villages.geojson", "sha256": digest}],
     });
-    std::fs::write(
-        staging.join("receipt.json"),
+    policy::private_write(
+        &staging.join("receipt.json"),
         serde_json::to_vec_pretty(&receipt).expect("bounded receipt encodes"),
     )
     .map_err(|error| {
@@ -594,7 +594,7 @@ fn download_rwanda_geojson(path: &Path) -> Result<usize, String> {
             let document = json!({"type": "FeatureCollection", "features": features});
             let bytes = serde_json::to_vec(&document)
                 .map_err(|error| format!("GeoJSON could not be encoded: {error}"))?;
-            std::fs::write(path, bytes)
+            policy::private_write(path, bytes)
                 .map_err(|error| format!("GeoJSON could not be persisted: {}", error.kind()))?;
             return Ok(document["features"].as_array().map_or(0, Vec::len));
         }

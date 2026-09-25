@@ -144,11 +144,11 @@ pub(crate) fn libreoffice_smoke(executable: &Path) -> Result<Value, String> {
         "ds-workstation-libreoffice-smoke-{}-{nonce}",
         std::process::id()
     ));
-    std::fs::create_dir(&root)
+    crate::policy::private_dir(&root)
         .map_err(|error| format!("smoke directory could not be created: {}", error.kind()))?;
     let source = root.join("smoke.html");
     let output = root.join("smoke.pdf");
-    if let Err(error) = std::fs::write(
+    if let Err(error) = crate::policy::private_write(
         &source,
         b"<!doctype html><meta charset=utf-8><title>DS smoke</title><p>DS workstation smoke</p>",
     ) {

@@ -883,11 +883,19 @@ fn failure(e: impl ToString) -> Failure {
         .remedy("verify native authentication, protected server state and ds server serve")
 }
 fn state(inputs: &Inputs) -> Result<PathBuf, Failure> {
-    ds_compute_runtime::server_state_directory(
-        inputs.require("lane")?,
-        inputs.value("state-dir").map(Path::new),
-    )
-    .map_err(failure)
+    let explicit = inputs.value("state-dir").map(Path::new);
+    let path = ds_compute_runtime::server_state_directory(inputs.require("lane")?, explicit)
+        .map_err(failure)?;
+    // The default `<state>/ds/server/<lane>` sits under DS's own namespaces;
+    // those two directories are private too (owner rule), and one an older
+    // build left with ordinary modes is tightened, best effort. An explicit
+    // --state-dir is the operator's choice and its parents are left alone.
+    if explicit.is_none() {
+        for namespace in path.ancestors().skip(1).take(2) {
+            let _ = ds_layer_store::private::tighten(namespace);
+        }
+    }
+    Ok(path)
 }
 
 /// Resolve only the project explicitly captured in this request.

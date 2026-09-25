@@ -523,9 +523,35 @@ fn state_root() -> Result<PathBuf, Failure> {
 /// A host-owned private authority directory. It deliberately shares the same
 /// protected user root as refresh credentials but never contains a credential.
 pub(crate) fn edge_authority_dir(lane: &str) -> Result<PathBuf, Failure> {
-    let root = state_root()?.join("edge-admission").join(lane);
+    let admission = state_root()?.join("edge-admission");
+    private_parent(&admission);
+    let root = admission.join(lane);
     secure_dir(&root).map_err(state_failure)?;
     Ok(root)
+}
+
+/// The `edge-admission` directory above the per-lane authority directories
+/// is DS-owned and private too (owner rule `ds_layer_store::private`, applied
+/// inline: this crate does not depend on it). It is created 0700, and one an
+/// older build created with ordinary modes is tightened — best effort, never
+/// through a link, and never refused, because the lane directory below it is
+/// what `secure_dir` holds to the strict rule.
+fn private_parent(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+        let _ = fs::DirBuilder::new().mode(0o700).create(path);
+        if let Ok(metadata) = fs::symlink_metadata(path)
+            && metadata.is_dir()
+            // SAFETY: geteuid reads the calling process identity and has no pointers.
+            && metadata.uid() == unsafe { libc::geteuid() }
+            && metadata.permissions().mode() & 0o077 != 0
+        {
+            let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o700));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
 }
 
 pub(crate) fn availability() -> ds_cli_contract::spec::Availability {
@@ -1244,5 +1270,18 @@ mod tests {
             fs::remove_file(path).unwrap();
         }
         fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn the_edge_admission_directory_is_private_and_an_old_one_is_tightened() {
+        let root = temp_dir("edge-admission-parent");
+        let admission = root.join("edge-admission");
+        super::private_parent(&admission);
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&admission), 0o700);
+        fs::set_permissions(&admission, fs::Permissions::from_mode(0o775)).unwrap();
+        super::private_parent(&admission);
+        assert_eq!(mode(&admission), 0o700);
+        fs::remove_dir_all(root).unwrap();
     }
 }

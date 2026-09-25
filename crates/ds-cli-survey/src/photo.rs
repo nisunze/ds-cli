@@ -243,7 +243,7 @@ fn replace_bundle(target: &Path, prepared: &survey_photo::Prepared) -> Result<()
     let parent = target
         .parent()
         .ok_or_else(|| invalid("Survey-media directory has no parent"))?;
-    fs::create_dir_all(parent)
+    ds_layer_store::private::create_dir_all(parent)
         .map_err(|_| moments::unreadable("Cannot create survey-media directory"))?;
     let staging = parent.join(format!(
         "{}.staging-{}",
