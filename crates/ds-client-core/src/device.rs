@@ -1526,6 +1526,24 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::survey_media_fetch::grant(self.profile, transport, self.authority(), project, others)
     }
+    /// The grant a delivered report's photo links are written under: the
+    /// named project, ds-brain's report default life.
+    pub fn report_media_grant<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        now: u64,
+    ) -> Result<crate::MediaGrants, ClientError> {
+        self.ensure_active(now)?;
+        crate::survey_media_fetch::grant_for(
+            self.profile,
+            transport,
+            self.authority(),
+            project,
+            &[],
+            crate::survey_media_fetch::GrantUse::ReportLinks,
+        )
+    }
     pub fn survey_entries_query<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

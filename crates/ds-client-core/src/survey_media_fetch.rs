@@ -101,6 +101,42 @@ impl MediaGrants {
             encode_component(object_path)
         ))
     }
+
+    /// The grants as the document the report engine reads
+    /// (`ds-network-reporter` `media_link::MediaScopeGrants`): one flat grant
+    /// for a single project — the shape every engine release accepts — or
+    /// `{"grants": [...]}` for several. The token leaves this type only here,
+    /// written into a host's private staging for the engine.
+    pub fn report_grant_document(&self) -> Result<Vec<u8>, ClientError> {
+        let scope = |grant: &MediaGrant| {
+            json!({
+                "resolver_origin": grant.resolver_origin,
+                "bucket": grant.bucket,
+                "prefix": grant.prefix,
+                "token": grant.token,
+                "expires_at": grant.expires_at,
+            })
+        };
+        let document = match self.grants.as_slice() {
+            [] => return Err(invalid("a report media grant names at least one project")),
+            [single] => scope(single),
+            several => json!({"grants": several.iter().map(scope).collect::<Vec<_>>()}),
+        };
+        serde_json::to_vec(&document)
+            .map_err(|_| unreadable("the media grant could not be encoded"))
+    }
+}
+
+/// What a grant is minted for, which decides how long it lives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrantUse {
+    /// Reading photo bytes now: [`GRANT_TTL_SECONDS`].
+    Fetch,
+    /// Links written into a delivered report. The request names no TTL, so
+    /// ds-brain applies its report default (six months) — the same request
+    /// the browser's report export sends, and the same links the cloud
+    /// export writes.
+    ReportLinks,
 }
 
 /// One fetched photo.
@@ -134,6 +170,47 @@ pub(crate) fn grant<T: AuthorizedTransport>(
     project: &str,
     others: &[&str],
 ) -> Result<MediaGrants, ClientError> {
+    grant_for(
+        profile,
+        transport,
+        authority,
+        project,
+        others,
+        GrantUse::Fetch,
+    )
+}
+
+/// The request body one grant is minted with.
+fn grant_payload(project: &str, extras: &[&str], purpose: GrantUse) -> serde_json::Value {
+    match purpose {
+        GrantUse::Fetch => json!({
+            "action": GRANT_ACTION,
+            "eds_project_id": project,
+            "scope_projects": extras,
+            "ttl_seconds": GRANT_TTL_SECONDS,
+        }),
+        // Byte-identical to the browser's report export: no TTL, and no
+        // `scope_projects` when there is nothing extra to ask for.
+        GrantUse::ReportLinks if extras.is_empty() => json!({
+            "action": GRANT_ACTION,
+            "eds_project_id": project,
+        }),
+        GrantUse::ReportLinks => json!({
+            "action": GRANT_ACTION,
+            "eds_project_id": project,
+            "scope_projects": extras,
+        }),
+    }
+}
+
+pub(crate) fn grant_for<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    others: &[&str],
+    purpose: GrantUse,
+) -> Result<MediaGrants, ClientError> {
     crate::authorized::validate_tiles(project)?;
     let mut requested = vec![project];
     for other in others {
@@ -150,12 +227,7 @@ pub(crate) fn grant<T: AuthorizedTransport>(
     let response = transport.survey_media_grant(crate::SurveyMediaGrantCall {
         profile,
         authority: authority.call(),
-        payload: json!({
-            "action": GRANT_ACTION,
-            "eds_project_id": project,
-            "scope_projects": &requested[1..],
-            "ttl_seconds": GRANT_TTL_SECONDS,
-        }),
+        payload: grant_payload(project, &requested[1..], purpose),
     })?;
     match response.status {
         200 => decode_grants(&response.body, &requested),
@@ -386,6 +458,35 @@ mod tests {
         json!({"grant": grants[0], "grants": grants, "ttl_seconds": 3600})
             .to_string()
             .into_bytes()
+    }
+
+    #[test]
+    fn a_report_grant_asks_for_the_default_life_and_becomes_the_engine_document() {
+        // A report's links live as long as the browser's: no TTL is named.
+        assert_eq!(
+            grant_payload("p1", &[], GrantUse::ReportLinks),
+            json!({"action": "media_scope", "eds_project_id": "p1"})
+        );
+        assert_eq!(
+            grant_payload("p1", &["p0"], GrantUse::ReportLinks)["scope_projects"],
+            json!(["p0"])
+        );
+        assert_eq!(
+            grant_payload("p1", &[], GrantUse::Fetch)["ttl_seconds"],
+            json!(GRANT_TTL_SECONDS)
+        );
+        let single = decode_grants(&grant_body(&["p1"]), &["p1"]).unwrap();
+        let document: Value =
+            serde_json::from_slice(&single.report_grant_document().unwrap()).unwrap();
+        assert_eq!(
+            document,
+            json!({"resolver_origin":"https://brain.example","bucket":"media-bucket",
+                   "prefix":"projects/p1/","token":"tok-p1","expires_at":"2026-09-25T02:00:00Z"})
+        );
+        let several = decode_grants(&grant_body(&["p1", "p0"]), &["p1", "p0"]).unwrap();
+        let document: Value =
+            serde_json::from_slice(&several.report_grant_document().unwrap()).unwrap();
+        assert_eq!(document["grants"][1]["prefix"], "projects/p0/");
     }
 
     #[test]

@@ -1464,6 +1464,30 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// The grant a delivered report's photo links are written under: the
+    /// named project, ds-brain's report default life (the browser's request).
+    pub fn report_media_grant(
+        &mut self,
+        project: &str,
+        now: u64,
+    ) -> Result<crate::MediaGrants, ClientError> {
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::survey_media_fetch::grant_for(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            &[],
+            crate::survey_media_fetch::GrantUse::ReportLinks,
+        )
+    }
+
     /// One `query_entries` body the core's survey hold built, sent under
     /// the restored user; the route's NDJSON comes back whole.
     pub fn survey_entries_query(
