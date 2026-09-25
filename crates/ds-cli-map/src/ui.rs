@@ -63,14 +63,13 @@ pub mod open {
         id: "map.ui.open",
         path: &["map", "ui", "open"],
         contract: 1,
-        summary: "Open one named panel of the paired application over a ref.",
+        summary: "Open a named application panel or a tabbed report attachment preview.",
         purpose: "\
-Asks the running application to show one of its named panels — the \
-attribute table, the Style Center, or selection properties — over the thing \
---ref names. This is how a frame is staged before `ds map evidence capture`, \
-and it is the whole of what it does: there is no selector, click, keystroke or \
-script here, only a closed target and a reference the application already \
-published. Navigate with `ds map zoom`; edit with `ds map design set`.",
+Opens a published panel or a previewable report in paired DS GridDesign. \
+report-preview accepts asset/<asset-id> from PM attachments or assets.list, \
+transformer/outputId, or printout/filename.pdf. Each report opens in a \
+desktop tab. Other refs come from the application's map and style lists; \
+no selectors, clicks or scripts are accepted.",
         chapter: Chapter::Survey,
         effect: Effect::LocalUi,
         authority: Authority::DesktopPairing,
@@ -82,7 +81,7 @@ published. Navigate with `ds map zoom`; edit with `ds map design set`.",
             Arg::value(
                 "ref",
                 "<ref>",
-                "A style/layer/feature ref, active project ID for project pages, or transformer/outputId or printout/filename.pdf for report-preview.",
+                "Published style, layer or feature ref; project ID; or asset/<asset-id>, transformer/outputId or printout/filename.pdf.",
             )
             .required(),
             DESCRIPTOR_ARG,
@@ -95,8 +94,8 @@ published. Navigate with `ds map zoom`; edit with `ds map design set`.",
                 runnable: false,
             },
             Example {
-                command: "ds map ui open --target style-center --ref master/lv_lines --output json",
-                note: "Stage the panel a styling tutorial step describes.",
+                command: "ds map ui open --target report-preview --ref asset/a_7kq3nr2v0b1c",
+                note: "Open a governed report from a PM note in the desktop tabbed preview.",
                 runnable: false,
             },
         ],

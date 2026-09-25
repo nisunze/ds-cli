@@ -1608,6 +1608,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "tiling",
         "project",
         "correspondence",
+        "work-attachments",
         "solar-input",
         "solar-migration",
         "solar-application",
@@ -1692,6 +1693,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // say WHERE the task is — the proposal a person confirms and the
             // read the map paints from.
             "project" => 22,
+            "work-attachments" => 17,
             _ => 16,
         };
         assert!(
@@ -1858,6 +1860,23 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "the project-operations profile exposes the headless transformer lifecycle; \
          window-cache warming was retired on 2026-09-20"
     );
+
+    for name in [
+        "pm_record_create",
+        "pm_record_read",
+        "pm_task_list",
+        "assets_author",
+        "assets_folder",
+        "assets_preview",
+        "assets_attach",
+        "assets_tree",
+        "map_ui_open",
+    ] {
+        assert!(
+            published["work-attachments"].contains(name),
+            "work-attachments omits {name}"
+        );
+    }
 
     let (compatibility, _) = mcp(
         &["--exposure", "commands"],

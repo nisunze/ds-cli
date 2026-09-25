@@ -33,7 +33,7 @@
 //!
 //! ## What is deliberately absent
 //!
-//! **An editor.** No command writes asset bytes, under any flag. **A durable
+//! **An in-place editor.** Authoring creates one new immutable text asset; it never changes existing bytes. **A durable
 //! link** to anything above `open`. **A second catalogue, uploader or
 //! digest** — this surface composes the paths the project already has.
 //! **The system-folder projection, headless.** The `Transformers/`,
@@ -46,6 +46,7 @@
 //! `requires_window_retired` by the parser.
 
 pub mod attach;
+pub mod author;
 pub mod backup;
 pub mod classify;
 pub mod correspondence;
@@ -87,6 +88,7 @@ pub static DOMAIN: Domain = Domain {
         &promote::COMMAND,
         &attach::COMMAND,
         &ingest::COMMAND,
+        &author::COMMAND,
         &folder::COMMAND,
     ],
 };

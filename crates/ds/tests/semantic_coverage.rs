@@ -1034,6 +1034,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("assets.classify", "global_write", "headless_project"),
     ("assets.folder", "global_write", "headless_project"),
     ("assets.ingest", "global_write", "headless_project"),
+    ("assets.author", "global_write", "headless_project"),
     ("assets.list", "read_only", "headless_project"),
     ("assets.preview", "read_only", "headless_project"),
     ("assets.promote", "local_file_write", "headless_project"),

@@ -243,9 +243,15 @@ ds map evidence capture \
   --output json
 ```
 
-`map ui open` accepts exactly `attribute-table`, `style-center`, or
-`selection-properties`. The paired application resolves `--ref` through its
-own layer, style and selection state and refuses missing or ambiguous targets.
+`map ui open` accepts a closed set of named application panels, including
+`report-preview`. The paired application resolves `--ref` through its own
+project, layer, style, selection and asset state and refuses missing or
+ambiguous targets. For a governed PM note or task attachment, use
+`--target report-preview --ref asset/<asset-id>`; the asset ID comes from
+`ds pm record read`, `ds pm task read`, or `ds assets list`. The desktop
+opens it in a preview tab and keeps other report tabs available. Local
+committed PDFs also use the tabbed viewer through their published
+`transformer/outputId` or `printout/filename.pdf` reference.
 Navigation remains `ds map zoom`; governed property edits remain
 `ds map design select` and `ds map design set`.
 

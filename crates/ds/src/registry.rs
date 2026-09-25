@@ -1934,6 +1934,11 @@ static ASSETS_ENTRIES: &[Entry] = &[
         render: ds_cli_assets::ingest::render,
     },
     Entry {
+        command: &ds_cli_assets::author::COMMAND,
+        handler: ds_cli_assets::author::run,
+        render: ds_cli_assets::author::render,
+    },
+    Entry {
         command: &ds_cli_assets::folder::COMMAND,
         handler: ds_cli_assets::folder::run,
         render: ds_cli_assets::folder::render,

@@ -53,6 +53,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "tiling",
     "project",
     "correspondence",
+    "work-attachments",
     "solar-input",
     "solar-migration",
     "design-migration",
@@ -117,6 +118,7 @@ pub enum Profile {
     Tiling,
     Project,
     Correspondence,
+    WorkAttachments,
     SolarInput,
     SolarMigration,
     DesignMigration,
@@ -159,6 +161,7 @@ impl Profile {
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
             "correspondence" => Some(Self::Correspondence),
+            "work-attachments" => Some(Self::WorkAttachments),
             "solar-input" => Some(Self::SolarInput),
             "solar-migration" => Some(Self::SolarMigration),
             "design-migration" => Some(Self::DesignMigration),
@@ -202,6 +205,7 @@ impl Profile {
             Self::Tiling => "tiling",
             Self::Project => "project",
             Self::Correspondence => "correspondence",
+            Self::WorkAttachments => "work-attachments",
             Self::SolarInput => "solar-input",
             Self::SolarMigration => "solar-migration",
             Self::DesignMigration => "design-migration",
@@ -298,6 +302,8 @@ impl Profile {
             // one thing the comment was about. The proposal is what the person
             // confirms; the read is what the map paints from.
             Self::Project => 22,
+            // Fifteen leaves plus bootstrap: discover, author, classify folder, attach and preview.
+            Self::WorkAttachments => 17,
             // Seventeen working-copy leaves plus both bootstrap tools. Raised
             // from the default on 2026-09-22 when the four 2026-09-21 leaves
             // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
@@ -404,6 +410,7 @@ impl Profile {
                         && tool.id != "pm.plan")
             }
             Self::Correspondence => CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str()),
+            Self::WorkAttachments => WORK_ATTACHMENTS_COMMANDS.contains(&tool.id.as_str()),
             Self::Operations => {
                 tool.chapter == Chapter::Operations
                     && !INSTALLATION_COMMANDS.contains(&tool.id.as_str())
@@ -462,6 +469,7 @@ impl Profile {
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS,
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
             Self::Correspondence => CORRESPONDENCE_COMMANDS,
+            Self::WorkAttachments => WORK_ATTACHMENTS_COMMANDS,
             Self::Grid
             | Self::GridNative
             | Self::Pls
@@ -500,6 +508,10 @@ impl Profile {
             Self::Map | Self::Styles | Self::PrintStyles => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project | Self::Correspondence => chapter == Chapter::Project,
+            Self::WorkAttachments => matches!(
+                chapter,
+                Chapter::Project | Chapter::Assets | Chapter::Survey
+            ),
             Self::SolarInput
             | Self::SolarMigration
             | Self::SolarApplication
@@ -847,6 +859,25 @@ const CORRESPONDENCE_COMMANDS: &[&str] = &[
     "pm.record.update",
     "pm.task.block",
     "pm.task.unblock",
+];
+
+// One bounded MCP workflow for authored project-note and task attachments.
+const WORK_ATTACHMENTS_COMMANDS: &[&str] = &[
+    "pm.plan",
+    "pm.record.list",
+    "pm.record.read",
+    "pm.record.create",
+    "pm.task.list",
+    "pm.task.read",
+    "assets.tree",
+    "assets.list",
+    "assets.preview",
+    "assets.folder",
+    "assets.ingest",
+    "assets.author",
+    "assets.attach",
+    "assets.read",
+    "map.ui.open",
 ];
 
 const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[

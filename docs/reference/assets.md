@@ -320,3 +320,36 @@ tables use city tags. Missing or ambiguous results permit manual Solar entry.
 Read the live command descriptors for authority and inputs, and the owning
 [shared-network contract](../../../ds-solar/docs/contracts/shared-network-assets.md)
 for the producer/consumer boundary.
+
+
+## Authoring a report for a PM project note
+
+The focused MCP profile is work-attachments. It exposes the complete
+note-attachment path in one small tool list: PM note discovery and creation,
+asset authoring or file ingest, linking, and readback. The global Assets
+chapter exposes the same commands.
+
+For an agent-authored Markdown or HTML report up to 64 KiB, use assets.author
+with a simple filename and UTF-8 content. For an existing file or a larger
+report, use assets.ingest. Both return an asset_id. Link that ID to a project
+note with assets.attach --record, or to a task with --task. Then read the
+record or task and verify that the attachment appears. A note body can stay
+short; the complete report belongs in the attachment. HTML is classified
+from an HTML document declaration, and the PM viewer renders it inside a
+sandboxed frame with network access blocked.
+
+Example sequence:
+
+1. pm.record.create --category project_note --channel other
+   --direction internal --meeting-note <existing-note-asset-id> when the note
+   starts from an authored asset; alternatively create the note against a
+   source asset and attach additional report assets.
+2. assets.author --name Review.html --content <html-document> --project
+   <exact-id> --yes, or assets.ingest --path <absolute-file> --project
+   <exact-id> --yes.
+3. assets.attach --asset <returned-id> --record <record-id> --project
+   <exact-id> --yes.
+4. pm.record.read --record <record-id> --project <exact-id> --output json.
+
+The current project must be named on every call. The attachment list is the
+readback authority; authoring alone does not link a document to work.

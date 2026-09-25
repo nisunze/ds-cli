@@ -51,7 +51,7 @@ ds mcp serve --exposure commands --profile pls
 
 Profiles include `auth-context`, `datasets`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-media`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
-`tiling`, `project`, `correspondence`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
+`tiling`, `project`, `correspondence`, `work-attachments`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
 `solar-portfolio-batch`, `solar-migration`, `design-migration`,
 `operations`, and `project-operations`. `project` owns the plan and the task
 workflow; `datasets` groups catalog discovery, held-layer GeoJSON, planned
@@ -60,7 +60,7 @@ workbook delivery. Each headless read names its authorized project.
 `correspondence` owns the parties, the records and threads and the
 task blockers (`pm.party.*`, `pm.record.*`, `pm.task.block|unblock`) with the
 plan for their vocabularies — filing letters and scheduling tasks are two
-jobs, so they are two profiles. `survey`
+jobs, so they are two profiles. `work-attachments` puts PM project-note discovery, direct Markdown/HTML authoring, file ingest, asset linking and readback in one MCP profile. It also exposes the optional paired desktop report-preview driver. `survey`
 retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns governed
 aggregate/spatial/change-feed reads, project-form settings, reusable templates, and
