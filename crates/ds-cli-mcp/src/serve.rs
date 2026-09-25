@@ -110,19 +110,27 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Profile::from_token(value).expect("the command parser enforces profile choices")
     });
     let call_timeout = call_timeout(inputs.value("call-timeout").unwrap_or("3600"))?;
-    let identity = bootstrap_identity(&executable, &build, exposure, profile, &resources);
+    let identity = bootstrap_identity(
+        &executable,
+        &build,
+        exposure,
+        profile,
+        call_timeout,
+        &resources,
+    );
     let surface = Surface::new(exposure, profile, tools::discover_tools(&executable)?)?
         .with_identity(identity)
         .with_call_timeout(call_timeout);
     eprintln!(
-        "ds mcp: serving {} {} tools{} from {}",
+        "ds mcp: serving {} {} tools{} from {} (call bound {} s)",
         surface.published_count(),
         surface.exposure().token(),
         surface
             .profile()
             .map(|profile| format!(" for profile {}", profile.token()))
             .unwrap_or_default(),
-        executable.display()
+        executable.display(),
+        surface.call_timeout().as_secs()
     );
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -294,6 +302,7 @@ fn bootstrap_identity(
     build: &Value,
     exposure: Exposure,
     profile: Option<Profile>,
+    call_timeout: std::time::Duration,
     resources: &SkillResources,
 ) -> Value {
     let server_identity = crate::identity::ServerIdentity::current();
@@ -320,6 +329,7 @@ fn bootstrap_identity(
             "exposure": exposure.token(),
             "profile": profile.map(Profile::token),
             "protocol": PROTOCOL_VERSION,
+            "call_timeout_seconds": call_timeout.as_secs(),
         },
         "skills": resources.identity(),
     })

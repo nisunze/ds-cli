@@ -440,6 +440,7 @@ fn broad_server_has_declared_stable_tools_and_reports_build_identity() {
     assert_eq!(identity["source_sha"], version["data"]["source_sha"]);
     assert_eq!(identity["version"], version["data"]["version"]);
     assert_eq!(identity["mcp"]["transport"], "stdio");
+    assert_eq!(identity["mcp"]["call_timeout_seconds"], 3600);
     assert_eq!(
         response(&responses, 4)["result"]["structuredContent"]["identity"],
         *identity

@@ -264,7 +264,8 @@ are read-only, non-destructive and idempotent.
   stopped and the call refuses with `mcp_call_timed_out` — class
   `unavailable` for a read, `conflict` for a writing effect, whose remedy is
   to re-read the state it changes before retrying. Only the direct child is
-  stopped; an owner engine it started may still be finishing. The server's own
+  stopped; an owner engine it started may still be finishing. The bound in
+  force is `mcp.call_timeout_seconds` in `ds_diagnostics(operation=identity)`. The server's own
   probes (`version`, `capabilities`, `desktop status`) are bounded at 120 s.
 - **Long-running calls.** A host that sends `_meta.progressToken` receives
   `notifications/progress` every 10 s while the call runs, with the elapsed
