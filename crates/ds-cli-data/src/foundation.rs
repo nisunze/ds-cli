@@ -318,7 +318,7 @@ pub static PARCELS_COMMAND: Command = Command {
     availability: ds_cli_auth::native_availability,
 };
 
-fn geometry_out(raw: &Path) -> Result<PathBuf, Failure> {
+pub(crate) fn geometry_out(raw: &Path) -> Result<PathBuf, Failure> {
     let out = if raw.is_absolute() {
         raw.to_path_buf()
     } else {
@@ -335,7 +335,7 @@ fn geometry_out(raw: &Path) -> Result<PathBuf, Failure> {
     Ok(out)
 }
 
-fn write_geometry(out: &Path, features: &[Value]) -> Result<(), Failure> {
+pub(crate) fn write_geometry(out: &Path, features: &[Value]) -> Result<(), Failure> {
     let bytes = serde_json::to_vec(&json!({"type": "FeatureCollection", "features": features}))
         .map_err(|error| Failure::internal("output_refused", error.to_string()))?;
     std::fs::OpenOptions::new()
@@ -559,7 +559,7 @@ struct BoundFields {
 /// The polygon in a GeoJSON file: bare geometry, a Feature, or a
 /// FeatureCollection holding exactly one feature. Validation of the shape
 /// and its envelope is the client core's, shared with every other caller.
-fn read_boundary(path: &Path) -> Result<Value, Failure> {
+pub(crate) fn read_boundary(path: &Path) -> Result<Value, Failure> {
     let raw = std::fs::read_to_string(path).map_err(|error| {
         Failure::invalid(
             INVALID_SCOPE.code,

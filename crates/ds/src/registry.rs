@@ -1588,6 +1588,11 @@ static DATA_ENTRIES: &[Entry] = &[
         render: ds_cli_data::project_cache::render_status,
     },
     Entry {
+        command: &ds_cli_data::project_cache::QUERY_COMMAND,
+        handler: ds_cli_data::project_cache::run_query,
+        render: ds_cli_data::project_cache::render_query,
+    },
+    Entry {
         command: &ds_cli_data::project_cache::SEED_COMMAND,
         handler: ds_cli_data::project_cache::run_seed,
         render: ds_cli_data::project_cache::render_seed,

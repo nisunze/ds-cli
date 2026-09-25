@@ -139,6 +139,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("data.elevation.plan", "read_only", "desktop_pairing"),
     ("data.project-cache.status", "read_only", "headless_project"),
     (
+        "data.project-cache.query",
+        "local_file_write",
+        "headless_project",
+    ),
+    (
         "data.project-cache.seed",
         "artifact_write",
         "headless_project",

@@ -39,6 +39,7 @@ pub static DOMAIN: Domain = Domain {
         &admin_bounds::READ_COMMAND,
         &city_vectors::COMMAND,
         &project_cache::STATUS_COMMAND,
+        &project_cache::QUERY_COMMAND,
         &project_cache::SEED_COMMAND,
         &foundation::LOOKUP_COMMAND,
         &foundation::QUERY_COMMAND,

@@ -70,6 +70,40 @@ const SUMMARY_ARG: Arg = Arg::switch(
     "summary",
     "Return compact dataset identities, source, readiness and coverage counts; omit coverage geometry and acquisition history. Full detail is the default.",
 );
+const QUERY_DATASET_ARG: Arg = Arg::value(
+    "dataset",
+    "<dataset-id|layer>",
+    "One canonical dataset id or catalogue layer name from project-cache status --summary.",
+)
+.required();
+const QUERY_BOUNDARY_ARG: Arg = Arg::value(
+    "boundary",
+    "<path.geojson>",
+    "One WGS84 Polygon or MultiPolygon in a GeoJSON file, wholly inside the room's completed coverage.",
+)
+.required();
+const QUERY_GEOMETRY_OUT_ARG: Arg = Arg::value(
+    "geometry-out",
+    "<path.geojson>",
+    "Write this bounded page as a GeoJSON FeatureCollection; an existing file is never replaced.",
+)
+.required();
+const QUERY_LIMIT_ARG: Arg = Arg::value(
+    "limit",
+    "<1-5000>",
+    "Most features in this page; a truncated result returns the next cursor and generation.",
+)
+.default("5000");
+const QUERY_CURSOR_ARG: Arg = Arg::value(
+    "cursor",
+    "<feature-id>",
+    "Next cursor from a truncated response; requires that response's --generation.",
+);
+const QUERY_GENERATION_ARG: Arg = Arg::value(
+    "generation",
+    "<room-generation>",
+    "Room generation from the same truncated response; rejects a changed room between pages.",
+);
 
 macro_rules! refusal {
     ($name:ident, $code:literal, $when:literal, $remedy:literal) => {
@@ -256,6 +290,30 @@ refusal!(
     "the service found no such project or transformer",
     "verify the exact --project id and project access"
 );
+refusal!(
+    QUERY_INVALID,
+    "project_dataset_query_invalid",
+    "the boundary is malformed, limit or page token is invalid, or no exact dataset is named",
+    "pass one WGS84 polygon inside completed coverage and use cursor plus generation exactly as returned"
+);
+refusal!(
+    QUERY_NOT_HELD,
+    "project_dataset_not_held",
+    "the dataset room is absent or the requested boundary extends beyond its completed coverage",
+    "run `ds data project-cache status --dataset <name>` and seed the required project coverage before querying"
+);
+refusal!(
+    QUERY_PAGE_STALE,
+    "project_dataset_page_stale",
+    "the local dataset changed after the page cursor was issued",
+    "restart the same boundary query without --cursor or --generation"
+);
+refusal!(
+    QUERY_OUTPUT_REFUSED,
+    "output_refused",
+    "--geometry-out already exists or cannot be written",
+    "choose a fresh writable GeoJSON output path"
+);
 
 const HEADLESS_REFUSALS: [Refusal; 19] = [
     NATIVE_PROFILE,
@@ -341,6 +399,34 @@ const SEED_REFUSALS: &[Refusal] = &[
     HEADLESS_REFUSALS[18],
 ];
 
+const QUERY_OWN_REFUSALS: [Refusal; 9] = [
+    INVALID_SCOPE,
+    RETIRED,
+    QUERY_INVALID,
+    QUERY_NOT_HELD,
+    QUERY_PAGE_STALE,
+    QUERY_OUTPUT_REFUSED,
+    CATALOG_UNAVAILABLE,
+    STORE_FAILED,
+    DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL,
+];
+const fn query_refusals() -> [Refusal; 9 + HEADLESS_REFUSALS.len() + 1] {
+    let mut all = [QUERY_INVALID; 9 + HEADLESS_REFUSALS.len() + 1];
+    let mut index = 0;
+    while index < QUERY_OWN_REFUSALS.len() {
+        all[index] = QUERY_OWN_REFUSALS[index];
+        index += 1;
+    }
+    index = 0;
+    while index < HEADLESS_REFUSALS.len() {
+        all[QUERY_OWN_REFUSALS.len() + index] = HEADLESS_REFUSALS[index];
+        index += 1;
+    }
+    all[QUERY_OWN_REFUSALS.len() + HEADLESS_REFUSALS.len()] = NOT_FOUND;
+    all
+}
+const QUERY_REFUSAL_SET: [Refusal; 9 + HEADLESS_REFUSALS.len() + 1] = query_refusals();
+
 pub static STATUS_COMMAND: Command = Command {
     id: "data.project-cache.status",
     path: &["data", "project-cache", "status"],
@@ -404,6 +490,55 @@ pub static SEED_COMMAND: Command = Command {
     refusals: SEED_REFUSALS,
     reference: Some("docs/reference/data.md"),
     search: &["install", "footprints"],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
+
+pub static QUERY_COMMAND: Command = Command {
+    id: "data.project-cache.query",
+    path: &["data", "project-cache", "query"],
+    contract: 1,
+    summary: "Export held project datasets inside one polygon.",
+    purpose: "Reads one dataset already held on this computer for the explicitly named project. The polygon must lie wholly inside completed coverage. The native indexed room tests actual feature intersections; nothing is fetched or silently inferred from missing coverage. Writes one bounded GeoJSON page. A truncated receipt names the next cursor and room generation, so every page is explicit and a changed room refuses continuation. Use project-cache status --summary to find canonical layers and whether seeding is needed.",
+    chapter: Chapter::Data,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        PROJECT_ARG,
+        QUERY_DATASET_ARG,
+        QUERY_BOUNDARY_ARG,
+        QUERY_GEOMETRY_OUT_ARG,
+        QUERY_LIMIT_ARG,
+        QUERY_CURSOR_ARG,
+        QUERY_GENERATION_ARG,
+        LANE_ARG,
+    ],
+    output: "Canonical dataset id and layer, source version, query boundary, rows_returned, truncated, generation, next cursor when truncated, and written GeoJSON path. The output file is one page; continue only with its cursor and generation.",
+    examples: &[
+        Example {
+            command: "ds data project-cache query --project gisagara --dataset mv_line --boundary ./corridor.geojson --geometry-out ./held-mv.geojson --output json",
+            note: "Export held MV features intersecting a covered corridor.",
+            runnable: false,
+        },
+        Example {
+            command: "ds data project-cache query --project gisagara --dataset village_boundaries --boundary ./district.geojson --limit 500 --geometry-out ./villages-1.geojson --output json",
+            note: "Export the first bounded page of held villages.",
+            runnable: false,
+        },
+    ],
+    refusals: &QUERY_REFUSAL_SET,
+    reference: Some("docs/reference/data.md"),
+    search: &[
+        "geojson",
+        "extract",
+        "spatial",
+        "intersect",
+        "village",
+        "lv",
+        "mv",
+        "hv",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -726,9 +861,10 @@ fn compact_status(mut overview: Value) -> Value {
                     "source": row["provider"],
                     "residency": row["residency"],
                     "read_command": read_command,
+                    "held_read_command": if row["seeded"] == true { json!("data.project-cache.query") } else { Value::Null },
                     "seed_available": seed_available,
                     "seed_command": if seed_available { json!("data.project-cache.seed") } else { Value::Null },
-                    "row_cap": if read_command.is_some() { json!(5000) } else { Value::Null },
+                    "row_cap": if read_command.is_some() || row["seeded"] == true { json!(5000) } else { Value::Null },
                     "seeded": row["seeded"],
                     "ready": row["ready"],
                     "ready_reason": row["ready_reason"],
@@ -749,6 +885,153 @@ fn compact_status(mut overview: Value) -> Value {
             .collect(),
     );
     overview
+}
+
+fn page_number(inputs: &Inputs, name: &str) -> Result<Option<i64>, Failure> {
+    inputs
+        .value(name)
+        .map(|raw| {
+            raw.parse::<i64>()
+                .ok()
+                .filter(|value| *value >= 0)
+                .ok_or_else(|| {
+                    Failure::invalid(
+                        QUERY_INVALID.code,
+                        format!("--{name} must be a nonnegative integer from a previous page"),
+                    )
+                    .remedy(QUERY_INVALID.remedy)
+                })
+        })
+        .transpose()
+}
+
+fn query_page(inputs: &Inputs) -> Result<(u64, Option<i64>, Option<i64>), Failure> {
+    let limit = inputs
+        .require("limit")?
+        .parse::<u64>()
+        .ok()
+        .filter(|value| (1..=5000).contains(value))
+        .ok_or_else(|| {
+            Failure::invalid(QUERY_INVALID.code, "--limit must be between 1 and 5000")
+                .remedy(QUERY_INVALID.remedy)
+        })?;
+    let cursor = page_number(inputs, "cursor")?;
+    let generation = page_number(inputs, "generation")?;
+    if cursor.is_some() != generation.is_some() {
+        return Err(Failure::invalid(
+            QUERY_INVALID.code,
+            "--cursor and --generation must be passed together from one truncated result",
+        )
+        .remedy(QUERY_INVALID.remedy));
+    }
+    Ok((limit, cursor, generation))
+}
+
+fn query_store_error(message: String) -> Failure {
+    if message.contains("has not been seeded")
+        || message.contains("has not been opened")
+        || message.contains("has not been acquired")
+        || message.contains("extends beyond completed coverage")
+    {
+        Failure::conflict(QUERY_NOT_HELD.code, message).remedy(QUERY_NOT_HELD.remedy)
+    } else if message.contains("changed between pages") {
+        Failure::conflict(QUERY_PAGE_STALE.code, message).remedy(QUERY_PAGE_STALE.remedy)
+    } else {
+        Failure::unavailable(STORE_FAILED.code, message).remedy(STORE_FAILED.remedy)
+    }
+}
+
+pub fn run_query(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let lane = inputs.require("lane")?;
+    let project = inputs.require("project")?;
+    if !ds_command_kernel::execution_context::valid_project(project) {
+        return Err(Failure::invalid(
+            INVALID_SCOPE.code,
+            "--project must be one exact DS project id",
+        )
+        .remedy(INVALID_SCOPE.remedy));
+    }
+    let explicit = explicit_dataset(inputs)?;
+    if explicit.is_empty() {
+        return Err(
+            Failure::invalid(QUERY_INVALID.code, "--dataset is required")
+                .remedy(QUERY_INVALID.remedy),
+        );
+    }
+    let (limit, cursor, generation) = query_page(inputs)?;
+    let boundary = crate::foundation::read_boundary(Path::new(inputs.require("boundary")?))
+        .map_err(|error| {
+            Failure::invalid(QUERY_INVALID.code, error.message().to_owned())
+                .remedy(QUERY_INVALID.remedy)
+        })?;
+    ds_command_kernel::reference_cache::validate_area(&boundary).map_err(|error| {
+        Failure::invalid(QUERY_INVALID.code, error).remedy(QUERY_INVALID.remedy)
+    })?;
+    let out = crate::foundation::geometry_out(Path::new(inputs.require("geometry-out")?))?;
+
+    let Some(identity) = ds_cli_auth::probe_headless_identity_for_named_project(lane)? else {
+        return Err(Failure::conflict(
+            HEADLESS_SIGNED_OUT.code,
+            "no native user is signed in for this lane",
+        )
+        .remedy(HEADLESS_SIGNED_OUT.remedy));
+    };
+    let resources = catalogue(lane, project)?;
+    let resolved = ds_project_data::declared::resolve(&resources, &explicit)
+        .map_err(refused)?
+        .ok_or_else(|| {
+            Failure::invalid(
+                INVALID_SCOPE.code,
+                format!("{explicit} is not a canonical dataset of this project"),
+            )
+            .remedy(INVALID_SCOPE.remedy)
+        })?;
+    let scope = Scope {
+        principal: identity.uid().to_owned(),
+        project: project.to_owned(),
+    };
+    let dataset_key = policy::dataset_key(&scope, &resolved.dataset);
+    let root = holdings_root()?;
+    let page = ds_layer_store::project_dataset_cache::execute_at(
+        &root,
+        json!({
+            "action": "query",
+            "dataset_key": dataset_key,
+            "principal": scope.principal,
+            "project": scope.project,
+            "area": boundary,
+            "limit": limit,
+            "after_id": cursor,
+            "generation": generation,
+        }),
+    )
+    .map_err(query_store_error)?;
+    let features = page["features"].as_array().ok_or_else(|| {
+        Failure::unavailable(STORE_FAILED.code, "project room returned no feature array")
+            .remedy(STORE_FAILED.remedy)
+    })?;
+    crate::foundation::write_geometry(&out, features)?;
+    let truncated = page["truncated"] == true;
+    let next = if truncated {
+        json!({
+            "cursor": page["next_after_id"],
+            "generation": page["generation"],
+        })
+    } else {
+        Value::Null
+    };
+    Ok(json!({
+        "project": project,
+        "dataset_id": page["dataset_id"],
+        "layer": resolved.dataset.parameters.get("layer"),
+        "source_version": page["source_version"],
+        "boundary": {"bounds": ds_command_kernel::reference_cache::area_bounds(&boundary).map_err(|error| Failure::internal(STORE_FAILED.code, error))?},
+        "rows_returned": features.len(),
+        "truncated": truncated,
+        "generation": page["generation"],
+        "next": next,
+        "geometry": {"written_to": out.to_string_lossy(), "features": features.len()},
+    }))
 }
 
 /// The host's door to ds-brain's `query_print_context`, decoded by the kernel.
@@ -1327,6 +1610,22 @@ pub fn render_status(data: &Value) -> String {
         }
         out.push_str(&dataset_lines(dataset));
         out.push('\n');
+    }
+    out
+}
+
+pub fn render_query(data: &Value) -> String {
+    let mut out = format!(
+        "{} · {} intersecting feature(s) written to {}\n",
+        data["layer"].as_str().unwrap_or("dataset"),
+        data["rows_returned"].as_u64().unwrap_or(0),
+        data["geometry"]["written_to"].as_str().unwrap_or("?"),
+    );
+    if data["truncated"] == true {
+        out.push_str(&format!(
+            "  More features remain: --cursor {} --generation {} (write the next page to a new file)\n",
+            data["next"]["cursor"], data["next"]["generation"],
+        ));
     }
     out
 }

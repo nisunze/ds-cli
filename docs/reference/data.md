@@ -349,6 +349,30 @@ area, dates) as a FeatureCollection that `ds map local register` takes as it
 stands. Where a project will ask the question more than once, seed the
 transformer's extents instead and read the room.
 
+## `project-cache query`: export an already held layer
+
+Use `status --project <id> --summary --output json` to find the exact layer,
+its `seeded` state and completed coverage. After seeding, query one WGS84
+Polygon or MultiPolygon that lies wholly inside that coverage:
+
+```
+ds data project-cache query --project <id> --dataset mv_line \
+  --boundary ./corridor.geojson --geometry-out ./held-mv-page-1.geojson --output json
+```
+
+The local spatial index returns actual feature intersections. This works for
+held village boundaries, LV/MV/HV lines and other project datasets; it does
+not call BigQuery or fill a missing room. A missing room or uncovered boundary
+refuses `project_dataset_not_held` instead of reporting an empty layer.
+
+One response writes at most 5,000 features. Check `truncated`; when true, use
+its `next.cursor` and `next.generation` together and write the next page to a
+new path. A room changed between pages refuses `project_dataset_page_stale`,
+so restart from the first page. `truncated: false` is the completeness proof
+for that bound. The returned source version and generation identify the held
+snapshot, and the output is a GeoJSON FeatureCollection ready for local-layer
+registration.
+
 ## What this is not
 
 Not a query engine. `ds data` writes formats; reading and reducing them is a
