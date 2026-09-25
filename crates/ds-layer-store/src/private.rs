@@ -148,6 +148,9 @@ pub fn tighten(path: &Path) -> io::Result<()> {
 /// or changed is skipped, never fatal. Returns how many entries it changed.
 pub fn tighten_tree(root: &Path) -> usize {
     let mut changed = 0;
+    if !cfg!(unix) {
+        return changed;
+    }
     let mut pending = vec![root.to_path_buf()];
     while let Some(path) = pending.pop() {
         let Ok(metadata) = fs::symlink_metadata(&path) else {

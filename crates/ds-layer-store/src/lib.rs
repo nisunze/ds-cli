@@ -9,8 +9,10 @@ use std::{
 };
 
 /// The machine-local layer root. The first call in a process also tightens an
-/// install from before the privacy rule ([`private`]): the root and all it
-/// holds, and — for the default location — the `ds` namespace directory above it.
+/// install from before the privacy rule ([`private`]): `DS_LAYER_HOME` and
+/// all it holds, or — for the default location — the whole `ds` namespace
+/// under the platform's local data directory (the layer root beside the
+/// workstation components and other DS-owned data kept there).
 pub fn default_root() -> Result<PathBuf, String> {
     if let Some(root) = std::env::var_os("DS_LAYER_HOME") {
         let root = PathBuf::from(root);
@@ -23,10 +25,8 @@ pub fn default_root() -> Result<PathBuf, String> {
     let namespace = dirs::data_local_dir()
         .map(|p| p.join("ds"))
         .ok_or_else(|| "local data directory is unavailable".to_string())?;
-    let root = namespace.join("layers");
-    let _ = private::tighten(&namespace);
-    private::tighten_root_once(&root);
-    Ok(root)
+    private::tighten_root_once(&namespace);
+    Ok(namespace.join("layers"))
 }
 pub fn new_id() -> String {
     format!("tile-{}", uuid::Uuid::new_v4())
