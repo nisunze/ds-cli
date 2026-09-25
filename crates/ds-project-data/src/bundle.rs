@@ -7,6 +7,7 @@
 //! promoted atomically by `ds_layer_store::reference_cache::publish_staged`.
 
 use ds_command_kernel::reference_cache::{Identity, MAX_PAGES, MAX_RESOURCE_BYTES, PAGE_ROWS};
+use ds_layer_store::private;
 use ds_layer_store::reference_cache::{execute_at, publish_staged, BundleIndexWriter};
 use flate2::read::GzDecoder;
 use serde_json::{json, Value};
@@ -89,7 +90,7 @@ fn file_digest(path: &Path) -> Result<(String, u64), Failure> {
 /// failed expansion can never become valid by resuming it.
 fn staging_dir(root: &Path, receipt: &BundleReceipt) -> Result<PathBuf, Failure> {
     let parent = root.join("reference-bundle-staging");
-    fs::create_dir_all(&parent).map_err(unavailable)?;
+    private::create_dir_all(&parent).map_err(unavailable)?;
     let dir = parent.join(format!(
         "reference-bundle-{}-{}",
         receipt.identity.resource_id, receipt.identity.version
@@ -97,7 +98,7 @@ fn staging_dir(root: &Path, receipt: &BundleReceipt) -> Result<PathBuf, Failure>
     if dir.exists() {
         fs::remove_dir_all(&dir).map_err(unavailable)?;
     }
-    fs::create_dir_all(&dir).map_err(unavailable)?;
+    private::create_dir_all(&dir).map_err(unavailable)?;
     Ok(dir)
 }
 
@@ -131,6 +132,8 @@ pub fn install_bundle(
     let result = (|| -> Result<Value, Failure> {
         let bundle_path = staging.join("bundle.geojsonl.gz");
         fetch(receipt, &bundle_path).map_err(Failure::BundleUnavailable)?;
+        // The host's fetch wrote the file; it is DS-owned, so it is private.
+        private::tighten(&bundle_path).map_err(unavailable)?;
         let (digest, bytes) = file_digest(&bundle_path)?;
         if bytes != receipt.compressed_bytes || digest != receipt.bundle_sha256 {
             return Err(Failure::BundleUnavailable(format!(
@@ -139,7 +142,7 @@ pub fn install_bundle(
             )));
         }
         let indexed = staging.join("index");
-        fs::create_dir_all(&indexed).map_err(unavailable)?;
+        private::create_dir_all(&indexed).map_err(unavailable)?;
         let file = File::open(&bundle_path).map_err(unavailable)?;
         let mut reader = BufReader::new(GzDecoder::new(file));
         let mut expanded_sha = Sha256::new();

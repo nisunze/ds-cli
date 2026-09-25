@@ -197,7 +197,7 @@ pub fn refresh<E>(
         hold::apply(&scope.project, form, held_rows, &filter, mode, &bytes, now)
             .map_err(HoldError::Refused)?;
     let dir = form_dir(root, scope, form).map_err(HoldError::Store)?;
-    fs::create_dir_all(&dir)
+    ds_layer_store::private::create_dir_all(&dir)
         .map_err(|_| HoldError::Store("the survey hold could not be created".into()))?;
     let mut encoded = Vec::new();
     for row in &rows {
@@ -297,7 +297,7 @@ pub fn status(
 
 fn write_whole(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let partial = path.with_extension("part");
-    let result = fs::File::create(&partial)
+    let result = ds_layer_store::private::create_file(&partial)
         .and_then(|mut file| file.write_all(bytes).and_then(|()| file.sync_all()))
         .and_then(|()| fs::rename(&partial, path));
     if result.is_err() {
@@ -404,6 +404,27 @@ mod tests {
         assert_eq!(delta.source, Source::Delta);
         assert_eq!(delta.manifest.rows, 2);
         assert_eq!(rows(dir.path(), &scope, &delta.manifest).unwrap().len(), 2);
+
+        // The held rows carry PII and GPS: every directory and file of the
+        // hold is private to its account (owner rule, ds_layer_store::private).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut pending = vec![dir.path().join(ROOT)];
+            let mut files = 0;
+            while let Some(path) = pending.pop() {
+                let meta = fs::symlink_metadata(&path).unwrap();
+                let mode = meta.permissions().mode() & 0o777;
+                if meta.is_dir() {
+                    assert_eq!(mode, 0o700, "{}", path.display());
+                    pending.extend(fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+                } else {
+                    assert_eq!(mode, 0o600, "{}", path.display());
+                    files += 1;
+                }
+            }
+            assert!(files >= 3, "rows, manifest and lock are checked");
+        }
 
         // A broken stream leaves the copy as it was.
         let broken = refresh(
