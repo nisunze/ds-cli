@@ -270,3 +270,20 @@ what a person may set is a waiver, with a reason, and it is not withdrawn.
 transposed day and month is the commonest scheduling mistake there is, and
 `2026-01-09` for the ninth of September is a perfectly valid date that quietly
 schedules the wrong week.
+
+
+### MV authority, model artifacts, and governance evidence
+
+`pm model references --project P --model MODEL [--version vN]` resolves one
+opaque model ID in the named project. Its `currentMvAuthority` reports the
+project's single `transformers/mv_data` business authority update time, even
+for a model-wide reference. If the model catalog head is tombstoned, the
+current-authority read is marked `status: unavailable` with null
+`present`/`revision`; retained vN and PM references remain readable. When `vN` is supplied,
+`governanceVersion.mv_authority_revision` is the authority snapshot observed
+by that marker, `sourceContentRevision` is its separate `.dsgrid` artifact
+pin, and `markerAttachmentRefs` are exact attachment revisions referenced
+directly by the marker. `sourceRevisionAttachments` lists attachments
+anchored to the content revision and is intentionally separate. Open marker
+pins can evolve through a fenced design iteration; a frozen marker cannot
+change.

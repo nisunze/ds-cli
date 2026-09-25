@@ -1,10 +1,10 @@
 //! Headless version adapters: one explicit project and server-assigned history and explicit MV freezing.
 use ds_cli_contract::{
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
     Context, Failure, Inputs,
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use ds_client_core::design_versions::Command as Request;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 pub const PROJECT: Arg = Arg::value(
     "project",
     "<project-id>",
@@ -19,7 +19,7 @@ const TRANSFORMER: Arg = Arg::value(
 const KIND: Arg = Arg::value(
     "kind",
     "<kind>",
-    "Governed object kind; MV versions pin immutable content revisions.",
+    "Governed object kind; MV model markers and the project MV business authority are separate.",
 )
 .choices(&["lv_transformer", "mv_model"])
 .default("lv_transformer");
@@ -148,6 +148,11 @@ pub static BEGIN: Command = command(
             "Stable key for retries of this exact object/reason.",
         )
         .required(),
+        Arg::value(
+            "expected-mv-authority",
+            "<RFC3339Nano>",
+            "Exact transformers/mv_data update time from MV version status; required for MV.",
+        ),
         crate::transformer::LANE_ARG,
     ],
     Effect::GlobalWrite,
@@ -176,7 +181,13 @@ pub static REVISE: Command = command(
         Arg::value(
             "expected-source",
             "<content-revision|->",
-            "Observed model head revision, or - when no content exists.",
+            "Observed model artifact head revision, or - when no content exists.",
+        )
+        .required(),
+        Arg::value(
+            "expected-mv-authority",
+            "<RFC3339Nano>",
+            "Exact project transformers/mv_data update time from status.",
         )
         .required(),
         crate::transformer::LANE_ARG,
@@ -199,6 +210,12 @@ pub static FREEZE: Command = command(
             "Marker revision read before freezing.",
         )
         .required(),
+        Arg::value(
+            "expected-mv-authority",
+            "<RFC3339Nano>",
+            "Exact project transformers/mv_data update time from status.",
+        )
+        .required(),
         crate::transformer::LANE_ARG,
     ],
     Effect::GlobalWrite,
@@ -215,6 +232,70 @@ pub static EVENTS: Command = command(
         crate::transformer::LANE_ARG,
     ],
     Effect::ReadOnly,
+);
+pub static ATTACH_LINK: Command = command(
+    "design.version.attachment.link",
+    &["design", "version", "attachment", "link"],
+    "Link one exact attachment revision directly to an open MV governance vN.",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
+        Arg::value("version", "<vN>", "Exact MV governance marker.").required(),
+        Arg::value(
+            "attachment",
+            "<attachment-id>",
+            "Exact existing attachment ID.",
+        )
+        .required(),
+        Arg::value(
+            "attachment-revision",
+            "<revision-id>",
+            "Exact attachment revision ID.",
+        )
+        .required(),
+        Arg::value(
+            "reason",
+            "<text>",
+            "Why this revision belongs on the marker.",
+        )
+        .required(),
+        Arg::value(
+            "expected-revision",
+            "<number>",
+            "Marker revision read before linking.",
+        )
+        .required(),
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::GlobalWrite,
+);
+pub static ATTACH_UNLINK: Command = command(
+    "design.version.attachment.unlink",
+    &["design", "version", "attachment", "unlink"],
+    "Remove one exact attachment revision reference from an MV governance vN.",
+    &[
+        PROJECT,
+        KIND,
+        OBJECT,
+        Arg::value("version", "<vN>", "Exact MV governance marker.").required(),
+        Arg::value("attachment", "<attachment-id>", "Exact attachment ID.").required(),
+        Arg::value(
+            "attachment-revision",
+            "<revision-id>",
+            "Exact attachment revision ID.",
+        )
+        .required(),
+        Arg::value("reason", "<text>", "Why this reference is being removed.").required(),
+        Arg::value(
+            "expected-revision",
+            "<number>",
+            "Marker revision read before unlinking.",
+        )
+        .required(),
+        crate::transformer::LANE_ARG,
+    ],
+    Effect::GlobalWrite,
 );
 pub static RESTORE: Command = command(
     "design.version.restore",
@@ -293,12 +374,24 @@ pub fn compare(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 pub fn begin(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let expected_mv_authority_revision = if i.require("kind")? == "mv_model" {
+        Some(i.require("expected-mv-authority")?.into())
+    } else {
+        if i.value("expected-mv-authority").is_some() {
+            return Err(Failure::invalid(
+                "invalid_input",
+                "MV authority fence applies to mv_model only",
+            ));
+        }
+        None
+    };
     ask(
         i,
         Request::Begin {
             transformer: object(i)?,
             reason: i.require("reason")?.into(),
             idempotency_key: i.require("idempotency-key")?.into(),
+            expected_mv_authority_revision,
         },
     )
 }
@@ -335,6 +428,7 @@ pub fn revise(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             expected_revision: expected_revision(i)?,
             expected_source_revision: i.require("expected-source")?.into(),
             milestone: i.value("milestone").map(str::to_owned),
+            expected_mv_authority_revision: i.require("expected-mv-authority")?.into(),
         },
     )
 }
@@ -346,6 +440,7 @@ pub fn freeze(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             version: i.require("version")?.into(),
             reason: i.require("reason")?.into(),
             expected_revision: expected_revision(i)?,
+            expected_mv_authority_revision: i.require("expected-mv-authority")?.into(),
         },
     )
 }
@@ -357,6 +452,26 @@ pub fn events(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             version: i.require("version")?.into(),
         },
     )
+}
+fn model_attachment(i: &Inputs, link: bool) -> Result<Value, Failure> {
+    ask(
+        i,
+        Request::ModelAttachment {
+            transformer: mv_object(i)?,
+            version: i.require("version")?.into(),
+            attachment_id: i.require("attachment")?.into(),
+            attachment_revision_id: i.require("attachment-revision")?.into(),
+            reason: i.require("reason")?.into(),
+            expected_revision: expected_revision(i)?,
+            link,
+        },
+    )
+}
+pub fn attachment_link(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    model_attachment(i, true)
+}
+pub fn attachment_unlink(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    model_attachment(i, false)
 }
 pub fn restore(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(

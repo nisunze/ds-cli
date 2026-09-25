@@ -1107,7 +1107,13 @@ Unknown archive coverage is explicit and does not justify regeneration.
 `design.version` names one explicit project and either an LV transformer or MV
 project model. The transformer flag remains the LV compatibility spelling.
 The server alone assigns governed `vN` identities; native Server and Web use
-shared Rust request planning and response validation. A new MV marker starts
+shared Rust request planning and response validation. The project's single
+`transformers/mv_data` document is MV business authority. Each exact DS Grid
+model ID has separate `.dsgrid` content revisions and governance `vN` markers.
+For an MV begin, revise or freeze, read `design.version.status` and pass its
+exact `mv_authority_revision` using `--expected-mv-authority`. This is the
+Firestore authority document update time, distinct from the model artifact
+`source_revision` and from the marker's numeric `expected-revision`. A new MV marker starts
 open. Fenced revisions may update its reason, milestone and observed content
 head without changing its `vN` identity. An explicit freeze closes it before
 submission or a new version; historical MV markers remain frozen. The
@@ -1128,6 +1134,16 @@ and verified native transfer, finalizes immutable bytes, authorizes generation-
 pinned downloads and performs fenced soft retirement. LV attachment versions
 are assigned `vN`; MV attachment versions are exact content revision IDs. Read
 live capabilities for exact flags, limits and refusal remedies.
+
+`design version attachment link|unlink` adds or removes a reference to one
+existing attachment revision directly on an exact, open MV governance `vN`.
+Use `--project`, `--kind mv_model`, `--object`, `--version`,
+`--attachment`, `--attachment-revision`, `--reason`, and the marker's
+`--expected-revision`. The server validates the attachment in the same
+project/model, records actor and time, and audits actual changes. An exact
+duplicate add or absent-pair remove is a read-only no-op, including on frozen
+markers. Actual changes to frozen markers are refused. These marker references
+do not relocate content-revision attachments or change `transformers/mv_data`.
 
 For a prepared native Design workspace, `ds design project revisions` lists
 retained content digests and `ds design project compare` compares those exact

@@ -13,7 +13,7 @@ use ds_client_core::design_versions::Command as VersionCommand;
 use ds_client_core::project_management::Command as PMCommand;
 use ds_command_kernel::project_management::model_links::ModelTarget;
 use ds_command_kernel::project_management::{model_links, writes};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const MODEL: Arg = Arg::value(
     "model",
@@ -37,8 +37,7 @@ const LABEL: Arg = Arg::value("label", "<text>", "Optional label shown beside th
 const TARGET_INVALID: Refusal = Refusal {
     code: "model_reference_invalid",
     when: "project/model identity or governance vN is invalid, or the link bound is exceeded",
-    remedy:
-        "use the exact project and opaque model ID; use an assigned vN from design version list",
+    remedy: "use the exact project and opaque model ID; use an assigned vN from design version list",
 };
 const SOURCE_INVALID: Refusal = Refusal {
     code: "model_link_source_invalid",
@@ -66,13 +65,13 @@ pub static REFERENCES: Command = Command {
     path: &["pm", "model", "references"],
     contract: 1,
     summary: "Read PM tasks, milestones and notes linked to one exact model or vN.",
-    purpose: "Read source-owned references to an exact project model ID and optional governance vN; a model-wide link is distinct from every vN link. A vN read includes reason, author, source content revision and attachments indexed on that content revision. Project notes are paged at 100; follow nextCursor while more is true. No display-name matching and no version or attachment mutation.",
+    purpose: "Read source-owned references to an exact project model ID and optional governance vN; a model-wide link is distinct from every vN link. Every read shows current project MV business authority from transformers/mv_data. A vN read separates its MV authority pin, source .dsgrid content revision, direct marker attachment refs and attachments indexed on the source content revision. Project notes are paged at 100; follow nextCursor while more is true. No display-name matching and no mutation.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[crate::PROJECT_ARG, crate::LANE_ARG, MODEL, VERSION, CURSOR],
-    output: "Exact target, version grounding facts and source-content attachment list when vN is supplied; task/milestone references, one note page, more and nextCursor.",
+    output: "Exact target, current project MV authority, version grounding facts, direct marker refs and separate source-content attachments when vN is supplied; task/milestone references, one note page, more and nextCursor.",
     examples: &[],
     refusals: &crate::read_refusals::<20>(&[
         TARGET_INVALID,
@@ -225,6 +224,64 @@ fn version(i: &Inputs, target: &ModelTarget) -> Result<Option<Value>, Failure> {
     }
     Ok(Some(data["version"].clone()))
 }
+fn mv_authority(i: &Inputs, target: &ModelTarget) -> Result<Value, Failure> {
+    let data = ds_cli_auth::design_versions_for_project(
+        i.require("lane")?,
+        &target.project_id,
+        &VersionCommand::Object {
+            kind: "mv_model".into(),
+            command: Box::new(VersionCommand::Status {
+                transformer: target.model_id.clone(),
+            }),
+        },
+    );
+    mv_authority_readback(data, target)
+}
+fn mv_authority_readback(
+    data: Result<Value, Failure>,
+    target: &ModelTarget,
+) -> Result<Value, Failure> {
+    let data = match data {
+        Ok(value) => value,
+        Err(error) if error.code() == "transformer_not_found" => {
+            // A tombstoned catalog head cannot answer get_head, but retained
+            // governance vN and PM links remain readable. Unknown is not false.
+            return Ok(
+                json!({"status":"unavailable","present":null,"revision":null,
+                "source":"transformers/mv_data","reason":"model_head_unavailable"}),
+            );
+        }
+        Err(error) => {
+            return Err(Failure::failed(VERSION_UNAVAILABLE.code, error.to_string())
+                .remedy("read design version status for this exact model and project"));
+        }
+    };
+    let head = &data["head"];
+    if data["project"] != target.project_id
+        || data["object"]["kind"] != "mv_model"
+        || data["object"]["id"] != target.model_id
+        || head["project_id"] != target.project_id
+        || head["object"]["kind"] != "mv_model"
+        || head["object"]["id"] != target.model_id
+        || !head["mv_authority_present"].is_boolean()
+        || (head["mv_authority_present"] == true
+            && !head["mv_authority_revision"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty()))
+    {
+        return Err(Failure::failed(
+            VERSION_UNAVAILABLE.code,
+            "MV authority status returned another project or model",
+        )
+        .remedy(VERSION_UNAVAILABLE.remedy));
+    }
+    Ok(json!({
+        "status":"available",
+        "present":head["mv_authority_present"],
+        "revision":head["mv_authority_revision"],
+        "source":"transformers/mv_data",
+    }))
+}
 fn context(i: &Inputs, command: PMCommand) -> Result<Value, Failure> {
     let report = ds_cli_auth::project_management_for_project(
         i.require("lane")?,
@@ -268,7 +325,9 @@ fn note(i: &Inputs, id: &str) -> Result<Value, Failure> {
 
 pub fn references(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let target = target(i)?;
+    let current_mv_authority = mv_authority(i, &target)?;
     let version = version(i, &target)?;
+    let marker_attachment_refs = version.as_ref().map(|v| v["attachment_refs"].clone());
     let source_revision_attachments = if let Some(row) = &version {
         if let Some(revision) = row["source_revision"]
             .as_str()
@@ -334,7 +393,9 @@ pub fn references(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         .map(str::to_owned);
     Ok(json!({
         "project": target.project_id, "modelId": target.model_id, "versionId": target.version_id,
-        "governanceVersion": version, "sourceContentRevision": source_content_revision,
+        "governanceVersion": version, "currentMvAuthority": current_mv_authority,
+        "markerAttachmentRefs": marker_attachment_refs,
+        "sourceContentRevision": source_content_revision,
         "sourceRevisionAttachments": source_revision_attachments, "tasksAndMilestones": tasks, "projectNotes": notes,
         "more": more, "nextCursor": next, "graphRevision": graph.graph.revision,
     }))
@@ -440,4 +501,39 @@ pub fn remove(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 pub fn render(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod model_authority_tests {
+    use super::*;
+    #[test]
+    fn tombstoned_model_head_does_not_hide_historical_pm_references() {
+        let target = ModelTarget {
+            project_id: "project-a".into(),
+            model_id: "model-7".into(),
+            version_id: Some("v3".into()),
+        };
+        let unavailable = mv_authority_readback(
+            Err(Failure::invalid(
+                "transformer_not_found",
+                "retained marker has no active catalog head",
+            )),
+            &target,
+        )
+        .unwrap();
+        assert_eq!(unavailable["status"], "unavailable");
+        assert!(unavailable["present"].is_null());
+        assert!(unavailable["revision"].is_null());
+        let foreign = json!({"project":"project-b","object":{"kind":"mv_model","id":"model-7"},
+            "head":{"project_id":"project-b","object":{"kind":"mv_model","id":"model-7"},
+                "mv_authority_present":true,"mv_authority_revision":"2026-09-25T10:00:00Z"}});
+        assert!(mv_authority_readback(Ok(foreign), &target).is_err());
+        let current = json!({"project":"project-a","object":{"kind":"mv_model","id":"model-7"},
+            "head":{"project_id":"project-a","object":{"kind":"mv_model","id":"model-7"},
+                "mv_authority_present":true,"mv_authority_revision":"2026-09-25T10:00:00Z",
+                "source_revision":"artifact-9"}});
+        let result = mv_authority_readback(Ok(current), &target).unwrap();
+        assert_eq!(result["revision"], "2026-09-25T10:00:00Z");
+        assert!(result.get("source_revision").is_none());
+    }
 }

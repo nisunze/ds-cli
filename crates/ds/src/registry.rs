@@ -2404,6 +2404,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::versions::render,
     },
     Entry {
+        command: &ds_cli_design::versions::ATTACH_LINK,
+        handler: ds_cli_design::versions::attachment_link,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
+        command: &ds_cli_design::versions::ATTACH_UNLINK,
+        handler: ds_cli_design::versions::attachment_unlink,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
         command: &ds_cli_design::versions::READ,
         handler: ds_cli_design::versions::read,
         render: ds_cli_design::versions::render,

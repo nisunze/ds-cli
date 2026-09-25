@@ -5485,6 +5485,7 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
             .collect::<BTreeSet<_>>(),
         BTreeSet::from([
             "idempotency-key",
+            "expected-mv-authority",
             "lane",
             "reason",
             "transformer",
@@ -6661,7 +6662,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "design_versions": {
                 "method": "POST",
                 "path": "/api/v1/design/versions",
-                "actions": ["list_versions", "get_version", "get_head", "create_version", "restore_version", "revise_version", "freeze_version", "list_version_events"]
+                "actions": ["list_versions", "get_version", "get_head", "create_version", "restore_version", "revise_version", "freeze_version", "list_version_events","link_attachment","unlink_attachment"]
             },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
@@ -6669,7 +6670,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v30",
+            "schema_version": "ds.native-client-profiles/v31",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -7706,6 +7707,8 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.version.revise"
                     | "design.version.freeze"
                     | "design.version.events"
+                    | "design.version.attachment.link"
+                    | "design.version.attachment.unlink"
                     | "design.version.compare"
                     | "design.version.begin"
                     | "design.version.restore"
@@ -14139,4 +14142,24 @@ fn dsgrid_apply_batch_refuses_late_failure_stale_head_and_mixed_pins_without_out
     ]);
     assert_eq!(retry["commands"], 1);
     assert_eq!(retry["persisted"], true);
+}
+
+#[test]
+fn direct_mv_marker_attachment_commands_are_exact_and_confirmed() {
+    for (id, path) in [
+        ("design.version.attachment.link", "link"),
+        ("design.version.attachment.unlink", "unlink"),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        assert_eq!(descriptor["command"]["effect"], "global_write");
+        assert_eq!(descriptor["command"]["authority"], "headless_project");
+        assert_eq!(descriptor["command"]["confirmation_required"], true);
+        assert_eq!(descriptor["command"]["path"], serde_json::json!(["design","version","attachment",path]));
+        let names = descriptor["command"]["inputs"].as_array().unwrap().iter()
+            .filter_map(|arg|arg["name"].as_str()).collect::<BTreeSet<_>>();
+        for required in ["project","kind","object","version","attachment","attachment-revision",
+            "reason","expected-revision"] {
+            assert!(names.contains(required), "{id} lacks {required}");
+        }
+    }
 }

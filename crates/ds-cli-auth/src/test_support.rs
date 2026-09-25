@@ -461,6 +461,8 @@ pub(crate) fn profile() -> ClientProfile {
             "revise_version".into(),
             "freeze_version".into(),
             "list_version_events".into(),
+            "link_attachment".into(),
+            "unlink_attachment".into(),
         ],
         design_selections_method: "POST".to_owned(),
         design_selections_path: "/api/v1/design/selections".to_owned(),

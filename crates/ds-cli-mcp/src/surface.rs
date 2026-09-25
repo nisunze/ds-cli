@@ -302,7 +302,7 @@ impl Profile {
             // one thing the comment was about. The proposal is what the person
             // confirms; the read is what the map paints from.
             Self::Project => 22,
-            Self::ModelPm => 18,
+            Self::ModelPm => 20,
             // Seventeen working-copy leaves plus both bootstrap tools. Raised
             // from the default on 2026-09-22 when the four 2026-09-21 leaves
             // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
@@ -872,6 +872,8 @@ const MODEL_PM_COMMANDS: &[&str] = &[
     "design.version.revise",
     "design.version.freeze",
     "design.version.events",
+    "design.version.attachment.link",
+    "design.version.attachment.unlink",
     "design.attachment.list",
     "pm.task.list",
     "pm.task.read",
