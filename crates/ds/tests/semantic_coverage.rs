@@ -55,6 +55,19 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("dsgrid.project.retire", "global_write", "headless_project"),
     ("dsgrid.project.restore", "global_write", "headless_project"),
+    // A governed revision's package assets: download, verify, then list or
+    // save one. Listing writes nothing but may rotate the native credential,
+    // exactly as `dsgrid project versions` does.
+    (
+        "dsgrid.project.asset.list",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.asset.extract",
+        "local_file_write",
+        "headless_project",
+    ),
     ("server.engine", "read_only", "none"),
     // The native server requires its owner's headless identity. The control
     // credential only connects to that host; it grants no Desktop authority.
@@ -528,6 +541,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // Archived transformer preview writes only its explicit local output;
     // recorded origin is file evidence, not a live project authority.
     ("dsgrid.backup.preview", "local_file_write", "none"),
+    // A local package's assets: read, save one, or write a new package with
+    // one attachment added or removed. The source file is never modified.
+    ("dsgrid.asset.list", "read_only", "none"),
+    ("dsgrid.asset.extract", "local_file_write", "none"),
+    ("dsgrid.asset.attach", "local_file_write", "none"),
+    ("dsgrid.asset.detach", "local_file_write", "none"),
     // The paired application's local model lifecycle. `desktop_pairing` is
     // the exact authority and the load-bearing half of this family's
     // contract: a local model is browser-local state, so none of these four

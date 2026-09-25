@@ -33,6 +33,7 @@
 pub mod analyse;
 pub mod apply;
 pub mod apply_batch;
+pub mod asset;
 pub mod backup;
 pub mod create;
 pub mod criteria;
@@ -67,6 +68,12 @@ pub static DOMAIN: Domain = Domain {
         &project::GEOJSON,
         &project::RETIRE,
         &project::RESTORE,
+        &asset::PROJECT_LIST,
+        &asset::PROJECT_EXTRACT,
+        &asset::LIST,
+        &asset::EXTRACT,
+        &asset::ATTACH,
+        &asset::DETACH,
         &create::COMMAND,
         &template::COMMAND,
         &template::APPLY,

@@ -348,7 +348,12 @@ impl Profile {
             // governed head workflow and keeps its source revision attached.
             // The project list is the bounded entry to each model's separate
             // version history; without it the profile cannot choose an ID.
-            Self::GridLocalModel => 24,
+            // Raised on 2026-09-25 for the six package-asset leaves (`dsgrid asset
+            // list|extract|attach|detach`, `dsgrid project asset
+            // list|extract`): a version's original PLS-CADD upload and its
+            // delivered backup belong with the version lifecycle, and the
+            // broad `grid` router cannot absorb six more.
+            Self::GridLocalModel => 28,
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
@@ -698,6 +703,15 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.project.retire",
     "dsgrid.project.restore",
     "dsgrid.profile.labels.show",
+    // A version's package assets (2026-09-25): the original PLS-CADD upload
+    // it carries, and the delivered backup attached to the snapshot it
+    // describes, for a local package or an exact governed revision.
+    "dsgrid.asset.list",
+    "dsgrid.asset.extract",
+    "dsgrid.asset.attach",
+    "dsgrid.asset.detach",
+    "dsgrid.project.asset.list",
+    "dsgrid.project.asset.extract",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -713,6 +727,12 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.structure.admin-refresh",
     "dsgrid.profile.labels.set",
     "dsgrid.profile.labels.show",
+    "dsgrid.asset.list",
+    "dsgrid.asset.extract",
+    "dsgrid.asset.attach",
+    "dsgrid.asset.detach",
+    "dsgrid.project.asset.list",
+    "dsgrid.project.asset.extract",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD
@@ -2212,7 +2232,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Manage Form Factory schemas, project-form settings, project templates and project creation without map state; or work with survey/map-owned local data. Describe a command before invoking it."
         }
         Chapter::Design => {
-            "Read, stage, process, report, save, or discard transformer and LV design work. Describe a command before invoking it."
+            "Read, stage, process, report, save, or discard transformer and LV design work, and govern MV model versions and their attachments. Describe a command before invoking it."
         }
         Chapter::MapPresentation => {
             "Read or change project map styling and its secondary visual dimension. Describe a command before invoking it."

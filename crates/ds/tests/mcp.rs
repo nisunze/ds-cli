@@ -1660,7 +1660,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // restore joined on 2026-09-24 for the same reason (e62edf85).
             // Include project model enumeration beside per-model versions;
             // otherwise this profile cannot discover which IDs to inspect.
-            "grid-local-model" => 24,
+            // The six package-asset leaves (a version's original PLS-CADD
+            // upload and its delivered backup) joined on 2026-09-25.
+            "grid-local-model" => 28,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
@@ -1796,9 +1798,22 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             && published["grid-local-model"].contains("dsgrid_project_list")
             && published["grid-local-model"].contains("dsgrid_project_versions")
             && published["grid-local-model"].contains("dsgrid_project_geojson")
-            && published["grid-local-model"].contains("dsgrid_publish-version"),
+            && published["grid-local-model"].contains("dsgrid_publish-version")
+            && published["grid-local-model"].contains("dsgrid_asset_extract")
+            && published["grid-local-model"].contains("dsgrid_asset_attach")
+            && published["grid-local-model"].contains("dsgrid_project_asset_extract"),
         "the grid-local-model profile must project the complete model and project-cache lifecycle"
     );
+    // Package assets live with the version lifecycle alone: neither the broad
+    // `grid` router nor the file-in/file-out `grid-native` one carries them.
+    for leaf in ["dsgrid_asset_list", "dsgrid_project_asset_list"] {
+        assert!(published["grid-local-model"].contains(leaf));
+        assert!(!published["grid"].contains(leaf), "{leaf} widened `grid`");
+        assert!(
+            !published["grid-native"].contains(leaf),
+            "{leaf} widened `grid-native`"
+        );
+    }
     // The correspondence workflow is its own profile (2026-09-20): the
     // letters an agent files and the tasks it schedules are two jobs, and
     // one bounded project profile could not carry both.
