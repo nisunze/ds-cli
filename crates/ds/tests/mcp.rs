@@ -1548,18 +1548,25 @@ fn chapter_routing_refuses_escape_and_confirmation_misuse() {
             .unwrap()
             .contains("ds_vector_tiles")
     );
-    assert!(
-        response(&responses, 2)["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("does not accept confirmation")
-    );
-    assert!(
-        response(&responses, 3)["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("chapter envelope")
-    );
+    // Once the router has resolved a command, a misplaced confirmation is
+    // that command's refusal: an `isError` result with a DS code and remedy,
+    // not a protocol error. Routing mistakes (ids 1 and 4) stay protocol
+    // errors, because no command was resolved.
+    for (id, expected) in [(2, "does not accept confirmation"), (3, "chapter envelope")] {
+        let result = &response(&responses, id)["result"];
+        assert_eq!(result["isError"], true);
+        let error = &result["structuredContent"]["error"];
+        assert_eq!(error["code"], "mcp_arguments_invalid", "{error}");
+        assert!(
+            error["message"].as_str().unwrap().contains(expected),
+            "{error}"
+        );
+        assert!(
+            error["remedy"]
+                .as_str()
+                .is_some_and(|remedy| !remedy.is_empty())
+        );
+    }
     assert!(
         response(&responses, 4)["error"]["message"]
             .as_str()
@@ -2174,4 +2181,537 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
         hosts.iter().any(|id| id == "desktop.status"),
         "the host flag is published by the commands that route on it: {hosts:?}"
     );
+}
+
+/// The live registry, walked tier by tier: every command id with its domain.
+fn live_commands() -> BTreeMap<String, String> {
+    let mut live = BTreeMap::new();
+    for domain in cli(&["capabilities", "--output", "json"])["data"]["domains"]
+        .as_array()
+        .expect("domains")
+    {
+        let domain = domain["id"].as_str().expect("domain id");
+        for command in cli(&["capabilities", domain, "--output", "json"])["data"]["commands"]
+            .as_array()
+            .expect("commands")
+        {
+            live.insert(
+                command["id"].as_str().expect("id").to_string(),
+                domain.to_string(),
+            );
+        }
+    }
+    assert!(!live.is_empty(), "the live registry must not be empty");
+    live
+}
+
+fn tools_by_title(responses: &[Value], id: i64) -> BTreeMap<String, Value> {
+    let mut tools = BTreeMap::new();
+    for tool in response(responses, id)["result"]["tools"]
+        .as_array()
+        .expect("tools")
+    {
+        let title = tool["title"].as_str().expect("title").to_string();
+        assert!(
+            tools.insert(title.clone(), tool.clone()).is_none(),
+            "`{title}` is published twice"
+        );
+    }
+    tools
+}
+
+/// Every registered command is exactly one MCP tool, or one of the named
+/// exclusions — with no hand edit anywhere when a command is added. A verb
+/// another branch registers appears here by construction; a verb whose
+/// descriptor cannot be projected faithfully stops `ds mcp serve` from
+/// starting, and this test with it.
+#[test]
+fn every_registered_command_is_exactly_one_mcp_tool_or_a_named_exclusion() {
+    let live = live_commands();
+    let never: BTreeSet<&str> = ds_cli_mcp::tools::NEVER_TOOLS
+        .iter()
+        .map(|(id, reason)| {
+            assert!(!reason.is_empty(), "`{id}` is excluded without a reason");
+            assert!(
+                live.contains_key(*id),
+                "`{id}` is excluded from MCP but is no longer a live command"
+            );
+            *id
+        })
+        .collect();
+    let expected: BTreeSet<String> = live
+        .iter()
+        .filter(|(id, domain)| domain.as_str() != "mcp" && !never.contains(id.as_str()))
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    // Typed exposure: one leaf per command, named by the stable rule.
+    let (responses, _) = mcp(
+        &["--exposure", "commands"],
+        &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })],
+    );
+    let tools = tools_by_title(&responses, 1);
+    let leaves: BTreeSet<String> = tools
+        .keys()
+        .filter(|title| title.as_str() != "DS diagnostics")
+        .cloned()
+        .collect();
+    let missing: Vec<&String> = expected.difference(&leaves).collect();
+    assert!(
+        missing.is_empty(),
+        "registered commands with no MCP tool: {missing:?}"
+    );
+    let extra: Vec<&String> = leaves.difference(&expected).collect();
+    assert!(
+        extra.is_empty(),
+        "MCP tools with no registered command: {extra:?}"
+    );
+    let mut names = BTreeSet::new();
+    for (id, tool) in &tools {
+        let name = tool["name"].as_str().expect("name");
+        assert!(
+            names.insert(name.to_string()),
+            "two tools are named `{name}`"
+        );
+        assert!(
+            !name.is_empty()
+                && name.len() <= 64
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+            "`{name}` breaks the tool-name grammar hosts accept"
+        );
+        if id != "DS diagnostics" {
+            assert_eq!(name, id.replace('.', "_"), "the stable name rule moved");
+            assert_eq!(tool["inputSchema"]["type"], "object");
+            assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+        }
+    }
+
+    // Chapter exposure: every command is reachable through exactly one
+    // router, and the catalogue lists it there.
+    let requests: Vec<Value> = Chapter::ALL
+        .iter()
+        .filter(|chapter| **chapter != Chapter::Catalog)
+        .enumerate()
+        .map(|(index, chapter)| {
+            json!({ "jsonrpc": "2.0", "id": index as i64 + 1, "method": "tools/call",
+                    "params": { "name": "ds_catalog", "arguments": { "chapter": chapter.token() } } })
+        })
+        .collect();
+    let (responses, _) = mcp(&["--exposure", "chapters"], &requests);
+    let mut routed: BTreeMap<String, String> = BTreeMap::new();
+    for request in &requests {
+        let listing =
+            &response(&responses, request["id"].as_i64().unwrap())["result"]["structuredContent"];
+        let router = listing["tool"].as_str().expect("router").to_string();
+        for command in listing["commands"].as_array().expect("commands") {
+            let id = command["id"].as_str().expect("id").to_string();
+            if let Some(other) = routed.insert(id.clone(), router.clone()) {
+                panic!("`{id}` is routed by both `{other}` and `{router}`");
+            }
+        }
+    }
+    let routed_ids: BTreeSet<String> = routed.keys().cloned().collect();
+    assert_eq!(
+        routed_ids, expected,
+        "the chapter routers must reach exactly the registered commands"
+    );
+}
+
+/// One command's descriptor as the server itself reads it at startup: the
+/// schema, without resolving live availability.
+fn schema(id: &str) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(["capabilities", id, "--output", "json"])
+        .env("DS_CLI_SCHEMA_ONLY", "1")
+        .output()
+        .expect("ds runs");
+    let envelope: Value = serde_json::from_slice(&output.stdout).expect("one CLI envelope");
+    envelope["data"]["command"].clone()
+}
+
+fn leaf<'a>(tools: &'a BTreeMap<String, Value>, id: &str) -> &'a Value {
+    tools
+        .get(id)
+        .unwrap_or_else(|| panic!("`{id}` publishes no tool"))
+}
+
+/// Schemas are the live descriptors: types, closed sets on the value (or on
+/// each item of a repeated input), required inputs, defaults, the MCP
+/// confirmation only where the gate applies, and a command's own `confirm`
+/// or `yes` input left as that command's input.
+#[test]
+fn typed_schemas_are_generated_from_the_live_descriptors() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands"],
+        &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })],
+    );
+    let tools = tools_by_title(&responses, 1);
+    for (id, tool) in &tools {
+        if id == "DS diagnostics" {
+            continue;
+        }
+        let descriptor = schema(id);
+        let properties = tool["inputSchema"]["properties"]
+            .as_object()
+            .expect("properties");
+        let mut declared = BTreeSet::new();
+        for input in descriptor["inputs"].as_array().expect("inputs") {
+            let name = input["name"].as_str().unwrap();
+            declared.insert(name.to_string());
+            let property = &properties[name];
+            match input["kind"].as_str().unwrap() {
+                "switch" => assert_eq!(property["type"], "boolean", "{id} {name}"),
+                "repeated" => {
+                    assert_eq!(property["type"], "array", "{id} {name}");
+                    assert!(property.get("enum").is_none(), "{id} {name}");
+                    if let Some(choices) = input.get("choices") {
+                        assert_eq!(&property["items"]["enum"], choices, "{id} {name}");
+                    }
+                }
+                _ => {
+                    assert_eq!(property["type"], "string", "{id} {name}");
+                    if let Some(choices) = input.get("choices") {
+                        assert_eq!(&property["enum"], choices, "{id} {name}");
+                    }
+                    if let Some(default) = input.get("default") {
+                        assert_eq!(&property["default"], default, "{id} {name}");
+                    }
+                }
+            }
+            let required = tool["inputSchema"]["required"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(name));
+            assert_eq!(required, input["required"] == true, "{id} {name}");
+        }
+        // The only property a descriptor does not declare is the MCP
+        // confirmation, and it appears exactly where the CLI gate applies.
+        let gated = descriptor["confirmation_required"] == true;
+        for name in properties.keys() {
+            assert!(
+                declared.contains(name) || (name == "confirm" && gated),
+                "{id} publishes undeclared property `{name}`"
+            );
+        }
+        if gated {
+            assert_eq!(properties["confirm"]["type"], "boolean", "{id}");
+        }
+    }
+
+    let inspect = leaf(&tools, "dsgrid.inspect");
+    let include = &inspect["inputSchema"]["properties"]["include"];
+    assert_eq!(include["type"], "array");
+    assert!(
+        include["items"]["enum"]
+            .as_array()
+            .is_some_and(|choices| !choices.is_empty())
+    );
+
+    // `design.force-gate.check` owns a string input named `confirm`.
+    let gate = leaf(&tools, "design.force-gate.check");
+    assert_eq!(
+        gate["inputSchema"]["properties"]["confirm"]["type"],
+        "string"
+    );
+
+    // The typed dsgrid mutations own a `--yes` switch that writes their
+    // revision; they are not behind the CLI's central gate.
+    let retype = leaf(&tools, "dsgrid.structure.retype");
+    assert_eq!(
+        retype["inputSchema"]["properties"]["yes"]["type"],
+        "boolean"
+    );
+    assert!(retype["inputSchema"]["properties"].get("confirm").is_none());
+
+    // A preview-capable global write says how to preview without confirming.
+    let task = leaf(&tools, "pm.task.create");
+    assert!(
+        task["inputSchema"]["properties"]["confirm"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("Required unless `dry-run` is true")
+    );
+    for job in ["solar.run.start", "server.submit"] {
+        assert!(
+            leaf(&tools, job)["description"]
+                .as_str()
+                .unwrap()
+                .contains("Runs as a job"),
+            "{job}"
+        );
+    }
+}
+
+/// Annotations are the effect class and nothing else, for every tool.
+#[test]
+fn every_tool_is_annotated_from_its_live_effect() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands"],
+        &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })],
+    );
+    for (id, tool) in tools_by_title(&responses, 1) {
+        if id == "DS diagnostics" {
+            continue;
+        }
+        let description = tool["description"].as_str().unwrap();
+        let effect = description
+            .split("Effect: ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .unwrap_or_else(|| panic!("{id} does not state its effect"));
+        let effect = ds_cli_contract::spec::Effect::from_token(effect)
+            .unwrap_or_else(|| panic!("{id} states unknown effect `{effect}`"));
+        let hints = ds_cli_mcp::tools::hints(effect);
+        let annotations = &tool["annotations"];
+        assert_eq!(annotations["readOnlyHint"], hints.read_only, "{id}");
+        assert_eq!(annotations["destructiveHint"], hints.destructive, "{id}");
+        assert_eq!(annotations["idempotentHint"], hints.idempotent, "{id}");
+        assert_eq!(annotations["openWorldHint"], false, "{id}");
+    }
+    // The statement in each description is the descriptor's own effect.
+    for (id, token) in [
+        ("tile.generate", "global_write"),
+        ("shell.status", "discovery"),
+        ("map.draw", "local_ui"),
+        ("workstation.install", "machine_write"),
+    ] {
+        assert_eq!(
+            cli(&["capabilities", id, "--output", "json"])["data"]["command"]["effect"],
+            token,
+            "{id}"
+        );
+    }
+}
+
+/// A signed-out, profile-free machine: the protected native state lives in
+/// an empty temporary directory, so a call that passes the gate is refused
+/// by authority — locally — and never reaches a service.
+fn signed_out(label: &str) -> TestDir {
+    TestDir::new(label)
+}
+
+fn signed_out_mcp(home: &TestDir, args: &[&str], requests: &[Value]) -> Vec<Value> {
+    mcp_with_env(
+        args,
+        requests,
+        &[
+            ("HOME", &home.0),
+            ("DS_CONFIG_HOME", &home.0),
+            ("XDG_CONFIG_HOME", &home.0),
+        ],
+    )
+    .0
+}
+
+fn signed_out_cli(home: &TestDir, args: &[&str]) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(args)
+        .env("HOME", &home.0)
+        .env("DS_CONFIG_HOME", &home.0)
+        .env("XDG_CONFIG_HOME", &home.0)
+        .env("DS_CLI_NONINTERACTIVE", "1")
+        .output()
+        .expect("ds runs");
+    serde_json::from_slice(&output.stdout).expect("one CLI envelope")
+}
+
+fn structured(responses: &[Value], id: i64) -> &Value {
+    &response(responses, id)["result"]["structuredContent"]
+}
+
+/// The global-write gate through typed tools: nothing confirms but
+/// `confirm: true`, a caller value spelled like the flag confirms nothing, a
+/// declared preview needs no confirmation and refuses one, and a CLI refusal
+/// arrives as a tool error carrying its code and remedy.
+#[test]
+fn global_writes_are_confirmed_only_by_confirm_and_previews_need_none() {
+    let home = signed_out("gate");
+    let responses = signed_out_mcp(
+        &home,
+        &["--exposure", "commands"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "tile_generate", "arguments": { "type": "survey", "project": "p-test" } } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "tile_generate", "arguments": { "type": "survey", "project": "--yes" } } }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "tile_generate", "arguments": { "type": "survey", "project": "p-test", "confirm": "yes" } } }),
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "tile_generate", "arguments": { "type": "survey", "project": "p-test", "confirm": true } } }),
+            json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "pm_task_create", "arguments": { "title": "t", "project": "p-test", "dry-run": true } } }),
+            json!({ "jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": { "name": "pm_task_create", "arguments": { "title": "t", "project": "p-test", "dry-run": true, "confirm": true } } }),
+            json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": { "name": "pm_task_create", "arguments": { "title": "t", "project": "p-test" } } }),
+        ],
+    );
+    for id in [1, 2, 7] {
+        let envelope = structured(&responses, id);
+        assert_eq!(response(&responses, id)["result"]["isError"], true, "{id}");
+        assert_eq!(
+            envelope["error"]["code"], "confirmation_required",
+            "{id}: {envelope}"
+        );
+        assert!(
+            envelope["error"]["remedy"]
+                .as_str()
+                .is_some_and(|remedy| !remedy.is_empty()),
+            "{id}: a refusal carries its remedy"
+        );
+    }
+    let wrong_type = structured(&responses, 3);
+    assert_eq!(wrong_type["error"]["code"], "mcp_arguments_invalid");
+    assert_eq!(wrong_type["command"], "tile.generate");
+    // `confirm: true` is `--yes`: the gate is passed and the command's own
+    // authority answers, exactly as the same confirmed call in a terminal.
+    assert_eq!(
+        *structured(&responses, 4),
+        signed_out_cli(
+            &home,
+            &[
+                "tile",
+                "generate",
+                "--type=survey",
+                "--project=p-test",
+                "--yes",
+                "--output",
+                "json"
+            ]
+        )
+    );
+    assert_ne!(
+        structured(&responses, 4)["error"]["code"],
+        "confirmation_required"
+    );
+    // A declared preview passes without confirmation and answers as the CLI.
+    assert_ne!(
+        structured(&responses, 5)["error"]["code"],
+        "confirmation_required"
+    );
+    assert_eq!(
+        *structured(&responses, 5),
+        signed_out_cli(
+            &home,
+            &[
+                "pm",
+                "task",
+                "create",
+                "--title=t",
+                "--project=p-test",
+                "--dry-run",
+                "--output",
+                "json"
+            ]
+        )
+    );
+    let confirmed_preview = structured(&responses, 6);
+    assert_eq!(confirmed_preview["error"]["code"], "mcp_arguments_invalid");
+    assert!(
+        confirmed_preview["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--dry-run")
+    );
+}
+
+/// A caller's value reaches the command as that value, whatever it spells:
+/// before 2026-09-25 a title beginning with `--` was refused as a missing
+/// value, and a title of `-h` answered the help descriptor with status `ok`
+/// — the write silently never ran.
+#[test]
+fn argument_values_reach_the_command_verbatim() {
+    let home = signed_out("verbatim");
+    let titles = [
+        "--- a Markdown rule",
+        "-h",
+        "--help",
+        "--version",
+        "--output",
+    ];
+    let requests: Vec<Value> = titles
+        .iter()
+        .enumerate()
+        .map(|(index, title)| {
+            json!({ "jsonrpc": "2.0", "id": index as i64 + 1, "method": "tools/call",
+                    "params": { "name": "pm_task_create", "arguments": { "title": title, "project": "p-test", "dry-run": true } } })
+        })
+        .collect();
+    let responses = signed_out_mcp(&home, &["--exposure", "commands"], &requests);
+    for (index, title) in titles.iter().enumerate() {
+        let envelope = structured(&responses, index as i64 + 1);
+        assert_eq!(envelope["command"], "pm.task.create", "{title}: {envelope}");
+        assert!(
+            envelope["data"].get("path").is_none(),
+            "`{title}` answered the help descriptor instead of running: {envelope}"
+        );
+        assert_ne!(envelope["error"]["code"], "missing_value", "{title}");
+        assert_eq!(
+            *envelope,
+            signed_out_cli(
+                &home,
+                &[
+                    "pm",
+                    "task",
+                    "create",
+                    &format!("--title={title}"),
+                    "--project=p-test",
+                    "--dry-run",
+                    "--output",
+                    "json",
+                ]
+            ),
+            "{title}"
+        );
+    }
+}
+
+/// initialize → tools/list → tools/call on a read-only typed tool, with a
+/// progress token the host supplied: the answer is the CLI's envelope, and a
+/// call that ends inside one progress interval sends no progress at all.
+#[test]
+fn typed_protocol_smoke_returns_the_cli_envelope() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "operations"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
+            json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "shell_status", "arguments": {}, "_meta": { "progressToken": "p-1" } } }),
+        ],
+    );
+    assert_eq!(
+        response(&responses, 1)["result"]["protocolVersion"],
+        "2025-06-18"
+    );
+    let tools = tools_by_title(&responses, 2);
+    let shell = leaf(&tools, "shell.status");
+    assert_eq!(shell["annotations"]["readOnlyHint"], true);
+    assert_eq!(shell["annotations"]["destructiveHint"], false);
+    let result = &response(&responses, 3)["result"];
+    assert_eq!(result["isError"], false);
+    assert_eq!(
+        result["structuredContent"],
+        cli(&["shell", "status", "--output", "json"])
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(result["content"][0]["text"].as_str().unwrap()).unwrap(),
+        result["structuredContent"],
+        "the text block is the same envelope, serialized"
+    );
+    assert!(
+        responses
+            .iter()
+            .all(|message| message["method"] != "notifications/progress"),
+        "a quick call reports no progress"
+    );
+}
+
+#[test]
+fn an_unbounded_or_malformed_call_timeout_is_refused_before_serving() {
+    for value in ["0", "86401", "soon"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(["mcp", "serve", "--call-timeout", value, "--output", "json"])
+            .stdin(Stdio::null())
+            .output()
+            .expect("ds runs");
+        assert!(!output.status.success(), "{value}");
+        let envelope: Value = serde_json::from_slice(&output.stdout).expect("one envelope");
+        assert_eq!(envelope["error"]["code"], "invalid_number", "{value}");
+    }
 }

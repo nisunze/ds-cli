@@ -4,13 +4,15 @@
 //! so the mapping is testable without a process and the tool list can never
 //! say something the CLI did not.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Refusal};
+use ds_cli_contract::spec::{Authority, Chapter, Effect, Execution, Refusal};
 use serde_json::{Map, Value, json};
 
 /// One `ds` command as an MCP tool, plus what is needed to call it back.
@@ -26,6 +28,13 @@ pub struct Tool {
     /// Parsed from the same live descriptor that supplied every other tool
     /// field. It is the only input to the MCP desktop gate.
     pub authority: Authority,
+    /// Parsed from the live descriptor. It is the only input to the tool's
+    /// annotations; see [`hints`].
+    pub effect: Effect,
+    /// A `job` command answers with a handle to poll, not with its result.
+    pub execution: Execution,
+    /// Whether the command still needs the paired application window.
+    pub requires_window: bool,
     pub path: Vec<String>,
     pub description: String,
     pub input_schema: Value,
@@ -36,6 +45,10 @@ pub struct Tool {
     /// The validated boolean switch name (without `--`) that selects the
     /// effectful path. Absent means every invocation needs confirmation.
     pub confirmation_trigger: Option<String>,
+    /// The validated boolean switch name (without `--`) whose presence turns
+    /// a writing command into a preview that writes nothing and so needs no
+    /// confirmation: the descriptor's `preview_switch`, `--dry-run`.
+    pub preview_switch: Option<String>,
     pub inputs: Vec<Input>,
     /// The authoritative tier-3 descriptor this tool was generated from.
     pub descriptor: Value,
@@ -56,6 +69,108 @@ pub struct Input {
 /// that refusal with its remedy.
 pub const CONFIRM_PROPERTY: &str = "confirm";
 
+/// Commands that are live CLI contracts but never MCP tools, with why. The
+/// `mcp` domain itself is excluded as a whole beside these: a server that
+/// lists "start a server" as a tool is a loop, not a capability.
+///
+/// Every other registered command becomes exactly one tool, generated from
+/// its live descriptor, and `crates/ds/tests/mcp.rs` holds that as a fact of
+/// the registry rather than of this list.
+pub const NEVER_TOOLS: &[(&str, &str)] = &[
+    (
+        "auth.login",
+        "a person at a trusted terminal types a password; no host may",
+    ),
+    (
+        "auth.link.approve",
+        "approving a device link is the signed-in Desktop's act; a host approving its own link would authorize itself",
+    ),
+    (
+        "server.serve",
+        "a foreground host never returns a tool response; operators start it through the launcher or service",
+    ),
+];
+
+/// Input names `ds` reads as its own global flags wherever they appear. A
+/// command that declared one could never receive it, and an MCP property of
+/// that name would reach the global instead, so such a descriptor is refused
+/// rather than projected. `version` is absent on purpose: `ds` routes it to
+/// a command that declares it, and `yes` is handled beside the confirmation
+/// gate in [`tool_from_descriptor`].
+const GLOBAL_FLAG_NAMES: &[&str] = &["output", "pretty", "no-color", "help"];
+
+/// The bound for the probes this server makes of its own executable —
+/// `ds version`, `ds capabilities`, `ds desktop status` — which answer from
+/// declarations or one loopback handshake.
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// How often a caller waiting on a long tool call is told it is still
+/// running. Hosts that asked for progress receive one notification per tick.
+pub const PROGRESS_INTERVAL: Duration = Duration::from_secs(10);
+
+/// The most standard output one `ds` child may produce before the capture
+/// stops keeping it. Every command bounds its own answer far below this; the
+/// bound exists so one defective answer cannot exhaust the server's memory.
+pub const STDOUT_CAPTURE_LIMIT: usize = 32 * 1024 * 1024;
+
+/// Standard error is diagnostic only. Its tail is kept for the rare answer
+/// that produced no envelope.
+const STDERR_CAPTURE_LIMIT: usize = 16 * 1024;
+
+/// How long the capture waits for a child's pipes to close after the child
+/// itself has ended. A grandchild that inherited a pipe must not hold a tool
+/// call open after the command it served has returned.
+const PIPE_GRACE: Duration = Duration::from_secs(2);
+
+/// What an MCP host may assume about one tool, derived from its effect class
+/// and nothing else. Blast radius is never inferred from a command's name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Hints {
+    /// Changes nothing outside the process.
+    pub read_only: bool,
+    /// May replace or remove what exists, rather than only add to it.
+    pub destructive: bool,
+    /// Repeating the same call has no further effect.
+    pub idempotent: bool,
+}
+
+/// The one mapping from effect class to MCP annotations.
+///
+/// Where an effect class does not settle a question, the answer is the
+/// conservative one: a writing class is destructive and not idempotent,
+/// because some command in it replaces what exists and none promises
+/// otherwise. `local_ui` changes only what the paired window shows, so it is
+/// additive. `proposal` persists nothing but spends model credit on every
+/// call, so it is read-only and still not idempotent.
+pub const fn hints(effect: Effect) -> Hints {
+    match effect {
+        Effect::Discovery | Effect::ReadOnly => Hints {
+            read_only: true,
+            destructive: false,
+            idempotent: true,
+        },
+        Effect::Proposal => Hints {
+            read_only: true,
+            destructive: false,
+            idempotent: false,
+        },
+        Effect::LocalUi => Hints {
+            read_only: false,
+            destructive: false,
+            idempotent: false,
+        },
+        Effect::LocalAuthState
+        | Effect::LocalFileWrite
+        | Effect::ArtifactWrite
+        | Effect::MachineWrite
+        | Effect::GlobalWrite => Hints {
+            read_only: false,
+            destructive: true,
+            idempotent: false,
+        },
+    }
+}
+
 pub fn tool_name(id: &str) -> String {
     id.chars()
         .map(|c| {
@@ -69,6 +184,12 @@ pub fn tool_name(id: &str) -> String {
 }
 
 /// Build one tool from a tier-3 `ds capabilities <id>` descriptor.
+///
+/// `None` means the descriptor cannot be projected faithfully, and the server
+/// refuses to start rather than publish a tool that says less than the CLI:
+/// an unknown chapter, authority, effect or execution token; a confirmation
+/// trigger or preview switch that names no declared switch; or an input whose
+/// name `ds` would read as one of its own global flags.
 pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
     // A tool's description is read by every host before any call, so it is
     // scrubbed of terminal sign-in advice at the source, like every answer.
@@ -78,6 +199,21 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
     let id = command.get("id")?.as_str()?.to_string();
     let chapter = Chapter::from_token(command.get("chapter")?.as_str()?)?;
     let authority = Authority::from_token(command.get("authority")?.as_str()?)?;
+    let effect = Effect::from_token(command.get("effect")?.as_str()?)?;
+    // Both are always present in a live descriptor. Absent reads as the
+    // default; present and unknown is refused like any other token.
+    let execution = match command.get("execution") {
+        None => Execution::Sync,
+        Some(value) => Execution::from_token(value.as_str()?)?,
+    };
+    let requires_window = match command.get("requires") {
+        None => false,
+        Some(value) => match value.as_str()? {
+            "server" => false,
+            "window" => true,
+            _ => return None,
+        },
+    };
     let path: Vec<String> = command
         .get("path")?
         .as_array()?
@@ -91,11 +227,8 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         .get("confirmation_required")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let declared_confirmation_trigger = match command.get("confirmation_trigger") {
-        None => None,
-        Some(Value::String(value)) => Some(value.as_str()),
-        Some(_) => return None,
-    };
+    let declared_confirmation_trigger = optional_token(command, "confirmation_trigger")?;
+    let declared_preview_switch = optional_token(command, "preview_switch")?;
     let mut properties = Map::new();
     let mut required = Vec::new();
     let mut inputs = Vec::new();
@@ -113,6 +246,24 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
             .and_then(Value::as_str)
             .unwrap_or("value")
             .to_string();
+        // `ds` strips these before a command sees its inputs, so a property
+        // of that name would steer the executable rather than the command.
+        if GLOBAL_FLAG_NAMES.contains(&name) {
+            return None;
+        }
+        // A declared `--yes` switch is the global confirmation under another
+        // name. It is a command's own gate only where the CLI's central gate
+        // does not apply; on a gated command it would confirm without the
+        // `confirm` property ever being passed.
+        if name == "yes" && (kind != "switch" || confirmation_required) {
+            return None;
+        }
+        // A command may own an input called `confirm`. It stays that
+        // command's input, which is only unambiguous while the MCP
+        // confirmation property does not need the same name.
+        if name == CONFIRM_PROPERTY && confirmation_required {
+            return None;
+        }
         let summary = input.get("summary").and_then(Value::as_str).unwrap_or("");
         let value_hint = input.get("value").and_then(Value::as_str).unwrap_or("");
         let description = if value_hint.is_empty() {
@@ -120,20 +271,37 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         } else {
             format!("{summary} ({value_hint})")
         };
+        let choices = input
+            .get("choices")
+            .and_then(Value::as_array)
+            .filter(|choices| !choices.is_empty());
+        let default = input.get("default").filter(|default| !default.is_null());
         let mut schema = match kind.as_str() {
             "switch" => json!({ "type": "boolean" }),
-            "repeated" => json!({ "type": "array", "items": { "type": "string" } }),
-            _ => json!({ "type": "string" }),
+            "repeated" => {
+                // The closed set constrains each item. On the array itself it
+                // would demand that the array equal one string, which no
+                // array can, and a validating host would refuse every call.
+                let mut items = json!({ "type": "string" });
+                if let Some(choices) = choices {
+                    items["enum"] = Value::Array(choices.clone());
+                }
+                json!({ "type": "array", "items": items })
+            }
+            _ => {
+                let mut scalar = json!({ "type": "string" });
+                if let Some(choices) = choices {
+                    scalar["enum"] = Value::Array(choices.clone());
+                }
+                scalar
+            }
         };
-        if let Some(choices) = input.get("choices").and_then(Value::as_array)
-            && !choices.is_empty()
-        {
-            schema["enum"] = Value::Array(choices.clone());
-        }
-        if let Some(default) = input.get("default")
-            && !default.is_null()
-        {
-            schema["default"] = default.clone();
+        if let Some(default) = default {
+            schema["default"] = if kind == "repeated" {
+                json!([default])
+            } else {
+                default.clone()
+            };
         }
         schema["description"] = Value::String(description);
         if input
@@ -149,28 +317,37 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
             kind,
         });
     }
+    let declared_switch = |token: &str| -> Option<String> {
+        let name = token.strip_prefix("--")?;
+        (!name.is_empty()
+            && inputs
+                .iter()
+                .any(|input| input.name == name && input.kind == "switch"))
+        .then(|| name.to_string())
+    };
     let confirmation_trigger = match declared_confirmation_trigger {
         None => None,
         Some(trigger) => {
             if !confirmation_required {
                 return None;
             }
-            let name = trigger.strip_prefix("--")?;
-            if name.is_empty()
-                || !inputs
-                    .iter()
-                    .any(|input| input.name == name && input.kind == "switch")
-            {
-                return None;
-            }
-            Some(name.to_string())
+            Some(declared_switch(trigger)?)
         }
     };
+    let preview_switch = match declared_preview_switch {
+        None => None,
+        Some(preview) => Some(declared_switch(preview)?),
+    };
     if confirmation_required {
-        let description = confirmation_trigger.as_ref().map_or_else(
-            || "This command has an effect and the CLI requires confirmation. Pass true only when the user's intent authorizes exactly this effect and scope (maps to `--yes`).".to_string(),
-            |trigger| format!("Required only when `--{trigger}` is true. Pass true only when the user's intent authorizes exactly that effect and scope (maps to `--yes`)."),
-        );
+        let description = match (&confirmation_trigger, &preview_switch) {
+            (Some(trigger), _) => format!(
+                "Required only when `{trigger}` is true. Pass true only when the user's intent authorizes exactly that effect and scope (maps to `--yes`)."
+            ),
+            (None, Some(preview)) => format!(
+                "Required unless `{preview}` is true, which previews and writes nothing. Pass true only when the user's intent authorizes exactly this effect and scope (maps to `--yes`)."
+            ),
+            (None, None) => "This command has an effect and the CLI requires confirmation. Pass true only when the user's intent authorizes exactly this effect and scope (maps to `--yes`).".to_string(),
+        };
         properties.insert(
             CONFIRM_PROPERTY.to_string(),
             json!({
@@ -179,29 +356,100 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
             }),
         );
     }
+    let description = describe(
+        command,
+        effect,
+        authority,
+        execution,
+        requires_window,
+        confirmation_required,
+        confirmation_trigger.as_deref(),
+        preview_switch.as_deref(),
+    );
+    Some(Tool {
+        name: tool_name(&id),
+        id,
+        chapter,
+        authority,
+        effect,
+        execution,
+        requires_window,
+        path,
+        description,
+        input_schema: json!({
+            "type": "object",
+            "properties": Value::Object(properties),
+            "required": required,
+            "additionalProperties": false,
+        }),
+        confirmation_required,
+        confirmation_trigger,
+        preview_switch,
+        inputs,
+        descriptor: command.clone(),
+    })
+}
+
+/// An optional descriptor string: absent is `Some(None)`; present but not a
+/// string is `None`, which refuses the whole descriptor.
+fn optional_token<'a>(command: &'a Value, key: &str) -> Option<Option<&'a str>> {
+    match command.get(key) {
+        None => Some(None),
+        Some(Value::String(value)) => Some(Some(value.as_str())),
+        Some(_) => None,
+    }
+}
+
+/// The tool description: the command's own words, then the facts a host
+/// needs before choosing it — what it changes, who it needs, how to confirm
+/// or preview it, whether it answers with a job, and how it declines.
+#[allow(clippy::too_many_arguments)]
+fn describe(
+    command: &Value,
+    effect: Effect,
+    authority: Authority,
+    execution: Execution,
+    requires_window: bool,
+    confirmation_required: bool,
+    confirmation_trigger: Option<&str>,
+    preview_switch: Option<&str>,
+) -> String {
     let summary = command.get("summary").and_then(Value::as_str).unwrap_or("");
     let purpose = command.get("purpose").and_then(Value::as_str).unwrap_or("");
     let output = command.get("output").and_then(Value::as_str).unwrap_or("");
-    let effect = command.get("effect").and_then(Value::as_str).unwrap_or("");
-    let authority_token = command
-        .get("authority")
-        .and_then(Value::as_str)
-        .unwrap_or("");
     let mut description = format!("{summary}\n\n{purpose}");
     if !output.is_empty() {
         description.push_str(&format!("\n\nReturns: {output}"));
     }
     description.push_str(&format!(
-        "\n\nEffect: {effect}. Authority: {authority_token}."
+        "\n\nEffect: {} ({}). Authority: {} ({}).",
+        effect.token(),
+        effect.gloss(),
+        authority.token(),
+        authority.gloss()
     ));
     if confirmation_required {
-        if let Some(trigger) = &confirmation_trigger {
-            description.push_str(&format!(
-                " Requires `{CONFIRM_PROPERTY}: true` only when `--{trigger}` is true."
-            ));
-        } else {
-            description.push_str(&format!(" Requires `{CONFIRM_PROPERTY}: true`."));
+        match (confirmation_trigger, preview_switch) {
+            (Some(trigger), _) => description.push_str(&format!(
+                " Requires `{CONFIRM_PROPERTY}: true` only when `{trigger}` is true."
+            )),
+            (None, Some(preview)) => description.push_str(&format!(
+                " Requires `{CONFIRM_PROPERTY}: true`, except with `{preview}: true`, which previews and writes nothing."
+            )),
+            (None, None) => {
+                description.push_str(&format!(" Requires `{CONFIRM_PROPERTY}: true`."));
+            }
         }
+    } else if let Some(preview) = preview_switch {
+        description.push_str(&format!(" `{preview}: true` previews and writes nothing."));
+    }
+    if execution == Execution::Job {
+        description.push_str(
+            " Runs as a job: answers at once with a handle; poll the command the answer names.",
+        );
+    }
+    if requires_window {
+        description.push_str(" Needs the paired DS GridDesign window.");
     }
     let refusals: Vec<String> = command
         .get("refusals")
@@ -218,45 +466,48 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         description.push_str("\n\nRefuses with: ");
         description.push_str(&refusals.join("; "));
     }
-    Some(Tool {
-        name: tool_name(&id),
-        id,
-        chapter,
-        authority,
-        path,
-        description,
-        input_schema: json!({
-            "type": "object",
-            "properties": Value::Object(properties),
-            "required": required,
-            "additionalProperties": false,
-        }),
-        confirmation_required,
-        confirmation_trigger,
-        inputs,
-        descriptor: command.clone(),
-    })
+    description
 }
 
 impl Tool {
     /// Whether this exact invocation shape requires confirmation.
+    ///
+    /// The same decision `Command::confirmation_required_for` makes in the
+    /// CLI, read from the descriptor: a declared trigger switch decides
+    /// alone; otherwise a set preview switch means nothing is written; and
+    /// otherwise the effect class decides.
     pub fn confirmation_required_for(&self, arguments: &Value) -> Result<bool, String> {
         if !self.confirmation_required {
             return Ok(false);
         }
-        let Some(trigger) = &self.confirmation_trigger else {
-            return Ok(true);
-        };
         let object = match arguments {
-            Value::Null => return Ok(false),
-            Value::Object(object) => object,
+            Value::Null => None,
+            Value::Object(object) => Some(object),
             _ => return Err("arguments must be an object".to_string()),
         };
-        match object.get(trigger) {
+        let switch = |name: &str| match object.and_then(|object| object.get(name)) {
             None | Some(Value::Null) | Some(Value::Bool(false)) => Ok(false),
             Some(Value::Bool(true)) => Ok(true),
-            Some(_) => Err(format!("`{trigger}` must be a boolean")),
+            Some(_) => Err(format!("`{name}` must be a boolean")),
+        };
+        if let Some(trigger) = &self.confirmation_trigger {
+            return switch(trigger);
         }
+        if let Some(preview) = &self.preview_switch
+            && switch(preview)?
+        {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    /// Whether `confirm` names one of this command's own inputs rather than
+    /// the MCP confirmation property. The two never coexist: a descriptor
+    /// that needs both is refused by [`tool_from_descriptor`].
+    pub fn owns_confirm_input(&self) -> bool {
+        self.inputs
+            .iter()
+            .any(|input| input.name == CONFIRM_PROPERTY)
     }
 }
 
@@ -423,20 +674,17 @@ fn desktop_status(
     descriptor: Option<&str>,
     target: Option<&str>,
 ) -> Result<DesktopState, Failure> {
-    let mut argv = vec![
-        "desktop".to_string(),
-        "status".to_string(),
-        "--output".to_string(),
-        "json".to_string(),
-    ];
-    if let Some(target) = target {
-        argv.insert(2, target.to_string());
-        argv.insert(2, "--target".to_string());
-    }
+    // Caller values travel inside their flag token, exactly as in
+    // [`argv_for_call`], so neither can be read as a flag of `ds`.
+    let mut argv = vec!["desktop".to_string(), "status".to_string()];
     if let Some(descriptor) = descriptor {
-        argv.insert(2, descriptor.to_string());
-        argv.insert(2, "--desktop-descriptor".to_string());
+        argv.push(format!("--desktop-descriptor={descriptor}"));
     }
+    if let Some(target) = target {
+        argv.push(format!("--target={target}"));
+    }
+    argv.push("--output".to_string());
+    argv.push("json".to_string());
     let (code, stdout, stderr) = run_cli(executable, &argv).map_err(|message| {
         Failure::unavailable("desktop_not_paired", "desktop status could not be read")
             .remedy("start DS GridDesign and retry the MCP tool call")
@@ -604,6 +852,14 @@ fn select_installed_desktop(
 /// command path. Unknown properties are refused here rather than forwarded
 /// as flags: the CLI would refuse them too, but naming the property keeps
 /// the host's mistake visible as its own.
+///
+/// No caller value can become a flag. `ds` reads `--yes`, `--output`,
+/// `--help`/`-h` and `--version` as its own wherever they stand, so a value
+/// passed as a separate token could confirm, re-format or divert the call —
+/// and a value that merely begins with `--`, such as a Markdown rule, would
+/// be refused as a missing value. Every value therefore travels inside its
+/// own token as `--name=value`, and operands follow the `--` sentinel, after
+/// which `ds` reads nothing as a flag. `--yes` is emitted only for `confirm`.
 pub fn argv_for_call(tool: &Tool, arguments: &Value) -> Result<Vec<String>, String> {
     let mut argv: Vec<String> = tool.path.clone();
     let object = match arguments {
@@ -611,35 +867,48 @@ pub fn argv_for_call(tool: &Tool, arguments: &Value) -> Result<Vec<String>, Stri
         Value::Object(map) => map.clone(),
         _ => return Err("arguments must be an object".to_string()),
     };
+    let confirm_is_input = tool.owns_confirm_input();
     // Unknown properties first, so the host's mistake is named before any
     // mapping happens.
     for key in object.keys() {
-        if key == CONFIRM_PROPERTY && !tool.confirmation_required {
-            return Err(format!(
-                "`{}` does not declare `{CONFIRM_PROPERTY}`",
-                tool.id
-            ));
+        if key == CONFIRM_PROPERTY && !confirm_is_input {
+            if !tool.confirmation_required {
+                return Err(format!(
+                    "`{}` does not declare `{CONFIRM_PROPERTY}`",
+                    tool.id
+                ));
+            }
+            continue;
         }
-        if key != CONFIRM_PROPERTY && !tool.inputs.iter().any(|input| &input.name == key) {
+        if !tool.inputs.iter().any(|input| &input.name == key) {
             return Err(format!("`{key}` is not an input of `{}`", tool.id));
         }
     }
     let confirmation_required = tool.confirmation_required_for(&Value::Object(object.clone()))?;
-    if object
-        .get(CONFIRM_PROPERTY)
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        && !confirmation_required
-    {
-        let trigger = tool
-            .confirmation_trigger
-            .as_deref()
-            .map(|name| format!("`--{name}` is true"))
-            .unwrap_or_else(|| "this invocation requires confirmation".to_string());
-        return Err(format!(
-            "`{CONFIRM_PROPERTY}` is accepted only when {trigger} for `{}`",
-            tool.id
-        ));
+    let confirmed = if confirm_is_input {
+        false
+    } else {
+        match object.get(CONFIRM_PROPERTY) {
+            None | Some(Value::Null) | Some(Value::Bool(false)) => false,
+            Some(Value::Bool(true)) => true,
+            Some(_) => return Err(format!("`{CONFIRM_PROPERTY}` must be a boolean")),
+        }
+    };
+    if confirmed && !confirmation_required {
+        return Err(match (&tool.confirmation_trigger, &tool.preview_switch) {
+            (Some(trigger), _) => format!(
+                "`{CONFIRM_PROPERTY}` is accepted only when `--{trigger}` is true for `{}`",
+                tool.id
+            ),
+            (None, Some(preview)) => format!(
+                "`{CONFIRM_PROPERTY}` is not accepted with `--{preview}`: a preview of `{}` writes nothing and needs no confirmation",
+                tool.id
+            ),
+            (None, None) => format!(
+                "`{CONFIRM_PROPERTY}` is accepted only when this invocation of `{}` requires confirmation",
+                tool.id
+            ),
+        });
     }
     // Declared order, not object order: `serde_json::Map` sorts keys, and a
     // host may send them in any order. The argv is then reproducible.
@@ -662,10 +931,9 @@ pub fn argv_for_call(tool: &Tool, arguments: &Value) -> Result<Vec<String>, Stri
                     other => vec![other.clone()],
                 };
                 for item in items {
-                    argv.push(format!("--{key}"));
-                    argv.push(
-                        scalar(&item).ok_or_else(|| format!("`{key}` items must be scalars"))?,
-                    );
+                    let item =
+                        scalar(&item).ok_or_else(|| format!("`{key}` items must be scalars"))?;
+                    argv.push(format!("--{key}={item}"));
                 }
             }
             "positional" => {
@@ -678,19 +946,20 @@ pub fn argv_for_call(tool: &Tool, arguments: &Value) -> Result<Vec<String>, Stri
                 if value.is_null() {
                     continue;
                 }
-                argv.push(format!("--{key}"));
-                argv.push(scalar(value).ok_or_else(|| format!("`{key}` must be a scalar"))?);
+                let value = scalar(value).ok_or_else(|| format!("`{key}` must be a scalar"))?;
+                argv.push(format!("--{key}={value}"));
             }
         }
     }
-    argv.extend(positional);
-    match object.get(CONFIRM_PROPERTY) {
-        Some(Value::Bool(true)) => argv.push("--yes".to_string()),
-        None | Some(Value::Bool(false)) | Some(Value::Null) => {}
-        Some(_) => return Err(format!("`{CONFIRM_PROPERTY}` must be a boolean")),
+    if confirmed {
+        argv.push("--yes".to_string());
     }
     argv.push("--output".to_string());
     argv.push("json".to_string());
+    if !positional.is_empty() {
+        argv.push("--".to_string());
+        argv.extend(positional);
+    }
     Ok(argv)
 }
 
@@ -733,7 +1002,8 @@ pub fn install_profile(executable: &Path) -> &'static str {
     }
 }
 
-/// Run `ds <argv…>` and return (exit code, stdout, stderr).
+/// Run `ds <argv…>` and return (exit code, stdout, stderr), within the probe
+/// bound. Used for the server's own questions of its executable.
 pub fn run_cli(executable: &PathBuf, argv: &[String]) -> Result<(i32, String, String), String> {
     run_cli_with_schema_mode(executable, argv, false)
 }
@@ -743,6 +1013,56 @@ fn run_cli_with_schema_mode(
     argv: &[String],
     schema_only: bool,
 ) -> Result<(i32, String, String), String> {
+    let ran = run_bounded(executable, argv, schema_only, PROBE_TIMEOUT, &mut |_| {})?;
+    if ran.timed_out {
+        return Err(format!(
+            "`{}` did not answer within {} seconds",
+            executable.display(),
+            PROBE_TIMEOUT.as_secs()
+        ));
+    }
+    if ran.overflowed {
+        return Err(format!(
+            "`{}` wrote more than {STDOUT_CAPTURE_LIMIT} bytes",
+            executable.display()
+        ));
+    }
+    Ok((ran.code, ran.stdout, ran.stderr))
+}
+
+/// What one bounded `ds` child did.
+#[derive(Debug)]
+pub struct Ran {
+    pub code: i32,
+    pub stdout: String,
+    /// The tail of standard error, at most a few kilobytes.
+    pub stderr: String,
+    /// The child ran past its bound and was stopped.
+    pub timed_out: bool,
+    /// Standard output exceeded [`STDOUT_CAPTURE_LIMIT`]; what was kept is
+    /// not a whole answer.
+    pub overflowed: bool,
+    pub elapsed: Duration,
+}
+
+/// Run one tool call's `ds` child within `timeout`, calling `tick` with the
+/// elapsed time every [`PROGRESS_INTERVAL`] while it runs.
+pub fn run_cli_bounded(
+    executable: &PathBuf,
+    argv: &[String],
+    timeout: Duration,
+    tick: &mut dyn FnMut(Duration),
+) -> Result<Ran, String> {
+    run_bounded(executable, argv, false, timeout, tick)
+}
+
+fn run_bounded(
+    executable: &PathBuf,
+    argv: &[String],
+    schema_only: bool,
+    timeout: Duration,
+    tick: &mut dyn FnMut(Duration),
+) -> Result<Ran, String> {
     let mut command = Command::new(executable);
     // Both names are deliberately protocol-free, and stay that way. What the
     // child has to know is that no human is at a terminal, and that a schema
@@ -758,14 +1078,114 @@ fn run_cli_with_schema_mode(
     if schema_only {
         command.env("DS_CLI_SCHEMA_ONLY", "1");
     }
-    let output = command
-        .output()
+    // This server's own stdin is the JSON-RPC channel; the child gets none.
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|error| format!("could not start `{}`: {error}", executable.display()))?;
-    Ok((
-        output.status.code().unwrap_or(1),
-        String::from_utf8_lossy(&output.stdout).into_owned(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-    ))
+    let stdout = Capture::start(child.stdout.take(), STDOUT_CAPTURE_LIMIT, false);
+    let stderr = Capture::start(child.stderr.take(), STDERR_CAPTURE_LIMIT, true);
+    let started = Instant::now();
+    let mut next_tick = PROGRESS_INTERVAL;
+    let mut pause = Duration::from_millis(2);
+    let (status, timed_out) = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break (Some(status), false),
+            Ok(None) => {}
+            Err(error) => return Err(format!("could not observe `ds`: {error}")),
+        }
+        let elapsed = started.elapsed();
+        if elapsed >= timeout {
+            // The bound is the last resort, and only this child is stopped:
+            // an owner engine it started may still be finishing, which the
+            // timeout refusal says.
+            let _ = child.kill();
+            let _ = child.wait();
+            break (None, true);
+        }
+        if elapsed >= next_tick {
+            tick(elapsed);
+            next_tick += PROGRESS_INTERVAL;
+        }
+        thread::sleep(pause.min(timeout - elapsed));
+        pause = (pause * 2).min(Duration::from_millis(100));
+    };
+    let elapsed = started.elapsed();
+    // One grace for both pipes, not one each.
+    let grace = Instant::now() + PIPE_GRACE;
+    let (stdout, overflowed) = stdout.finish(grace);
+    let (stderr, _) = stderr.finish(grace);
+    Ok(Ran {
+        code: status.and_then(|status| status.code()).unwrap_or(1),
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        timed_out,
+        overflowed,
+        elapsed,
+    })
+}
+
+/// One pipe drained on its own thread, so a child that fills one pipe while
+/// the server waits on the other can never deadlock, and a child that writes
+/// without end cannot grow the server without end.
+struct Capture {
+    kept: Arc<Mutex<(Vec<u8>, bool)>>,
+    reader: Option<thread::JoinHandle<()>>,
+}
+
+impl Capture {
+    /// Keep at most `limit` bytes: the head of the stream, or with `tail`
+    /// its end. Everything past the limit is still read and discarded.
+    fn start<R: Read + Send + 'static>(pipe: Option<R>, limit: usize, tail: bool) -> Self {
+        let kept = Arc::new(Mutex::new((Vec::new(), false)));
+        let reader = pipe.map(|mut pipe| {
+            let kept = Arc::clone(&kept);
+            thread::spawn(move || {
+                let mut buffer = [0u8; 64 * 1024];
+                loop {
+                    let read = match pipe.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(read) => read,
+                    };
+                    let Ok(mut kept) = kept.lock() else {
+                        break;
+                    };
+                    let (bytes, overflowed) = &mut *kept;
+                    bytes.extend_from_slice(&buffer[..read]);
+                    if bytes.len() > limit {
+                        *overflowed = true;
+                        if tail {
+                            let excess = bytes.len() - limit;
+                            bytes.drain(..excess);
+                        } else {
+                            bytes.truncate(limit);
+                        }
+                    }
+                }
+            })
+        });
+        Self { kept, reader }
+    }
+
+    /// What was kept once the pipe closed, or once `deadline` passed — a
+    /// grandchild holding the pipe open after the child ended does not hold
+    /// the call open with it.
+    fn finish(mut self, deadline: Instant) -> (Vec<u8>, bool) {
+        if let Some(reader) = self.reader.take() {
+            while !reader.is_finished() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(5));
+            }
+            if reader.is_finished() {
+                let _ = reader.join();
+            }
+        }
+        match self.kept.lock() {
+            Ok(mut kept) => (std::mem::take(&mut kept.0), kept.1),
+            Err(_) => (Vec::new(), true),
+        }
+    }
 }
 
 /// Read this exact executable's build identity for MCP and skill provenance.
@@ -876,8 +1296,8 @@ fn capabilities(
 }
 
 /// Every tool this executable can serve — built from the live tiers, never
-/// from a table. The `mcp` domain itself is excluded: a server that lists
-/// "start a server" as a tool is a loop, not a capability.
+/// from a table. The `mcp` domain itself and [`NEVER_TOOLS`] are excluded; a
+/// command registered anywhere else becomes a tool with no edit here.
 pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
     let index = capabilities(executable, None, true)?;
     let mut tools = Vec::new();
@@ -903,16 +1323,10 @@ pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
             let Some(id) = command.get("id").and_then(Value::as_str) else {
                 continue;
             };
-            // These commands deliberately require a person at a trusted
-            // terminal or an authenticated paired Desktop. They remain live,
-            // discoverable CLI contracts but must never become MCP tools —
-            // including under the temporary broad compatibility exposure.
-            if matches!(id, "auth.login" | "auth.link.approve") {
-                continue;
-            }
-            // A foreground host does not return an MCP response. Operators
-            // start it through the launcher/service; MCP drives its jobs.
-            if id == "server.serve" {
+            // Live, discoverable CLI contracts that must never become MCP
+            // tools — including under the broad compatibility exposure. Each
+            // carries its reason in the list.
+            if NEVER_TOOLS.iter().any(|(never, _)| *never == id) {
                 continue;
             }
             let descriptor = capabilities(executable, Some(id), true)?;
@@ -1032,18 +1446,339 @@ mod tests {
                 "map",
                 "design",
                 "report",
-                "--transformer",
-                "T-1",
-                "--layer",
-                "lv_poles",
-                "--layer",
-                "customers",
+                "--transformer=T-1",
+                "--layer=lv_poles",
+                "--layer=customers",
                 "--dry-run",
                 "--yes",
                 "--output",
                 "json",
             ]
         );
+    }
+
+    /// `ds` reads `--yes`, `--output`, `--help`, `-h` and `--version` as its
+    /// own wherever they stand. A caller's value must never be one of those
+    /// tokens, and a value that merely begins with `--` — a Markdown rule, a
+    /// YAML fence — must still arrive as that value.
+    #[test]
+    fn no_caller_value_can_become_a_flag_of_ds() {
+        let tool = tool_from_descriptor(&descriptor()).expect("tool");
+        for hostile in [
+            "--yes",
+            "--output",
+            "human",
+            "-h",
+            "--help",
+            "--version",
+            "--- a rule",
+        ] {
+            let argv = argv_for_call(
+                &tool,
+                &json!({ "transformer": hostile, "layer": [hostile, "x"], "format": null }),
+            )
+            .expect("argv");
+            let bare = &argv[3..argv.len() - 2];
+            assert!(
+                bare.iter()
+                    .all(|token| token.starts_with("--transformer=")
+                        || token.starts_with("--layer=")),
+                "a caller value escaped its flag: {argv:?}"
+            );
+            assert!(
+                !argv.iter().any(|token| token == "--yes"),
+                "`{hostile}` confirmed the call without `confirm`: {argv:?}"
+            );
+            assert!(argv.contains(&format!("--transformer={hostile}")));
+            assert!(argv.contains(&format!("--layer={hostile}")));
+            assert_eq!(argv[argv.len() - 2..], ["--output", "json"]);
+        }
+    }
+
+    #[test]
+    fn operands_follow_the_sentinel_after_every_flag() {
+        let mut descriptor = descriptor();
+        descriptor["inputs"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({ "name": "subject", "kind": "positional", "required": false, "summary": "The subject.", "value": "<s>" }));
+        let tool = tool_from_descriptor(&descriptor).expect("tool");
+        let argv = argv_for_call(
+            &tool,
+            &json!({ "transformer": "T-1", "subject": "--yes", "confirm": true }),
+        )
+        .expect("argv");
+        assert_eq!(
+            argv,
+            [
+                "map",
+                "design",
+                "report",
+                "--transformer=T-1",
+                "--yes",
+                "--output",
+                "json",
+                "--",
+                "--yes",
+            ],
+            "the operand `--yes` is an operand; only `confirm` produced the flag"
+        );
+    }
+
+    /// A writing command whose descriptor names `--dry-run` as its preview
+    /// switch needs no confirmation to preview — the same decision the CLI's
+    /// gate makes — and a `confirm` sent with a preview is refused rather
+    /// than forwarded as `--yes`.
+    #[test]
+    fn a_declared_preview_switch_is_the_one_unconfirmed_path_of_a_write() {
+        let mut descriptor = descriptor();
+        descriptor["effect"] = json!("global_write");
+        descriptor["preview_switch"] = json!("--dry-run");
+        let tool = tool_from_descriptor(&descriptor).expect("tool");
+        assert_eq!(tool.preview_switch.as_deref(), Some("dry-run"));
+        let preview = json!({ "transformer": "T-1", "dry-run": true });
+        assert!(!tool.confirmation_required_for(&preview).unwrap());
+        assert!(
+            tool.confirmation_required_for(&json!({ "transformer": "T-1" }))
+                .unwrap()
+        );
+        assert_eq!(
+            argv_for_call(&tool, &preview).unwrap(),
+            [
+                "map",
+                "design",
+                "report",
+                "--transformer=T-1",
+                "--dry-run",
+                "--output",
+                "json"
+            ]
+        );
+        let confirmed_preview = argv_for_call(
+            &tool,
+            &json!({ "transformer": "T-1", "dry-run": true, "confirm": true }),
+        )
+        .unwrap_err();
+        assert!(
+            confirmed_preview.contains("not accepted with `--dry-run`"),
+            "{confirmed_preview}"
+        );
+        assert!(
+            tool.input_schema["properties"][CONFIRM_PROPERTY]["description"]
+                .as_str()
+                .unwrap()
+                .contains("Required unless `dry-run` is true")
+        );
+        assert!(tool.description.contains("except with `dry-run: true`"));
+
+        let mut malformed = descriptor.clone();
+        malformed["preview_switch"] = json!("--format");
+        assert!(
+            tool_from_descriptor(&malformed).is_none(),
+            "a preview switch must name a declared switch"
+        );
+    }
+
+    #[test]
+    fn repeated_choices_constrain_each_item_and_defaults_keep_their_type() {
+        let mut descriptor = descriptor();
+        descriptor["inputs"].as_array_mut().unwrap().push(json!({
+            "name": "include", "kind": "repeated", "required": false,
+            "summary": "Sections.", "value": "<section>",
+            "choices": ["spans", "sections"], "default": "spans"
+        }));
+        let tool = tool_from_descriptor(&descriptor).expect("tool");
+        let include = &tool.input_schema["properties"]["include"];
+        assert_eq!(include["type"], "array");
+        assert!(
+            include.get("enum").is_none(),
+            "an enum on the array admits no array: {include}"
+        );
+        assert_eq!(include["items"]["enum"], json!(["spans", "sections"]));
+        assert_eq!(include["default"], json!(["spans"]));
+        let format = &tool.input_schema["properties"]["format"];
+        assert_eq!(format["type"], "string");
+        assert_eq!(format["enum"], json!(["xlsx", "shp"]));
+    }
+
+    #[test]
+    fn inputs_named_for_globals_or_the_gate_fail_closed() {
+        for name in ["output", "pretty", "no-color", "help"] {
+            let mut descriptor = descriptor();
+            descriptor["inputs"].as_array_mut().unwrap().push(
+                json!({ "name": name, "kind": "value", "required": false, "summary": "x", "value": "<x>" }),
+            );
+            assert!(tool_from_descriptor(&descriptor).is_none(), "`{name}`");
+        }
+        // A gated command declaring `--yes` would confirm through an input.
+        let mut gated_yes = descriptor();
+        gated_yes["inputs"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({ "name": "yes", "kind": "switch", "required": false, "summary": "x" }));
+        assert!(tool_from_descriptor(&gated_yes).is_none());
+        // The typed-mutation idiom — an ungated command whose own `--yes`
+        // writes its revision — is that command's declared input.
+        let mut own_yes = gated_yes.clone();
+        own_yes["effect"] = json!("local_file_write");
+        own_yes["confirmation_required"] = json!(false);
+        let tool = tool_from_descriptor(&own_yes).expect("ungated own --yes");
+        assert_eq!(tool.input_schema["properties"]["yes"]["type"], "boolean");
+        assert!(
+            !tool.input_schema["properties"]
+                .as_object()
+                .unwrap()
+                .contains_key(CONFIRM_PROPERTY)
+        );
+        // A gated command cannot also own an input named `confirm`.
+        let mut gated_confirm = descriptor();
+        gated_confirm["inputs"].as_array_mut().unwrap().push(
+            json!({ "name": "confirm", "kind": "value", "required": false, "summary": "x", "value": "<code>" }),
+        );
+        assert!(tool_from_descriptor(&gated_confirm).is_none());
+    }
+
+    /// `design.force-gate.check` owns a value input called `confirm`. It is
+    /// that command's input — a string, sent as `--confirm=<code>` — and
+    /// never the MCP confirmation, which the command does not need.
+    #[test]
+    fn a_command_owned_confirm_input_is_an_ordinary_input() {
+        let tool = tool_from_descriptor(&json!({
+            "id": "design.force-gate.check", "chapter": "design",
+            "path": ["design", "force-gate", "check"],
+            "summary": "s", "purpose": "p", "output": "o",
+            "effect": "read_only", "authority": "none", "confirmation_required": false,
+            "inputs": [{ "name": "confirm", "kind": "value", "required": false, "summary": "The operator's confirmation.", "value": "<code>" }],
+            "refusals": []
+        }))
+        .expect("tool");
+        assert!(tool.owns_confirm_input());
+        assert_eq!(
+            tool.input_schema["properties"][CONFIRM_PROPERTY]["type"],
+            "string"
+        );
+        assert_eq!(
+            argv_for_call(&tool, &json!({ "confirm": "ABC-123" })).unwrap(),
+            [
+                "design",
+                "force-gate",
+                "check",
+                "--confirm=ABC-123",
+                "--output",
+                "json"
+            ]
+        );
+        assert!(argv_for_call(&tool, &json!({ "confirm": true })).is_ok());
+    }
+
+    #[test]
+    fn annotations_follow_the_effect_class_and_nothing_else() {
+        let cases = [
+            (Effect::Discovery, true, false, true),
+            (Effect::ReadOnly, true, false, true),
+            (Effect::Proposal, true, false, false),
+            (Effect::LocalUi, false, false, false),
+            (Effect::LocalAuthState, false, true, false),
+            (Effect::LocalFileWrite, false, true, false),
+            (Effect::ArtifactWrite, false, true, false),
+            (Effect::MachineWrite, false, true, false),
+            (Effect::GlobalWrite, false, true, false),
+        ];
+        assert_eq!(
+            cases.len(),
+            Effect::ALL.len(),
+            "every effect class is mapped"
+        );
+        for (effect, read_only, destructive, idempotent) in cases {
+            assert_eq!(
+                hints(effect),
+                Hints {
+                    read_only,
+                    destructive,
+                    idempotent
+                },
+                "{effect}"
+            );
+            // The CLI's own gate and the host hint agree: nothing a host may
+            // treat as read-only ever needs `--yes`.
+            if read_only {
+                assert!(!effect.needs_confirmation(), "{effect}");
+            }
+            if effect.needs_confirmation() {
+                assert!(destructive, "{effect}");
+            }
+        }
+    }
+
+    #[test]
+    fn descriptions_say_what_a_host_needs_before_choosing() {
+        let mut descriptor = descriptor();
+        descriptor["execution"] = json!("job");
+        descriptor["requires"] = json!("window");
+        let tool = tool_from_descriptor(&descriptor).expect("tool");
+        assert_eq!(tool.execution, Execution::Job);
+        assert!(tool.requires_window);
+        for expected in [
+            "Export one transformer's report locally.",
+            "Returns: Artifact evidence.",
+            "Effect: artifact_write (produces a durable artifact of record).",
+            "Authority: project (signed in, with a project selected).",
+            "Requires `confirm: true`.",
+            "Runs as a job",
+            "Needs the paired DS GridDesign window.",
+            "`desktop_not_paired` — no DS GridDesign session is running",
+        ] {
+            assert!(
+                tool.description.contains(expected),
+                "missing `{expected}`:\n{}",
+                tool.description
+            );
+        }
+        let mut unknown = descriptor.clone();
+        unknown["execution"] = json!("later");
+        assert!(tool_from_descriptor(&unknown).is_none());
+        let mut unknown = descriptor;
+        unknown["effect"] = json!("write");
+        assert!(tool_from_descriptor(&unknown).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_child_past_its_bound_is_stopped_and_reported() {
+        let sleeper = PathBuf::from("/bin/sleep");
+        let mut ticks = 0usize;
+        let ran = run_bounded(
+            &sleeper,
+            &["5".to_string()],
+            false,
+            Duration::from_millis(300),
+            &mut |_| ticks += 1,
+        )
+        .expect("sleep runs");
+        assert!(ran.timed_out);
+        assert!(ran.elapsed < Duration::from_secs(4), "{:?}", ran.elapsed);
+        assert_eq!(ticks, 0, "a 300 ms call is not reported as long-running");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn capture_keeps_a_bounded_head_and_reports_the_overflow() {
+        let yes = PathBuf::from("/usr/bin/head");
+        let ran = run_bounded(
+            &yes,
+            &[
+                "-c".to_string(),
+                (STDOUT_CAPTURE_LIMIT + 10).to_string(),
+                "/dev/zero".to_string(),
+            ],
+            false,
+            Duration::from_secs(60),
+            &mut |_| {},
+        )
+        .expect("head runs");
+        assert!(!ran.timed_out);
+        assert!(ran.overflowed);
+        assert_eq!(ran.stdout.len(), STDOUT_CAPTURE_LIMIT);
     }
 
     #[test]
