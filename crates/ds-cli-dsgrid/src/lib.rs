@@ -30,6 +30,7 @@
 //! typed verb is its inputs, its engine commands and its render; nothing
 //! else.
 
+pub mod alignment;
 pub mod analyse;
 pub mod apply;
 pub mod apply_batch;
@@ -49,6 +50,7 @@ pub mod objects;
 pub mod package;
 pub mod profile;
 pub mod project;
+pub mod replace_structure;
 pub mod report;
 pub mod run;
 pub mod structure;
@@ -78,6 +80,7 @@ pub static DOMAIN: Domain = Domain {
         &template::COMMAND,
         &template::APPLY,
         &import_structure::COMMAND,
+        &replace_structure::COMMAND,
         &inspect::COMMAND,
         &validate::COMMAND,
         &describe::COMMAND,
@@ -87,6 +90,8 @@ pub static DOMAIN: Domain = Domain {
         &apply_batch::CORRECTION,
         &profile::labels::SHOW,
         &profile::labels::SET,
+        &alignment::gap::SHOW,
+        &alignment::gap::SET,
         &model::list::COMMAND,
         &model::show::COMMAND,
         &model::create_local::COMMAND,

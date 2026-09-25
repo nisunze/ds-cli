@@ -195,6 +195,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::import_structure::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::replace_structure::COMMAND,
+        handler: ds_cli_dsgrid::replace_structure::run,
+        render: ds_cli_dsgrid::replace_structure::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::create::COMMAND,
         handler: ds_cli_dsgrid::create::run,
         render: ds_cli_dsgrid::create::render,
@@ -266,6 +271,16 @@ static DSGRID_ENTRIES: &[Entry] = &[
         command: &ds_cli_dsgrid::profile::labels::SET,
         handler: ds_cli_dsgrid::profile::labels::set,
         render: ds_cli_dsgrid::profile::labels::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::alignment::gap::SHOW,
+        handler: ds_cli_dsgrid::alignment::gap::show,
+        render: ds_cli_dsgrid::alignment::gap::render_show,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::alignment::gap::SET,
+        handler: ds_cli_dsgrid::alignment::gap::set,
+        render: ds_cli_dsgrid::alignment::gap::render_set,
     },
     Entry {
         command: &ds_cli_dsgrid::profile::open::COMMAND,

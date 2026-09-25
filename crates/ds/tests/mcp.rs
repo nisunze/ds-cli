@@ -1651,7 +1651,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // workflow.
             // 2026-09-21: native structure import and atomic batch editing
             // add two file-authoring leaves; see the profile's matching limit.
-            "grid" => 28,
+            // 2026-09-25: `dsgrid replace-structure` beside the import.
+            "grid" => 29,
             // Seventeen working-copy leaves plus bootstrap: the four
             // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
             // admin-refresh`, `dsgrid profile labels set|show`) were routed
@@ -1662,7 +1663,11 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // otherwise this profile cannot discover which IDs to inspect.
             // The six package-asset leaves (a version's original PLS-CADD
             // upload and its delivered backup) joined on 2026-09-25.
-            "grid-local-model" => 28,
+            // `dsgrid alignment gap show|set` joined on 2026-09-25.
+            "grid-local-model" => 30,
+            // The file-in/file-out engine workflow; `dsgrid replace-structure`
+            // joined `import-structure` here on 2026-09-25.
+            "grid-native" => 17,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,

@@ -271,7 +271,11 @@ impl Profile {
             // import from PLS-CADD but never deliver to it.
             // Reviewed batch corrections and native sync now have separate
             // routes, keeping this broad typed profile within its budget.
-            Self::Grid => 28,
+            // Raised to 29 on 2026-09-25 for `dsgrid replace-structure`, the
+            // file-in/file-out sibling of `import-structure` that sits beside
+            // it: a router that can add a definition but not replace one
+            // leaves raised allowable tables to post-export patches.
+            Self::Grid => 29,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -353,11 +357,17 @@ impl Profile {
             // list|extract`): a version's original PLS-CADD upload and its
             // delivered backup belong with the version lifecycle, and the
             // broad `grid` router cannot absorb six more.
-            Self::GridLocalModel => 28,
+            // Alignment gap show and set join the same working-copy edits.
+            Self::GridLocalModel => 30,
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
             Self::Datasets => 19,
+            // The file-in/file-out engine workflow: fifteen leaves plus both
+            // bootstrap tools. Raised from the default on 2026-09-25 by
+            // `dsgrid replace-structure`, which belongs beside
+            // `import-structure` in the same file workflow.
+            Self::GridNative => 17,
             _ => 16,
         }
     }
@@ -712,6 +722,10 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.asset.detach",
     "dsgrid.project.asset.list",
     "dsgrid.project.asset.extract",
+    // The multiple-alignment gap (2026-09-25) is a typed edit of the working
+    // copy, read and set like its Profile labels.
+    "dsgrid.alignment.gap.show",
+    "dsgrid.alignment.gap.set",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -733,6 +747,8 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.asset.detach",
     "dsgrid.project.asset.list",
     "dsgrid.project.asset.extract",
+    "dsgrid.alignment.gap.show",
+    "dsgrid.alignment.gap.set",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD
