@@ -56,3 +56,35 @@ asks for tombstones so deletions leave the copy. A cut-off stream, rows after
 the summary, or a summary that disagrees with the rows is refused and the copy
 is left as it was. Every answer names its source: `held`, `delta` or
 `replace`.
+
+## Delivered transformer reports
+
+A transformer report made on the edge (`ds report project export`, the Server
+core, the Desktop) appends the forms the project names in `project_settings`
+(`include_survey_data_in_transformer_exports`,
+`survey_forms_in_transformer_exports`) from this copy, as the cloud export
+appends them from the BigQuery survey view. The decisions are
+`report_export::survey`:
+
+- The host refreshes each named form under the whole-form filter (`auto`, or
+  `local` to read only what is held). A form it cannot hold is named in the
+  run's `survey_layers_omitted` with its reason (`print_survey_layers_omitted`)
+  and the sheet is still produced.
+- A held entry becomes its survey-view row: `doc_id`, `created_at`,
+  `created_by`, `connectivity_*` (connected forms), the five
+  `detailed_location_*` columns and one `data_<key>` per field, form-wide.
+- Per transformer, the rows inside a box around the room are staged as one
+  `ds.survey-layers/v1` document (`{schema, forms:[{form, layer, features}]}`),
+  digest-bound in the engine request (`survey_layers_asset`,
+  `survey_layers_sha256`). The layer is `survey_<form>`
+  (`report_export::survey_layer_name`, the rule the cloud handler calls).
+- The engine clips each form to the transformer's bounding rectangle — the one
+  rectangle the cloud clips by — adds the Rwanda `admin_*` columns and
+  `form_slug` as the cloud does, and appends the layers to the geographic
+  outputs. Photo links are derived under the ds-brain `media_scope` grant the
+  host stages (six months, the browser's request), the same
+  `/api/v1/media/link/<token>?o=` links the cloud writes.
+- The run receipt names each appended form (`survey_layers`: source,
+  refreshed_at, held rows, staged rows, features kept).
+
+The Combined report appends no survey form, in the cloud or on the edge.

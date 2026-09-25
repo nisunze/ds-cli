@@ -417,6 +417,12 @@ pub fn apply(
     Ok(Applied { rows, manifest })
 }
 
+/// The document id of one held row, by the read policy's own rule — the id a
+/// copy is keyed by, and the `doc_id` a report's survey layer carries.
+pub fn held_row_id(row: &Value) -> Option<String> {
+    super::read::doc_id(row)
+}
+
 /// A local narrowing of held rows: a box and a change instant.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct View {

@@ -19,6 +19,13 @@
 pub mod jcs;
 pub mod preview;
 pub mod proof;
+pub mod survey;
+
+pub use survey::{
+    survey_append, survey_forms, survey_layer_name, HeldSurveyForm, SurveyAppend,
+    SurveyFormOmission, SurveyLayerPlan, SurveyLayerReceipt, SurveyLayerResult,
+    SURVEY_LAYERS_SCHEMA,
+};
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
@@ -586,15 +593,67 @@ impl SurveyLayersOmitted {
         })
     }
 
-    /// The union of several runs' omissions, for a batch's own receipt.
-    pub fn union<'a>(omissions: impl IntoIterator<Item = &'a Self>) -> Option<Self> {
+    /// The forms a run that appends held survey layers was produced without,
+    /// each with its own reason (`survey::SURVEY_LAYER_NOT_HELD_REASON`, or a
+    /// refresh that failed). Forms that all carry the cloud-resident reason
+    /// read exactly as [`Self::new`] writes them.
+    pub fn with_reasons(omissions: Vec<survey::SurveyFormOmission>) -> Option<Self> {
+        if omissions.is_empty() {
+            return None;
+        }
         let forms = omissions
-            .into_iter()
-            .flat_map(|omitted| omitted.forms.iter().cloned())
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
+            .iter()
+            .map(|omission| omission.form.clone())
             .collect::<Vec<_>>();
-        Self::new(forms)
+        if omissions
+            .iter()
+            .all(|omission| omission.reason == SURVEY_LAYER_OMISSION_REASON)
+        {
+            return Self::new(forms);
+        }
+        Some(Self {
+            code: SURVEY_LAYERS_OMITTED.to_string(),
+            message: format!(
+                "produced without survey layers the project appends to delivered reports: {}",
+                omissions
+                    .iter()
+                    .map(|omission| format!("{} ({})", omission.form, omission.reason))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+            context_omitted: omissions
+                .into_iter()
+                .map(|omission| SurveyContextOmission {
+                    layer: omission.form,
+                    reason: omission.reason,
+                })
+                .collect(),
+            forms,
+        })
+    }
+
+    /// The union of several runs' omissions, for a batch's own receipt: each
+    /// form once, with the first reason a run gave for it.
+    pub fn union<'a>(omissions: impl IntoIterator<Item = &'a Self>) -> Option<Self> {
+        let mut reasons = BTreeMap::new();
+        for omitted in omissions {
+            for row in &omitted.context_omitted {
+                reasons
+                    .entry(row.layer.clone())
+                    .or_insert_with(|| row.reason.clone());
+            }
+            for form in &omitted.forms {
+                reasons
+                    .entry(form.clone())
+                    .or_insert_with(|| SURVEY_LAYER_OMISSION_REASON.to_string());
+            }
+        }
+        Self::with_reasons(
+            reasons
+                .into_iter()
+                .map(|(form, reason)| survey::SurveyFormOmission { form, reason })
+                .collect(),
+        )
     }
 }
 
@@ -803,11 +862,20 @@ pub struct ExportPlan {
     /// switched the append off and names the omission itself.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub survey_layers_omitted: Option<SurveyLayersOmitted>,
+    /// The survey forms this run appends from the core's held copy, as the
+    /// host staged them (`survey::survey_append`). Empty when the host staged
+    /// none, and then every form the policy appends is in
+    /// `survey_layers_omitted`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub survey_layers: Vec<SurveyLayerPlan>,
 }
 
 /// Decide one run from its governed inputs. Refuses an unpublishable
 /// identity, a reserved name, an empty room, a receipt that does not prove
 /// its sheets, and a selection the project cannot render.
+///
+/// A host that stages no survey layers plans this way: every form the
+/// project appends is named omitted, as it always was.
 pub fn plan_transformer_export(
     project_id: &str,
     receipt: &InputReceipt,
@@ -815,6 +883,83 @@ pub fn plan_transformer_export(
     server_version: i64,
     layers: &BTreeMap<String, Value>,
     selection: Option<&DesignOutputSelection>,
+) -> Result<ExportPlan, String> {
+    plan_transformer_export_with_survey(
+        project_id,
+        receipt,
+        transformer,
+        server_version,
+        layers,
+        selection,
+        None,
+    )
+}
+
+/// The forms the policy appends against what a host staged and omitted: each
+/// exactly once, in one of the two, and each staged layer named by the one
+/// rule.
+fn check_survey_append(policy: &[String], append: &SurveyAppend) -> Result<(), String> {
+    let staged = append
+        .layers
+        .iter()
+        .map(|layer| layer.form.clone())
+        .collect::<Vec<_>>();
+    let omitted = append
+        .omitted
+        .iter()
+        .map(|omission| omission.form.clone())
+        .collect::<Vec<_>>();
+    let mut every = staged.clone();
+    every.extend(omitted.iter().cloned());
+    let distinct = every
+        .iter()
+        .map(|form| form.trim().to_ascii_lowercase())
+        .collect::<std::collections::BTreeSet<_>>();
+    if distinct.len() != every.len() || !same_survey_forms(policy, &every) {
+        return Err(format!(
+            "the survey forms staged ({}) and omitted ({}) are not exactly the forms the project appends ({})",
+            staged.join(", "),
+            omitted.join(", "),
+            policy.join(", ")
+        ));
+    }
+    if let Some(layer) = append
+        .layers
+        .iter()
+        .find(|layer| layer.layer != survey_layer_name(&layer.form))
+    {
+        return Err(format!(
+            "survey form {} is staged as layer {:?}, not {:?}",
+            layer.form,
+            layer.layer,
+            survey_layer_name(&layer.form)
+        ));
+    }
+    if append.layers.is_empty() != append.document.is_none() {
+        return Err("staged survey layers and their document must travel together".to_string());
+    }
+    if append
+        .omitted
+        .iter()
+        .any(|omission| !valid_semantic_text(&omission.reason, 512))
+    {
+        return Err("every omitted survey form names its reason".to_string());
+    }
+    Ok(())
+}
+
+/// [`plan_transformer_export`] with the host's survey append: the forms it
+/// holds are staged as layers, the rest are named omitted with their reasons.
+/// `None` is a host that stages none.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_transformer_export_with_survey(
+    project_id: &str,
+    receipt: &InputReceipt,
+    transformer: &str,
+    server_version: i64,
+    layers: &BTreeMap<String, Value>,
+    selection: Option<&DesignOutputSelection>,
+    survey: Option<&SurveyAppend>,
 ) -> Result<ExportPlan, String> {
     if !valid_project_id(project_id) {
         return Err("Network Reporter project identity is not publishable".to_string());
@@ -829,16 +974,24 @@ pub fn plan_transformer_export(
     receipt.validate()?;
     let room = validate_layers(layers)?;
     let sheets = receipt.sheets()?;
-    // A project that appends cloud-resident survey forms to its delivered
-    // reports still gets its sheet here: the forms are named as omitted and
-    // the run proceeds. Refusing would leave an operator with no drawing at
-    // all for a policy they cannot satisfy from a local room.
-    let survey_layers_omitted = SurveyLayersOmitted::new(
-        sheets["project_settings"]
-            .as_array()
-            .map(|rows| survey_append_forms(rows))
-            .unwrap_or_default(),
-    );
+    // The forms the project appends to a delivered report. A host that holds
+    // them stages them; any it does not hold are named omitted and the run
+    // proceeds. Refusing would leave an operator with no drawing at all for a
+    // form this machine cannot supply.
+    let policy_forms = sheets["project_settings"]
+        .as_array()
+        .map(|rows| survey_append_forms(rows))
+        .unwrap_or_default();
+    let (survey_layers, survey_layers_omitted) = match survey {
+        None => (Vec::new(), SurveyLayersOmitted::new(policy_forms)),
+        Some(append) => {
+            check_survey_append(&policy_forms, append)?;
+            (
+                append.layers.clone(),
+                SurveyLayersOmitted::with_reasons(append.omitted.clone()),
+            )
+        }
+    };
     let outputs = report_formats::selected_plan(&sheets, false, selection)?;
     if outputs.is_empty() {
         return Err("the project's output policy names no individual report output".to_string());
@@ -876,6 +1029,7 @@ pub fn plan_transformer_export(
         reference_semantic_sha256: receipt.reference_semantic_sha256.clone(),
         room,
         survey_layers_omitted,
+        survey_layers,
     })
 }
 
@@ -898,6 +1052,9 @@ pub struct StagedInputs<'a> {
     /// This transformer's one-based position in the drawing set and the set's
     /// size, so a sheet can print "12 of 86"; `None` prints a set of one.
     pub sheet: Option<(u32, u32)>,
+    /// The `ds.survey-layers/v1` document (`survey::survey_append`) and the
+    /// SHA-256 of its exact bytes, when the plan appends held survey layers.
+    pub survey_layers: Option<(&'a Path, &'a str)>,
 }
 
 /// The exact typed request document `ds-report export-transformer-report`
@@ -919,8 +1076,18 @@ pub fn engine_request(plan: &ExportPlan, staged: &StagedInputs<'_>) -> Result<Va
         || staged
             .print_context
             .is_some_and(|(_, digest)| !exact_lower_sha256(digest))
+        || staged
+            .survey_layers
+            .is_some_and(|(_, digest)| !exact_lower_sha256(digest))
     {
         return Err("a staged input digest is not a lowercase SHA-256".to_string());
+    }
+    if plan.survey_layers.is_empty() == staged.survey_layers.is_some() {
+        return Err(if plan.survey_layers.is_empty() {
+            "survey layers are staged for a run that appends none".to_string()
+        } else {
+            "the run appends held survey layers but their document is not staged".to_string()
+        });
     }
     let mut request = serde_json::Map::new();
     request.insert(
@@ -960,6 +1127,13 @@ pub fn engine_request(plan: &ExportPlan, staged: &StagedInputs<'_>) -> Result<Va
     // is byte-identical to the one every earlier release wrote.
     if let Some(omitted) = &plan.survey_layers_omitted {
         request.insert("survey_layers_omitted".into(), json!(omitted.forms));
+    }
+    // The held survey forms this run appends, as one digest-bound document.
+    // The engine clips each to the transformer's bounding rectangle exactly
+    // as the cloud export does and names what it kept.
+    if let Some((path, digest)) = staged.survey_layers {
+        request.insert("survey_layers_asset".into(), json!(path));
+        request.insert("survey_layers_sha256".into(), json!(digest));
     }
     request.insert("formats".into(), json!(plan.formats));
     Ok(Value::Object(request))
@@ -1092,6 +1266,11 @@ struct ResultDocument {
     /// without refusing.
     #[serde(default)]
     survey_layers_omitted: Vec<String>,
+    /// The held survey forms the engine appended, one row per staged form
+    /// with the features it kept inside the bounding rectangle. Defaulted:
+    /// an engine given no survey document writes nothing here.
+    #[serde(default)]
+    survey_layers: Vec<SurveyLayerResult>,
     task: String,
     status: String,
     transformer: String,
@@ -1339,6 +1518,9 @@ pub struct VerifiedResult {
     pub layers_decoded: usize,
     pub features_decoded: usize,
     pub admin_bounds: AdminBoundsEvidence,
+    /// The held survey forms the run appended: the plan's facts and the
+    /// features the engine kept. Empty when the run appended none.
+    pub survey_layers: Vec<SurveyLayerReceipt>,
 }
 
 /// Why a result document is not an answer.
@@ -1689,6 +1871,7 @@ pub fn verify_result(
             "Network Reporter named different omitted survey layers than this run planned",
         ));
     }
+    let survey_layers = verify_survey_layers(plan, &result.survey_layers)?;
     Ok(VerifiedResult {
         artifacts,
         failed,
@@ -1699,7 +1882,47 @@ pub fn verify_result(
         layers_decoded: result.layers_decoded,
         features_decoded: result.features_decoded,
         admin_bounds: result.admin_bounds,
+        survey_layers,
     })
+}
+
+/// The engine answers every staged survey form once, under the layer the
+/// plan named, with no more features than were staged for it: the clip only
+/// ever removes rows.
+fn verify_survey_layers(
+    plan: &ExportPlan,
+    answered: &[SurveyLayerResult],
+) -> Result<Vec<SurveyLayerReceipt>, ResultRefusal> {
+    if answered.len() != plan.survey_layers.len() {
+        return Err(ResultRefusal::invalid(
+            "Network Reporter did not answer every staged survey layer",
+        ));
+    }
+    plan.survey_layers
+        .iter()
+        .map(|planned| {
+            let found = answered
+                .iter()
+                .filter(|row| row.form == planned.form)
+                .collect::<Vec<_>>();
+            match found.as_slice() {
+                [row] if row.layer == planned.layer && row.features <= planned.staged => {
+                    Ok(SurveyLayerReceipt {
+                        form: planned.form.clone(),
+                        layer: planned.layer.clone(),
+                        source: planned.source.clone(),
+                        refreshed_at: planned.refreshed_at.clone(),
+                        held_rows: planned.held_rows,
+                        staged: planned.staged,
+                        features: row.features,
+                    })
+                }
+                _ => Err(ResultRefusal::invalid(
+                    "Network Reporter answered a staged survey layer other than as planned",
+                )),
+            }
+        })
+        .collect()
 }
 
 /// The warnings that are engineering findings. Each is a row on the workbook's
@@ -1962,6 +2185,10 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
     if let Some(omitted) = &facts.plan.survey_layers_omitted {
         receipt["survey_layers_omitted"] = json!(omitted);
     }
+    // The held survey forms the sheet carries, and how fresh each copy was.
+    if !facts.result.survey_layers.is_empty() {
+        receipt["survey_layers"] = json!(facts.result.survey_layers);
+    }
     Ok(receipt)
 }
 
@@ -1994,6 +2221,10 @@ pub struct BatchResult {
     /// it always did.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub survey_layers_omitted: Option<SurveyLayersOmitted>,
+    /// The held survey forms this run's artifacts carry. Absent when it
+    /// appended none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub survey_layers: Option<Vec<SurveyLayerReceipt>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<Value>,
 }
@@ -2007,6 +2238,7 @@ impl BatchResult {
             artifacts: Some(artifacts),
             failed_formats: None,
             survey_layers_omitted: None,
+            survey_layers: None,
             error: None,
         }
     }
@@ -2017,6 +2249,12 @@ impl BatchResult {
     /// never had.
     pub fn with_survey_layers_omitted(mut self, omitted: Option<SurveyLayersOmitted>) -> Self {
         self.survey_layers_omitted = omitted;
+        self
+    }
+
+    /// Name the held survey forms this run's artifacts carry.
+    pub fn with_survey_layers(mut self, layers: Vec<SurveyLayerReceipt>) -> Self {
+        self.survey_layers = (!layers.is_empty()).then_some(layers);
         self
     }
 
@@ -2040,6 +2278,7 @@ impl BatchResult {
             artifacts: None,
             failed_formats: None,
             survey_layers_omitted: None,
+            survey_layers: None,
             error: Some(error),
         }
     }
@@ -2246,6 +2485,7 @@ mod tests {
             media_grant: None,
             print_context: None,
             sheet: None,
+            survey_layers: None,
         };
         assert_eq!(
             engine_request(&plan, &staged).unwrap()["survey_layers_omitted"],
@@ -2340,6 +2580,164 @@ mod tests {
         )
         .unwrap();
         assert!(bare_batch.get("survey_layers_omitted").is_none());
+    }
+
+    #[test]
+    fn held_survey_forms_are_staged_answered_and_receipted_and_the_rest_named() {
+        let mut receipt = simple_receipt("Benin");
+        receipt.sheets_json = r#"{"project_settings":[{"parameter":"design_export_format","value":["shp","xlsx"]},{"parameter":"include_survey_data_in_transformer_exports","value":true},{"parameter":"survey_forms_in_transformer_exports","value":["field_notes","transformer_survey"]}]}"#.into();
+        receipt.sheets_sha256 = format!("{:x}", Sha256::digest(receipt.sheets_json.as_bytes()));
+        assert_eq!(
+            survey_forms(&receipt).unwrap(),
+            ["field_notes", "transformer_survey"]
+        );
+        let manifest: crate::survey::hold::Manifest = serde_json::from_value(json!({
+            "schema": crate::survey::hold::SCHEMA, "project": "proj-1", "form": "transformer_survey",
+            "filter": {}, "filter_sha256": crate::survey::hold::Filter::default().fingerprint().unwrap(),
+            "rows": 2, "cursor": null, "created_at": "2026-09-25T00:00:00Z",
+            "refreshed_at": "2026-09-25T06:48:34Z",
+            "last": {"mode": "replace", "at": "2026-09-25T06:48:34Z", "received": 2, "upserts": 2, "deletes": 0},
+            "rows_sha256": "0".repeat(64),
+        }))
+        .unwrap();
+        let entry = |id: &str, x: f64| {
+            json!({"type":"Feature","geometry":{"type":"Point","coordinates":[x,-1.94]},
+                   "properties":{"id":id,"data":{"photo":format!("projects/proj-1/forms/transformer_survey/{id}/photo/1.jpg")},
+                                 "metadata":{"created_at":"2025-12-03T11:33:33.984Z","created_by":"a@b.c"}}})
+        };
+        let held = HeldSurveyForm::new(
+            "held",
+            &manifest,
+            vec![entry("near", 30.0601), entry("far", 30.5)],
+        )
+        .unwrap();
+        let not_held = SurveyFormOmission {
+            form: "field_notes".into(),
+            reason: survey::SURVEY_LAYER_NOT_HELD_REASON.into(),
+        };
+        let append = survey_append(&layers(), &[held], &[not_held.clone()]).unwrap();
+        let plan = plan_transformer_export_with_survey(
+            "proj-1",
+            &receipt,
+            "tx_a",
+            7,
+            &layers(),
+            None,
+            Some(&append),
+        )
+        .unwrap();
+        assert_eq!(plan.survey_layers.len(), 1);
+        assert_eq!(plan.survey_layers[0].layer, "survey_transformer_survey");
+        assert_eq!(plan.survey_layers[0].staged, 1);
+        let omitted = plan.survey_layers_omitted.as_ref().unwrap();
+        assert_eq!(omitted.forms, ["field_notes"]);
+        assert_eq!(omitted.code, SURVEY_LAYERS_OMITTED);
+        assert_eq!(
+            omitted.context_omitted[0].reason,
+            survey::SURVEY_LAYER_NOT_HELD_REASON
+        );
+        assert!(omitted.message.contains("field_notes"));
+
+        // A host that forgets a form, or names one twice, is refused.
+        let mut partial = append.clone();
+        partial.omitted.clear();
+        assert!(plan_transformer_export_with_survey(
+            "proj-1",
+            &receipt,
+            "tx_a",
+            7,
+            &layers(),
+            None,
+            Some(&partial)
+        )
+        .is_err());
+
+        let (bytes, digest) = append.document.as_ref().unwrap();
+        let out_dir = PathBuf::from("/tmp/survey-held/tx_a");
+        let survey_path = PathBuf::from("/tmp/survey-held/survey-layers.json");
+        let staged = StagedInputs {
+            transformer_document: Path::new("/tmp/survey-held/room.json"),
+            network_config: Path::new("/tmp/survey-held/config.json"),
+            out_dir: &out_dir,
+            admin_bounds: None,
+            media_grant: Some(Path::new("/tmp/survey-held/media-grant.json")),
+            print_context: None,
+            sheet: None,
+            survey_layers: Some((&survey_path, digest)),
+        };
+        assert_eq!(*digest, sha256_hex(bytes));
+        let request = engine_request(&plan, &staged).unwrap();
+        assert_eq!(request["survey_layers_sha256"], json!(digest));
+        assert_eq!(request["survey_layers_omitted"], json!(["field_notes"]));
+        assert!(engine_request(
+            &plan,
+            &StagedInputs {
+                survey_layers: None,
+                ..staged.clone()
+            }
+        )
+        .is_err());
+
+        let mut document = result_document(&plan, &out_dir);
+        document["survey_layers_omitted"] = json!(["field_notes"]);
+        // Every staged form is answered once, under its layer, never with
+        // more features than were staged.
+        assert!(verify_result(&serde_json::to_vec(&document).unwrap(), &plan, &out_dir).is_err());
+        document["survey_layers"] =
+            json!([{"form":"transformer_survey","layer":"survey_transformer_survey","features":2}]);
+        assert!(verify_result(&serde_json::to_vec(&document).unwrap(), &plan, &out_dir).is_err());
+        document["survey_layers"] =
+            json!([{"form":"transformer_survey","layer":"survey_transformer_survey","features":1}]);
+        let verified =
+            verify_result(&serde_json::to_vec(&document).unwrap(), &plan, &out_dir).unwrap();
+        assert_eq!(verified.survey_layers[0].features, 1);
+        assert_eq!(verified.survey_layers[0].source, "held");
+        let run = run_receipt(&RunReceiptFacts {
+            plan: &plan,
+            client_run_id: &format!("report-{}", "a".repeat(32)),
+            engine: &engine(),
+            result: &verified,
+            artifact_dir: "tx_a",
+            now_ms: 1,
+            expected_content_digest: None,
+            print_context_sha256: None,
+            print_context_layers: &[],
+            print_context_omitted: &[],
+        })
+        .unwrap();
+        assert_eq!(
+            run["survey_layers"][0]["layer"],
+            "survey_transformer_survey"
+        );
+        assert_eq!(
+            run["survey_layers"][0]["refreshed_at"],
+            "2026-09-25T06:48:34Z"
+        );
+        assert_eq!(
+            run["survey_layers_omitted"]["forms"],
+            json!(["field_notes"])
+        );
+        let row = BatchResult::ok("tx_a", "tx_a/report-run.json".into(), 2)
+            .with_survey_layers_omitted(plan.survey_layers_omitted.clone())
+            .with_survey_layers(verified.survey_layers.clone());
+        let batch = batch_receipt(
+            "proj-1",
+            "stable",
+            Some(&engine()),
+            1,
+            &["tx_a".into()],
+            &[row],
+            1,
+        )
+        .unwrap();
+        assert_eq!(
+            batch["results"][0]["survey_layers"][0]["features"],
+            json!(1)
+        );
+        assert_eq!(
+            batch["survey_layers_omitted"]["context_omitted"][0]["reason"],
+            survey::SURVEY_LAYER_NOT_HELD_REASON
+        );
     }
 
     fn layers() -> BTreeMap<String, Value> {
@@ -2615,6 +3013,7 @@ mod tests {
             media_grant: None,
             print_context: None,
             sheet: None,
+            survey_layers: None,
         };
         let request = engine_request(&plan, &staged).unwrap();
         assert_eq!(

@@ -343,6 +343,7 @@ mod tests {
             media_grant: None,
             print_context: None,
             sheet: None,
+            survey_layers: None,
         };
         assert_eq!(
             engine_request(&plan, &inputs).unwrap()["formats"],
