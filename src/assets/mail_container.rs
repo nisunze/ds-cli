@@ -653,12 +653,11 @@ mod tests {
             "quoted-printable is decoded before counting; the CRLF before a boundary belongs to the boundary"
         );
         assert_eq!(text.format, Format::Txt);
-        // `html` is not in the kernel's closed format vocabulary, so the part
-        // lists as `unknown`/`other` here where the row says `doc`/`html`:
-        // the NAME is the shared contract, the kind is each side's vocabulary.
+        // `html` joined the kernel's format vocabulary in af1ab34: the part now
+        // lists as an HTML note; the NAME stays the shared contract with ds-brain's row.
         let html = by_path(&container, "part-1-2.html");
-        assert_eq!(html.format, Format::Unknown);
-        assert_eq!(html.kind, Kind::Other);
+        assert_eq!(html.format, Format::Html);
+        assert_eq!(html.kind, Kind::Note);
         let picture = by_path(&container, "picture.png");
         assert_eq!(picture.bytes, 128, "base64 is decoded before counting");
         assert_eq!(picture.kind, Kind::Image);

@@ -1835,7 +1835,7 @@ mod tests {
             let back: Format = serde_json::from_value(wire).unwrap();
             assert_eq!(back, *format);
         }
-        assert_eq!(Format::ALL.len(), 28);
+        assert_eq!(Format::ALL.len(), 29);
         assert_eq!(Format::SevenZ.as_str(), "7z");
         assert_eq!(Format::TarGz.to_string(), "tar.gz");
         for kind in Kind::ALL {
