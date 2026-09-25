@@ -170,21 +170,65 @@ pub(crate) fn run<T: AuthorizedTransport>(
     })?;
     match response.status {
         200 => decode(&response.body, project, request),
-        403 => Err(ClientError::new(
+        status => Err(refusal(status)),
+    }
+}
+
+/// Send one `query_entries` body the core's survey hold built
+/// (`ds_command_kernel::survey::hold::decide`) and hand back the route's
+/// NDJSON whole. The hold verifies the stream line by line; this only checks
+/// the body asks for this project's entries and bounds the answer.
+pub(crate) fn query<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    body: &Value,
+) -> Result<Vec<u8>, ClientError> {
+    crate::authorized::validate_tiles(project)?;
+    if body["action"] != SURVEY_ENTRIES_READ_ACTION
+        || body["eds_project_id"] != project
+        || body["form_slugs"]
+            .as_array()
+            .is_none_or(|forms| forms.len() != 1)
+    {
+        return Err(invalid(
+            "the survey query is not one query_entries request for this project's form",
+        ));
+    }
+    let mut response = transport.survey_entries_read(crate::SurveyEntriesReadCall {
+        profile,
+        authority: authority.call(),
+        payload: body.clone(),
+    })?;
+    match response.status {
+        200 => Ok(std::mem::take(&mut response.body)),
+        status => Err(refusal(status)),
+    }
+}
+
+fn refusal(status: u16) -> ClientError {
+    match status {
+        403 => ClientError::new(
             ErrorKind::AuthenticationRejected,
             "the verified user may not read this project's survey form",
-        )),
-        404 => Err(ClientError::new(
+        ),
+        404 => ClientError::new(
             ErrorKind::ResourceNotFound,
             "the survey form or project is not visible to this user",
-        )),
-        400 | 422 => Err(invalid("the survey read request was refused")),
-        408 | 425 | 429 | 500..=599 => Err(ClientError::new(
+        ),
+        400 | 422 => invalid("the survey read request was refused"),
+        408 | 425 | 429 | 500..=599 => ClientError::new(
             ErrorKind::Transient,
             "the survey read service is temporarily unavailable",
-        )),
-        _ => Err(unreadable("the survey read answered an unexpected status")),
+        ),
+        _ => unreadable("the survey read answered an unexpected status"),
     }
+}
+
+/// The survey media references one feature carries, as [`decode`] names them.
+pub fn entry_media(feature: &Value) -> Vec<SurveyEntryMedia> {
+    media_of(feature)
 }
 
 /// Verify one NDJSON stream and keep at most `limit` entries.

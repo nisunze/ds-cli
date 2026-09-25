@@ -1526,6 +1526,16 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::survey_media_fetch::grant(self.profile, transport, self.authority(), project, others)
     }
+    pub fn survey_entries_query<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        body: &serde_json::Value,
+        now: u64,
+    ) -> Result<Vec<u8>, ClientError> {
+        self.ensure_active(now)?;
+        crate::survey_entries_read::query(self.profile, transport, self.authority(), project, body)
+    }
     pub fn admin_bounds<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

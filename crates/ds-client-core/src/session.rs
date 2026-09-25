@@ -1464,6 +1464,30 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One `query_entries` body the core's survey hold built, sent under
+    /// the restored user; the route's NDJSON comes back whole.
+    pub fn survey_entries_query(
+        &mut self,
+        project: &str,
+        body: &serde_json::Value,
+        now: u64,
+    ) -> Result<Vec<u8>, ClientError> {
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::survey_entries_read::query(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            body,
+        )
+    }
+
     /// One bounded read of platform reliability.
     ///
     /// No project: a platform is not a project, and nothing about fleet health
