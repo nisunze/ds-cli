@@ -798,7 +798,9 @@
           "doc": [
             "`start_upload` returns a resumable session URI. The session is an",
             "`authority: storage_session` transfer that the caller never sees; it",
-            "does not re-enter this operation."
+            "does not re-enter this operation. `get_export_artifact` signs one",
+            "published export item for a digest-verified read; a Server that",
+            "predates it refuses the action and the client reports that by name."
           ],
           "transport": "json",
           "authority": "gateway",
@@ -810,10 +812,12 @@
             "list_versions",
             "get_version",
             "list_exports",
+            "get_export_artifact",
             "start_upload",
             "create_version",
             "fork_example",
             "delete_model",
+            "restore_model",
             "publish_export"
           ],
           "lane_header": false,

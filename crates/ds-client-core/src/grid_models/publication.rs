@@ -1,7 +1,7 @@
 //! Headless publication: plan, authenticated storage grant, native transfer,
 //! immutable commit, exact revision readback. A partial transfer never commits.
 use super::*;
-use ds_command_kernel::grid_publication::{Artifact, Intent, Plan};
+use ds_command_kernel::grid_publication::{Artifact, Intent};
 
 /// Constructed only from the authenticated, validated storage grant.
 pub struct UploadCall<'a> {
@@ -21,46 +21,17 @@ impl UploadCall<'_> {
     }
 }
 
-fn request<T: AuthorizedTransport>(
-    profile: &ClientProfile,
-    transport: &mut T,
-    authority: Authority<'_>,
-    payload: Value,
-) -> Result<Value, ClientError> {
-    let response = transport.grid_models(GridModelsCall {
-        profile,
-        authority: authority.call(),
-        payload,
-    })?;
-    if response.status == 409 {
-        return Err(ClientError::with_service_refusal(
-            ErrorKind::InvalidInput,
-            "grid publication conflicts with stored state; the request was not changed or retried",
-            crate::ServiceRefusal::new(409, Some("grid_publication_conflict"), None),
-        ));
-    }
-    if !matches!(response.status, 200 | 201) {
-        return Err(classify_tile_error(response.status));
-    }
-    if response.body.len() > 8 * 1024 * 1024 {
-        return Err(bad());
-    }
-    let value: Value = serde_json::from_slice(&response.body).map_err(|_| bad())?;
-    if value["success"] != true || !value["data"].is_object() {
-        return Err(bad());
-    }
-    Ok(value["data"].clone())
-}
-
-fn upload_call<'a>(
+/// Validate one storage grant against the exact artifact this owner planned.
+/// `None` means the object is already stored with that size and digest.
+pub(super) fn session_upload<'a>(
     data: &Value,
-    plan: &'a Plan,
+    artifact: &'a Artifact,
     bytes: &'a [u8],
 ) -> Result<Option<UploadCall<'a>>, ClientError> {
     if serde_json::from_value::<Artifact>(data["artifact"].clone())
         .ok()
         .as_ref()
-        != Some(&plan.artifact)
+        != Some(artifact)
     {
         return Err(bad());
     }
@@ -91,8 +62,17 @@ fn upload_call<'a>(
     Ok(Some(UploadCall {
         uri: uri.into(),
         bytes,
-        digest: &plan.artifact.digest,
+        digest: &artifact.digest,
     }))
+}
+
+/// After a transfer the storage authority is asked again: it checks the
+/// actual size and digest, and must now report the object as stored.
+pub(super) fn stored_artifact(data: &Value, artifact: &Artifact) -> Result<(), ClientError> {
+    match session_upload(data, artifact, &[])? {
+        None => Ok(()),
+        Some(_) => Err(bad()),
+    }
 }
 
 pub(super) fn run<T: AuthorizedTransport>(
@@ -107,7 +87,7 @@ pub(super) fn run<T: AuthorizedTransport>(
         .plan(project, bytes)
         .map_err(|message| ClientError::new(ErrorKind::InvalidInput, message))?;
     let grant = request(profile, transport, authority, plan.upload_request())?;
-    let skipped = match upload_call(&grant, &plan, bytes)? {
+    let skipped = match session_upload(&grant, &plan.artifact, bytes)? {
         None => true,
         Some(call) => {
             // The native transfer owner supplies success only after its sealed
@@ -115,9 +95,7 @@ pub(super) fn run<T: AuthorizedTransport>(
             transport.grid_model_upload(call)?;
             // Ask the storage authority again: it checks actual size + digest.
             let stored = request(profile, transport, authority, plan.upload_request())?;
-            if upload_call(&stored, &plan, bytes)?.is_some() {
-                return Err(bad());
-            }
+            stored_artifact(&stored, &plan.artifact)?;
             false
         }
     };
@@ -149,7 +127,8 @@ pub(super) fn run<T: AuthorizedTransport>(
         "revision":plan.revision_id,"version":verified["version"],"kind":intent.model_kind,
         "expected_head":intent.expected_head_revision_id,"parent_revision":verified["parent_revision_id"],
         "digest":plan.artifact.digest,"byte_length":plan.artifact.byte_length,"upload_skipped":skipped,
-        "verified":true,"local_revision":intent.source_revision_id}),
+        "verified":true,"local_revision":intent.source_revision_id,"bump_version":intent.bump_version,
+        "milestone":verified["milestone"],"approval":verified["approval"]}),
         bytes: None,
     })
 }
@@ -171,21 +150,26 @@ mod tests {
             engine_version: "1".into(),
             display_name: None,
             reason: None,
+            ..Default::default()
         };
         let plan = intent.plan("p", b"bytes").unwrap();
         let mut grant = json!({"artifact":plan.artifact,"already_exists":false,"session_uri":"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=issued"});
-        assert!(upload_call(&grant, &plan, b"bytes").unwrap().is_some());
+        assert!(session_upload(&grant, &plan.artifact, b"bytes")
+            .unwrap()
+            .is_some());
         for uri in [
             "https://evil.example/upload/storage/v1/b/b/o?upload_id=x",
             "http://storage.googleapis.com/upload/storage/v1/b/b/o?upload_id=x",
             "https://user@storage.googleapis.com/upload/storage/v1/b/b/o?upload_id=x",
         ] {
             grant["session_uri"] = json!(uri);
-            assert!(upload_call(&grant, &plan, b"bytes").is_err());
+            assert!(session_upload(&grant, &plan.artifact, b"bytes").is_err());
         }
         grant["already_exists"] = json!(true);
-        assert!(upload_call(&grant, &plan, b"bytes").unwrap().is_none());
+        assert!(session_upload(&grant, &plan.artifact, b"bytes")
+            .unwrap()
+            .is_none());
         grant["artifact"]["byte_length"] = json!(1);
-        assert!(upload_call(&grant, &plan, b"bytes").is_err());
+        assert!(session_upload(&grant, &plan.artifact, b"bytes").is_err());
     }
 }

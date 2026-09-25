@@ -1823,6 +1823,9 @@ pub fn application_settings_wasm(input: &[u8]) -> Result<String, wasm_bindgen::J
 /// Not a cross-domain migration registry: Survey and Solar own their own.
 pub mod design_migration;
 pub mod grid_publication;
+/// Versions and revisions of one project DS Grid model: exact ordinals from
+/// the parent chain, and catalog pages grouped by version.
+pub mod grid_versions;
 pub mod solar_seed;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSeed)]
