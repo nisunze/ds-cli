@@ -1,11 +1,47 @@
 //! Authenticated, bounded project model reads. Signed locators never leave this owner.
+//!
+//! A project model has versions (v1, v2, …); every save is a revision of the
+//! version current when it was saved. Revisions are immutable content; each
+//! may carry immutable export records (derived files such as a delivered
+//! PLS-CADD `.bak`) pinned to its exact model digest.
 use crate::{
     authorized::{classify_tile_error, Authority},
-    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, GridModelsCall,
+    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, GridModelsCall, ServiceRefusal,
+    TransportResponse,
+};
+use ds_command_kernel::grid_publication::{
+    catalog_identifier, sha256_hex, APPROVAL_STATES, MAX_MILESTONE,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 pub const MAX_BYTES: usize = 256 * 1024 * 1024;
+/// Catalog pages one revision-position walk may read (100 rows each). A
+/// version with more saves than this reports its count as a lower bound and
+/// claims no ordinal.
+pub const MAX_POSITION_PAGES: usize = 20;
+/// Every action this owner sends. The gateway registry must allow each.
+pub const ACTIONS: [&str; 16] = [
+    "list_models",
+    "get_model",
+    "list_versions",
+    "get_version",
+    "list_exports",
+    "get_export_artifact",
+    "get_backup_artifact",
+    "start_upload",
+    "create_version",
+    "bump_version",
+    "fork_example",
+    "update_model",
+    "set_approval",
+    "delete_model",
+    "restore_model",
+    "publish_export",
+];
+/// The refusal code for an action or field a Server predates.
+pub const SERVER_ACTION_UNSUPPORTED: &str = "server_action_unsupported";
+pub mod exports;
+pub mod governance;
 pub mod publication;
 pub enum Command {
     List {
@@ -35,7 +71,8 @@ pub enum Command {
         reason: String,
     },
     Publish {
-        intent: ds_command_kernel::grid_publication::Intent,
+        /// Boxed: the intent carries the revision's governance fields.
+        intent: Box<ds_command_kernel::grid_publication::Intent>,
         bytes: Vec<u8>,
     },
     /// Copy one exact global example revision into a project model.
@@ -46,6 +83,77 @@ pub enum Command {
     /// request can never disagree with the project it was authorized for.
     ForkExample {
         fork: Value,
+    },
+    /// One model head as the catalog holds it, and where its head sits in
+    /// the current version: the version, its revision count and the head's
+    /// ordinal within it.
+    Show {
+        model: String,
+    },
+    /// One revision's metadata. The signed locator is dropped and no byte is
+    /// fetched: parent, reason, milestone, approval, digest, publisher, time
+    /// and lineage sources only.
+    ShowVersion {
+        model: String,
+        revision: String,
+    },
+    /// Where one revision sits in its version: its exact ordinal and the
+    /// version's revision count, from a bounded walk of the catalog.
+    Position {
+        model: String,
+        revision: String,
+    },
+    /// The immutable export records pinned to one revision.
+    ListExports {
+        model: String,
+        revision: String,
+    },
+    /// Upload one file and record it as a new immutable export of one
+    /// revision, pinned to that revision's model digest. The head never moves.
+    PublishExport {
+        model: String,
+        revision: String,
+        export: String,
+        output: String,
+        format: String,
+        bytes: Vec<u8>,
+    },
+    /// Read one export item's exact bytes, verified against the digest its
+    /// record declares. A Server without `get_export_artifact` is refused by
+    /// name ([`SERVER_ACTION_UNSUPPORTED`]).
+    DownloadExport {
+        model: String,
+        revision: String,
+        export: String,
+        output: String,
+    },
+    /// Start the next version whose first revision re-pins the current head's
+    /// exact bytes: no upload, no content change. Fenced on the head.
+    BumpVersion {
+        model: String,
+        expected_head: String,
+        reason: String,
+        milestone: Option<String>,
+    },
+    /// Rename or re-describe the head. Revisions keep the name they saved.
+    UpdateModel {
+        model: String,
+        expected_head: String,
+        display_name: Option<String>,
+        description: Option<String>,
+        reason: Option<String>,
+    },
+    /// Record a review decision on one existing revision. The revision stays
+    /// immutable; the decision is appended beside it.
+    SetApproval {
+        model: String,
+        revision: String,
+        expected_head: String,
+        approval: ds_command_kernel::grid_publication::Approval,
+    },
+    /// Read the head's retirement backup, digest-verified.
+    DownloadBackup {
+        model: String,
     },
 }
 pub struct Receipt {
@@ -142,10 +250,341 @@ impl Command {
                 .plan(project, bytes)
                 .map(|_| ())
                 .map_err(|message| ClientError::new(ErrorKind::InvalidInput, message)),
+            Self::Show { model } if id(model) => Ok(()),
+            Self::ShowVersion { model, revision }
+            | Self::Position { model, revision }
+            | Self::ListExports { model, revision }
+                if id(model) && id(revision) =>
+            {
+                Ok(())
+            }
+            Self::PublishExport {
+                model,
+                revision,
+                export,
+                output,
+                format,
+                bytes,
+            } if id(model)
+                && id(revision)
+                && [export, output, format]
+                    .iter()
+                    .all(|value| catalog_identifier(value))
+                && !bytes.is_empty()
+                && bytes.len() <= MAX_BYTES =>
+            {
+                Ok(())
+            }
+            Self::DownloadExport {
+                model,
+                revision,
+                export,
+                output,
+            } if id(model)
+                && id(revision)
+                && catalog_identifier(export)
+                && catalog_identifier(output) =>
+            {
+                Ok(())
+            }
+            Self::BumpVersion { .. }
+            | Self::UpdateModel { .. }
+            | Self::SetApproval { .. }
+            | Self::DownloadBackup { .. } => governance::validate(self),
+            Self::PublishExport { .. } | Self::DownloadExport { .. } => Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "export, output and format ids must match ^[a-z0-9][a-z0-9_-]{1,127}$ and the file must hold 1 byte to 256 MiB",
+            )),
             _ => Err(invalid()),
         }
     }
 }
+/// One grid-models round trip. Refusals keep the route's own bounded
+/// sentence ([`refusal`]); success must be the DS envelope with a data object.
+pub(crate) fn request<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    payload: Value,
+) -> Result<Value, ClientError> {
+    let optional_sent = payload["version"]["bump_version"] == true;
+    let action = payload["action"].as_str().unwrap_or_default().to_owned();
+    let response = transport.grid_models(GridModelsCall {
+        profile,
+        authority: authority.call(),
+        payload,
+    })?;
+    if !matches!(response.status, 200 | 201) {
+        return Err(refusal(&response, &action, optional_sent));
+    }
+    if response.body.len() > 8 * 1024 * 1024 {
+        return Err(bad());
+    }
+    let value: Value = serde_json::from_slice(&response.body).map_err(|_| bad())?;
+    if value["success"] != true || !value["data"].is_object() {
+        return Err(bad());
+    }
+    Ok(value["data"].clone())
+}
+
+/// Actions a deployed Server may predate. Its decoder refuses an unknown
+/// action, or an unknown field, as a 400 with one of two fixed sentences.
+const LATER_ACTIONS: [&str; 5] = [
+    "get_export_artifact",
+    "get_backup_artifact",
+    "bump_version",
+    "update_model",
+    "set_approval",
+];
+
+/// Classify one grid-models refusal, carrying the Server's bounded sentence.
+///
+/// A 409 is a stored-state conflict (a moved head, an immutable id reused
+/// with different content). A 404 names a model, revision or export this
+/// project does not hold. A 400 is the Server's own validation, EXCEPT when
+/// the request used an action or field a Server may predate and the Server
+/// answered with its decoder's fixed sentence: that is reported as
+/// [`SERVER_ACTION_UNSUPPORTED`] so the caller learns to update the Server,
+/// not to change the request.
+pub(crate) fn refusal(
+    response: &TransportResponse,
+    action: &str,
+    optional_sent: bool,
+) -> ClientError {
+    #[derive(serde::Deserialize, Default)]
+    struct Wire {
+        #[serde(default)]
+        message: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct Envelope {
+        error: Option<Wire>,
+    }
+    let sentence = (response.body.len() <= 64 * 1024)
+        .then(|| serde_json::from_slice::<Envelope>(&response.body).ok())
+        .flatten()
+        .and_then(|envelope| envelope.error)
+        .unwrap_or_default()
+        .message;
+    let said = (!sentence.is_empty()).then_some(sentence.as_str());
+    match response.status {
+        409 => ClientError::with_service_refusal(
+            ErrorKind::InvalidInput,
+            "grid publication conflicts with stored state; the request was not changed or retried",
+            ServiceRefusal::new(
+                409,
+                Some(if action == "publish_export" {
+                    "grid_export_conflict"
+                } else {
+                    "grid_publication_conflict"
+                }),
+                said,
+            ),
+        ),
+        404 => ClientError::with_service_refusal(
+            ErrorKind::ResourceNotFound,
+            "the project model, revision or export does not exist in this project",
+            ServiceRefusal::new(404, Some("grid_model_not_found"), said),
+        ),
+        400 if (LATER_ACTIONS.contains(&action) || optional_sent)
+            && matches!(
+                sentence.as_str(),
+                "Unknown DS Grid model action" | "Invalid DS Grid model request"
+            ) =>
+        {
+            ClientError::with_service_refusal(
+                ErrorKind::InvalidInput,
+                "this Server predates the requested DS Grid model action or field",
+                ServiceRefusal::new(400, Some(SERVER_ACTION_UNSUPPORTED), said),
+            )
+        }
+        400 => ClientError::with_service_refusal(
+            ErrorKind::InvalidInput,
+            "the DS Grid model service refused the request",
+            ServiceRefusal::new(400, Some("grid_request_refused"), said),
+        ),
+        status => classify_tile_error(status),
+    }
+}
+
+/// The metadata of one revision read with `get_version`; the signed locator
+/// is removed before anything leaves this owner.
+fn revision_record<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    model: &str,
+    revision: &str,
+) -> Result<Value, ClientError> {
+    revision_read(profile, transport, authority, project, model, revision).map(|(r, _)| r)
+}
+
+/// The post-creation approval a Server that records decisions reports beside
+/// one revision.
+type ApprovalFields = Vec<(&'static str, Value)>;
+
+/// [`revision_record`] plus `effective_approval` and `approval_decisions`,
+/// when the Server reports them.
+fn revision_read<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    model: &str,
+    revision: &str,
+) -> Result<(Value, ApprovalFields), ClientError> {
+    let data = request(
+        profile,
+        transport,
+        authority,
+        json!({"action":"get_version","project_id":project,"model_id":model,"revision_id":revision}),
+    )?;
+    let record = data
+        .get("revision")
+        .or_else(|| data.get("version"))
+        .filter(|v| v.is_object())
+        .ok_or_else(bad)?;
+    if record["project_id"] != project
+        || record["model_id"] != model
+        || record["revision_id"] != revision
+        || !record["version"].as_u64().is_some_and(|v| v > 0)
+        || !record["model"]["digest"].as_str().is_some_and(sha256_hex)
+    {
+        return Err(bad());
+    }
+    let mut approval = Vec::new();
+    if data["effective_approval"].is_object() {
+        approval.push(("effective_approval", data["effective_approval"].clone()));
+    }
+    if let Some(decisions) = data["approval_decisions"].as_array() {
+        if decisions.len() > 200
+            || decisions
+                .iter()
+                .any(|d| d["revision_id"] != revision || d["model_id"] != model)
+        {
+            return Err(bad());
+        }
+        approval.push(("approval_decisions", json!(decisions)));
+    }
+    Ok((record.clone(), approval))
+}
+
+/// Walk the catalog newest first until the revision's whole version has been
+/// seen (a lower version appears, or the catalog ends), within
+/// [`MAX_POSITION_PAGES`]. The kernel decides the ordinal from the chain.
+///
+/// `stored` is the revision's ordinal as a Server that stores ordinals
+/// reported it. Its version's newest row then already holds the count, so
+/// the walk stops at the first row of that version.
+#[allow(clippy::too_many_arguments)]
+fn walk<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    model: &str,
+    revision: &str,
+    version: u64,
+    stored: Option<u64>,
+) -> Result<Value, ClientError> {
+    let mut rows = Vec::new();
+    let mut cursor = String::new();
+    let mut pages = 0;
+    let mut ended = false;
+    while pages < MAX_POSITION_PAGES {
+        let data = request(
+            profile,
+            transport,
+            authority,
+            json!({"action":"list_versions","project_id":project,"model_id":model,"page_size":100,"cursor":cursor}),
+        )?;
+        pages += 1;
+        let page = data["versions"].as_array().ok_or_else(bad)?;
+        let more = data["has_more"].as_bool().ok_or_else(bad)?;
+        if page.len() > 100
+            || page
+                .iter()
+                .any(|row| row["project_id"] != project || row["model_id"] != model)
+        {
+            return Err(bad());
+        }
+        let lower = page
+            .iter()
+            .any(|row| row["version"].as_u64().is_some_and(|v| v < version));
+        rows.extend(
+            page.iter()
+                .filter(|row| row["version"].as_u64() == Some(version))
+                .cloned(),
+        );
+        if let (Some(ordinal), Some(count)) = (
+            stored,
+            rows.first()
+                .and_then(ds_command_kernel::grid_versions::stored_ordinal),
+        ) {
+            return Ok(json!({"version":version,"revision_id":revision,
+                "revision_ordinal_within_version":ordinal,"version_revision_count":count,
+                "count_exact":true,"pages_read":pages}));
+        }
+        if lower || !more {
+            ended = true;
+            break;
+        }
+        cursor = data["next_cursor"]
+            .as_str()
+            .filter(|c| !c.is_empty() && c.len() <= 4096)
+            .ok_or_else(bad)?
+            .to_owned();
+    }
+    let position = ds_command_kernel::grid_versions::position(&rows, revision, ended)
+        .filter(|p| p.version == version)
+        .ok_or_else(|| {
+            ClientError::new(
+                ErrorKind::UnreadableResponse,
+                "the revision is not listed in its own version within the bounded catalog walk",
+            )
+        })?;
+    Ok(json!({"version":position.version,"revision_id":revision,
+        "revision_ordinal_within_version":position.ordinal,
+        "version_revision_count":position.count,"count_exact":position.complete,
+        "pages_read":pages}))
+}
+
+/// The head projection `show` and `list` share: the catalog row without
+/// backup storage coordinates, which are an owner-internal locator.
+fn head_projection(row: &Value) -> Value {
+    let mut head = json!({});
+    for key in [
+        "model_id",
+        "display_name",
+        "description",
+        "model_kind",
+        "state",
+        "lifecycle",
+        "head_revision_id",
+        "head_version",
+        "head_model_digest",
+        "manifest_model_id",
+        "manifest_model_revision",
+        "design_stage_id",
+        "detail_level_id",
+        "approval_status",
+        "approval_level_id",
+        "created_at",
+        "created_by",
+        "updated_at",
+        "updated_by",
+        "deleted_at",
+        "deleted_by",
+        "delete_reason",
+    ] {
+        if let Some(value) = row.get(key).filter(|v| !v.is_null()) {
+            head[key] = value.clone();
+        }
+    }
+    head
+}
+
 fn locator<'a>(url: &'a str, object: &str, size: usize) -> Result<DownloadCall<'a>, ClientError> {
     let u = url::Url::parse(url).map_err(|_| bad())?;
     if url.len() > 8192
@@ -180,8 +619,87 @@ pub(crate) fn run<T: AuthorizedTransport>(
     command: &Command,
 ) -> Result<Receipt, ClientError> {
     command.validate(project)?;
-    if let Command::Publish { intent, bytes } = command {
-        return publication::run(profile, transport, authority, project, intent, bytes);
+    match command {
+        Command::Publish { intent, bytes } => {
+            return publication::run(profile, transport, authority, project, intent, bytes)
+        }
+        Command::Show { model } => {
+            let data = request(
+                profile,
+                transport,
+                authority,
+                json!({"action":"get_model","project_id":project,"model_id":model}),
+            )?;
+            let row = data
+                .get("model")
+                .filter(|m| m.is_object())
+                .ok_or_else(bad)?;
+            let head = row["head_revision_id"].as_str().filter(|h| id(h));
+            let version = row["head_version"].as_u64().filter(|v| *v > 0);
+            if row["project_id"] != project || row["model_id"] != *model {
+                return Err(bad());
+            }
+            // A Server that stores ordinals counts the head's version itself
+            // (the head is its newest revision); an older one is walked.
+            let count = row["head_version_revision_count"]
+                .as_u64()
+                .filter(|n| *n > 0);
+            let current = match (head, version, count) {
+                (Some(head), Some(version), Some(count)) => {
+                    json!({"version":version,"revision_id":head,
+                        "revision_ordinal_within_version":count,"version_revision_count":count,
+                        "count_exact":true,"pages_read":0})
+                }
+                (Some(head), Some(version), None) => walk(
+                    profile, transport, authority, project, model, head, version, None,
+                )?,
+                _ => Value::Null,
+            };
+            return Ok(Receipt {
+                data: json!({"project":project,"model":head_projection(row),"current_version":current}),
+                bytes: None,
+            });
+        }
+        Command::ShowVersion { model, revision } => {
+            let (record, approval) =
+                revision_read(profile, transport, authority, project, model, revision)?;
+            let mut data = json!({"project":project,"revision":record,"bytes_fetched":false});
+            // A Server that records approval decisions after creation names
+            // the effective approval and the decision history beside the
+            // immutable revision; an older one names neither.
+            for (key, value) in approval {
+                data[key] = value;
+            }
+            return Ok(Receipt { data, bytes: None });
+        }
+        Command::Position { model, revision } => {
+            let record = revision_record(profile, transport, authority, project, model, revision)?;
+            let version = record["version"].as_u64().ok_or_else(bad)?;
+            let stored = ds_command_kernel::grid_versions::stored_ordinal(&record);
+            let mut data = walk(
+                profile, transport, authority, project, model, revision, version, stored,
+            )?;
+            data["project"] = json!(project);
+            data["model_id"] = json!(model);
+            return Ok(Receipt { data, bytes: None });
+        }
+        Command::ListExports { model, revision } => {
+            let exports = exports::list(profile, transport, authority, project, model, revision)?;
+            return Ok(Receipt {
+                data: json!({"project":project,"model_id":model,"revision_id":revision,"exports":exports}),
+                bytes: None,
+            });
+        }
+        Command::PublishExport { .. } | Command::DownloadExport { .. } => {
+            return exports::run(profile, transport, authority, project, command)
+        }
+        Command::BumpVersion { .. }
+        | Command::UpdateModel { .. }
+        | Command::SetApproval { .. }
+        | Command::DownloadBackup { .. } => {
+            return governance::run(profile, transport, authority, project, command)
+        }
+        _ => {}
     }
     let payload = match command {
         Command::List {
@@ -220,7 +738,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
         Command::ForkExample { fork } => {
             json!({"action":"fork_example","project_id":project,"fork":fork})
         }
-        Command::Publish { .. } => unreachable!("publication dispatched before reads"),
+        _ => unreachable!("composite commands dispatched before single reads"),
     };
     let response = transport.grid_models(GridModelsCall {
         profile,
@@ -228,7 +746,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
         payload,
     })?;
     if response.status != 200 {
-        return Err(classify_tile_error(response.status));
+        return Err(refusal(&response, "", false));
     }
     if response.body.len() > 8 * 1024 * 1024 {
         return Err(bad());
@@ -239,7 +757,6 @@ pub(crate) fn run<T: AuthorizedTransport>(
     }
     let data = &body["data"];
     match command {
-        Command::Publish { .. } => unreachable!("publication dispatched before reads"),
         Command::Delete {
             model,
             expected_revision,
@@ -323,8 +840,13 @@ pub(crate) fn run<T: AuthorizedTransport>(
             {
                 return Err(bad());
             }
+            // Revisions are grouped by the version they were saved into;
+            // the kernel orders each group by its parent chain.
+            let versions =
+                ds_command_kernel::grid_versions::group_page(rows, more).map_err(|_| bad())?;
             Ok(Receipt {
-                data: data.clone(),
+                data: json!({"project":project,"model_id":model,"versions":versions,
+                    "revisions_listed":rows.len(),"more":more,"next_cursor":cursor}),
                 bytes: None,
             })
         }
@@ -349,7 +871,12 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 if !ids.insert(model.to_owned()) || row["project_id"] != project {
                     return Err(bad());
                 }
-                models.push(json!({"model_id":model,"display_name":row["display_name"],"model_kind":row["model_kind"],"head_revision_id":row["head_revision_id"],"manifest_model_id":row["manifest_model_id"],"manifest_model_revision":row["manifest_model_revision"],"head_model_digest":row["head_model_digest"],"state":row["state"],"lifecycle":row["lifecycle"],"backup":row["backup"]}));
+                // The head projection plus the retirement backup identity a
+                // restore names. `head_version` is the model's current
+                // version (v1, v2, …).
+                let mut entry = head_projection(&row);
+                entry["backup"] = row["backup"].clone();
+                models.push(entry);
             }
             Ok(Receipt {
                 data: json!({"project":project,"models":models,"more":more,"next_cursor":cursor}),
@@ -396,11 +923,90 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 bytes: Some(std::mem::take(&mut response.body)),
             })
         }
+        _ => unreachable!("composite commands dispatched before single reads"),
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn every_action_this_owner_sends_is_a_declared_gateway_action() {
+        let operation = crate::gateway::operation("domains.grid.models.action").unwrap();
+        for action in ACTIONS {
+            assert!(operation.allows_action(action), "{action}");
+        }
+    }
+    #[test]
+    fn refusals_keep_the_route_sentence_and_name_a_server_that_predates_an_action() {
+        let body = |message: &str| {
+            serde_json::to_vec(
+                &json!({"success":false,"error":{"code":"VALIDATION_FAILED","message":message}}),
+            )
+            .unwrap()
+        };
+        let unknown = TransportResponse::new(400, body("Unknown DS Grid model action"));
+        let refused = refusal(&unknown, "get_export_artifact", false);
+        assert_eq!(
+            refused.service_refusal().unwrap().code(),
+            Some(SERVER_ACTION_UNSUPPORTED)
+        );
+        // The same sentence for an action every Server serves is plain validation.
+        let refused = refusal(&unknown, "list_exports", false);
+        assert_eq!(
+            refused.service_refusal().unwrap().code(),
+            Some("grid_request_refused")
+        );
+        // An explicit bump sent to a Server whose decoder predates the field.
+        let undecodable = TransportResponse::new(400, body("Invalid DS Grid model request"));
+        let refused = refusal(&undecodable, "create_version", true);
+        assert_eq!(
+            refused.service_refusal().unwrap().code(),
+            Some(SERVER_ACTION_UNSUPPORTED)
+        );
+        let advance = TransportResponse::new(
+            400,
+            body("invalid project grid model: manifest_model_revision must advance beyond 4"),
+        );
+        let refused = refusal(&advance, "create_version", false);
+        assert!(refused
+            .service_refusal()
+            .unwrap()
+            .message()
+            .unwrap()
+            .contains("must advance"));
+        let missing = refusal(&TransportResponse::new(404, b"{}"), "get_model", false);
+        assert_eq!(missing.kind(), ErrorKind::ResourceNotFound);
+        assert_eq!(
+            missing.service_refusal().unwrap().code(),
+            Some("grid_model_not_found")
+        );
+        let reused = refusal(&TransportResponse::new(409, b"{}"), "publish_export", false);
+        assert_eq!(
+            reused.service_refusal().unwrap().code(),
+            Some("grid_export_conflict")
+        );
+    }
+    #[test]
+    fn export_ids_follow_the_catalog_grammar() {
+        let publish = |export: &str| Command::PublishExport {
+            model: "model-1".into(),
+            revision: "rev-1".into(),
+            export: export.into(),
+            output: "pls-delivered-workspace".into(),
+            format: "pls_cadd_bak".into(),
+            bytes: b"bak".to_vec(),
+        };
+        assert!(publish("submission-2").validate("project").is_ok());
+        assert!(publish("Submission 2").validate("project").is_err());
+        assert!(Command::DownloadExport {
+            model: "model-1".into(),
+            revision: "rev-1".into(),
+            export: "submission-2".into(),
+            output: "../x".into(),
+        }
+        .validate("project")
+        .is_err());
+    }
     #[test]
     fn storage_locator_cannot_redirect_credentials_or_substitute_objects() {
         let object = "ds-grid/objects/sha256/ab/model.dsgrid";

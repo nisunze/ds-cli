@@ -9629,8 +9629,11 @@ fn headless_version_comparison_uses_pinned_snapshots_and_has_no_geometry_payload
             "project_a",
             &Command::Begin {
                 transformer: "tr".into(),
-                reason: "before field review".into(),
-                idempotency_key: "version-request-1".into(),
+                create: ds_command_kernel::design_versions_headless::Create {
+                    reason: "before field review".into(),
+                    idempotency_key: "version-request-1".into(),
+                    ..Default::default()
+                },
             },
             NOW + 1,
         )
@@ -9719,6 +9722,7 @@ fn grid_publication_requires_storage_proof_commit_and_exact_readback() {
             engine_version: "ds-grid-engine/0.1.4".into(),
             display_name: None,
             reason: Some("reviewed".into()),
+            ..Default::default()
         };
         let plan = intent.plan("p-1", b"model").unwrap();
         let grant = json!({"artifact":plan.artifact,"already_exists":false,"session_uri":"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=private"});
@@ -9767,7 +9771,7 @@ fn grid_publication_requires_storage_proof_commit_and_exact_readback() {
         let result = client.grid_models(
             "p-1",
             &Command::Publish {
-                intent,
+                intent: Box::new(intent),
                 bytes: b"model".to_vec(),
             },
             NOW + 1,
@@ -10538,4 +10542,613 @@ fn native_attachment_publication_preserves_bytes_and_one_original_pointer_fence(
     assert!(finalize[0].contains("\"expected_version\":4"));
     assert!(finalize[0].contains("\"version_id\":\"rev_native\""));
     assert!(finalize[0].contains(&digest));
+}
+
+/// A catalog revision row as `list_versions` / `get_version` return it.
+fn grid_revision(id: &str, version: u64, parent: &str, digest: &str) -> serde_json::Value {
+    serde_json::json!({"project_id":"p-1","model_id":"m","revision_id":id,"version":version,
+        "parent_revision_id":parent,"model":{"digest":digest,
+        "object":format!("ds-grid/objects/sha256/{}/{}", &digest[..2], digest),"byte_length":5},
+        "reason":"save","milestone":"","approval":{"status":"draft"},"created_by":"a@b.c"})
+}
+
+#[test]
+fn grid_show_reports_the_current_version_its_revision_count_and_the_head_ordinal() {
+    use ds_client_core::grid_models::Command;
+    use serde_json::json;
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    let digest = "a".repeat(64);
+    let head = json!({"project_id":"p-1","model_id":"m","display_name":"Kamonyi MV","head_revision_id":"rev-c",
+        "head_version":2,"head_model_digest":digest,"approval_status":"submitted","state":"active",
+        "updated_at":"2026-09-25T10:00:00Z","backup":{"bucket":"private","object":"private"}});
+    {
+        let mut state = t.0.lock().unwrap();
+        state
+            .grid_models
+            .push_back(project_response(json!({"model":head})));
+        // Page 1 holds two v2 saves in hash order; page 2 finishes v2 and
+        // reaches v1, so the walk is complete after two pages.
+        state.grid_models.push_back(project_response(json!({"versions":[
+            grid_revision("rev-c", 2, "rev-b", &digest), grid_revision("rev-a", 2, "rev-z", &digest)],
+            "has_more":true,"next_cursor":"page-2"})));
+        state
+            .grid_models
+            .push_back(project_response(json!({"versions":[
+            grid_revision("rev-b", 2, "rev-a", &digest), grid_revision("rev-z", 1, "", &digest)],
+            "has_more":false,"next_cursor":""})));
+    }
+    let shown = client
+        .grid_models("p-1", &Command::Show { model: "m".into() }, NOW + 1)
+        .unwrap();
+    assert_eq!(shown.data["model"]["head_version"], 2);
+    assert_eq!(shown.data["model"]["approval_status"], "submitted");
+    assert!(shown.data["model"].get("backup").is_none());
+    assert_eq!(shown.data["current_version"]["version"], 2);
+    assert_eq!(shown.data["current_version"]["version_revision_count"], 3);
+    assert_eq!(
+        shown.data["current_version"]["revision_ordinal_within_version"],
+        3
+    );
+    assert_eq!(shown.data["current_version"]["count_exact"], true);
+    let state = t.0.lock().unwrap();
+    assert_eq!(state.grid_bodies[0]["action"], "get_model");
+    assert_eq!(state.grid_bodies[2]["cursor"], "page-2");
+    assert!(state.grid_models.is_empty());
+}
+
+#[test]
+fn grid_show_version_reads_metadata_without_fetching_bytes_or_leaking_the_locator() {
+    use ds_client_core::grid_models::Command;
+    use serde_json::json;
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    let mut revision = grid_revision("rev-c", 2, "rev-b", &"a".repeat(64));
+    revision["migration_source"] = json!({"kind":"pls_cadd_bak","reference":"k.bak"});
+    t.0.lock().unwrap().grid_models.push_back(project_response(json!({"revision":revision,
+        "download_url":"https://storage.googleapis.com/b/o?X-Goog-Signature=secret","expires_at":"x"})));
+    let shown = client
+        .grid_models(
+            "p-1",
+            &Command::ShowVersion {
+                model: "m".into(),
+                revision: "rev-c".into(),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(shown.data["revision"]["parent_revision_id"], "rev-b");
+    assert_eq!(
+        shown.data["revision"]["migration_source"]["kind"],
+        "pls_cadd_bak"
+    );
+    assert_eq!(shown.data["bytes_fetched"], false);
+    assert!(shown.bytes.is_none());
+    assert!(!shown.data.to_string().contains("Signature"));
+    // A revision of another model is refused, not shown.
+    let mut foreign = grid_revision("rev-c", 2, "rev-b", &"a".repeat(64));
+    foreign["model_id"] = json!("other");
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(project_response(json!({"revision":foreign})));
+    assert!(client
+        .grid_models(
+            "p-1",
+            &Command::ShowVersion {
+                model: "m".into(),
+                revision: "rev-c".into()
+            },
+            NOW + 1
+        )
+        .is_err());
+}
+
+#[test]
+fn grid_versions_group_revisions_by_version_in_save_order() {
+    use ds_client_core::grid_models::Command;
+    use serde_json::json;
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    let digest = "b".repeat(64);
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(project_response(json!({"versions":[
+        grid_revision("rev-e", 2, "rev-d", &digest), grid_revision("rev-d", 2, "rev-c", &digest),
+        grid_revision("rev-b", 1, "rev-a", &digest), grid_revision("rev-c", 1, "rev-b", &digest),
+        grid_revision("rev-a", 1, "", &digest)],"has_more":false,"next_cursor":""})));
+    let listed = client
+        .grid_models(
+            "p-1",
+            &Command::ListVersions {
+                model: "m".into(),
+                limit: 50,
+                cursor: None,
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    let versions = listed.data["versions"].as_array().unwrap();
+    assert_eq!(versions.len(), 2);
+    assert_eq!(versions[0]["version"], 2);
+    assert_eq!(versions[1]["revisions"][0]["revision_id"], "rev-a");
+    assert_eq!(versions[1]["revisions"][2]["revision_id"], "rev-c");
+    assert_eq!(
+        versions[1]["revisions"][2]["revision_ordinal_within_version"],
+        3
+    );
+    assert_eq!(listed.data["revisions_listed"], 5);
+}
+
+#[test]
+fn grid_publication_bumps_only_when_asked_and_records_governance() {
+    use ds_client_core::grid_models::Command;
+    use ds_command_kernel::grid_publication::{Approval, Intent};
+    use serde_json::json;
+    for (bump, old_server) in [(false, false), (true, false), (true, true)] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone(), MemoryStore::default());
+        let intent = Intent {
+            project: "p-1".into(),
+            model_id: "model_one".into(),
+            model_kind: "mv_line".into(),
+            expected_head_revision_id: "rev-old".into(),
+            source_revision_id: "rev:new".into(),
+            manifest_model_id: "native-model".into(),
+            manifest_model_revision: 2,
+            model_schema_version: "1".into(),
+            engine_version: "e".into(),
+            bump_version: bump,
+            milestone: Some("Submission 2".into()),
+            approval: Some(Approval {
+                status: "submitted".into(),
+                level_id: None,
+                decision_reason: None,
+            }),
+            ..Default::default()
+        };
+        let plan = intent.plan("p-1", b"model").unwrap();
+        let stored = json!({"artifact":plan.artifact,"already_exists":true});
+        let mut version = plan.version_request()["version"].clone();
+        version["project_id"] = json!("p-1");
+        version["version"] = json!(if bump { 3 } else { 2 });
+        version["parent_revision_id"] = json!("rev-old");
+        {
+            let mut state = transport.0.lock().unwrap();
+            state.grid_models.push_back(project_response(stored));
+            if old_server {
+                let refusal = serde_json::to_vec(&json!({"success":false,
+                    "error":{"code":"VALIDATION_FAILED","message":"Invalid DS Grid model request"}}))
+                .unwrap();
+                state
+                    .grid_models
+                    .push_back(TransportResponse::new(400, refusal));
+            } else {
+                state
+                    .grid_models
+                    .push_back(project_response(json!({"version":version})));
+                state
+                    .grid_models
+                    .push_back(project_response(json!({"revision":version})));
+            }
+        }
+        let result = client.grid_models(
+            "p-1",
+            &Command::Publish {
+                intent: Box::new(intent),
+                bytes: b"model".to_vec(),
+            },
+            NOW + 1,
+        );
+        let state = transport.0.lock().unwrap();
+        let commit = state
+            .grid_bodies
+            .iter()
+            .find(|b| b["action"] == "create_version")
+            .unwrap();
+        assert_eq!(commit["version"]["milestone"], "Submission 2");
+        assert_eq!(commit["version"]["approval"]["status"], "submitted");
+        assert_eq!(commit["version"].get("bump_version").is_some(), bump);
+        if old_server {
+            let refusal = result.err().unwrap();
+            assert_eq!(
+                refusal.service_refusal().unwrap().code(),
+                Some("server_action_unsupported")
+            );
+        } else {
+            let receipt = result.unwrap();
+            assert_eq!(receipt.data["bump_version"], bump);
+            assert_eq!(receipt.data["milestone"], "Submission 2");
+        }
+    }
+}
+
+#[test]
+fn grid_exports_publish_pins_the_revision_digest_and_download_verifies_bytes() {
+    use ds_client_core::grid_models::Command;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    let model_digest = "c".repeat(64);
+    let bak = b"bak!!".to_vec();
+    let digest = format!("{:x}", Sha256::digest(&bak));
+    let object = format!("ds-grid/objects/sha256/{}/{}", &digest[..2], digest);
+    let artifact = json!({"digest":digest,"object":object,"byte_length":5});
+    let item = json!({"output_id":"pls-delivered-workspace","scope":"model","format":"pls_cadd_bak","artifact":artifact});
+    let export = json!({"project_id":"p-1","model_id":"m","revision_id":"rev-c","model_digest":model_digest,
+        "export_id":"submission-2","items":[item],"created_at":"t","created_by":"a@b.c"});
+    {
+        let mut state = t.0.lock().unwrap();
+        state.grid_models.push_back(project_response(
+            json!({"revision":grid_revision("rev-c", 2, "rev-b", &model_digest)}),
+        ));
+        state.grid_models.push_back(project_response(json!({"artifact":artifact,"already_exists":false,
+            "session_uri":"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=private"})));
+        state.grid_models.push_back(project_response(
+            json!({"artifact":artifact,"already_exists":true}),
+        ));
+        state
+            .grid_models
+            .push_back(project_response(json!({"export":export})));
+    }
+    let published = client
+        .grid_models(
+            "p-1",
+            &Command::PublishExport {
+                model: "m".into(),
+                revision: "rev-c".into(),
+                export: "submission-2".into(),
+                output: "pls-delivered-workspace".into(),
+                format: "pls_cadd_bak".into(),
+                bytes: bak.clone(),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(published.data["model_digest"], model_digest);
+    assert_eq!(published.data["head_moved"], false);
+    assert!(!published.data.to_string().contains("upload_id"));
+    {
+        let state = t.0.lock().unwrap();
+        assert_eq!(state.grid_bodies[1]["upload"]["purpose"], "export");
+        assert_eq!(state.grid_bodies[3]["action"], "publish_export");
+        assert_eq!(state.grid_bodies[3]["export"]["model_digest"], model_digest);
+        assert_eq!(state.grid_uploaded, vec![bak.clone()]);
+    }
+    // Download: list, sign, fetch, verify. Wrong bytes are refused.
+    for (bytes, ok) in [(b"bak!!".as_slice(), true), (b"evil!".as_slice(), false)] {
+        {
+            let mut state = t.0.lock().unwrap();
+            state
+                .grid_models
+                .push_back(project_response(json!({"exports":[export]})));
+            state.grid_models.push_back(project_response(json!({"download_url":
+                format!("https://storage.googleapis.com/bucket/{object}?X-Goog-Signature=s"),"artifact":artifact})));
+            state
+                .grid_bytes
+                .push_back(TransportResponse::new(200, bytes));
+        }
+        let read = client.grid_models(
+            "p-1",
+            &Command::DownloadExport {
+                model: "m".into(),
+                revision: "rev-c".into(),
+                export: "submission-2".into(),
+                output: "pls-delivered-workspace".into(),
+            },
+            NOW + 1,
+        );
+        assert_eq!(read.is_ok(), ok);
+        if let Ok(read) = read {
+            assert_eq!(read.bytes.as_deref(), Some(bak.as_slice()));
+            assert_eq!(read.data["format"], "pls_cadd_bak");
+            assert!(!read.data.to_string().contains("Signature"));
+        }
+    }
+    // A Server that predates the signed read says so by name.
+    {
+        let mut state = t.0.lock().unwrap();
+        state
+            .grid_models
+            .push_back(project_response(json!({"exports":[export]})));
+        let refusal = serde_json::to_vec(&json!({"success":false,
+            "error":{"code":"VALIDATION_FAILED","message":"Invalid DS Grid model request"}}))
+        .unwrap();
+        state
+            .grid_models
+            .push_back(TransportResponse::new(400, refusal));
+    }
+    let old = client
+        .grid_models(
+            "p-1",
+            &Command::DownloadExport {
+                model: "m".into(),
+                revision: "rev-c".into(),
+                export: "submission-2".into(),
+                output: "pls-delivered-workspace".into(),
+            },
+            NOW + 1,
+        )
+        .err()
+        .expect("an old Server refuses");
+    assert_eq!(
+        old.service_refusal().unwrap().code(),
+        Some("server_action_unsupported")
+    );
+    // An output the record does not hold is refused before any signing.
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(project_response(json!({"exports":[export]})));
+    let missing = client
+        .grid_models(
+            "p-1",
+            &Command::DownloadExport {
+                model: "m".into(),
+                revision: "rev-c".into(),
+                export: "submission-2".into(),
+                output: "gis-layer".into(),
+            },
+            NOW + 1,
+        )
+        .err()
+        .expect("a missing output is refused");
+    assert_eq!(
+        missing.service_refusal().unwrap().code(),
+        Some("grid_model_not_found")
+    );
+    assert!(t.0.lock().unwrap().grid_models.is_empty());
+}
+
+#[test]
+fn mv_design_versions_send_milestone_fence_batch_and_summaries() {
+    use ds_client_core::design_versions::Command;
+    use ds_command_kernel::design_versions_headless::{BatchItem, Create, ObjectRef, Shared};
+    use serde_json::json;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let record = |id: &str, n: u64| {
+        json!({"project_id":"project_a","object":{"kind":"mv_model","id":"model-a"},"version_id":id,
+            "version":n,"milestone":"Submission 2","source_revision":"rev-abc","content_pinned":true})
+    };
+    transport.push_design_versions(200, &selection_envelope(json!({"version":record("v2",2)})));
+    let begun = client
+        .design_versions(
+            "project_a",
+            &Command::Object {
+                kind: "mv_model".into(),
+                command: Box::new(Command::Begin {
+                    transformer: "model-a".into(),
+                    create: Create {
+                        reason: "Submitted to REG".into(),
+                        milestone: Some("Submission 2".into()),
+                        expected_source: Some("rev-abc".into()),
+                        idempotency_key: "submission-2".into(),
+                    },
+                }),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(begun["content_revision"], "rev-abc");
+    transport.push_design_versions(
+        200,
+        &selection_envelope(json!({"results":[
+            {"object":{"kind":"mv_model","id":"model-a"},"ok":true,"version":record("v3",3)}]})),
+    );
+    let batch = client
+        .design_versions(
+            "project_a",
+            &Command::BeginBatch {
+                items: vec![BatchItem {
+                    object: ObjectRef {
+                        kind: "mv_model".into(),
+                        id: "model-a".into(),
+                    },
+                    reason: None,
+                    milestone: None,
+                    expected_source_revision: Some("-".into()),
+                    idempotency_key: "k-1".into(),
+                }],
+                shared: Shared {
+                    reason: Some("Submission 3".into()),
+                    milestone: None,
+                },
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(batch["ok_count"], 1);
+    transport.push_design_versions(
+        200,
+        &selection_envelope(json!({"summaries":[
+            {"object":{"kind":"mv_model","id":"model-a"},"count":3,"truncated":false,"latest_version_id":"v3"}]})),
+    );
+    let summaries = client
+        .design_versions(
+            "project_a",
+            &Command::Summaries {
+                objects: vec![ObjectRef {
+                    kind: "mv_model".into(),
+                    id: "model-a".into(),
+                }],
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(summaries["summaries"][0]["count"], 3);
+    let calls = transport.calls();
+    let bodies: Vec<&String> = calls
+        .iter()
+        .filter(|c| c.starts_with("design_versions "))
+        .collect();
+    assert!(bodies[0].contains(r#""milestone":"Submission 2""#));
+    assert!(bodies[0].contains(r#""expected_source_revision":"rev-abc""#));
+    assert!(bodies[1].contains(r#""action":"create_versions""#));
+    assert!(bodies[1].contains(r#""version":{"reason":"Submission 3"}"#));
+    assert!(bodies[2].contains(r#""action":"list_version_summaries""#));
+    assert!(bodies[2].contains(r#""objects":[{"kind":"mv_model","id":"model-a"}]"#));
+}
+
+#[test]
+fn grid_show_uses_the_servers_stored_count_without_walking() {
+    use ds_client_core::grid_models::Command;
+    use serde_json::json;
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(project_response(json!({"model":{
+        "project_id":"p-1","model_id":"m","head_revision_id":"rev-c","head_version":3,
+        "head_version_revision_count":42,"head_model_digest":"a".repeat(64)}})));
+    let shown = client
+        .grid_models("p-1", &Command::Show { model: "m".into() }, NOW + 1)
+        .unwrap();
+    assert_eq!(shown.data["current_version"]["version_revision_count"], 42);
+    assert_eq!(
+        shown.data["current_version"]["revision_ordinal_within_version"],
+        42
+    );
+    assert_eq!(shown.data["current_version"]["pages_read"], 0);
+    assert_eq!(t.0.lock().unwrap().grid_bodies.len(), 1, "no catalog walk");
+}
+
+#[test]
+fn grid_governance_bumps_renames_decides_and_reads_the_backup() {
+    use ds_client_core::grid_models::Command;
+    use ds_command_kernel::grid_publication::Approval;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    let digest = format!("{:x}", Sha256::digest(b"model"));
+    let bump = Command::BumpVersion {
+        model: "m".into(),
+        expected_head: "rev-c".into(),
+        reason: "Submitted to REG".into(),
+        milestone: Some("Submission 2".into()),
+    };
+    let mut bumped = grid_revision("bump-0123", 3, "rev-c", &digest);
+    bumped["revision_ordinal_within_version"] = json!(1);
+    bumped["milestone"] = json!("Submission 2");
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(project_response(json!({"version":bumped})));
+    let started = client.grid_models("p-1", &bump, NOW + 1).unwrap();
+    assert_eq!(started.data["version"], 3);
+    assert_eq!(started.data["content_changed"], false);
+    {
+        let state = t.0.lock().unwrap();
+        let body = &state.grid_bodies[0];
+        assert_eq!(body["action"], "bump_version");
+        assert_eq!(body["expected_head_revision_id"], "rev-c");
+        assert_eq!(body["milestone"], "Submission 2");
+        assert!(body.get("version").is_none(), "flat fields only");
+    }
+    // A version cut from another head is not this bump.
+    let mut foreign = bumped.clone();
+    foreign["parent_revision_id"] = json!("rev-other");
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(project_response(json!({"version":foreign})));
+    assert!(client.grid_models("p-1", &bump, NOW + 1).is_err());
+
+    let rename = Command::UpdateModel {
+        model: "m".into(),
+        expected_head: "rev-c".into(),
+        display_name: Some("Kamonyi MV (as built)".into()),
+        description: None,
+        reason: Some("Customer name".into()),
+    };
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(project_response(json!({"model":{
+        "project_id":"p-1","model_id":"m","head_revision_id":"rev-c",
+        "display_name":"Kamonyi MV (as built)"},"changed":true,"changes":["display_name"]})));
+    let renamed = client.grid_models("p-1", &rename, NOW + 1).unwrap();
+    assert_eq!(renamed.data["changes"][0], "display_name");
+    assert_eq!(renamed.data["revisions_changed"], false);
+
+    let decide = |status: &str, level: Option<&str>| Command::SetApproval {
+        model: "m".into(),
+        revision: "rev-b".into(),
+        expected_head: "rev-c".into(),
+        approval: Approval {
+            status: status.into(),
+            level_id: level.map(str::to_owned),
+            decision_reason: Some("Reviewed on site".into()),
+        },
+    };
+    assert!(decide("approved", None).validate("p-1").is_err());
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(project_response(json!({
+        "project_id":"p-1","model_id":"m","revision_id":"rev-b","version":2,
+        "effective_approval":{"status":"approved","level_id":"board"},"changed":true})));
+    let decided = client
+        .grid_models("p-1", &decide("approved", Some("board")), NOW + 1)
+        .unwrap();
+    assert_eq!(decided.data["effective_approval"]["level_id"], "board");
+
+    let object = format!("project-grid-models/v1/p-1/m/rev-c/{digest}.dsgrid");
+    let backup = |generation: i64| {
+        json!({"project_id":"p-1","model_id":"m","state":"deleted","head_revision_id":"rev-c",
+            "head_model_digest":digest,"digest":digest,"byte_length":5,
+            "backup":{"bucket":"ds-backups","object":object,"generation":7,"digest":digest,"byte_length":5},
+            "download_url":format!("https://storage.googleapis.com/ds-backups/{object}?generation={generation}&X-Goog-Signature=s")})
+    };
+    {
+        let mut state = t.0.lock().unwrap();
+        state.grid_models.push_back(project_response(backup(7)));
+        state
+            .grid_bytes
+            .push_back(TransportResponse::new(200, b"model"));
+    }
+    let read = client
+        .grid_models(
+            "p-1",
+            &Command::DownloadBackup { model: "m".into() },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(read.bytes.as_deref(), Some(b"model".as_slice()));
+    assert!(!read.data.to_string().contains("Signature"));
+    // A URL for another generation is refused before any byte is fetched.
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(project_response(backup(8)));
+    assert!(client
+        .grid_models(
+            "p-1",
+            &Command::DownloadBackup { model: "m".into() },
+            NOW + 1
+        )
+        .is_err());
+
+    // A Server that predates the action is named, not misread.
+    let refusal = serde_json::to_vec(&json!({"success":false,
+        "error":{"code":"VALIDATION_FAILED","message":"Unknown DS Grid model action"}}))
+    .unwrap();
+    t.0.lock()
+        .unwrap()
+        .grid_models
+        .push_back(TransportResponse::new(400, refusal));
+    let old = client
+        .grid_models("p-1", &bump, NOW + 1)
+        .err()
+        .expect("an old Server refuses");
+    assert_eq!(
+        old.service_refusal().unwrap().code(),
+        Some("server_action_unsupported")
+    );
+    let state = t.0.lock().unwrap();
+    assert!(state.grid_models.is_empty() && state.grid_bytes.is_empty());
 }

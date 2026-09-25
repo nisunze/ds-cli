@@ -4,7 +4,9 @@ use crate::{
     AuthorizedTransport, ClientError, ClientProfile, DesignVersionsCall, ErrorKind, ServiceRefusal,
     TransportResponse,
 };
-use ds_command_kernel::design_versions_headless::{self as owner, Source};
+use ds_command_kernel::design_versions_headless::{
+    self as owner, BatchItem, Create, ObjectRef, Shared, Source,
+};
 pub use owner::Command;
 use serde_json::{json, Value};
 fn bad(message: &'static str) -> ClientError {
@@ -93,17 +95,57 @@ impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
         &mut self,
         project: &str,
         transformer: &str,
-        reason: &str,
-        idempotency_key: &str,
+        create: &Create,
     ) -> Result<Value, ClientError> {
+        let mut version = json!({
+            "reason": create.reason,
+            "idempotency_key": create.idempotency_key,
+        });
+        // Optional fields are omitted, never sent empty: the request a caller
+        // who names neither sends is byte-identical to before.
+        if let Some(milestone) = &create.milestone {
+            version["milestone"] = json!(milestone);
+        }
+        if let Some(expected) = &create.expected_source {
+            version["expected_source_revision"] = json!(expected);
+        }
         let payload = json!({
             "action": "create_version",
             "project_id": project,
             "object": {"kind": self.kind, "id": transformer},
-            "version": {
-                "reason": reason,
-                "idempotency_key": idempotency_key,
-            },
+            "version": version,
+        });
+        decode(self.transport.design_versions(DesignVersionsCall {
+            profile: self.profile,
+            authority: self.authority.call(),
+            payload,
+        })?)
+    }
+    fn create_many(
+        &mut self,
+        project: &str,
+        items: &[BatchItem],
+        shared: &Shared,
+    ) -> Result<Value, ClientError> {
+        let mut payload = json!({
+            "action": "create_versions",
+            "project_id": project,
+            "versions": items,
+        });
+        if shared.reason.is_some() || shared.milestone.is_some() {
+            payload["version"] = json!(shared);
+        }
+        decode(self.transport.design_versions(DesignVersionsCall {
+            profile: self.profile,
+            authority: self.authority.call(),
+            payload,
+        })?)
+    }
+    fn summaries(&mut self, project: &str, objects: &[ObjectRef]) -> Result<Value, ClientError> {
+        let payload = json!({
+            "action": "list_version_summaries",
+            "project_id": project,
+            "objects": objects,
         });
         decode(self.transport.design_versions(DesignVersionsCall {
             profile: self.profile,
