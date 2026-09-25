@@ -319,6 +319,9 @@ fn regenerate_command(code: RefusalCode, rooms: &BoundedRooms) -> String {
                 command.push_str(" --transformer ");
                 command.push_str(name);
             }
+            // `--out-dir` is required by the export; a remedy that omits it
+            // refuses when run verbatim.
+            command.push_str(" --out-dir <dir>");
             command
         }
         // Nothing regenerates an empty room; the operator has to look at the
@@ -548,7 +551,7 @@ mod tests {
             assert_eq!(refusal.code, RefusalCode::InputsNotCurrent);
             assert_eq!(
                 refusal.command,
-                "ds report project export --transformer tx_a"
+                "ds report project export --transformer tx_a --out-dir <dir>"
             );
         }
     }
@@ -566,7 +569,7 @@ mod tests {
         assert_eq!(refusal.rooms.names, vec!["tx_b".to_string()]);
         assert_eq!(
             refusal.command,
-            "ds report project export --transformer tx_b"
+            "ds report project export --transformer tx_b --out-dir <dir>"
         );
         assert!(refusal.command_covers_all);
     }
@@ -586,7 +589,7 @@ mod tests {
         assert!(!refusal.command_covers_all);
         assert_eq!(
             refusal.command,
-            "ds report project export --transformer tx_00 --transformer tx_01 --transformer tx_02"
+            "ds report project export --transformer tx_00 --transformer tx_01 --transformer tx_02 --out-dir <dir>"
         );
     }
 
@@ -708,7 +711,7 @@ mod tests {
         assert_eq!(reply["refusal"]["rooms"]["names"][0], "tx_a");
         assert_eq!(
             reply["refusal"]["command"],
-            "ds report project export --transformer tx_a"
+            "ds report project export --transformer tx_a --out-dir <dir>"
         );
     }
 
