@@ -17,7 +17,7 @@ skills; MCP reaches the rest. `ds mcp` gives those hosts the command line
 |---|---|
 | The same `ds` executable, launched with `mcp serve` by the host | A separate binary, sidecar or service |
 | Chapter/profile views generated at startup from unchecked `ds capabilities` schemas; live availability resolves on catalogue describe or invoke | A second command registry or hand-written command schema |
-| One `ds <path> … --output json` process per `tools/call`, envelope returned verbatim | A cache, a batch, or a "convenience" tool the CLI lacks |
+| One `ds <path> … --output json` process per `tools/call`, the CLI's envelope returned within the adapter's documented bounds | A cache, a batch, or a "convenience" tool the CLI lacks |
 | Uses each live descriptor's authority to keep headless commands headless, and to make one bounded local pairing attempt for paired commands | A credential, a listener, or a network hop |
 | Receipt-verified `SKILL.md` documents exposed lazily through MCP resources | A requirement to copy skills into an agent home directory |
 
@@ -26,12 +26,12 @@ declared once on every canonical command and appears in its live descriptor.
 
 ## Exposure modes
 
-The default broad server publishes fourteen stable tools: `ds_catalog`, the
+The default broad server publishes fifteen stable tools: `ds_catalog`, the
 bounded `ds_diagnostics` bootstrap, plus one router per non-catalogue chapter —
-`ds_data`, `ds_project`, `ds_grid_model`, `ds_pls_cadd`, `ds_survey`,
-`ds_design`, `ds_map_presentation`, `ds_vector_tiles`, `ds_solar`,
-`ds_reports`, `ds_operations` and `ds_workstation`. Adding a command does not
-enlarge this list.
+`ds_data`, `ds_project`, `ds_assets`, `ds_grid_model`, `ds_pls_cadd`,
+`ds_survey`, `ds_design`, `ds_map_presentation`, `ds_vector_tiles`,
+`ds_solar`, `ds_reports`, `ds_operations` and `ds_workstation`. Adding a
+command does not enlarge this list.
 
 ```text
 ds mcp serve --exposure chapters
@@ -149,6 +149,157 @@ immutable-library verification, packing, seeding and native resolution; and
 lifecycle. Their union is the PLS-CADD chapter, but each typed tool surface
 stays below the host's context limit.
 
+## How a command becomes a tool
+
+Audited 2026-09-25 against the live registry: 516 registered commands in 24
+domains. Every one is a tool or a named exclusion, and nothing here names a
+command: a verb registered later is published with no edit to this crate.
+
+### Coverage
+
+`tools::discover_tools` walks `ds capabilities` tier by tier at startup (schema
+mode, so no availability is resolved) and projects each descriptor. Excluded:
+the `mcp` domain itself, and `tools::NEVER_TOOLS`, each with its reason —
+`auth.login` (a password at a trusted terminal), `auth.link.approve` (the
+signed-in Desktop's act) and `server.serve` (a foreground host never answers).
+
+| Domain | Verbs | Typed tools | Excluded | `confirm` gated | Desktop gate |
+|---|---:|---:|---:|---:|---:|
+| `server` | 10 | 9 | 1 | 0 | 0 |
+| `dsgrid` | 42 | 42 | 0 | 3 | 2 |
+| `dsgrid-exchange` | 4 | 4 | 0 | 0 | 0 |
+| `library` | 16 | 16 | 0 | 9 | 0 |
+| `pls` | 11 | 11 | 0 | 1 | 0 |
+| `solar` | 55 | 55 | 0 | 13 | 16 |
+| `report` | 35 | 35 | 0 | 11 | 0 |
+| `survey` | 33 | 33 | 0 | 12 | 0 |
+| `map` | 59 | 59 | 0 | 9 | 39 |
+| `pm` | 26 | 26 | 0 | 18 | 0 |
+| `assets` | 14 | 14 | 0 | 6 | 0 |
+| `design` | 97 | 97 | 0 | 37 | 0 |
+| `install` | 4 | 4 | 0 | 2 | 0 |
+| `sre` | 2 | 2 | 0 | 0 | 0 |
+| `style` | 15 | 15 | 0 | 7 | 0 |
+| `tile` | 12 | 12 | 0 | 5 | 0 |
+| `data` | 19 | 19 | 0 | 1 | 4 |
+| `feedback` | 4 | 4 | 0 | 3 | 0 |
+| `desktop` | 29 | 29 | 0 | 8 | 26 |
+| `shell` | 3 | 3 | 0 | 0 | 0 |
+| `workstation` | 8 | 8 | 0 | 3 | 0 |
+| `mcp` | 2 | 0 | 2 | — | — |
+| `account` | 1 | 1 | 0 | 0 | 0 |
+| `auth` | 15 | 13 | 2 | 3 | 0 |
+
+The per-verb table — command, typed tool, chapter router, effect, hints,
+confirmation shape, desktop gate and status — is
+[`mcp-tool-audit.md`](mcp-tool-audit.md), generated from one executable by
+`scripts/mcp-tool-audit.py <ds>`. It is a snapshot; regenerate it after
+merging new verbs. The guarantee is
+`every_registered_command_is_exactly_one_mcp_tool_or_a_named_exclusion` in
+`crates/ds/tests/mcp.rs`: it fails if a registered verb has no tool, a tool
+has no verb, two tools share a name, a name breaks the `[A-Za-z0-9_-]{1,64}`
+grammar hosts accept, or a chapter router misses or double-routes a command.
+
+### Names
+
+A tool is named by its command id with `.` → `_` (`map.design.report` →
+`map_design_report`); hyphens stay. The title is the dotted id. No tool has
+been renamed, so no alias is needed.
+
+### Input schemas
+
+Generated from each declared input; `additionalProperties` is false.
+
+| Declared kind | JSON Schema |
+|---|---|
+| value | `string`; `enum` from a closed set; `default` as declared |
+| switch | `boolean` |
+| repeated | `array` of `string`; a closed set constrains each item (`items.enum`); a default becomes a one-item array |
+| positional | `string`, sent after the `--` sentinel |
+| — (gated command) | `confirm`: `boolean`, described with its trigger or preview |
+
+Required inputs are listed in `required`. A descriptor that cannot be
+projected faithfully — an unknown chapter, authority, effect or execution
+token; a confirmation trigger or preview switch naming no declared switch; an
+input named `output`, `pretty`, `no-color` or `help`, which `ds` reads as its
+own — stops `ds mcp serve` from starting with `mcp_capabilities_unavailable`
+rather than publishing a tool that says less than the CLI.
+
+### Argument values
+
+Each value travels inside its own token, `--name=value`, and operands follow
+`--`. `ds` reads `--yes`, `--output`, `--help`/`-h` and `--version` as its own
+wherever they stand, so a value sent as a separate token could confirm,
+re-format or divert a call: before this rule a task titled `-h` answered the
+help descriptor with status `ok` and never ran, and any value beginning with
+`--` — a Markdown rule — was refused as a missing value. `--yes` is emitted
+only for `confirm: true`.
+
+### Annotations
+
+Derived from the effect class and nothing else (`tools::hints`). Where a class
+does not settle a question the answer is conservative.
+
+| Effect | readOnlyHint | destructiveHint | idempotentHint |
+|---|---|---|---|
+| `discovery`, `read_only` | true | false | true |
+| `proposal` | true | false | false — spends model credit per call |
+| `local_ui` | false | false | false |
+| `local_auth_state`, `local_file_write`, `artifact_write`, `machine_write`, `global_write` | false | true | false |
+
+`openWorldHint` is false everywhere: a call reaches this executable, its owner
+engines, the paired application or the DS service under the caller's own
+identity. A chapter router is read-only and idempotent only if every command
+it routes is, and destructive if any is. `ds_catalog` and `ds_diagnostics`
+are read-only, non-destructive and idempotent.
+
+### Errors
+
+- A routing mistake — a tool this server does not publish, a router envelope
+  without `operation`/`command`, an unknown or wrong-chapter command id — is a
+  JSON-RPC `-32602` error naming the right tool where one exists.
+- Once a command is resolved, anything wrong with how it was called — an
+  undeclared property, a wrong JSON type, `confirm` where that invocation
+  needs none, `confirm` inside nested `arguments` — is that command's
+  `isError` result carrying a DS envelope: `mcp_arguments_invalid`, class
+  `invalid_input`, a remedy and `next: ds capabilities <id>`.
+- Every CLI refusal is an `isError` result whose `structuredContent` is the
+  CLI's envelope, with its code, remedy and `next`.
+
+### Bounds
+
+- **Time.** Each tool call's `ds` child runs within `ds mcp serve
+  --call-timeout <seconds>` (default 3600, 1–86400). Past it the child is
+  stopped and the call refuses with `mcp_call_timed_out` — class
+  `unavailable` for a read, `conflict` for a writing effect, whose remedy is
+  to re-read the state it changes before retrying. Only the direct child is
+  stopped; an owner engine it started may still be finishing. The bound in
+  force is `mcp.call_timeout_seconds` in `ds_diagnostics(operation=identity)`. The server's own
+  probes (`version`, `capabilities`, `desktop status`) are bounded at 120 s.
+- **Long-running calls.** A host that sends `_meta.progressToken` receives
+  `notifications/progress` every 10 s while the call runs, with the elapsed
+  whole seconds as `progress` and no `total`. Job commands (`execution: job`)
+  say "Runs as a job" in their description: they answer at once with a handle
+  to poll.
+- **Size.** The child's standard output is captured up to 32 MiB; beyond that
+  the call refuses with `mcp_result_too_large`. An envelope above 256 KiB is
+  trimmed at its largest arrays under `data` or `error.detail` — never cut
+  mid-value, `status` and the error's code, message and remedy untouched — and
+  reports what was trimmed in `more.mcp_truncation` (pointer, kept, total).
+  Text that is not an envelope is bounded to 4 KiB and says how much was
+  omitted.
+
+### Credentials
+
+No command emits a credential; each owner tests that. The adapter does not
+rely on it: a string under `password`, `access_token`, `refresh_token`,
+`id_token`, `client_secret`, `session_secret`, `private_key`, `device_code` or
+`code_verifier` — at any depth, any case — and the token after `Bearer ` in
+any string are replaced with `[redacted by ds mcp]` before a host reads the
+answer. `token` is not on the list: it is ordinary data here (a survey
+feature-code token, a host token). The published tool text never names the
+terminal sign-in; see `auth-context` above.
+
 ## Why a chapter, rather than one tool per command
 
 Publishing one tool per command makes the MCP surface grow with implementation
@@ -207,7 +358,10 @@ hold for every exposure mode and every profile:
    MCP session state. A profile introduces no identity or project override
    argument.
 5. Result envelopes, artifact receipts, bounded-output rules and error codes
-   are identical to the CLI's.
+   are the CLI's. The adapter adds only its own boundary — the call bound,
+   the result bound reported in `more.mcp_truncation`, credential redaction
+   and `mcp_arguments_invalid` — described under
+   [How a command becomes a tool](#how-a-command-becomes-a-tool).
 6. Protocol logs stay off MCP stdout.
 7. The `mcp` domain is never exposed as a chapter command, so an MCP client
    cannot reach `mcp install` or start a second server.
@@ -306,14 +460,29 @@ canonical authority and ordinary refusals remain the only runtime contract.
 The CLI requires `--yes` for effectful commands. Typed leaf tools declare
 `confirm`; chapter calls place it at the outer envelope, never inside nested
 arguments. `confirm: true` maps onto `--yes` only when that exact live command
-requires it. Read-only commands reject confirmation rather than forwarding it.
-Without confirmation, the CLI's typed refusal returns unchanged.
+requires it for that exact invocation — the same decision the CLI's gate
+makes: a declared trigger switch (`mcp install --write`) decides alone;
+otherwise a set preview switch (`--dry-run`) writes nothing and needs no
+confirmation; otherwise the effect class decides. Read-only commands and
+previews reject confirmation rather than forwarding it. Without confirmation,
+the CLI's typed `confirmation_required` refusal returns unchanged.
+
+Two command-owned inputs share a spelling with this machinery and stay the
+command's own: `design.force-gate.check --confirm <code>` is a string input,
+and the typed `.dsgrid` mutations (`dsgrid structure retype|describe|…`)
+declare their own `--yes` switch that writes the revision. Neither command is
+behind the central gate. A gated command that declared either would let an
+ordinary input confirm it, so such a descriptor stops the server from
+starting rather than being published.
 
 ## Reading a result
 
 Every result is the CLI envelope: branch on `status`, read `data` on `ok`,
 and follow `error.remedy` / `error.next` on anything else. Tool descriptions
-carry the command's effect, authority, and the refusals it can name.
+carry the command's effect, authority, confirmation and preview shape,
+whether it runs as a job, whether it needs the paired window, and the
+refusals it can name. If `more.mcp_truncation` is present the adapter trimmed
+the answer; narrow the call and ask again.
 
 ## Installing the host entry
 
@@ -401,7 +570,7 @@ business logic, or UI behavior is introduced by this server change.
 ## Verifying
 
 `ds doctor` reports the executable and skills. In the broad server, confirm
-`tools/list` returns 14 tools, call `ds_diagnostics` for identity, use
+`tools/list` returns 15 tools, call `ds_diagnostics` for identity, use
 `resources/list` then read `ds` and `ds-mcp-host`, and use `ds_catalog` to
 route one command. A paired-desktop command can then prove its lazy pairing
 refusal without affecting a later diagnostics call. In a typed profile, verify

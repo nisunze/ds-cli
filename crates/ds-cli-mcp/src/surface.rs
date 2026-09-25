@@ -1,12 +1,47 @@
 //! MCP publication shapes generated from the live command descriptors.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use ds_cli_contract::outcome::{Failure, error_envelope};
-use ds_cli_contract::spec::Chapter;
+use ds_cli_contract::spec::{Chapter, Effect};
 use serde_json::{Map, Value, json};
 
 use crate::tools::{self, CONFIRM_PROPERTY, Tool};
+
+/// The bound on one tool call's `ds` child unless `--call-timeout` says
+/// otherwise: an hour, so long engine work finishes and only a hung child is
+/// stopped.
+pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(3600);
+
+/// The largest envelope, serialized, that one tool result carries. Every
+/// command already bounds its own answer; this is the adapter's backstop for
+/// a host context, and an envelope above it is trimmed — never cut — and says
+/// so in `more.mcp_truncation`.
+pub const MAX_RESULT_BYTES: usize = 256 * 1024;
+
+/// Object keys whose string value is a credential wherever it appears in an
+/// answer. No command emits one — each owner holds that in its own tests —
+/// and this adapter does not rely on it: a value under one of these keys is
+/// replaced before any host can read it. `token` is absent on purpose: it is
+/// ordinary data in this product (a survey feature-code token, a host token).
+const CREDENTIAL_KEYS: &[&str] = &[
+    "password",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "client_secret",
+    "session_secret",
+    "private_key",
+    "device_code",
+    "code_verifier",
+];
+
+pub const REDACTED: &str = "[redacted by ds mcp]";
+
+/// Non-envelope text — a child that printed no JSON — is diagnostic only,
+/// and bounded to this many bytes.
+const MAX_FALLBACK_TEXT_BYTES: usize = 4 * 1024;
 
 pub const EXPOSURES: &[&str] = &["chapters", "commands"];
 
@@ -1022,6 +1057,34 @@ pub struct Surface {
     profile: Option<Profile>,
     commands: Vec<Tool>,
     identity: Value,
+    call_timeout: Duration,
+}
+
+/// The command a `ds` child answers for, as its envelope names it, and the
+/// effect class that decides what a stopped or oversized answer means.
+struct Answering<'a> {
+    id: &'a str,
+    contract: u32,
+    effect: Effect,
+}
+
+impl<'a> Answering<'a> {
+    fn tool(tool: &'a Tool) -> Self {
+        Self {
+            id: &tool.id,
+            contract: tool.descriptor["contract"].as_u64().unwrap_or(1) as u32,
+            effect: tool.effect,
+        }
+    }
+
+    /// A describe or diagnostic: the CLI's own read-only meta commands.
+    fn meta(id: &'a str) -> Self {
+        Self {
+            id,
+            contract: 1,
+            effect: Effect::ReadOnly,
+        }
+    }
 }
 
 impl Surface {
@@ -1057,12 +1120,22 @@ impl Surface {
             profile,
             commands,
             identity: Value::Null,
+            call_timeout: DEFAULT_CALL_TIMEOUT,
         })
     }
 
     pub fn with_identity(mut self, identity: Value) -> Self {
         self.identity = identity;
         self
+    }
+
+    pub fn with_call_timeout(mut self, timeout: Duration) -> Self {
+        self.call_timeout = timeout;
+        self
+    }
+
+    pub fn call_timeout(&self) -> Duration {
+        self.call_timeout
     }
 
     pub fn exposure(&self) -> Exposure {
@@ -1099,7 +1172,11 @@ impl Surface {
         match (self.exposure, self.profile) {
             (Exposure::Chapters, None) => std::iter::once(catalog_tool_json())
                 .chain(std::iter::once(diagnostics_tool_json()))
-                .chain(ROUTED_CHAPTERS.iter().copied().map(chapter_tool_json))
+                .chain(
+                    ROUTED_CHAPTERS
+                        .iter()
+                        .map(|chapter| self.chapter_tool_json(*chapter)),
+                )
                 .collect(),
             (Exposure::Commands, Some(_)) => std::iter::once(catalog_tool_json())
                 .chain(std::iter::once(diagnostics_tool_json()))
@@ -1112,14 +1189,56 @@ impl Surface {
         }
     }
 
+    /// The annotations of one chapter router, derived from the commands it
+    /// routes: read-only and idempotent only if every one of them is,
+    /// destructive if any one of them is.
+    fn chapter_tool_json(&self, chapter: Chapter) -> Value {
+        let hints = self
+            .commands
+            .iter()
+            .filter(|tool| tool.chapter == chapter)
+            .map(|tool| tools::hints(tool.effect))
+            .fold(
+                tools::Hints {
+                    read_only: true,
+                    destructive: false,
+                    idempotent: true,
+                },
+                |all, one| tools::Hints {
+                    read_only: all.read_only && one.read_only,
+                    destructive: all.destructive || one.destructive,
+                    idempotent: all.idempotent && one.idempotent,
+                },
+            );
+        chapter_tool_json(chapter, hints)
+    }
+
     pub fn call(
         &self,
         name: &str,
         arguments: &Value,
         executable: &PathBuf,
     ) -> Result<Value, (i64, String)> {
+        self.call_observed(name, arguments, executable, &mut |_| {})
+    }
+
+    /// [`Surface::call`], reporting the elapsed time of a long-running call
+    /// to `tick` every [`tools::PROGRESS_INTERVAL`].
+    ///
+    /// `Err` is a protocol error and is reserved for routing: a tool this
+    /// server does not publish, or a router envelope that names no command.
+    /// Once a command is resolved, everything wrong with how it was called is
+    /// that command's refusal — an `isError` result carrying a DS envelope
+    /// with a code and a remedy, exactly as the CLI answers a bad flag.
+    pub fn call_observed(
+        &self,
+        name: &str,
+        arguments: &Value,
+        executable: &PathBuf,
+        tick: &mut dyn FnMut(Duration),
+    ) -> Result<Value, (i64, String)> {
         if name == "ds_diagnostics" {
-            return self.call_diagnostics(arguments, executable);
+            return self.call_diagnostics(arguments, executable, tick);
         }
         if name == "ds_catalog" && (self.exposure == Exposure::Chapters || self.profile.is_some()) {
             return self.call_catalog(arguments, executable);
@@ -1129,7 +1248,7 @@ impl Surface {
                 let Some(tool) = self.commands.iter().find(|tool| tool.name == name) else {
                     return Err((-32602, format!("unknown tool: {name}")));
                 };
-                invoke_leaf(tool, arguments, executable)
+                invoke_leaf(tool, arguments, executable, self.call_timeout, tick)
             }
             Exposure::Chapters => {
                 let Some(chapter) = ROUTED_CHAPTERS
@@ -1139,7 +1258,7 @@ impl Surface {
                 else {
                     return Err((-32602, format!("unknown tool: {name}")));
                 };
-                self.call_chapter(chapter, arguments, executable)
+                self.call_chapter(chapter, arguments, executable, tick)
             }
         }
     }
@@ -1149,6 +1268,7 @@ impl Surface {
         chapter: Chapter,
         arguments: &Value,
         executable: &PathBuf,
+        tick: &mut dyn FnMut(Duration),
     ) -> Result<Value, (i64, String)> {
         let object = object_with_known_keys(
             arguments,
@@ -1191,35 +1311,53 @@ impl Surface {
                     "--output".to_string(),
                     "json".to_string(),
                 ];
-                invoke_argv(&argv, executable)
+                invoke_argv(
+                    &argv,
+                    executable,
+                    &Answering::meta("capabilities"),
+                    self.call_timeout,
+                    tick,
+                )
             }
             "invoke" => {
-                let mut nested = nested
-                    .as_object()
-                    .cloned()
-                    .ok_or_else(|| (-32602, "`arguments` must be an object".to_string()))?;
-                if nested.contains_key(CONFIRM_PROPERTY) {
-                    return Err((
-                        -32602,
+                let Some(mut nested) = nested.as_object().cloned() else {
+                    return Ok(arguments_refusal(
+                        tool,
+                        "`arguments` must be an object".to_string(),
+                    ));
+                };
+                // A command's own `confirm` input travels with its arguments;
+                // the MCP confirmation belongs to the envelope.
+                if nested.contains_key(CONFIRM_PROPERTY) && !tool.owns_confirm_input() {
+                    return Ok(arguments_refusal(
+                        tool,
                         format!(
                             "put `{CONFIRM_PROPERTY}` in the chapter envelope, not inside `arguments`"
                         ),
                     ));
                 }
                 let nested_arguments = Value::Object(nested.clone());
-                let confirmation_required = tool
-                    .confirmation_required_for(&nested_arguments)
-                    .map_err(|message| (-32602, message))?;
+                let confirmation_required = match tool.confirmation_required_for(&nested_arguments)
+                {
+                    Ok(required) => required,
+                    Err(message) => return Ok(arguments_refusal(tool, message)),
+                };
                 if confirm {
                     if !confirmation_required {
-                        return Err((
-                            -32602,
+                        return Ok(arguments_refusal(
+                            tool,
                             format!("`{command}` does not accept confirmation for this invocation"),
                         ));
                     }
                     nested.insert(CONFIRM_PROPERTY.to_string(), Value::Bool(true));
                 }
-                invoke_leaf(tool, &Value::Object(nested), executable)
+                invoke_leaf(
+                    tool,
+                    &Value::Object(nested),
+                    executable,
+                    self.call_timeout,
+                    tick,
+                )
             }
             _ => Err((
                 -32602,
@@ -1354,6 +1492,7 @@ impl Surface {
         &self,
         arguments: &Value,
         executable: &PathBuf,
+        tick: &mut dyn FnMut(Duration),
     ) -> Result<Value, (i64, String)> {
         let object = object_with_known_keys(arguments, &["operation"])?;
         let operation = required_string(&object, "operation")?;
@@ -1369,10 +1508,10 @@ impl Surface {
                 false,
             ));
         }
-        let argv = match operation.as_str() {
-            "doctor" => vec!["doctor", "--output", "json"],
-            "shell.status" => vec!["shell", "status", "--output", "json"],
-            "capabilities" => vec!["capabilities", "--output", "json"],
+        let (id, argv) = match operation.as_str() {
+            "doctor" => ("doctor", vec!["doctor", "--output", "json"]),
+            "shell.status" => ("shell.status", vec!["shell", "status", "--output", "json"]),
+            "capabilities" => ("capabilities", vec!["capabilities", "--output", "json"]),
             _ => {
                 return Err((
                     -32602,
@@ -1380,11 +1519,15 @@ impl Surface {
                         .to_string(),
                 ));
             }
-        }
-        .into_iter()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-        invoke_argv(&argv, executable)
+        };
+        let argv = argv.into_iter().map(str::to_string).collect::<Vec<_>>();
+        invoke_argv(
+            &argv,
+            executable,
+            &Answering::meta(id),
+            self.call_timeout,
+            tick,
+        )
     }
 }
 
@@ -1440,11 +1583,18 @@ fn invoke_leaf(
     tool: &Tool,
     arguments: &Value,
     executable: &PathBuf,
+    timeout: Duration,
+    tick: &mut dyn FnMut(Duration),
 ) -> Result<Value, (i64, String)> {
-    let confirmation_required = tool
-        .confirmation_required_for(arguments)
-        .map_err(|message| (-32602, message))?;
-    let argv = tools::argv_for_call(tool, arguments).map_err(|message| (-32602, message))?;
+    let confirmation_required = match tool.confirmation_required_for(arguments) {
+        Ok(required) => required,
+        Err(message) => return Ok(arguments_refusal(tool, message)),
+    };
+    let argv = match tools::argv_for_call(tool, arguments) {
+        Ok(argv) => argv,
+        Err(message) => return Ok(arguments_refusal(tool, message)),
+    };
+    let answering = Answering::tool(tool);
     // The registry owns confirmation and refuses before any handler opens a
     // bridge. Preserve that ordering here too: an unconfirmed paired write is
     // an input refusal, never a reason to start a desktop.
@@ -1454,12 +1604,23 @@ fn invoke_leaf(
             .and_then(Value::as_bool)
             .unwrap_or(false)
     {
-        return invoke_argv(&argv, executable);
+        return invoke_argv(&argv, executable, &answering, timeout, tick);
     }
     if let Err(failure) = tools::ensure_desktop(tool, arguments, executable) {
         return Ok(failure_result(tool, &failure));
     }
-    invoke_argv(&argv, executable)
+    invoke_argv(&argv, executable, &answering, timeout, tick)
+}
+
+/// A resolved command's refusal of the arguments it was sent. It is a tool
+/// result rather than a protocol error: the tool exists and was called, and
+/// what the caller must change is an input — which is what a DS envelope's
+/// code and remedy are for.
+fn arguments_refusal(tool: &Tool, message: String) -> Value {
+    let failure = Failure::invalid(crate::ARGUMENTS_INVALID.code, message)
+        .remedy(crate::ARGUMENTS_INVALID.remedy)
+        .next(format!("ds capabilities {}", tool.id));
+    failure_result(tool, &failure)
 }
 
 /// Whether one sentence would send a person to a terminal sign-in.
@@ -1584,9 +1745,14 @@ pub(crate) fn scrub_descriptor(command: &mut Value) {
 }
 
 fn failure_result(tool: &Tool, failure: &Failure) -> Value {
-    let contract = tool.descriptor["contract"].as_u64().unwrap_or(1) as u32;
-    let mut envelope = serde_json::to_value(error_envelope(&tool.id, contract, failure))
-        .unwrap_or_else(|_| json!({ "status": "error" }));
+    let answering = Answering::tool(tool);
+    failure_value(&answering, failure)
+}
+
+fn failure_value(answering: &Answering<'_>, failure: &Failure) -> Value {
+    let mut envelope =
+        serde_json::to_value(error_envelope(answering.id, answering.contract, failure))
+            .unwrap_or_else(|_| json!({ "status": "error" }));
     mcp_device_link_guidance(&mut envelope);
     let text = serde_json::to_string(&envelope).unwrap_or_else(|_| "{}".to_string());
     json!({
@@ -1596,11 +1762,23 @@ fn failure_result(tool: &Tool, failure: &Failure) -> Value {
     })
 }
 
-fn invoke_argv(argv: &[String], executable: &PathBuf) -> Result<Value, (i64, String)> {
-    let (code, stdout, stderr) =
-        tools::run_cli(executable, argv).map_err(|message| (-32000, message))?;
-    let mut envelope: Option<Value> = serde_json::from_str(stdout.trim()).ok();
-    let is_error = code != 0
+fn invoke_argv(
+    argv: &[String],
+    executable: &PathBuf,
+    answering: &Answering<'_>,
+    timeout: Duration,
+    tick: &mut dyn FnMut(Duration),
+) -> Result<Value, (i64, String)> {
+    let ran = tools::run_cli_bounded(executable, argv, timeout, tick)
+        .map_err(|message| (-32000, message))?;
+    if ran.timed_out {
+        return Ok(failure_value(answering, &timed_out(answering, timeout)));
+    }
+    if ran.overflowed {
+        return Ok(failure_value(answering, &too_large(answering)));
+    }
+    let mut envelope: Option<Value> = serde_json::from_str(ran.stdout.trim()).ok();
+    let is_error = ran.code != 0
         || envelope
             .as_ref()
             .and_then(|value| value.get("status"))
@@ -1608,14 +1786,19 @@ fn invoke_argv(argv: &[String], executable: &PathBuf) -> Result<Value, (i64, Str
             != Some("ok");
     if let Some(envelope) = &mut envelope {
         mcp_device_link_guidance(envelope);
+        redact_credentials(envelope);
+        bound_envelope(envelope, MAX_RESULT_BYTES);
     }
     let text = envelope.as_ref().map_or_else(
         || {
-            if stdout.trim().is_empty() {
-                stderr.trim().to_string()
+            let raw = if ran.stdout.trim().is_empty() {
+                ran.stderr.trim()
             } else {
-                stdout.trim().to_string()
-            }
+                ran.stdout.trim()
+            };
+            let mut text = bounded_text(raw, MAX_FALLBACK_TEXT_BYTES);
+            redact_bearer(&mut text);
+            text
         },
         |value| serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string()),
     );
@@ -1629,6 +1812,245 @@ fn invoke_argv(argv: &[String], executable: &PathBuf) -> Result<Value, (i64, Str
     Ok(result)
 }
 
+/// The refusal for a child stopped at the call bound. What it means depends
+/// on the effect: a read can simply be retried narrower, while a writing
+/// command may have taken part of its effect, so its caller re-reads first.
+fn timed_out(answering: &Answering<'_>, timeout: Duration) -> Failure {
+    let message = format!(
+        "`{}` ran past the {} s call bound and was stopped; an owner process it started may still be finishing",
+        answering.id,
+        timeout.as_secs()
+    );
+    let detail = json!({
+        "timeout_seconds": timeout.as_secs(),
+        "effect": answering.effect.token(),
+    });
+    if tools::hints(answering.effect).read_only {
+        Failure::unavailable(crate::CALL_TIMED_OUT.code, message)
+            .remedy("narrow the request, or raise `ds mcp serve --call-timeout` for long work")
+            .detail(detail)
+    } else {
+        Failure::conflict(crate::CALL_TIMED_OUT.code, message)
+            .remedy(crate::CALL_TIMED_OUT.remedy)
+            .detail(detail)
+    }
+}
+
+fn too_large(answering: &Answering<'_>) -> Failure {
+    let effect = if tools::hints(answering.effect).read_only {
+        "it changed nothing"
+    } else {
+        "its effect, if any, has happened"
+    };
+    Failure::unavailable(
+        crate::RESULT_TOO_LARGE.code,
+        format!(
+            "`{}` wrote more than {} bytes, so its answer is not one whole envelope; {effect}",
+            answering.id,
+            tools::STDOUT_CAPTURE_LIMIT
+        ),
+    )
+    .remedy(crate::RESULT_TOO_LARGE.remedy)
+    .detail(json!({
+        "limit_bytes": tools::STDOUT_CAPTURE_LIMIT,
+        "effect": answering.effect.token(),
+    }))
+}
+
+/// At most `limit` bytes of `text`, cut on a character boundary, with the
+/// omission said rather than hidden.
+fn bounded_text(text: &str, limit: usize) -> String {
+    if text.len() <= limit {
+        return text.to_string();
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}… [{} bytes omitted by ds mcp]",
+        &text[..end],
+        text.len() - end
+    )
+}
+
+/// Replace every credential in one answer, wherever it sits: a string under
+/// a [`CREDENTIAL_KEYS`] key, and the token after `Bearer ` in any string.
+/// Returns how many values were replaced.
+pub fn redact_credentials(value: &mut Value) -> usize {
+    match value {
+        Value::Object(fields) => fields
+            .iter_mut()
+            .map(|(key, child)| {
+                let credential = CREDENTIAL_KEYS
+                    .iter()
+                    .any(|name| key.eq_ignore_ascii_case(name));
+                match child {
+                    Value::String(text) if credential && !text.is_empty() => {
+                        *text = REDACTED.to_string();
+                        1
+                    }
+                    _ => redact_credentials(child),
+                }
+            })
+            .sum(),
+        Value::Array(items) => items.iter_mut().map(redact_credentials).sum(),
+        Value::String(text) => redact_bearer(text),
+        _ => 0,
+    }
+}
+
+/// Replace the token after each `Bearer ` in `text`: an authorization header
+/// quoted into an error message is still the credential.
+fn redact_bearer(text: &mut String) -> usize {
+    const SCHEME: &str = "bearer ";
+    let token_char = |c: char| c.is_ascii_alphanumeric() || "-._~+/=".contains(c);
+    let mut replaced = 0;
+    let mut searched = 0;
+    while let Some(found) = text[searched..].to_ascii_lowercase().find(SCHEME) {
+        let start = searched + found + SCHEME.len();
+        let length: usize = text[start..]
+            .chars()
+            .take_while(|c| token_char(*c))
+            .map(char::len_utf8)
+            .sum();
+        // A word after "bearer" in prose is not a token; a credential is long.
+        if length >= 16 {
+            text.replace_range(start..start + length, REDACTED);
+            replaced += 1;
+            searched = start + REDACTED.len();
+        } else {
+            searched = start;
+        }
+    }
+    replaced
+}
+
+/// Trim an envelope above `limit` serialized bytes until it fits, keeping it
+/// one well-formed envelope: the largest array under `data` or
+/// `error.detail` is shortened first, then the next, and only if no array is
+/// left is the payload itself withheld. `status`, the error's code, message
+/// and remedy are never touched. What was trimmed is reported in
+/// `more.mcp_truncation` — `more` is where every DS answer reports that it is
+/// not all of it — so nothing is silently lost.
+pub fn bound_envelope(envelope: &mut Value, limit: usize) {
+    let original = serialized_len(envelope);
+    if original <= limit {
+        return;
+    }
+    let mut arrays: Vec<(String, usize, usize)> = Vec::new();
+    for _ in 0..64 {
+        let total = serialized_len(envelope);
+        if total <= limit {
+            break;
+        }
+        let mut largest: Option<(usize, String)> = None;
+        for root in ["/data", "/error/detail"] {
+            if let Some(value) = envelope.pointer(root) {
+                largest_array(value, &mut root.to_string(), &mut largest);
+            }
+        }
+        let Some((size, pointer)) = largest else {
+            break;
+        };
+        let Some(array) = envelope.pointer_mut(&pointer).and_then(Value::as_array_mut) else {
+            break;
+        };
+        let length = array.len();
+        // Keep the share of the array that fits, and always drop at least
+        // one element so the loop ends.
+        let excess = total - limit;
+        let keep_bytes = size.saturating_sub(excess);
+        let keep = (length * keep_bytes / size.max(1)).min(length.saturating_sub(1));
+        array.truncate(keep);
+        match arrays.iter_mut().find(|(seen, _, _)| *seen == pointer) {
+            Some(entry) => entry.1 = keep,
+            None => arrays.push((pointer, keep, length)),
+        }
+    }
+    let mut withheld = Vec::new();
+    if serialized_len(envelope) > limit {
+        for pointer in ["/data", "/error/detail"] {
+            if let Some(value) = envelope.pointer_mut(pointer)
+                && !value.is_null()
+            {
+                *value = Value::Null;
+                withheld.push(pointer);
+            }
+        }
+    }
+    let note = json!({
+        "by": "ds mcp",
+        "limit_bytes": limit,
+        "original_bytes": original,
+        "arrays": arrays
+            .iter()
+            .map(|(pointer, kept, total)| json!({ "pointer": pointer, "kept": kept, "total": total }))
+            .collect::<Vec<_>>(),
+        "withheld": withheld,
+        "remedy": crate::RESULT_TOO_LARGE.remedy,
+    });
+    let Some(fields) = envelope.as_object_mut() else {
+        return;
+    };
+    match fields.remove("more") {
+        Some(Value::Object(mut more)) => {
+            more.insert("mcp_truncation".to_string(), note);
+            fields.insert("more".to_string(), Value::Object(more));
+        }
+        Some(other) => {
+            fields.insert(
+                "more".to_string(),
+                json!({ "cli": other, "mcp_truncation": note }),
+            );
+        }
+        None => {
+            fields.insert("more".to_string(), json!({ "mcp_truncation": note }));
+        }
+    }
+}
+
+fn serialized_len(value: &Value) -> usize {
+    serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len())
+}
+
+/// Find the non-empty array with the largest serialized size at or below
+/// `value`, as a JSON pointer, returning `value`'s own serialized size.
+fn largest_array(
+    value: &Value,
+    pointer: &mut String,
+    largest: &mut Option<(usize, String)>,
+) -> usize {
+    match value {
+        Value::Array(items) => {
+            let mut size = 2 + items.len().saturating_sub(1);
+            for (index, item) in items.iter().enumerate() {
+                let before = pointer.len();
+                pointer.push_str(&format!("/{index}"));
+                size += largest_array(item, pointer, largest);
+                pointer.truncate(before);
+            }
+            if !items.is_empty() && largest.as_ref().is_none_or(|(best, _)| size > *best) {
+                *largest = Some((size, pointer.clone()));
+            }
+            size
+        }
+        Value::Object(fields) => {
+            let mut size = 2 + fields.len().saturating_sub(1);
+            for (key, child) in fields {
+                let before = pointer.len();
+                pointer.push('/');
+                pointer.push_str(&key.replace('~', "~0").replace('/', "~1"));
+                size += serialized_len(&Value::String(key.clone())) + 1;
+                size += largest_array(child, pointer, largest);
+                pointer.truncate(before);
+            }
+            size
+        }
+        scalar => serialized_len(scalar),
+    }
+}
+
 fn value_result(value: Value, is_error: bool) -> Value {
     let text = serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string());
     json!({
@@ -1638,7 +2060,14 @@ fn value_result(value: Value, is_error: bool) -> Value {
     })
 }
 
+/// One typed tool. Its annotations are [`tools::hints`] of its effect, so a
+/// host deciding what it may run without asking reads the same class the
+/// CLI's confirmation gate reads. `openWorldHint` is false for every tool:
+/// a call reaches this executable, its owner engines, the paired
+/// application or the DS service under the caller's own identity, and
+/// nothing else.
 pub fn leaf_tool_json(tool: &Tool) -> Value {
+    let hints = tools::hints(tool.effect);
     json!({
         "name": tool.name,
         "title": tool.id,
@@ -1646,10 +2075,9 @@ pub fn leaf_tool_json(tool: &Tool) -> Value {
         "inputSchema": tool.input_schema,
         "annotations": {
             "title": tool.id,
-            "readOnlyHint": matches!(
-                tool.descriptor.get("effect").and_then(Value::as_str),
-                Some("discovery" | "read_only" | "proposal")
-            ),
+            "readOnlyHint": hints.read_only,
+            "destructiveHint": hints.destructive,
+            "idempotentHint": hints.idempotent,
             "openWorldHint": false,
         },
     })
@@ -1685,7 +2113,7 @@ fn catalog_tool_json() -> Value {
             },
             "additionalProperties": false
         },
-        "annotations": { "title": "DS catalogue", "readOnlyHint": true, "openWorldHint": false }
+        "annotations": { "title": "DS catalogue", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
     })
 }
 
@@ -1716,7 +2144,7 @@ fn diagnostics_tool_json() -> Value {
     })
 }
 
-fn chapter_tool_json(chapter: Chapter) -> Value {
+fn chapter_tool_json(chapter: Chapter, hints: tools::Hints) -> Value {
     let name = chapter_tool_name(chapter);
     json!({
         "name": name,
@@ -1733,7 +2161,13 @@ fn chapter_tool_json(chapter: Chapter) -> Value {
             "required": ["operation", "command"],
             "additionalProperties": false
         },
-        "annotations": { "title": chapter.token(), "readOnlyHint": false, "openWorldHint": false }
+        "annotations": {
+            "title": chapter.token(),
+            "readOnlyHint": hints.read_only,
+            "destructiveHint": hints.destructive,
+            "idempotentHint": hints.idempotent,
+            "openWorldHint": false
+        }
     })
 }
 
@@ -1937,11 +2371,19 @@ mod tests {
             id: id.to_string(),
             chapter,
             authority: Authority::None,
+            effect: if confirmation_required {
+                Effect::GlobalWrite
+            } else {
+                Effect::ReadOnly
+            },
+            execution: ds_cli_contract::spec::Execution::Sync,
+            requires_window: false,
             path: id.split('.').map(str::to_string).collect(),
             description: format!("{id} purpose"),
             input_schema: json!({ "type": "object" }),
             confirmation_required,
             confirmation_trigger: None,
+            preview_switch: None,
             inputs: Vec::new(),
             descriptor: json!({
                 "id": id,
@@ -1954,6 +2396,7 @@ mod tests {
 
     fn conditional_tool(id: &str, chapter: Chapter) -> Tool {
         let mut tool = tool(id, chapter, true);
+        tool.effect = Effect::MachineWrite;
         tool.descriptor["effect"] = json!("machine_write");
         tool.confirmation_trigger = Some("write".to_string());
         tool.inputs.push(tools::Input {
@@ -2090,22 +2533,39 @@ mod tests {
         )
         .expect("surface");
         let executable = PathBuf::from("not-called");
+        // Routing is the protocol's: the wrong router is a protocol error
+        // naming the right one.
         let wrong = surface
             .call_chapter(
                 Chapter::Survey,
                 &json!({ "operation": "invoke", "command": "tile.generate", "arguments": {} }),
                 &executable,
+                &mut |_| {},
             )
             .unwrap_err();
         assert!(wrong.1.contains("ds_vector_tiles"), "{}", wrong.1);
+        // Once the command is resolved, a misplaced confirmation is that
+        // command's refusal, with a code and a remedy, and nothing runs.
         let nested = surface
             .call_chapter(
                 Chapter::VectorTiles,
                 &json!({ "operation": "invoke", "command": "tile.generate", "arguments": { "confirm": true } }),
                 &executable,
+                &mut |_| {},
             )
-            .unwrap_err();
-        assert!(nested.1.contains("chapter envelope"), "{}", nested.1);
+            .expect("a refusal is a tool result");
+        assert_eq!(nested["isError"], true);
+        let error = &nested["structuredContent"]["error"];
+        assert_eq!(error["code"], "mcp_arguments_invalid");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("chapter envelope"),
+            "{error}"
+        );
+        assert_eq!(error["remedy"], crate::ARGUMENTS_INVALID.remedy);
+        assert_eq!(nested["structuredContent"]["command"], "tile.generate");
     }
 
     #[test]
@@ -2116,7 +2576,7 @@ mod tests {
             false
         );
         let surface = Surface::new(Exposure::Chapters, None, vec![conditional]).unwrap();
-        let error = surface
+        let refused = surface
             .call_chapter(
                 Chapter::Operations,
                 &json!({
@@ -2126,25 +2586,300 @@ mod tests {
                     "confirm": true,
                 }),
                 &PathBuf::from("not-called"),
+                &mut |_| {},
             )
-            .unwrap_err();
+            .expect("a refusal is a tool result");
+        let error = &refused["structuredContent"]["error"];
+        assert_eq!(error["code"], "mcp_arguments_invalid");
         assert!(
-            error
-                .1
+            error["message"]
+                .as_str()
+                .unwrap()
                 .contains("does not accept confirmation for this invocation"),
-            "{}",
-            error.1
+            "{error}"
         );
     }
 
     #[test]
     fn non_confirming_local_ui_tools_are_not_annotated_read_only() {
         let mut local_ui = tool("data.admin-bounds.read", Chapter::Data, false);
+        local_ui.effect = Effect::LocalUi;
         local_ui.descriptor["effect"] = json!("local_ui");
         assert_eq!(
             leaf_tool_json(&local_ui)["annotations"]["readOnlyHint"],
             false
         );
+    }
+
+    /// An answer above the bound is trimmed where it is long — its largest
+    /// array — and stays one envelope a host can branch on, with the trim
+    /// reported in `more` rather than hidden.
+    #[test]
+    fn an_oversized_answer_is_trimmed_to_a_well_formed_envelope_and_says_so() {
+        let rows: Vec<Value> = (0..5_000)
+            .map(|index| json!({ "id": index, "text": "x".repeat(100) }))
+            .collect();
+        let mut envelope = json!({
+            "v": 1, "command": "x.list", "contract": 1, "status": "ok",
+            "data": { "count": 5_000, "rows": rows, "small": [1, 2, 3] },
+        });
+        let original = serde_json::to_vec(&envelope).unwrap().len();
+        bound_envelope(&mut envelope, 64 * 1024);
+        let bounded = serde_json::to_vec(&envelope).unwrap().len();
+        assert!(bounded <= 64 * 1024, "{bounded}");
+        assert_eq!(envelope["status"], "ok");
+        assert_eq!(envelope["data"]["count"], 5_000);
+        assert_eq!(envelope["data"]["small"], json!([1, 2, 3]));
+        let kept = envelope["data"]["rows"].as_array().unwrap().len();
+        assert!(kept > 0 && kept < 5_000, "{kept}");
+        let note = &envelope["more"]["mcp_truncation"];
+        assert_eq!(note["original_bytes"], original);
+        assert_eq!(note["arrays"][0]["pointer"], "/data/rows");
+        assert_eq!(note["arrays"][0]["kept"], kept);
+        assert_eq!(note["arrays"][0]["total"], 5_000);
+        assert_eq!(note["remedy"], crate::RESULT_TOO_LARGE.remedy);
+
+        // A CLI continuation already in `more` is kept beside the note.
+        let mut continued = json!({
+            "status": "ok", "data": { "rows": vec!["y".repeat(1_000); 100] },
+            "more": { "next": "ds x list --after 100" },
+        });
+        bound_envelope(&mut continued, 8 * 1024);
+        assert_eq!(continued["more"]["next"], "ds x list --after 100");
+        assert!(continued["more"]["mcp_truncation"].is_object());
+
+        // One oversized value with no array to shorten is withheld, and the
+        // envelope still says what happened.
+        let mut blob = json!({ "status": "ok", "data": { "blob": "z".repeat(100_000) } });
+        bound_envelope(&mut blob, 8 * 1024);
+        assert_eq!(blob["data"], Value::Null);
+        assert_eq!(blob["more"]["mcp_truncation"]["withheld"], json!(["/data"]));
+
+        // An answer inside the bound is untouched.
+        let mut small = json!({ "status": "ok", "data": { "rows": [1] } });
+        let before = small.clone();
+        bound_envelope(&mut small, 8 * 1024);
+        assert_eq!(small, before);
+    }
+
+    #[test]
+    fn credentials_never_reach_a_host_and_ordinary_tokens_do() {
+        let mut envelope = json!({
+            "status": "error",
+            "error": {
+                "message": "gateway said 401 for Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.payload.sig",
+                "detail": { "Refresh_Token": "r-123", "nested": [{ "password": "hunter2" }] }
+            },
+            "data": {
+                "token": "LV-POLE",
+                "access_token": "",
+                "note": "the bearer of this letter",
+                "session": { "device_code": "dc-1", "code_verifier": "cv-1" }
+            }
+        });
+        let replaced = redact_credentials(&mut envelope);
+        assert_eq!(replaced, 5);
+        let text = envelope.to_string();
+        for secret in ["eyJhbGciOiJSUzI1NiJ9", "r-123", "hunter2", "dc-1", "cv-1"] {
+            assert!(!text.contains(secret), "{secret} leaked: {text}");
+        }
+        // A survey feature-code token is data, an empty value hides nothing,
+        // and prose that says "bearer" is not a header.
+        assert_eq!(envelope["data"]["token"], "LV-POLE");
+        assert_eq!(envelope["data"]["access_token"], "");
+        assert_eq!(envelope["data"]["note"], "the bearer of this letter");
+    }
+
+    #[test]
+    fn chapter_routers_are_annotated_from_the_commands_they_route() {
+        let surface = Surface::new(
+            Exposure::Chapters,
+            None,
+            vec![
+                tool("shell.status", Chapter::Operations, false),
+                tool("tile.generate", Chapter::VectorTiles, true),
+                tool("tile.status", Chapter::VectorTiles, false),
+            ],
+        )
+        .expect("surface");
+        let listed = surface.tool_list();
+        let annotations = |name: &str| {
+            listed
+                .iter()
+                .find(|tool| tool["name"] == name)
+                .map(|tool| tool["annotations"].clone())
+                .expect(name)
+        };
+        let operations = annotations("ds_operations");
+        assert_eq!(operations["readOnlyHint"], true);
+        assert_eq!(operations["destructiveHint"], false);
+        assert_eq!(operations["idempotentHint"], true);
+        let tiles = annotations("ds_vector_tiles");
+        assert_eq!(tiles["readOnlyHint"], false);
+        assert_eq!(tiles["destructiveHint"], true);
+        assert_eq!(tiles["idempotentHint"], false);
+        for tool in &listed {
+            assert_eq!(tool["annotations"]["openWorldHint"], false, "{tool}");
+        }
+    }
+
+    #[test]
+    fn leaf_annotations_are_the_effect_hints() {
+        let write = tool("tile.generate", Chapter::VectorTiles, true);
+        let annotations = &leaf_tool_json(&write)["annotations"];
+        assert_eq!(annotations["readOnlyHint"], false);
+        assert_eq!(annotations["destructiveHint"], true);
+        assert_eq!(annotations["idempotentHint"], false);
+        let read = tool("tile.status", Chapter::VectorTiles, false);
+        let annotations = &leaf_tool_json(&read)["annotations"];
+        assert_eq!(annotations["readOnlyHint"], true);
+        assert_eq!(annotations["destructiveHint"], false);
+        assert_eq!(annotations["idempotentHint"], true);
+    }
+
+    #[test]
+    fn a_leaf_argument_mistake_is_the_commands_refusal_not_a_protocol_error() {
+        let surface = Surface::new(
+            Exposure::Commands,
+            None,
+            vec![tool("shell.status", Chapter::Operations, false)],
+        )
+        .expect("surface");
+        let refused = surface
+            .call(
+                "shell_status",
+                &json!({ "nope": 1 }),
+                &PathBuf::from("not-called"),
+            )
+            .expect("a refusal is a tool result");
+        assert_eq!(refused["isError"], true);
+        let envelope = &refused["structuredContent"];
+        assert_eq!(envelope["status"], "error");
+        assert_eq!(envelope["command"], "shell.status");
+        assert_eq!(envelope["error"]["code"], "mcp_arguments_invalid");
+        assert_eq!(envelope["error"]["class"], "invalid_input");
+        assert!(
+            envelope["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("`nope`")
+        );
+        assert_eq!(
+            envelope["error"]["next"],
+            json!(["ds capabilities shell.status"])
+        );
+        // An unknown tool is still the protocol's to refuse.
+        let unknown = surface
+            .call("shell_nope", &json!({}), &PathBuf::from("not-called"))
+            .unwrap_err();
+        assert_eq!(unknown.0, -32602);
+    }
+
+    /// A shell stands in for `ds`: the tool's path becomes `-c <script>`, and
+    /// the adapter's own trailing tokens become the script's positional
+    /// parameters, which it ignores.
+    #[cfg(unix)]
+    fn shell_tool(script: &str, effect: Effect) -> Tool {
+        let mut tool = tool("fixture.shell", Chapter::Operations, false);
+        tool.path = vec!["-c".to_string(), script.to_string()];
+        tool.effect = effect;
+        tool
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_call_past_its_bound_is_stopped_and_refused_by_what_it_may_have_changed() {
+        let executable = PathBuf::from("/bin/sh");
+        for (effect, class) in [
+            (Effect::ReadOnly, "unavailable"),
+            (Effect::GlobalWrite, "conflict"),
+        ] {
+            let surface = Surface::new(
+                Exposure::Commands,
+                None,
+                vec![shell_tool("sleep 5", effect)],
+            )
+            .expect("surface")
+            .with_call_timeout(Duration::from_millis(300));
+            let started = std::time::Instant::now();
+            let refused = surface
+                .call("fixture_shell", &json!({}), &executable)
+                .expect("a timeout is a tool result");
+            assert!(started.elapsed() < Duration::from_secs(4));
+            assert_eq!(refused["isError"], true);
+            let error = &refused["structuredContent"]["error"];
+            assert_eq!(error["code"], "mcp_call_timed_out");
+            assert_eq!(error["class"], class, "{effect}");
+            assert_eq!(error["detail"]["effect"], effect.token());
+            if !tools::hints(effect).read_only {
+                assert!(
+                    error["remedy"]
+                        .as_str()
+                        .unwrap()
+                        .contains("re-read any state")
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_answer_past_the_capture_bound_is_refused_not_cut() {
+        let surface = Surface::new(
+            Exposure::Commands,
+            None,
+            vec![shell_tool(
+                &format!("head -c {} /dev/zero", tools::STDOUT_CAPTURE_LIMIT + 1),
+                Effect::ReadOnly,
+            )],
+        )
+        .expect("surface");
+        let refused = surface
+            .call("fixture_shell", &json!({}), &PathBuf::from("/bin/sh"))
+            .expect("a refusal is a tool result");
+        assert_eq!(
+            refused["structuredContent"]["error"]["code"],
+            "mcp_result_too_large"
+        );
+        assert!(refused["content"][0]["text"].as_str().unwrap().len() < 4096);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn text_that_is_no_envelope_is_bounded_and_scrubbed() {
+        let executable = PathBuf::from("/bin/sh");
+        let long = Surface::new(
+            Exposure::Commands,
+            None,
+            vec![shell_tool(
+                "head -c 20000 /dev/zero | tr '\\0' x >&2; exit 3",
+                Effect::ReadOnly,
+            )],
+        )
+        .expect("surface")
+        .call("fixture_shell", &json!({}), &executable)
+        .expect("result");
+        assert_eq!(long["isError"], true);
+        assert!(long.get("structuredContent").is_none());
+        let text = long["content"][0]["text"].as_str().unwrap();
+        assert!(text.len() < MAX_FALLBACK_TEXT_BYTES + 100, "{}", text.len());
+        assert!(text.contains("bytes omitted by ds mcp"), "{text}");
+
+        let quoted = Surface::new(
+            Exposure::Commands,
+            None,
+            vec![shell_tool(
+                "echo 'gateway said 401 to Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123' >&2; exit 3",
+                Effect::ReadOnly,
+            )],
+        )
+        .expect("surface")
+        .call("fixture_shell", &json!({}), &executable)
+        .expect("result");
+        let text = quoted["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("gateway said 401"), "{text}");
+        assert!(!text.contains("abcdefghijklmnopqrstuvwxyz0123"), "{text}");
+        assert!(text.contains(REDACTED), "{text}");
     }
 
     #[test]

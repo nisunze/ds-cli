@@ -16,7 +16,14 @@
 //!   `every_declared_chapter_except_the_catalog_is_routed` here and
 //!   `crates/ds/tests/mcp.rs`;
 //! - every `tools/call` is literally a `ds <path> … --output json` process,
-//!   and the CLI's typed envelope (result or refusal) is returned verbatim;
+//!   and the CLI's typed envelope (result or refusal) is returned as the CLI
+//!   wrote it. The adapter adds only its own boundary: caller values travel
+//!   inside their flag token so none can become a flag of `ds`; the child is
+//!   bounded in time (`--call-timeout`) and in captured bytes; an envelope
+//!   above [`surface::MAX_RESULT_BYTES`] is trimmed and says so in `more`;
+//!   and a credential is replaced wherever it appears. A resolved command's
+//!   argument mistakes are refused as that command's `isError` envelope;
+//!   only routing mistakes are protocol errors;
 //! - each command keeps its declared authority: headless project calls carry
 //!   an explicit project and paired calls use the Desktop context. MCP adds
 //!   no credential, project selection, network listener or cache.
@@ -66,6 +73,30 @@ pub(crate) const DESKTOP_SIGNED_OUT: Refusal = Refusal {
     code: "desktop_signed_out",
     when: "an MCP-invoked command whose live descriptor requires a desktop user or project reaches a paired session that is signed out or has no selected project",
     remedy: "sign in and select the intended project in DS GridDesign, then retry the MCP tool call",
+};
+
+pub(crate) const ARGUMENTS_INVALID: Refusal = Refusal {
+    code: "mcp_arguments_invalid",
+    when: "a tool call's arguments break the command's descriptor: an undeclared property, a wrong type, or an unneeded `confirm`",
+    remedy: "read `ds capabilities <id>`; pass only declared inputs, typed as declared",
+};
+
+pub(crate) const CALL_TIMED_OUT: Refusal = Refusal {
+    code: "mcp_call_timed_out",
+    when: "a tool call's `ds` process ran past `--call-timeout` and was stopped",
+    remedy: "re-read any state the command changes before retrying; raise `--call-timeout` for long work",
+};
+
+pub(crate) const RESULT_TOO_LARGE: Refusal = Refusal {
+    code: "mcp_result_too_large",
+    when: "a tool call's `ds` output passed the capture bound and is not one whole envelope",
+    remedy: "narrow the call with the command's own limit or selection inputs",
+};
+
+pub(crate) const CALL_TIMEOUT_INVALID: Refusal = Refusal {
+    code: "invalid_number",
+    when: "`--call-timeout` is not a whole number of seconds from 1 to 86400",
+    remedy: "pass `--call-timeout <seconds>`, for example 3600",
 };
 
 pub(crate) const PROFILE_EXPOSURE_INVALID: Refusal = Refusal {

@@ -44,6 +44,31 @@ pub enum Effect {
 }
 
 impl Effect {
+    /// Every effect class, in blast-radius order.
+    pub const ALL: &'static [Self] = &[
+        Self::Discovery,
+        Self::ReadOnly,
+        Self::Proposal,
+        Self::LocalAuthState,
+        Self::LocalFileWrite,
+        Self::LocalUi,
+        Self::ArtifactWrite,
+        Self::MachineWrite,
+        Self::GlobalWrite,
+    ];
+
+    /// Parse the token carried by a live command descriptor.
+    ///
+    /// MCP projects a descriptor's effect into tool annotations. Parsing it
+    /// here, beside [`Effect::token`], means the adapter cannot grow a second
+    /// effect vocabulary that drifts from this one.
+    pub fn from_token(token: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|effect| effect.token() == token)
+    }
+
     pub const fn token(self) -> &'static str {
         match self {
             Self::Discovery => "discovery",
@@ -334,6 +359,15 @@ impl Execution {
         match self {
             Self::Sync => "sync",
             Self::Job => "job",
+        }
+    }
+
+    /// Parse the token carried by a live command descriptor.
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token {
+            "sync" => Some(Self::Sync),
+            "job" => Some(Self::Job),
+            _ => None,
         }
     }
 }
@@ -794,6 +828,19 @@ mod tests {
         assert!(Authority::Project.requires_signed_in_user());
         assert!(Authority::Project.requires_project());
         assert!(!Authority::HeadlessProject.requires_desktop());
+    }
+
+    #[test]
+    fn effect_and_execution_tokens_round_trip() {
+        for effect in Effect::ALL {
+            assert_eq!(Effect::from_token(effect.token()), Some(*effect));
+        }
+        assert_eq!(Effect::ALL.len(), 9, "a new effect class must join `ALL`");
+        assert_eq!(Effect::from_token("write"), None);
+        for execution in [Execution::Sync, Execution::Job] {
+            assert_eq!(Execution::from_token(execution.token()), Some(execution));
+        }
+        assert_eq!(Execution::from_token("async"), None);
     }
 
     #[test]

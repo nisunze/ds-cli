@@ -12,7 +12,7 @@ no identity, project state, command schema, or authority.
 ## Choose one installation shape
 
 For a general agent, install the broad default. It advertises `ds_catalog` and
-`ds_diagnostics` plus twelve operator-intent chapter routers (14 tools total),
+`ds_diagnostics` plus thirteen operator-intent chapter routers (15 tools total),
 even as commands grow:
 
 ```text
@@ -112,9 +112,12 @@ The same structured identity and skill-resource availability are echoed by
    the exact effect and the descriptor requires confirmation.
 4. Branch on the returned DS envelope. Follow `error.remedy` and `error.next`;
    never retry unchanged or reconstruct a refusal through another surface.
+   `more.mcp_truncation` means the answer was trimmed: narrow the call.
+   `mcp_call_timed_out` on a write means re-read its state before retrying.
 
-A wrong-chapter command returns the matching router. Unknown properties and
-arbitrary argv are refused before dispatch. Project and desktop identity remain
+A wrong-chapter command returns the matching router. Unknown properties,
+wrong types and a misplaced `confirm` are refused before dispatch as that
+command's `mcp_arguments_invalid` envelope; arbitrary argv is never accepted. Project and desktop identity remain
 owned by the selected command, not by the MCP session.
 
 MCP reads the selected command's live `authority` descriptor before an
@@ -138,7 +141,7 @@ Omitted commands are unavailable through that profile, not forwarded through a
 generic call. Use `ds_catalog` only for bounded discovery inside the profile.
 Pass `confirm: true` only when the invocation's live descriptor conditionally
 requires confirmation and the user's intent authorizes that exact effect and
-scope.
+scope. A declared `dry-run: true` previews a write and takes no `confirm`.
 
 Keep `--exposure commands` without a profile only for temporary compatibility
 with hosts configured for the previous command-per-tool surface.

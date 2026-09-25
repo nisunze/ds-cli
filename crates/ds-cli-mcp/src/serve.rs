@@ -52,6 +52,15 @@ pub static COMMAND: Command = Command {
             choices: crate::surface::PROFILE_IDS,
             summary: "Filter typed tools to one workflow.",
         },
+        Arg {
+            name: "call-timeout",
+            kind: ArgKind::Value,
+            value: "<seconds>",
+            required: false,
+            default: Some("3600"),
+            choices: &[],
+            summary: "Stop one tool call's `ds` process after this long.",
+        },
     ],
     output: "MCP responses on stdout; an exit summary on stderr.",
     examples: &[
@@ -73,6 +82,10 @@ pub static COMMAND: Command = Command {
         crate::DESKTOP_SIGNED_OUT,
         crate::PROFILE_EXPOSURE_INVALID,
         crate::PROFILE_TOO_BROAD,
+        crate::CALL_TIMEOUT_INVALID,
+        crate::ARGUMENTS_INVALID,
+        crate::CALL_TIMED_OUT,
+        crate::RESULT_TOO_LARGE,
     ],
     reference: Some("docs/reference/mcp.md"),
     search: &[],
@@ -96,18 +109,28 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let profile = inputs.value("profile").map(|value| {
         Profile::from_token(value).expect("the command parser enforces profile choices")
     });
-    let identity = bootstrap_identity(&executable, &build, exposure, profile, &resources);
+    let call_timeout = call_timeout(inputs.value("call-timeout").unwrap_or("3600"))?;
+    let identity = bootstrap_identity(
+        &executable,
+        &build,
+        exposure,
+        profile,
+        call_timeout,
+        &resources,
+    );
     let surface = Surface::new(exposure, profile, tools::discover_tools(&executable)?)?
-        .with_identity(identity);
+        .with_identity(identity)
+        .with_call_timeout(call_timeout);
     eprintln!(
-        "ds mcp: serving {} {} tools{} from {}",
+        "ds mcp: serving {} {} tools{} from {} (call bound {} s)",
         surface.published_count(),
         surface.exposure().token(),
         surface
             .profile()
             .map(|profile| format!(" for profile {}", profile.token()))
             .unwrap_or_default(),
-        executable.display()
+        executable.display(),
+        surface.call_timeout().as_secs()
     );
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -135,6 +158,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 continue;
             }
         };
+        let mut notify = |notification: &Value| {
+            // A progress notification that cannot be written is not worth
+            // ending the call over; the response write below reports a
+            // broken channel.
+            let _ = write_line(&stdout, notification);
+        };
         let Some(response) = handle(
             &request,
             &executable,
@@ -142,6 +171,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             &build,
             &resources,
             &mut calls,
+            &mut notify,
         ) else {
             continue; // a notification
         };
@@ -174,6 +204,18 @@ pub fn render(data: &Value) -> String {
     )
 }
 
+/// The whole seconds one tool call's `ds` child may run.
+fn call_timeout(value: &str) -> Result<std::time::Duration, Failure> {
+    match value.parse::<u64>() {
+        Ok(seconds @ 1..=86_400) => Ok(std::time::Duration::from_secs(seconds)),
+        _ => Err(Failure::invalid(
+            crate::CALL_TIMEOUT_INVALID.code,
+            format!("`--call-timeout {value}` is not a whole number of seconds from 1 to 86400"),
+        )
+        .remedy(crate::CALL_TIMEOUT_INVALID.remedy)),
+    }
+}
+
 fn stdio_failure(message: String) -> Failure {
     Failure::failed("mcp_stdio_unavailable", message).remedy(
         "start the server from an MCP host as a stdio server; it is not an interactive command",
@@ -193,6 +235,10 @@ fn write_line(stdout: &io::Stdout, value: &Value) -> Result<(), Failure> {
 
 /// Answer one request. `None` means the message was a notification (no id)
 /// and gets no response — that is the protocol, not a dropped message.
+///
+/// `notify` receives any notification sent while the request is in flight:
+/// a `tools/call` whose request carried `_meta.progressToken` is reported as
+/// still running every [`tools::PROGRESS_INTERVAL`] until it answers.
 pub fn handle(
     request: &Value,
     executable: &std::path::PathBuf,
@@ -200,6 +246,7 @@ pub fn handle(
     build: &Value,
     resources: &SkillResources,
     calls: &mut usize,
+    notify: &mut dyn FnMut(&Value),
 ) -> Option<Value> {
     let id = request.get("id").cloned();
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
@@ -233,7 +280,7 @@ pub fn handle(
         "tools/list" => Ok(json!({ "tools": surface.tool_list() })),
         "tools/call" => {
             *calls += 1;
-            call(&params, executable, surface)
+            call(&params, executable, surface, notify)
         }
         "resources/list" => Ok(resources.list()),
         "resources/read" => resources.read(&params),
@@ -255,6 +302,7 @@ fn bootstrap_identity(
     build: &Value,
     exposure: Exposure,
     profile: Option<Profile>,
+    call_timeout: std::time::Duration,
     resources: &SkillResources,
 ) -> Value {
     let server_identity = crate::identity::ServerIdentity::current();
@@ -281,6 +329,7 @@ fn bootstrap_identity(
             "exposure": exposure.token(),
             "profile": profile.map(Profile::token),
             "protocol": PROTOCOL_VERSION,
+            "call_timeout_seconds": call_timeout.as_secs(),
         },
         "skills": resources.identity(),
     })
@@ -303,15 +352,43 @@ fn call(
     params: &Value,
     executable: &std::path::PathBuf,
     surface: &Surface,
+    notify: &mut dyn FnMut(&Value),
 ) -> Result<Value, (i64, String)> {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
-    surface.call(name, &arguments, executable)
+    let token = params
+        .get("_meta")
+        .and_then(|meta| meta.get("progressToken"))
+        .filter(|token| token.is_string() || token.is_number())
+        .cloned();
+    let mut tick = |elapsed: std::time::Duration| {
+        if let Some(token) = &token {
+            notify(&progress_notification(token, name, elapsed));
+        }
+    };
+    surface.call_observed(name, &arguments, executable, &mut tick)
+}
+
+/// One MCP progress notification for a call that is still running. The
+/// progress value is the elapsed whole seconds, so it increases with every
+/// notification as the protocol requires; no total is claimed, because a
+/// command does not declare how long it takes.
+pub fn progress_notification(token: &Value, tool: &str, elapsed: std::time::Duration) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/progress",
+        "params": {
+            "progressToken": token,
+            "progress": elapsed.as_secs(),
+            "message": format!("`{tool}` is still running after {} s", elapsed.as_secs()),
+        }
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     fn surface(exposure: Exposure) -> Surface {
         let tool =
@@ -344,7 +421,7 @@ mod tests {
         let exe = std::path::PathBuf::from("ds");
         let surface = surface(Exposure::Chapters);
         let resources = resources();
-        let init = handle(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}), &exe, &surface, &build(), &resources, &mut calls).expect("response");
+        let init = handle(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}), &exe, &surface, &build(), &resources, &mut calls, &mut |_| {}).expect("response");
         assert_eq!(init["result"]["protocolVersion"], "2025-03-26");
         let identity = crate::identity::ServerIdentity::current();
         assert_eq!(
@@ -359,6 +436,7 @@ mod tests {
             &build(),
             &resources,
             &mut calls,
+            &mut |_| {},
         )
         .expect("response");
         // One router per chapter. Derived rather than literal so a new chapter
@@ -376,6 +454,36 @@ mod tests {
     }
 
     #[test]
+    fn progress_is_reported_in_increasing_whole_seconds_with_the_hosts_token() {
+        let first = progress_notification(&json!("t-1"), "dsgrid_run", Duration::from_secs(10));
+        let second = progress_notification(&json!("t-1"), "dsgrid_run", Duration::from_secs(20));
+        assert_eq!(first["method"], "notifications/progress");
+        assert!(first.get("id").is_none(), "a notification has no id");
+        assert_eq!(first["params"]["progressToken"], "t-1");
+        assert!(second["params"]["progress"].as_u64() > first["params"]["progress"].as_u64());
+        assert!(first["params"].get("total").is_none());
+        assert!(
+            first["params"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("dsgrid_run")
+        );
+    }
+
+    #[test]
+    fn call_timeout_is_a_bounded_whole_number_of_seconds() {
+        assert_eq!(call_timeout("3600").unwrap(), Duration::from_secs(3600));
+        assert_eq!(call_timeout("1").unwrap(), Duration::from_secs(1));
+        for refused in ["0", "86401", "-5", "1.5", "an hour", ""] {
+            assert_eq!(
+                call_timeout(refused).unwrap_err().code(),
+                "invalid_number",
+                "{refused}"
+            );
+        }
+    }
+
+    #[test]
     fn notifications_get_no_response_and_unknown_methods_are_named() {
         let mut calls = 0;
         let exe = std::path::PathBuf::from("ds");
@@ -388,7 +496,8 @@ mod tests {
                 &surface,
                 &build(),
                 &resources,
-                &mut calls
+                &mut calls,
+                &mut |_| {}
             )
             .is_none()
         );
@@ -399,6 +508,7 @@ mod tests {
             &build(),
             &resources,
             &mut calls,
+            &mut |_| {},
         )
         .expect("response");
         assert!(listed["result"]["resources"].is_array());
@@ -409,6 +519,7 @@ mod tests {
             &build(),
             &resources,
             &mut calls,
+            &mut |_| {},
         )
         .expect("response");
         assert_eq!(missing["error"]["code"], -32602);
