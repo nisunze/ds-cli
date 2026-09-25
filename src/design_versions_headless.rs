@@ -16,9 +16,17 @@ pub trait Source {
         &mut self,
         project: &str,
         transformer: &str,
-        reason: &str,
-        idempotency_key: &str,
+        create: &Create,
     ) -> Result<Value, Self::Error>;
+    /// One `create_versions` call: every item is its own object and fence.
+    fn create_many(
+        &mut self,
+        project: &str,
+        items: &[BatchItem],
+        shared: &Shared,
+    ) -> Result<Value, Self::Error>;
+    /// One `list_version_summaries` call over a bounded object selection.
+    fn summaries(&mut self, project: &str, objects: &[ObjectRef]) -> Result<Value, Self::Error>;
     fn current(&mut self, project: &str, transformer: &str) -> Result<Value, Self::Error>;
     fn restore(
         &mut self,
@@ -45,10 +53,73 @@ impl<E> From<String> for Error<E> {
         Self::Invalid(v)
     }
 }
+/// The mandatory reason, optional milestone, optional source fence and
+/// replay key of one created version.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Create {
+    pub reason: String,
+    pub milestone: Option<String>,
+    /// MV: the head revision id the caller reviewed, or `-` for "no content
+    /// head yet". LV: the RFC3339 transformer update time. A moved source is
+    /// refused by the Server instead of being pinned.
+    pub expected_source: Option<String>,
+    pub idempotency_key: String,
+}
+/// One object of a governed selection.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObjectRef {
+    pub kind: String,
+    pub id: String,
+}
+/// One object of a batched create, with its own fence and replay key.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BatchItem {
+    pub object: ObjectRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_source_revision: Option<String>,
+    pub idempotency_key: String,
+}
+/// Defaults an item without its own reason or milestone takes.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Shared {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<String>,
+}
+/// The Server's bounds: one selection, milestone bytes, fence bytes.
+pub const MAX_SELECTION: usize = 200;
+pub const MILESTONE_MAX: usize = 120;
+pub const FENCE_MAX: usize = 128;
+/// The fence that asserts an MV model has no content head yet.
+pub const NO_SOURCE_FENCE: &str = "-";
+
 pub enum Command {
     Object {
         kind: String,
         command: Box<Command>,
+    },
+    /// One assigned version's record, without playback content.
+    Show {
+        transformer: String,
+        version: String,
+    },
+    /// Versions for many objects in one request; each item reports its own
+    /// outcome and a failed item never undoes another.
+    BeginBatch {
+        items: Vec<BatchItem>,
+        shared: Shared,
+    },
+    /// Latest version and count per object for a bounded selection.
+    Summaries {
+        objects: Vec<ObjectRef>,
     },
     Status {
         transformer: String,
@@ -63,8 +134,7 @@ pub enum Command {
     },
     Begin {
         transformer: String,
-        reason: String,
-        idempotency_key: String,
+        create: Create,
     },
     Restore {
         transformer: String,
@@ -91,35 +161,150 @@ fn version(s: &str) -> bool {
         && s[1..].parse::<u64>().is_ok_and(|n| n <= i64::MAX as u64)
 }
 
+fn reason_text(reason: &str) -> bool {
+    !reason.is_empty()
+        && reason.trim() == reason
+        && reason.chars().count() <= crate::design_version::VERSION_REASON_MAX
+        && !reason.chars().any(char::is_control)
+}
+fn replay_key(key: &str) -> bool {
+    !key.is_empty() && key.chars().count() <= 128 && !key.chars().any(char::is_control)
+}
+fn optional_text(value: Option<&str>, bound: usize) -> bool {
+    value.is_none_or(|text| {
+        !text.is_empty()
+            && text.len() <= bound
+            && text.trim() == text
+            && !text.chars().any(char::is_control)
+    })
+}
+/// The per-kind source fence the Server interprets: an MV revision id in the
+/// catalog grammar or `-`; an LV RFC3339 update time. `-` is MV-only.
+fn fence(kind: &str, expected: Option<&str>) -> Result<(), String> {
+    let Some(expected) = expected else {
+        return Ok(());
+    };
+    let valid = match kind {
+        "mv_model" => {
+            expected == NO_SOURCE_FENCE || crate::grid_publication::catalog_identifier(expected)
+        }
+        "lv_transformer" => {
+            expected != NO_SOURCE_FENCE
+                && expected.len() <= FENCE_MAX
+                && expected.contains('T')
+                && !expected
+                    .chars()
+                    .any(|c| c.is_control() || c.is_whitespace())
+        }
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(invalid(
+            "expected source must be the reviewed MV head revision id or - for no head; LV takes the transformer's RFC3339 update time",
+        ))
+    }
+}
+fn selection<'a>(objects: impl Iterator<Item = &'a ObjectRef>) -> Result<usize, String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for object in objects {
+        if !matches!(object.kind.as_str(), "lv_transformer" | "mv_model") || !identifier(&object.id)
+        {
+            return Err(invalid(
+                "every selected object needs kind lv_transformer or mv_model and an exact id",
+            ));
+        }
+        // The Server skips a repeated object silently; a selection that
+        // names one twice is refused here so no item is quietly dropped.
+        if !seen.insert((&object.kind, &object.id)) {
+            return Err(invalid("an object appears twice in one selection"));
+        }
+    }
+    if seen.is_empty() || seen.len() > MAX_SELECTION {
+        return Err(invalid("a selection holds 1 to 200 objects"));
+    }
+    Ok(seen.len())
+}
+fn selection_batch(items: &[BatchItem], shared: &Shared) -> Result<(), String> {
+    selection(items.iter().map(|item| &item.object))?;
+    if shared.reason.as_deref().is_some_and(|r| !reason_text(r))
+        || !optional_text(shared.milestone.as_deref(), MILESTONE_MAX)
+    {
+        return Err(invalid("shared reason or milestone is invalid"));
+    }
+    for item in items {
+        let reason = item.reason.as_deref().or(shared.reason.as_deref());
+        if !reason.is_some_and(reason_text)
+            || !optional_text(item.milestone.as_deref(), MILESTONE_MAX)
+            || !replay_key(&item.idempotency_key)
+        {
+            return Err(format!(
+                "item {} needs a reason (its own or the shared one), a bounded milestone and its own idempotency key",
+                item.object.id
+            ));
+        }
+        fence(&item.object.kind, item.expected_source_revision.as_deref())?;
+    }
+    Ok(())
+}
+
 impl Command {
     pub fn transformer(&self) -> &str {
         match self {
             Self::Object { command, .. } => command.transformer(),
             Self::Status { transformer }
             | Self::List { transformer }
+            | Self::Show { transformer, .. }
             | Self::Compare { transformer, .. }
             | Self::Begin { transformer, .. }
             | Self::Restore { transformer, .. } => transformer,
+            // A selection has no single object; its items carry their own.
+            Self::BeginBatch { .. } | Self::Summaries { .. } => "",
         }
     }
     pub fn kind(&self) -> &str {
         match self {
             Self::Object { kind, .. } => kind,
+            Self::BeginBatch { .. } | Self::Summaries { .. } => "",
             _ => "lv_transformer",
         }
+    }
+    /// True for a command over a selection of objects rather than one.
+    pub fn is_selection(&self) -> bool {
+        matches!(self, Self::BeginBatch { .. } | Self::Summaries { .. })
     }
     pub fn validate(&self, project: &str) -> Result<(), String> {
         if let Self::Object { kind, command } = self {
             if !matches!(kind.as_str(), "lv_transformer" | "mv_model")
                 || matches!(command.as_ref(), Self::Object { .. })
+                || command.is_selection()
                 || (kind == "mv_model" && matches!(command.as_ref(), Self::Restore { .. }))
             {
                 return Err("MV restore is unavailable; download its pinned model revision through dsgrid model download".into());
             }
+            if let Self::Begin { create, .. } = command.as_ref() {
+                fence(kind, create.expected_source.as_deref())?;
+            }
             return command.validate(project);
         }
-        if !identifier(project) || !identifier(self.transformer()) {
+        if !identifier(project) {
             return Err(invalid("invalid project or transformer identity"));
+        }
+        match self {
+            Self::BeginBatch { items, shared } => return selection_batch(items, shared),
+            Self::Summaries { objects } => {
+                return selection(objects.iter()).map(|_| ());
+            }
+            _ => {}
+        }
+        if !identifier(self.transformer()) {
+            return Err(invalid("invalid project or transformer identity"));
+        }
+        if let Self::Show { version: id, .. } = self {
+            if !version(id) {
+                return Err(invalid("show requires one canonical assigned vN version"));
+            }
         }
         if let Self::Compare { from, to, .. } = self {
             if !version(from) || (to != "head" && !version(to)) || from == to {
@@ -128,25 +313,22 @@ impl Command {
                 ));
             }
         }
-        if let Self::Begin {
-            reason,
-            idempotency_key,
-            ..
-        }
-        | Self::Restore {
-            reason,
-            idempotency_key,
-            ..
-        } = self
-        {
-            if reason.is_empty()
-                || reason.trim() != reason
-                || reason.chars().count() > crate::design_version::VERSION_REASON_MAX
-                || reason.chars().any(char::is_control)
-                || idempotency_key.is_empty()
-                || idempotency_key.chars().count() > 128
-                || idempotency_key.chars().any(char::is_control)
-            {
+        let replay = match self {
+            Self::Begin { create, .. } => {
+                if !optional_text(create.milestone.as_deref(), MILESTONE_MAX) {
+                    return Err(invalid("version milestone is invalid (at most 120 bytes)"));
+                }
+                Some((create.reason.as_str(), create.idempotency_key.as_str()))
+            }
+            Self::Restore {
+                reason,
+                idempotency_key,
+                ..
+            } => Some((reason.as_str(), idempotency_key.as_str())),
+            _ => None,
+        };
+        if let Some((reason, idempotency_key)) = replay {
+            if !reason_text(reason) || !replay_key(idempotency_key) {
                 return Err(invalid("version reason or idempotency key is invalid"));
             }
         }
@@ -258,8 +440,11 @@ pub fn authority_command(input: &[u8]) -> Result<Value, String> {
                     .ok_or("missing idempotency key")?;
                 Command::Begin {
                     transformer: id.into(),
-                    reason: reason.into(),
-                    idempotency_key: key.into(),
+                    create: Create {
+                        reason: reason.into(),
+                        idempotency_key: key.into(),
+                        ..Create::default()
+                    },
                 }
                 .validate(project)?;
                 payload["version"] = json!({"reason":reason,"idempotency_key":key});
@@ -336,6 +521,19 @@ pub fn run<S: Source>(
 ) -> Result<Value, Error<S::Error>> {
     let project = &scope.project;
     command.validate(project)?;
+    match command {
+        Command::BeginBatch { items, shared } => {
+            let data = source
+                .create_many(project, items, shared)
+                .map_err(Error::Source)?;
+            return Ok(batch_receipt(project, items, &data)?);
+        }
+        Command::Summaries { objects } => {
+            let data = source.summaries(project, objects).map_err(Error::Source)?;
+            return Ok(summaries_receipt(project, objects, &data)?);
+        }
+        _ => {}
+    }
     let transformer = command.transformer();
     let kind = command.kind();
     if scope.object_kind != kind || scope.object_id != transformer {
@@ -349,7 +547,10 @@ pub fn run<S: Source>(
         return run_model(scope, source, command);
     }
     match command {
-        Command::Object { .. } => unreachable!("validated unwrapped object"),
+        Command::Object { .. } | Command::BeginBatch { .. } | Command::Summaries { .. } => {
+            unreachable!("validated unwrapped single object")
+        }
+        Command::Show { version, .. } => show(source, scope, version),
         Command::Status { .. } => {
             let data = source
                 .current(project, transformer)
@@ -447,13 +648,9 @@ pub fn run<S: Source>(
                 "from_snapshot_digest":l["manifest"]["id"],"to_snapshot_digest":r["manifest"]["id"],"comparison":result["comparison"],"consistency":result["consistency"],"metadata_comparison":result["metadata_comparison"],"details_included":false,"mutated":false}),
             )
         }
-        Command::Begin {
-            reason,
-            idempotency_key,
-            ..
-        } => {
+        Command::Begin { create, .. } => {
             let data = source
-                .create(project, transformer, reason, idempotency_key)
+                .create(project, transformer, create)
                 .map_err(Error::Source)?;
             record(&data["version"], project, transformer, None, kind)?;
             Ok(json!({
@@ -534,11 +731,17 @@ fn run_model<S: Source>(
             validate_head(&data["head"], scope)?;
             Ok(json!({"project":project,"object":{"kind":kind,"id":object},"head":data["head"],"mutated":false}))
         }
-        Command::Begin { reason, idempotency_key, .. } => {
-            let data = source.create(project, object, reason, idempotency_key).map_err(Error::Source)?;
+        Command::Begin { create, .. } => {
+            let data = source.create(project, object, create).map_err(Error::Source)?;
             record(&data["version"], project, object, None, kind)?;
-            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"version":data["version"],"mutated":true}))
+            // The Server echoes the milestone it stored; one it dropped would
+            // make a submission marker indistinguishable from any other vN.
+            if create.milestone.as_deref().is_some_and(|m| data["version"]["milestone"] != m) {
+                return Err(bad("created version did not record the requested milestone").into());
+            }
+            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"version":data["version"],"content_revision":data["version"]["source_revision"],"mutated":true}))
         }
+        Command::Show { version, .. } => show(source, scope, version),
         Command::Compare { from, to, .. } => {
             let left = source.versions(project, object, Some(from)).map_err(Error::Source)?;
             record(&left["version"], project, object, Some(from), kind)?;
@@ -557,6 +760,91 @@ fn run_model<S: Source>(
         }
         _ => Err("MV restore is unavailable; download its pinned model revision through dsgrid model download".to_string().into()),
     }
+}
+
+/// One assigned version's record. LV playback content is never carried: its
+/// availability is, and `compare` reads the snapshot when a caller needs it.
+/// An MV record names the exact content revision attachments bind to.
+fn show<S: Source>(source: &mut S, scope: &Scope, id: &str) -> Result<Value, Error<S::Error>> {
+    let (project, object, kind) = (
+        scope.project.as_str(),
+        scope.object_id.as_str(),
+        scope.object_kind.as_str(),
+    );
+    let data = source
+        .versions(project, object, Some(id))
+        .map_err(Error::Source)?;
+    record(&data["version"], project, object, Some(id), kind)?;
+    let mut answer = json!({"project":project,"object":{"kind":kind,"id":object},
+        "version":data["version"],"snapshot_included":false,"mutated":false});
+    if kind == "mv_model" {
+        answer["content_revision"] = data["version"]["source_revision"].clone();
+        answer["content_pinned"] = data["version"]["content_pinned"].clone();
+    }
+    Ok(answer)
+}
+
+fn same_object(value: &Value, object: &ObjectRef) -> bool {
+    value["kind"] == object.kind && value["id"] == object.id
+}
+
+/// Every item answers once, in order, for exactly the object it named; an ok
+/// item carries a version record of that object in this project.
+fn batch_receipt(project: &str, items: &[BatchItem], data: &Value) -> Result<Value, String> {
+    let results = data["results"]
+        .as_array()
+        .ok_or_else(|| bad("missing batch results"))?;
+    if results.len() != items.len() {
+        return Err(bad("batch results do not answer every requested object"));
+    }
+    let mut ok = 0;
+    for (result, item) in results.iter().zip(items) {
+        if !same_object(&result["object"], &item.object) {
+            return Err(bad("batch result belongs to another object"));
+        }
+        match result["ok"].as_bool() {
+            Some(true) => {
+                record(
+                    &result["version"],
+                    project,
+                    &item.object.id,
+                    None,
+                    &item.object.kind,
+                )?;
+                ok += 1;
+            }
+            Some(false) => {}
+            None => return Err(bad("batch result has no outcome")),
+        }
+    }
+    Ok(json!({"project":project,"total":items.len(),"ok_count":ok,
+        "failed_count":items.len()-ok,"results":results,"mutated":ok>0}))
+}
+
+/// One row per requested object, in order; a row may carry its own error.
+fn summaries_receipt(project: &str, objects: &[ObjectRef], data: &Value) -> Result<Value, String> {
+    let rows = data["summaries"]
+        .as_array()
+        .ok_or_else(|| bad("missing version summaries"))?;
+    if rows.len() != objects.len()
+        || rows
+            .iter()
+            .zip(objects)
+            .any(|(row, object)| !same_object(&row["object"], object))
+    {
+        return Err(bad("version summaries do not answer the requested objects"));
+    }
+    for row in rows {
+        if row["error"].is_null() && !row["count"].is_u64() {
+            return Err(bad("version summary has no count"));
+        }
+        if let Some(id) = row["latest_version_id"].as_str() {
+            if !version(id) {
+                return Err(bad("version summary names no assigned version"));
+            }
+        }
+    }
+    Ok(json!({"project":project,"summaries":rows,"mutated":false}))
 }
 
 fn bound_comparison(value: &mut Value) {
@@ -626,5 +914,222 @@ mod tests {
         assert!(record(&row, "p", "other", Some("v1"), "lv_transformer").is_err());
         assert!(record(&row, "p", "tr", Some("v2"), "lv_transformer").is_err());
         assert!(snapshot(&json!({"version":row}), "p", "tr", "v1").is_err());
+    }
+
+    /// Answers every call from a queue and records what was asked.
+    #[derive(Default)]
+    struct Recorded {
+        answers: std::collections::VecDeque<Value>,
+        asked: Vec<Value>,
+    }
+    impl Source for Recorded {
+        type Error = ();
+        fn versions(&mut self, _: &str, _: &str, v: Option<&str>) -> Result<Value, ()> {
+            self.asked.push(json!({"versions":v}));
+            self.answers.pop_front().ok_or(())
+        }
+        fn head(&mut self, _: &str, _: &str) -> Result<Value, ()> {
+            Err(())
+        }
+        fn create(&mut self, _: &str, _: &str, create: &Create) -> Result<Value, ()> {
+            self.asked.push(
+                json!({"create":{"milestone":create.milestone,"expected":create.expected_source}}),
+            );
+            self.answers.pop_front().ok_or(())
+        }
+        fn create_many(&mut self, _: &str, items: &[BatchItem], _: &Shared) -> Result<Value, ()> {
+            self.asked.push(json!({"create_many":items.len()}));
+            self.answers.pop_front().ok_or(())
+        }
+        fn summaries(&mut self, _: &str, objects: &[ObjectRef]) -> Result<Value, ()> {
+            self.asked.push(json!({"summaries":objects.len()}));
+            self.answers.pop_front().ok_or(())
+        }
+        fn current(&mut self, _: &str, _: &str) -> Result<Value, ()> {
+            Err(())
+        }
+        fn restore(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<Value, ()> {
+            Err(())
+        }
+    }
+    fn scope(kind: &str, id: &str) -> Scope {
+        Scope {
+            owner: "u".into(),
+            audience: "a".into(),
+            lane: "stable".into(),
+            project: "p".into(),
+            object_kind: kind.into(),
+            object_id: id.into(),
+        }
+    }
+    fn mv(command: Command) -> Command {
+        Command::Object {
+            kind: "mv_model".into(),
+            command: Box::new(command),
+        }
+    }
+    fn mv_record(id: &str, n: u64) -> Value {
+        json!({"project_id":"p","object":{"kind":"mv_model","id":"model-a"},"version_id":id,"version":n,
+            "source_revision":"rev-abc","content_pinned":true,"milestone":"Submission 2"})
+    }
+    #[test]
+    fn a_submission_marker_carries_its_milestone_and_its_reviewed_head() {
+        let begin = |milestone: Option<&str>, expected: Option<&str>| {
+            mv(Command::Begin {
+                transformer: "model-a".into(),
+                create: Create {
+                    reason: "Submitted to REG".into(),
+                    milestone: milestone.map(str::to_owned),
+                    expected_source: expected.map(str::to_owned),
+                    idempotency_key: "submission-2".into(),
+                },
+            })
+        };
+        let mut source = Recorded::default();
+        source
+            .answers
+            .push_back(json!({"version":mv_record("v2",2)}));
+        let answer = run(
+            &scope("mv_model", "model-a"),
+            &mut source,
+            &begin(Some("Submission 2"), Some("rev-abc")),
+        )
+        .unwrap();
+        assert_eq!(answer["content_revision"], "rev-abc");
+        assert_eq!(source.asked[0]["create"]["expected"], "rev-abc");
+        // A Server that dropped the milestone is caught, not reported as done.
+        let mut source = Recorded::default();
+        source
+            .answers
+            .push_back(json!({"version":mv_record("v2",2)}));
+        assert!(run(
+            &scope("mv_model", "model-a"),
+            &mut source,
+            &begin(Some("Submission 3"), None)
+        )
+        .is_err());
+        // Fences are per kind: `-` and revision ids are MV, update times LV.
+        assert!(begin(None, Some("-")).validate("p").is_ok());
+        assert!(begin(None, Some("Rev ABC")).validate("p").is_err());
+        let lv = Command::Object {
+            kind: "lv_transformer".into(),
+            command: Box::new(Command::Begin {
+                transformer: "TR-1".into(),
+                create: Create {
+                    reason: "r".into(),
+                    expected_source: Some("-".into()),
+                    idempotency_key: "k".into(),
+                    ..Create::default()
+                },
+            }),
+        };
+        assert!(lv.validate("p").is_err());
+        assert!(begin(Some(&"m".repeat(MILESTONE_MAX + 1)), None)
+            .validate("p")
+            .is_err());
+    }
+    #[test]
+    fn show_reads_one_version_and_names_its_content_revision() {
+        let mut source = Recorded::default();
+        source
+            .answers
+            .push_back(json!({"version":mv_record("v2",2)}));
+        let command = mv(Command::Show {
+            transformer: "model-a".into(),
+            version: "v2".into(),
+        });
+        let answer = run(&scope("mv_model", "model-a"), &mut source, &command).unwrap();
+        assert_eq!(answer["content_revision"], "rev-abc");
+        assert_eq!(answer["snapshot_included"], false);
+        assert_eq!(source.asked[0]["versions"], "v2");
+        // The Server answering with another version is refused.
+        let mut source = Recorded::default();
+        source
+            .answers
+            .push_back(json!({"version":mv_record("v3",3)}));
+        assert!(run(&scope("mv_model", "model-a"), &mut source, &command).is_err());
+        assert!(mv(Command::Show {
+            transformer: "model-a".into(),
+            version: "head".into()
+        })
+        .validate("p")
+        .is_err());
+    }
+    #[test]
+    fn a_selection_answers_every_object_once_and_in_order() {
+        let object = |id: &str| ObjectRef {
+            kind: "mv_model".into(),
+            id: id.into(),
+        };
+        let item = |id: &str| BatchItem {
+            object: object(id),
+            reason: None,
+            milestone: None,
+            expected_source_revision: Some("-".into()),
+            idempotency_key: format!("key-{id}"),
+        };
+        let shared = Shared {
+            reason: Some("Submission 2".into()),
+            milestone: None,
+        };
+        let batch = Command::BeginBatch {
+            items: vec![item("model-a"), item("model-b")],
+            shared: shared.clone(),
+        };
+        assert!(batch.validate("p").is_ok());
+        // No reason anywhere, a repeated object, an empty selection: refused.
+        assert!(Command::BeginBatch {
+            items: vec![item("model-a")],
+            shared: Shared::default()
+        }
+        .validate("p")
+        .is_err());
+        assert!(Command::BeginBatch {
+            items: vec![item("model-a"), item("model-a")],
+            shared: shared.clone()
+        }
+        .validate("p")
+        .is_err());
+        assert!(Command::Summaries { objects: vec![] }
+            .validate("p")
+            .is_err());
+        let mut source = Recorded::default();
+        source.answers.push_back(json!({"results":[
+            {"object":{"kind":"mv_model","id":"model-a"},"ok":true,"version":mv_record("v2",2)},
+            {"object":{"kind":"mv_model","id":"model-b"},"ok":false,"error":"moved","error_code":"conflict"}
+        ]}));
+        let answer = run(&scope("", ""), &mut source, &batch).unwrap();
+        assert_eq!(answer["ok_count"], 1);
+        assert_eq!(answer["failed_count"], 1);
+        assert_eq!(answer["mutated"], true);
+        let mut source = Recorded::default();
+        source.answers.push_back(json!({"results":[
+            {"object":{"kind":"mv_model","id":"model-b"},"ok":false},
+            {"object":{"kind":"mv_model","id":"model-a"},"ok":false}
+        ]}));
+        assert!(run(&scope("", ""), &mut source, &batch).is_err());
+        let summaries = Command::Summaries {
+            objects: vec![object("model-a"), object("model-b")],
+        };
+        let mut source = Recorded::default();
+        source.answers.push_back(json!({"summaries":[
+            {"object":{"kind":"mv_model","id":"model-a"},"count":2,"truncated":false,"latest_version_id":"v2"},
+            {"object":{"kind":"mv_model","id":"model-b"},"count":0,"truncated":false}
+        ]}));
+        let answer = run(&scope("", ""), &mut source, &summaries).unwrap();
+        assert_eq!(answer["summaries"][0]["latest_version_id"], "v2");
+        let mut source = Recorded::default();
+        source.answers.push_back(json!({"summaries":[
+            {"object":{"kind":"mv_model","id":"model-a"},"count":2}
+        ]}));
+        assert!(run(&scope("", ""), &mut source, &summaries).is_err());
     }
 }

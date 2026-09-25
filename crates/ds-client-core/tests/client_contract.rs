@@ -9333,8 +9333,11 @@ fn headless_version_comparison_uses_pinned_snapshots_and_has_no_geometry_payload
             "project_a",
             &Command::Begin {
                 transformer: "tr".into(),
-                reason: "before field review".into(),
-                idempotency_key: "version-request-1".into(),
+                create: ds_command_kernel::design_versions_headless::Create {
+                    reason: "before field review".into(),
+                    idempotency_key: "version-request-1".into(),
+                    ..Default::default()
+                },
             },
             NOW + 1,
         )
@@ -10601,4 +10604,94 @@ fn grid_exports_publish_pins_the_revision_digest_and_download_verifies_bytes() {
         Some("grid_model_not_found")
     );
     assert!(t.0.lock().unwrap().grid_models.is_empty());
+}
+
+#[test]
+fn mv_design_versions_send_milestone_fence_batch_and_summaries() {
+    use ds_client_core::design_versions::Command;
+    use ds_command_kernel::design_versions_headless::{BatchItem, Create, ObjectRef, Shared};
+    use serde_json::json;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let record = |id: &str, n: u64| {
+        json!({"project_id":"project_a","object":{"kind":"mv_model","id":"model-a"},"version_id":id,
+            "version":n,"milestone":"Submission 2","source_revision":"rev-abc","content_pinned":true})
+    };
+    transport.push_design_versions(200, &selection_envelope(json!({"version":record("v2",2)})));
+    let begun = client
+        .design_versions(
+            "project_a",
+            &Command::Object {
+                kind: "mv_model".into(),
+                command: Box::new(Command::Begin {
+                    transformer: "model-a".into(),
+                    create: Create {
+                        reason: "Submitted to REG".into(),
+                        milestone: Some("Submission 2".into()),
+                        expected_source: Some("rev-abc".into()),
+                        idempotency_key: "submission-2".into(),
+                    },
+                }),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(begun["content_revision"], "rev-abc");
+    transport.push_design_versions(
+        200,
+        &selection_envelope(json!({"results":[
+            {"object":{"kind":"mv_model","id":"model-a"},"ok":true,"version":record("v3",3)}]})),
+    );
+    let batch = client
+        .design_versions(
+            "project_a",
+            &Command::BeginBatch {
+                items: vec![BatchItem {
+                    object: ObjectRef {
+                        kind: "mv_model".into(),
+                        id: "model-a".into(),
+                    },
+                    reason: None,
+                    milestone: None,
+                    expected_source_revision: Some("-".into()),
+                    idempotency_key: "k-1".into(),
+                }],
+                shared: Shared {
+                    reason: Some("Submission 3".into()),
+                    milestone: None,
+                },
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(batch["ok_count"], 1);
+    transport.push_design_versions(
+        200,
+        &selection_envelope(json!({"summaries":[
+            {"object":{"kind":"mv_model","id":"model-a"},"count":3,"truncated":false,"latest_version_id":"v3"}]})),
+    );
+    let summaries = client
+        .design_versions(
+            "project_a",
+            &Command::Summaries {
+                objects: vec![ObjectRef {
+                    kind: "mv_model".into(),
+                    id: "model-a".into(),
+                }],
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(summaries["summaries"][0]["count"], 3);
+    let calls = transport.calls();
+    let bodies: Vec<&String> = calls
+        .iter()
+        .filter(|c| c.starts_with("design_versions "))
+        .collect();
+    assert!(bodies[0].contains(r#""milestone":"Submission 2""#));
+    assert!(bodies[0].contains(r#""expected_source_revision":"rev-abc""#));
+    assert!(bodies[1].contains(r#""action":"create_versions""#));
+    assert!(bodies[1].contains(r#""version":{"reason":"Submission 3"}"#));
+    assert!(bodies[2].contains(r#""action":"list_version_summaries""#));
+    assert!(bodies[2].contains(r#""objects":[{"kind":"mv_model","id":"model-a"}]"#));
 }
