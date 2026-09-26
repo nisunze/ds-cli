@@ -1374,11 +1374,6 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::design::batch_process::render,
     },
     Entry {
-        command: &ds_cli_map::design::batch_report::COMMAND,
-        handler: ds_cli_map::design::batch_report::run,
-        render: ds_cli_map::design::batch_report::render,
-    },
-    Entry {
         command: &ds_cli_map::design::batch_save::COMMAND,
         handler: ds_cli_map::design::batch_save::run,
         render: ds_cli_map::design::batch_save::render,

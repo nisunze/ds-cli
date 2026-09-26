@@ -739,7 +739,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("library.verify", "read_only", "none"),
     ("map.design.attach-print", "artifact_write", "project"),
     ("map.design.batch.process", "local_ui", "project"),
-    ("map.design.batch.report", "artifact_write", "project"),
     ("map.design.batch.save", "artifact_write", "project"),
     ("map.design.create", "local_ui", "project"),
     ("map.design.delete", "local_ui", "project"),

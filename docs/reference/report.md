@@ -136,8 +136,8 @@ coverage, the missing individuals with typed causes, bounded errors and
 `registry_write_failed`. A receipt advertising an archive for zero individual
 artifacts is refused as unreadable, as the application refuses it. The scope
 rules, layout vocabulary and archive tree are ds-brain's
-`docs/contracts/compounded-reports.md`; this is the same deliverable the paired
-`ds map design batch report` requests through the application's session.
+`docs/contracts/compounded-reports.md`. Since 2026-09-26 this is the only way
+to request a Combined Report archive; the application no longer composes one.
 
 ## The project's output policy
 

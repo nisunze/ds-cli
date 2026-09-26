@@ -283,8 +283,10 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // (the machine-local layer catalogue) are not counted here.
     // Profile view/set are display controls in the paired window.
     // 41 → 39 on 2026-09-23: survey migrate plan/apply left for the headless
-    // `ds survey migrate` (both projects explicit).
-    ("ds-cli-map", 39),
+    // `ds survey migrate` (both projects explicit). 39 → 38 on 2026-09-26:
+    // `map design batch report` deleted; Combined Report archives are
+    // `ds report project combined` only.
+    ("ds-cli-map", 38),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
     // command headless (contract 01 of the dsgrid-authority program).
@@ -529,8 +531,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // the one window command admitted on 2026-09-22.
     ("dsgrid", 1),
     // 41 → 39 on 2026-09-23: survey migrate plan/apply run headless as
-    // `ds survey migrate`, both projects explicit.
-    ("map", 39),
+    // `ds survey migrate`, both projects explicit. 39 → 38 on 2026-09-26:
+    // `map.design.batch.report` deleted (`ds report project combined`).
+    ("map", 38),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
@@ -543,10 +546,11 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 /// 131 → 123 on 2026-09-20 (`pm`), 123 → 114 the same day (`assets`),
 /// 114 → 86 the same day (`design`), 86 → 85 the same day (`dsgrid`),
 /// then 85 → 88 on 2026-09-22 when three shipped Profile controls were admitted,
-/// and 88 → 86 on 2026-09-23 (survey migration, headless).
+/// 88 → 86 on 2026-09-23 (survey migration, headless), and 86 → 85 on
+/// 2026-09-26 (`map.design.batch.report` deleted).
 // The 2026-09-22 audit admits three existing Profile window commands that
 // landed after the prior snapshot: dsgrid.profile.open and map.profile.view/set.
-const WINDOW_BACKLOG_TOTAL: u64 = 86;
+const WINDOW_BACKLOG_TOTAL: u64 = 85;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {
@@ -684,7 +688,6 @@ const ROOM_HEADLESS_OWNERS: &[(&str, &[&str])] = &[
         "map.design.report",
         &["design.project.report", "report.project.export"],
     ),
-    ("map.design.batch.report", &["report.project.export"]),
     ("map.design.attach-print", &["design.attachment.publish"]),
     (
         "map.design.list",

@@ -31,10 +31,11 @@ archives to clean, save, and report as one project delivery.
    Treat an unexplained all-current distribution as a delivery blocker and
    record the bounded change-capture gap instead of repairing row history in
    the skill or CLI.
-5. Read the descriptor for `map.design.batch.report`. Submit the full explicit
-   scope once with the requested `--file-level` and `--yes`.
+5. Read the descriptor for `report.project.combined`. Submit the full explicit
+   scope once with `--project <exact-id>`, one `--transformer` per saved name,
+   the requested `--file-level` and `--yes`.
 
-The batch report command is declarative. A Combined Report delivery reuses fresh
+That command is declarative. A Combined Report delivery reuses fresh
 individual artifacts, regenerates only missing or stale individuals, creates
 the combined set for that exact scope, and packages them. Do not loop the
 single-transformer report command and then request Combined Report output: that

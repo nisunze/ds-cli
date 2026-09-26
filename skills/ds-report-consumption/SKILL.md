@@ -35,22 +35,19 @@ ones this skill was written against.
   report artifacts and check its SHA-256 against the receipt before reading.
 - `ds report project combined --project <exact-id> [--transformer …] --file-level
   transformer|sector|district|root [--combine-per-group] --yes --output json`
-  — the same Combined Report archive without a map or paired application, against
-  the project named on this request. Plan with `ds report project
+  — the one way to request a Combined Report archive, with no map or paired
+  application, against the project named on this request: one archive holding
+  `transformers/<name>/<name>.xlsx` and `combined/combined_transformer.xlsx`.
+  Plan with `ds report project
   scope --project <exact-id>` and list the registry with `ds report project
   archives --project <exact-id>`; read the
   archive locator, individual coverage, missing and error counts from the
-  receipt exactly as below. For one archive per city, tag or administrative
+  receipt exactly as below, and download the archive with an ordinary HTTP
+  client. For one archive per city, tag or administrative
   level, use repeatable `--group-by <definition-id>` (order is nesting) and
   `--where <id>=<value>` instead of `--transformer`; preview with `ds report
   project scope --group-by …`, then read one receipt per `.data.groups[]`.
   Untagged transformers form the `_unassigned` group.
-- `ds map design batch report --transformer A --transformer B … --yes --output
-  json` — 2 to 200 transformers; one archive holding
-  `transformers/<name>/<name>.xlsx` and `combined/combined_transformer.xlsx`,
-  filed by the project's applied `report_archive` grouping (flat without one). Read the
-  archive URL, individual coverage, missing and error counts from the
-  receipt; download the archive with an ordinary HTTP client.
 - `ds report export --task transformer|combined … --out-dir <dir> --output
   json` — the engine directly, over local typed inputs, writing files into
   `--out-dir`. Use it when you already hold the transformer documents; the

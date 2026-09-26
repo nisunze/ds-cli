@@ -29,7 +29,6 @@
 
 pub mod attach_print;
 pub mod batch_process;
-pub mod batch_report;
 pub mod batch_save;
 pub mod create;
 pub mod delete;

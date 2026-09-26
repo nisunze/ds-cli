@@ -45,7 +45,6 @@ prepare: the native report path reads rooms from the service, and the former
    newest first; `download_url` is a short-lived signed link when present.
 
 Do not loop single-transformer report commands and then request a Combined Report
-archive; the service reuses fresh individual artifacts itself. Do not mix the
-paired and headless contexts in one delivery: the paired
-`map design batch report` and the headless `report project combined` produce
-the same deliverable from their own project context.
+archive; the service reuses fresh individual artifacts itself. `report project
+combined` is the only way to request that archive; no paired command composes
+one.

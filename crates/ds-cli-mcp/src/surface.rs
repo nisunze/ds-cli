@@ -1007,7 +1007,6 @@ const DESIGN_RUN_COMMANDS: &[&str] = &[
     "design.lv.process",
     "map.design.process",
     "map.design.batch.process",
-    "map.design.batch.report",
     "map.design.batch.save",
     "map.design.save",
     "map.design.list",

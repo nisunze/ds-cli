@@ -1356,6 +1356,45 @@ fn the_admin_hierarchy_no_longer_travels_through_the_window() {
 }
 
 #[test]
+fn the_combined_report_archive_no_longer_travels_through_the_window() {
+    // Owner ruling 2026-09-26: a Combined Report archive is requested, and
+    // grouped, only through the headless `ds report project combined`. The
+    // paired `ds map design batch report` and the Desktop operation it sent,
+    // `design.report.export_batch`, were deleted on both sides, so neither
+    // can return as a second, window-bound way to author one.
+    let retired = "design.report.export_batch";
+    assert!(
+        !ds_cli_map::BRIDGE_OPS
+            .iter()
+            .any(|operation| operation.operation == retired),
+        "`ds map` declares {retired} again; Combined Report archives are `ds report project combined` only"
+    );
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    assert!(
+        !allowlist.is_empty(),
+        "the desktop CLI operation allowlist is absent"
+    );
+    assert_eq!(
+        count(allowlist, &format!("\"{retired}\"")),
+        0,
+        "{retired} is still admitted as a CLI bridge operation, but `ds` no longer sends it"
+    );
+    assert_eq!(switch_case_count(&app.frontend, retired), 0);
+    assert!(
+        !has_operation_contract(&app.map, retired),
+        "{retired} still has a typed desktop adapter contract"
+    );
+}
+
+#[test]
 fn the_data_domain_sends_only_operations_the_desktop_owns() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");

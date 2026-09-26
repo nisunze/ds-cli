@@ -99,7 +99,6 @@ pub static DOMAIN: Domain = Domain {
         &design::version_compare::COMMAND,
         &design::process::COMMAND,
         &design::batch_process::COMMAND,
-        &design::batch_report::COMMAND,
         &design::batch_save::COMMAND,
         &design::attach_print::COMMAND,
         &design::save::COMMAND,
@@ -330,10 +329,6 @@ pub const DESIGN_REPORT: BridgeOp = BridgeOp {
     operation: "design.report.export",
     arguments: &["transformer", "force"],
 };
-pub const DESIGN_REPORT_BATCH: BridgeOp = BridgeOp {
-    operation: "design.report.export_batch",
-    arguments: &["transformers", "fileLevel", "combinePerGroup"],
-};
 pub const DESIGN_ATTACH_PRINT: BridgeOp = BridgeOp {
     operation: "design.report.attach_print",
     arguments: &[
@@ -403,7 +398,6 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &DESIGN_SAVE_BATCH,
     &DESIGN_LIST,
     &DESIGN_REPORT,
-    &DESIGN_REPORT_BATCH,
     &DESIGN_ATTACH_PRINT,
     &DESIGN_UPLOAD_INSPECT,
     &DESIGN_UPLOAD_STAGE_BATCH,

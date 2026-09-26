@@ -16,8 +16,7 @@ workbook is the design's answer; the engineer's BOQ is the contract's. Your
 job is to align them and explain every delta, not to produce a third figure.
 
 `ds-report-consumption` governs how the workbook is obtained and read. Use
-the combined workbook for the batch (`ds map design batch report`, at least
-two transformers with no count ceiling, or
+the combined workbook for the batch (`ds report project combined`, or
 `ds report export --task combined`); open the individual workbooks only when
 a delta needs pole-level detail.
 

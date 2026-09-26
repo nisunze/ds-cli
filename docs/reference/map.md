@@ -84,7 +84,7 @@ refuses a room operation without a registered headless owner.
 | `map design setup` | `design process settings`, `design config read` / `set` |
 | `map design process` / `batch process` | `design project process`, `design lv process` |
 | `map design save` / `batch save` | `design lv project-save` (version-verified), `design version begin` |
-| `map design report` / `batch report` | `design project report`, `report project export` |
+| `map design report` | `design project report`, `report project export` |
 | `map design attach-print` | `design attachment publish` |
 | `map design list` | `design transformer inventory`, `design status` |
 | `map design pin` | `design pinned preview` (the Working set itself is window state) |
@@ -407,7 +407,7 @@ Repeat for every required map family, layout and paper size. Families are
 `--scope combined` targets the combined report; `--scope mv` publishes natively
 to `mv_data` of the project named by `--project` (required there; the saved
 selection is never read); `--page-role atlas|joined`
-marks an atlas or top-level joined PDF. A later `design batch report` includes
+marks an atlas or top-level joined PDF. A later `ds report project combined` includes
 the attached variants in the new Combined Report archive. It never modifies an
 existing archive.
 
