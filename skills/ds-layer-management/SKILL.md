@@ -71,5 +71,6 @@ ds map design upload stage --source WATER-01=./water-network.shp.zip --output js
 ds tile add --project <id> --type design --source-project neighbouring-project --yes
 ```
 
-Stops at: third-party GIS — interactive geometry authoring and editing belong
-there; `ds` validates, orders and serves what a project already holds.
+Stops at: interactive geometry drawing — the operator draws and reshapes
+geometry in the DS GridDesign Desktop map; `ds` validates, orders and serves
+what a project already holds.

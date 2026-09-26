@@ -66,8 +66,8 @@ result:
   `ds` writes and reads workspaces, never drives that UI.
 - A document renderer — a reviewed draft must become DOCX/PDF: `ds` authors
   and lints the text, installed document tools typeset it.
-- Third-party GIS and recorders — interactive geometry edits or motion
-  capture: `ds` serves layers, tiles and still evidence only.
+- The DS GridDesign Desktop map and screen recorders — interactive geometry
+  drawing or motion capture: `ds` serves layers, tiles and still evidence only.
 - The operator — the effect needs authority `ds` will not grant: approval,
   credentials, an OS install, a deploy, a refusal's remedy. Report the refusal
   code with that remedy; never route around it.
