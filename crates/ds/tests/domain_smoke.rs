@@ -1350,6 +1350,199 @@ fn dsgrid_describe_returns_a_real_engine_catalog() {
     assert!(data["descriptor"]["params"].is_array());
 }
 
+/// A value for one schema, built only from what `describe --kind types`
+/// published: required fields, the first variant of every enum, and the
+/// `known` fields a caller chose from the published field descriptions.
+fn from_published_shape(schema: &Value, defs: &Value, known: &Value) -> Value {
+    if let Some(reference) = schema["$ref"].as_str() {
+        let name = reference.trim_start_matches("#/$defs/");
+        return from_published_shape(&defs[name], defs, known);
+    }
+    if let Some(values) = schema["enum"].as_array() {
+        return values[0].clone();
+    }
+    if let Some(value) = schema.get("const") {
+        return value.clone();
+    }
+    if let Some(options) = schema["oneOf"].as_array().or(schema["anyOf"].as_array()) {
+        return from_published_shape(&options[0], defs, known);
+    }
+    let kind = match &schema["type"] {
+        Value::Array(kinds) => kinds[0].as_str().unwrap_or("null"),
+        other => other.as_str().unwrap_or("null"),
+    };
+    match kind {
+        "object" => {
+            let mut out: serde_json::Map<String, Value> = schema["required"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(|field| {
+                    let value = known.get(field).cloned().unwrap_or_else(|| {
+                        from_published_shape(&schema["properties"][field], defs, known)
+                    });
+                    (field.to_string(), value)
+                })
+                .collect();
+            for (field, value) in known.as_object().into_iter().flatten() {
+                if schema["properties"].get(field).is_some() {
+                    out.insert(field.clone(), value.clone());
+                }
+            }
+            Value::Object(out)
+        }
+        "string" => json!("smoke"),
+        "integer" => json!(0),
+        "number" => json!(0.0),
+        "boolean" => json!(false),
+        _ => Value::Null,
+    }
+}
+
+#[test]
+fn dsgrid_describe_types_publishes_rows_a_batch_can_be_written_from() {
+    // Feedback 778bb573: `author_design_policy` named Vec<StructureDutyProfileRow>
+    // and nothing said what that row was. The index lists the declared types
+    // with the operations that take them.
+    let index = ok(&["dsgrid", "describe", "--kind", "types", "--output", "json"]);
+    let entries = index["entries"].as_array().expect("entries");
+    let profile_entry = entries
+        .iter()
+        .find(|entry| entry["id"] == "StructureDutyProfileRow")
+        .expect("the duty profile row is a declared type");
+    assert_eq!(
+        profile_entry["declared_by"],
+        json!(["author_design_policy"])
+    );
+    assert!(entries.iter().all(|entry| {
+        entry["declared_by"]
+            .as_array()
+            .is_some_and(|operations| !operations.is_empty())
+    }));
+    assert!(index["more"]["nested_types"].as_u64().unwrap() > 0);
+
+    let described = |id: &str| {
+        ok(&[
+            "dsgrid", "describe", "--kind", "types", "--id", id, "--output", "json",
+        ])["descriptor"]
+            .clone()
+    };
+    let profile = described("StructureDutyProfileRow");
+    assert_eq!(
+        profile["schema"]["required"],
+        json!([
+            "policy_id",
+            "sequence",
+            "structure_resource_id",
+            "family",
+            "material",
+            "portal_configuration",
+            "verification"
+        ])
+    );
+    assert!(
+        profile["schema"]["$defs"]["StructureDuty"]["enum"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("strain_dead_end"))
+    );
+    // A type reached only through another still answers --id.
+    assert!(described("StructureMaterialClass")["schema"]["oneOf"].is_array());
+
+    // Write the policy batch from the published shapes alone, against the
+    // real fixture, and the engine accepts it.
+    let model = common::fixture();
+    let root = tempfile::tempdir().unwrap();
+    let params = root.path().join("resources.json");
+    std::fs::write(&params, br#"{"table_kind":"resources"}"#).unwrap();
+    let resources = ok(&[
+        "dsgrid",
+        "run",
+        "--model",
+        &model,
+        "--operation",
+        "project_table",
+        "--params",
+        params.to_str().unwrap(),
+        "--limit",
+        "1",
+        "--output",
+        "json",
+    ]);
+    let resource = resources["result"][0]["payload"]["id"].clone();
+    assert!(resource.is_string(), "the fixture carries a resource");
+    let head = ok(&["dsgrid", "validate", "--model", &model, "--output", "json"])["model"]
+        ["authored_revision"]
+        .clone();
+    let policy_schema = described("DesignPolicyRow")["schema"].clone();
+    let row = from_published_shape(
+        &policy_schema,
+        &policy_schema["$defs"],
+        &json!({"id": "policy-smoke"}),
+    );
+    // The `duties` description says at least one: take the first published
+    // StructureDuty value.
+    assert!(
+        profile["schema"]["properties"]["duties"]["description"]
+            .as_str()
+            .is_some_and(|text| text.contains("at least one"))
+    );
+    let first_duty = profile["schema"]["$defs"]["StructureDuty"]["enum"][0].clone();
+    let duty_profile = from_published_shape(
+        &profile["schema"],
+        &profile["schema"]["$defs"],
+        &json!({
+            "policy_id": "policy-smoke",
+            "structure_resource_id": resource,
+            "duties": [first_duty],
+        }),
+    );
+    let batch = |profiles: Value| {
+        let path = root
+            .path()
+            .join(format!("batch-{}.json", profiles.as_array().unwrap().len()));
+        let payload = json!({"expected_revision": head, "commands": [{
+            "command_id": "smoke-author-policy",
+            "command": {"command_kind": "author_design_policy", "row": row, "duty_profiles": profiles},
+        }]});
+        std::fs::write(&path, serde_json::to_vec(&payload).unwrap()).unwrap();
+        path.display().to_string()
+    };
+    let accepted = ok(&[
+        "dsgrid",
+        "apply-batch",
+        "--model",
+        &model,
+        "--batch",
+        &batch(json!([duty_profile])),
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(accepted["would_apply"], true);
+    assert_eq!(accepted["operations"]["author_design_policy"], 1);
+
+    // Without a profile, the refusal itself names the row and its fields.
+    let refused = ds(&[
+        "dsgrid",
+        "apply-batch",
+        "--model",
+        &model,
+        "--batch",
+        &batch(json!([])),
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(refused.code, 0);
+    let engine = refused.envelope["error"]["detail"]["engine"]
+        .as_str()
+        .expect("the engine's refusal is carried");
+    assert!(engine.contains("StructureDutyProfileRow"), "{engine}");
+    assert!(engine.contains("structure_resource_id"), "{engine}");
+}
+
 #[test]
 fn dsgrid_run_executes_native_reads_and_never_admits_a_mutation() {
     let model = common::fixture();

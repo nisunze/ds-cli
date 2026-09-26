@@ -261,9 +261,10 @@ judged at all.
 
 ## `describe` is the engine describing itself
 
-`ds-grid-engine` publishes three catalogs: journaled `commands`, all
-`operations`, and `projections`. Each entry carries its parameters, its effect
-class, whether it is journaled, and its result type.
+`ds-grid-engine` publishes four catalogs: journaled `commands`, all
+`operations`, `projections`, and the parameter `types` they declare. Each
+operation entry carries its parameters, its effect class, whether it is
+journaled, and its result type; each type entry carries its exact shape.
 
 Nothing is copied into this repository. The descriptors come from the engine
 compiled into this binary, so they cannot be stale relative to what it will
@@ -282,6 +283,27 @@ Two small translations, both deliberate. The engine spells the effect field
 the same idea everywhere else and a caller should not learn a second one at a
 single command. And the three catalogs do not agree on how to spell an id
 (`operation_id`, `command_id`, `projection_id`), so `ds` normalizes to `id`.
+
+### Parameter types: the shape of a row
+
+A descriptor names its parameter types — `author_design_policy` takes
+`row: DesignPolicyRow` and `duty_profiles: Vec<StructureDutyProfileRow>` —
+and the fourth catalog, `types`, says what each of those is:
+
+```bash
+ds dsgrid describe --kind types                                   # declared types, with the operations that take them
+ds dsgrid describe --kind types --id StructureDutyProfileRow      # fields, required marks, enum values
+ds dsgrid describe --kind types --id StructureDutyProfileRow --output json   # the JSON Schema
+```
+
+Each entry is a JSON Schema (draft 2020-12) of the engine's deserialize
+contract, derived from the Rust type itself: field names as serde spells
+them, `required` for the fields that must be present, every enum's exact
+values, tagged unions by their tag, each field's documentation (including the
+validation rules a row must also meet), and every type it references under
+`$defs`. The index lists the types an operation declares; the types those
+reach (`StructureMaterialClass`, `StructureDuty`, …) are inside each schema
+and answer `--id` too. Write a batch from this, not from trial dry runs.
 
 ## Running native non-mutating operations
 
@@ -498,7 +520,7 @@ identity still reaches it without loading exchange planning.
 | `create` | `ds_grid_exchange::create_blank_model` |
 | `inspect` | `ds_grid_exchange::dsgrid::inspect`, `package::unpack`, `ds_grid_model::GridModelSummary` |
 | `validate` | `ds_grid_exchange::package::unpack`, `ds_grid_model::validate_snapshot` |
-| `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections}` |
+| `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections, describe_types}` |
 | `run` | the operation selected from `ds_grid_engine::operation_descriptors` and its typed native engine API |
 | `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
 | `model list/show/create-local/import-external/set-active` | `ds_command_kernel::local_models` over `ds_layer_store::local_models` (this machine's catalogue); `show` opens the package with `ds_grid_engine::GridSession` |
