@@ -136,7 +136,7 @@ fn dashboard(request: &Value) -> Result<Value, String> {
                     )
                 })
                 .collect::<Vec<_>>();
-            rows.sort_by(|a, b| b.3.cmp(&a.3));
+            rows.sort_by_key(|row| std::cmp::Reverse(row.3));
             Ok(
                 json!({"headers":["Form","Active","Deleted","Total"],"rows":rows.into_iter().map(|(s,a,d,t)|json!([form_label(&s),a,d,t])).collect::<Vec<_>>() }),
             )
@@ -188,10 +188,8 @@ fn requested_dates(report: &Map<String, Value>, request: &Value) -> Vec<String> 
         .filter(|x| {
             request["date_from"]
                 .as_str()
-                .map_or(true, |v| x.as_str() >= v)
-                && request["date_to"]
-                    .as_str()
-                    .map_or(true, |v| x.as_str() <= v)
+                .is_none_or(|v| x.as_str() >= v)
+                && request["date_to"].as_str().is_none_or(|v| x.as_str() <= v)
         })
         .collect()
 }
@@ -443,10 +441,8 @@ fn surveyors_chart(report: &Map<String, Value>, r: &Value) -> Result<Value, Stri
         for (i, v) in values.into_iter().enumerate() {
             if let Some(d) = day.checked_add(time::Duration::days(i as i64)) {
                 let label = d.to_string();
-                if r["date_from"]
-                    .as_str()
-                    .map_or(true, |x| label.as_str() >= x)
-                    && r["date_to"].as_str().map_or(true, |x| label.as_str() <= x)
+                if r["date_from"].as_str().is_none_or(|x| label.as_str() >= x)
+                    && r["date_to"].as_str().is_none_or(|x| label.as_str() <= x)
                 {
                     labels.push(label);
                     data.push(v.as_f64().unwrap_or(0.0));
@@ -520,7 +516,7 @@ fn top_surveyors(report: &Map<String, Value>, r: &Value) -> Result<Value, String
     if let Some(s) = r["surveyor"].as_str() {
         a.retain(|x| x.0 == s)
     }
-    a.sort_by(|x, y| y.1.cmp(&x.1));
+    a.sort_by_key(|x| std::cmp::Reverse(x.1));
     a.truncate(r["limit"].as_u64().unwrap_or(10) as usize);
     Ok(
         json!({"labels":a.iter().map(|x|x.0.split('@').next().unwrap_or("")).collect::<Vec<_>>(),"data":a.iter().map(|x|x.1).collect::<Vec<_>>() }),
@@ -529,14 +525,14 @@ fn top_surveyors(report: &Map<String, Value>, r: &Value) -> Result<Value, String
 fn form_distribution(t: &Map<String, Value>) -> Result<Value, String> {
     let mut a = t
         .iter()
-        .filter_map(|(s, v)| {
-            (v["active"].as_i64().unwrap_or(0) > 0
+        .filter(|&(_s, v)| {
+            v["active"].as_i64().unwrap_or(0) > 0
                 || v["deleted"].as_i64().unwrap_or(0) > 0
-                || v["total"].as_i64().unwrap_or(0) > 0)
-                .then(|| (s, v["active"].as_i64().unwrap_or(0)))
+                || v["total"].as_i64().unwrap_or(0) > 0
         })
+        .map(|(s, v)| (s, v["active"].as_i64().unwrap_or(0)))
         .collect::<Vec<_>>();
-    a.sort_by(|x, y| y.1.cmp(&x.1));
+    a.sort_by_key(|x| std::cmp::Reverse(x.1));
     Ok(
         json!({"labels":a.iter().map(|x|form_label(x.0)).collect::<Vec<_>>(),"data":a.iter().map(|x|x.1).collect::<Vec<_>>(),"colors":a.iter().enumerate().map(|(i,x)|form_color(x.0,i)).collect::<Vec<_>>() }),
     )
@@ -571,7 +567,7 @@ fn admin_rows(value: &Value) -> Result<Value, String> {
                 .as_object()
                 .map(|m| m.iter().collect::<Vec<_>>())
                 .unwrap_or_default();
-            cells.sort_by(|(_, a), (_, b)| admin_total(b).cmp(&admin_total(a)));
+            cells.sort_by_key(|(_, raw)| std::cmp::Reverse(admin_total(raw)));
             for (cell, raw) in cells {
                 let total = admin_total(raw);
                 let mut villages = raw
@@ -971,7 +967,7 @@ fn integrity(request: &Value) -> Result<Value, String> {
         "schema": SCHEMA, "rows": rows,
         "totals": if rows.is_empty() { Value::Null } else { json!({"firestore":firestore,"mirror":mirror,"dashboard":dashboard,"delta":delta,"mismatch":mismatch}) },
         "has_mismatch": mismatch,
-        "progress": {"total":total,"done":done,"percent":if total > 0 { done * 100 / total } else { 0 }},
+        "progress": {"total":total,"done":done,"percent":(done * 100).checked_div(total).unwrap_or(0)},
     }))
 }
 

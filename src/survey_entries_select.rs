@@ -252,7 +252,7 @@ pub fn decode(
     if body.len() > response_limit {
         return Err(unreadable());
     }
-    let envelope: Envelope = serde_json::from_slice(&body).map_err(|_| unreadable())?;
+    let envelope: Envelope = serde_json::from_slice(body).map_err(|_| unreadable())?;
     if !envelope.success
         || envelope.message != "Survey entry selection"
         || envelope.service != "data-solutions-backend"

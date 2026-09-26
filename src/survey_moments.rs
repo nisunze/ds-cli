@@ -506,7 +506,7 @@ fn keeps(filter: &AppliedFilter, moment: &Moment) -> bool {
     if filter.until_ms.is_some_and(|until| moment.when_ms > until) {
         return false;
     }
-    if !filter.forms.is_empty() && !filter.forms.iter().any(|form| *form == moment.form) {
+    if !filter.forms.is_empty() && !filter.forms.contains(&moment.form) {
         return false;
     }
     if filter.sync.is_some_and(|sync| moment.state != sync) {
@@ -1108,7 +1108,7 @@ mod tests {
             day(2026, 9, 21, 9),
             true,
         ));
-        rows.last_mut().unwrap().path = format!("other_project/forms/poles/e9/IMG_0009.jpg");
+        rows.last_mut().unwrap().path = "other_project/forms/poles/e9/IMG_0009.jpg".to_string();
         rows.push(MomentRow {
             path: format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg"),
             ..row("poles", "e1", "x", false, day(2026, 9, 22, 9), true)

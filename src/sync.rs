@@ -504,13 +504,9 @@ fn nearest_problem(judgements: impl Iterator<Item = Option<&'static str>>) -> Op
     let mut judged = false;
     for judgement in judgements {
         judged = true;
-        match judgement {
-            None => return None,
-            Some(problem) => {
-                if nearest.is_none_or(|held| nearness(problem) > nearness(held)) {
-                    nearest = Some(problem);
-                }
-            }
+        let problem = judgement?;
+        if nearest.is_none_or(|held| nearness(problem) > nearness(held)) {
+            nearest = Some(problem);
         }
     }
     if judged {

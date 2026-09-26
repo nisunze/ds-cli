@@ -1417,7 +1417,8 @@ mod tests {
             uid: "uid-b".into(),
             ..candidate(TWO, Some("project-a"))
         };
-        let fault = refusal(select(&[theirs.clone()], None, &requirement(None)).unwrap_err());
+        let fault =
+            refusal(select(std::slice::from_ref(&theirs), None, &requirement(None)).unwrap_err());
         assert_eq!(fault.code, DESKTOP_NOT_PAIRED);
         assert!(fault.detail.is_none(), "an unrelated session is not named");
         // With one of ours live, theirs never makes the choice ambiguous.

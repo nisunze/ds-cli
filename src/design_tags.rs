@@ -887,7 +887,14 @@ mod tests {
     #[test]
     fn the_shape_is_the_matrixs_shape() {
         use Cardinality::{Multiple, Single};
-        let table: &[(ValueType, &[Cardinality], bool, &[Bound], bool)] = &[
+        type Row = (
+            ValueType,
+            &'static [Cardinality],
+            bool,
+            &'static [Bound],
+            bool,
+        );
+        let table: &[Row] = &[
             (ValueType::Choice, &[Single, Multiple], true, &[], false),
             (
                 ValueType::Text,

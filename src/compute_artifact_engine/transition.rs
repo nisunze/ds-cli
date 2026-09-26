@@ -104,44 +104,48 @@ pub(super) fn apply(row: &mut Value, event: Event, reopens: &mut u8, now: u64) -
                     "{output_id}: the final local artifact is empty or exceeds its byte bound."
                 )));
             }
-            if offset.is_none() {
-                if text(output, "state") != "preparing" {
-                    return Err(failed("Unexpected preparation response."));
+            match offset {
+                None => {
+                    if text(output, "state") != "preparing" {
+                        return Err(failed("Unexpected preparation response."));
+                    }
+                    if !text(output, "expected_sha256").is_empty()
+                        && text(output, "expected_sha256") != sha256
+                    {
+                        return Err(conflict(format!(
+                            "{output_id}: engine-reported SHA-256 does not match the final file."
+                        )));
+                    }
+                    if output["expected_size_bytes"]
+                        .as_u64()
+                        .is_some_and(|v| v != size_bytes)
+                    {
+                        return Err(conflict(format!(
+                            "{output_id}: engine-reported size does not match the final file."
+                        )));
+                    }
+                    output["sha256"] = json!(sha256);
+                    output["size_bytes"] = json!(size_bytes);
+                    output["state"] = json!("pending");
+                    next(row)
                 }
-                if !text(output, "expected_sha256").is_empty()
-                    && text(output, "expected_sha256") != sha256
-                {
-                    return Err(conflict(format!(
-                        "{output_id}: engine-reported SHA-256 does not match the final file."
-                    )));
+                Some(offset) => {
+                    if size_bytes != output["size_bytes"].as_u64().unwrap_or(0)
+                        || text(output, "sha256") != sha256
+                    {
+                        return Err(conflict(format!(
+                            "{output_id}: local artifact bytes changed after it was queued."
+                        )));
+                    }
+                    if offset > size_bytes
+                        || complete(output)
+                        || text(output, "session_uri").is_empty()
+                    {
+                        return Err(conflict("Resumable upload offset or state is invalid."));
+                    }
+                    output["state"] = json!("uploading");
+                    Ok(Effect::Upload { output_id, offset })
                 }
-                if output["expected_size_bytes"]
-                    .as_u64()
-                    .is_some_and(|v| v != size_bytes)
-                {
-                    return Err(conflict(format!(
-                        "{output_id}: engine-reported size does not match the final file."
-                    )));
-                }
-                output["sha256"] = json!(sha256);
-                output["size_bytes"] = json!(size_bytes);
-                output["state"] = json!("pending");
-                next(row)
-            } else {
-                if size_bytes != output["size_bytes"].as_u64().unwrap_or(0)
-                    || text(output, "sha256") != sha256
-                {
-                    return Err(conflict(format!(
-                        "{output_id}: local artifact bytes changed after it was queued."
-                    )));
-                }
-                let offset = offset.unwrap();
-                if offset > size_bytes || complete(output) || text(output, "session_uri").is_empty()
-                {
-                    return Err(conflict("Resumable upload offset or state is invalid."));
-                }
-                output["state"] = json!("uploading");
-                Ok(Effect::Upload { output_id, offset })
             }
         }
         Event::Opened { response } => {

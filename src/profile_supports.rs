@@ -873,18 +873,15 @@ pub fn resolve_stringing_runs(
     });
     let mut active = physical.keys().cloned().collect::<BTreeSet<_>>();
     let mut shared = vec![];
-    loop {
-        let Some((claim, owners)) = ordered_claims.iter().find_map(|claim| {
-            let owners = claim
-                .owners
-                .iter()
-                .filter(|owner| active.contains(*owner))
-                .cloned()
-                .collect::<Vec<_>>();
-            (owners.len() > 1).then_some((claim, owners))
-        }) else {
-            break;
-        };
+    while let Some((claim, owners)) = ordered_claims.iter().find_map(|claim| {
+        let owners = claim
+            .owners
+            .iter()
+            .filter(|owner| active.contains(*owner))
+            .cloned()
+            .collect::<Vec<_>>();
+        (owners.len() > 1).then_some((claim, owners))
+    }) {
         let owner_runs = owners
             .iter()
             .filter_map(|owner| physical.get(owner))
@@ -935,7 +932,7 @@ pub fn resolve_stringing_runs(
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        let sorted_owners = owners.iter().cloned().collect::<Vec<_>>();
+        let sorted_owners = owners.to_vec();
         let key = format!(
             "shared-segment:{}",
             json_string((

@@ -279,7 +279,7 @@ pub fn decode(
     if body.len() > response_limit {
         return Err(unreadable());
     }
-    let envelope: Envelope = serde_json::from_slice(&body).map_err(|_| unreadable())?;
+    let envelope: Envelope = serde_json::from_slice(body).map_err(|_| unreadable())?;
     let lower = parse_canonical_utc(&request.updated_after).ok_or_else(unreadable)?;
     let upper = parse_canonical_utc(&envelope.data.upper_fence).ok_or_else(unreadable)?;
     if !envelope.success

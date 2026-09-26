@@ -533,9 +533,7 @@ mod tests {
         let rooms: Vec<Room> = (0..MAX_LOCK_CALLS_PER_PASS)
             .map(|index| room(&format!("tx_{index}"), true))
             .collect();
-        let mut held_state: Vec<Held> = Vec::new();
-        held_state.push(held("gone_1", 0));
-        held_state.push(held("gone_2", 0));
+        let held_state: Vec<Held> = vec![held("gone_1", 0), held("gone_2", 0)];
         let plan = run(&rooms, &held_state, &[], 10_000, true);
         assert_eq!(plan.hold.len(), MAX_LOCK_CALLS_PER_PASS);
         assert!(

@@ -80,6 +80,8 @@ impl ComputeArtifactDrainPlan {
             progressed: false,
         })
     }
+    // A fallible drain step returning the next effect's JSON, not an iterator.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<String, String> {
         if self.current.is_some() {
             return Err("Settle the current sync effect first.".into());

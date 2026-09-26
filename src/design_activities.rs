@@ -1641,8 +1641,14 @@ fn build_fold(request: FoldRequest) -> Result<FoldReply, String> {
             .filter(|entry| entry.when_ms >= from_ms)
             .collect();
 
-        let mut per_actor: BTreeMap<&str, (usize, BTreeSet<&str>, BTreeSet<(&str, &str)>, &str)> =
-            BTreeMap::new();
+        // Entries, projects, (project, name) pairs, and the actor's short name.
+        type ActorTally<'a> = (
+            usize,
+            BTreeSet<&'a str>,
+            BTreeSet<(&'a str, &'a str)>,
+            &'a str,
+        );
+        let mut per_actor: BTreeMap<&str, ActorTally<'_>> = BTreeMap::new();
         let mut per_project: BTreeMap<&str, (usize, BTreeSet<&str>, BTreeSet<&str>)> =
             BTreeMap::new();
         let mut per_phase: BTreeMap<(&str, &str), usize> = BTreeMap::new();

@@ -271,7 +271,7 @@ pub fn response(body: &[u8]) -> Result<Value, Refusal> {
     if body.len() > 8 * 1024 * 1024 {
         return Err(unreadable());
     }
-    let wire: Value = serde_json::from_slice(&body).map_err(|_| unreadable())?;
+    let wire: Value = serde_json::from_slice(body).map_err(|_| unreadable())?;
     if wire["status"] == "success" {
         return Ok(wire);
     }

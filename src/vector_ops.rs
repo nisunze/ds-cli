@@ -540,6 +540,9 @@ fn feature_id(feature: &Value) -> Option<String> {
     }
 }
 
+/// Flat coordinate runs, one per simple part or ring.
+type Parts = Vec<Vec<f64>>;
+
 /// Split a GeoJSON geometry into flat simple parts, and the holes those parts
 /// enclose.
 ///
@@ -549,7 +552,7 @@ fn feature_id(feature: &Value) -> Option<String> {
 /// polygon can subtract what the polygon does not cover while an operation
 /// that grows one can ignore them. Dropping them here is what made a donut
 /// measure exactly as large as the square it was cut from.
-fn flatten_parts(type_name: &str, coordinates: &Value) -> Option<(Vec<Vec<f64>>, Vec<Vec<f64>>)> {
+fn flatten_parts(type_name: &str, coordinates: &Value) -> Option<(Parts, Parts)> {
     let mut interior: Vec<Vec<f64>> = Vec::new();
     let parts = match type_name {
         "Point" => vec![position(coordinates)?],

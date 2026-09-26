@@ -680,7 +680,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     && matches!(h.status, Status::Failed | Status::Conflict)
                 {
                     actions.push(Action::Remove {
-                        expected: Fence::from(&*h),
+                        expected: Fence::from(h),
                     })
                 }
             }

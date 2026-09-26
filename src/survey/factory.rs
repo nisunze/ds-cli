@@ -113,61 +113,6 @@ pub(super) fn default_values(fields: &Value) -> Result<Value, String> {
     }
     Ok(Value::Object(values))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn document_keeps_only_publishable_authoring_state() {
-        let document = evaluate(&json!({
-            "mode": "document",
-            "fields": [{"key": "material"}],
-            "display_name": "Pole",
-            "description": "As built",
-            "capture_detailed_location": true,
-            "expandedFieldId": "ignored",
-        }))
-        .unwrap();
-        assert_eq!(
-            document,
-            json!({
-                "fields": [{"key": "material"}],
-                "display_name": "Pole",
-                "description": "As built",
-                "capture_detailed_location": true,
-            })
-        );
-    }
-
-    #[test]
-    fn editor_decisions_keep_a_stale_draft_and_save_post_request_edits() {
-        let current = json!({"fields": [], "display_name":"Pole", "description":"changed", "capture_detailed_location":false});
-        let saved = json!({"fields": [], "display_name":"Pole", "description":"saved", "capture_detailed_location":false});
-        let admission =
-            evaluate(&json!({"mode":"draft_admission", "form_version":8, "draft_version":7}))
-                .unwrap();
-        assert_eq!(admission, json!({"restore":true, "stale":true}));
-        let result =
-            evaluate(&json!({"mode":"save_result", "saved":saved, "current":current, "version":8}))
-                .unwrap();
-        assert_eq!(result["draft_action"], "save");
-        assert_eq!(result["snapshot"]["description"], "saved");
-    }
-
-    #[test]
-    fn public_visibility_uses_the_backend_compatibility_mirrors() {
-        assert_eq!(
-            evaluate(&json!({"mode":"public", "form":{"metadata":{"access_mode":"public"}}}))
-                .unwrap(),
-            json!(true)
-        );
-        assert_eq!(
-            evaluate(&json!({"mode":"public", "form":{"visibility":"private"}})).unwrap(),
-            json!(false)
-        );
-    }
-}
 pub(super) fn create_field(request: &Value) -> Result<Value, String> {
     let kind = request["kind"].as_str().ok_or("Field type missing")?;
     let id = request["id"]
@@ -317,5 +262,60 @@ pub(super) fn settings(request: &Value) -> Result<Value, String> {
             Ok(Value::Object(payload))
         }
         _ => Err("Unknown settings operation".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn document_keeps_only_publishable_authoring_state() {
+        let document = evaluate(&json!({
+            "mode": "document",
+            "fields": [{"key": "material"}],
+            "display_name": "Pole",
+            "description": "As built",
+            "capture_detailed_location": true,
+            "expandedFieldId": "ignored",
+        }))
+        .unwrap();
+        assert_eq!(
+            document,
+            json!({
+                "fields": [{"key": "material"}],
+                "display_name": "Pole",
+                "description": "As built",
+                "capture_detailed_location": true,
+            })
+        );
+    }
+
+    #[test]
+    fn editor_decisions_keep_a_stale_draft_and_save_post_request_edits() {
+        let current = json!({"fields": [], "display_name":"Pole", "description":"changed", "capture_detailed_location":false});
+        let saved = json!({"fields": [], "display_name":"Pole", "description":"saved", "capture_detailed_location":false});
+        let admission =
+            evaluate(&json!({"mode":"draft_admission", "form_version":8, "draft_version":7}))
+                .unwrap();
+        assert_eq!(admission, json!({"restore":true, "stale":true}));
+        let result =
+            evaluate(&json!({"mode":"save_result", "saved":saved, "current":current, "version":8}))
+                .unwrap();
+        assert_eq!(result["draft_action"], "save");
+        assert_eq!(result["snapshot"]["description"], "saved");
+    }
+
+    #[test]
+    fn public_visibility_uses_the_backend_compatibility_mirrors() {
+        assert_eq!(
+            evaluate(&json!({"mode":"public", "form":{"metadata":{"access_mode":"public"}}}))
+                .unwrap(),
+            json!(true)
+        );
+        assert_eq!(
+            evaluate(&json!({"mode":"public", "form":{"visibility":"private"}})).unwrap(),
+            json!(false)
+        );
     }
 }

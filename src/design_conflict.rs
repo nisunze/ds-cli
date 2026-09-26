@@ -452,7 +452,8 @@ mod tests {
 
     #[test]
     fn every_refusal_keeps_its_place_in_the_order() {
-        let cases: Vec<(RefusalCode, Box<dyn Fn(&mut CheckRequest)>)> = vec![
+        type Mutation = Box<dyn Fn(&mut CheckRequest)>;
+        let cases: Vec<(RefusalCode, Mutation)> = vec![
             (
                 RefusalCode::ForceCapabilityMissing,
                 Box::new(|r: &mut CheckRequest| r.can_force = false),
@@ -542,7 +543,8 @@ mod tests {
 
     #[test]
     fn malformed_or_equal_versions_never_mint_force_fields() {
-        let cases: Vec<(&str, Box<dyn Fn(&mut CheckRequest)>)> = vec![
+        type Mutation = Box<dyn Fn(&mut CheckRequest)>;
+        let cases: Vec<(&str, Mutation)> = vec![
             (
                 "equal conflict",
                 Box::new(|r| r.conflict.as_mut().unwrap().current_version = 4),

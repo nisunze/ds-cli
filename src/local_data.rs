@@ -287,7 +287,7 @@ pub fn clean_plan(
     let stores: Vec<StoreRow> = rows(host, readings)
         .into_iter()
         .filter(|row| row.retention == Retention::Cleanable && row.count > 0)
-        .filter(|row| named.is_empty() || named.iter().any(|id| *id == row.id))
+        .filter(|row| named.is_empty() || named.contains(&row.id))
         .collect();
     if stores.is_empty() {
         return Err(Refusal {

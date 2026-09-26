@@ -1309,7 +1309,8 @@ mod tests {
     #[test]
     fn every_field_of_the_record_is_bounded_and_named_when_it_is_not() {
         assert!(context("project-a").validate().is_ok());
-        let cases: [(&str, fn(&mut ExecutionContext)); 16] = [
+        type Case = (&'static str, fn(&mut ExecutionContext));
+        let cases: [Case; 16] = [
             ("principal_uid", |c| c.principal_uid = String::new()),
             ("principal_uid", |c| c.principal_uid = " uid".into()),
             ("lane", |c| c.lane = "development".into()),

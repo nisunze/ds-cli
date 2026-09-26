@@ -649,17 +649,14 @@ mod tests {
 
     #[test]
     fn partition_drops_reserved_and_synthetic_rows_once() {
-        let (versionable, skipped) = partition_versionable(
-            [
-                "tx_1",
-                "mv_data",
-                "collisions",
-                " tx_1 ",
-                "",
-                "combined_transformer",
-            ]
-            .into_iter(),
-        );
+        let (versionable, skipped) = partition_versionable([
+            "tx_1",
+            "mv_data",
+            "collisions",
+            " tx_1 ",
+            "",
+            "combined_transformer",
+        ]);
         assert_eq!(versionable, vec!["tx_1", "mv_data"]);
         assert_eq!(skipped, vec!["collisions", "combined_transformer"]);
     }

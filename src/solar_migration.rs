@@ -570,7 +570,7 @@ mod tests {
     fn a_digest_is_confirmed_by_shape_never_computed() {
         assert!(confirm_digest(&"a".repeat(64)).is_ok());
         assert!(confirm_digest(&"A".repeat(64)).is_err());
-        assert!(confirm_digest("sha256:".to_string().repeat(1).as_str()).is_err());
+        assert!(confirm_digest("sha256:").is_err());
     }
 
     #[test]
