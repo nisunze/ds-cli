@@ -1985,9 +1985,10 @@ pub fn valid_print_warning(warning: &PrintWarning, transformer: &str, formats: &
         // A saved style choice one map layer could not print with, skipped
         // so the rest of the sheet still renders: an override part the
         // governed style cannot take (printing::style_overrides::usable),
-        // or a point symbol style meeting line or polygon features. The
+        // a point symbol style meeting line or polygon features, or a
+        // governed style the renderer cannot draw, whole or one part. The
         // element is the map layer; no table rows stand behind it.
-        "print_style_override_skipped" | "print_symbol_skipped" => {
+        "print_style_override_skipped" | "print_symbol_skipped" | "print_style_skipped" => {
             placed
                 && crate::printing::identifier(&warning.element_id)
                 && warning.omitted_rows == 0
@@ -3859,9 +3860,17 @@ mod tests {
                     "code":"print_symbol_skipped", "transformer":"tx_a", "output_id":format,
                     "layout_id":"detail", "element_id":"drafting_errors", "total_rows":0,
                     "omitted_rows":0, "message":"Layer drafting_errors (master/drafting_errors_print): 1 Polygon feature not drawn"
+                },
+                // A governed style one layer could not print with, whole or
+                // one part (2026-09-26: an undrawable style type refused the
+                // whole sheet).
+                {
+                    "code":"print_style_skipped", "transformer":"tx_a", "output_id":format,
+                    "layout_id":"detail", "element_id":"buildings", "total_rows":0,
+                    "omitted_rows":0, "message":"Layer buildings (gt/buildings_print): governed print style skipped"
                 }
             ]);
-            assert_eq!(verify(&document).unwrap().warnings.len(), 6);
+            assert_eq!(verify(&document).unwrap().warnings.len(), 7);
             for (index, key, invalid) in [
                 (4, "element_id", json!("")),
                 (4, "total_rows", json!(1)),
@@ -3869,6 +3878,9 @@ mod tests {
                 (5, "element_id", json!("drafting errors")),
                 (5, "omitted_rows", json!(1)),
                 (5, "transformer", json!("tx_b")),
+                (6, "element_id", json!("")),
+                (6, "total_rows", json!(1)),
+                (6, "output_id", json!("xlsx")),
                 (0, "code", json!("print_visual_approval")),
                 (0, "element_id", json!("")),
                 (0, "total_rows", json!(5)),
