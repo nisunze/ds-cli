@@ -355,14 +355,20 @@ fn validate_request(request: &Request<'_>) -> Result<Vec<Filter>, Refusal> {
     if !repeated.is_empty() {
         return Err(invalid("the transformer scope repeats a name").subjects(repeated));
     }
-    if request.group_by.len() > MAX_LEVELS {
+    check_shape(request.group_by, request.filters)
+}
+
+/// The group-by and filter checks that need nothing read, with the filters
+/// de-duplicated.
+fn check_shape(group_by: &[String], request_filters: &[Filter]) -> Result<Vec<Filter>, Refusal> {
+    if group_by.len() > MAX_LEVELS {
         return Err(invalid(format!(
             "{} group-by levels; the bound is {MAX_LEVELS}",
-            request.group_by.len()
+            group_by.len()
         )));
     }
     let mut seen = BTreeSet::new();
-    for key in request.group_by {
+    for key in group_by {
         if !is_id(key) {
             return Err(
                 invalid(format!("group-by {key:?} is not a trimmed definition id"))
@@ -376,14 +382,14 @@ fn validate_request(request: &Request<'_>) -> Result<Vec<Filter>, Refusal> {
             .key(key));
         }
     }
-    if request.filters.len() > MAX_FILTERS {
+    if request_filters.len() > MAX_FILTERS {
         return Err(invalid(format!(
             "{} filters; the bound is {MAX_FILTERS}",
-            request.filters.len()
+            request_filters.len()
         )));
     }
     let mut filters: Vec<Filter> = Vec::new();
-    for filter in request.filters {
+    for filter in request_filters {
         filter.validate()?;
         // The same filter twice asks the same question twice; the answer is
         // identical, so the repeat is folded rather than refused.
@@ -392,6 +398,32 @@ fn validate_request(request: &Request<'_>) -> Result<Vec<Filter>, Refusal> {
         }
     }
     Ok(filters)
+}
+
+/// Group-by definitions first, then filter definitions not already named.
+fn ordered_definitions<'a>(group_by: &'a [String], filters: &'a [Filter]) -> Vec<&'a str> {
+    let mut named: Vec<&str> = group_by.iter().map(String::as_str).collect();
+    for filter in filters {
+        if !named.contains(&filter.key.as_str()) {
+            named.push(filter.key.as_str());
+        }
+    }
+    named
+}
+
+/// The definition ids a host must export the tag projection for, in order —
+/// group-by first, then filter keys not already named — once the request's
+/// shape is checked. A host calls this BEFORE it reads anything, so a
+/// malformed or over-deep request costs no round trip.
+pub fn projection_definitions(
+    group_by: &[String],
+    filters: &[Filter],
+) -> Result<Vec<String>, Refusal> {
+    let filters = check_shape(group_by, filters)?;
+    Ok(ordered_definitions(group_by, &filters)
+        .into_iter()
+        .map(str::to_string)
+        .collect())
 }
 
 fn parse_document(request: &Request<'_>) -> Result<Document, Refusal> {
@@ -437,8 +469,21 @@ fn value_of<'a>(
 type LevelKey = (bool, String);
 
 /// The whole decision.
+///
+/// An empty scope refuses before the projection is read — there is nothing to
+/// export a projection for — so a host holding no transformer may pass an
+/// empty document.
 pub fn plan(request: &Request<'_>) -> Result<Plan, Refusal> {
     let filters = validate_request(request)?;
+    if request.transformers.is_empty() {
+        return Err(Refusal {
+            count: Some(0),
+            ..Refusal::new(
+                RefusalCode::Empty,
+                "the scope holds no transformer to group",
+            )
+        });
+    }
     let document = parse_document(request)?;
 
     // Every definition the request names must be one the projection carries.
@@ -447,12 +492,7 @@ pub fn plan(request: &Request<'_>) -> Result<Plan, Refusal> {
         .iter()
         .map(|definition| (definition.definition_id.as_str(), definition))
         .collect();
-    let mut named: Vec<&str> = request.group_by.iter().map(String::as_str).collect();
-    for filter in &filters {
-        if !named.contains(&filter.key.as_str()) {
-            named.push(filter.key.as_str());
-        }
-    }
+    let named = ordered_definitions(request.group_by, &filters);
     let unknown: Vec<String> = named
         .iter()
         .filter(|key| !definitions.contains_key(*key))
@@ -591,14 +631,10 @@ pub fn plan(request: &Request<'_>) -> Result<Plan, Refusal> {
         })
         .collect();
     if kept.is_empty() {
-        let detail = if request.transformers.is_empty() {
-            "the scope holds no transformer to group".to_string()
-        } else {
-            format!(
-                "no transformer of {} matches the filters",
-                request.transformers.len()
-            )
-        };
+        let detail = format!(
+            "no transformer of {} matches the filters",
+            request.transformers.len()
+        );
         return Err(Refusal {
             count: Some(0),
             ..Refusal::new(RefusalCode::Empty, detail).subjects(
@@ -902,6 +938,28 @@ mod tests {
 
         let refusal = run(&doc, &[], &["city"], &[]).expect_err("an empty scope");
         assert_eq!(refusal.code, RefusalCode::Empty);
+        // ...before the projection is read: a host with no transformer has
+        // no projection to hand in.
+        let refusal = run("", &[], &["city"], &[]).expect_err("no document needed");
+        assert_eq!(refusal.code, RefusalCode::Empty);
+    }
+
+    /// A host learns what to export — and whether the request is well formed
+    /// at all — before it reads anything.
+    #[test]
+    fn the_projection_definitions_are_known_before_any_read() {
+        assert_eq!(
+            projection_definitions(
+                &keys(&["district", "city"]),
+                &filters(&["phase=i", "city=kigali", "phase=ii"])
+            )
+            .expect("well formed"),
+            keys(&["district", "city", "phase"])
+        );
+        let refusal = projection_definitions(&keys(&["city", "city"]), &[]).expect_err("repeat");
+        assert_eq!(refusal.code, RefusalCode::RequestInvalid);
+        let refusal = projection_definitions(&keys(&[" city"]), &[]).expect_err("untrimmed");
+        assert_eq!(refusal.code, RefusalCode::RequestInvalid);
     }
 
     #[test]
