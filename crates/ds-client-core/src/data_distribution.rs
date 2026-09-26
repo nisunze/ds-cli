@@ -220,6 +220,7 @@ fn digest(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|c| c.is_ascii_hexdigit())
 }
 
+#[allow(clippy::too_many_arguments)] // one flat check over the spatial request's own fields
 fn validate_spatial(
     resource_id: &str,
     resource_version: Option<&str>,

@@ -613,8 +613,10 @@ mod tests {
             event("b", "success", "ds-brain"),
             event("c", "failure", "ds-brain"),
         ];
-        let mut filters = Filters::default();
-        filters.service = Some("DS-Brain".into());
+        let mut filters = Filters {
+            service: Some("DS-Brain".into()),
+            ..Default::default()
+        };
         let answer = project_events(&rows, Outcome::Failure, &filters, 50, 1_000);
         assert_eq!(answer["matching"], json!(1));
         assert_eq!(answer["events"][0]["event_id"], json!("c"));
@@ -710,8 +712,10 @@ mod tests {
         ] {
             assert_eq!(bad.validate().unwrap_err().kind(), ErrorKind::InvalidInput);
         }
-        let mut filters = Filters::default();
-        filters.lane = Some(" stable".into());
+        let filters = Filters {
+            lane: Some(" stable".into()),
+            ..Default::default()
+        };
         assert_eq!(
             Command::Events {
                 days: 3,

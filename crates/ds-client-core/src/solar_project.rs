@@ -357,46 +357,6 @@ fn seed_refusal(status: u16, body: &[u8]) -> Option<ClientError> {
     ))
 }
 
-#[cfg(test)]
-mod seed_refusal_tests {
-    use super::*;
-
-    #[test]
-    fn exact_seed_codes_survive_without_backend_text() {
-        for (status, code) in [
-            (400, "SOLAR_SEED_PROJECT_ROOT_REQUIRED"),
-            (400, "SOLAR_SEED_SOURCE_INVALID"),
-            (403, "SOLAR_SEED_COMPONENT_DISABLED"),
-            (400, "SOLAR_SEED_DIGEST_REQUIRED"),
-            (409, "SOLAR_SEED_DIGEST_MISMATCH"),
-            (400, "SOLAR_SEED_BOUNDED"),
-        ] {
-            let body = serde_json::to_vec(&json!({"success":false,"error":{"message":"private backend text","details":{"code":code}}})).unwrap();
-            let error = seed_refusal(status, &body).unwrap();
-            let refusal = error.service_refusal().unwrap();
-            assert_eq!(refusal.status(), status);
-            assert_eq!(refusal.code(), Some(code.to_ascii_lowercase().as_str()));
-            assert_eq!(refusal.message(), None);
-            assert!(!error.to_string().contains("private backend text"));
-            assert!(seed_refusal(200, &body).is_none());
-            assert!(seed_refusal(500, &body).is_none());
-        }
-    }
-
-    #[test]
-    fn malformed_unknown_and_inconsistent_refusals_do_not_cross() {
-        for body in [
-            br#"{"success":false,"error":{"details":{"code":"UNKNOWN"}}}"#.as_slice(),
-            br#"{"success":true,"error":{"details":{"code":"SOLAR_SEED_BOUNDED"}}}"#,
-            br#"{"success":false,"error":{"details":{"code":"SOLAR_SEED_COMPONENT_DISABLED"}}}"#,
-            br#"{"success":false,"code":"SOLAR_SEED_BOUNDED"}"#,
-            b"invalid",
-        ] {
-            assert!(seed_refusal(400, body).is_none());
-        }
-        assert!(seed_refusal(400, &vec![b' '; 8193]).is_none());
-    }
-}
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
@@ -786,4 +746,45 @@ fn draft_id(id: &str) -> bool {
             | "financial-draft-fr"
             | "financial-draft-en"
     )
+}
+
+#[cfg(test)]
+mod seed_refusal_tests {
+    use super::*;
+
+    #[test]
+    fn exact_seed_codes_survive_without_backend_text() {
+        for (status, code) in [
+            (400, "SOLAR_SEED_PROJECT_ROOT_REQUIRED"),
+            (400, "SOLAR_SEED_SOURCE_INVALID"),
+            (403, "SOLAR_SEED_COMPONENT_DISABLED"),
+            (400, "SOLAR_SEED_DIGEST_REQUIRED"),
+            (409, "SOLAR_SEED_DIGEST_MISMATCH"),
+            (400, "SOLAR_SEED_BOUNDED"),
+        ] {
+            let body = serde_json::to_vec(&json!({"success":false,"error":{"message":"private backend text","details":{"code":code}}})).unwrap();
+            let error = seed_refusal(status, &body).unwrap();
+            let refusal = error.service_refusal().unwrap();
+            assert_eq!(refusal.status(), status);
+            assert_eq!(refusal.code(), Some(code.to_ascii_lowercase().as_str()));
+            assert_eq!(refusal.message(), None);
+            assert!(!error.to_string().contains("private backend text"));
+            assert!(seed_refusal(200, &body).is_none());
+            assert!(seed_refusal(500, &body).is_none());
+        }
+    }
+
+    #[test]
+    fn malformed_unknown_and_inconsistent_refusals_do_not_cross() {
+        for body in [
+            br#"{"success":false,"error":{"details":{"code":"UNKNOWN"}}}"#.as_slice(),
+            br#"{"success":true,"error":{"details":{"code":"SOLAR_SEED_BOUNDED"}}}"#,
+            br#"{"success":false,"error":{"details":{"code":"SOLAR_SEED_COMPONENT_DISABLED"}}}"#,
+            br#"{"success":false,"code":"SOLAR_SEED_BOUNDED"}"#,
+            b"invalid",
+        ] {
+            assert!(seed_refusal(400, body).is_none());
+        }
+        assert!(seed_refusal(400, &vec![b' '; 8193]).is_none());
+    }
 }
