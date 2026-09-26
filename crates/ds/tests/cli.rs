@@ -447,10 +447,11 @@ fn inspect_reports_the_engine_s_own_identity() {
     // (program contract 03): the fixture carries its feature-code definition
     // and its survey points resolve by number.
     // Native axis normalization and the spotting-warnings schema re-emitted
-    // the fixture on 2026-09-21 and 2026-09-22, respectively.
+    // the fixture on 2026-09-21 and 2026-09-22, respectively; on 2026-09-26
+    // its cables were re-read in the units PLS-CADD's Cable Data Report prints.
     // Keep the source fingerprint and its derived model id coupled: changing
     // one while leaving the other stale would conceal an identity drift.
-    const HUMBLE_FINGERPRINT: &str = "fnv1a64:5b3a50ec7b10f1ab";
+    const HUMBLE_FINGERPRINT: &str = "fnv1a64:f0fcaab47af69265";
     assert_eq!(data["model"]["fingerprint"], HUMBLE_FINGERPRINT);
     assert_eq!(
         data["model"]["id"],
