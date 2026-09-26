@@ -88,7 +88,7 @@ fn records_are_written_replaced_read_and_removed_per_project() {
     assert_eq!(store.survey_media_of_project("q").unwrap().len(), 1);
     assert_eq!(
         store
-            .survey_media_remove("q", &[other.path.clone()])
+            .survey_media_remove("q", std::slice::from_ref(&other.path))
             .unwrap(),
         1
     );

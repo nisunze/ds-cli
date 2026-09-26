@@ -142,6 +142,7 @@ fn prepare_private(path: &Path) -> std::io::Result<()> {
         let file = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false)
             .mode(0o600)
             .open(path)?;
         let _ = file.set_permissions(private.clone());
