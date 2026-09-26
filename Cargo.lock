@@ -1435,6 +1435,7 @@ dependencies = [
  "ds-profile",
  "geo",
  "regex",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
@@ -1462,6 +1463,7 @@ name = "ds-grid-model"
 version = "0.1.0"
 dependencies = [
  "polars-arrow",
+ "schemars",
  "serde",
  "serde_json",
  "thiserror",
@@ -1472,6 +1474,7 @@ name = "ds-grid-physics"
 version = "0.1.0"
 dependencies = [
  "ds-grid-model",
+ "schemars",
  "serde",
  "thiserror",
 ]
