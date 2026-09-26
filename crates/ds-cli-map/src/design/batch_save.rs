@@ -61,6 +61,7 @@ failed, and requested parallelism.",
         crate::UNSUPPORTED,
         crate::UNREADABLE,
         crate::SIGNED_OUT,
+        crate::OFFLINE,
         crate::INVALID_NUMBER,
         Refusal {
             code: "confirmation_required",

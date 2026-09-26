@@ -187,6 +187,7 @@ const BASE_REFUSALS: &[Refusal] = &[
     crate::UNSUPPORTED,
     crate::UNREADABLE,
     crate::SIGNED_OUT,
+    crate::OFFLINE,
     Refusal {
         code: "confirmation_required",
         when: "--yes was not given for a project artifact upload",

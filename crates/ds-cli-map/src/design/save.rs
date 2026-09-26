@@ -67,6 +67,7 @@ reason. `persisted` is true only on a save that actually happened.",
         crate::UNSUPPORTED,
         crate::UNREADABLE,
         crate::SIGNED_OUT,
+        crate::OFFLINE,
         Refusal {
             code: "transformer_changed",
             when: "the transformer changed in the project since this room was loaded",
