@@ -31,6 +31,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::combined_readiness::{self, RoomInput};
 use serde_json::{Value, json};
 
+use super::grouping::{self, GROUP_BY_ARG, WHERE_ARG};
 use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
 
 pub(super) const FILE_LEVEL_ARG: Arg = Arg::value(
@@ -51,6 +52,8 @@ pub(super) const FORCE_ARG: Arg = Arg::switch(
 
 pub(super) const ARGS: &[Arg] = &[
     TRANSFORMER_ARG,
+    GROUP_BY_ARG,
+    WHERE_ARG,
     FILE_LEVEL_ARG,
     COMBINE_PER_GROUP_ARG,
     FORCE_ARG,
@@ -65,7 +68,9 @@ ZIP with a registry row. District and sector folders come from the project's \
 applied `report_archive` grouping, not from this request. Retired \
 transformers are never in scope. Rooms not current refuse the run. Blocks \
 until the service answers \
-(up to ten minutes). A project is required; no URL, body or action override is accepted.";
+(up to ten minutes). A project is required; no URL, body or action override is accepted. \
+--group-by/--where publish an archive per leaf tag group, in turn \
+(`_unassigned` holds the untagged); nothing is saved on the project.";
 
 pub(super) const OUTPUT: &str = "\
 Lane, named project ID, requested scope, and \
@@ -73,13 +78,14 @@ Lane, named project ID, requested scope, and \
 unresolved administrative values collapse to `_unassigned/`, and `ds report \
 project archives` confirms the tree built. Then the receipt: status, \
 `prefix`, cloud locators, individual coverage, missing individuals with \
-causes, bounded errors and registry-write failure.";
+causes, bounded errors and registry-write failure. Grouped: `grouping` \
+and one `groups` receipt per archive.";
 
 pub static COMMAND: Command = Command {
     id: "report.project.combined",
     path: &["report", "project", "combined"],
     contract: 1,
-    summary: "Publish one Combined Report archive in the background (needs --yes).",
+    summary: "Publish a Combined Report archive, or one per tag group (needs --yes).",
     purpose: PURPOSE,
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
@@ -87,30 +93,127 @@ pub static COMMAND: Command = Command {
     execution: Execution::Sync,
     args: ARGS,
     output: OUTPUT,
-    examples: &[Example {
-        command: "ds report project combined --file-level sector --yes --output json --project <exact-id>",
-        note: "`ds report project archives` then confirms the foldering built.",
-        runnable: false,
-    }],
-    refusals: super::NATIVE_WRITE_REFUSALS,
+    examples: &[
+        Example {
+            command: "ds report project combined --file-level sector --yes --output json --project <exact-id>",
+            note: "`ds report project archives` then confirms the foldering built.",
+            runnable: false,
+        },
+        Example {
+            command: "ds report project combined --group-by district --group-by city --where phase=i --yes --output json --project <exact-id>",
+            note: "An archive per district/city pair, phase i only.",
+            runnable: false,
+        },
+    ],
+    refusals: super::COMBINED_REFUSALS,
     reference: Some("docs/reference/report.md"),
-    search: &["compounded", "combined report", "zip"],
+    search: &[
+        "compounded",
+        "combined report",
+        "zip",
+        "per city",
+        "group by",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let transformers = super::transformer_set(inputs)?;
     let file_level = ReportFileLevel::parse(inputs.require("file-level")?)
         .expect("the command parser enforces the file-level choices");
     let combine_per_group = inputs.switch("combine-per-group");
     let force = inputs.switch("force");
+    let (lane, project) = (inputs.require("lane")?, inputs.require("project")?);
+    if let Some(requested) = grouping::requested(inputs)? {
+        return run_grouped(
+            lane,
+            project,
+            &requested,
+            file_level,
+            combine_per_group,
+            force,
+        );
+    }
+    let transformers = super::transformer_set(inputs)?;
     let request = CompoundedReportRequest::new(transformers, file_level, combine_per_group, force);
-    let headless = ds_cli_auth::compounded_report_for_project(
-        inputs.require("lane")?,
-        inputs.require("project")?,
-        &request,
-    )?;
+    publish(lane, project, &request)
+}
+
+/// One leaf tag group per archive, run one after another through the SAME
+/// publish a single run uses, each over that group's explicit scope.
+///
+/// Every group's scope is validated before the first archive is published.
+/// A refusal about one group's rooms lets the next group run; any other
+/// refusal would refuse every group alike, so the rest are left `not_run`.
+/// A run that did not publish every group never exits zero.
+fn run_grouped(
+    lane: &str,
+    project: &str,
+    requested: &grouping::Requested,
+    file_level: ReportFileLevel,
+    combine_per_group: bool,
+    force: bool,
+) -> Result<Value, Failure> {
+    let grouped = grouping::resolve(lane, project, requested)?;
+    let scopes = grouping::group_scopes(&grouped.plan)?;
+    let summary = grouping::grouping_json(&grouped, false);
+    let mut receipts: Vec<Value> = Vec::new();
+    let mut refusals: Vec<Failure> = Vec::new();
+    let mut stopped = false;
+    for (group, scope) in grouped.plan.groups.iter().zip(scopes) {
+        if stopped {
+            receipts.push(grouping::not_run(group));
+            continue;
+        }
+        let request = CompoundedReportRequest::new(scope, file_level, combine_per_group, force);
+        match publish(lane, project, &request) {
+            Ok(output) => receipts.push(grouping::published(group, &output)),
+            Err(failure) => {
+                receipts.push(grouping::refused(group, &failure));
+                stopped = !grouping::group_scoped(&failure);
+                refusals.push(failure);
+            }
+        }
+    }
+    let published = receipts.len() - refusals.len() - not_run_count(&receipts);
+    if published == 0 && refusals.len() == 1 {
+        // Exactly one attempt, and it refused: the caller needs THAT refusal,
+        // with its own code, remedy and detail, not a summary of one.
+        return Err(refusals.remove(0));
+    }
+    if published < receipts.len() {
+        return Err(grouping::partial(summary, receipts));
+    }
+    let mut output = grouped.receipt;
+    let fields = json!({
+        "scope": {"mode": "grouped", "requested": []},
+        "grouping": summary,
+        "archive_layout": archive_layout(file_level.token(), combine_per_group),
+        "force": force,
+        "published_count": published,
+        "groups": receipts,
+    });
+    output
+        .as_object_mut()
+        .expect("receipt is an object")
+        .extend(fields.as_object().expect("fields are an object").clone());
+    Ok(output)
+}
+
+fn not_run_count(receipts: &[Value]) -> usize {
+    receipts
+        .iter()
+        .filter(|receipt| receipt["status"] == "not_run")
+        .count()
+}
+
+/// One Combined Report archive over one request's scope, read for what it
+/// does not contain.
+fn publish(lane: &str, project: &str, request: &CompoundedReportRequest) -> Result<Value, Failure> {
+    let file_level = request.file_level();
+    let combine_per_group = request.combine_per_district();
+    let force = request.force();
+    let headless = ds_cli_auth::compounded_report_for_project(lane, project, request)?;
     let receipt = headless.result();
     let mut output = super::project_receipt(&headless);
     let causes: Vec<Value> = receipt
@@ -284,6 +387,9 @@ pub(super) fn archive_layout(file_level: &str, combine_per_group: bool) -> Value
 }
 
 pub fn render(data: &Value) -> String {
+    if data["groups"].is_array() {
+        return render_grouped(data);
+    }
     let mut out = String::new();
     out.push_str(&format!(
         "project {} ({}) · {} · {} · Combined Report {} · {} individual artifact(s), {} missing\n",
@@ -322,9 +428,76 @@ pub fn render(data: &Value) -> String {
     out
 }
 
+/// One line per group archive, in the order they were published.
+fn render_grouped(data: &Value) -> String {
+    let groups = data["groups"].as_array().cloned().unwrap_or_default();
+    let mut out = format!(
+        "project {} · {} · {} Combined Report archive(s) of {} group(s) over {} transformer(s)\n",
+        data["project"]["ds_project"].as_str().unwrap_or("?"),
+        data["lane"].as_str().unwrap_or("?"),
+        data["published_count"].as_u64().unwrap_or(0),
+        groups.len(),
+        data["grouping"]["transformer_count"].as_u64().unwrap_or(0),
+    );
+    for group in &groups {
+        out.push_str(&format!(
+            "  {:<40} {:>4} · {} · {}\n",
+            super::scope::path_line(&group["path"]),
+            group["transformer_count"].as_u64().unwrap_or(0),
+            group["status"].as_str().unwrap_or("?"),
+            group["prefix"].as_str().unwrap_or("-"),
+        ));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Each archive is one line naming its group, so an operator can see
+    /// which city a prefix belongs to without opening JSON.
+    #[test]
+    fn a_grouped_run_renders_one_line_per_group_archive() {
+        let data = json!({
+            "project": {"ds_project": "p1"}, "lane": "canary", "published_count": 2,
+            "grouping": {"transformer_count": 20},
+            "groups": [
+                {"path": [{"key": "city", "value": "bere"}], "transformer_count": 12,
+                 "status": "success", "prefix": "run-bere"},
+                {"path": [{"key": "city", "value": "_unassigned"}], "transformer_count": 8,
+                 "status": "success", "prefix": "run-rest"},
+            ],
+        });
+        let rendered = render(&data);
+        assert!(
+            rendered.contains("2 Combined Report archive(s) of 2 group(s)"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("city=bere"), "{rendered}");
+        assert!(rendered.contains("run-bere"), "{rendered}");
+        assert!(rendered.contains("city=_unassigned"), "{rendered}");
+    }
+
+    /// Grouping and naming transformers are alternatives, and every grouping
+    /// refusal is one this command declares.
+    #[test]
+    fn the_grouping_flags_are_declared_once_with_their_refusals() {
+        for flag in ["group-by", "where", "transformer"] {
+            assert!(COMMAND.arg(flag).is_some(), "--{flag}");
+        }
+        let declared: Vec<&str> = COMMAND.refusals.iter().map(|r| r.code).collect();
+        for code in [
+            "combined_group_scope_conflict",
+            "combined_groups_too_many",
+            "combined_groups_empty",
+            "combined_groups_partial",
+            // Read from the published receipt; declared here since 09-26.
+            "combined_inputs_not_current",
+        ] {
+            assert!(declared.contains(&code), "{code} undeclared");
+        }
+    }
 
     fn cause(name: &str, code: &str) -> Value {
         json!({"transformer": name, "code": code, "detail": ""})

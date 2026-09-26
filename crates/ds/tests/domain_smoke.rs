@@ -5132,10 +5132,13 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             "global_write",
             BTreeSet::from(["lane", "project", "transformer"]),
         ),
+        // `group-by` and `where` (2026-09-26): the scope selected from tags,
+        // one archive per leaf group — the preview and the publish take the
+        // same two, so the plan and the run cannot disagree.
         (
             "report.project.scope",
             "local_auth_state",
-            BTreeSet::from(["lane", "project", "transformer"]),
+            BTreeSet::from(["group-by", "lane", "project", "transformer", "where"]),
         ),
         (
             "report.project.combined",
@@ -5144,9 +5147,11 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
                 "combine-per-group",
                 "file-level",
                 "force",
+                "group-by",
                 "lane",
                 "project",
                 "transformer",
+                "where",
             ]),
         ),
         // The cloud twin of `report.project.export`: the same three inputs
@@ -5314,6 +5319,66 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             "`compute --transformer {reserved}` must refuse locally"
         );
     }
+    // A grouped Combined Report (owner ruling 2026-09-26) selects its scope
+    // from tags, so naming transformers beside it is refused, and a malformed
+    // group-by or filter is the kernel's verdict — all before any credential
+    // is restored. A well-formed grouping reaches the native gate, which is
+    // where it reads the tag listing, inventory and projection.
+    for command in ["scope", "combined"] {
+        let run = |extra: &[&str]| {
+            let mut args = vec!["report", "project", command];
+            args.extend_from_slice(extra);
+            args.extend(["--yes", "--output", "json"]);
+            headless(&args)
+        };
+        assert_eq!(
+            run(&["--group-by", "city", "--transformer", "tx_a"]),
+            "combined_group_scope_conflict",
+            "{command}: --transformer and --group-by are alternatives"
+        );
+        assert_eq!(
+            run(&["--where", "phase=i", "--transformer", "tx_a"]),
+            "combined_group_scope_conflict",
+            "{command}: --where selects the scope too"
+        );
+        for malformed in [
+            &["--where", "phase"][..],
+            &["--where", "phase= i"][..],
+            &["--group-by", "city", "--group-by", "city"][..],
+            &["--group-by", " city"][..],
+        ] {
+            assert_eq!(
+                run(malformed),
+                "combined_group_request_invalid",
+                "{command} {malformed:?} must refuse locally"
+            );
+        }
+        assert_eq!(
+            run(&[
+                "--group-by",
+                "district",
+                "--group-by",
+                "city",
+                "--where",
+                "phase=i"
+            ]),
+            "headless_signed_out",
+            "{command}: a well-formed grouping reaches the native gate"
+        );
+    }
+    assert_eq!(
+        headless(&[
+            "report",
+            "project",
+            "combined",
+            "--group-by",
+            "city",
+            "--output",
+            "json"
+        ]),
+        "confirmation_required",
+        "a grouped run publishes archives, so it confirms first"
+    );
     // The cloud computation confirms before anything else, then needs the
     // native user: neither costs a round trip.
     assert_eq!(

@@ -24,6 +24,7 @@ pub mod archives;
 pub mod combined;
 pub mod compute;
 pub mod export;
+pub mod grouping;
 pub mod map_inputs;
 pub mod publish;
 pub mod scope;
@@ -305,6 +306,46 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     REPORT_GROUPING_STALE,
     REPORT_GROUPING_INCOMPLETE,
 ];
+
+/// Several declared refusal lists as one, at compile time, so a command's
+/// list is still one `&'static [Refusal]` its help and descriptor read.
+const fn joined<const N: usize>(parts: &[&[Refusal]]) -> [Refusal; N] {
+    let mut out = [NATIVE_PROFILE; N];
+    let (mut at, mut part) = (0, 0);
+    while part < parts.len() {
+        let mut index = 0;
+        while index < parts[part].len() {
+            out[at] = parts[part][index];
+            at += 1;
+            index += 1;
+        }
+        part += 1;
+    }
+    assert!(at == N, "joined refusal lists must fill the array exactly");
+    out
+}
+
+/// `scope`: the read lane plus the grouping's own refusals.
+pub const SCOPE_REFUSALS: &[Refusal] = &joined::<
+    { NATIVE_READ_REFUSALS.len() + grouping::REFUSALS.len() },
+>(&[NATIVE_READ_REFUSALS, &grouping::REFUSALS]);
+
+/// `combined`: the write lane, the readiness refusals the published receipt
+/// is read through, the grouping's own refusals, and the grouped run that
+/// did not publish every group.
+pub const COMBINED_REFUSALS: &[Refusal] =
+    &joined::<{ NATIVE_WRITE_REFUSALS.len() + 5 + grouping::REFUSALS.len() + 1 }>(&[
+        NATIVE_WRITE_REFUSALS,
+        &[
+            COMBINED_INPUTS_PUBLICATION_PENDING,
+            COMBINED_INPUTS_NOT_CURRENT,
+            COMBINED_INPUTS_EMPTY,
+            COMBINED_NO_INPUTS,
+            COMBINED_READINESS_UNAVAILABLE,
+        ],
+        &grouping::REFUSALS,
+        &[grouping::GROUPS_PARTIAL],
+    ]);
 
 pub fn transformer_set(inputs: &ds_cli_contract::Inputs) -> Result<TransformerSet, Failure> {
     let names = inputs.repeated("transformer");
