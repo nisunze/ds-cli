@@ -426,6 +426,94 @@ pub fn projection_definitions(
         .collect())
 }
 
+/// One row of the project's tag-definition listing, as far as this reads it.
+#[derive(Deserialize)]
+struct ListedDefinition {
+    definition_id: String,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    cardinality: String,
+}
+
+/// The refusal for definition ids the project does not hold, naming the ids
+/// it does hold so the next attempt can be exact.
+fn unknown_keys(unknown: Vec<String>, known: &[&str]) -> Refusal {
+    let mut detail = format!(
+        "the project has no active tag definition {}",
+        unknown.join(", ")
+    );
+    if !known.is_empty() {
+        let shown: Vec<&str> = known.iter().copied().take(SHOWN).collect();
+        detail.push_str(&format!("; it has {}", shown.join(", ")));
+        if known.len() > shown.len() {
+            detail.push_str(&format!(" and {} more", known.len() - shown.len()));
+        }
+    }
+    Refusal::new(RefusalCode::KeyUnknown, detail)
+        .key(&unknown[0])
+        .subjects(unknown)
+}
+
+fn not_single(key: &str, cardinality: &str) -> Refusal {
+    Refusal::new(
+        RefusalCode::KeyNotSingle,
+        format!(
+            "{key} is a {} definition; a transformer can only sit in one folder",
+            if cardinality.is_empty() {
+                "cardinality-less"
+            } else {
+                cardinality
+            }
+        ),
+    )
+    .key(key)
+}
+
+/// Every group-by and filter id must be an ACTIVE definition of the project,
+/// and every group-by id a single-valued one — checked against the project's
+/// definition listing (the rows `ds design tag project-list` reads) before the
+/// projection is requested. The tag service answers an unknown id with a
+/// not-found that reads like a permission problem; this names the id and the
+/// ids that exist instead.
+pub fn check_definitions(
+    group_by: &[String],
+    filters: &[Filter],
+    listing: &serde_json::Value,
+) -> Result<(), Refusal> {
+    let filters = check_shape(group_by, filters)?;
+    let rows: Vec<ListedDefinition> = serde_json::from_value(listing.clone()).map_err(|error| {
+        Refusal::new(
+            RefusalCode::ProjectionInvalid,
+            format!("the tag definition listing is unreadable: {error}"),
+        )
+    })?;
+    let active: Vec<&ListedDefinition> = rows
+        .iter()
+        .filter(|row| row.state.as_deref().is_none_or(|state| state == "active"))
+        .collect();
+    let known: Vec<&str> = active
+        .iter()
+        .map(|row| row.definition_id.as_str())
+        .collect();
+    let unknown: Vec<String> = ordered_definitions(group_by, &filters)
+        .into_iter()
+        .filter(|key| !known.contains(key))
+        .map(str::to_string)
+        .collect();
+    if !unknown.is_empty() {
+        return Err(unknown_keys(unknown, &known));
+    }
+    for key in group_by {
+        if let Some(row) = active.iter().find(|row| row.definition_id == *key) {
+            if row.cardinality != SINGLE {
+                return Err(not_single(key, &row.cardinality));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn parse_document(request: &Request<'_>) -> Result<Document, Refusal> {
     let projection = |detail: String| Refusal::new(RefusalCode::ProjectionInvalid, detail);
     if request.document.len() > MAX_DOCUMENT_BYTES {
@@ -499,31 +587,13 @@ pub fn plan(request: &Request<'_>) -> Result<Plan, Refusal> {
         .map(|key| key.to_string())
         .collect();
     if !unknown.is_empty() {
-        return Err(Refusal::new(
-            RefusalCode::KeyUnknown,
-            format!(
-                "the tag projection has no definition {}",
-                unknown.join(", ")
-            ),
-        )
-        .key(&unknown[0])
-        .subjects(unknown));
+        let known: Vec<&str> = definitions.keys().copied().collect();
+        return Err(unknown_keys(unknown, &known));
     }
     for key in request.group_by {
         let definition = definitions[key.as_str()];
         if definition.cardinality != SINGLE {
-            return Err(Refusal::new(
-                RefusalCode::KeyNotSingle,
-                format!(
-                    "{key} is a {} definition; a transformer can only sit in one folder",
-                    if definition.cardinality.is_empty() {
-                        "cardinality-less"
-                    } else {
-                        definition.cardinality.as_str()
-                    }
-                ),
-            )
-            .key(key));
+            return Err(not_single(key, &definition.cardinality));
         }
     }
     for filter in &filters {
@@ -942,6 +1012,39 @@ mod tests {
         // no projection to hand in.
         let refusal = run("", &[], &["city"], &[]).expect_err("no document needed");
         assert_eq!(refusal.code, RefusalCode::Empty);
+    }
+
+    /// A typo is refused by name, with the ids that exist, before the
+    /// projection is requested — the tag service answers it with a not-found
+    /// that reads like a permission problem.
+    #[test]
+    fn definitions_are_checked_against_the_project_listing() {
+        let listing = json!([
+            {"definition_id": "city", "cardinality": "single", "state": "active"},
+            {"definition_id": "phase", "cardinality": "single"},
+            {"definition_id": "crew", "cardinality": "multiple", "state": "active"},
+            {"definition_id": "old_city", "cardinality": "single", "state": "archived"},
+        ]);
+        check_definitions(&keys(&["city"]), &filters(&["phase=i", "crew=a"]), &listing)
+            .expect("active ids; filtering on a multi-valued one is fine");
+        let refusal = check_definitions(&keys(&["district", "city"]), &[], &listing)
+            .expect_err("no district");
+        assert_eq!(refusal.code, RefusalCode::KeyUnknown);
+        assert_eq!(refusal.subjects, keys(&["district"]));
+        assert!(
+            refusal.detail.contains("it has city, phase, crew"),
+            "{}",
+            refusal.detail
+        );
+        let refusal = check_definitions(&keys(&["old_city"]), &[], &listing)
+            .expect_err("archived is not active");
+        assert_eq!(refusal.code, RefusalCode::KeyUnknown);
+        let refusal =
+            check_definitions(&keys(&["crew"]), &[], &listing).expect_err("multiple values");
+        assert_eq!(refusal.code, RefusalCode::KeyNotSingle);
+        let refusal =
+            check_definitions(&keys(&["city"]), &[], &json!({"x": 1})).expect_err("not a listing");
+        assert_eq!(refusal.code, RefusalCode::ProjectionInvalid);
     }
 
     /// A host learns what to export — and whether the request is well formed
