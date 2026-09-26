@@ -19,8 +19,9 @@ use ds_grid_engine::{
     EffectClass, EngineeringAttributeEvidence, GridSession, NetworkCalculationRequest,
     OperationDescriptor, ProfileAtlasOptions, ResultStore, SectionDemandsRequest,
     SpottingPlanError, SpottingPlanRequest, StructureAnalysisRequest,
-    StructureUsageScreeningRequest, TerrainAnomalyOptions, analyze_network_topology,
-    calculate_stringing_and_structures, structure_usage_screening,
+    StructureCapacityTablesRequest, StructureUsageScreeningRequest, TerrainAnomalyOptions,
+    analyze_network_topology, calculate_stringing_and_structures, structure_capacity_tables,
+    structure_usage_screening,
 };
 use ds_grid_model::{
     AlignmentId, EntityId, StructureLabelPolicy, StructureTypeId, TableKind, TensionSectionId,
@@ -507,6 +508,15 @@ fn dispatch(
                 engine_error(operation_id, "engine returned an unresolvable result id")
             })?;
             serialize(operation_id, artifact)
+        }
+        "structure_capacity_tables" => {
+            let params: RequestParams<StructureCapacityTablesRequest> =
+                parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                structure_capacity_tables(session.snapshot(), &params.request)
+                    .map_err(|error| engine_error(operation_id, error))?,
+            )
         }
         "screen_structure_usage" => {
             let params: RequestParams<StructureUsageScreeningRequest> =
