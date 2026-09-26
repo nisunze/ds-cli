@@ -32,7 +32,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use ds_cli_auth::{TransformerKind, TransformerLifecycle};
+use ds_cli_auth::{TransformerKind, TransformerLifecycle, WeakNetwork};
 use ds_cli_contract::outcome::{ExitClass, Failure};
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -384,33 +384,22 @@ fn bounded_summary(stderr: &str, stdout: &str) -> String {
         .to_string()
 }
 
-/// The pauses between attempts when the network blinks: the desktop's own
-/// tolerance for a weak link, so a batch of eighty sheets does not lose
-/// seventy rows to one dropped second.
-pub(super) const WEAK_NETWORK_DELAYS: &[std::time::Duration] = &[
-    std::time::Duration::from_secs(2),
-    std::time::Duration::from_secs(6),
-    std::time::Duration::from_secs(15),
-];
-
-/// Retry `op` after each delay while its refusal is retryable (`unavailable`
-/// or `conflict` — the world, not the request, has to change); any other
-/// refusal, and the last retryable one, is returned as it came.
+/// Retry `op` under the kernel's weak-network schedule
+/// ([`WeakNetwork::FIELD`], the one sign-in, token refresh and dataset
+/// downloads share, so a batch of eighty sheets does not lose seventy rows to
+/// one dropped second) while its refusal is retryable (`unavailable` or
+/// `conflict` — the world, not the request, has to change); any other refusal,
+/// and the last retryable one, is returned as it came.
 pub(super) fn with_weak_network<T>(
-    delays: &[std::time::Duration],
-    mut op: impl FnMut() -> Result<T, Failure>,
+    weak_network: &WeakNetwork,
+    op: impl FnMut() -> Result<T, Failure>,
 ) -> Result<T, Failure> {
-    let mut attempt = 0;
-    loop {
-        match op() {
-            Ok(value) => return Ok(value),
-            Err(failure) if failure.class().retryable() && attempt < delays.len() => {
-                std::thread::sleep(delays[attempt]);
-                attempt += 1;
-            }
-            Err(failure) => return Err(failure),
-        }
-    }
+    weak_network
+        .run(
+            op,
+            |outcome| matches!(outcome, Err(failure) if failure.class().retryable()),
+        )
+        .0
 }
 
 fn failure_to_host(failure: Failure) -> HostFailure {
@@ -1295,7 +1284,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
             // A weak link blinks; a room fetch that was refused by an outage is
             // asked again before the row is written off.
-            let context = with_weak_network(WEAK_NETWORK_DELAYS, || {
+            let context = with_weak_network(&WeakNetwork::FIELD, || {
                 ds_cli_auth::transformer_context_for_project(lane, project, name)
             })?;
             require_same_context(
@@ -1673,26 +1662,22 @@ fn survey_append_inputs(
             // A weak link blinks; a refresh the world refused (the fetch's
             // own retryable class) is asked again before the form is written
             // off. The copy is left as it was by every failed attempt.
-            let mut attempt = 0;
-            let read = loop {
-                match store::refresh(
-                    &root,
-                    &scope,
-                    form,
-                    &Filter::default(),
-                    policy,
-                    now,
-                    |body| fetch(body),
-                ) {
-                    Err(HoldError::Fetch(failure))
-                        if failure.class().retryable() && attempt < WEAK_NETWORK_DELAYS.len() =>
-                    {
-                        std::thread::sleep(WEAK_NETWORK_DELAYS[attempt]);
-                        attempt += 1;
-                    }
-                    other => break other,
-                }
-            };
+            let (read, _) = WeakNetwork::FIELD.run(
+                || {
+                    store::refresh(
+                        &root,
+                        &scope,
+                        form,
+                        &Filter::default(),
+                        policy,
+                        now,
+                        |body| fetch(body),
+                    )
+                },
+                |outcome| {
+                    matches!(outcome, Err(HoldError::Fetch(failure)) if failure.class().retryable())
+                },
+            );
             let held_copy =
                 match read {
                     Ok(copy) => store::rows(&root, &scope, &copy.manifest).and_then(|rows| {
@@ -2340,11 +2325,15 @@ mod tests {
         }
     }
 
+    /// The field schedule with its pauses removed: the same attempts, no wait.
+    const IMMEDIATE: ds_cli_auth::WeakNetwork =
+        ds_cli_auth::WeakNetwork::new(&[std::time::Duration::ZERO; 3]);
+
     #[test]
     fn a_blink_is_retried_but_a_wrong_request_is_not() {
         use std::cell::Cell;
         let calls = Cell::new(0);
-        let value = super::with_weak_network(&[std::time::Duration::ZERO; 3], || {
+        let value = super::with_weak_network(&IMMEDIATE, || {
             calls.set(calls.get() + 1);
             if calls.get() < 3 {
                 Err(ds_cli_contract::Failure::unavailable(
@@ -2358,7 +2347,7 @@ mod tests {
         .unwrap();
         assert_eq!((value, calls.get()), ("room", 3));
         let calls = Cell::new(0);
-        let refused = super::with_weak_network(&[std::time::Duration::ZERO; 3], || {
+        let refused = super::with_weak_network(&IMMEDIATE, || {
             calls.set(calls.get() + 1);
             Err::<(), _>(ds_cli_contract::Failure::invalid(
                 "report_inputs_invalid",
@@ -2369,7 +2358,7 @@ mod tests {
         assert_eq!((refused.code(), calls.get()), ("report_inputs_invalid", 1));
         // Four blinks in a row is an outage: the last refusal comes back.
         let calls = Cell::new(0);
-        let outage = super::with_weak_network(&[std::time::Duration::ZERO; 3], || {
+        let outage = super::with_weak_network(&IMMEDIATE, || {
             calls.set(calls.get() + 1);
             Err::<(), _>(ds_cli_contract::Failure::unavailable(
                 "auth_transient",

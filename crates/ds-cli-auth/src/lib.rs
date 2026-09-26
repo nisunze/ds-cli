@@ -62,6 +62,9 @@ pub use context::{
     MapState, ProfileFence, ProviderIdentity, ProviderSelection, ProviderTarget, SelectedProject,
     SessionState, arbitrate_provider,
 };
+/// The kernel's one retry schedule for a weak link; every native caller that
+/// retries a blink uses it rather than a schedule of its own.
+pub use ds_client_core::WeakNetwork;
 pub use ds_client_core::{
     BundleDownloadReceipt, ContourParameters, DataDistributionRequest, MediaGrant, MediaGrants,
     PrintContextKind, SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry, SurveyEntryMedia,
