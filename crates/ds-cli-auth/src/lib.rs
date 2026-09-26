@@ -5539,7 +5539,9 @@ fn named_tag_definitions(command: &DesignTagsCommand) -> Option<Vec<&str>> {
     (!definitions.is_empty()).then_some(definitions)
 }
 
-fn tag_definition_unknown(
+/// The refusal for a tag call whose named definition is not active; public so
+/// a consumer that re-maps it can test against the real failure.
+pub fn tag_definition_unknown(
     lane: &str,
     project: &str,
     definitions: &[&str],

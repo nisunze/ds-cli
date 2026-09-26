@@ -486,12 +486,11 @@ mod tests {
 
     #[test]
     fn a_definition_archived_after_the_listing_keeps_the_key_unknown_code() {
-        let gone = Failure::invalid(
-            ds_cli_auth::TAG_DEFINITION_UNKNOWN_REFUSAL.code,
-            "tag definition `city` is not active in project `p-1` (HTTP 404)",
-        )
-        .detail(json!({"definition_ids": ["city"]}))
-        .next("ds design tag project-list --project p-1 --lane stable --output json");
+        let gone = ds_cli_auth::tag_definition_unknown("stable", "p-1", &["city"], None);
+        assert_eq!(
+            gone.code(),
+            ds_cli_auth::TAG_DEFINITION_UNKNOWN_REFUSAL.code
+        );
         let mapped = definition_gone(gone);
         assert_eq!(mapped.code(), GROUP_KEY_UNKNOWN.code);
         assert!(mapped.message().contains("`city`"));
