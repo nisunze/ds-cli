@@ -40,6 +40,12 @@ pub(crate) const fn with_shared<const M: usize>(mut r: [Refusal; M], at: usize) 
     r
 }
 const REFUSALS: &[Refusal] = &with_shared([LOCAL; 1 + SHARED], 1);
+const RETIRE_BACKUP: Refusal = Refusal {
+    code: "grid_retire_backup_unconfirmed",
+    when: "the Server did not confirm a byte-verified backup of the exact head (it could not take one, or its answer was lost or lacked it); nothing is reported retired",
+    remedy: "run dsgrid project list --include-deleted: retry a head still active unchanged; read a retired head's backup with dsgrid project backup download",
+};
+const RETIRE_REFUSALS: &[Refusal] = &with_shared([RETIRE_BACKUP; 1 + SHARED], 1);
 const GEOJSON_OUTPUT: Refusal = Refusal {
     code: "grid_geojson_output_invalid",
     when: "the GeoJSON destination exists or cannot be written",
@@ -89,7 +95,7 @@ pub static RETIRE: Command = Command {
     path: &["dsgrid", "project", "retire"],
     contract: 1,
     summary: "Retire one superseded project DS Grid model (needs --yes).",
-    purpose: "Retires the exact model head in the explicitly named project after comparing its revision and digest. Immutable revisions and model bytes remain available for lineage. A changed head is refused.",
+    purpose: "Retires the exact model head in the explicitly named project after comparing its revision and digest. The Server first copies and verifies the head's bytes into a separate backup; without one nothing is retired. Immutable revisions and model bytes remain available for lineage. A changed head is refused.",
     chapter: Chapter::GridModel,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -112,9 +118,9 @@ pub static RETIRE: Command = Command {
         .required(),
         Arg::value("reason", "<text>", "Why this model is superseded.").required(),
     ],
-    output: "The retired model and pinned head, deletion time, and confirmation that immutable revisions and model bytes were retained.",
+    output: "The retired model and pinned head, deletion time, confirmation that immutable revisions and model bytes were retained, and backup {bucket, object, generation, digest, byte_length}: the verified copy restore and backup download read.",
     examples: &[],
-    refusals: REFUSALS,
+    refusals: RETIRE_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &["retire model", "superseded model"],
     requires: Requires::Server,
@@ -602,17 +608,55 @@ fn geojson_page(
 }
 pub fn retire(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let project = i.require("project")?;
-    let receipt = ds_cli_auth::grid_models_for_project(
+    let expected_digest = i.require("expected-digest")?;
+    let answer = ds_cli_auth::grid_models_for_project(
         i.require("lane")?,
         project,
         &ds_cli_auth::GridModelsCommand::Delete {
             model: i.require("model")?.into(),
             expected_revision: i.require("expected-head")?.into(),
-            expected_digest: i.require("expected-digest")?.into(),
+            expected_digest: expected_digest.into(),
             reason: i.require("reason")?.into(),
         },
-    )?;
-    Ok(receipt.data)
+    )
+    .map(|receipt| receipt.data);
+    retired(answer, expected_digest)
+}
+/// A retirement is reported only with the backup of the exact head.
+///
+/// The Server copies the head's bytes into its separate backup bucket and
+/// verifies them before it retires the head; when it cannot, it answers 5xx
+/// and leaves the head active. That answer used to reach the caller as
+/// `auth_transient`, and nothing checked the answer named its backup.
+fn retired(answer: Result<Value, Failure>, expected_digest: &str) -> Result<Value, Failure> {
+    let unconfirmed = |message: &str, detail: Value| {
+        Failure::unavailable(RETIRE_BACKUP.code, message)
+            .detail(detail)
+            .remedy(RETIRE_BACKUP.remedy)
+            .next("ds dsgrid project list --project <exact-id> --include-deleted")
+    };
+    let data = answer.map_err(|failure| match failure.code() {
+        "auth_transient" | "auth_response_unreadable" => unconfirmed(
+            "the Server did not confirm a verified backup of the head; the retirement is not confirmed",
+            json!({"cause_code": failure.code(), "cause_message": failure.message()}),
+        ),
+        _ => failure,
+    })?;
+    let backup = &data["backup"];
+    let named = |key: &str| backup[key].as_str().is_some_and(|v| !v.is_empty());
+    let positive = |key: &str| backup[key].as_i64().is_some_and(|v| v > 0);
+    if backup["digest"] != expected_digest
+        || !named("bucket")
+        || !named("object")
+        || !positive("generation")
+        || !positive("byte_length")
+    {
+        return Err(unconfirmed(
+            "the retirement answer named no verified backup of the exact head",
+            json!({"backup": backup}),
+        ));
+    }
+    Ok(data)
 }
 pub fn restore(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let receipt = ds_cli_auth::grid_models_for_project(
@@ -649,6 +693,94 @@ mod tests {
             model: "model-1",
             revision: "revision-1",
             digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }
+    }
+
+    const HEAD_DIGEST: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+
+    fn backup() -> Value {
+        json!({
+            "bucket": "ds-grid-model-backups",
+            "object": format!("project-grid-models/v1/project-1/model-1/revision-1/{HEAD_DIGEST}.dsgrid"),
+            "generation": 1_758_870_000_123_456_i64,
+            "digest": HEAD_DIGEST,
+            "byte_length": 4096
+        })
+    }
+
+    /// The Server's `deletion` answer, as ds-brain writes it.
+    fn deletion(backup: Value) -> Value {
+        json!({
+            "project_id": "project-1",
+            "model_id": "model-1",
+            "head_revision_id": "revision-1",
+            "head_model_digest": HEAD_DIGEST,
+            "deleted_at": "2026-09-26T07:00:00Z",
+            "revisions_retained": true,
+            "model_object_retained": true,
+            "backup": backup
+        })
+    }
+
+    #[test]
+    fn retire_refuses_when_no_verified_backup_of_the_head_is_confirmed() {
+        // The Server takes and verifies the backup before it retires the
+        // head; when it cannot, it answers 5xx and the head stays active.
+        // That reached the caller as an authentication hiccup.
+        for cause in [
+            Failure::unavailable(
+                "auth_transient",
+                "the native authentication service is temporarily unavailable",
+            ),
+            Failure::unavailable(
+                "auth_response_unreadable",
+                "the authentication or project response did not match its closed contract",
+            ),
+        ] {
+            let refused = retired(Err(cause), HEAD_DIGEST).expect_err("no backup, no receipt");
+            assert_eq!(refused.code(), RETIRE_BACKUP.code);
+            assert_eq!(refused.remedy_text(), Some(RETIRE_BACKUP.remedy));
+        }
+        // An answer without the backup, or with another head's backup, is
+        // never accepted as a retirement.
+        let mut other = backup();
+        other["digest"] = json!("2".repeat(64));
+        let mut unwritten = backup();
+        unwritten["generation"] = json!(0);
+        let mut empty = backup();
+        empty["byte_length"] = json!(0);
+        for backup in [Value::Null, other, unwritten, empty] {
+            let refused =
+                retired(Ok(deletion(backup)), HEAD_DIGEST).expect_err("unverified backup");
+            assert_eq!(refused.code(), RETIRE_BACKUP.code);
+        }
+        // The Server's own named refusals keep their names.
+        let fenced = retired(
+            Err(Failure::invalid("grid_request_refused", "moved head")),
+            HEAD_DIGEST,
+        )
+        .expect_err("refused");
+        assert_eq!(fenced.code(), "grid_request_refused");
+        let declared = RETIRE
+            .refusals
+            .iter()
+            .find(|r| r.code == RETIRE_BACKUP.code)
+            .expect("retire declares the backup refusal");
+        assert!(declared.when.contains("backup") && declared.remedy.len() > 10);
+    }
+
+    #[test]
+    fn retire_envelope_names_the_verified_backup_identity() {
+        let envelope =
+            retired(Ok(deletion(backup())), HEAD_DIGEST).expect("verified backup accepted");
+        assert_eq!(envelope["backup"], backup());
+        assert_eq!(envelope["head_model_digest"], HEAD_DIGEST);
+        assert_eq!(envelope["revisions_retained"], true);
+        for field in ["backup", "bucket", "object", "generation", "byte_length"] {
+            assert!(
+                RETIRE.output.contains(field),
+                "retire's output contract must name `{field}`"
+            );
         }
     }
 
