@@ -18,18 +18,17 @@ use ds_cli_contract::{Context, Failure, Inputs};
 use ds_client_core::{
     ClientError, ClientProfile, CompoundedArchive, CompoundedReportReceipt,
     CompoundedReportRequest, DeviceAccessSession, DeviceAuthContext, DeviceAuthorizationStatus,
-    DeviceBeginPublic, DeviceBeginRequest, DeviceBinding, DeviceCredential, DeviceError,
-    DevicePendingAuthorization, DevicePrivateKey, DeviceProtectedCall, DeviceProtectedOperation,
-    DeviceSummary, DeviceTransport, MediaGrants, ProjectDirectory, ProjectFormSettingsEditor,
-    ProjectFormsSnapshot, RetirementAction, RetirementReceipt, RetirementRequest,
-    SecretRequestBody, SolarSnapshot, StoreError, SurveyEntriesChanges,
+    DeviceBeginPublic, DeviceBeginRequest, DeviceBinding, DeviceCallFailure, DeviceCredential,
+    DeviceError, DevicePendingAuthorization, DevicePrivateKey, DeviceProtectedCall,
+    DeviceProtectedOperation, DeviceSummary, DeviceTransport, MediaGrants, ProjectDirectory,
+    ProjectFormSettingsEditor, ProjectFormsSnapshot, RetirementAction, RetirementReceipt,
+    RetirementRequest, SecretRequestBody, SolarSnapshot, StoreError, SurveyEntriesChanges,
     SurveyEntriesChangesRequest, SurveyEntriesRead, SurveyEntriesReadRequest,
     SurveyEntriesSelectRequest, SurveyEntriesSelection, SurveyEntryCreateReceipt,
     SurveyEntryCreateRequest, SurveyQueryRequest, SurveyQueryResult, TileOperationResult,
     TilePreflight, TileType, TransformerContext, TransformerInventory, TransformerSet,
-    TransformerStatusList, TransportError, TransportResponse, device_secret_json,
-    parse_device_begin, parse_device_list, parse_device_read, parse_device_refresh,
-    parse_device_revoke, parse_device_status,
+    TransformerStatusList, TransportError, TransportResponse, WeakNetwork, device_secret_json,
+    parse_device_begin, parse_device_list, parse_device_read, parse_device_revoke,
 };
 use serde_json::{Value, json};
 use zeroize::{Zeroize, Zeroizing};
@@ -359,10 +358,9 @@ pub fn run_status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         return Ok(output);
     }
     let mut transport = NativeDeviceTransport::new(&profile, gateway_key);
-    let response = transport
-        .status(device_secret_json(&pending.status_request()).map_err(device_failure)?)
-        .map_err(transport_failure)?;
-    let result = parse_device_status(response).map_err(device_failure)?;
+    let result = pending
+        .observe_status(&mut transport, &WeakNetwork::FIELD)
+        .map_err(|failure| device_call_failure(failure, |never| match never {}))?;
     release(&mut store, &state_key(&profile))?;
     Ok(observed_status_json(public, result))
 }
@@ -430,10 +428,9 @@ pub(crate) fn link_status(lane: Lane) -> Result<Value, Failure> {
         DevicePendingAuthorization::decode_protected(&bytes, &profile).map_err(device_failure)?;
     let public = pending.public();
     let mut transport = NativeDeviceTransport::new(&profile, gateway_key);
-    let response = transport
-        .status(device_secret_json(&pending.status_request()).map_err(device_failure)?)
-        .map_err(transport_failure)?;
-    let result = parse_device_status(response).map_err(device_failure)?;
+    let result = pending
+        .observe_status(&mut transport, &WeakNetwork::FIELD)
+        .map_err(|failure| device_call_failure(failure, |never| match never {}))?;
     release(&mut store, &key)?;
     Ok(observed_status_json(public, result))
 }
@@ -536,17 +533,9 @@ fn protected(
     let (mut store, bytes) = store_load(&key)?;
     let credential =
         DeviceCredential::decode_protected(&bytes, &profile).map_err(device_failure)?;
-    let nonce = random_token::<24>()?;
-    let timestamp = unix_seconds();
     let binding = DeviceBinding::for_profile(&profile, &catalog_digest).map_err(device_failure)?;
-    let refresh = credential
-        .refresh_request(timestamp, &nonce, &binding)
-        .map_err(device_failure)?;
     let mut transport = NativeDeviceTransport::new(&profile, gateway_key);
-    let response = transport
-        .refresh(device_secret_json(&refresh).map_err(device_failure)?)
-        .map_err(transport_failure)?;
-    let (session, _) = parse_device_refresh(response, timestamp).map_err(device_failure)?;
+    let session = refresh_access(&credential, &binding, &mut transport)?;
     let response = transport
         .protected(session.protected_call(operation))
         .map_err(transport_failure)?;
@@ -1131,17 +1120,9 @@ pub fn restore_session(lane: Lane) -> Result<Option<DeviceSession>, Failure> {
     let Some(credential) = credential else {
         return Ok(None);
     };
-    let timestamp = unix_seconds();
-    let nonce = random_token::<24>()?;
     let binding = DeviceBinding::for_profile(&profile, &catalog_digest).map_err(device_failure)?;
-    let refresh = credential
-        .refresh_request(timestamp, &nonce, &binding)
-        .map_err(device_failure)?;
     let mut device_transport = NativeDeviceTransport::new(&profile, gateway_key);
-    let response = device_transport
-        .refresh(device_secret_json(&refresh).map_err(device_failure)?)
-        .map_err(transport_failure)?;
-    let (access, _) = parse_device_refresh(response, timestamp).map_err(device_failure)?;
+    let access = refresh_access(&credential, &binding, &mut device_transport)?;
     Ok(Some(DeviceSession {
         profile,
         credential,
@@ -1394,6 +1375,58 @@ fn transport_failure(_: TransportError) -> Failure {
     .remedy("retry without changing protected device state")
 }
 
+/// Refresh one device access session through the kernel's weak-network
+/// policy. Every attempt is signed with its own timestamp and nonce: the
+/// endpoint accepts a nonce once, so a dropped attempt is never resent.
+fn refresh_access(
+    credential: &DeviceCredential,
+    binding: &DeviceBinding,
+    transport: &mut NativeDeviceTransport,
+) -> Result<DeviceAccessSession, Failure> {
+    credential
+        .refresh_session(transport, binding, &WeakNetwork::FIELD, || {
+            Ok((unix_seconds(), random_token::<24>()?))
+        })
+        .map(|(session, _)| session)
+        .map_err(|failure| device_call_failure(failure, std::convert::identity))
+}
+
+/// A device call the kernel already retried: a host failure is the host's
+/// own refusal, a contract failure is unchanged, and a blink that outlived
+/// every retry says how many were spent.
+fn device_call_failure<E>(
+    failure: DeviceCallFailure<E>,
+    host: impl FnOnce(E) -> Failure,
+) -> Failure {
+    match failure {
+        DeviceCallFailure::Host(error) => host(error),
+        DeviceCallFailure::Device(error) => device_failure(error),
+        DeviceCallFailure::Transient {
+            http_status,
+            retries,
+            ..
+        } => {
+            let retried = match retries {
+                0 => String::new(),
+                1 => " (retried once)".to_owned(),
+                retries => format!(" (retried {retries} times)"),
+            };
+            let mut detail = json!({ "retries": retries });
+            if let Some(status) = http_status {
+                detail["http_status"] = json!(status);
+            }
+            Failure::unavailable(
+                "device_auth_transient",
+                format!(
+                    "the fixed DS device authorization endpoint is temporarily unreachable{retried}"
+                ),
+            )
+            .remedy("retry without changing protected device state")
+            .detail(detail)
+        }
+    }
+}
+
 fn store_failure(error: StoreError) -> Failure {
     match error {
         StoreError::Conflict => Failure::conflict(
@@ -1566,6 +1599,36 @@ mod tests {
         ] {
             assert!(!transcript.contains(secret), "CLI output exposed {secret}");
         }
+    }
+
+    #[test]
+    fn a_device_call_the_kernel_retried_says_how_often_and_stays_transient() {
+        let failure = device_call_failure(
+            DeviceCallFailure::<Failure>::Transient {
+                transport: None,
+                http_status: Some(503),
+                retries: 3,
+            },
+            std::convert::identity,
+        );
+        assert_eq!(failure.code(), "device_auth_transient");
+        assert!(failure.class().retryable());
+        assert!(failure.message().ends_with("(retried 3 times)"));
+        assert_eq!(
+            failure.detail_value(),
+            Some(&json!({ "retries": 3, "http_status": 503 }))
+        );
+        // A definitive answer keeps its own code; the host's refusal is its own.
+        let refused = device_call_failure(
+            DeviceCallFailure::<Failure>::Device(DeviceError::Response),
+            std::convert::identity,
+        );
+        assert_eq!(refused.code(), "device_auth_response_invalid");
+        let host = device_call_failure(
+            DeviceCallFailure::Host(Failure::unavailable(RNG_UNAVAILABLE.code, "no rng")),
+            std::convert::identity,
+        );
+        assert_eq!(host.code(), RNG_UNAVAILABLE.code);
     }
 
     #[test]
