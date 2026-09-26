@@ -135,6 +135,101 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
     Ok(style)
 }
 
+/// One part of a saved template override that the render could not use.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SkippedPart {
+    /// `palette`, `size`, `size_by_value`, `scale_weight` or `label`; or
+    /// `override` when the governed style takes no part of it at all.
+    pub part: &'static str,
+    /// The refusal [`apply`] gives for that part.
+    pub reason: String,
+}
+
+/// The render-time rule for an already-saved layout. [`apply`] refuses an
+/// unusable override outright, which is right while a person authors it and
+/// wrong once the layout is saved: one layer's bad choice would refuse the
+/// whole sheet. Here each independent part is tried with only what it reads;
+/// a part the governed style cannot take is dropped and named, and the rest
+/// still applies. The returned override always passes [`apply`].
+pub fn usable(
+    document: &Value,
+    change: &PrintStyleOverride,
+    paper: &str,
+) -> (PrintStyleOverride, Vec<SkippedPart>) {
+    if apply(document, change, paper).is_ok() {
+        return (change.clone(), Vec::new());
+    }
+    let whole = |reason: String| {
+        let part = "override";
+        (
+            PrintStyleOverride::default(),
+            vec![SkippedPart { part, reason }],
+        )
+    };
+    if let Err(reason) = apply(document, &PrintStyleOverride::default(), paper) {
+        return whole(reason);
+    }
+    let refused = |part: &'static str, present: bool, probe: PrintStyleOverride| {
+        present
+            .then(|| apply(document, &probe, paper).err())
+            .flatten()
+            .map(|reason| SkippedPart { part, reason })
+    };
+    let only = PrintStyleOverride::default;
+    let mut kept = change.clone();
+    let mut skipped = Vec::new();
+    let palette = PrintStyleOverride {
+        color: kept.color.clone(),
+        palette: kept.palette.clone(),
+        field: kept.field.clone(),
+        ..only()
+    };
+    if let Some(part) = refused("palette", !kept.palette.is_empty(), palette) {
+        kept.palette.clear();
+        skipped.push(part);
+    }
+    let size = PrintStyleOverride {
+        size: kept.size,
+        ..only()
+    };
+    if let Some(part) = refused("size", kept.size.is_some(), size) {
+        kept.size = None;
+        skipped.push(part);
+    }
+    let sizes = PrintStyleOverride {
+        size_by_value: kept.size_by_value.clone(),
+        field: kept.field.clone(),
+        ..only()
+    };
+    if let Some(part) = refused("size_by_value", !kept.size_by_value.is_empty(), sizes) {
+        kept.size_by_value.clear();
+        skipped.push(part);
+    }
+    // After `size`: a scale policy needs the explicit size that remains.
+    let weight = PrintStyleOverride {
+        scale_weight: kept.scale_weight.clone(),
+        size: kept.size,
+        ..only()
+    };
+    if let Some(part) = refused("scale_weight", kept.scale_weight.is_some(), weight) {
+        kept.scale_weight = None;
+        skipped.push(part);
+    }
+    let label = PrintStyleOverride {
+        label: kept.label.clone(),
+        ..only()
+    };
+    if let Some(part) = refused("label", kept.label.is_some(), label) {
+        kept.label = None;
+        skipped.push(part);
+    }
+    match apply(document, &kept, paper) {
+        Ok(_) => (kept, skipped),
+        // Parts that refuse only together: the governed style prints as is.
+        Err(reason) => whole(reason),
+    }
+}
+
 /// Resolve once at the fitted/explicit map scale, shared by map strokes and legend samples.
 pub fn at_scale(
     change: &PrintStyleOverride,
@@ -151,20 +246,21 @@ pub fn at_scale(
     Ok(resolved)
 }
 
-/// Validate template choices before the host acquires geographic context.
-/// Rendering calls the same effective-style function, so there is one rule.
+/// Check template choices before the host acquires geographic context. Every
+/// overridden layer must name a governed style the host prepared; that is
+/// the host's own integrity and still refuses. An override part the style
+/// cannot take does not: the render follows [`usable`], printing the rest and
+/// naming what it skipped, so the plan and the page keep one rule.
 pub fn preflight(layout: &Layout, documents: &Value) -> Result<(), String> {
-    for (layer, change) in &layout.style_overrides {
+    for layer in layout.style_overrides.keys() {
         let reference = layout
             .style_refs
             .get(layer)
             .ok_or_else(|| format!("layer {layer}: no governed style reference"))?;
-        let document = documents
+        documents
             .get(reference)
             .filter(|value| value.is_object())
             .ok_or_else(|| format!("layer {layer}: governed style {reference} is not prepared"))?;
-        apply(document, change, layout.paper.expression_value())
-            .map_err(|error| format!("layer {layer} ({reference}): {error}"))?;
     }
     Ok(())
 }
@@ -255,5 +351,78 @@ mod tests {
         );
         assert!((a3["label"]["layout"]["text-size"].as_f64().unwrap() * 0.75 - 8.).abs() < 1e-8);
         assert_eq!(base["label"]["layout"]["text-size"], 10);
+    }
+
+    /// Gisagara A0 `lv_lines`, 2026-09-25: a saved palette with no field over a
+    /// flat governed colour refused the whole PDF. The render now drops that
+    /// palette alone, names it, and keeps the template's other choices.
+    #[test]
+    fn a_saved_palette_without_a_category_is_skipped_and_named_not_refused() {
+        let lv_lines = json!({"type":"line","paint":{"line-color":"#1F4E79","line-width":1.5}});
+        let change: PrintStyleOverride = serde_json::from_value(
+            json!({"palette":{"Existing":"#555555"},"size":2.5,"opacity":0.9}),
+        )
+        .unwrap();
+        let refusal = apply(&lv_lines, &change, "print_a0").unwrap_err();
+        assert!(refusal.contains("need a category field"), "{refusal}");
+
+        let (kept, skipped) = usable(&lv_lines, &change, "print_a0");
+        assert_eq!(
+            skipped,
+            vec![SkippedPart {
+                part: "palette",
+                reason: refusal
+            }]
+        );
+        assert!(kept.palette.is_empty());
+        let printed = apply(&lv_lines, &kept, "print_a0").unwrap();
+        assert_eq!(printed["paint"]["line-color"], "#1F4E79");
+        assert_eq!(printed["paint"]["line-width"], 2.5);
+        assert_eq!(printed["paint"]["line-opacity"], 0.9);
+    }
+
+    #[test]
+    fn usable_overrides_pass_whole_and_unstyleable_documents_skip_everything() {
+        let base = json!({"type":"line","paint":{"line-color":"#F4EEE2","line-width":4}});
+        let change: PrintStyleOverride =
+            serde_json::from_value(json!({"field":"type","palette":{"District":"#D6D5D1"}}))
+                .unwrap();
+        assert_eq!(usable(&base, &change, "print_a3"), (change.clone(), vec![]));
+
+        // Each part is judged alone: a fill has no size, the rest applies.
+        let fill = json!({"type":"fill","paint":{"fill-color":"#EEEEEE"}});
+        let sized: PrintStyleOverride =
+            serde_json::from_value(json!({"size":2.,"color":"#123456","visible":false})).unwrap();
+        let (kept, skipped) = usable(&fill, &sized, "print_a3");
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].part, "size");
+        let printed = apply(&fill, &kept, "print_a3").unwrap();
+        assert_eq!(printed["paint"]["fill-color"], "#123456");
+        assert_eq!(printed["layout"]["visibility"], "none");
+
+        let raster = json!({"type":"raster","paint":{}});
+        let (kept, skipped) = usable(&raster, &sized, "print_a3");
+        assert_eq!(kept, PrintStyleOverride::default());
+        assert_eq!(skipped[0].part, "override");
+        assert!(skipped[0]
+            .reason
+            .contains("supported governed geometry style"));
+    }
+
+    #[test]
+    fn map_preflight_refuses_only_unprepared_styles_not_unusable_parts() {
+        let mut layout = crate::printing::default_layout();
+        layout
+            .style_refs
+            .insert("lv_lines".into(), "master/lv_lines_print".into());
+        let change: PrintStyleOverride =
+            serde_json::from_value(json!({"palette":{"Existing":"#555555"}})).unwrap();
+        layout.style_overrides.insert("lv_lines".into(), change);
+        let documents = json!({"master/lv_lines_print":
+            {"type":"line","paint":{"line-color":"#1F4E79","line-width":1.5}}});
+        preflight(&layout, &documents).unwrap();
+        assert!(preflight(&layout, &json!({}))
+            .unwrap_err()
+            .contains("is not prepared"));
     }
 }

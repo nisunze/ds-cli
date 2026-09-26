@@ -1982,6 +1982,17 @@ pub fn valid_print_warning(warning: &PrintWarning, transformer: &str, formats: &
                 && warning.omitted_rows == 0
                 && warning.total_rows == 0
         }
+        // A saved style choice one map layer could not print with, skipped
+        // so the rest of the sheet still renders: an override part the
+        // governed style cannot take (printing::style_overrides::usable),
+        // or a point symbol style meeting line or polygon features. The
+        // element is the map layer; no table rows stand behind it.
+        "print_style_override_skipped" | "print_symbol_skipped" => {
+            placed
+                && crate::printing::identifier(&warning.element_id)
+                && warning.omitted_rows == 0
+                && warning.total_rows == 0
+        }
         // Cable consistency findings (report_consistency::lv_cables):
         // one row per pole whose saved cable label disagrees with its
         // LV line, mirrored on the workbook's Engineering Review
@@ -3836,10 +3847,28 @@ mod tests {
                     "code":"print_label_omissions", "transformer":"tx_a", "output_id":format,
                     "layout_id":"detail", "element_id":"", "total_rows":0,
                     "omitted_rows":0, "message":"poles labels: 1 skipped by repeat-label spacing"
+                },
+                // A saved style choice one layer could not print with
+                // (2026-09-22..25: the whole Gisagara PDF was refused).
+                {
+                    "code":"print_style_override_skipped", "transformer":"tx_a", "output_id":format,
+                    "layout_id":"detail", "element_id":"lv_lines", "total_rows":0,
+                    "omitted_rows":0, "message":"Layer lv_lines (master/lv_lines_print): template override palette skipped"
+                },
+                {
+                    "code":"print_symbol_skipped", "transformer":"tx_a", "output_id":format,
+                    "layout_id":"detail", "element_id":"drafting_errors", "total_rows":0,
+                    "omitted_rows":0, "message":"Layer drafting_errors (master/drafting_errors_print): 1 Polygon feature not drawn"
                 }
             ]);
-            assert_eq!(verify(&document).unwrap().warnings.len(), 4);
+            assert_eq!(verify(&document).unwrap().warnings.len(), 6);
             for (index, key, invalid) in [
+                (4, "element_id", json!("")),
+                (4, "total_rows", json!(1)),
+                (4, "layout_id", json!("another-layout")),
+                (5, "element_id", json!("drafting errors")),
+                (5, "omitted_rows", json!(1)),
+                (5, "transformer", json!("tx_b")),
                 (0, "code", json!("print_visual_approval")),
                 (0, "element_id", json!("")),
                 (0, "total_rows", json!(5)),
