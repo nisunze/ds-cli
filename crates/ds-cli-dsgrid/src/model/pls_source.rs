@@ -37,7 +37,7 @@ pub const WORKSPACE_NOT_LINKED: Refusal = Refusal {
 pub const WORKSPACE_DIGEST_MOVED: Refusal = Refusal {
     code: "workspace_digest_moved",
     when: "the workspace's bytes no longer digest to what the link pinned (PLS-CADD saved since)",
-    remedy: "re-import and re-link; `ds dsgrid-exchange pull` (contract 02 §3, not landed) will re-read it in place",
+    remedy: "re-import the workspace (`ds dsgrid-exchange convert`, then `ds dsgrid model import-external`) and re-link it with `ds dsgrid model link`",
 };
 pub const WORKSPACE_NOT_THIS_PACKAGE: Refusal = Refusal {
     code: "workspace_not_this_package",

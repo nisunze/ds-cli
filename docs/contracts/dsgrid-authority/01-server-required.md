@@ -25,12 +25,12 @@ The DS Grid **engine** publishes 81 operations (`ds dsgrid describe`): 63 model 
 2. **Typed dsgrid commands over the engine** (all `authority none` on a package path, `headless_project` on a project head; every one with `--dry-run`, revision pin, `--yes`, receipt naming the engine operation id and the new revision):
    - `ds dsgrid alignment create|route|reverse|delete`, `ds dsgrid node create|move|delete`, `ds dsgrid edge create|delete`
    - `ds dsgrid structure create|move|retype|role|delete|describe` (description = the consultant's point 1)
-   - `ds dsgrid structure-type author|geometry|attachment|list|show` (contract 05)
+   - `ds dsgrid structure-type author|geometry|attachment|list|show`
    - `ds dsgrid cable author|definition|curve`, `ds dsgrid section create|support|path|sag-mode|details|delete`
    - `ds dsgrid criteria weather|case|set|rule|binding|clearance` (contract 03)
    - `ds dsgrid feature-codes import|migrate|export|report` (contract 03)
    - `ds dsgrid terrain point|source|points|insert|elevation|delete|supersede`, `ds dsgrid policy author|delete`
-   - `ds dsgrid analyse stringing|usage|demands|structure|topology|terrain-anomalies|clearance` (reads/solves; contract 06 attaches verification levels)
+   - `ds dsgrid analyse stringing|usage|demands|structure|topology|terrain-anomalies|clearance` (reads/solves)
    - `ds dsgrid spotting plan|apply` (contract 04)
    - `ds dsgrid transaction apply` stays as the escape hatch for raw envelopes.
 3. **Working copy as the default target.** Every typed command accepts `--model <local-id>` (the machine's working copy, journaled, becomes the next revision) or `--package <path> --out <path>` (immutable package → new package). `dsgrid model list` shows the head revision after each command.

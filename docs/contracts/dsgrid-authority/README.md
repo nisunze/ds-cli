@@ -1,11 +1,10 @@
-# DS Grid to authority — program contracts (copies)
+# DS Grid to authority — program contracts
 
-Copies of `~/programs/dsgrid-authority/contracts/` landed with the code that
-honours them (charter convention: "contracts live with the code"). The
-program folder is the working master while the program runs; each landing
-copies the contracts it changed here in the same commit. ds-network owns the
-engine/exchange code the contracts bind; ds-cli carries the same copies for
-the typed commands.
+These contracts live with the code that honours them (charter convention:
+"contracts live with the code"). ds-network owns the engine/exchange code the
+contracts bind; ds-cli carries the same copies for the typed commands, and a
+landing that changes one changes both. Nothing outside these two repositories
+holds a copy (the ds-work program folder dropped its drafts on 2026-09-26).
 
 | Contract | Landed here by |
 |---|---|

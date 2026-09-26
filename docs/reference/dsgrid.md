@@ -491,7 +491,7 @@ code's RV/RH (obstacle height applied) at the survey-point cases — vertical
 at the maximum-temperature case, horizontal blow-out at the high-wind case,
 solved in the load plane — with deficits, violations, per-alignment and
 per-code totals; verification level `proposal` (PLS-CADD's Terrain ›
-Clearances confirms; contract 06 compares). `export` writes the table as
+Clearances confirms). `export` writes the table as
 FEA 15 for PLS-CADD 16.81; the workspace sync (`dsgrid-exchange sync`,
 contract 02) rewrites FEA 15 and CRI 94 from the same model.
 
