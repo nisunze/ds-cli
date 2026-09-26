@@ -54,7 +54,7 @@ impl WeakNetwork {
         loop {
             let outcome = attempt();
             if retries >= self.delays.len() || !blinked(&outcome) {
-                return (outcome, retries as u8);
+                return (outcome, u8::try_from(retries).unwrap_or(u8::MAX));
             }
             std::thread::sleep(self.delays[retries]);
             retries += 1;
