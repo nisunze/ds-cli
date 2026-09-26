@@ -183,7 +183,8 @@ pub fn resolve(lane: &str, project: &str, requested: &Requested) -> Result<Group
                 transformers: active.clone(),
                 definitions: requested.definitions.clone(),
             },
-        )?
+        )
+        .map_err(definition_gone)?
         .into_result();
         (
             projection["document"]
@@ -407,6 +408,25 @@ fn refusal(refusal: kernel::Refusal) -> Failure {
     failure.detail(serde_json::to_value(&refusal).unwrap_or(Value::Null))
 }
 
+/// The listing named a key active and the projection then refused it as not
+/// active (archived between the two reads). That is the fact
+/// `check_definitions` refuses as `combined_group_key_unknown`, so it keeps
+/// this command's code for it, with the tag service's own words.
+fn definition_gone(failure: Failure) -> Failure {
+    if failure.code() != ds_cli_auth::TAG_DEFINITION_UNKNOWN_REFUSAL.code {
+        return failure;
+    }
+    let mut mapped = Failure::invalid(GROUP_KEY_UNKNOWN.code, failure.message())
+        .remedy(GROUP_KEY_UNKNOWN.remedy);
+    if let Some(detail) = failure.detail_value() {
+        mapped = mapped.detail(detail.clone());
+    }
+    for next in failure.next_commands() {
+        mapped = mapped.next(next.clone());
+    }
+    mapped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,5 +482,23 @@ mod tests {
         );
         let detail = failure.detail_value().expect("detail");
         assert_eq!(detail["groups"].as_array().map(Vec::len), Some(3));
+    }
+
+    #[test]
+    fn a_definition_archived_after_the_listing_keeps_the_key_unknown_code() {
+        let gone = Failure::invalid(
+            ds_cli_auth::TAG_DEFINITION_UNKNOWN_REFUSAL.code,
+            "tag definition `city` is not active in project `p-1` (HTTP 404)",
+        )
+        .detail(json!({"definition_ids": ["city"]}))
+        .next("ds design tag project-list --project p-1 --lane stable --output json");
+        let mapped = definition_gone(gone);
+        assert_eq!(mapped.code(), GROUP_KEY_UNKNOWN.code);
+        assert!(mapped.message().contains("`city`"));
+        assert_eq!(mapped.remedy_text(), Some(GROUP_KEY_UNKNOWN.remedy));
+        assert_eq!(mapped.detail_value().unwrap()["definition_ids"][0], "city");
+        assert_eq!(mapped.next_commands().len(), 1);
+        let other = definition_gone(Failure::unauthorized("auth_rejected", "refused"));
+        assert_eq!(other.code(), "auth_rejected");
     }
 }

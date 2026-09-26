@@ -53,7 +53,7 @@ pub static PROJECTION: Command = Command {
     ],
     output: "Project, definition IDs, exact document text, verified SHA-256/bytes and coverage counts/exclusions.",
     examples: &[],
-    refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
+    refusals: PROJECTION_REFUSALS,
     reference: Some("docs/reference/design.md"),
     search: &[],
     requires: Requires::Server,
@@ -95,16 +95,26 @@ const LOCAL: Refusal = Refusal {
     when: "the entry file is missing, oversized or not an exact transformer/value array",
     remedy: "provide 1..200 distinct assignments within 1 MiB",
 };
-const fn batch_refusals() -> [Refusal; 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()] {
-    let mut r = [LOCAL; 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()];
+const STATUS_REFUSALS: &[Refusal] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
+const UNKNOWN: Refusal = ds_cli_auth::TAG_DEFINITION_UNKNOWN_REFUSAL;
+/// A command's own refusals followed by the shared project-status ones.
+const fn with_status<const N: usize>(own: &[Refusal]) -> [Refusal; N] {
+    let mut r = [LOCAL; N];
     let mut n = 0;
-    while n < ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() {
-        r[n + 1] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals[n];
+    while n < own.len() {
+        r[n] = own[n];
         n += 1;
     }
+    let mut s = 0;
+    while s < STATUS_REFUSALS.len() {
+        r[n + s] = STATUS_REFUSALS[s];
+        s += 1;
+    }
+    assert!(n + s == N, "refusal list must fill the array exactly");
     r
 }
-const BATCH_REFUSALS: &[Refusal] = &batch_refusals();
+const PROJECTION_REFUSALS: &[Refusal] = &with_status::<{ 1 + STATUS_REFUSALS.len() }>(&[UNKNOWN]);
+const BATCH_REFUSALS: &[Refusal] = &with_status::<{ 2 + STATUS_REFUSALS.len() }>(&[LOCAL, UNKNOWN]);
 const BATCH_ARGS: &[Arg] = &[
     crate::PROJECT_ARG,
     LANE,

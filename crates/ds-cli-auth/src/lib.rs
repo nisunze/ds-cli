@@ -5490,14 +5490,103 @@ pub fn design_tags(
     project: &str,
     command: &ds_client_core::design_tags::Command,
 ) -> Result<HeadlessProjectReport<Value>, Failure> {
-    headless_named_report(
+    let named = headless_named_project_with(
         lane,
         project,
+        |error| map_design_tags_error(command, lane, project, error),
         |device, project| device.design_tags(project, command),
         |client, project| client.design_tags(project, command, now()),
-    )
+    )?;
+    Ok(HeadlessProjectReport {
+        identity: named.identity,
+        user_email: named.user_email,
+        lane: named.lane,
+        project_id: named.project_id,
+        project_name: String::new(),
+        project_status: String::new(),
+        result: named.result,
+    })
 }
 pub use ds_client_core::design_tags::Command as DesignTagsCommand;
+
+/// The tag service's answer that a definition this call named is not active
+/// in the project. ds-client-core classifies only a ds-brain-authored 404 for
+/// a request that names a definition as `ResourceNotFound`; every other
+/// refusal — a genuine 401/403 included — keeps the shared mapping.
+fn map_design_tags_error(
+    command: &DesignTagsCommand,
+    lane: &str,
+    project: &str,
+    error: ClientError,
+) -> Failure {
+    if error.kind() == ErrorKind::ResourceNotFound
+        && let Some(definitions) = named_tag_definitions(command)
+    {
+        return tag_definition_unknown(lane, project, &definitions, error.service_refusal());
+    }
+    map_client(error)
+}
+
+/// The definition ids a tag call named, in the caller's order.
+fn named_tag_definitions(command: &DesignTagsCommand) -> Option<Vec<&str>> {
+    let definitions: Vec<&str> = match command {
+        DesignTagsCommand::Definitions => Vec::new(),
+        DesignTagsCommand::Batch { group, .. } => vec![group.as_str()],
+        DesignTagsCommand::Projection { definitions, .. } => {
+            definitions.iter().map(String::as_str).collect()
+        }
+    };
+    (!definitions.is_empty()).then_some(definitions)
+}
+
+fn tag_definition_unknown(
+    lane: &str,
+    project: &str,
+    definitions: &[&str],
+    refusal: Option<&ds_client_core::ServiceRefusal>,
+) -> Failure {
+    let named = definitions
+        .iter()
+        .map(|id| format!("`{id}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let subject = if definitions.len() == 1 {
+        format!("tag definition {named} is not active in project `{project}`")
+    } else {
+        format!("one of the tag definitions {named} is not active in project `{project}`")
+    };
+    // The service's own sentence names the exact id when several were asked.
+    let message = match refusal.and_then(|refusal| refusal.message()) {
+        Some(sentence) => format!("{subject} (HTTP 404): {sentence}"),
+        None => format!("{subject} (HTTP 404)"),
+    };
+    let mut detail = json!({
+        "project": project,
+        "definition_ids": definitions,
+    });
+    if let Some(refusal) = refusal {
+        detail["http_status"] = json!(refusal.status());
+        if let Some(code) = refusal.code() {
+            detail["service_code"] = json!(code);
+        }
+        if let Some(sentence) = refusal.message() {
+            detail["service_message"] = json!(sentence);
+        }
+    }
+    Failure::invalid(TAG_DEFINITION_UNKNOWN_REFUSAL.code, message)
+        .detail(detail)
+        .remedy(TAG_DEFINITION_UNKNOWN_REFUSAL.remedy)
+        .next(format!(
+            "ds design tag project-list --project {project} --lane {lane} --output json"
+        ))
+}
+
+/// A tag call named a definition id the project does not hold as active.
+pub const TAG_DEFINITION_UNKNOWN_REFUSAL: Refusal = Refusal {
+    code: "tag_definition_unknown",
+    when: "a named tag definition id is unknown or inactive in the project (HTTP 404)",
+    remedy: "list the project's active definitions with `ds design tag project-list --project <id>` and pass an exact definition_id",
+};
 
 /// Cross-project design migration — ONE endpoint, `kind` transformer|dsgrid.
 /// Migration is stateless: a source project INTO an explicit destination. The
@@ -5921,6 +6010,90 @@ mod tests {
             failure.class(),
             ds_cli_contract::outcome::ExitClass::InvalidInput
         );
+    }
+
+    /// The tag service's 404 for a definition id it does not hold as active
+    /// crosses the real client core and becomes `tag_definition_unknown`,
+    /// naming the id and the command that lists definitions. A genuine
+    /// 401/403 — and the Gateway's own 404 — still read as `auth_rejected`.
+    #[test]
+    fn an_unknown_tag_definition_is_named_not_an_auth_rejection() {
+        use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
+
+        let brain_404 = serde_json::to_vec(&json!({
+            "success": false,
+            "error": {
+                "code": "NOT_FOUND",
+                "message": "selected grouping definition cty is not active in this project",
+            },
+        }))
+        .unwrap();
+        let gateway_404 = serde_json::to_vec(&json!({"message": "Not Found"})).unwrap();
+        let forbidden = serde_json::to_vec(&json!({
+            "success": false,
+            "error": {"code": "FORBIDDEN", "message": "not a member of this project"},
+        }))
+        .unwrap();
+        let projection = DesignTagsCommand::Projection {
+            transformers: vec!["T-1".into()],
+            definitions: vec!["city".into(), "cty".into()],
+        };
+        let batch = DesignTagsCommand::Batch {
+            group: "cty".into(),
+            entries: vec![("T-1".into(), "bere".into())],
+            digest: None,
+        };
+
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone());
+        let mut refuse = |command: &DesignTagsCommand, status: u16, body: &[u8]| {
+            transport.push_design_tags(status, body);
+            let error = client.design_tags("p-1", command, NOW + 1).unwrap_err();
+            map_design_tags_error(command, "canary", "p-1", error)
+        };
+
+        let unknown = refuse(&projection, 404, &brain_404);
+        assert_eq!(unknown.code(), "tag_definition_unknown");
+        assert_eq!(
+            unknown.class(),
+            ds_cli_contract::outcome::ExitClass::InvalidInput
+        );
+        assert_eq!(
+            unknown.message(),
+            "one of the tag definitions `city`, `cty` is not active in project `p-1` (HTTP 404): \
+             selected grouping definition cty is not active in this project"
+        );
+        assert_eq!(
+            unknown.remedy_text(),
+            Some(TAG_DEFINITION_UNKNOWN_REFUSAL.remedy)
+        );
+        assert_eq!(
+            unknown.next_commands(),
+            ["ds design tag project-list --project p-1 --lane canary --output json"]
+        );
+        let detail = unknown.detail_value().unwrap();
+        assert_eq!(detail["definition_ids"], json!(["city", "cty"]));
+        assert_eq!(detail["http_status"], 404);
+
+        let batch_unknown = refuse(&batch, 404, &brain_404);
+        assert_eq!(batch_unknown.code(), "tag_definition_unknown");
+        assert!(
+            batch_unknown
+                .message()
+                .starts_with("tag definition `cty` is not active in project `p-1`")
+        );
+
+        for (status, body) in [(401, &forbidden), (403, &forbidden), (404, &gateway_404)] {
+            let refused = refuse(&projection, status, body);
+            assert_eq!(refused.code(), "auth_rejected", "HTTP {status}");
+            assert_eq!(
+                refused.class(),
+                ds_cli_contract::outcome::ExitClass::Unauthorized
+            );
+        }
+        // The listing names no definition, so its 404 is never this code.
+        let listing = refuse(&DesignTagsCommand::Definitions, 404, &brain_404);
+        assert_eq!(listing.code(), "auth_rejected");
     }
 
     // ------------------------------------------------------------------

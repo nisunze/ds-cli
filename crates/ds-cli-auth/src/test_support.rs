@@ -41,6 +41,8 @@ pub(crate) struct Scripted {
     /// Scripted answers for `POST /api/v1/projects`; the door records like a
     /// governance door and answers Unreachable when the script is empty.
     pub project_properties: VecDeque<TransportResponse>,
+    /// Scripted answers for the design tag route; Unreachable when empty.
+    pub design_tags: VecDeque<TransportResponse>,
     /// Every call recorded as `door bearer device-id|user`, or with the
     /// request body for the approval door.
     pub calls: Vec<String>,
@@ -77,6 +79,12 @@ impl FixtureTransport {
     pub(crate) fn push_project_properties(&self, status: u16, body: &[u8]) {
         self.lock()
             .project_properties
+            .push_back(TransportResponse::new(status, body.to_vec()));
+    }
+
+    pub(crate) fn push_design_tags(&self, status: u16, body: &[u8]) {
+        self.lock()
+            .design_tags
             .push_back(TransportResponse::new(status, body.to_vec()));
     }
 
@@ -181,6 +189,16 @@ impl Transport for FixtureTransport {
             Some(response) => Ok(response),
             None => recorded,
         }
+    }
+
+    fn design_tags(
+        &mut self,
+        _call: ds_client_core::DesignTagsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        self.lock()
+            .design_tags
+            .pop_front()
+            .ok_or(TransportError::Unreachable)
     }
 
     fn admin_bounds(
