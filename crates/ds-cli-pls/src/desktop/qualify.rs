@@ -81,7 +81,7 @@ pub static COMMAND: Command = Command {
     ],
     reference: Some("docs/reference/pls.md"),
     search: &[
-        "native restore reopen",
+        "restore reopen",
         "submission acceptance",
         "restore twice",
         "pls-cadd desktop",

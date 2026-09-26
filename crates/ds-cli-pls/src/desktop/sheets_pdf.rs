@@ -73,7 +73,7 @@ pub static COMMAND: Command = Command {
     ],
     reference: Some("docs/reference/pls.md"),
     search: &[
-        "plan and profile",
+        "plan profile",
         "sheets view",
         "print sheets",
         "pls-cadd desktop",

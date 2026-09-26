@@ -141,7 +141,7 @@ pub static BACKUP_DOWNLOAD: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["retired model backup", "recover retired"],
+    search: &["undelete", "recovery"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

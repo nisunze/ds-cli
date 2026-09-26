@@ -368,7 +368,7 @@ pub static PROJECT_EXTRACT: Command = Command {
     examples: &[],
     refusals: &PROJECT_EXTRACT_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["download original bak", "version backup"],
+    search: &["download original", "version backup"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

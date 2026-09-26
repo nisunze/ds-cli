@@ -30,7 +30,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[super::NATIVE_REFUSED],
     reference: Some("docs/reference/design.md"),
-    search: &["attachment model versions", "which versions carry"],
+    search: &["model versions", "which versions"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

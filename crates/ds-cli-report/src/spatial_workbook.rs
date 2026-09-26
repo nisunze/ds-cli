@@ -86,9 +86,7 @@ pub static COMMAND: Command = Command {
         ENGINE_REFUSED,
     ],
     reference: Some("docs/reference/report.md"),
-    search: &[
-        "spatial", "parcels", "upi", "sector", "bigquery", "excel", "xlsx",
-    ],
+    search: &["parcels", "upi", "bigquery", "xlsx"],
     requires: Requires::Server,
     availability,
 };

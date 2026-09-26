@@ -141,7 +141,6 @@ pub static PLAN_COMMAND: Command = Command {
     refusals: SPATIAL_REFUSALS,
     reference: Some("docs/reference/data.md"),
     search: &[
-        "bigquery",
         "geospatial",
         "dataset",
         "parcels",

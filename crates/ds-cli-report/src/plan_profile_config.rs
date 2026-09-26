@@ -90,7 +90,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/report.md"),
-    search: &["dsgrid", "print", "json", "variants"],
+    search: &["dsgrid"],
     requires: Requires::Server,
     availability,
 };
@@ -114,7 +114,7 @@ pub static SCHEMA: Command = Command {
     }],
     refusals: &[],
     reference: Some("docs/reference/report.md"),
-    search: &["dsgrid", "print", "json", "variants"],
+    search: &["dsgrid", "variants"],
     requires: Requires::Server,
     availability: schema_available,
 };

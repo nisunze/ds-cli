@@ -68,7 +68,7 @@ capability.",
         crate::CONFIRMATION_REQUIRED,
     ),
     reference: Some("docs/reference/design.md"),
-    search: &["moderate comment", "remove comment text"],
+    search: &["moderate comment", "remove text"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

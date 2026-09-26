@@ -110,7 +110,7 @@ pub static COMMAND: Command = Command {
     search: &[
         "autosag",
         "deliverables",
-        "plan and profile pdf",
+        "profile pdf",
         "rtf reports",
         "pls-cadd desktop",
     ],
