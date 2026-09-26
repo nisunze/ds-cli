@@ -1589,16 +1589,51 @@ pub(crate) fn data_distribution<T: AuthorizedTransport>(
     project: &str,
     request: &crate::DataDistributionRequest,
 ) -> Result<serde_json::Value, ClientError> {
+    data_distribution_over(
+        profile,
+        transport,
+        authority,
+        project,
+        request,
+        &crate::WeakNetwork::FIELD,
+    )
+}
+
+/// [`data_distribution`] under an explicit retry schedule. A read that is
+/// safe to send again (every seeding read: the catalogue, a print-context
+/// acquisition, a bounded parcel or customer read) is retried when the link
+/// blinks; a billed spatial execution is sent once.
+pub(crate) fn data_distribution_over<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    request: &crate::DataDistributionRequest,
+    weak_network: &crate::WeakNetwork,
+) -> Result<serde_json::Value, ClientError> {
     validate_tiles(project)?;
     request.validate()?;
-    let response = transport
-        .data_distribution(crate::DataDistributionCall {
-            profile,
-            ds_project: project,
-            operation: request,
-            authority: authority.call(),
-        })
-        .map_err(|error| match error {
+    let weak_network = if request.resendable() {
+        *weak_network
+    } else {
+        crate::WeakNetwork::new(&[])
+    };
+    let (outcome, retries) = weak_network.run(
+        || {
+            transport.data_distribution(crate::DataDistributionCall {
+                profile,
+                ds_project: project,
+                operation: request,
+                authority: authority.call(),
+            })
+        },
+        |outcome| match outcome {
+            Err(_) => true,
+            Ok(response) => crate::weak_network::transient_status(response.status),
+        },
+    );
+    let response = outcome.map_err(|error| {
+        match error {
             TransportError::TimedOut => ClientError::new(
                 ErrorKind::Transient,
                 "Data distribution did not answer within the gateway deadline",
@@ -1606,8 +1641,11 @@ pub(crate) fn data_distribution<T: AuthorizedTransport>(
             TransportError::Unreachable => {
                 ClientError::new(ErrorKind::Transient, "Data distribution is unreachable")
             }
-        })?;
+        }
+        .after_retries(retries)
+    })?;
     crate::data_distribution::decode(response, request)
+        .map_err(|error| error.after_retries(retries))
 }
 
 pub(crate) fn printing<T: AuthorizedTransport>(

@@ -12,12 +12,14 @@ use crate::project_report::{
     RetirementAction, RetirementReceipt, RetirementRequest, TransformerInventory, TransformerSet,
     TransformerStatusList,
 };
+use crate::weak_network::transient_status;
 use crate::{
     ClientError, ClientProfile, ErrorKind, ProjectDirectory, ProjectFormSettingsEditor,
     ProjectFormsSnapshot, RefreshCall, SignInCall, SolarSnapshot, StoreError, SurveyEntriesChanges,
     SurveyEntriesChangesRequest, SurveyEntriesSelectRequest, SurveyEntriesSelection,
     SurveyEntryCreateReceipt, SurveyEntryCreateRequest, SurveyQueryRequest, SurveyQueryResult,
     TileOperationResult, TilePreflight, TileType, TransformerContext, Transport, TransportResponse,
+    WeakNetwork,
 };
 
 const MAX_AUTH_RESPONSE: usize = crate::transport::AUTH_RESPONSE_LIMIT;
@@ -119,6 +121,7 @@ pub struct Client<T, S> {
     transport: T,
     store: S,
     session: Option<Session>,
+    weak_network: WeakNetwork,
 }
 
 struct Session {
@@ -196,7 +199,16 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             transport,
             store,
             session: None,
+            weak_network: WeakNetwork::FIELD,
         }
+    }
+
+    /// Replace the [`WeakNetwork::FIELD`] schedule sign-in and token refresh
+    /// retry a blink with. Only the pauses change; what counts as a blink,
+    /// and that nothing definitive is retried, does not.
+    pub fn with_weak_network(mut self, weak_network: WeakNetwork) -> Self {
+        self.weak_network = weak_network;
+        self
     }
 
     pub fn profile(&self) -> &ClientProfile {
@@ -223,13 +235,26 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
                 "password input is empty or outside its protected-input bound",
             ));
         }
-        let response = self.transport.sign_in(SignInCall {
-            profile: &self.profile,
-            email,
-            password,
-        })?;
+        // A dropped connection or a 5xx is retried. A 429 is not: it is
+        // Firebase's password throttle, and another attempt is exactly what it
+        // asks not to receive.
+        let network = self.weak_network;
+        let (outcome, retries) = network.run(
+            || {
+                self.transport.sign_in(SignInCall {
+                    profile: &self.profile,
+                    email,
+                    password,
+                })
+            },
+            |outcome| match outcome {
+                Err(_) => true,
+                Ok(response) => response.status != 429 && transient_status(response.status),
+            },
+        );
+        let response = outcome.map_err(|error| ClientError::from(error).after_retries(retries))?;
         if response.status != 200 {
-            return Err(classify_auth_error(response, false));
+            return Err(classify_auth_error(response, false).after_retries(retries));
         }
         let mut login = validate_firebase_login_response(
             &response.body,
@@ -352,12 +377,24 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             return Err(ClientError::from(StoreError::Conflict));
         }
         let session = self.session.as_ref().ok_or_else(signed_out)?;
-        let response = self.transport.refresh(RefreshCall {
-            profile: &self.profile,
-            refresh_token: &session.stored.refresh_token,
-        })?;
+        // The exchange is idempotent: the stored credential is replaced only
+        // after a 200, under this same lease, so a blink is simply asked again.
+        let network = self.weak_network;
+        let (outcome, retries) = network.run(
+            || {
+                self.transport.refresh(RefreshCall {
+                    profile: &self.profile,
+                    refresh_token: &session.stored.refresh_token,
+                })
+            },
+            |outcome| match outcome {
+                Err(_) => true,
+                Ok(response) => transient_status(response.status),
+            },
+        );
+        let response = outcome.map_err(|error| ClientError::from(error).after_retries(retries))?;
         if response.status != 200 {
-            let error = classify_auth_error(response, true);
+            let error = classify_auth_error(response, true).after_retries(retries);
             if error.is_permanent_session_failure() {
                 return Err(self.clear_permanent_disposition(error));
             }

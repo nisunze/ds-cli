@@ -31,7 +31,7 @@ use std::io::Write;
 
 use crate::{
     BundleDownloadCall, ClientError, ErrorKind, ServiceRefusal, Transport, TransportError,
-    TransportResponse,
+    TransportResponse, WeakNetwork,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -388,6 +388,14 @@ impl DataDistributionRequest {
                 | Self::SpatialPlan { .. }
                 | Self::SpatialExecute { .. }
         )
+    }
+
+    /// Whether a blink may be answered by sending this request again. Every
+    /// action but one is a read whose second answer is the first one's; a
+    /// spatial execution is billed per run, so a dropped answer is not a
+    /// reason to pay for it twice.
+    pub const fn resendable(&self) -> bool {
+        !matches!(self, Self::SpatialExecute { .. })
     }
 
     pub fn validate(&self) -> Result<(), ClientError> {
@@ -772,6 +780,27 @@ pub struct BundleDownloadReceipt {
     pub sha256: String,
 }
 
+/// Where one bundle download lands, and how a dropped attempt's bytes are
+/// discarded before the next attempt starts.
+pub trait BundleSink: Write {
+    /// Forget every byte written so far and continue from byte zero.
+    fn restart(&mut self) -> std::io::Result<()>;
+}
+
+impl BundleSink for Vec<u8> {
+    fn restart(&mut self) -> std::io::Result<()> {
+        self.clear();
+        Ok(())
+    }
+}
+
+impl BundleSink for std::fs::File {
+    fn restart(&mut self) -> std::io::Result<()> {
+        self.set_len(0)?;
+        std::io::Seek::rewind(self)
+    }
+}
+
 /// Stream one catalogue bundle through the host transport into `sink`, and
 /// admit the bytes only when their count and SHA-256 equal the catalogue row's.
 ///
@@ -780,48 +809,93 @@ pub struct BundleDownloadReceipt {
 /// what says whether the bytes are the bundle. A short, long, or altered body
 /// is refused after the fact — the sink already holds it, so a host that keeps
 /// the destination must discard it on an error.
+///
+/// A blink (the transport timed out or lost the host) is retried by the
+/// [`WeakNetwork::FIELD`] policy. A retry restarts the download: the sink is
+/// emptied first and the digest starts over, so a dropped attempt's bytes are
+/// never spliced into the next one's, and only a complete, verified body is
+/// ever answered with a receipt.
 pub fn download_bundle<T: Transport>(
     transport: &mut T,
     call: BundleDownloadCall<'_>,
-    sink: &mut dyn Write,
+    sink: &mut dyn BundleSink,
+) -> Result<BundleDownloadReceipt, ClientError> {
+    download_bundle_over(transport, call, sink, &WeakNetwork::FIELD)
+}
+
+/// One bundle attempt's reason to stop.
+enum BundleAttempt {
+    /// The link blinked: the only outcome a retry is spent on.
+    Blink(TransportError),
+    /// The body outgrew the catalogue size.
+    Oversized,
+    /// The destination could not be emptied for a retry.
+    Restart,
+}
+
+pub(crate) fn download_bundle_over<T: Transport>(
+    transport: &mut T,
+    call: BundleDownloadCall<'_>,
+    sink: &mut dyn BundleSink,
+    weak_network: &WeakNetwork,
 ) -> Result<BundleDownloadReceipt, ClientError> {
     let expected_bytes = call.expected_bytes();
     let expected_sha256 = call.expected_sha256().to_owned();
-    let mut digesting = DigestingSink {
-        inner: sink,
-        hasher: Sha256::new(),
-        written: 0,
-        limit: expected_bytes,
-        overflowed: false,
-    };
-    let outcome = transport.download_bundle(call, &mut digesting);
+    let mut first = true;
+    let (outcome, retries) = weak_network.run(
+        || {
+            if !std::mem::take(&mut first) {
+                sink.restart().map_err(|_| BundleAttempt::Restart)?;
+            }
+            let mut digesting = DigestingSink {
+                inner: &mut *sink,
+                hasher: Sha256::new(),
+                written: 0,
+                limit: expected_bytes,
+                overflowed: false,
+            };
+            let outcome = transport.download_bundle(call, &mut digesting);
+            // An object longer than the catalogue says is a mismatch whether
+            // the adapter reports the refused write as its own failure or not.
+            if digesting.overflowed {
+                return Err(BundleAttempt::Oversized);
+            }
+            outcome.map_err(BundleAttempt::Blink)?;
+            Ok((
+                digesting.written,
+                format!("{:x}", digesting.hasher.finalize()),
+            ))
+        },
+        |outcome| matches!(outcome, Err(BundleAttempt::Blink(_))),
+    );
     let mismatch = || {
         ClientError::new(
             ErrorKind::UnreadableResponse,
             "the reference bundle bytes do not match the catalogue's size and SHA-256",
         )
     };
-    // An object longer than the catalogue says is a mismatch whether the
-    // adapter reports the refused write as its own failure or not.
-    if digesting.overflowed {
-        return Err(mismatch());
-    }
-    outcome.map_err(|error| match error {
-        TransportError::TimedOut => ClientError::new(
+    let (written, sha256) = outcome.map_err(|attempt| match attempt {
+        BundleAttempt::Blink(TransportError::TimedOut) => ClientError::new(
             ErrorKind::Transient,
             "the reference bundle host did not answer within its deadline",
-        ),
-        TransportError::Unreachable => ClientError::new(
+        )
+        .after_retries(retries),
+        BundleAttempt::Blink(TransportError::Unreachable) => ClientError::new(
             ErrorKind::Transient,
             "the reference bundle host is unreachable or refused the object",
+        )
+        .after_retries(retries),
+        BundleAttempt::Oversized => mismatch(),
+        BundleAttempt::Restart => ClientError::new(
+            ErrorKind::DurableState,
+            "the reference bundle destination could not be emptied for a retry",
         ),
     })?;
-    let sha256 = format!("{:x}", digesting.hasher.finalize());
-    if digesting.written != expected_bytes || sha256 != expected_sha256 {
+    if written != expected_bytes || sha256 != expected_sha256 {
         return Err(mismatch());
     }
     Ok(BundleDownloadReceipt {
-        bytes: digesting.written,
+        bytes: written,
         sha256,
     })
 }
@@ -830,7 +904,7 @@ pub fn download_bundle<T: Transport>(
 /// the destination once the catalogue's size is exceeded so an oversized body
 /// cannot fill a disk before it is refused.
 struct DigestingSink<'a> {
-    inner: &'a mut dyn Write,
+    inner: &'a mut dyn BundleSink,
     hasher: Sha256,
     written: u64,
     limit: u64,
@@ -1304,9 +1378,14 @@ mod tests {
     }
 
     /// A scripted transport that writes whatever bytes it is told to write.
+    /// While `drops` is positive, an attempt writes part of the body and then
+    /// loses the connection, as a field link does mid-transfer.
     struct BytesTransport {
         body: Vec<u8>,
         calls: usize,
+        drops: usize,
+        /// The status every data-distribution answer that is not dropped carries.
+        status: u16,
     }
 
     impl Transport for BytesTransport {
@@ -1416,6 +1495,11 @@ mod tests {
         ) -> Result<(), TransportError> {
             self.calls += 1;
             assert_eq!(call.method(), "GET");
+            if self.drops > 0 {
+                self.drops -= 1;
+                let _ = sink.write_all(&self.body[..self.body.len() / 2]);
+                return Err(TransportError::Unreachable);
+            }
             // Stream in slices, as a socket would; an oversized body is cut off
             // by the sink, which is the refusal.
             for chunk in self.body.chunks(7) {
@@ -1424,6 +1508,18 @@ mod tests {
                 }
             }
             sink.flush().map_err(|_| TransportError::Unreachable)
+        }
+        fn data_distribution(
+            &mut self,
+            call: crate::DataDistributionCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            self.calls += 1;
+            assert_eq!(call.method(), "POST");
+            if self.drops > 0 {
+                self.drops -= 1;
+                return Err(TransportError::TimedOut);
+            }
+            Ok(TransportResponse::new(self.status, self.body.clone()))
         }
     }
 
@@ -1529,6 +1625,8 @@ mod tests {
         let mut transport = BytesTransport {
             body: body.clone(),
             calls: 0,
+            drops: 0,
+            status: 200,
         };
         let mut sink = Vec::new();
         let receipt = download_bundle(
@@ -1681,13 +1779,15 @@ mod tests {
             }
         }
         let mut sink = Vec::new();
-        let unreachable = download_bundle(
+        let unreachable = download_bundle_over(
             &mut Unreachable,
             BundleDownloadCall::new(url, &sha, body.len() as u64).unwrap(),
             &mut sink,
+            &IMMEDIATE,
         )
         .unwrap_err();
         assert_eq!(unreachable.kind(), ErrorKind::Transient);
+        assert_eq!(unreachable.retries(), 3);
         assert!(sink.is_empty());
         let profile = profile_for_tests();
         let request = DataDistributionRequest::ListDatasets {};
@@ -1711,6 +1811,208 @@ mod tests {
             Unreachable.data_distribution(call),
             Err(TransportError::Unreachable)
         ));
+    }
+
+    const IMMEDIATE: WeakNetwork = WeakNetwork::new(&[std::time::Duration::ZERO; 3]);
+    const BUNDLE_URL: &str = "https://storage.googleapis.com/edcl/reference/roads.geojsonl.gz";
+
+    fn bundle() -> (Vec<u8>, String) {
+        let body = (0..4096_u32)
+            .map(|index| (index * 31 % 251) as u8)
+            .collect::<Vec<_>>();
+        let sha = format!("{:x}", Sha256::digest(&body));
+        (body, sha)
+    }
+
+    #[test]
+    fn a_bundle_download_that_drops_once_restarts_and_lands_byte_identical() {
+        let (body, sha) = bundle();
+        let mut transport = BytesTransport {
+            body: body.clone(),
+            calls: 0,
+            drops: 1,
+            status: 200,
+        };
+        let mut sink = Vec::new();
+        let receipt = download_bundle_over(
+            &mut transport,
+            BundleDownloadCall::new(BUNDLE_URL, &sha, body.len() as u64).unwrap(),
+            &mut sink,
+            &IMMEDIATE,
+        )
+        .unwrap();
+        // The dropped attempt's half-body was discarded, not spliced in front.
+        assert_eq!(sink, body);
+        assert_eq!(receipt.bytes, body.len() as u64);
+        assert_eq!(receipt.sha256, sha);
+        assert_eq!(transport.calls, 2);
+    }
+
+    #[test]
+    fn a_bundle_download_that_drops_every_time_is_transient_and_says_it_retried() {
+        let (body, sha) = bundle();
+        let mut transport = BytesTransport {
+            body: body.clone(),
+            calls: 0,
+            drops: 4,
+            status: 200,
+        };
+        let mut sink = Vec::new();
+        let error = download_bundle_over(
+            &mut transport,
+            BundleDownloadCall::new(BUNDLE_URL, &sha, body.len() as u64).unwrap(),
+            &mut sink,
+            &IMMEDIATE,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Transient);
+        assert_eq!(error.retries(), 3);
+        assert_eq!(
+            error.to_string(),
+            "the reference bundle host is unreachable or refused the object (retried 3 times)"
+        );
+        assert_eq!(transport.calls, 4);
+        // What is left is one attempt's partial body, never a spliced whole:
+        // the host discards it, and nothing here called it complete.
+        assert_eq!(sink, body[..body.len() / 2]);
+    }
+
+    #[test]
+    fn a_wrong_bundle_is_refused_without_a_retry() {
+        let (body, _) = bundle();
+        let mut transport = BytesTransport {
+            body: body.clone(),
+            calls: 0,
+            drops: 0,
+            status: 200,
+        };
+        let error = download_bundle_over(
+            &mut transport,
+            BundleDownloadCall::new(BUNDLE_URL, &"b".repeat(64), body.len() as u64).unwrap(),
+            &mut Vec::new(),
+            &IMMEDIATE,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
+        assert_eq!(transport.calls, 1);
+    }
+
+    #[test]
+    fn a_file_destination_starts_over_at_byte_zero() {
+        let (body, sha) = bundle();
+        let path = std::env::temp_dir().join(format!(
+            "ds-client-core-bundle-restart-{}.bin",
+            std::process::id()
+        ));
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap();
+        let mut transport = BytesTransport {
+            body: body.clone(),
+            calls: 0,
+            drops: 2,
+            status: 200,
+        };
+        download_bundle_over(
+            &mut transport,
+            BundleDownloadCall::new(BUNDLE_URL, &sha, body.len() as u64).unwrap(),
+            &mut file,
+            &IMMEDIATE,
+        )
+        .unwrap();
+        drop(file);
+        let landed = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(landed, body);
+        assert_eq!(transport.calls, 3);
+    }
+
+    impl BytesTransport {
+        fn distribution(body: Value, drops: usize) -> Self {
+            Self {
+                body: serde_json::to_vec(&body).unwrap(),
+                calls: 0,
+                drops,
+                status: 200,
+            }
+        }
+    }
+
+    fn distribute(
+        transport: &mut BytesTransport,
+        request: &DataDistributionRequest,
+    ) -> Result<Value, ClientError> {
+        crate::authorized::data_distribution_over(
+            &profile_for_tests(),
+            transport,
+            crate::authorized::Authority {
+                bearer_token: "bearer",
+                uid: "uid",
+                email: "user@example.com",
+                device_id: None,
+            },
+            "proj-1",
+            request,
+            &IMMEDIATE,
+        )
+    }
+
+    #[test]
+    fn a_seeding_read_survives_one_dropout_but_a_billed_execution_is_sent_once() {
+        let catalogue = json!({"success": true, "data": [{"id": "roads"}]});
+        let mut transport = BytesTransport::distribution(catalogue.clone(), 1);
+        let rows = distribute(&mut transport, &DataDistributionRequest::ListDatasets {}).unwrap();
+        assert_eq!(rows, json!([{"id": "roads"}]));
+        assert_eq!(transport.calls, 2);
+
+        let mut transport = BytesTransport::distribution(catalogue.clone(), 4);
+        let error =
+            distribute(&mut transport, &DataDistributionRequest::ListDatasets {}).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Transient);
+        assert_eq!(error.retries(), 3);
+        assert_eq!(transport.calls, 4);
+
+        let execute = DataDistributionRequest::SpatialExecute {
+            resource_id: "a".repeat(64),
+            resource_version: "b".repeat(64),
+            boundary: area(),
+            result: SpatialResult::Count,
+            distinct_field: None,
+            group_by: None,
+            limit: None,
+            plan_hash: "c".repeat(64),
+        };
+        assert!(!execute.resendable());
+        let mut transport = BytesTransport::distribution(catalogue, 1);
+        let error = distribute(&mut transport, &execute).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Transient);
+        assert_eq!(error.retries(), 0);
+        assert_eq!(transport.calls, 1);
+    }
+
+    #[test]
+    fn a_refused_seeding_read_is_answered_once() {
+        for status in [401, 403, 404, 422] {
+            let mut transport =
+                BytesTransport::distribution(json!({"error": {"code": "FORBIDDEN"}}), 0);
+            transport.status = status;
+            let refused =
+                distribute(&mut transport, &DataDistributionRequest::ListDatasets {}).unwrap_err();
+            assert_ne!(refused.kind(), ErrorKind::Transient, "{status}");
+            assert_eq!(transport.calls, 1, "{status}");
+        }
+        // A 503 is a blink like a dropped socket: asked again, then answered.
+        let mut transport =
+            BytesTransport::distribution(json!({"error": {"code": "UNAVAILABLE"}}), 0);
+        transport.status = 503;
+        let error =
+            distribute(&mut transport, &DataDistributionRequest::ListDatasets {}).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Transient);
+        assert_eq!((error.retries(), transport.calls), (3, 4));
     }
 
     #[test]

@@ -2532,6 +2532,8 @@ impl DataDistributionCall<'_> {
 /// (no bearer, no api key, no user email, no app id): the object is public,
 /// and attaching a credential to a third-party origin would widen what that
 /// credential reaches. The URL is validated here, once, before any socket.
+/// It is `Copy` so a retried download sends the same admitted call again.
+#[derive(Clone, Copy)]
 pub struct BundleDownloadCall<'a> {
     url: &'a str,
     expected_sha256: &'a str,

@@ -19,6 +19,8 @@ pub use device_approval::{
 };
 pub use transport::{DeviceApproveCall, DEVICE_APPROVE_RESPONSE_LIMIT};
 mod error;
+pub mod weak_network;
+pub use weak_network::{WeakNetwork, WEAK_NETWORK_DELAYS};
 pub mod gateway;
 pub use gateway::{
     operation as gateway_operation, GatewayOperation, GATEWAY_REGISTRY_DESCRIPTOR_SHA256,
@@ -200,7 +202,7 @@ pub use transport::PrintingCall;
 
 pub mod data_distribution;
 pub use data_distribution::{
-    download_bundle, normalize_upi, BundleDownloadReceipt, ContourParameters,
+    download_bundle, normalize_upi, BundleDownloadReceipt, BundleSink, ContourParameters,
     DataDistributionRequest, PrintContextKind, SpatialResult, BUNDLE_DOWNLOAD_HOST,
     BUNDLE_DOWNLOAD_MAX_BYTES, BUNDLE_DOWNLOAD_MAX_URL_BYTES, CUSTOMERS_ROW_CAP,
     DATA_DISTRIBUTION_MAX_AREA_BYTES, DATA_DISTRIBUTION_MAX_CATALOG_ROWS,

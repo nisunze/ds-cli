@@ -13,7 +13,7 @@ use ds_client_core::{
     SurveyEntryCreateServiceCode, SurveyFormReadServiceCode, SurveyQueryCall, SurveyQueryFilter,
     SurveyQueryMetric, SurveyQueryOrder, SurveyQueryRequest, SyncGatewayCall, SyncGatewayOperation,
     TileCall, TileOperationStatus, TilePreflightStatus, TileType, TransformerContextCall,
-    Transport, TransportError, TransportResponse, CLIENT_PROFILE_SCHEMA,
+    Transport, TransportError, TransportResponse, WeakNetwork, CLIENT_PROFILE_SCHEMA,
 };
 use ds_client_core::{
     CompoundedReportRequest, CompoundedReportStatus, ExportReportOutcome, ProjectReportCall,
@@ -262,6 +262,9 @@ struct TransportState {
     correlated_survey_entry_create_requests: usize,
     correlated_tile_requests: usize,
     correlated_project_report_requests: usize,
+    /// Sign-in and refresh attempts that drop before an answer, as a weak link.
+    sign_in_drops: usize,
+    refresh_drops: usize,
 }
 
 #[derive(Clone, Default)]
@@ -300,6 +303,20 @@ impl FixtureTransport {
             .unwrap()
             .refresh
             .push_back(TransportResponse::new(status, body));
+    }
+
+    /// Drop the next `sign_in` and `refresh` attempts before any answer.
+    fn drop_next(&self, sign_in: usize, refresh: usize) {
+        let mut state = self.0.lock().unwrap();
+        state.sign_in_drops = sign_in;
+        state.refresh_drops = refresh;
+    }
+
+    fn count_calls(&self, prefix: &str) -> usize {
+        self.calls()
+            .iter()
+            .filter(|call| call.starts_with(prefix))
+            .count()
     }
 
     fn push_project(&self, body: &[u8]) {
@@ -745,6 +762,10 @@ impl Transport for FixtureTransport {
             has(b"\"email\":") && !call.email().is_empty(),
             has(b"\"password\":") && has(b"\"returnSecureToken\":true")
         ));
+        if state.sign_in_drops > 0 {
+            state.sign_in_drops -= 1;
+            return Err(TransportError::TimedOut);
+        }
         Ok(state.sign_in.pop_front().unwrap())
     }
 
@@ -763,6 +784,10 @@ impl Transport for FixtureTransport {
                 .any(|(key, value)| key == "refresh_token" && !value.is_empty())
                 && fields.iter().any(|(key, value)| key == "grant_type" && value == "refresh_token")
         ));
+        if state.refresh_drops > 0 {
+            state.refresh_drops -= 1;
+            return Err(TransportError::Unreachable);
+        }
         Ok(state.refresh.pop_front().unwrap())
     }
 
@@ -1542,15 +1567,112 @@ impl RefreshTokenStore for MemoryStore {
     }
 }
 
+/// The field retry schedule with its pauses removed: the same attempts, no wait.
+const IMMEDIATE: WeakNetwork = WeakNetwork::new(&[std::time::Duration::ZERO; 3]);
+
 fn signed_in(
     transport: FixtureTransport,
     store: MemoryStore,
 ) -> Client<FixtureTransport, MemoryStore> {
-    let mut client = Client::new(profile(DeploymentLane::Stable), transport, store);
+    let mut client =
+        Client::new(profile(DeploymentLane::Stable), transport, store).with_weak_network(IMMEDIATE);
     client
         .sign_in("user@example.com", "password-from-protected-input", NOW)
         .unwrap();
     client
+}
+
+#[test]
+fn sign_in_survives_one_dropout() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.drop_next(1, 0);
+    let store = MemoryStore::default();
+    let mut client = Client::new(
+        profile(DeploymentLane::Stable),
+        transport.clone(),
+        store.clone(),
+    )
+    .with_weak_network(IMMEDIATE);
+    let user = client
+        .sign_in("user@example.com", "password-from-protected-input", NOW)
+        .unwrap();
+    assert_eq!(user.uid(), "uid-1");
+    assert_eq!(transport.count_calls("sign_in "), 2);
+    assert!(store.value().is_some());
+}
+
+#[test]
+fn sign_in_that_drops_on_every_retry_is_transient_and_says_it_retried() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.drop_next(4, 0);
+    let store = MemoryStore::default();
+    let mut client = Client::new(
+        profile(DeploymentLane::Stable),
+        transport.clone(),
+        store.clone(),
+    )
+    .with_weak_network(IMMEDIATE);
+    let error = client
+        .sign_in("user@example.com", "password-from-protected-input", NOW)
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Transient);
+    assert_eq!(error.retries(), 3);
+    assert!(error.to_string().ends_with("(retried 3 times)"), "{error}");
+    assert_eq!(transport.count_calls("sign_in "), 4);
+    assert!(store.value().is_none());
+    assert!(client.user().is_none());
+}
+
+#[test]
+fn a_refused_or_throttled_sign_in_is_answered_once() {
+    for (status, message, kind) in [
+        (
+            400,
+            "INVALID_LOGIN_CREDENTIALS",
+            ErrorKind::InvalidCredentials,
+        ),
+        (400, "USER_DISABLED", ErrorKind::AccountDisabled),
+        // Firebase's password throttle: another attempt is what it refuses.
+        (429, "TOO_MANY_ATTEMPTS_TRY_LATER", ErrorKind::Transient),
+    ] {
+        let transport = FixtureTransport::with_rejected_sign_in(status, message);
+        let mut client = Client::new(
+            profile(DeploymentLane::Stable),
+            transport.clone(),
+            MemoryStore::default(),
+        )
+        .with_weak_network(IMMEDIATE);
+        let error = client
+            .sign_in("user@example.com", "protected", NOW)
+            .unwrap_err();
+        assert_eq!(error.kind(), kind, "{message}");
+        assert_eq!(error.retries(), 0, "{message}");
+        assert_eq!(transport.count_calls("sign_in "), 1, "{message}");
+    }
+}
+
+#[test]
+fn token_refresh_survives_one_dropout() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let store = MemoryStore::default();
+    let mut client = signed_in(transport.clone(), store.clone());
+    transport.drop_next(0, 1);
+    transport.push_refresh(200, REFRESH);
+    client.refresh(NOW + 3_001).unwrap();
+    assert_eq!(transport.count_calls("refresh "), 2);
+    assert_eq!(client.user().unwrap().uid(), "uid-1");
+}
+
+#[test]
+fn a_revoked_refresh_is_answered_once() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let store = MemoryStore::default();
+    let mut client = signed_in(transport.clone(), store.clone());
+    transport.push_refresh(400, REVOKED);
+    let error = client.refresh(NOW + 3_001).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::PermanentlyRevoked);
+    assert_eq!(error.retries(), 0);
+    assert_eq!(transport.count_calls("refresh "), 1);
 }
 
 #[test]
@@ -2961,13 +3083,18 @@ fn permanent_cleanup_failure_is_durable_and_requires_host_cleanup() {
 #[test]
 fn transient_refresh_failure_retains_exact_session_and_durable_state() {
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_refresh(503, br#"{"error":{"message":"UNAVAILABLE"}}"#);
+    // One answer per attempt: the first and every retry the schedule allows.
+    for _ in 0..4 {
+        transport.push_refresh(503, br#"{"error":{"message":"UNAVAILABLE"}}"#);
+    }
     let store = MemoryStore::default();
-    let mut client = signed_in(transport, store.clone());
+    let mut client = signed_in(transport.clone(), store.clone());
     let before = store.value();
 
     let error = client.list_projects(NOW + 3_001).unwrap_err();
     assert_eq!(error.kind(), ErrorKind::Transient);
+    assert_eq!(error.retries(), 3);
+    assert_eq!(transport.count_calls("refresh "), 4);
     assert_eq!(store.value(), before);
     assert_eq!(client.user().unwrap().uid(), "uid-1");
 }
@@ -3091,7 +3218,9 @@ fn exclusive_refresh_lease_serializes_two_clients_and_loser_restores() {
 #[test]
 fn release_failure_overrides_an_operation_error_as_durable_state() {
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_refresh(503, br#"{"error":{"message":"UNAVAILABLE"}}"#);
+    for _ in 0..4 {
+        transport.push_refresh(503, br#"{"error":{"message":"UNAVAILABLE"}}"#);
+    }
     let store = MemoryStore::default();
     let mut client = signed_in(transport, store.clone());
     store.fail_next_release(StoreError::Unavailable);

@@ -374,6 +374,8 @@ pub struct ClientError {
     survey_query_service_code: Option<SurveyQueryServiceCode>,
     device_approval_service_code: Option<DeviceApprovalServiceCode>,
     project_properties_service_code: Option<ProjectPropertiesServiceCode>,
+    /// How many times a weak link was retried before this error stood.
+    retries: u8,
 }
 
 impl ClientError {
@@ -390,6 +392,7 @@ impl ClientError {
             survey_query_service_code: None,
             device_approval_service_code: None,
             project_properties_service_code: None,
+            retries: 0,
         }
     }
 
@@ -424,6 +427,7 @@ impl ClientError {
             survey_query_service_code: None,
             device_approval_service_code: None,
             project_properties_service_code: None,
+            retries: 0,
         }
     }
 
@@ -444,6 +448,7 @@ impl ClientError {
             survey_query_service_code: None,
             device_approval_service_code: None,
             project_properties_service_code: None,
+            retries: 0,
         }
     }
 
@@ -464,6 +469,7 @@ impl ClientError {
             survey_query_service_code: None,
             device_approval_service_code: None,
             project_properties_service_code: None,
+            retries: 0,
         }
     }
 
@@ -484,6 +490,7 @@ impl ClientError {
             survey_query_service_code: None,
             device_approval_service_code: None,
             project_properties_service_code: None,
+            retries: 0,
         }
     }
 
@@ -504,6 +511,7 @@ impl ClientError {
             survey_query_service_code: None,
             device_approval_service_code: None,
             project_properties_service_code: None,
+            retries: 0,
         }
     }
 
@@ -526,6 +534,7 @@ impl ClientError {
             survey_query_service_code: None,
             device_approval_service_code: None,
             project_properties_service_code: None,
+            retries: 0,
         }
     }
 
@@ -617,6 +626,23 @@ impl ClientError {
         matches!(self.kind, ErrorKind::Transient)
     }
 
+    /// Record that the [`crate::WeakNetwork`] policy retried this call before
+    /// a transient error stood, so the message says so instead of reading as
+    /// one blink. A definitive answer that arrived after a retry is left as it
+    /// came: the retry did not fail, the request did.
+    pub(crate) const fn after_retries(mut self, retries: u8) -> Self {
+        if matches!(self.kind, ErrorKind::Transient) {
+            self.retries = retries;
+        }
+        self
+    }
+
+    /// How many retries the weak-network policy spent before this error: zero
+    /// when the call was not retried.
+    pub const fn retries(&self) -> u8 {
+        self.retries
+    }
+
     pub const fn is_permanent_session_failure(&self) -> bool {
         matches!(
             self.kind,
@@ -627,7 +653,12 @@ impl ClientError {
 
 impl fmt::Display for ClientError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.message)
+        formatter.write_str(self.message)?;
+        match self.retries {
+            0 => Ok(()),
+            1 => formatter.write_str(" (retried once)"),
+            retries => write!(formatter, " (retried {retries} times)"),
+        }
     }
 }
 
