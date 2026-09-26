@@ -23,8 +23,8 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_command_kernel::project_dataset_cache::{self as policy, buffer_policy, Scope};
-use serde_json::{json, Value};
+use ds_command_kernel::project_dataset_cache::{self as policy, Scope, buffer_policy};
+use serde_json::{Value, json};
 
 const UPI_ARG: Arg = Arg {
     name: "upi",

@@ -82,8 +82,7 @@ pub const SOURCE_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary:
-        "Path to the local file to read. CSV, TSV, XLSX, GeoJSON, KML/KMZ, or a zipped Shapefile.",
+    summary: "Path to the local file to read. CSV, TSV, XLSX, GeoJSON, KML/KMZ, or a zipped Shapefile.",
 };
 
 pub const SEPARATOR_ARG: Arg = Arg::value(
@@ -107,8 +106,7 @@ pub const UNREADABLE: Refusal = Refusal {
 };
 pub const UNSUPPORTED: Refusal = Refusal {
     code: "source_unsupported",
-    when:
-        "The file is not a format this reader recognises, or its delimiter could not be detected.",
+    when: "The file is not a format this reader recognises, or its delimiter could not be detected.",
     remedy: "Pass --separator for a delimited file, or convert the source to CSV/GeoJSON first.",
 };
 pub const NO_SHEET: Refusal = Refusal {

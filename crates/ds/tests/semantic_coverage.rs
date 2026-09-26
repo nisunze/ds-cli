@@ -15,8 +15,16 @@ use serde_json::Value;
 const EXPECTED: &[(&str, &str, &str)] = &[
     // Exact effect and authority reviewed from the integrated CLI descriptors.
     ("assets.versions", "read_only", "headless_project"),
-    ("data.project-cache.query", "local_file_write", "headless_project"),
-    ("data.spatial.execute", "local_file_write", "headless_project"),
+    (
+        "data.project-cache.query",
+        "local_file_write",
+        "headless_project",
+    ),
+    (
+        "data.spatial.execute",
+        "local_file_write",
+        "headless_project",
+    ),
     ("data.spatial.plan", "local_file_write", "headless_project"),
     ("dsgrid.alignment.gap.set", "local_file_write", "none"),
     ("dsgrid.alignment.gap.show", "read_only", "none"),
@@ -24,7 +32,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.asset.detach", "local_file_write", "none"),
     ("dsgrid.asset.extract", "local_file_write", "none"),
     ("dsgrid.asset.list", "read_only", "none"),
-    ("dsgrid.project.geojson", "local_file_write", "headless_project"),
+    (
+        "dsgrid.project.geojson",
+        "local_file_write",
+        "headless_project",
+    ),
     ("dsgrid.replace-structure", "local_file_write", "none"),
     ("pls.desktop.autosag", "local_file_write", "none"),
     ("pls.desktop.check", "read_only", "none"),
@@ -37,7 +49,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.plan-profile-config", "local_file_write", "none"),
     ("report.plan-profile-config.schema", "discovery", "none"),
     ("report.spatial.workbook", "local_file_write", "none"),
-    ("survey.entries.read", "local_auth_state", "headless_project"),
+    (
+        "survey.entries.read",
+        "local_auth_state",
+        "headless_project",
+    ),
     ("survey.local.status", "read_only", "none"),
     ("survey.photo.fetch", "local_file_write", "headless_project"),
     (
