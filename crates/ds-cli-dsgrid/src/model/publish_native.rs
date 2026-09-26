@@ -617,9 +617,11 @@ mod tests {
         assert_eq!(origin.reference, "pls-original-workspace.bak");
         // The digest of the preserved original .bak member, as the package
         // attests it — the same bytes `dsgrid model link` digests against.
+        // The humble backup was re-emitted on 2026-09-26 with its cables
+        // written in the units PLS-CADD's Cable Data Report prints.
         assert_eq!(
             origin.source_digest,
-            "d5be8a41b680f97148143b4323d3f43ce00cdf01193ba5fdd3555d9b741b7076"
+            "b78a9948f88697883f22f52f007a73f838082739612661fc772ef87eef206813"
         );
         assert!(ds_command_kernel::grid_publication::catalog_identifier(
             &origin.manifest_id
