@@ -169,6 +169,7 @@ pub mod design_health;
 pub fn design_health_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_health::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod combined_grouping;
 pub mod combined_readiness;
 pub mod design_status_query;
 pub mod design_status_row;
