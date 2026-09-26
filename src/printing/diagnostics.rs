@@ -330,7 +330,7 @@ mod tests {
     #[test]
     fn the_margin_is_the_printable_edge_and_zero_is_allowed() {
         let edge = item("scale", [0.5, 50., 20., 5.]);
-        let one = assess_sheet([100., 100.], 1., &[edge.clone()]).unwrap();
+        let one = assess_sheet([100., 100.], 1., std::slice::from_ref(&edge)).unwrap();
         assert_eq!(one.total, 1);
         assert_eq!(one.findings[0].suggested_move_mm, Some([0.5, 0.]));
         assert_eq!(assess_sheet([100., 100.], 0., &[edge]).unwrap().total, 0);

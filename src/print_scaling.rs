@@ -166,6 +166,8 @@ mod tests {
     }
 
     #[test]
+    // The literals are the stored legacy table's bytes, not an approximation.
+    #[allow(clippy::approx_constant)]
     fn the_legacy_iso_area_table_reads_as_the_identity_policy() {
         let legacy = json!({"type":"line","metadata":{"print_scaling":{"reference_paper":"A3","units":"css_px",
             "factors":{"A0":2.8284271247461903,"A1":2,"A2":1.4142135623730951,"A3":1,"A4":0.7071067811865476,"A5":0.5,"Custom":1}}}});

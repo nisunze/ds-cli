@@ -1755,11 +1755,7 @@ pub fn verify_result(
         };
         let output = &plan.outputs[position + offset];
         position += offset + 1;
-        if !result
-            .formats_requested
-            .iter()
-            .any(|format| *format == artifact.format)
-        {
+        if !result.formats_requested.contains(&artifact.format) {
             return Err(ResultRefusal::invalid(
                 "Network Reporter built a format it did not declare as requested",
             ));
@@ -2627,7 +2623,7 @@ mod tests {
             form: "field_notes".into(),
             reason: survey::SURVEY_LAYER_NOT_HELD_REASON.into(),
         };
-        let append = survey_append(&layers(), &[held], &[not_held.clone()]).unwrap();
+        let append = survey_append(&layers(), &[held], std::slice::from_ref(&not_held)).unwrap();
         let plan = plan_transformer_export_with_survey(
             "proj-1",
             &receipt,

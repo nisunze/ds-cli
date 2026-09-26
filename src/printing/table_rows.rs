@@ -16,6 +16,7 @@ pub struct RowPlan {
     pub visible_rows: usize,
     pub omitted_rows: usize,
 }
+#[allow(clippy::too_many_arguments)] // one flat planner call shared with frames and report export
 pub fn plan(
     id: &str,
     rows: usize,

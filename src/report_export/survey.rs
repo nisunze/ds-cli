@@ -614,7 +614,7 @@ mod tests {
             form: "field_notes".into(),
             reason: SURVEY_LAYER_NOT_HELD_REASON.into(),
         }];
-        let append = survey_append(&room, &[held.clone()], &omitted).unwrap();
+        let append = survey_append(&room, std::slice::from_ref(&held), &omitted).unwrap();
         let (bytes, sha256) = append.document.as_ref().unwrap();
         assert_eq!(*sha256, super::super::sha256_hex(bytes));
         let document: Value = serde_json::from_slice(bytes).unwrap();

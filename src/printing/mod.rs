@@ -708,7 +708,6 @@ impl ContentFlow {
     }
 }
 /// Physical gap between measured content frames.
-
 fn content_flow_gap() -> f64 {
     5.
 }

@@ -217,7 +217,7 @@ pub fn panel_rows(
     row_mm: f64,
     total_rows: usize,
 ) -> Option<Vec<usize>> {
-    if !(row_mm > 0.) || !key_mm.is_finite() || total_rows == 0 {
+    if row_mm.is_nan() || row_mm <= 0. || !key_mm.is_finite() || total_rows == 0 {
         return None;
     }
     let mut counts = Vec::new();
