@@ -988,6 +988,7 @@ dependencies = [
  "ds-io",
  "ds-layer-store",
  "ds-rwanda-admin-bounds",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",

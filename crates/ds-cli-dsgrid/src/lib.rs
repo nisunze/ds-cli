@@ -36,6 +36,7 @@ pub mod apply;
 pub mod apply_batch;
 pub mod asset;
 pub mod backup;
+mod command_shape;
 pub mod create;
 pub mod criteria;
 pub mod describe;

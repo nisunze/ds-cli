@@ -132,8 +132,8 @@ SHA-256. Receipt size is independent of entity count.",
         },
         Refusal {
             code: "batch_invalid",
-            when: "the JSON has invalid commands, mixed revision pins, duplicate IDs, or no commands",
-            remedy: "read the command descriptor with `ds dsgrid describe --kind commands --id <id>`",
+            when: "a row is malformed (named by row, command_kind, field path and serde error), revision pins differ, IDs repeat, or no command is given",
+            remedy: "fix the named field; `ds dsgrid describe --kind types --id <Type>` gives the row shape",
         },
         Refusal {
             code: "selection_invalid",
@@ -327,11 +327,160 @@ enum CorrectionReviewState {
     Approved,
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
+/// The two batch shapes, told apart by the JSON value itself rather than by
+/// trying each in turn: an untagged enum answered every malformed row with
+/// "data did not match any variant of untagged enum BatchInput" and never
+/// said which row, which command or which field.
 enum BatchInput {
     AtHead(Batch),
     Envelopes(Vec<CommandEnvelope>),
+}
+
+/// The at-head object's own fields, with each row left unparsed so a row's
+/// failure can be reported against its own index.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchHead {
+    #[allow(dead_code)]
+    expected_revision: RevisionId,
+    commands: Vec<Value>,
+}
+
+fn parse_batch(bytes: &[u8]) -> Result<BatchInput, Failure> {
+    let value: Value = serde_json::from_slice(bytes)
+        .map_err(|error| invalid(format!("invalid batch JSON: {error}")))?;
+    match &value {
+        Value::Object(_) => Batch::deserialize(&value)
+            .map(BatchInput::AtHead)
+            .map_err(|error| match BatchHead::deserialize(&value) {
+                Err(head) => invalid(format!("batch: {head}")),
+                Ok(head) => first_bad_row("commands", &head.commands, |row| {
+                    BatchCommand::deserialize(row).err()
+                })
+                .unwrap_or_else(|| invalid(format!("invalid batch: {error}"))),
+            }),
+        Value::Array(rows) => Vec::<CommandEnvelope>::deserialize(&value)
+            .map(BatchInput::Envelopes)
+            .map_err(|error| {
+                first_bad_row("", rows, |row| CommandEnvelope::deserialize(row).err())
+                    .unwrap_or_else(|| invalid(format!("invalid batch: {error}")))
+            }),
+        _ => Err(invalid(
+            "a batch is an object {expected_revision, commands: [{command_id, command}]} \
+             or an array of command envelopes",
+        )),
+    }
+}
+
+/// The first row that does not deserialize, refused with its index, its
+/// command kind, the place in the command serde's error applies to, and the
+/// row type whose exact JSON Schema `ds dsgrid describe` publishes.
+fn first_bad_row(
+    array: &str,
+    rows: &[Value],
+    row_error: impl Fn(&Value) -> Option<serde_json::Error>,
+) -> Option<Failure> {
+    rows.iter().enumerate().find_map(|(index, row)| {
+        let error = row_error(row)?;
+        Some(row_failure(
+            &format!("{array}[{index}]"),
+            index,
+            row,
+            &error,
+        ))
+    })
+}
+
+fn row_failure(at: &str, index: usize, row: &Value, row_error: &serde_json::Error) -> Failure {
+    let command = row.get("command");
+    let kind = command
+        .and_then(|command| command.get("command_kind"))
+        .and_then(Value::as_str);
+    let command_error = command.and_then(|command| GridCommand::deserialize(command).err());
+    let mut detail = json!({
+        "row": index,
+        "command_id": row.get("command_id"),
+        "command_kind": kind,
+    });
+    // The row's own fields are sound and the command is not: the error lives
+    // inside the command, where serde has lost its place.
+    let Some((command, command_error)) = command.zip(command_error) else {
+        let label = kind.map(|kind| format!(" ({kind})")).unwrap_or_default();
+        detail["serde_error"] = json!(row_error.to_string());
+        return Failure::invalid("batch_invalid", format!("row {index}{label}: {row_error}"))
+            .remedy(
+                "each row is {command_id, command, review_ref?}; an envelope row also carries \
+             command_schema_version and expected_revision",
+            )
+            .detail(detail);
+    };
+    let serde_error = command_error.to_string();
+    let catalog = ds_grid_engine::describe_commands();
+    let known: Vec<&str> = catalog
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry["operation_id"].as_str())
+        .collect();
+    // An unknown tag makes serde list every command kind; name the one given
+    // and the nearest real one instead. A known kind whose nested enum holds
+    // an unknown variant is located like any other field.
+    if let Some(kind) = kind
+        && !known.contains(&kind)
+    {
+        let mut failure = Failure::invalid(
+            "batch_invalid",
+            format!("row {index}: unknown command_kind `{kind}`"),
+        );
+        failure = match ds_cli_contract::args::nearest(kind, known.iter().copied()) {
+            Some(suggestion) => failure.remedy(format!("did you mean `{suggestion}`?")),
+            None => failure.remedy("name a command_kind the engine publishes"),
+        };
+        detail["path"] = json!(format!("{at}.command.command_kind"));
+        return failure
+            .next("ds dsgrid describe --kind commands")
+            .detail(detail);
+    }
+    let label = kind.map(|kind| format!(" ({kind})")).unwrap_or_default();
+    let located = crate::command_shape::locate(command, &serde_error);
+    let place = located
+        .as_ref()
+        .filter(|located| !located.path.is_empty())
+        .map(|located| format!("{}: ", located.path))
+        .unwrap_or_default();
+    let message = format!("row {index}{label}: {place}{serde_error}");
+    let command_path = located
+        .as_ref()
+        .filter(|located| !located.path.is_empty())
+        .map(|located| format!(".{}", located.path))
+        .unwrap_or_default();
+    detail["path"] = json!(format!("{at}.command{command_path}"));
+    detail["serde_error"] = json!(serde_error);
+    // Point at the row type's published JSON Schema when the engine publishes
+    // it; a place directly on the command points at the command's descriptor.
+    let published = located
+        .and_then(|located| located.type_name)
+        .filter(|name| {
+            ds_grid_engine::describe_types()
+                .as_array()
+                .is_some_and(|types| types.iter().any(|entry| entry["id"] == name.as_str()))
+        });
+    let pointer = match &published {
+        Some(name) => {
+            detail["type"] = json!(name);
+            format!("ds dsgrid describe --kind types --id {name}")
+        }
+        None => match kind {
+            Some(kind) => format!("ds dsgrid describe --kind commands --id {kind}"),
+            None => "ds dsgrid describe --kind commands".to_owned(),
+        },
+    };
+    Failure::invalid("batch_invalid", message)
+        .remedy(format!(
+            "correct that field; `{pointer}` gives the exact shape the engine accepts"
+        ))
+        .next(pointer)
+        .detail(detail)
 }
 
 fn invalid(message: impl Into<String>) -> Failure {
@@ -369,9 +518,7 @@ fn read_batch(raw_path: &str) -> Result<(Batch, String), Failure> {
         return Err(Failure::invalid("batch_too_large", "batch exceeds 16 MiB")
             .remedy("submit at most 4096 commands within 16 MiB"));
     }
-    let input: BatchInput = serde_json::from_slice(&bytes)
-        .map_err(|error| invalid(format!("invalid batch JSON: {error}")))?;
-    let batch = match input {
+    let batch = match parse_batch(&bytes)? {
         BatchInput::AtHead(batch) => batch,
         BatchInput::Envelopes(envelopes) => {
             let expected_revision = envelopes
@@ -776,5 +923,248 @@ mod tests {
         );
         assert!(select_commands(make(), &["missing".into()]).is_err());
         assert!(select_commands(make(), &["first".into(), "first".into()]).is_err());
+    }
+
+    fn refused(batch: Value) -> Failure {
+        match parse_batch(&serde_json::to_vec(&batch).unwrap()) {
+            Ok(_) => panic!("the malformed batch parsed: {batch}"),
+            Err(failure) => failure,
+        }
+    }
+
+    fn policy_row() -> Value {
+        json!({
+            "id": "policy-1",
+            "label": "EDCL MV",
+            "release_identity": "edcl-mv-2026",
+            "content_digest": "sha256:0",
+            "applicability": "33 kV",
+            "verification": "unverified",
+        })
+    }
+
+    fn duty_profile() -> Value {
+        json!({
+            "policy_id": "policy-1",
+            "sequence": 0,
+            "structure_resource_id": "resource-1",
+            "family": "SP",
+            "material": "wood",
+            "portal_configuration": false,
+            "duties": ["inline_suspension"],
+            "preferred_span_upper_m": null,
+            "review_span_upper_m": null,
+            "verification": "unverified",
+            "evidence": null,
+        })
+    }
+
+    fn move_node(z_m: Value) -> Value {
+        json!({"command_kind": "move_route_node", "id": "node-1", "x_m": 1.0, "y_m": 2.0, "z_m": z_m})
+    }
+
+    #[test]
+    fn a_well_formed_batch_of_either_shape_still_parses() {
+        let policy = json!({
+            "command_kind": "author_design_policy",
+            "row": policy_row(),
+            "duty_profiles": [duty_profile()],
+        });
+        let at_head = json!({
+            "expected_revision": "rev-1",
+            "commands": [
+                {"command_id": "c-0", "command": move_node(json!(3.0))},
+                {"command_id": "c-1", "command": policy, "review_ref": "comment-7"},
+            ],
+        });
+        let Ok(BatchInput::AtHead(batch)) = parse_batch(&serde_json::to_vec(&at_head).unwrap())
+        else {
+            panic!("the at-head batch must parse");
+        };
+        assert_eq!(batch.commands.len(), 2);
+        let envelopes = json!([{
+            "command_id": "c-0",
+            "command_schema_version": ds_grid_engine::COMMAND_SCHEMA_VERSION,
+            "expected_revision": "rev-1",
+            "command": move_node(json!(3.0)),
+        }]);
+        assert!(matches!(
+            parse_batch(&serde_json::to_vec(&envelopes).unwrap()),
+            Ok(BatchInput::Envelopes(rows)) if rows.len() == 1
+        ));
+    }
+
+    /// The 2026-09-25 incident: a duty profile without `verification` was
+    /// refused as "data did not match any variant of untagged enum
+    /// BatchInput". It is now refused at its row, command and field.
+    #[test]
+    fn a_design_policy_missing_a_duty_profile_field_names_row_field_and_type() {
+        let mut profile = duty_profile();
+        profile.as_object_mut().unwrap().remove("verification");
+        let failure = refused(json!({
+            "expected_revision": "rev-1",
+            "commands": [
+                {"command_id": "c-0", "command": move_node(json!(3.0))},
+                {"command_id": "c-1", "command": move_node(json!(4.0))},
+                {"command_id": "c-2", "command": move_node(json!(5.0))},
+                {"command_id": "policy", "command": {
+                    "command_kind": "author_design_policy",
+                    "row": policy_row(),
+                    "duty_profiles": [profile],
+                }},
+            ],
+        }));
+        assert_eq!(failure.code(), "batch_invalid");
+        assert_eq!(
+            failure.message(),
+            "row 3 (author_design_policy): duty_profiles[0]: missing field `verification`"
+        );
+        assert_eq!(
+            failure.next_commands(),
+            ["ds dsgrid describe --kind types --id StructureDutyProfileRow"]
+        );
+        let detail = failure.detail_value().unwrap();
+        assert_eq!(detail["row"], 3);
+        assert_eq!(detail["command_id"], "policy");
+        assert_eq!(detail["path"], "commands[3].command.duty_profiles[0]");
+        assert_eq!(detail["type"], "StructureDutyProfileRow");
+        assert_eq!(detail["serde_error"], "missing field `verification`");
+
+        // The policy row carries a `verification` too; its absence is named
+        // at the row, not at the profile.
+        let mut row = policy_row();
+        row.as_object_mut().unwrap().remove("verification");
+        let failure = refused(json!({
+            "expected_revision": "rev-1",
+            "commands": [{"command_id": "policy", "command": {
+                "command_kind": "author_design_policy",
+                "row": row,
+                "duty_profiles": [duty_profile()],
+            }}],
+        }));
+        assert_eq!(
+            failure.message(),
+            "row 0 (author_design_policy): row: missing field `verification`"
+        );
+        assert_eq!(
+            failure.next_commands(),
+            ["ds dsgrid describe --kind types --id DesignPolicyRow"]
+        );
+    }
+
+    #[test]
+    fn a_wrong_field_on_another_command_is_named_where_it_is() {
+        // A misspelled required field: the command itself lacks it.
+        let mut command = move_node(json!(3.0));
+        let x = command.as_object_mut().unwrap().remove("x_m").unwrap();
+        command["x"] = x;
+        let failure = refused(json!({
+            "expected_revision": "rev-1",
+            "commands": [{"command_id": "c-0", "command": command}],
+        }));
+        assert_eq!(
+            failure.message(),
+            "row 0 (move_route_node): missing field `x_m`"
+        );
+        assert_eq!(
+            failure.next_commands(),
+            ["ds dsgrid describe --kind commands --id move_route_node"]
+        );
+
+        // A wrong type, in the envelope-array shape.
+        let failure = refused(json!([
+            {"command_id": "c-0", "command_schema_version": 10, "expected_revision": "rev-1",
+             "command": move_node(json!(3.0))},
+            {"command_id": "c-1", "command_schema_version": 10, "expected_revision": "rev-1",
+             "command": move_node(json!("12"))},
+        ]));
+        assert_eq!(
+            failure.message(),
+            "row 1 (move_route_node): z_m: invalid type: string \"12\", expected f64"
+        );
+        assert_eq!(failure.detail_value().unwrap()["path"], "[1].command.z_m");
+
+        // An unknown field inside a type that denies them.
+        let failure = refused(json!({
+            "expected_revision": "rev-1",
+            "commands": [{"command_id": "c-0", "command": {
+                "command_kind": "set_spotting_settings",
+                "settings": {"design_policy_id": "policy-1", "station_step": 10.0},
+            }}],
+        }));
+        assert!(
+            failure.message().starts_with(
+                "row 0 (set_spotting_settings): settings: unknown field `station_step`"
+            ),
+            "{}",
+            failure.message()
+        );
+        assert_eq!(
+            failure.next_commands(),
+            ["ds dsgrid describe --kind types --id SpottingSettings"]
+        );
+
+        // A nested enum value, not the command kind, that the engine lacks.
+        let mut profile = duty_profile();
+        profile["material"] = json!("bamboo");
+        let failure = refused(json!({
+            "expected_revision": "rev-1",
+            "commands": [{"command_id": "policy", "command": {
+                "command_kind": "author_design_policy",
+                "row": policy_row(),
+                "duty_profiles": [profile],
+            }}],
+        }));
+        assert!(
+            failure
+                .message()
+                .starts_with("row 0 (author_design_policy): duty_profiles[0].material: "),
+            "{}",
+            failure.message()
+        );
+    }
+
+    #[test]
+    fn row_and_batch_level_mistakes_are_named_too() {
+        let failure = refused(json!({
+            "expected_revision": "rev-1",
+            "commands": [{"command_id": "c-0", "command": move_node(json!(3.0)), "reviewref": "x"}],
+        }));
+        assert!(
+            failure
+                .message()
+                .starts_with("row 0 (move_route_node): unknown field `reviewref`"),
+            "{}",
+            failure.message()
+        );
+
+        let failure = refused(json!({
+            "expected_revision": "rev-1",
+            "commands": [{"command_id": "c-0", "command": {"command_kind": "move_route_nod"}}],
+        }));
+        assert_eq!(
+            failure.message(),
+            "row 0: unknown command_kind `move_route_nod`"
+        );
+        assert_eq!(
+            failure.remedy_text(),
+            Some("did you mean `move_route_node`?")
+        );
+
+        let failure = refused(json!({
+            "expected_revision": "rev-1",
+            "commands": [{"command_id": "c-0", "command": {"id": "node-1"}}],
+        }));
+        assert_eq!(failure.message(), "row 0: missing field `command_kind`");
+
+        let failure = refused(json!({"expected_revision": "rev-1", "command": []}));
+        assert!(
+            failure
+                .message()
+                .starts_with("batch: unknown field `command`"),
+            "{}",
+            failure.message()
+        );
+        assert_eq!(refused(json!("x")).code(), "batch_invalid");
     }
 }

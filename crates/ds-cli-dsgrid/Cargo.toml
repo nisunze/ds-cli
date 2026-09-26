@@ -34,6 +34,9 @@ serde = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+# The engine derives each command's JSON Schema; a malformed batch row is
+# located against it (apply_batch::shape), never against a copied field list.
+schemars = "1.2.2"
 
 ds-cli-auth = { workspace = true }
 ds-command-kernel = { workspace = true }
