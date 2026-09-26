@@ -1,6 +1,6 @@
 //! Read-only tag vocabulary and exact digest-pinned projection under project membership.
 use crate::{
-    authorized::{classify_tile_error, Authority},
+    authorized::{classify_tile_error, service_authored, Authority},
     AuthorizedTransport, ClientError, ClientProfile, DesignTagsCall, ErrorKind,
 };
 use serde_json::{json, Value};
@@ -36,6 +36,15 @@ fn bad() -> ClientError {
     )
 }
 impl Command {
+    /// Whether this request names at least one tag definition by id, so a
+    /// service-authored 404 can only be about that definition.
+    fn names_definition(&self) -> bool {
+        match self {
+            Self::Definitions => false,
+            Self::Batch { .. } => true,
+            Self::Projection { definitions, .. } => !definitions.is_empty(),
+        }
+    }
     pub fn validate(&self, project: &str) -> Result<(), ClientError> {
         if !id(project) {
             return Err(invalid());
@@ -133,9 +142,30 @@ pub(crate) fn run<T: AuthorizedTransport>(
                     .and_then(Value::as_str)
             });
         let code = error.and_then(|v| v.get("code")).and_then(Value::as_str);
+        // The tag service answers a definition id it does not hold as active
+        // with its own 404. That is a fact about the named definition, not
+        // about the caller's authority, and reporting it as a rejected
+        // credential sent operators to check access they already had. Only a
+        // 404 ds-brain itself authored, for a request that names a
+        // definition, is read this way: a Gateway 404 for an unrouted path
+        // and every 401/403 keep the classification they always had.
+        let (kind, owner_message) = if response.status == 404
+            && command.names_definition()
+            && service_authored(&response)
+        {
+            (
+                ErrorKind::ResourceNotFound,
+                "the design tag service holds no active tag definition by the id this request named",
+            )
+        } else {
+            (
+                classify_tile_error(response.status).kind(),
+                "the design tag service refused the project operation",
+            )
+        };
         return Err(ClientError::with_service_refusal(
-            classify_tile_error(response.status).kind(),
-            "the design tag service refused the project operation",
+            kind,
+            owner_message,
             crate::ServiceRefusal::new(response.status, code, message),
         ));
     }

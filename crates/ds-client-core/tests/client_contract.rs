@@ -8508,6 +8508,102 @@ fn headless_tag_projection_verifies_exact_document_bytes() {
     assert!(client.design_tags("p-1", &cmd, NOW + 1).is_err());
 }
 
+/// ds-brain answers a definition id it does not hold as active with its own
+/// 404. That names a missing definition, never a rejected credential; the
+/// Gateway's own 404 and every 401/403 keep their classification.
+#[test]
+fn headless_tag_unknown_definition_is_not_found_not_an_auth_rejection() {
+    use ds_client_core::design_tags::Command;
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    let brain_404 = serde_json::json!({
+        "success": false,
+        "error": {
+            "code": "NOT_FOUND",
+            "message": "selected grouping definition cty is not active in this project",
+        },
+    });
+    let gateway_404 = serde_json::json!({"message": "Not Found", "code": 404});
+    let forbidden = serde_json::json!({
+        "success": false,
+        "error": {"code": "FORBIDDEN", "message": "not a member of this project"},
+    });
+    let projection = Command::Projection {
+        transformers: vec!["a".into()],
+        definitions: vec!["cty".into()],
+    };
+    let batch = Command::Batch {
+        group: "cty".into(),
+        entries: vec![("a".into(), "bere".into())],
+        digest: None,
+    };
+    let untagged = Command::Projection {
+        transformers: vec!["a".into()],
+        definitions: vec![],
+    };
+    for (command, status, body, kind) in [
+        (&projection, 404u16, &brain_404, ErrorKind::ResourceNotFound),
+        (&batch, 404, &brain_404, ErrorKind::ResourceNotFound),
+        // No definition named: a 404 cannot be about one.
+        (
+            &untagged,
+            404,
+            &brain_404,
+            ErrorKind::AuthenticationRejected,
+        ),
+        (
+            &Command::Definitions,
+            404,
+            &brain_404,
+            ErrorKind::AuthenticationRejected,
+        ),
+        // API Gateway's own answer for a path it was never taught.
+        (
+            &projection,
+            404,
+            &gateway_404,
+            ErrorKind::AuthenticationRejected,
+        ),
+        (
+            &projection,
+            401,
+            &forbidden,
+            ErrorKind::AuthenticationRejected,
+        ),
+        (
+            &projection,
+            403,
+            &forbidden,
+            ErrorKind::AuthenticationRejected,
+        ),
+    ] {
+        t.0.lock()
+            .unwrap()
+            .design_tags
+            .push_back(TransportResponse::new(
+                status,
+                serde_json::to_vec(body).unwrap(),
+            ));
+        let error = client.design_tags("p-1", command, NOW + 1).unwrap_err();
+        assert_eq!(error.kind(), kind, "HTTP {status} {body}");
+        let refusal = error
+            .service_refusal()
+            .expect("the route's refusal crosses");
+        assert_eq!(refusal.status(), status);
+    }
+    // The service's sentence, which names the definition, crosses bounded.
+    t.0.lock()
+        .unwrap()
+        .design_tags
+        .push_back(TransportResponse::new(
+            404,
+            serde_json::to_vec(&brain_404).unwrap(),
+        ));
+    let error = client.design_tags("p-1", &projection, NOW + 1).unwrap_err();
+    let refusal = error.service_refusal().unwrap();
+    assert!(refusal.message().unwrap().contains("cty"));
+}
+
 #[test]
 fn headless_grid_download_checks_identity_and_bytes_before_receipt() {
     use ds_client_core::grid_models::Command;

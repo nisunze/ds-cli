@@ -1180,7 +1180,7 @@ const MAX_AUTHORSHIP_BODY_BYTES: usize = 64 * 1024;
 /// to be presence rather than a well-formed code, because a malformed code
 /// from the service is still the service. Nothing from the body crosses this
 /// boundary; only this one boolean does.
-fn service_authored(response: &TransportResponse) -> bool {
+pub(crate) fn service_authored(response: &TransportResponse) -> bool {
     #[derive(serde::Deserialize)]
     struct Envelope {
         success: Option<bool>,
