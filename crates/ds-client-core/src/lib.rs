@@ -65,7 +65,7 @@ pub use device::{
     parse_device_refresh, parse_device_revoke, parse_device_status,
     secret_json as device_secret_json, DeviceAccessSession, DeviceApiAuthorization,
     DeviceAuthContext, DeviceAuthorizationStatus, DeviceBeginPublic, DeviceBeginRequest,
-    DeviceBeginResult, DeviceBinding, DeviceCompleteRequest, DeviceCredential,
+    DeviceBeginResult, DeviceBinding, DeviceCallFailure, DeviceCompleteRequest, DeviceCredential,
     DeviceCredentialStore, DeviceError, DeviceListResult, DevicePendingAuthorization,
     DevicePrincipal, DevicePrivateKey, DeviceProtectedCall, DeviceProtectedOperation,
     DeviceReadResult, DeviceRefreshRequest, DeviceRevokeResult, DeviceStatusRequest,
