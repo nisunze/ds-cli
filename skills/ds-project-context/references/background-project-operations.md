@@ -37,7 +37,10 @@ prepare: the native report path reads rooms from the service, and the former
    ten minutes). Return `status`, `prefix`, the archive locators, individual
    coverage, the missing individuals with their causes, and
    `registry_write_failed`. A `partial` status is a delivery with named gaps,
-   not a failure to hide.
+   not a failure to hide. For one archive per city, tag or administrative
+   level, pass `--group-by <definition-id>` (repeat to nest) and optional
+   `--where <id>=<value>` instead of `--transformer`; `.data.groups` then
+   holds one receipt per archive.
 7. Hand over: `ds report project archives --project <exact-id> --output json` lists the registry
    newest first; `download_url` is a short-lived signed link when present.
 

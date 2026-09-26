@@ -251,6 +251,76 @@ the queue exists to end. The room list is bounded, and the reply says how
 many more rooms there are and whether the printed command reaches all of
 them.
 
+## Grouped Combined Reports: one archive per city, tag or administrative level
+
+A grouped Combined Report is a custom deliverable the user asks for
+explicitly (owner ruling, 2026-09-26): one archive per city, per tag value, or
+per administrative unit, optionally nested. It is read-only with respect to
+the project — no tag, no consumer grouping and no setting is saved — and it
+needs no new service route: each group is published through the same
+`combined` request, with that group's transformers as its explicit scope.
+
+```bash
+ds report project scope    --project <exact-id> --group-by city --group-by phase --output json   # preview
+ds report project combined --project <exact-id> --group-by city --group-by phase --yes --output json
+ds report project combined --project <exact-id> --group-by loc_admin_level_2 --where phase=i --yes
+```
+
+- `--group-by <definition-id>` repeats; **order is nesting**: the first id is
+  the outer level. Ids are exact tag definition ids from `ds design tag
+  project-list` — a display name such as `District` never selects one.
+  Administrative levels are ordinary definitions once governed enrichment
+  has run (`ds design tag enrich-preview|enrich-apply`, see the
+  `ds-design-tag-groups` skill), so per city, per tag and per administrative
+  bound are one mechanism.
+- `--where <definition-id>=<value>` repeats. Filters on the same id are
+  alternatives (`--where city=bere --where city=kyabe`); filters on different
+  ids must all hold. Values match the vocabulary by exact bytes; `_unassigned`
+  selects the transformers carrying no value. `--where` alone publishes one
+  archive over the matching transformers.
+- `--transformer` is refused beside either flag
+  (`combined_group_scope_conflict`): naming the scope and selecting it from
+  tags are alternatives.
+
+The scope is every active saved transformer (what `scope` lists as
+participating). `ds` reads the project's tag-definition listing, that
+inventory and one digest-pinned tag projection (`ds-report.design-tags/v3`,
+the document `ds design group project-export` returns), and
+`ds-command-kernel::combined_grouping` decides the leaf groups — the CLI
+decides nothing. A transformer with no value for a group-by definition is
+placed in an explicit `_unassigned` group, last at its level, never dropped.
+
+| refusal | when |
+|---|---|
+| `combined_group_request_invalid` | a malformed, repeated or untrimmed id or filter; more than 8 levels or 32 filters — refused before any credential |
+| `combined_group_key_unknown` | an id that is not an active definition of the project; the message lists the ids it has |
+| `combined_group_key_not_single` | grouping by a multi-valued definition (filtering on one is fine) |
+| `combined_group_value_unknown` | a `--where` value outside the vocabulary; a case-only difference is named |
+| `combined_group_value_reserved` | a stored value spelled `_unassigned` |
+| `combined_groups_empty` | no active transformer left after the filters |
+| `combined_groups_too_many` | more than 200 leaf groups; the message carries the count |
+| `combined_group_projection_invalid` | the listing or projection is unreadable, of another schema or of another project |
+
+`scope --group-by` previews the plan: `.data.grouping` carries `group_by`,
+`where`, the projection `sha256`, `scope_count`, `transformer_count`,
+`filtered_out_count`, `unassigned_count`, `group_count` and every group's
+`path` (`[{key, value}]`) and `transformers`.
+
+`combined --group-by` validates every group's scope, then publishes the
+groups **one after another** (each blocks up to ten minutes). Its
+`.data.groups` holds one receipt per group — `path`, `transformer_count`,
+`status`, `prefix`, `archives`, individual coverage, the first errors and
+`error_count` — and `.data.grouping` the counts above. Each group is read
+through the same readiness predicate as a single run. A refusal about one
+group's rooms (`combined_inputs_*`, `report_no_individual_artifacts`,
+`report_grouping_incomplete`, `auth_input_invalid`) is recorded and the next
+group still runs; any other refusal would refuse every group alike, so the
+remaining groups are recorded `not_run`. A run that did not publish every
+group exits non-zero as `combined_groups_partial` with every receipt in
+`detail.groups`; a run whose only attempt refused returns that refusal
+itself. The folder layout inside each archive still follows `--file-level`,
+`--combine-per-group` and the project's applied `report_archive` grouping.
+
 ## Combined desktop reports
 
 `ds report bundle --request <file>` invokes the reporter-owned

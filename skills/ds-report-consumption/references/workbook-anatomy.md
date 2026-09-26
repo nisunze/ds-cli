@@ -101,6 +101,7 @@ derived from the customers, even when a size was chosen.
 `combined/combined_transformer.xlsx`, filed by the project's applied
 `report_archive` grouping (flat without one). `ds report project combined`
 nests them by `--file-level`, and with `--combine-per-group` each district
-folder also carries its own combined set. `ds report bundle`
+folder also carries its own combined set. With `--group-by` it publishes a
+separate archive per leaf tag group instead, each with its own `prefix`. `ds report bundle`
 produces the same layout from digest-pinned local artifacts and embeds a
 `manifest.json` listing every entry with its SHA-256.
