@@ -644,6 +644,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("dsgrid.template.apply", "local_file_write", "none"),
     ("dsgrid.template.compile", "local_file_write", "none"),
+    ("dsgrid.template.inspect", "read_only", "none"),
     ("dsgrid.validate", "discovery", "none"),
     // Archived transformer preview writes only its explicit local output;
     // recorded origin is file evidence, not a live project authority.

@@ -89,6 +89,7 @@ pub static DOMAIN: Domain = Domain {
         &asset::DETACH,
         &create::COMMAND,
         &template::COMMAND,
+        &template::INSPECT,
         &template::APPLY,
         &import_structure::COMMAND,
         &replace_structure::COMMAND,

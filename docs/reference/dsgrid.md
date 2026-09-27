@@ -34,6 +34,26 @@ revision-gated mutation and persistence. They do not make the paired model
 catalogue, active-model selection or project publication headless; those
 commands retain their explicitly declared authority below.
 
+## Template spotting default
+
+`dsgrid template compile` accepts an optional, human-editable spotting settings
+v1 JSON file. It validates the typed document, then stores canonical JSON as
+`setup/spotting-default.json` in the new `.dsgrid-template`. The manifest
+attests that member's digest; `template inspect` verifies the whole container
+and reads back the exact settings and member digest. Changing a setting changes
+the immutable template revision ID. Existing templates without the member
+continue to read with `spotting_default.present: false`.
+
+```bash
+ds dsgrid template compile --source reference.dsgrid --spotting-default spotting-default.json --out standards.dsgrid-template --output json
+ds dsgrid template inspect --template standards.dsgrid-template --output json
+```
+
+The setup is a suggestion carried by the template. Creating a model from it
+does not author spotting settings. Apply reviewed settings to the model through
+the revision-gated `set_spotting_settings` engine command; references must
+resolve against that model.
+
 ## Local acquisition, activity, and publication
 
 These words are deliberately not interchangeable:

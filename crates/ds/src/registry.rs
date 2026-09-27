@@ -255,6 +255,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::template::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::template::INSPECT,
+        handler: ds_cli_dsgrid::template::inspect,
+        render: ds_cli_dsgrid::template::render_inspect,
+    },
+    Entry {
         command: &ds_cli_dsgrid::template::APPLY,
         handler: ds_cli_dsgrid::template::apply,
         render: ds_cli_dsgrid::template::render,

@@ -6,9 +6,10 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_exchange::{
-    ArtifactKind, LibraryReleaseOptions, compile_model_template_source, unpack_model_template,
+    ArtifactKind, LibraryReleaseOptions, compile_model_template_source,
+    pack_template_snapshot_with_spotting_default, unpack_model_template,
 };
-use ds_grid_model::EntityId;
+use ds_grid_model::{EntityId, SpottingSettings};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -31,8 +32,13 @@ pub static COMMAND: Command = Command {
             "New .dsgrid-template output; never overwritten.",
         )
         .required(),
+        Arg::value(
+            "spotting-default",
+            "<json-path>",
+            "Optional strict spotting settings v1 JSON, attested as a template default; never applied to a model.",
+        ),
     ],
-    output: "Verified template digest, source digest, engineering table counts, and persisted artifact path.",
+    output: "Verified template and source digests, counts, optional spotting default and member digest, and persisted path.",
     examples: &[Example {
         command: "ds dsgrid template compile --source ./reference.dsgrid --out ./standards.dsgrid-template --output json",
         note: "Compile standards through the shared model-template authority.",
@@ -43,6 +49,11 @@ pub static COMMAND: Command = Command {
             code: "source_unreadable",
             when: "the source cannot be read as a bounded regular file",
             remedy: "name one readable supported source file",
+        },
+        Refusal {
+            code: "spotting_default_invalid",
+            when: "the optional setup file is unreadable, malformed, or fails spotting settings v1 validation",
+            remedy: "supply one valid SpottingSettings v1 JSON document",
         },
         Refusal {
             code: "template_refused",
@@ -85,7 +96,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .ok_or_else(|| Failure::invalid("source_unreadable", "source needs a UTF-8 filename"))?;
     let source_sha = format!("{:x}", Sha256::digest(&source_bytes));
     let short = &source_sha[..16];
-    let options = LibraryReleaseOptions {
+    let mut options = LibraryReleaseOptions {
         kind: ArtifactKind::Template,
         artifact_id: EntityId::new(format!("standards-{short}")).expect("digest identity"),
         revision_id: EntityId::new(format!("standards-revision-{short}")).expect("digest identity"),
@@ -93,11 +104,59 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         dependency_pins: Vec::new(),
         assets: Vec::new(),
     };
-    let template =
+    let compiled =
         compile_model_template_source(source_name, &source_bytes, &options).map_err(|error| {
             Failure::invalid("template_refused", error.to_string())
                 .remedy("inspect the source and its engineering/resource dependencies")
         })?;
+    let template = if let Some(path) = inputs.value("spotting-default") {
+        let raw = crate::package::read_bytes(path).map_err(|error| {
+            Failure::invalid("spotting_default_invalid", error.to_string())
+                .remedy("supply one readable SpottingSettings v1 JSON document")
+        })?;
+        if raw.len() > 1024 * 1024 {
+            return Err(
+                Failure::invalid("spotting_default_invalid", "setup JSON exceeds 1 MiB")
+                    .remedy("supply one bounded SpottingSettings v1 document"),
+            );
+        }
+        let settings: SpottingSettings = serde_json::from_slice(&raw).map_err(|error| {
+            Failure::invalid("spotting_default_invalid", error.to_string())
+                .remedy("supply one valid SpottingSettings v1 JSON document")
+        })?;
+        let problems = settings.problems();
+        if !problems.is_empty() {
+            return Err(
+                Failure::invalid("spotting_default_invalid", problems.join("; "))
+                    .remedy("correct the spotting settings document"),
+            );
+        }
+        // The source identifies the template family; the canonical setup
+        // changes its immutable revision identity even when the source stays
+        // byte-identical. Formatting the input JSON alone changes nothing.
+        let canonical = serde_json::to_vec(&settings).expect("validated settings serialize");
+        let mut revision_hasher = Sha256::new();
+        revision_hasher.update(source_sha.as_bytes());
+        revision_hasher.update([0]);
+        revision_hasher.update(&canonical);
+        let revision_hex = format!("{:x}", revision_hasher.finalize());
+        options.revision_id = EntityId::new(format!("standards-revision-{}", &revision_hex[..16]))
+            .expect("digest identity");
+        let prior = unpack_model_template(&compiled)
+            .map_err(|error| Failure::failed("template_refused", error.to_string()))?;
+        pack_template_snapshot_with_spotting_default(
+            &prior.snapshot,
+            &prior.assets,
+            &options,
+            Some(&settings),
+        )
+        .map_err(|error| {
+            Failure::invalid("spotting_default_invalid", error.to_string())
+                .remedy("correct the spotting settings document")
+        })?
+    } else {
+        compiled
+    };
     let release = unpack_model_template(&template)
         .map_err(|error| Failure::failed("template_refused", error.to_string()))?;
     crate::apply::write_new(out, &template)?;
@@ -105,6 +164,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "source": {"path": source, "sha256": format!("sha256:{source_sha}")},
         "template": {
             "artifact_kind": "template",
+            "artifact_id": release.manifest.artifact_id,
+            "revision_id": release.manifest.revision_id,
+            "content_root_digest": release.manifest.content_root_digest,
             "structure_types": release.snapshot.structure_types.len(),
             "available_structures": release.snapshot.available_structures.len(),
             "cables": release.snapshot.cables.len(),
@@ -112,6 +174,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "feature_codes": release.snapshot.feature_codes.len(),
             "resources": release.snapshot.resources.len(),
             "assets": release.assets.len(),
+            "spotting_default": spotting_default_receipt(&release),
         },
         "persisted": true,
         "artifact": {"path": out, "byte_len": template.len(), "sha256": format!("sha256:{:x}", Sha256::digest(&template))},
@@ -123,6 +186,81 @@ pub fn render(data: &Value) -> String {
         "compiled {} from {}\n",
         data["artifact"]["path"].as_str().unwrap_or("?"),
         data["source"]["path"].as_str().unwrap_or("?")
+    )
+}
+
+fn spotting_default_receipt(release: &ds_grid_exchange::LibraryRelease) -> Value {
+    let descriptor = release.manifest.objects.get("setup/spotting-default.json");
+    json!({
+        "present": release.spotting_default.is_some(),
+        "sha256": descriptor.map(|object| object.object_id.as_str()),
+        "settings": release.spotting_default,
+    })
+}
+
+pub static INSPECT: Command = Command {
+    id: "dsgrid.template.inspect",
+    path: &["dsgrid", "template", "inspect"],
+    contract: 1,
+    summary: "Inspect a template and its spotting default.",
+    purpose: "Verifies the template and every member digest. Reads the exact validated default setup if present; never authors a model or applies settings.",
+    chapter: Chapter::GridModel,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[Arg::value("template", "<path>", "One .dsgrid-template file.").required()],
+    output: "Template identity and digest, engineering counts, and optional spotting default with its member digest.",
+    examples: &[Example {
+        command: "ds dsgrid template inspect --template ./standards.dsgrid-template --output json",
+        note: "Review the exact setup before applying it to a model.",
+        runnable: false,
+    }],
+    refusals: &[
+        Refusal {
+            code: "template_unreadable",
+            when: "the template file cannot be read",
+            remedy: "name one readable .dsgrid-template file",
+        },
+        Refusal {
+            code: "template_refused",
+            when: "the template container, standards, or optional setup fails verification",
+            remedy: "compile a new template from a reviewed source",
+        },
+    ],
+    reference: Some("docs/reference/dsgrid.md"),
+    search: &["spotting default", "model setup"],
+    requires: Requires::Server,
+    availability: || Availability::Available,
+};
+
+pub fn inspect(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let path = inputs.require("template")?;
+    let bytes = crate::package::read_bytes(path).map_err(|error| {
+        Failure::invalid("template_unreadable", error.to_string())
+            .remedy("name one readable .dsgrid-template file")
+    })?;
+    let release = unpack_model_template(&bytes).map_err(|error| {
+        Failure::invalid("template_refused", error.to_string())
+            .remedy("compile a new template from a reviewed source")
+    })?;
+    Ok(json!({
+        "artifact": {"path": path, "byte_len": bytes.len(), "sha256": format!("sha256:{:x}", Sha256::digest(&bytes))},
+        "artifact_id": release.manifest.artifact_id,
+        "revision_id": release.manifest.revision_id,
+        "content_root_digest": release.manifest.content_root_digest,
+        "structure_types": release.snapshot.structure_types.len(),
+        "available_structures": release.snapshot.available_structures.len(),
+        "cables": release.snapshot.cables.len(),
+        "criterion_sets": release.snapshot.criterion_sets.len(),
+        "resources": release.snapshot.resources.len(),
+        "spotting_default": spotting_default_receipt(&release),
+    }))
+}
+
+pub fn render_inspect(data: &Value) -> String {
+    format!(
+        "verified {}\n",
+        data["artifact"]["path"].as_str().unwrap_or("?")
     )
 }
 
