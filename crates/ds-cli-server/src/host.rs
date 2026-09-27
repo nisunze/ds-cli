@@ -1380,6 +1380,45 @@ pub(crate) mod tests {
         assert!(unknown["error"].as_str().unwrap().contains("/v1/nothing"));
     }
 
+    /// A polygon covering half the globe (BigQuery's export of an inverted
+    /// ring) would tile the whole world at every zoom until the host runs out
+    /// of memory: the Server refuses it at admission and queues nothing.
+    #[tokio::test]
+    async fn tile_admission_refuses_an_inverted_polygon_before_anything_is_queued() {
+        let dir = tempfile::tempdir().unwrap();
+        let lake = r#"{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[180,90],[-180,90],[-180,-90],[180,-90],[180,90]],[[30,-2],[30.1,-2],[30.1,-2.1],[30,-2.1],[30,-2]]]},"properties":{}}"#;
+        let input = serde_json::to_vec(&json!({
+            "schema":"ds.tiles.prepared/v1", "project":A,
+            "layers":{"lakes":lake},
+            "options":{"min_zoom":0,"max_zoom":14,"base_zoom":14,"full_detail":16,"drop_densest_as_needed":true,"no_feature_limit":true,"no_tile_size_limit":true}
+        }))
+        .unwrap();
+        let (status, refused) = call(
+            app(dir.path(), true),
+            "POST",
+            "/v1/tile-processing/lakes",
+            Some(input),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+        assert_eq!(refused["code"], "server_refused");
+        assert!(
+            refused["error"]
+                .as_str()
+                .unwrap()
+                .starts_with("source_polygons_inverted: lakes feature 1 "),
+            "{refused}"
+        );
+        let (_, jobs) = call(
+            app(dir.path(), true),
+            "GET",
+            &format!("/v1/jobs?project={A}"),
+            None,
+        )
+        .await;
+        assert_eq!(jobs["jobs"], json!([]), "{jobs}");
+    }
+
     #[tokio::test]
     async fn tile_jobs_retain_bytes_and_isolate_sealed_projects_across_restart() {
         let dir = tempfile::tempdir().unwrap();
