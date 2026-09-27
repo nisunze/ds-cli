@@ -73,7 +73,7 @@ pub fn validate_request(r: &Request) -> Result<(), String> {
         return Err("Print DPI must be between 72 and 1200".into());
     }
     if let Some(layout) = &r.layout {
-        validate(layout)?;
+        validate_geographic(layout)?;
         if layout.paper.size != r.paper || layout.paper.orientation != Orientation::Landscape {
             return Err("Authored layout paper differs from requested paper".into());
         }
@@ -565,6 +565,25 @@ mod tests {
             dpi: default_dpi(),
             layout: None,
         }
+    }
+    #[test]
+    fn an_area_map_refuses_map_free_front_matter_by_name() {
+        let mut r = request("custom-map", &["1101"]);
+        let mut cover = default_layout();
+        cover.elements.retain(|e| {
+            !matches!(
+                e.kind,
+                ElementKind::Map | ElementKind::NorthArrow | ElementKind::ScaleBar
+            )
+        });
+        validate(&cover).unwrap();
+        r.layout = Some(cover);
+        assert_eq!(
+            validate_request(&r).unwrap_err(),
+            "a geographic sheet needs a map frame; layout network-map has none"
+        );
+        r.layout = Some(default_layout());
+        validate_request(&r).unwrap();
     }
     #[test]
     fn print_input_room_is_fenced_to_owner_project_and_immutable_model() {

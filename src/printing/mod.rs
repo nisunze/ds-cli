@@ -1055,6 +1055,17 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             ));
         }
     }
+    // A geographic sheet has one map frame. Front matter (a cover or a
+    // naming-convention page) has none, and so nothing a map alone honours.
+    match maps {
+        0 => refuse_map_features(layout)?,
+        1 => {}
+        _ => {
+            return Err(
+                "a geographic sheet must have exactly one map frame; front matter has none".into(),
+            )
+        }
+    }
     if let Some(composition) = &layout.composition {
         let map = layout.elements.iter().find(|e| e.kind == ElementKind::Map);
         let mut seen = BTreeSet::new();
@@ -1084,9 +1095,6 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                     .into(),
             );
         }
-    }
-    if maps != 1 {
-        return Err("a layout must have exactly one map frame".into());
     }
     if layout.assets.len() > 12 || layout.styles.len() > 100 {
         return Err("too many assets or layer styles".into());
@@ -1296,6 +1304,56 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 }
             }
         }
+    }
+    Ok(())
+}
+/// A page without a map frame has no projection, bearing or scale. What its
+/// layout asks of a map is refused by name, never dropped from the page; the
+/// native reporter refuses the same list, in the same words, at render time.
+fn refuse_map_features(layout: &Layout) -> Result<(), String> {
+    let refuse = |what: String| {
+        Err(format!(
+            "{what} needs a map frame; layout {} has none",
+            layout.id
+        ))
+    };
+    for element in &layout.elements {
+        match element.kind {
+            ElementKind::NorthArrow => return refuse(format!("north arrow {}", element.id)),
+            ElementKind::ScaleBar => return refuse(format!("scale bar {}", element.id)),
+            ElementKind::Text if element.text.contains("{scale}") => {
+                return refuse(format!("text {} binding {{scale}}", element.id));
+            }
+            _ => {}
+        }
+    }
+    for (present, what) in [
+        (layout.focus.is_some(), "a focus area"),
+        (
+            layout.composition.is_some(),
+            "automatic furniture composition",
+        ),
+        (layout.network_fit.is_some(), "network fitting"),
+        (layout.scale_limits.is_some(), "a map scale limit"),
+        (layout.scale_rounding.is_some(), "map scale rounding"),
+        (layout.transformer_bounds.is_some(), "transformer bounds"),
+    ] {
+        if present {
+            return refuse(what.into());
+        }
+    }
+    Ok(())
+}
+/// A layout printed as a geographic sheet: valid, with its one map frame.
+/// Hosts that always project (custom-area and district MV maps) admit no
+/// front matter.
+pub fn validate_geographic(layout: &Layout) -> Result<(), String> {
+    validate(layout)?;
+    if !layout.elements.iter().any(|e| e.kind == ElementKind::Map) {
+        return Err(format!(
+            "a geographic sheet needs a map frame; layout {} has none",
+            layout.id
+        ));
     }
     Ok(())
 }
@@ -3212,6 +3270,171 @@ mod tests {
                 .unwrap()
         )
         .is_err());
+    }
+
+    /// Front matter: the default sheet with every map-bound element removed.
+    fn map_free_page() -> Layout {
+        let mut layout = default_layout();
+        layout.id = "atlas-front-matter".into();
+        layout.elements.retain(|e| {
+            !matches!(
+                e.kind,
+                ElementKind::Map
+                    | ElementKind::Legend
+                    | ElementKind::NorthArrow
+                    | ElementKind::ScaleBar
+            )
+        });
+        layout
+    }
+
+    #[test]
+    fn map_free_cover_and_convention_pages_are_admitted_as_front_matter() {
+        let mut cover = map_free_page();
+        cover.assets.insert(
+            "logo-a".into(),
+            Asset {
+                label: "a.png".into(),
+                png_data_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+                    .into(),
+            },
+        );
+        cover.elements.extend([
+            serde_json::from_value(
+                json!({"id":"cover_frame","kind":"rectangle","rect":[12,40,396,200]}),
+            )
+            .unwrap(),
+            serde_json::from_value(
+                json!({"id":"logo","kind":"logo","rect":[20,50,40,20],"asset":"logo-a"}),
+            )
+            .unwrap(),
+        ]);
+        let mut convention = map_free_page();
+        convention.elements.push(
+            serde_json::from_value(json!({
+                "id":"names","kind":"table","rect":[20,50,200,180],"font_pt":8,
+                "table":{"layer":"names","columns":["code","meaning"],"headings":["Code","Meaning"],
+                    "widths":[1,3],"panels":1,"row_mm":5,"align":"left"}
+            }))
+            .unwrap(),
+        );
+        for page in [cover, convention] {
+            assert!(page.elements.iter().all(|e| e.kind != ElementKind::Map));
+            validate(&page).unwrap();
+            // The command surface admits it unchanged: no stand-in map added.
+            assert_eq!(
+                evaluated_layout(json!({"op":"validate","layout":page})),
+                page
+            );
+            // A host that always projects still refuses it.
+            assert_eq!(
+                validate_geographic(&page).unwrap_err(),
+                "a geographic sheet needs a map frame; layout atlas-front-matter has none"
+            );
+        }
+    }
+
+    #[test]
+    fn map_free_page_refuses_what_only_a_map_can_honour() {
+        let refusal = |layout: &Layout| validate(layout).unwrap_err();
+        let donor = default_layout();
+        let with_element = |kind: ElementKind, id: &str| {
+            let mut page = map_free_page();
+            page.elements.push(Element {
+                id: id.into(),
+                ..donor
+                    .elements
+                    .iter()
+                    .find(|e| e.kind == kind)
+                    .unwrap()
+                    .clone()
+            });
+            page
+        };
+        assert_eq!(
+            refusal(&with_element(ElementKind::NorthArrow, "north")),
+            "north arrow north needs a map frame; layout atlas-front-matter has none"
+        );
+        assert_eq!(
+            refusal(&with_element(ElementKind::ScaleBar, "scale")),
+            "scale bar scale needs a map frame; layout atlas-front-matter has none"
+        );
+        let mut scale_text = map_free_page();
+        scale_text.elements[0].text = "{title} {scale}".into();
+        assert_eq!(
+            refusal(&scale_text),
+            "text title binding {scale} needs a map frame; layout atlas-front-matter has none"
+        );
+        let options: [(&str, fn(&mut Layout)); 6] = [
+            ("a focus area", |l| {
+                l.focus = Some(
+                    serde_json::from_value(json!({"buffer_m":50.,"outside_color":"#ffffff",
+                        "outside_opacity":0.5,"border_color":"#000000","border_width_mm":0.3}))
+                    .unwrap(),
+                )
+            }),
+            ("automatic furniture composition", |l| {
+                l.composition = Some(Composition {
+                    movable: vec!["title".into()],
+                    gap_mm: 5.,
+                    min_font_scale: 1.,
+                    collision_margin_mm: 1.,
+                })
+            }),
+            ("network fitting", |l| {
+                l.network_fit = Some(
+                    serde_json::from_value(json!({"source_layers":["roads"],"clearance_mm":2.}))
+                        .unwrap(),
+                )
+            }),
+            ("a map scale limit", |l| {
+                l.scale_limits = Some(
+                    serde_json::from_value(json!({"min_denominator":500.,"max_denominator":5000.}))
+                        .unwrap(),
+                )
+            }),
+            ("map scale rounding", |l| l.scale_rounding = Some(500.)),
+            ("transformer bounds", |l| {
+                l.transformer_bounds = Some(TransformerBounds {
+                    source_layers: vec!["poles".into()],
+                    identity_field: "transfo".into(),
+                    buffer_m: 10.,
+                })
+            }),
+        ];
+        for (what, set) in options {
+            let mut page = map_free_page();
+            set(&mut page);
+            assert_eq!(
+                refusal(&page),
+                format!("{what} needs a map frame; layout atlas-front-matter has none")
+            );
+        }
+    }
+
+    #[test]
+    fn a_geographic_sheet_keeps_exactly_one_map_frame() {
+        let layout = default_layout();
+        validate(&layout).unwrap();
+        validate_geographic(&layout).unwrap();
+        let mut two = layout.clone();
+        two.elements.push(Element {
+            id: "map-2".into(),
+            ..layout.elements[0].clone()
+        });
+        assert!(refused(&two, "exactly one map frame"));
+        // Removing the map leaves a sheet whose north arrow has nothing to point at.
+        assert_eq!(
+            evaluate(
+                &serde_json::to_vec(&json!({"op":"remove","layout":layout,"id":"map"})).unwrap()
+            )
+            .unwrap_err(),
+            "north arrow north needs a map frame; layout network-map has none"
+        );
+    }
+
+    fn refused(layout: &Layout, reason: &str) -> bool {
+        validate(layout).is_err_and(|e| e.contains(reason))
     }
 
     #[test]
