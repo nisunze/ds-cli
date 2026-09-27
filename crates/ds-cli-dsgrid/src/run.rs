@@ -35,6 +35,17 @@ use crate::package;
 
 const MAX_PARAMS_BYTES: u64 = 16 * 1024 * 1024;
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WholeModelSpottingParams {
+    #[serde(default)]
+    settings: Option<ds_grid_model::SpottingSettings>,
+    #[serde(default)]
+    memory_budget_bytes: Option<u64>,
+    #[serde(default)]
+    max_workers: Option<usize>,
+}
+
 pub static COMMAND: Command = Command {
     id: "dsgrid.run",
     path: &["dsgrid", "run"],
@@ -654,6 +665,41 @@ fn dispatch(
                     session.snapshot(),
                     session.current_revision(),
                     &request,
+                )
+                .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
+        "plan_whole_model_spotting" => {
+            let request: WholeModelSpottingParams = parse(operation_id, params)?;
+            let settings = match request.settings {
+                Some(settings) => settings,
+                None => ds_grid_engine::spotting::requests::stored_spotting_settings(
+                    session.snapshot(),
+                )
+                .cloned()
+                .ok_or_else(|| {
+                    engine_error(
+                        operation_id,
+                        ds_grid_engine::spotting::requests::SpottingRequestDerivationError::NoSpottingSettings,
+                    )
+                })?,
+            };
+            let memory_budget_bytes = request
+                .memory_budget_bytes
+                .or_else(crate::host_memory::spotting_memory_budget_bytes);
+            let max_workers = if memory_budget_bytes.is_none() {
+                request.max_workers.or(Some(1))
+            } else {
+                request.max_workers
+            };
+            serialize(
+                operation_id,
+                ds_grid_engine::spotting::batch::plan_whole_model(
+                    session.snapshot(),
+                    session.current_revision(),
+                    &settings,
+                    memory_budget_bytes,
+                    max_workers,
                 )
                 .map_err(|error| engine_error(operation_id, error))?,
             )
