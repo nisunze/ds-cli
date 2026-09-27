@@ -1147,3 +1147,245 @@ fn an_implausibly_wide_extent_is_refused_before_any_provider_round() {
     );
     assert!(provider.areas.is_empty(), "no provider round was made");
 }
+
+/// Serves a fixed set of rows: each one the asked area selects under the
+/// room's own rule, as the governed provider does. Records every area asked
+/// for, and fails the call numbered `fail_at` (1-based).
+struct Fixed {
+    rows: Vec<Value>,
+    areas: Vec<Value>,
+    fail_at: Option<usize>,
+}
+
+impl Provider for Fixed {
+    fn acquire(&mut self, dataset: &Dataset, area: &Value) -> Result<Acquisition, Failure> {
+        self.areas.push(area.clone());
+        if self.fail_at == Some(self.areas.len()) {
+            return Err(Failure::ProviderUnavailable("provider is down".into()));
+        }
+        let features = self
+            .rows
+            .iter()
+            .filter(|row| selects(dataset, row, area))
+            .cloned()
+            .collect();
+        Ok(Acquisition {
+            features,
+            source_version: format!("{}-v1", dataset.id),
+            source_receipt: json!({"provider": "fixed"}),
+        })
+    }
+}
+
+fn selects(dataset: &Dataset, row: &Value, area: &Value) -> bool {
+    ds_command_kernel::project_dataset_cache::acquisition_selects(
+        &dataset.id,
+        &dataset.provider,
+        row,
+        area,
+    )
+    .unwrap()
+}
+
+/// A district-sized plan, so a refresh has many tiles to read again.
+fn refresh_district() -> Value {
+    json!({"mv_lines": {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {}, "geometry": {"type": "LineString",
+            "coordinates": [[29.40, -2.50], [29.70, -2.20]]}}
+    ]}})
+}
+
+/// The provider's rows along the district line, and a pre-fix seed of them:
+/// every third row missing and one row the provider never had.
+fn truth_and_flawed() -> (Vec<Value>, Vec<Value>) {
+    let truth: Vec<Value> = (0..=60)
+        .map(|index| {
+            let step = index as f64 * 0.3 / 60.0;
+            footprint(index, 29.40 + step, -2.50 + step)
+        })
+        .collect();
+    let mut flawed: Vec<Value> = truth
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| index % 3 != 0)
+        .map(|(_, row)| row.clone())
+        .collect();
+    let mut ghost = footprint(0, 29.55, -2.35);
+    ghost["properties"]["id"] = json!("ghost");
+    flawed.push(ghost);
+    (truth, flawed)
+}
+
+fn ids(features: &[Value]) -> Vec<String> {
+    let mut ids: Vec<String> = features
+        .iter()
+        .map(|row| row["properties"]["id"].as_str().unwrap().to_owned())
+        .collect();
+    ids.sort();
+    ids
+}
+
+/// Seed (`refresh == false`) or refresh the district's buildings.
+fn settle_district(
+    root: &Path,
+    provider: &mut Fixed,
+    refresh: bool,
+) -> Result<ds_project_data::EnsureOutcome, Failure> {
+    let extents = design_extents([("mv_data", &refresh_district())]).unwrap();
+    let policy = buffer_policy(&[200.0]).unwrap();
+    let mut fetch = no_fetch;
+    let mut hosts = Hosts {
+        provider,
+        fetch: &mut fetch,
+    };
+    let (dataset, source) = (buildings_dataset(), DeclaredSource::Buildings);
+    if refresh {
+        ds_project_data::refresh(
+            root,
+            &scope(),
+            &dataset,
+            &source,
+            &policy,
+            &extents,
+            &[],
+            &mut hosts,
+        )
+    } else {
+        ensure(
+            root,
+            &scope(),
+            &dataset,
+            &source,
+            &policy,
+            &extents,
+            &[],
+            Mode::Acquire(&mut hosts),
+        )
+    }
+}
+
+/// What the room holds over the district's planned coverage, read only.
+fn held_district(root: &Path) -> (ds_project_data::EnsureOutcome, Vec<String>) {
+    let extents = design_extents([("mv_data", &refresh_district())]).unwrap();
+    let read = ensure(
+        root,
+        &scope(),
+        &buildings_dataset(),
+        &DeclaredSource::Buildings,
+        &buffer_policy(&[200.0]).unwrap(),
+        &extents,
+        &[],
+        Mode::Read,
+    )
+    .unwrap();
+    let area = read.coverage_geometry.clone().unwrap();
+    let (features, _) =
+        ds_project_data::ensure::read_features(root, &scope(), &buildings_dataset(), &area)
+            .unwrap();
+    (read, ids(&features))
+}
+
+/// 468826f: rooms seeded before the national tiling fix claim coverage over
+/// rows they may miss, and a warm seed reads nothing. The explicit refresh
+/// reads every planned tile again and the room then holds exactly the
+/// provider's rows; the next ordinary seed is warm again.
+#[test]
+fn an_explicit_refresh_reacquires_the_providers_exact_rows_and_the_next_seed_stays_warm() {
+    let root = tempfile::tempdir().unwrap();
+    let (truth, flawed) = truth_and_flawed();
+    let mut old = Fixed {
+        rows: flawed.clone(),
+        areas: Vec::new(),
+        fail_at: None,
+    };
+    let seeded = settle_district(root.path(), &mut old, false).unwrap();
+    assert!(seeded.covered, "{:?}", seeded.warnings);
+    let tiles = old.areas.len();
+    assert!(tiles >= 9, "{tiles} tiles");
+    assert_eq!(held_district(root.path()).1, ids(&flawed));
+
+    // The defect: coverage answers the plan, so an ordinary seed — refresh is
+    // never implicit — asks the correct provider for nothing and keeps the
+    // flawed rows.
+    let mut provider = Fixed {
+        rows: truth.clone(),
+        areas: Vec::new(),
+        fail_at: None,
+    };
+    let warm = settle_district(root.path(), &mut provider, false).unwrap();
+    assert!(warm.covered);
+    assert_eq!((warm.acquired, provider.areas.len()), (0, 0));
+    assert_eq!(held_district(root.path()).1, ids(&flawed));
+
+    let refreshed = settle_district(root.path(), &mut provider, true).unwrap();
+    assert!(refreshed.covered, "{:?}", refreshed.warnings);
+    assert_eq!(refreshed.skipped, 0);
+    assert_eq!(refreshed.acquired, provider.areas.len());
+    assert_eq!(provider.areas, old.areas, "every planned tile, read again");
+    assert_eq!(refreshed.features, truth.len() as i64);
+    let (read, held) = held_district(root.path());
+    assert!(read.covered);
+    assert_eq!(held, ids(&truth), "missing rows back, the ghost gone");
+    let queries = refreshed.status["queries"].as_array().unwrap();
+    assert!(
+        queries.iter().any(|row| row["refresh"] == true),
+        "the room records the refresh as one"
+    );
+
+    let calls = provider.areas.len();
+    let after = settle_district(root.path(), &mut provider, false).unwrap();
+    assert!(after.covered);
+    assert_eq!(after.acquired, 0);
+    assert_eq!(
+        provider.areas.len(),
+        calls,
+        "a seed after a refresh is warm"
+    );
+    assert_eq!(held_district(root.path()).1, ids(&truth));
+}
+
+/// A refresh that fails part-way costs nothing held: tiles it committed hold
+/// the provider's rows, every other tile keeps its old rows, completed
+/// coverage still answers a read, and running the refresh again completes it.
+#[test]
+fn a_refresh_that_fails_part_way_keeps_every_completed_holding() {
+    let root = tempfile::tempdir().unwrap();
+    let (truth, flawed) = truth_and_flawed();
+    let mut old = Fixed {
+        rows: flawed.clone(),
+        areas: Vec::new(),
+        fail_at: None,
+    };
+    settle_district(root.path(), &mut old, false).unwrap();
+    let before = held_district(root.path()).0.status;
+
+    let mut failing = Fixed {
+        rows: truth.clone(),
+        areas: Vec::new(),
+        fail_at: Some(3),
+    };
+    let refused = settle_district(root.path(), &mut failing, true).unwrap_err();
+    assert_eq!(refused.code(), "dataset_provider_unavailable");
+    assert_eq!(failing.areas.len(), 3, "the refresh stopped at the failure");
+
+    let dataset = buildings_dataset();
+    let refreshed = &failing.areas[..2];
+    let in_refreshed = |row: &&Value| refreshed.iter().any(|a| selects(&dataset, row, a));
+    let mut expected: Vec<Value> = truth.iter().filter(in_refreshed).cloned().collect();
+    expected.extend(flawed.iter().filter(|row| !in_refreshed(row)).cloned());
+    let (read, held) = held_district(root.path());
+    assert!(read.covered, "completed coverage survives a failed refresh");
+    assert_eq!(read.status["completed"], before["completed"]);
+    assert_eq!(held, ids(&expected));
+    assert_ne!(held, ids(&flawed), "the committed tiles were refreshed");
+
+    let mut provider = Fixed {
+        rows: truth.clone(),
+        areas: Vec::new(),
+        fail_at: None,
+    };
+    let repeated = settle_district(root.path(), &mut provider, true).unwrap();
+    assert!(repeated.covered, "{:?}", repeated.warnings);
+    assert_eq!(held_district(root.path()).1, ids(&truth));
+    assert_eq!(provider.areas, old.areas);
+}

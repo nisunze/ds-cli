@@ -16,6 +16,12 @@
 //! * A second unchanged seed acquires nothing: the plan is deterministic, the
 //!   room's completed coverage answers `assess` with no gaps, and the store's
 //!   `begin` refuses a repeated digest anyway.
+//!
+//! Coverage alone cannot prove the rows under it are the provider's: a room
+//! seeded before a fix can claim an area whose rows are wrong or missing, and
+//! a warm seed would then read nothing again. [`refresh`] is the one explicit
+//! door for that — it re-acquires every planned tile whatever completed
+//! coverage claims, and no `Mode` reaches it.
 
 use ds_command_kernel::project_dataset_cache::{
     assess, bounds_area_m2, dataset_key, plan_focused, query_digest, BufferPolicy, Coverage,
@@ -124,15 +130,22 @@ impl Room<'_> {
         area: &Value,
         cells: &Coverage,
         source_version: &str,
+        refresh: bool,
     ) -> Result<Value, Failure> {
-        self.call(json!({
+        let mut request = json!({
             "action": "begin",
             "query_digest": digest,
             "area": area,
             "cells": cells,
             "source_version": source_version,
             "wait_for_pending": true,
-        }))
+        });
+        if refresh {
+            // The store then opens a ticket over coverage it already completed;
+            // its commit replaces the tile's rows, and until then they stay.
+            request["refresh"] = json!(true);
+        }
+        self.call(request)
     }
 
     fn commit(
@@ -304,7 +317,63 @@ pub fn ensure(
     policy: &BufferPolicy,
     extents: &[Extent],
     focus: &[String],
+    mode: Mode<'_, '_>,
+) -> Result<EnsureOutcome, Failure> {
+    settle(
+        root, scope, dataset, source, policy, extents, focus, mode, false,
+    )
+}
+
+/// Re-acquire this dataset over every tile its planned coverage needs, even
+/// where the room's completed coverage already answers the plan.
+///
+/// For rooms whose rows cannot be trusted under the coverage they claim — a
+/// seed taken before a provider or tiling fix. Each tile is begun as a store
+/// refresh and committed alone: the commit replaces that tile's rows with the
+/// provider's page, and rows are never removed before it. A failed tile is
+/// recorded on the room and ends the refresh with its failure; tiles already
+/// committed hold the provider's rows, the rest keep what they held, and
+/// completed coverage is unchanged. Running it again repeats the whole plan.
+///
+/// Never implicit: [`ensure`] in any [`Mode`] reads only gaps, so the next
+/// ordinary seed after a refresh stays warm. `acquired` counts the tiles this
+/// call re-acquired, and the outcome is `covered` only when every one of them
+/// committed and completed coverage answers the plan.
+#[allow(clippy::too_many_arguments)]
+pub fn refresh(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    source: &DeclaredSource,
+    policy: &BufferPolicy,
+    extents: &[Extent],
+    focus: &[String],
+    hosts: &mut Hosts<'_>,
+) -> Result<EnsureOutcome, Failure> {
+    settle(
+        root,
+        scope,
+        dataset,
+        source,
+        policy,
+        extents,
+        focus,
+        Mode::Acquire(hosts),
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn settle(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    source: &DeclaredSource,
+    policy: &BufferPolicy,
+    extents: &[Extent],
+    focus: &[String],
     mut mode: Mode<'_, '_>,
+    refresh: bool,
 ) -> Result<EnsureOutcome, Failure> {
     let plan = plan_focused(scope, dataset, policy, extents, focus).map_err(crate::store)?;
     let mut warnings = Vec::new();
@@ -359,15 +428,21 @@ pub fn ensure(
     }
     let mut assessment = assess(&completed(&status)?, &plan.coverage).map_err(crate::store)?;
     let (mut acquired, mut skipped) = (0_usize, 0_usize);
-    if !assessment.covered {
+    if refresh || !assessment.covered {
         if let Mode::Acquire(hosts) = &mut mode {
             // A gap is acquired in tiles no provider read may exceed: a whole
             // project's overview is one district-sized gap, and asking for it
             // in one read is what the provider refuses and the national index
             // truncates. Each tile is its own ticket and commit; the room's
-            // exact coverage joins them again.
+            // exact coverage joins them again. A refresh tiles the whole plan,
+            // not its gaps: what it doubts is the coverage already held.
+            let targets = if refresh {
+                plan.coverage.cells.clone()
+            } else {
+                assessment.gaps.cells.clone()
+            };
             let mut pending: Vec<([f64; 4], u32)> = Vec::new();
-            for cell in assessment.gaps.cells.clone() {
+            for cell in targets {
                 pending.extend(tiles(cell)?.into_iter().rev().map(|tile| (tile, 0)));
             }
             while let Some((cell, depth)) = pending.pop() {
@@ -397,7 +472,17 @@ pub fn ensure(
                 let held_version = status["source_version"].as_str().unwrap_or("").to_owned();
                 let digest =
                     query_digest(scope, &at_version(dataset, &held_version), policy, &cells);
-                let ticket = room.begin(&digest, &area, &cells, &held_version)?;
+                let ticket = room.begin(&digest, &area, &cells, &held_version, refresh)?;
+                if ticket["accepted"] != Value::Bool(true) && refresh {
+                    // The store waits out overlapping work before a refresh
+                    // begins, so a decline is not a saving here: the tile was
+                    // not read again, and a refresh never counts it as done.
+                    let [w, s, e, n] = cell;
+                    return Err(Failure::AcquisitionFailed(format!(
+                        "the room declined to refresh [{w:.4}, {s:.4}, {e:.4}, {n:.4}] ({}); {acquired} tile(s) were refreshed before it and hold the provider's rows, the rest keep what they held",
+                        ticket["reason"].as_str().unwrap_or("no reason given")
+                    )));
+                }
                 if ticket["accepted"] != Value::Bool(true) {
                     // Another process owns this exact work, or the room already
                     // completed it. Declining is the saving.
@@ -428,6 +513,14 @@ pub fn ensure(
                 }
             }
             assessment = assess(&completed(&status)?, &plan.coverage).map_err(crate::store)?;
+            if refresh && !assessment.covered {
+                // Every planned tile committed, and a commit only extends
+                // completed coverage; a plan still unanswered is a defect.
+                return Err(Failure::Store(
+                    "every planned tile was refreshed, yet completed coverage does not answer the plan"
+                        .into(),
+                ));
+            }
             if !assessment.covered {
                 warnings.push(
                     "Another acquisition is still preparing this project area. Coverage is not complete yet."
