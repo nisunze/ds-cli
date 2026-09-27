@@ -36,6 +36,9 @@ whole=(
 	"geo/spatial_predicate.rs:crates/ds-geo/src/spatial_predicate.rs"
 	"geo/identity.rs:crates/ds-geo/src/identity.rs"
 	"geo/comparison.rs:crates/ds-geo/src/comparison.rs"
+	"geo/admission.rs:crates/ds-geo/src/admission.rs"
+	# The admission tests read their BigQuery parity corpus beside them.
+	"geo/admission_corpus.json:crates/ds-geo/src/admission_corpus.json"
 	"canvas/lib.rs:crates/ds-canvas/src/lib.rs"
 	"canvas/viewport.rs:crates/ds-canvas/src/viewport.rs"
 	"canvas/selection.rs:crates/ds-canvas/src/selection.rs"

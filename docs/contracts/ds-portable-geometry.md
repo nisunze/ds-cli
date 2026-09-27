@@ -49,10 +49,10 @@ the sha256 of every source they were cut from. `tests/geo_lite_drift.rs`:
    `ds-network` path, and a `.rs` file that reaches one through `include_str!`,
    `include_bytes!` or `#[path]`. The second is not hypothetical — see §5.
 
-Parity needs no corpus for twelve of the thirteen entries, because parity is by
-construction: the bytes are the same bytes, and the 37 unit tests that ship
+Parity needs no corpus for the whole-file entries, because parity is by
+construction: the bytes are the same bytes, and the unit tests that ship
 inside those files run here too (`cargo test --workspace`). The drift test is
-the named proof. The thirteenth — the partial entry below — is the one place
+the named proof. The partial entry below is the one place
 that argument does not reach, so it carries a corpus of its own.
 
 ### Why two crates
@@ -92,7 +92,8 @@ ours, not ds-network's.
 
 ## 2. What is snapshotted
 
-13 files, `vendor/ds-geo-lite/MANIFEST.json`, taken at ds-network `577ec83`:
+15 files, `vendor/ds-geo-lite/MANIFEST.json`, taken at ds-network `a6288ad`
+(`577ec83` until geometry admission was added, 2026-09-27):
 
 | Vendored | ds-network source | Whole |
 |---|---|---|
@@ -100,6 +101,7 @@ ours, not ds-network's.
 | `geo/spatial_predicate.rs` | `crates/ds-geo/src/spatial_predicate.rs` | yes |
 | `geo/identity.rs` | `crates/ds-geo/src/identity.rs` | yes |
 | `geo/comparison.rs` | `crates/ds-geo/src/comparison.rs` | yes |
+| `geo/admission.rs`, `geo/admission_corpus.json` | `crates/ds-geo/src/admission{.rs,_corpus.json}` | yes |
 | `geo/haversine.rs` | `crates/ds-geo-ops/src/{primitives/haversine.rs,lib.rs,types.rs}` | **partial** |
 | `canvas/{lib,viewport,selection,measured_path,free_layout,packed,layout_session}.rs` | `crates/ds-canvas/src/**` | yes |
 | `network/processor_presets.json` | `crates/ds-network/src/network/processor_presets.json` | yes |
@@ -108,6 +110,15 @@ The last one is not geometry — it is the processor catalogue
 `process_settings` is pure over, and §5 explains why it is here. The directory
 is named after its first tenant rather than its contents; renaming it is one
 string in `scripts/sync-geo-lite.sh` and three `#[path]`s.
+
+`geo/admission.rs` is the one rule every input door applies to a geometry
+(owner ruling, 2026-09-27: what BigQuery rejects is rejected at our input
+boundary, and a globe-covering polygon never exists in our system). Its source
+stays in ds-network so the file importers there (`ds-io`) and the kernel's doors
+judge with the same bytes. Its parity is with BigQuery rather than with
+ds-network, so it ships its own corpus: `geo/admission_corpus.json` records
+`ST_GEOGFROMGEOJSON`'s answer for every case, and the tests inside the file
+assert each one here too.
 
 ## 3. Judgement: `compare_geojson_layers` is not heavy
 

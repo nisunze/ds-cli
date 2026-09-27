@@ -22,6 +22,8 @@
 //! point: this crate is what makes `cargo check --features wasm` succeed with
 //! `ds-network` absent from the filesystem.
 
+#[path = "../../../vendor/ds-geo-lite/geo/admission.rs"]
+pub mod admission;
 #[path = "../../../vendor/ds-geo-lite/geo/comparison.rs"]
 pub mod comparison;
 #[path = "../../../vendor/ds-geo-lite/geo/haversine.rs"]
