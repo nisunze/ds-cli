@@ -25,6 +25,7 @@ pub mod combined;
 pub mod compute;
 pub mod export;
 pub mod grouping;
+pub mod hold;
 pub mod map_inputs;
 pub mod publish;
 pub mod scope;
@@ -32,7 +33,7 @@ pub mod settings;
 
 use ds_cli_auth::{
     HeadlessNamedProject, HeadlessProjectReport, PROJECT_REPORT_MAX_TRANSFORMERS,
-    TransformerInventory, TransformerLifecycle, TransformerSet,
+    TransformerInventory, TransformerSet,
 };
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
@@ -443,23 +444,28 @@ pub fn project_receipt(headless: &impl ProjectReceipt) -> Value {
 /// missing names are excluded with their state. Project-level documents are
 /// shown for inventory context; they never participate in the LV report.
 pub fn scope_json(requested: &TransformerSet, inventory: &TransformerInventory) -> Value {
+    scope_rows_json(requested, &hold::rows(inventory))
+}
+
+/// [`scope_json`] over inventory rows, whether the service just answered them
+/// or this machine holds them.
+pub fn scope_rows_json(requested: &TransformerSet, rows: &[hold::Row]) -> Value {
     let mut participating = Vec::new();
     let mut excluded = Vec::new();
     let mut project_level = Vec::new();
-    for row in inventory.rows() {
-        if row.kind() == ds_cli_auth::TransformerKind::ProjectLevel {
-            project_level.push(json!({"name": row.name(), "state": row.lifecycle().token()}));
+    for row in rows {
+        if !row.is_transformer() {
+            project_level.push(json!({"name": row.name, "state": row.state}));
             continue;
         }
-        match row.lifecycle() {
-            TransformerLifecycle::Active => participating.push(row.name().to_owned()),
-            state => {
-                let mut entry = json!({"name": row.name(), "state": state.token()});
-                if let Some(record) = row.retirement() {
-                    entry["reason"] = json!(record.reason());
-                }
-                excluded.push(entry);
+        if row.is_active() {
+            participating.push(row.name.clone());
+        } else {
+            let mut entry = json!({"name": row.name, "state": row.state});
+            if row.retired {
+                entry["reason"] = json!(row.reason);
             }
+            excluded.push(entry);
         }
     }
     json!({

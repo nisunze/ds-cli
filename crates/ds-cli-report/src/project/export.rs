@@ -27,12 +27,13 @@
 //! `data` under the same envelope. A preview never seeds, never projects MV,
 //! and writes one page with its run receipt per transformer, no batch receipt.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use ds_cli_auth::{TransformerKind, TransformerLifecycle, WeakNetwork};
+use ds_cli_auth::WeakNetwork;
 use ds_cli_contract::outcome::{ExitClass, Failure};
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -252,6 +253,7 @@ pub(super) const REFUSALS: &[Refusal] = &[
     super::AUTH_REVOKED,
     super::AUTH_IDENTITY_MISMATCH,
     super::AUTH_TRANSIENT,
+    ds_cli_auth::DEVICE_AUTH_TRANSIENT_REFUSAL,
     super::AUTH_UNREADABLE,
     super::NOT_FOUND,
     super::INVALID_SCOPE,
@@ -282,6 +284,8 @@ pub(super) const REFUSALS: &[Refusal] = &[
     CONTEXT_TOO_LARGE,
     HOLDINGS_STORE,
     ds_cli_auth::DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL,
+    super::hold::INPUTS_NOT_HELD,
+    super::hold::ROOM_NOT_HELD,
 ];
 
 pub static COMMAND: Command = Command {
@@ -289,7 +293,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and print outputs with project numbering; enqueue every artifact. --dry-run skips publication. Use held context or --seed to acquire it. Photos need a media grant.",
+    purpose: "Export active transformers and print outputs with project numbering; enqueue every artifact. --dry-run skips publication. Prints held rooms; fetches only new or changed ones, even offline. --seed acquires context. Photos need a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -324,7 +328,7 @@ pub static COMMAND: Command = Command {
     output: "\
 Lane, project, scope, engine identity, publication state, batch counts and receipt \
 (partial_formats), context diagnostics, survey and ordered transformer results: artifact \
-inventory, survey_layers(_omitted), failed_formats (output_id, code, remedy, layout knob: \
+inventory, room_source, survey_layers(_omitted), failed_formats (output_id, code, remedy, layout knob: \
 overflow/panels/row_mm), or typed error. `publication.stage` is `queued`, or \
 `nothing_published` for a dry run.",
     examples: &[
@@ -1002,31 +1006,40 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         None
     };
 
-    // The lifecycle inventory is both the project identity and the scope:
-    // every active saved transformer, or the exact names given with the state
-    // each one is in.
-    let inventory = ds_cli_auth::transformer_inventory_for_project(lane, project, &requested)?;
-    let project_id = inventory.project_id().to_string();
+    // The identity this machine's copy is kept under, observed without the
+    // network: a Server with no link still knows whose copy it prints from.
+    let identity = ds_cli_auth::headless_identity_for_named_project(lane)?;
+    let project_id = project.to_string();
     if let Some(fence) = publish_scope.as_ref() {
         verify_publish_scope(lane, fence, fence.uid(), &project_id)?;
     }
-    let mut output = super::project_receipt(&inventory);
-    let scope = super::scope_json(&requested, inventory.result());
+    let hold = super::hold::Hold::open(&identity, &project_id)?;
+    let mut link = super::hold::Link::default();
+    // The lifecycle inventory (the scope and the drawing numbering), the
+    // receipt ds-brain mints beside the project configuration, and the
+    // printing setups its output selection names: one set, read and held when
+    // the service answers, this machine's held set when it cannot be reached.
+    let (held_inputs, inputs_receipt) =
+        project_inputs(lane, &project_id, &identity, &hold, &mut link)?;
+    let rows = super::hold::select(&held_inputs.rows, &requested);
+    let project_receipt = json!({
+        "lane": identity.lane(),
+        "project": {"ds_project": project_id, "project_name": null, "status": null},
+    });
+    let mut output = project_receipt.clone();
+    let scope = super::scope_rows_json(&requested, &rows);
     let mut lifecycle: BTreeMap<String, String> = BTreeMap::new();
     let mut active = Vec::new();
-    for row in inventory.result().rows() {
-        let state = if row.kind() != TransformerKind::Transformer {
-            "project_level".to_string()
+    for row in &rows {
+        let state = if row.is_transformer() {
+            row.state.clone()
         } else {
-            row.lifecycle().token().to_string()
+            "project_level".to_string()
         };
-        if row.kind() == TransformerKind::Transformer
-            && row.lifecycle() == TransformerLifecycle::Active
-            && reportable_transformer(row.name()).is_ok()
-        {
-            active.push(row.name().to_string());
+        if row.is_transformer() && row.is_active() && reportable_transformer(&row.name).is_ok() {
+            active.push(row.name.clone());
         }
-        lifecycle.insert(row.name().to_string(), state);
+        lifecycle.insert(row.name.clone(), state);
     }
     let names: Vec<String> = if requested.is_empty() {
         active
@@ -1042,17 +1055,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .next("ds report project scope"));
     }
 
-    // The project-wide input base: the receipt ds-brain mints beside the
-    // fresh configuration. The kernel proves it before anything is staged.
-    let configuration = ds_cli_auth::feeder_configuration_for_project(lane, project)?;
-    require_same_context(
-        inventory.identity(),
-        &project_id,
-        configuration.identity(),
-        configuration.project_id(),
-    )
-    .map_err(host_failure)?;
-    let receipt = InputReceipt::from_config(&configuration.result().document).map_err(|error| {
+    // The project-wide input base: the receipt ds-brain minted beside the
+    // configuration. The kernel proves it before anything is staged.
+    let receipt = InputReceipt::from_config(&held_inputs.configuration).map_err(|error| {
         Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
     })?;
     let receipt = if proof_paths.is_empty() {
@@ -1138,7 +1143,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let (contexts, hidden_contexts) = if local_context.is_some() || preview_request.is_some() {
         (Vec::new(), Vec::new())
     } else {
-        selected_contexts(lane, &project_id, &receipt, seed)?
+        selected_contexts(&receipt, &held_inputs.setups, seed)?
     };
     let mv_buffer = contexts
         .iter()
@@ -1149,26 +1154,47 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             _ => None,
         })
         .reduce(f64::max);
+    let mut context_warnings: Vec<Value> = Vec::new();
     let mv_models = if mv_buffer.is_some() {
-        super::mv_context::load(lane, inventory.identity(), &project_id)?
+        let models = link.read(|| super::mv_context::load(lane, &identity, &project_id))?;
+        models.unwrap_or_else(|| {
+            context_warnings.push(json!({
+                "code": super::hold::INPUTS_NOT_HELD.code,
+                "message": format!(
+                    "the project's MV models could not be read ({}); the prints carry no MV context",
+                    link.unreachable().unwrap_or("unreachable"),
+                ),
+            }));
+            Vec::new()
+        })
     } else {
         Vec::new()
     };
     output["mv_context_models"] = json!(mv_models.len());
     output["mv_context_sources"] = json!(super::mv_context::provenance(&mv_models));
-    let mut context_warnings: Vec<Value> = Vec::new();
     let catalog: Vec<ds_project_data::ReferenceResource> = if contexts.is_empty() {
         Vec::new()
     } else {
-        match ds_cli_auth::data_distribution(
-            lane,
-            &project_id,
-            &ds_cli_auth::DataDistributionRequest::ListDatasets {},
-        )
-        .map_err(|error| format!("{}: {}", error.code(), error.message()))
-        .and_then(|rows| {
-            ds_project_data::validate_resources(&rows).map_err(|error| error.to_string())
-        }) {
+        let read = link.read(|| {
+            ds_cli_auth::data_distribution(
+                lane,
+                &project_id,
+                &ds_cli_auth::DataDistributionRequest::ListDatasets {},
+            )
+        });
+        match read
+            .map_err(|error| format!("{}: {}", error.code(), error.message()))
+            .and_then(|rows| {
+                rows.ok_or_else(|| {
+                    format!(
+                        "the service could not be reached: {}",
+                        link.unreachable().unwrap_or("unreachable")
+                    )
+                })
+            })
+            .and_then(|rows| {
+                ds_project_data::validate_resources(&rows).map_err(|error| error.to_string())
+            }) {
             Ok(rows) => rows,
             Err(reason) => {
                 context_warnings.push(json!({
@@ -1189,7 +1215,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         })?)
     };
     let holdings_scope = ds_command_kernel::project_dataset_cache::Scope {
-        principal: inventory.identity().uid().to_string(),
+        principal: identity.uid().to_string(),
         project: project_id.clone(),
     };
     // Without a catalogue, a `catalog` context source can still be located: a
@@ -1214,36 +1240,24 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     for hidden in &hidden_contexts {
         transformer_context_notes.push(json!({"note": hidden["note"]}));
     }
+    // With no link, `--seed` has nothing to acquire from: the prints read
+    // the context this machine holds, and the receipt says so.
+    let acquire = seed && link.unreachable().is_none();
+    if seed && !acquire {
+        transformer_context_notes.push(json!({
+            "note": format!(
+                "--seed acquired nothing: the service could not be reached ({}); context is what this machine holds",
+                link.unreachable().unwrap_or("unreachable"),
+            ),
+        }));
+    }
 
     // Number the complete active inventory even for an explicitly selected subset.
-    let complete_inventory = if requested.is_empty() {
-        None
-    } else {
-        let full = ds_cli_auth::transformer_inventory_for_project(
-            lane,
-            project,
-            &ds_cli_auth::TransformerSet::default(),
-        )?;
-        require_same_context(
-            inventory.identity(),
-            &project_id,
-            full.identity(),
-            full.project_id(),
-        )
-        .map_err(host_failure)?;
-        Some(full)
-    };
-    let drawing_names = complete_inventory
-        .as_ref()
-        .unwrap_or(&inventory)
-        .result()
-        .rows()
+    let drawing_names = held_inputs
+        .rows
         .iter()
-        .filter(|row| {
-            row.kind() == TransformerKind::Transformer
-                && row.lifecycle() == TransformerLifecycle::Active
-        })
-        .map(|row| row.name().to_string())
+        .filter(|row| row.is_transformer() && row.is_active())
+        .map(|row| row.name.clone())
         .collect::<Vec<_>>();
     let sheet_positions = ds_command_kernel::report_export::drawing_set_positions(&drawing_names)
         .map_err(|error| {
@@ -1258,37 +1272,61 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     })?;
 
     let staging = out_dir.join(STAGING_DIRECTORY);
-    // One transformer's room as the service answers it and this command
-    // admits it: an active saved transformer of this project, fetched under
-    // the batch's identity, with a positive saved revision. The refusal keeps
-    // the CLI's own class, code and remedy: a preview ends with it as the
-    // command's answer, a delivery records it as one row of the batch.
-    let fetch_room =
-        |name: &str| -> Result<(ds_cli_auth::HeadlessNamedTransformerContext, i64), Failure> {
-            match lifecycle.get(name).map(String::as_str) {
-                Some("active") => {}
-                Some(state) => {
-                    return Err(Failure::conflict(
-                        NOT_ACTIVE.code,
-                        format!("{name} is {state}, not an active saved transformer"),
-                    )
-                    .remedy(NOT_ACTIVE.remedy));
-                }
-                None => {
-                    return Err(Failure::conflict(
-                        NOT_ACTIVE.code,
-                        format!("{name} is not in the project's transformer inventory"),
-                    )
-                    .remedy(NOT_ACTIVE.remedy));
-                }
+    // Which rooms this batch reads from the service: the kernel's plan over
+    // what this machine holds and the heads the service reports. With no
+    // link there are no heads, and an unknown head is no evidence of change.
+    let heads = match link
+        .read(|| ds_cli_auth::transformer_status_for_project(lane, project, &requested))
+    {
+        Ok(Some(status)) => super::hold::Heads::Read(
+            status
+                .result()
+                .rows()
+                .iter()
+                .map(|row| {
+                    json!({"name": row.name(), "version": super::hold::head_version(row.row())})
+                })
+                .collect(),
+        ),
+        Ok(None) => super::hold::Heads::Unreachable,
+        Err(failure) => {
+            super::hold::Heads::Refused(format!("{}: {}", failure.code(), failure.message()))
+        }
+    };
+    let rooms = RefCell::new(super::hold::Rooms::plan(hold, &plan.names, heads)?);
+    let link = RefCell::new(link);
+    // One transformer's room as this command admits it: an active saved
+    // transformer of this project with a positive saved revision, from this
+    // machine's hold when the plan reuses it, or fetched under the batch's
+    // identity and held. The refusal keeps the CLI's own class, code and
+    // remedy: a preview ends with it as the command's answer, a delivery
+    // records it as one row of the batch.
+    let fetch_room = |name: &str| -> Result<(ds_project_data::room_hold::Room, i64), Failure> {
+        match lifecycle.get(name).map(String::as_str) {
+            Some("active") => {}
+            Some(state) => {
+                return Err(Failure::conflict(
+                    NOT_ACTIVE.code,
+                    format!("{name} is {state}, not an active saved transformer"),
+                )
+                .remedy(NOT_ACTIVE.remedy));
             }
-            // A weak link blinks; a room fetch that was refused by an outage is
-            // asked again before the row is written off.
+            None => {
+                return Err(Failure::conflict(
+                    NOT_ACTIVE.code,
+                    format!("{name} is not in the project's transformer inventory"),
+                )
+                .remedy(NOT_ACTIVE.remedy));
+            }
+        }
+        let room = rooms.borrow_mut().room(name, &mut link.borrow_mut(), || {
+            // A weak link blinks; a room fetch that was refused by an outage
+            // is asked again before the row is written off.
             let context = with_weak_network(&WeakNetwork::FIELD, || {
                 ds_cli_auth::transformer_context_for_project(lane, project, name)
             })?;
             require_same_context(
-                inventory.identity(),
+                &identity,
                 &project_id,
                 context.identity(),
                 context.snapshot().ds_project(),
@@ -1302,22 +1340,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 )
                 .remedy(INPUTS_INVALID.remedy));
             }
-            let server_version = snapshot
-                .metadata()
-                .version()
-                .and_then(|version| i64::try_from(version).ok())
-                .filter(|version| *version > 0)
-                .ok_or_else(|| {
-                    Failure::invalid(
-                        INPUTS_INVALID.code,
-                        format!(
-                            "the service reports no saved revision for {name}; save it before reporting"
-                        ),
-                    )
-                    .remedy(INPUTS_INVALID.remedy)
-                })?;
-            Ok((context, server_version))
-        };
+            // Only a saved revision is held, so a held room always has one.
+            let version = saved_revision(name, snapshot.metadata().version())?;
+            Ok(ds_project_data::room_hold::Room {
+                transformer: name.to_string(),
+                version: Some(version),
+                content_digest: snapshot.metadata().content_digest().map(str::to_string),
+                layers: snapshot.layers().clone(),
+            })
+        })?;
+        let server_version =
+            saved_revision(name, room.version.and_then(|v| u64::try_from(v).ok()))?;
+        Ok((room, server_version))
+    };
 
     if let Some(request) = preview_request {
         return preview_pages(
@@ -1334,7 +1369,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             &out_dir,
             fetch_room,
             PreviewFacts {
-                project: super::project_receipt(&inventory),
+                project: project_receipt,
                 lane,
                 scope,
             },
@@ -1350,8 +1385,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
         })?;
     let survey_refresh = inputs.require("survey-refresh")?;
-    let (held_survey, survey_omitted, survey_grant) =
-        survey_append_inputs(lane, &project_id, &survey_forms, survey_refresh)?;
+    let (held_survey, survey_omitted, survey_grant) = survey_append_inputs(
+        lane,
+        &project_id,
+        &survey_forms,
+        survey_refresh,
+        &identity,
+        &mut link.borrow_mut(),
+    )?;
     output["survey"] = survey_json(survey_refresh, &survey_forms, &held_survey, &survey_omitted);
 
     let settings = BatchSettings {
@@ -1367,16 +1408,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         media_grant: survey_grant.as_deref(),
     };
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
-        let (context, server_version) = fetch_room(name).map_err(failure_to_host)?;
-        let snapshot = context.snapshot();
+        let (room, server_version) = fetch_room(name).map_err(failure_to_host)?;
+        let layers_value = serde_json::to_value(&room.layers)
+            .map_err(|error| HostFailure::new(INPUTS_INVALID.code, error.to_string()))?;
         let print_context = if let Some(context) = &local_context {
-            ds_project_data::city_vectors::require_design_coverage(
-                context,
-                name,
-                &serde_json::to_value(snapshot.layers())
-                    .map_err(|error| HostFailure::new(INPUTS_INVALID.code, error.to_string()))?,
-            )
-            .map_err(|error| HostFailure::new(CONTEXT_INVALID.code, error))?;
+            ds_project_data::city_vectors::require_design_coverage(context, name, &layers_value)
+                .map_err(|error| HostFailure::new(CONTEXT_INVALID.code, error))?;
             Some(ds_report_host::PrintContextBytes {
                 bytes: context.document.clone().ok_or_else(|| {
                     HostFailure::new("print_context_invalid", "city context has no document")
@@ -1389,15 +1426,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             match holdings_root.as_deref() {
                 None => None,
                 Some(root) => {
-                    let layers_value =
-                        serde_json::to_value(snapshot.layers()).map_err(|error| {
-                            HostFailure::new(INPUTS_INVALID.code, error.to_string())
-                        })?;
                     let mut hosts = ds_project_data::Hosts {
                         provider: &mut provider,
                         fetch: &mut bundle_fetch,
                     };
-                    let mode = if seed {
+                    let mode = if acquire {
                         ds_project_data::Mode::Acquire(&mut hosts)
                     } else {
                         ds_project_data::Mode::Read
@@ -1428,15 +1461,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
         };
         let print_context = if let Some(buffer) = mv_buffer {
-            super::mv_context::attach(
-                print_context,
-                &mv_models,
-                name,
-                &serde_json::to_value(snapshot.layers())
-                    .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e.to_string()))?,
-                buffer,
-            )
-            .map_err(failure_to_host)?
+            super::mv_context::attach(print_context, &mv_models, name, &layers_value, buffer)
+                .map_err(failure_to_host)?
         } else {
             print_context
         };
@@ -1446,7 +1472,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         } else {
             Some(
                 ds_command_kernel::report_export::survey_append(
-                    snapshot.layers(),
+                    &room.layers,
                     &held_survey,
                     &survey_omitted,
                 )
@@ -1456,8 +1482,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Ok(TransformerReportInputs {
             transformer: name.to_string(),
             server_version,
-            layers: snapshot.layers().clone(),
-            content_digest: snapshot.metadata().content_digest().map(str::to_string),
+            content_digest: room.content_digest.clone(),
+            layers: room.layers,
             selection: None,
             print_context,
             sheet,
@@ -1474,6 +1500,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .detail(json!({
                     "out_dir": out_dir.display().to_string(),
                     "results": outcome.receipt["results"],
+                    "rooms": rooms.borrow().receipt(),
+                    "inputs": inputs_receipt,
                 })),
         );
     }
@@ -1574,6 +1602,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             let Some(name) = row["transformer"].as_str().map(str::to_string) else {
                 continue;
             };
+            // Where its room came from: this machine's hold, or the service.
+            row["room_source"] = json!(rooms.borrow().source(&name));
             if let Some(run) = outcome.runs.iter().find(|run| run.transformer == name) {
                 row["print_context"] = json!({
                     "sha256": run.receipt["print_context_sha256"],
@@ -1583,6 +1613,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
         }
     }
+    output["rooms"] = rooms.borrow().receipt();
+    output["inputs"] = inputs_receipt;
     output["context"] = json!({
         "selected_layers": local_context.as_ref().map_or_else(
             || contexts.iter().map(|layer| layer.id.clone()).collect::<Vec<_>>(),
@@ -1610,6 +1642,8 @@ fn survey_append_inputs(
     project: &str,
     forms: &[String],
     refresh: &str,
+    identity: &ds_cli_auth::ProviderIdentity,
+    link: &mut super::hold::Link,
 ) -> Result<
     (
         Vec<ds_command_kernel::report_export::HeldSurveyForm>,
@@ -1651,18 +1685,19 @@ fn survey_append_inputs(
         }
     };
     let now = ds_command_kernel::time::OffsetDateTime::now_utc();
-    let answer = |uid: &str, fetch: &mut dyn FnMut(&Value) -> Result<Vec<u8>, Failure>| {
-        let scope = ds_command_kernel::project_dataset_cache::Scope {
-            principal: uid.to_owned(),
-            project: project.to_owned(),
-        };
-        let mut held = Vec::new();
-        let mut omitted = Vec::new();
-        for form in forms {
-            // A weak link blinks; a refresh the world refused (the fetch's
-            // own retryable class) is asked again before the form is written
-            // off. The copy is left as it was by every failed attempt.
-            let (read, _) = WeakNetwork::FIELD.run(
+    let answer =
+        |uid: &str, policy: Refresh, fetch: &mut dyn FnMut(&Value) -> Result<Vec<u8>, Failure>| {
+            let scope = ds_command_kernel::project_dataset_cache::Scope {
+                principal: uid.to_owned(),
+                project: project.to_owned(),
+            };
+            let mut held = Vec::new();
+            let mut omitted = Vec::new();
+            for form in forms {
+                // A weak link blinks; a refresh the world refused (the fetch's
+                // own retryable class) is asked again before the form is written
+                // off. The copy is left as it was by every failed attempt.
+                let (read, _) = WeakNetwork::FIELD.run(
                 || {
                     store::refresh(
                         &root,
@@ -1678,8 +1713,7 @@ fn survey_append_inputs(
                     matches!(outcome, Err(HoldError::Fetch(failure)) if failure.class().retryable())
                 },
             );
-            let held_copy =
-                match read {
+                let held_copy = match read {
                     Ok(copy) => store::rows(&root, &scope, &copy.manifest).and_then(|rows| {
                         HeldSurveyForm::new(copy.source.as_str(), &copy.manifest, rows)
                     }),
@@ -1691,37 +1725,60 @@ fn survey_append_inputs(
                         Err(survey_layer_unrefreshed_reason(&message))
                     }
                 };
-            match held_copy {
-                Ok(copy) => held.push(copy),
-                Err(reason) if reason == SURVEY_LAYER_NOT_HELD_REASON => {
-                    omitted.push(SurveyFormOmission {
+                match held_copy {
+                    Ok(copy) => held.push(copy),
+                    Err(reason) if reason == SURVEY_LAYER_NOT_HELD_REASON => {
+                        omitted.push(SurveyFormOmission {
+                            form: form.clone(),
+                            reason,
+                        })
+                    }
+                    Err(reason) => omitted.push(SurveyFormOmission {
                         form: form.clone(),
-                        reason,
-                    })
+                        reason: if reason.starts_with("survey layer:") {
+                            reason
+                        } else {
+                            survey_layer_unrefreshed_reason(&reason)
+                        },
+                    }),
                 }
-                Err(reason) => omitted.push(SurveyFormOmission {
-                    form: form.clone(),
-                    reason: if reason.starts_with("survey layer:") {
-                        reason
-                    } else {
-                        survey_layer_unrefreshed_reason(&reason)
-                    },
-                }),
             }
-        }
-        Ok::<_, Failure>((held, omitted))
+            Ok::<_, Failure>((held, omitted))
+        };
+    // With no link the forms are the copies this machine holds: nothing is
+    // asked of the service, and no photo can be granted a link.
+    let read = link.read(|| {
+        ds_cli_auth::survey_hold(
+            lane,
+            project,
+            |uid: &str, fetch: &mut dyn FnMut(&Value) -> Result<Vec<u8>, Failure>| {
+                answer(uid, policy, fetch)
+            },
+        )
+    })?;
+    let (mut held, mut omitted) = match read {
+        Some(report) => report.into_result(),
+        None => answer(identity.uid(), Refresh::Local, &mut |_| {
+            Err(Failure::unavailable(
+                super::hold::INPUTS_NOT_HELD.code,
+                "the service could not be reached",
+            ))
+        })?,
     };
-    let (mut held, mut omitted) = ds_cli_auth::survey_hold(lane, project, answer)?.into_result();
     if held.iter().all(|form| form.rows.is_empty()) {
         return Ok((held, omitted, None));
     }
     // One grant for the batch: the named project's photo tree, for the life
     // a delivered report's links carry.
-    let grant = match ds_cli_auth::report_media_grant(lane, project) {
-        Ok(grant) => grant
+    let grant = match link.read(|| ds_cli_auth::report_media_grant(lane, project)) {
+        Ok(Some(grant)) => grant
             .result()
             .report_grant_document()
             .map_err(|error| error.to_string()),
+        Ok(None) => Err(format!(
+            "the service could not be reached: {}",
+            link.unreachable().unwrap_or("unreachable")
+        )),
         Err(failure) => Err(format!("{}: {}", failure.code(), failure.message())),
     };
     match grant {
@@ -1786,7 +1843,7 @@ fn preview_pages(
     holdings_scope: &ds_command_kernel::project_dataset_cache::Scope,
     sheet_positions: &BTreeMap<String, (u32, u32)>,
     out_dir: &Path,
-    fetch_room: impl Fn(&str) -> Result<(ds_cli_auth::HeadlessNamedTransformerContext, i64), Failure>,
+    fetch_room: impl Fn(&str) -> Result<(ds_project_data::room_hold::Room, i64), Failure>,
     facts: PreviewFacts<'_>,
 ) -> Result<Value, Failure> {
     // The rooms this machine holds are read, never acquired: without a
@@ -1811,13 +1868,12 @@ fn preview_pages(
             )
             .remedy(OUTPUT_EXISTS.remedy));
         }
-        let (context, server_version) = fetch_room(name)?;
-        let snapshot = context.snapshot();
+        let (held_room, server_version) = fetch_room(name)?;
         let room = HeldRoom {
             transformer: name.clone(),
             server_version,
-            layers: snapshot.layers().clone(),
-            content_digest: snapshot.metadata().content_digest().map(str::to_string),
+            layers: held_room.layers,
+            content_digest: held_room.content_digest,
             media_grant: None,
             sheet: sheet_positions.get(name).copied(),
         };
@@ -1934,19 +1990,144 @@ fn held_catalog_rooms(
     rows
 }
 
-/// The context layers the selected printing setups need, decided once by the
-/// kernel over the sealed sheets. `online` is exactly `--seed`: acquisition
-/// happens before a renderer, never inside one.
-///
-/// The sealed sheets carry the export row but not the project's printing
-/// setups (only the reporter's own input receipt does); the setups the
-/// selection names are read exactly through the printing contract, the way
-/// `ds report project settings` completes its sheets, so the kernel decides
-/// over the same documents the engine will print with.
-fn selected_contexts(
+/// The project-level inputs a batch prints with, as one set: read from the
+/// service and held when it answers every read, or this machine's held set,
+/// whole, when it cannot be reached. A copy that cannot be kept never stops a
+/// print; the receipt says so.
+fn project_inputs(
+    lane: &str,
+    project: &str,
+    identity: &ds_cli_auth::ProviderIdentity,
+    hold: &super::hold::Hold,
+    link: &mut super::hold::Link,
+) -> Result<(super::hold::Inputs, Value), Failure> {
+    if let Some(inputs) = read_inputs(lane, project, identity, link)? {
+        let receipt = match hold.hold_inputs(&inputs) {
+            Ok(()) => json!({"source": "service", "held": true}),
+            Err(error) => json!({"source": "service", "held": false, "hold_error": error}),
+        };
+        return Ok((inputs, receipt));
+    }
+    let unreachable = link.unreachable().unwrap_or("unreachable").to_string();
+    let inputs = hold.inputs(&unreachable)?;
+    let receipt = json!({"source": "held", "read_at": inputs.read_at, "unreachable": unreachable});
+    Ok((inputs, receipt))
+}
+
+/// The inputs as the service answers them now, or `None` when it cannot be
+/// reached. Every read is taken under the identity the hold is kept for.
+fn read_inputs(
+    lane: &str,
+    project: &str,
+    identity: &ds_cli_auth::ProviderIdentity,
+    link: &mut super::hold::Link,
+) -> Result<Option<super::hold::Inputs>, Failure> {
+    use ds_command_kernel::report_export::{INPUT_RECEIPT_MEMBER, INPUT_RECEIPT_REFUSAL_MEMBER};
+    let Some(inventory) = link.read(|| {
+        ds_cli_auth::transformer_inventory_for_project(
+            lane,
+            project,
+            &ds_cli_auth::TransformerSet::default(),
+        )
+    })?
+    else {
+        return Ok(None);
+    };
+    require_same_context(
+        identity,
+        project,
+        inventory.identity(),
+        inventory.project_id(),
+    )
+    .map_err(host_failure)?;
+    let Some(configuration) =
+        link.read(|| ds_cli_auth::feeder_configuration_for_project(lane, project))?
+    else {
+        return Ok(None);
+    };
+    require_same_context(
+        identity,
+        project,
+        configuration.identity(),
+        configuration.project_id(),
+    )
+    .map_err(host_failure)?;
+    // Only the receipt members are held: they are all a print reads of the
+    // configuration, and the refusal member keeps an unusable receipt's
+    // sentence when there is one.
+    let document = &configuration.result().document;
+    let configuration: serde_json::Map<String, Value> =
+        [INPUT_RECEIPT_MEMBER, INPUT_RECEIPT_REFUSAL_MEMBER]
+            .into_iter()
+            .filter_map(|member| {
+                document
+                    .get(member)
+                    .map(|v| (member.to_string(), v.clone()))
+            })
+            .collect();
+    let configuration = Value::Object(configuration);
+    let receipt = InputReceipt::from_config(&configuration).map_err(|error| {
+        Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
+    })?;
+    let Some(setups) = named_printing_setups(lane, project, &receipt, link)? else {
+        return Ok(None);
+    };
+    Ok(Some(super::hold::Inputs {
+        rows: super::hold::rows(inventory.result()),
+        configuration,
+        setups,
+        read_at: ds_command_kernel::time::OffsetDateTime::now_utc()
+            .format(&ds_command_kernel::time::format_description::well_known::Rfc3339)
+            .unwrap_or_default(),
+    }))
+}
+
+/// The printing setups the sealed output selection names, read exactly
+/// through the printing contract, the way `ds report project settings`
+/// completes its sheets, so the kernel decides over the same documents the
+/// engine prints with. The sealed sheets carry the export row but not the
+/// setups (only the reporter's own input receipt does). `None` when the
+/// service could not be reached.
+fn named_printing_setups(
     lane: &str,
     project: &str,
     receipt: &InputReceipt,
+    link: &mut super::hold::Link,
+) -> Result<Option<Vec<Value>>, Failure> {
+    let invalid = |message: String| {
+        Failure::invalid("report_inputs_invalid", message).remedy(INPUTS_INVALID.remedy)
+    };
+    let sheets: Value = serde_json::from_str(&receipt.sheets_json)
+        .map_err(|error| invalid(format!("sealed sheets: {error}")))?;
+    if sheets.get("printing_setups").is_some() {
+        return Ok(Some(Vec::new()));
+    }
+    let mut setups = Vec::new();
+    for id in ds_cli_report_named_setups(&sheets).map_err(invalid)? {
+        let Some(setup) = link.read(|| {
+            ds_cli_auth::printing(
+                lane,
+                false,
+                Some(project),
+                &ds_cli_auth::PrintingRequest::Get { id: id.clone() },
+            )
+        })?
+        else {
+            return Ok(None);
+        };
+        setups.push(
+            json!({"id": setup["id"], "revision": setup["revision"], "layout": setup["layout"]}),
+        );
+    }
+    Ok(Some(setups))
+}
+
+/// The context layers the selected printing setups need, decided once by the
+/// kernel over the sealed sheets and the setups the batch holds. `online` is
+/// exactly `--seed`: acquisition happens before a renderer, never inside one.
+fn selected_contexts(
+    receipt: &InputReceipt,
+    setups: &[Value],
     online: bool,
 ) -> Result<
     (
@@ -1961,18 +2142,7 @@ fn selected_contexts(
     let mut sheets: Value = serde_json::from_str(&receipt.sheets_json)
         .map_err(|error| invalid(format!("sealed sheets: {error}")))?;
     if sheets.get("printing_setups").is_none() {
-        let named = ds_cli_report_named_setups(&sheets).map_err(invalid)?;
-        let mut setups = Vec::with_capacity(named.len());
-        for id in named {
-            let setup = ds_cli_auth::printing(
-                lane,
-                false,
-                Some(project),
-                &ds_cli_auth::PrintingRequest::Get { id: id.clone() },
-            )?;
-            setups.push(json!({"id": setup["id"], "revision": setup["revision"], "layout": setup["layout"]}));
-        }
-        sheets["printing_setups"] = Value::Array(setups);
+        sheets["printing_setups"] = Value::Array(setups.to_vec());
     }
     let request = json!({"command": "context_preparation", "sheets": sheets, "online": online});
     let bytes = serde_json::to_vec(&request).map_err(|error| invalid(error.to_string()))?;
@@ -1986,6 +2156,22 @@ fn selected_contexts(
         .cloned()
         .unwrap_or_default();
     Ok((contexts, hidden))
+}
+
+/// A room's saved revision, positive, or the refusal that says to save it.
+fn saved_revision(name: &str, version: Option<u64>) -> Result<i64, Failure> {
+    version
+        .and_then(|version| i64::try_from(version).ok())
+        .filter(|version| *version > 0)
+        .ok_or_else(|| {
+            Failure::invalid(
+                INPUTS_INVALID.code,
+                format!(
+                    "the service reports no saved revision for {name}; save it before reporting"
+                ),
+            )
+            .remedy(INPUTS_INVALID.remedy)
+        })
 }
 
 /// The printing setup ids the stored output selection names, read with the

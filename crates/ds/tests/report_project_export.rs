@@ -115,6 +115,10 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
         "print_context_invalid",
         "catalog_unavailable",
         "reference_bundle_unavailable",
+        // A Server prints from what it holds: with no link and nothing held
+        // for the project, or for one room, the refusal names it.
+        "report_inputs_not_held",
+        "report_room_not_held",
     ] {
         assert!(refusals.contains(&expected), "{expected} is not documented");
     }

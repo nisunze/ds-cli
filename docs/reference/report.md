@@ -604,8 +604,8 @@ accepts them while rejecting mismatched run/output/layout identities.
 ## Headless transformer reports
 
 `ds report project export` produces individual transformer reports — prints
-included — with no browser, no room cache and no Desktop. It is the door a
-Linux operator calls. Decisions and fingerprints come from
+included — with no browser and no Desktop. It is the door a Linux operator
+calls. Decisions and fingerprints come from
 `ds-command-kernel::report_export`; the shared native IO host is
 `ds-command-kernel/crates/ds-report-host`, and the engine is the installed `ds-report`.
 Desktop now uses the kernel's fingerprints, while its existing sidecar and
@@ -630,6 +630,21 @@ typed request the engine reads. Named print outputs (`pdf__<layout>`) render
 from the project's saved printing setups inside the same engine run; a Rwanda
 project is stamped with the installed villages asset
 (`--admin-bounds` names one explicitly).
+
+A Server prints from what it holds. Each run reads the lifecycle inventory,
+the input receipt and the printing setups the output selection names, and
+holds them (`ds-project-data::room_hold`, under the layer root beside the
+survey hold, per account and project); each transformer room it reads is held
+the same way. Which rooms are read again is the kernel's decision
+(`pinned_context::plan`): a held room is reused, and only a room this machine
+does not hold, or whose head revision moved, is read — so a warm run reports
+`.data.rooms.rooms_fetched` 0. When the service cannot be reached, the held
+inputs are the batch's inputs (`.data.inputs.source` is `held`, with
+`read_at`), every held room prints, and a room that is not held is one batch
+row refused with `report_room_not_held`; with nothing held for the project the
+run refuses `report_inputs_not_held`. `--seed` acquires nothing without a
+link, and the prints carry the context this machine holds. Each result row
+names its `room_source` (`held` or `fetched`).
 
 Survey forms the project appends to delivered reports
 (`include_survey_data_in_transformer_exports`,

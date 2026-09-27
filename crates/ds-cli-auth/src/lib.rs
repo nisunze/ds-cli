@@ -116,6 +116,15 @@ pub fn probe_headless_identity_for_named_project(
     Ok(probe_headless_providers(lane_token, Selection::Unread)?.map(|(identity, _)| identity))
 }
 
+/// The identity a caller-named project operation runs under, observed
+/// without the network, or the signed-out refusal. What a machine holds for
+/// a project is kept under this identity, so a Server with no link still
+/// knows whose copy it reads.
+pub fn headless_identity_for_named_project(lane_value: &str) -> Result<ProviderIdentity, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    probe_headless_identity_for_named_project(lane_value)?.ok_or_else(|| signed_out_failure(lane))
+}
+
 /// Whether this observation is about the saved selection at all.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Selection {
@@ -5043,6 +5052,11 @@ enum SolarProjectProvider {
     Firebase(Box<NativeClient>),
     Device(Box<device::DeviceSession>),
 }
+
+/// The device endpoint could not be reached: the one refusal a device-linked
+/// Server answers every named-project read with when it has no link. A
+/// command that prints from what it holds recognises the outage by this code.
+pub const DEVICE_AUTH_TRANSIENT_REFUSAL: Refusal = device::AUTH_TRANSIENT;
 
 /// The seeding door's own refusals, published beside the hosts that emit them.
 ///
