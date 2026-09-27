@@ -73,7 +73,7 @@ fn artifact(size: u64) -> Vec<u8> {
 /// so a test asserts against a *number* instead of against the code that
 /// produced it: if the curve moves, these tests say so.
 fn backoff_ms(stalled_attempt: u32) -> u64 {
-    (1_000u64 << stalled_attempt.saturating_sub(1).min(5)).min(30_000)
+    [2_000, 6_000, 15_000][stalled_attempt.saturating_sub(1).min(2) as usize]
 }
 
 /// Total time a host must sleep before dispatching attempt `attempts + 1`.
