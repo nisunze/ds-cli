@@ -100,7 +100,7 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
         {
             return Err("Map boundary identity does not match the requested scope".into());
         }
-        validate_area(&b.geometry)?;
+        crate::reference_cache::validate_area(&b.geometry)?;
         captured.insert(b.code.clone(), b);
     }
     if captured.len() != codes.len() {
@@ -313,7 +313,7 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
 /// Merge all captured sources in canonical order before selecting the area.
 /// Qualified feature IDs retain source identity; no collision drops a model.
 pub fn select_layers(area: &Value, sources: &BTreeMap<String, Value>) -> Result<Value, String> {
-    validate_area(area)?;
+    crate::reference_cache::validate_area(area)?;
     let mut merged: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut count = 0;
     for (source, layers) in sources {

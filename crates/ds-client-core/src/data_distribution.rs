@@ -309,7 +309,7 @@ fn validate_bound(
     }
     if let Some(area) = boundary {
         ds_command_kernel::reference_cache::validate_area(area).map_err(|_| {
-            invalid("Invalid boundary: expected a GeoJSON Polygon or MultiPolygon in WGS84")
+            invalid("Invalid boundary: expected a GeoJSON Polygon or MultiPolygon in WGS84 that DS admits (valid for BigQuery, not covering a hemisphere)")
         })?;
         if serde_json::to_vec(area)
             .map_or(true, |bytes| bytes.len() > DATA_DISTRIBUTION_MAX_AREA_BYTES)
@@ -410,7 +410,7 @@ impl DataDistributionRequest {
             } => {
                 ds_command_kernel::reference_cache::validate_area(area).map_err(|_| {
                     invalid(
-                        "Invalid print context area: expected a GeoJSON Polygon or MultiPolygon",
+                        "Invalid print context area: expected a GeoJSON Polygon or MultiPolygon that DS admits (valid for BigQuery, not covering a hemisphere)",
                     )
                 })?;
                 if serde_json::to_vec(area)
@@ -1167,6 +1167,24 @@ mod tests {
                 DataDistributionRequest::QueryPrintContext {
                     context_kind: PrintContextKind::GoogleOpenBuildings,
                     area: json!({"type":"Point","coordinates":[30.0,-2.0]}),
+                    contour_parameters: None,
+                },
+            ),
+            (
+                "a ring that crosses itself is not an area DS admits",
+                DataDistributionRequest::QueryPrintContext {
+                    context_kind: PrintContextKind::GoogleOpenBuildings,
+                    area: json!({"type":"Polygon","coordinates":[[[30.0,-2.0],[30.1,-1.9],[30.1,-2.0],[30.0,-1.9],[30.0,-2.0]]]}),
+                    contour_parameters: None,
+                },
+            ),
+            (
+                "an inverted world ring is not an area DS admits",
+                DataDistributionRequest::QueryPrintContext {
+                    context_kind: PrintContextKind::GoogleOpenBuildings,
+                    area: json!({"type":"Polygon","coordinates":[
+                        [[180.0,90.0],[-180.0,90.0],[-180.0,-90.0],[180.0,-90.0],[180.0,90.0]],
+                        [[30.0,-2.0],[30.1,-2.0],[30.1,-2.1],[30.0,-2.1],[30.0,-2.0]]]}),
                     contour_parameters: None,
                 },
             ),

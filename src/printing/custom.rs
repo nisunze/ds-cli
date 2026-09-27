@@ -1,6 +1,6 @@
 //! Exact local custom-print area preparation. Hosts fetch the named boundaries;
 //! the kernel checks identity, connected coverage and reproducible composition.
-use ds_geo_lite::spatial_predicate::{area_bounds, intersects_area, validate_area};
+use ds_geo_lite::spatial_predicate::{area_bounds, intersects_area};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -64,7 +64,7 @@ pub fn prepare_area(
                 "Custom print boundary identity does not match the selected sectors".into(),
             );
         }
-        validate_area(&boundary.geometry)?;
+        crate::reference_cache::validate_area(&boundary.geometry)?;
         captured.insert(boundary.code.clone(), boundary);
     }
     let ordered = captured.values().collect::<Vec<_>>();

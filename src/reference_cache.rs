@@ -88,8 +88,18 @@ pub fn feature_bounds(feature: &Value) -> Option<[f64; 4]> {
     ds_geo_lite::viewport::geojson_bounds(feature)
 }
 
+/// Admit an area a request names: a GeoJSON Polygon or MultiPolygon (bare or
+/// as a Feature's geometry) that DS admits as a geometry — valid where BigQuery
+/// would refuse it, and not an inverted or full-globe polygon. The refusal
+/// names the rule and the ring (`crate::geometry_admission`).
 pub fn validate_area(area: &Value) -> Result<(), String> {
-    ds_geo_lite::spatial_predicate::validate_area(area)
+    ds_geo_lite::spatial_predicate::validate_area(area)?;
+    let geometry = if area["type"] == "Feature" {
+        &area["geometry"]
+    } else {
+        area
+    };
+    crate::geometry_admission::admit_geometry(geometry).map_err(|refusal| refusal.to_string())
 }
 
 pub fn area_bounds(area: &Value) -> Result<[f64; 4], String> {
@@ -161,5 +171,29 @@ mod tests {
         let (identity, page) = fixture();
         assert_eq!(validate_page(&identity, 0, &page).unwrap().len(), 1);
         assert!(validate_area(&json!({"type":"Point","coordinates":[0.,0.]})).is_err());
+    }
+    #[test]
+    fn an_area_is_admitted_only_as_a_geometry_ds_admits() {
+        let square = json!({"type":"Polygon","coordinates":[[[30.,-2.],[30.1,-2.],[30.1,-1.9],[30.,-1.9],[30.,-2.]]]});
+        assert_eq!(validate_area(&square), Ok(()));
+        assert_eq!(
+            validate_area(&json!({"type":"Feature","properties":{},"geometry":square})),
+            Ok(())
+        );
+        let bowtie =
+            json!({"type":"Polygon","coordinates":[[[0.,0.],[2.,2.],[2.,0.],[0.,2.],[0.,0.]]]});
+        assert_eq!(
+            validate_area(&bowtie),
+            Err(
+                "geometry_invalid: Polygon ring 0 crosses itself: edges 0 and 2 cross at [1, 1]"
+                    .into()
+            )
+        );
+        let inverted = json!({"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[
+            [[180.,90.],[-180.,90.],[-180.,-90.],[180.,-90.],[180.,90.]],
+            [[30.,-2.],[30.1,-2.],[30.1,-2.1],[30.,-2.1],[30.,-2.]]]}});
+        assert!(validate_area(&inverted)
+            .unwrap_err()
+            .starts_with("polygon_covers_hemisphere: Polygon ring 0 spans 360°"));
     }
 }

@@ -333,6 +333,10 @@ pub fn project_design_extent_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
     project_design_extent::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod reference_cache;
+/// The one rule every input door applies to a geometry (owner ruling,
+/// 2026-09-27): what BigQuery's `ST_GEOGFROMGEOJSON` refuses is refused, and
+/// so is a polygon covering half the globe or more. Host crates reach it here.
+pub use ds_geo_lite::admission as geometry_admission;
 pub mod report;
 pub mod report_export;
 pub mod solar_batch;
