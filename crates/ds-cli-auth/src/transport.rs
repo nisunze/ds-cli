@@ -15,6 +15,9 @@ use zeroize::{Zeroize, Zeroizing};
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+// Governed MV packages are digest-verified after download, but storage reads can
+// outlast the short gateway request bound on a constrained server connection.
+const GRID_MODEL_BYTES_TIMEOUT: Duration = Duration::from_secs(600);
 static CORRELATION_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Default)]
@@ -1479,7 +1482,7 @@ impl Transport for NativeTransport {
             .max_redirects(0)
             .http_status_as_error(false)
             .timeout_connect(Some(CONNECT_TIMEOUT))
-            .timeout_global(Some(Duration::from_secs(120)))
+            .timeout_global(Some(GRID_MODEL_BYTES_TIMEOUT))
             .build()
             .call()
             .map_err(classify)?;
@@ -2132,6 +2135,16 @@ mod tests {
             Err(TransportError::Unreachable)
         );
         assert!(sink.is_empty());
+    }
+
+    #[test]
+    fn verified_grid_model_storage_read_has_a_bounded_longer_window() {
+        // A 6 MB published revision was refused at 120 seconds even though the
+        // authenticated catalog answered. Keep this storage-only allowance long
+        // enough for the byte read while retaining a finite upper bound.
+        assert!(GRID_MODEL_BYTES_TIMEOUT > Duration::from_secs(120));
+        assert!(GRID_MODEL_BYTES_TIMEOUT <= Duration::from_secs(600));
+        assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(10));
     }
 
     #[test]
