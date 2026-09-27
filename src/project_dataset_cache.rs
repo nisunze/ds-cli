@@ -1431,7 +1431,11 @@ fn admit_footprint(index: usize, feature: &Value, area: &Value) -> Result<(), St
             bounds_text(bounds)
         ));
     }
-    Ok(())
+    // Last, so every fault the corpus (shared with ds-web) records keeps its
+    // sentence: a footprint that reads and selects may still be one DS never
+    // holds.
+    crate::geometry_admission::admit_geometry(&feature["geometry"])
+        .map_err(|refusal| format!("building footprint {reference} is not admitted: {refusal}"))
 }
 
 /// Decode a complete source-quality building acquisition before it can extend coverage.
@@ -1515,6 +1519,10 @@ pub fn decode_cloud_read(response: &Value, area: &Value, layer: &str) -> Result<
                 "cloud read feature {index} is not a GeoJSON Feature with a geometry"
             ));
         }
+        // What a BigQuery export can carry and DS never holds — above all an
+        // inverted or full-globe polygon — stops here, before a room holds it.
+        crate::geometry_admission::admit_geometry(&feature["geometry"])
+            .map_err(|refusal| format!("cloud read feature {index} is not admitted: {refusal}"))?;
     }
     let version = response["dataset"]["version"].as_str().unwrap_or("");
     if version.len() > 512 {
@@ -2391,6 +2399,17 @@ mod tests {
         let mut malformed = valid.clone();
         malformed["features"] = json!([{"type":"Feature","geometry":null}]);
         assert!(decode_cloud_read(&malformed, &area, "edcl_customers").is_err());
+        // The inverted world ring a BigQuery export writes never reaches a room.
+        let mut inverted = valid.clone();
+        inverted["features"] = json!([{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[
+            [[180.,90.],[-180.,90.],[-180.,-90.],[180.,-90.],[180.,90.]],
+            [[30.,-2.],[30.1,-2.],[30.1,-2.1],[30.,-2.1],[30.,-2.]]]}}]);
+        let refusal = decode_cloud_read(&inverted, &area, "edcl_customers").unwrap_err();
+        assert!(
+            refusal
+                .starts_with("cloud read feature 0 is not admitted: polygon_covers_hemisphere: "),
+            "{refusal}"
+        );
     }
 
     #[test]
@@ -2417,6 +2436,21 @@ mod tests {
             json!([{"type":"Feature","geometry":null,"properties":{}}]);
         malformed["counts"]["buildings_context"] = json!(1);
         assert!(decode_buildings(&malformed, &area).is_err());
+        // A footprint that reads and lies in the area may still be one DS
+        // never holds.
+        let mut crossing = valid.clone();
+        crossing["layers"]["buildings_context"]["features"] = json!([{"type":"Feature","id":"b1",
+            "properties":{},"geometry":{"type":"Polygon","coordinates":[
+                [[30.,-2.],[30.001,-1.999],[30.001,-2.],[30.,-1.999],[30.,-2.]]]}}]);
+        crossing["counts"]["buildings_context"] = json!(1);
+        let refusal = decode_buildings(&crossing, &area).unwrap_err();
+        assert!(
+            refusal.starts_with(
+                "building footprint #0 `b1` is not admitted: geometry_invalid: Polygon ring 0 \
+                 crosses itself"
+            ),
+            "{refusal}"
+        );
     }
 
     #[test]
