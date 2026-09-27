@@ -1,8 +1,9 @@
 //! Published artifact declarations and canonical names shared by every client.
 //! The host transports responses; it never invents formats or drops layout metadata.
 use crate::printing::{validate_artifact_presentation, ArtifactPresentation};
+use crate::report_export::exact_lower_sha256;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Declaration {
@@ -46,17 +47,91 @@ fn id(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
+/// The run that produced one output of a head (ds-brain
+/// `ComputeArtifactOutputOrigin`). A Network Reporter head keeps outputs of
+/// several runs, so the head-level fingerprint and engine are the latest run's.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct OutputOrigin {
+    pub work_id: String,
+    pub input_base_fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_build_manifest_sha256: Option<String>,
+}
+
 /// The published project head, independent of machine-local rooms or a shell.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Head {
     pub work_id: String,
     pub engine: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_build_manifest_sha256: Option<String>,
     pub operation: String,
     pub variant: String,
     pub input_base_fingerprint: String,
     pub head_revision: u64,
     pub updated_at: String,
     pub outputs: Vec<Declaration>,
+    /// Absent on single-run and older heads, which record no output's origin.
+    #[serde(
+        default,
+        deserialize_with = "unique_origins",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub output_origins: Option<BTreeMap<String, OutputOrigin>>,
+}
+
+impl Head {
+    /// The recorded origin of one output. `None` when the head records none:
+    /// the head-level fingerprint is never read as every output's origin.
+    pub fn output_origin(&self, output_id: &str) -> Option<&OutputOrigin> {
+        self.output_origins.as_ref()?.get(output_id)
+    }
+}
+
+/// serde keeps the last of two equal JSON keys; a second origin for one
+/// output is refused rather than silently chosen.
+fn unique_origins<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<BTreeMap<String, OutputOrigin>>, D::Error> {
+    struct Unique;
+    impl<'de> serde::de::Visitor<'de> for Unique {
+        type Value = Option<BTreeMap<String, OutputOrigin>>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("output origins keyed by output_id")
+        }
+        fn visit_none<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_some<D: serde::Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+            d.deserialize_map(self)
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut origins = BTreeMap::new();
+            while let Some((output_id, origin)) = map.next_entry::<String, OutputOrigin>()? {
+                if origins.insert(output_id, origin).is_some() {
+                    return Err(serde::de::Error::custom("duplicate output origin"));
+                }
+            }
+            Ok(Some(origins))
+        }
+    }
+    deserializer.deserialize_option(Unique)
+}
+
+/// ds-brain records an engine build as a pair: both halves or neither.
+fn engine_identity(version: Option<&str>, manifest: Option<&str>) -> bool {
+    match (version, manifest) {
+        (None, None) => true,
+        (Some(version), Some(manifest)) => !version.is_empty() && exact_lower_sha256(manifest),
+        _ => false,
+    }
 }
 
 pub fn valid_operation(engine: &str, operation: &str) -> bool {
@@ -70,8 +145,14 @@ pub fn valid_operation(engine: &str, operation: &str) -> bool {
 }
 
 /// Validate the safe discovery projection; unknown additive server metadata
-/// is allowed, but malformed identities and output declarations are refused.
+/// is allowed, but malformed identities, output declarations and output
+/// origins are refused.
 pub fn evaluate_head(input: &[u8]) -> Result<String, String> {
+    serde_json::to_string(&decode_head(input)?).map_err(|e| e.to_string())
+}
+
+/// The validated typed head `evaluate_head` projects.
+pub fn decode_head(input: &[u8]) -> Result<Head, String> {
     if input.is_empty() || input.len() > 512 * 1024 {
         return Err("Artifact head exceeds its byte bound.".into());
     }
@@ -81,13 +162,13 @@ pub fn evaluate_head(input: &[u8]) -> Result<String, String> {
         head.engine.as_str(),
         "solar" | "print" | "vector_tiler" | "network_reporter"
     ) || !id(&head.work_id)
+        || !engine_identity(
+            head.engine_version.as_deref(),
+            head.engine_build_manifest_sha256.as_deref(),
+        )
         || !valid_operation(&head.engine, &head.operation)
         || !id(&head.variant)
-        || head.input_base_fingerprint.len() != 64
-        || !head
-            .input_base_fingerprint
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || !exact_lower_sha256(&head.input_base_fingerprint)
         || head.head_revision == 0
         || head.head_revision > 9_007_199_254_740_991
         || time::OffsetDateTime::parse(
@@ -105,7 +186,39 @@ pub fn evaluate_head(input: &[u8]) -> Result<String, String> {
         }))
         .map_err(|e| e.to_string())?,
     )?;
-    serde_json::to_string(&head).map_err(|e| e.to_string())
+    if let Some(origins) = &head.output_origins {
+        // Every output names its producing run, and one run has one identity:
+        // the head's own run included.
+        let mut runs = BTreeMap::from([(
+            head.work_id.as_str(),
+            (
+                head.input_base_fingerprint.as_str(),
+                head.engine_version.as_deref(),
+                head.engine_build_manifest_sha256.as_deref(),
+            ),
+        )]);
+        let complete = origins.len() == head.outputs.len()
+            && head
+                .outputs
+                .iter()
+                .all(|output| origins.contains_key(&output.output_id));
+        if !complete
+            || !origins.values().all(|origin| {
+                let identity = (
+                    origin.input_base_fingerprint.as_str(),
+                    origin.engine_version.as_deref(),
+                    origin.engine_build_manifest_sha256.as_deref(),
+                );
+                id(&origin.work_id)
+                    && exact_lower_sha256(identity.0)
+                    && engine_identity(identity.1, identity.2)
+                    && *runs.entry(origin.work_id.as_str()).or_insert(identity) == identity
+            })
+        {
+            return Err("Compute artifact response has invalid output provenance.".into());
+        }
+    }
+    Ok(head)
 }
 
 fn mime(format: &str) -> Option<&'static str> {
@@ -242,7 +355,8 @@ mod tests {
     fn published_heads_accept_city_and_portfolio_families_without_local_rooms() {
         let mut head = json!({"work_id":"work_1", "engine":"solar", "operation":"portfolio-gisagara", "variant":"default",
             "input_base_fingerprint":"a".repeat(64), "head_revision":1, "updated_at":"2026-09-18T01:00:00Z",
-            "engine_version":"additive server metadata", "outputs":[{"output_id":"summary", "format":"json", "content_type":"application/json", "sha256":"b".repeat(64), "size_bytes":1}]});
+            "engine_version":"solar-py-1", "engine_build_manifest_sha256":"c".repeat(64), "later_field":"additive server metadata",
+            "outputs":[{"output_id":"summary", "format":"json", "content_type":"application/json", "sha256":"b".repeat(64), "size_bytes":1}]});
         for family in ["calculate", "report", "portfolio"] {
             head["operation"] = json!(format!("{family}-c{}", "x".repeat(127)));
             assert!(evaluate_head(&serde_json::to_vec(&head).unwrap()).is_ok());
@@ -256,6 +370,8 @@ mod tests {
             ("updated_at", json!("yesterday")),
             ("outputs", json!([])),
             ("engine", json!("unknown")),
+            ("engine_build_manifest_sha256", json!("C".repeat(64))),
+            ("engine_version", json!("")),
         ] {
             let mut malformed = head.clone();
             malformed[field] = invalid;
@@ -264,6 +380,146 @@ mod tests {
                 "{field}"
             );
         }
+        // An engine build is recorded as a pair, as ds-brain serves it.
+        for half in ["engine_version", "engine_build_manifest_sha256"] {
+            let mut malformed = head.clone();
+            malformed.as_object_mut().unwrap().remove(half);
+            assert!(evaluate_head(&serde_json::to_vec(&malformed).unwrap()).is_err());
+        }
+    }
+
+    fn reporter_head() -> serde_json::Value {
+        let output = |id: &str, mime: &str| json!({"output_id":id, "format":id, "content_type":mime, "sha256":"b".repeat(64), "size_bytes":7});
+        json!({"work_id":"work_next", "engine":"network_reporter", "engine_version":"ds-network-reporter@0.2.0",
+            "engine_build_manifest_sha256":"e".repeat(64), "operation":"export-agasharu", "variant":"default",
+            "input_base_fingerprint":"a".repeat(64), "head_revision":2, "updated_at":"2026-09-18T01:00:00Z",
+            "outputs":[output("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), output("gpkg", "application/geopackage+sqlite3")],
+            "output_origins":{
+                "xlsx":{"work_id":"work_prior", "input_base_fingerprint":"f".repeat(64), "engine_version":"ds-network-reporter@0.1.0", "engine_build_manifest_sha256":"d".repeat(64)},
+                "gpkg":{"work_id":"work_next", "input_base_fingerprint":"a".repeat(64), "engine_version":"ds-network-reporter@0.2.0", "engine_build_manifest_sha256":"e".repeat(64)}}})
+    }
+
+    #[test]
+    fn merged_heads_keep_each_output_origin_through_the_projection() {
+        let bytes = serde_json::to_vec(&reporter_head()).unwrap();
+        let head = decode_head(&bytes).unwrap();
+        // The retained xlsx came from an earlier run: the head-level
+        // fingerprint and engine are the latest run's, not the xlsx's.
+        let xlsx = head.output_origin("xlsx").unwrap();
+        assert_eq!(
+            (xlsx.work_id.as_str(), xlsx.input_base_fingerprint.as_str()),
+            ("work_prior", "f".repeat(64).as_str())
+        );
+        assert_ne!(xlsx.input_base_fingerprint, head.input_base_fingerprint);
+        assert_eq!(
+            xlsx.engine_build_manifest_sha256.as_deref(),
+            Some("d".repeat(64).as_str())
+        );
+        assert_eq!(head.output_origin("gpkg").unwrap().work_id, "work_next");
+        assert!(head.output_origin("pdf__huye").is_none());
+        // The wire projection round-trips without losing an origin.
+        let projected = evaluate_head(&bytes).unwrap();
+        assert_eq!(decode_head(projected.as_bytes()).unwrap(), head);
+        // A run recorded before engine builds were admitted has no build to match.
+        let mut prior = reporter_head();
+        prior["output_origins"]["xlsx"] =
+            json!({"work_id":"work_prior", "input_base_fingerprint":"f".repeat(64)});
+        let head = decode_head(&serde_json::to_vec(&prior).unwrap()).unwrap();
+        assert!(head
+            .output_origin("xlsx")
+            .unwrap()
+            .engine_build_manifest_sha256
+            .is_none());
+    }
+
+    #[test]
+    fn older_heads_decode_without_inventing_an_origin() {
+        let mut legacy = reporter_head();
+        let object = legacy.as_object_mut().unwrap();
+        for field in [
+            "output_origins",
+            "engine_version",
+            "engine_build_manifest_sha256",
+        ] {
+            object.remove(field);
+        }
+        let projected = evaluate_head(&serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let wire: serde_json::Value = serde_json::from_str(&projected).unwrap();
+        assert_eq!(wire, legacy, "an older head projects exactly as before");
+        let head = decode_head(projected.as_bytes()).unwrap();
+        assert!(head.output_origins.is_none());
+        assert!(["xlsx", "gpkg"]
+            .iter()
+            .all(|id| head.output_origin(id).is_none()));
+        legacy["output_origins"] = json!(null);
+        assert!(decode_head(&serde_json::to_vec(&legacy).unwrap())
+            .unwrap()
+            .output_origin("xlsx")
+            .is_none());
+    }
+
+    #[test]
+    fn malformed_duplicate_or_contradicting_origins_refuse_the_head() {
+        type Corrupt = fn(&mut serde_json::Value);
+        let cases: [(&str, Corrupt); 11] = [
+            ("empty", |h| h["output_origins"] = json!({})),
+            ("missing output", |h| {
+                h["output_origins"].as_object_mut().unwrap().remove("gpkg");
+            }),
+            ("undeclared output", |h| {
+                h["output_origins"]["kmz"] = h["output_origins"]["gpkg"].clone()
+            }),
+            ("fingerprint", |h| {
+                h["output_origins"]["xlsx"]["input_base_fingerprint"] = json!("F".repeat(64))
+            }),
+            ("work id", |h| {
+                h["output_origins"]["xlsx"]["work_id"] = json!("../work")
+            }),
+            ("half engine", |h| {
+                h["output_origins"]["xlsx"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("engine_build_manifest_sha256");
+            }),
+            ("manifest only", |h| {
+                h["output_origins"]["xlsx"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("engine_version");
+            }),
+            ("manifest", |h| {
+                h["output_origins"]["xlsx"]["engine_build_manifest_sha256"] = json!("bad")
+            }),
+            ("head run fingerprint", |h| {
+                h["output_origins"]["gpkg"]["input_base_fingerprint"] = json!("f".repeat(64))
+            }),
+            ("head run engine", |h| {
+                h["output_origins"]["gpkg"]["engine_build_manifest_sha256"] = json!("d".repeat(64))
+            }),
+            ("one run two bases", |h| {
+                h["output_origins"]["gpkg"] = h["output_origins"]["xlsx"].clone();
+                h["output_origins"]["gpkg"]["input_base_fingerprint"] = json!("0".repeat(64));
+            }),
+        ];
+        for (name, corrupt) in cases {
+            let mut head = reporter_head();
+            corrupt(&mut head);
+            assert!(
+                decode_head(&serde_json::to_vec(&head).unwrap()).is_err(),
+                "{name}"
+            );
+        }
+        // Negative control: one earlier run that produced both outputs agrees with itself.
+        let mut head = reporter_head();
+        head["output_origins"]["gpkg"] = head["output_origins"]["xlsx"].clone();
+        assert!(decode_head(&serde_json::to_vec(&head).unwrap()).is_ok());
+        // Two origins for one output: neither is chosen.
+        let wire = serde_json::to_string(&reporter_head()).unwrap();
+        let gpkg = serde_json::to_string(&reporter_head()["output_origins"]["gpkg"]).unwrap();
+        let duplicated = wire.replacen("\"gpkg\":{", &format!("\"xlsx\":{gpkg},\"gpkg\":{{"), 1);
+        assert_ne!(duplicated, wire);
+        assert!(decode_head(duplicated.as_bytes()).is_err());
+        assert!(evaluate_head(duplicated.as_bytes()).is_err());
     }
     #[test]
     fn named_prints_keep_metadata_and_canonical_names() {
