@@ -12,6 +12,10 @@ pub struct Command {
     pub layout: String,
     pub paper: String,
     pub orientation: String,
+    /// `sheet`, `atlas` or `joined`, always explicit. The service files each
+    /// role in its own slot, so a multi-page `joined` plan/profile PDF never
+    /// replaces the single sheet of the same paper. A PNG is only a sheet.
+    pub page_role: String,
     pub source_receipt: String,
 }
 
@@ -79,6 +83,7 @@ impl Command {
             || !text(&self.layout, 120)
             || !matches!(self.paper.as_str(), "A0" | "A1" | "A2" | "A3" | "A4")
             || !matches!(self.orientation.as_str(), "portrait" | "landscape")
+            || !matches!(self.page_role.as_str(), "sheet" | "atlas" | "joined")
             || self.bytes.len() > 128 * 1024 * 1024
             || self.bytes.is_empty()
             || (!self.source_receipt.is_empty()
@@ -88,7 +93,9 @@ impl Command {
             return Err(invalid());
         }
         if !(self.file_name.ends_with(".pdf") && self.bytes.starts_with(b"%PDF-"))
-            && !(self.file_name.ends_with(".png") && self.bytes.starts_with(b"\x89PNG\r\n\x1a\n"))
+            && !(self.file_name.ends_with(".png")
+                && self.bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+                && self.page_role == "sheet")
         {
             return Err(invalid());
         }
@@ -186,13 +193,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
 ) -> Result<Value, ClientError> {
     c.validate(project)?;
     let sha = format!("{:x}", Sha256::digest(&c.bytes));
-    let content = if c.file_name.ends_with(".pdf") {
-        "application/pdf"
-    } else {
-        "image/png"
-    };
-    let mut declaration = json!({"action":"upload_start","project_id":project,"scope":"mv","transformer":"mv_data","file_name":c.file_name,"size_bytes":c.bytes.len(),"content_type":content,"sha256":sha,"map_family":"mv-map","layout_name":c.layout,"paper_size":c.paper,"orientation":c.orientation,"page_role":"sheet","source_receipt_sha256":c.source_receipt});
-    let start = call(profile, t, a, declaration.clone())?;
+    let start = call(profile, t, a, declaration(project, c, &sha, None))?;
     let uri = start["session_uri"].as_str().ok_or_else(unreadable)?;
     let url = url::Url::parse(uri).map_err(|_| unreadable())?;
     if uri.len() > 8192
@@ -222,15 +223,46 @@ pub(crate) fn run<T: AuthorizedTransport>(
         size: c.bytes.len() as u64,
         reader: &mut reader,
     })?)?;
-    declaration["action"] = json!("attach");
-    declaration["blob_path"] = json!(blob);
-    let attached = call(profile, t, a, declaration)?;
+    let attached = call(profile, t, a, declaration(project, c, &sha, Some(blob)))?;
+    checked_attach_result(project, c, &sha, blob, attached)
+}
+// Both calls carry one declaration. The service binds it to the issued object
+// at upload_start and refuses an attach that differs from it.
+fn declaration(project: &str, c: &Command, sha: &str, blob: Option<&str>) -> Value {
+    let content = if c.file_name.ends_with(".pdf") {
+        "application/pdf"
+    } else {
+        "image/png"
+    };
+    let mut declaration = json!({"action":"upload_start","project_id":project,"scope":"mv","transformer":"mv_data","file_name":c.file_name,"size_bytes":c.bytes.len(),"content_type":content,"sha256":sha,"map_family":"mv-map","layout_name":c.layout,"paper_size":c.paper,"orientation":c.orientation,"page_role":c.page_role,"source_receipt_sha256":c.source_receipt});
+    if let Some(blob) = blob {
+        declaration["action"] = json!("attach");
+        declaration["blob_path"] = json!(blob);
+    }
+    declaration
+}
+// The service echoes identity and digest. Page role, paper, orientation,
+// layout and size are bound through the issued object's metadata instead;
+// any of them the service does echo must agree with the declaration.
+fn checked_attach_result(
+    project: &str,
+    c: &Command,
+    sha: &str,
+    blob: &str,
+    attached: Value,
+) -> Result<Value, ClientError> {
+    let echoed = |key: &str, declared: Value| attached.get(key).is_none_or(|v| *v == declared);
     if attached["project_id"] != project
         || attached["scope"] != "mv"
         || attached["transformer"] != "mv_data"
         || attached["file_name"] != c.file_name
         || attached["sha256"] != sha
         || attached["map_family"] != "mv-map"
+        || !echoed("page_role", json!(c.page_role))
+        || !echoed("paper_size", json!(c.paper))
+        || !echoed("orientation", json!(c.orientation))
+        || !echoed("layout_name", json!(c.layout))
+        || !echoed("size_bytes", json!(c.bytes.len()))
     {
         return Err(unreadable());
     }
@@ -269,6 +301,7 @@ mod tests {
             layout: "District".into(),
             paper: "A3".into(),
             orientation: "portrait".into(),
+            page_role: "sheet".into(),
             source_receipt: String::new(),
         };
         assert!(c.validate("project").is_ok());
@@ -276,6 +309,118 @@ mod tests {
         assert!(c.validate("project").is_err());
         c.file_name = "../map.pdf".into();
         assert!(c.validate("project").is_err());
+    }
+    fn joined(bytes: Vec<u8>) -> Command {
+        Command {
+            file_name: "mv-plan-profile.a3.pdf".into(),
+            bytes,
+            layout: "MV plan and profile".into(),
+            paper: "A3".into(),
+            orientation: "landscape".into(),
+            page_role: "joined".into(),
+            source_receipt: String::new(),
+        }
+    }
+    const BLOB: &str =
+        "report-artifacts/v1/projects/p-1/prints/mv/mv_data/r/mv-plan-profile.a3.pdf";
+    #[test]
+    fn page_role_is_explicit_and_closed_and_only_a_pdf_holds_several_pages() {
+        let mut c = joined(b"%PDF-1.7".to_vec());
+        assert!(c.validate("p-1").is_ok());
+        c.page_role = "atlas".into();
+        assert!(c.validate("p-1").is_ok());
+        for role in ["", "Joined", " sheet", "book"] {
+            c.page_role = role.into();
+            assert_eq!(
+                c.validate("p-1").unwrap_err().kind(),
+                ErrorKind::InvalidInput,
+                "{role:?}"
+            );
+        }
+        c.file_name = "mv.a3.png".into();
+        c.bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+        for role in ["atlas", "joined"] {
+            c.page_role = role.into();
+            assert!(c.validate("p-1").is_err(), "{role}");
+        }
+        c.page_role = "sheet".into();
+        assert!(c.validate("p-1").is_ok());
+    }
+    #[test]
+    fn a_joined_pdf_is_declared_alike_on_upload_start_and_attach() {
+        // Larger than a 32 MiB map asset; an in-memory buffer, never hashed.
+        let mut bytes = vec![0; 40 << 20];
+        bytes[..5].copy_from_slice(b"%PDF-");
+        let c = joined(bytes);
+        assert!(c.validate("p-1").is_ok());
+        let sha = "b".repeat(64);
+        let start = declaration("p-1", &c, &sha, None);
+        assert_eq!(start["action"], "upload_start");
+        assert_eq!(start["page_role"], "joined");
+        assert_eq!(start["size_bytes"], 40 << 20);
+        assert_eq!(start["content_type"], "application/pdf");
+        assert!(start.get("blob_path").is_none());
+        let attach = declaration("p-1", &c, &sha, Some(BLOB));
+        assert_eq!(attach["action"], "attach");
+        assert_eq!(attach["blob_path"], BLOB);
+        let mut restarted = attach;
+        restarted["action"] = json!("upload_start");
+        restarted.as_object_mut().unwrap().remove("blob_path");
+        assert_eq!(restarted, start);
+
+        // An explicit sheet sends exactly the declaration it always did.
+        let mut sheet = joined(b"%PDF-1.7".to_vec());
+        sheet.page_role = "sheet".into();
+        assert_eq!(
+            declaration("p-1", &sheet, &sha, None),
+            json!({"action":"upload_start","project_id":"p-1","scope":"mv","transformer":"mv_data","file_name":"mv-plan-profile.a3.pdf","size_bytes":8,"content_type":"application/pdf","sha256":sha,"map_family":"mv-map","layout_name":"MV plan and profile","paper_size":"A3","orientation":"landscape","page_role":"sheet","source_receipt_sha256":""})
+        );
+    }
+    #[test]
+    fn a_joined_receipt_must_agree_with_everything_the_service_echoes() {
+        let c = joined(b"%PDF-1.7".to_vec());
+        let sha = "c".repeat(64);
+        // The service's attach receipt: identity and digest only.
+        let receipt = json!({"project_id":"p-1","scope":"mv","transformer":"mv_data","file_name":"mv-plan-profile.a3.pdf","sha256":sha,"gcs_path":format!("gs://bucket/{BLOB}"),"map_family":"mv-map"});
+        assert_eq!(
+            checked_attach_result("p-1", &c, &sha, BLOB, receipt.clone()).unwrap(),
+            receipt
+        );
+        let mut echoed = receipt;
+        for (key, value) in [
+            ("page_role", json!("joined")),
+            ("paper_size", json!("A3")),
+            ("orientation", json!("landscape")),
+            ("layout_name", json!("MV plan and profile")),
+            ("size_bytes", json!(8)),
+        ] {
+            echoed[key] = value;
+        }
+        assert!(checked_attach_result("p-1", &c, &sha, BLOB, echoed.clone()).is_ok());
+        for (key, value) in [
+            ("page_role", json!("sheet")),
+            ("page_role", Value::Null),
+            ("paper_size", json!("A1")),
+            ("orientation", json!("portrait")),
+            ("layout_name", json!("District")),
+            ("size_bytes", json!(9)),
+            ("project_id", json!("other")),
+            ("sha256", json!("d".repeat(64))),
+            (
+                "gcs_path",
+                json!("gs://bucket/elsewhere/mv-plan-profile.a3.pdf"),
+            ),
+        ] {
+            let mut wrong = echoed.clone();
+            wrong[key] = value;
+            assert_eq!(
+                checked_attach_result("p-1", &c, &sha, BLOB, wrong)
+                    .unwrap_err()
+                    .kind(),
+                ErrorKind::UnreadableResponse,
+                "{key}"
+            );
+        }
     }
     #[test]
     fn removal_requires_exact_identity_and_a_reference_only_receipt() {
