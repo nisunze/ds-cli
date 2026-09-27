@@ -71,6 +71,30 @@ fn invalid(e: impl std::fmt::Display) -> Failure {
     Failure::invalid("report_inputs_invalid", e.to_string())
         .remedy("Correct the authored layout or reported source; use a fresh output directory")
 }
+
+const CONTEXT_BATCH_BACKOFF: [std::time::Duration; 2] = [
+    std::time::Duration::from_secs(2),
+    std::time::Duration::from_secs(5),
+];
+
+fn read_context_batch<T>(
+    mut read: impl FnMut() -> Result<T, Failure>,
+    mut pause: impl FnMut(std::time::Duration),
+) -> Result<T, Failure> {
+    for delay in CONTEXT_BATCH_BACKOFF {
+        match read() {
+            Ok(value) => return Ok(value),
+            Err(error)
+                if error.class() == ds_cli_contract::outcome::ExitClass::Unavailable
+                    && matches!(error.code(), "auth_transient" | "device_auth_transient") =>
+            {
+                pause(delay);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    read()
+}
 fn parse_bounds(raw: &str, name: &str, max_span: f64) -> Result<[f64; 4], Failure> {
     let values = raw
         .split(',')
@@ -172,7 +196,10 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     // the same fenced native project context between bounded groups so a
     // long acquisition does not expire its authentication lease mid-batch.
     for names in active.chunks(16) {
-        let contexts = ds_cli_auth::transformer_contexts_for_project(lane, project, names)?;
+        let contexts = read_context_batch(
+            || ds_cli_auth::transformer_contexts_for_project(lane, project, names),
+            std::thread::sleep,
+        )?;
         if contexts.identity() != identity || contexts.project_id() != project {
             return Err(invalid("transformer context scope changed"));
         }
@@ -318,7 +345,58 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_bounds;
+    use super::{parse_bounds, read_context_batch};
+    use ds_cli_contract::outcome::Failure;
+
+    #[test]
+    fn transient_context_batch_is_retried_then_read() {
+        let mut calls = 0;
+        let mut sleeps = Vec::new();
+        let result = read_context_batch(
+            || {
+                calls += 1;
+                match calls {
+                    1 => Err(Failure::unavailable("auth_transient", "temporary")),
+                    2 => Err(Failure::unavailable("device_auth_transient", "temporary")),
+                    _ => Ok(42),
+                }
+            },
+            |delay| sleeps.push(delay.as_secs()),
+        );
+        assert_eq!(result.unwrap(), 42);
+        assert_eq!(calls, 3);
+        assert_eq!(sleeps, [2, 5]);
+    }
+
+    #[test]
+    fn permanent_context_refusal_does_not_retry() {
+        let mut calls = 0;
+        let mut sleeps = Vec::new();
+        let result = read_context_batch::<()>(
+            || {
+                calls += 1;
+                Err(Failure::unauthorized("auth_rejected", "denied"))
+            },
+            |delay| sleeps.push(delay),
+        );
+        assert_eq!(result.unwrap_err().code(), "auth_rejected");
+        assert_eq!(calls, 1);
+        assert!(sleeps.is_empty());
+    }
+
+    #[test]
+    fn transient_context_batch_exhausts_after_three_reads() {
+        let mut calls = 0;
+        let result = read_context_batch::<()>(
+            || {
+                calls += 1;
+                Err(Failure::unavailable("auth_transient", "temporary"))
+            },
+            |_| {},
+        );
+        assert_eq!(result.unwrap_err().code(), "auth_transient");
+        assert_eq!(calls, 3);
+    }
 
     #[test]
     fn district_area_accepts_authority_extent_while_sheet_focus_stays_bounded() {
