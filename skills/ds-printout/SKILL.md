@@ -135,12 +135,6 @@ Deliver to the requested destination. Local-only work avoids publication
 queues; online, queued is incomplete until cross-machine/server readback.
 Report exact paths, counts, QA coverage and material limitations.
 
-After interruption, revalidate identity, inventory, inputs and live contracts.
-Protect dirty work and reuse unchanged dependencies. Recipe changes invalidate
-prints, not source archives. Follow typed remedies and retryability; never strip
-required data to appease an old validator. Report confirmed gaps through
-`ds feedback submit`, not a local gap ledger.
-
 Detailed execution and handoff: [procedure](references/procedure.md),
 [delivery record](references/delivery-record.md), [acceptance](references/acceptance.md).
 

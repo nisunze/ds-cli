@@ -203,3 +203,11 @@ measured furniture in a rendered preview before queuing the whole project.
 - A verified gap goes to `feedback.submit`, once, with the receipt that shows
   it — never a parallel ledger. (`feedback.submit` is desktop-paired today;
   on a server, record the receipt for the next paired session.)
+
+## Recovery after interruption
+
+After interruption, revalidate identity, inventory, inputs and live contracts.
+Protect dirty work and reuse unchanged dependencies. Recipe changes invalidate
+prints, not source archives. Follow typed remedies and retryability; never strip
+required data to appease an old validator. Report confirmed gaps through
+`ds feedback submit`, not a local gap ledger.
