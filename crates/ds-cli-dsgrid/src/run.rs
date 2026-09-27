@@ -74,13 +74,19 @@ explicit truncation receipts.",
             "<json-path>",
             "JSON object matching the live operation descriptor; omit for parameterless operations.",
         ),
-        Arg::value("limit", "<n>", "Cap every returned JSON collection.")
-            .default(package::DEFAULT_LIMIT),
+        Arg::value(
+            "limit",
+            "<n>",
+            "Cap every returned JSON collection outside a digest-sealed plan.",
+        )
+        .default(package::DEFAULT_LIMIT),
     ],
     output: "\
 The exact source package identity and authored revision, engine and operation \
 descriptor identity, a typed bounded result, staged:false and persisted:false. \
-`more.truncated` names every collection shortened by --limit with exact totals.",
+`more.truncated` names every collection shortened by --limit with exact totals. \
+A plan sealed by plan_digest is never shortened, so the digest-verified apply \
+path can check it; its request's max_reported_rejections bounds its rows.",
     examples: &[
         Example {
             command: "ds dsgrid run --model ./model.dsgrid --operation project_plan --output json",
@@ -795,6 +801,12 @@ fn bound_result(mut result: Value, limit: usize) -> (Value, Vec<Value>) {
 
 fn bound_value(value: &mut Value, path: &str, limit: usize, truncated: &mut Vec<Value>) {
     match value {
+        // A spotting plan's digest covers its whole content, diagnostic
+        // `rejected.rows` and provisional `blocked_by` included: one shortened
+        // collection leaves a plan no apply door can verify. The engine
+        // already bounds those rows by the request's max_reported_rejections,
+        // so a sealed plan crosses whole.
+        Value::Object(object) if is_digest_sealed(object) => {}
         Value::Array(items) => {
             let total = items.len();
             if total > limit {
@@ -818,6 +830,13 @@ fn bound_value(value: &mut Value, path: &str, limit: usize, truncated: &mut Vec<
         }
         _ => {}
     }
+}
+
+fn is_digest_sealed(object: &serde_json::Map<String, Value>) -> bool {
+    object
+        .get("plan_digest")
+        .and_then(Value::as_str)
+        .is_some_and(|digest| digest.starts_with("sha256:"))
 }
 
 pub fn render(data: &Value) -> String {
@@ -945,6 +964,35 @@ mod tests {
             .expect("rows truncation is explicit");
         assert_eq!(rows["total"], 3);
         assert_eq!(rows["withheld"], 1);
+    }
+
+    #[test]
+    fn a_digest_sealed_plan_crosses_the_limit_whole() {
+        // The whole-model receipt shape that lost 27 plans to --limit 10000:
+        // cutting rejected.rows left plan_digest unverifiable.
+        let plan = json!({
+            "plan_digest": format!("sha256:{}", "a".repeat(64)),
+            "commands": [1, 2, 3],
+            "rejected": { "truncated": false, "rows": [1, 2, 3] },
+            "provisional_intervals": [{ "blocked_by": [1, 2, 3] }],
+        });
+        let value = json!({
+            "batch": { "items": [{ "plan": plan.clone() }] },
+            "refused_derivations": [1, 2, 3],
+        });
+        let (bounded, truncated) = bound_result(value, 2);
+        assert_eq!(bounded["batch"]["items"][0]["plan"], plan);
+        assert_eq!(bounded["refused_derivations"], json!([1, 2]));
+        let fields: Vec<&str> = truncated
+            .iter()
+            .map(|receipt| receipt["field"].as_str().unwrap())
+            .collect();
+        assert_eq!(fields, ["result.refused_derivations"]);
+
+        // An unsealed (infeasible, empty-digest) plan is ordinary output.
+        let (bounded, truncated) = bound_result(json!({ "plan_digest": "", "rows": [1, 2, 3] }), 2);
+        assert_eq!(bounded["rows"], json!([1, 2]));
+        assert_eq!(truncated.len(), 1);
     }
 
     #[test]

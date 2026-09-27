@@ -337,7 +337,10 @@ proposal on a map is optional and contributes no engineering authority.
 
 Every response identifies the package bytes and authored revision that were
 read, reports `staged: false` and `persisted: false`, and recursively bounds
-large arrays with exact `more.truncated` receipts. `ds dsgrid validate` always
+large arrays with exact `more.truncated` receipts. A spotting plan sealed by
+its `plan_digest` is never shortened: cutting its rejected rows would leave a
+plan no digest-verified apply can check. Size it with the request's
+`max_reported_rejections` instead. `ds dsgrid validate` always
 reports the authored revision. The cheap inspect path exposes it on demand
 with `--include authored-revision`, which deliberately decodes the model.
 
