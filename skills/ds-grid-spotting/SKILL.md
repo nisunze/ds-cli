@@ -10,29 +10,7 @@ metadata:
 
 Use the `ds` skill first. Model and policy govern preferences, prohibitions, span limits, clearance cases and type weights. This skill sets computation order and scope, not constants. Read live descriptors and the exact revision before each step. In MCP, use `ds_catalog`, grid-model `describe`/`invoke`, or the typed grid profile.
 
-## Project setup and proof
-
-Keep spotting rules and preference weights in the versioned setup that travels
-with the template/library and model, with project overrides in the project's
-setup. Read the active policy and live planner contract; do not turn a
-project-specific price or type preference into a skill default. Record the
-setup digest, model revision and accepted conditions in the run receipt.
-
-Before a whole-model run or print batch, spot one representative alignment
-end to end under the intended setup. Verify the complete sealed plan and
-revision-pinned application (including a dry run), inspect clearance and
-structure duties, and print a selected plan/profile sheet. A preview,
-truncated diagnostic or render alone is not an applied engineering result.
-Then execute the model as one project-owned job with bounded, receipt-backed
-retry behavior. Independent parameter variants should have separate setup
-identities and output directories, so an engineer can compare them without
-manual edits to individual poles. The MV booklet convention is in the
-`ds-printout` skill.
-
-An empty prohibited-zone table is valid only when the project's own source
-inventory and owner decision establish it. Record that condition in the model
-and delivery receipt, and retain the prohibited-zone print layer. Never infer
-that another model has no zones or silently disable the zone check.
+Read [project proof](references/project-setup-and-proof.md) before a whole-model run.
 
 ## Initial pass: pay the large search cost once
 
@@ -53,8 +31,6 @@ Do not repeat full optimization for a later local finding.
 5. If a prohibited polygon makes an interval infeasible, keep ordinary proposed supports outside it. An explicitly admitted fixed angle/tap/transformer overlap is reported as an exemption. An opt-in `bounded_interval_fallback` may carry a crossing between two consecutive fixed anchors at a declared temporary span ceiling; retain its polygon/span warning and `partial_with_warnings` status. It does not establish structural strength. If exclusions are excessive, ambiguous, or require a semantic route decision, record the exact polygon and interval for engineer review instead of weakening all exclusions or repeatedly searching the whole line.
 6. After each meaningful local edit, export through the strict DS/PLS gate and compare fresh native PLS-CADD clearance and structure-usage/strength reports against the same model revision. PLS-CADD 16.81 is the native strength authority. A refused export or absent native report leaves the DS result a proposal. Feed only measured differences back into the affected section or anchor interval.
 
-The Rust planner accepts `tension_siting_preference` (uplift magnitude and shortfall and utilization penalties) and `strong_break_distribution_preference` (wood run and deviation penalty). Values belong in the project request or policy. Tension scoring applies only to authored strain duty without suspension insulators; the strong-break score balances movable strong-material resets under the hard wood-run limit. The latter is independent of tension duty, so steel material alone never earns uplift credit. A Rust capacity fraction is screening evidence, not native PLS-CADD usage. See the live `plan_optimum_spotting` descriptor and objective receipt; do not invent a default weight.
-
-`dsgrid.analyse.clearance` currently scopes by alignment, while `compute_support_demands` scopes to one section and `screen_structure_usage` can scope to selected structures. Grouping by angle interval is an orchestration rule; do not claim a nonexistent angle-interval CLI filter. Native batch planning is read-only and parallel; mutation and final numbering remain revision-gated.
+Planner objective and scope details: [project proof](references/project-setup-and-proof.md).
 
 Stops at: Native PLS-CADD opens the exported workspace for final solving and visual acceptance; hand over the exact package and DS receipts.
