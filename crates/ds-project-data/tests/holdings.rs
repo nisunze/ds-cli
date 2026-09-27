@@ -381,6 +381,36 @@ fn road(index: usize, y: f64) -> Value {
 }
 
 #[test]
+fn a_bundle_carrying_a_geometry_ds_does_not_admit_is_never_indexed() {
+    let root = tempfile::tempdir().unwrap();
+    let inverted = json!({"type": "Feature", "properties": {"id": "lake"},
+        "geometry": {"type": "Polygon", "coordinates": [
+            [[180, 90], [-180, 90], [-180, -90], [180, -90], [180, 90]],
+            [[30, -2], [30.1, -2], [30.1, -2.1], [30, -2.1], [30, -2]]]}});
+    let (compressed, receipt) = bundle(&[road(1, -2.0), inverted, road(3, -1.9995)]);
+    let mut fetch = move |_: &BundleReceipt, dest: &Path| -> Result<(), String> {
+        std::fs::write(dest, &compressed).map_err(|e| e.to_string())
+    };
+    let refused = install_bundle(root.path(), &receipt, &mut fetch).expect_err("refused");
+    assert_eq!(refused.code(), "reference_bundle_unavailable");
+    assert!(
+        refused.message().starts_with(
+            "bundle_invalid: feature 2 polygon_covers_hemisphere: Polygon ring 0 spans 360°"
+        ),
+        "{}",
+        refused.message()
+    );
+    assert!(
+        refused
+            .message()
+            .ends_with("; the Roads bundle was not installed"),
+        "{}",
+        refused.message()
+    );
+    assert!(!ds_project_data::bundle::installed(root.path(), &receipt.identity).unwrap());
+}
+
+#[test]
 fn a_bundle_installs_only_when_its_bytes_are_the_published_ones() {
     let root = tempfile::tempdir().unwrap();
     let (compressed, receipt) = bundle(&[road(1, -2.0), road(2, -2.0005), road(3, -1.9995)]);

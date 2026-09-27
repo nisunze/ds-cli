@@ -8,7 +8,9 @@
 
 use ds_command_kernel::reference_cache::{Identity, MAX_PAGES, MAX_RESOURCE_BYTES, PAGE_ROWS};
 use ds_layer_store::private;
-use ds_layer_store::reference_cache::{execute_at, publish_staged, BundleIndexWriter};
+use ds_layer_store::reference_cache::{
+    execute_at, publish_staged, BundleIndexWriter, BUNDLE_INVALID,
+};
 use flate2::read::GzDecoder;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -195,7 +197,18 @@ pub fn install_bundle(
                     "geographic dataset contains an invalid feature".into(),
                 ));
             }
-            index.push(&feature).map_err(crate::store)?;
+            // A feature DS does not admit refuses the whole bundle: the staging
+            // index is discarded below and nothing reaches the live cache.
+            index.push(&feature).map_err(|error| {
+                if error.starts_with(BUNDLE_INVALID) {
+                    Failure::BundleUnavailable(format!(
+                        "{error}; the {} bundle was not installed",
+                        receipt.label
+                    ))
+                } else {
+                    crate::store(error)
+                }
+            })?;
             feature_count += 1;
         }
         let expanded_digest = format!("{:x}", expanded_sha.finalize());

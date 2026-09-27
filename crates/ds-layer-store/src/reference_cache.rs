@@ -1,6 +1,7 @@
 //! Shared native storage for immutable reference query pages. This is a response
 //! cache, separate from canonical GeoParquet assets and derived DSAB indexes.
 use crate::private;
+use ds_command_kernel::geometry_admission;
 use ds_command_kernel::reference_cache::{
     self as contract, Identity, Page, MAX_PAGES, MAX_PAGE_BYTES, MAX_RESOURCE_BYTES, PAGE_ROWS,
 };
@@ -30,6 +31,11 @@ struct CacheSummary {
     message: String,
 }
 
+/// How a bundle refusal for a feature's geometry begins: a bundle holding one
+/// feature DS does not admit (`ds_command_kernel::geometry_admission`) is
+/// refused whole, and the message names that feature.
+pub const BUNDLE_INVALID: &str = "bundle_invalid";
+
 /// Native bundle ingestion is not cloud response pagination. A thousand large
 /// polygons can exceed a response's byte ceiling. Stream features into SQLite
 /// instead, and commit the metadata only after the caller verifies the complete
@@ -58,12 +64,28 @@ impl BundleIndexWriter {
             features: 0,
         })
     }
+    /// Index one bundle feature. A geometry DS does not admit refuses it with
+    /// [`BUNDLE_INVALID`] naming the feature; the caller discards the staging
+    /// index, so a bundle carrying one is never indexed at all.
     pub fn push(&mut self, feature: &Value) -> Result<(), String> {
         if feature["type"] != "Feature"
             || !feature["properties"].is_object()
             || !(feature["geometry"].is_object() || feature["geometry"].is_null())
         {
             return Err("invalid bundle feature".into());
+        }
+        if !feature["geometry"].is_null() {
+            geometry_admission::admit_geometry(&feature["geometry"]).map_err(|refusal| {
+                let id = match &feature["id"] {
+                    Value::String(id) => format!(" (id {id:?})"),
+                    Value::Number(id) => format!(" (id {id})"),
+                    _ => String::new(),
+                };
+                format!(
+                    "{BUNDLE_INVALID}: feature {}{id} {refusal}",
+                    self.features + 1
+                )
+            })?;
         }
         let json = serde_json::to_string(feature).map_err(|e| e.to_string())?;
         self.connection
@@ -1046,6 +1068,36 @@ mod tests {
         assert_eq!(result["cache"], "local");
         #[cfg(unix)]
         crate::private::assert_private_tree(root.path());
+    }
+    #[test]
+    fn a_bundle_feature_ds_does_not_admit_is_refused_by_name() {
+        let root = tempfile::tempdir().unwrap();
+        let staging = tempfile::tempdir_in(root.path()).unwrap();
+        let identity: Identity =
+            serde_json::from_value(request("status")["identity"].clone()).unwrap();
+        let mut writer = BundleIndexWriter::new(staging.path(), identity).unwrap();
+        writer
+            .push(&json!({"type":"Feature","properties":{},"geometry":null}))
+            .unwrap();
+        writer
+            .push(&json!({"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[30.,-2.]}}))
+            .unwrap();
+        let inverted = json!({"type":"Feature","id":"lake-7","properties":{},"geometry":{"type":"Polygon","coordinates":[
+            [[180.,90.],[-180.,90.],[-180.,-90.],[180.,-90.],[180.,90.]],
+            [[30.,-2.],[30.1,-2.],[30.1,-2.1],[30.,-2.1],[30.,-2.]]]}});
+        let refused = writer.push(&inverted).unwrap_err();
+        assert!(
+            refused.starts_with(
+                "bundle_invalid: feature 3 (id \"lake-7\") polygon_covers_hemisphere: Polygon ring 0"
+            ),
+            "{refused}"
+        );
+        let bowtie = json!({"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[0.,0.],[2.,2.],[2.,0.],[0.,2.],[0.,0.]]]}});
+        assert_eq!(
+            writer.push(&bowtie).unwrap_err(),
+            "bundle_invalid: feature 3 geometry_invalid: Polygon ring 0 crosses itself: edges 0 \
+             and 2 cross at [1, 1]"
+        );
     }
     #[test]
     fn native_bundle_can_exceed_cloud_page_bytes_without_materializing_a_page() {
