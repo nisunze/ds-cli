@@ -6947,6 +6947,53 @@ mod tests {
         assert_eq!(row.code(), ASSET_VERSION_CONFLICT_REFUSAL.code);
     }
 
+    /// The style route's refusals reach `ds style` with the status, code and
+    /// sentence the kernel carried, so the domain names them (`style_exists`,
+    /// `style_refused`, `style_not_permitted`) rather than leaving the shared
+    /// `auth_input_invalid`, whose declared remedy is about the project id.
+    #[test]
+    fn a_style_refusal_hands_the_style_domain_its_status_code_and_sentence() {
+        use ds_client_core::ServiceRefusal;
+        for (kind, refusal) in [
+            (
+                ErrorKind::InvalidInput,
+                ServiceRefusal::new(
+                    409,
+                    Some("conflict"),
+                    Some("Print style already exists; edit its _print style instead"),
+                ),
+            ),
+            (
+                ErrorKind::InvalidInput,
+                ServiceRefusal::new(
+                    0,
+                    Some("style_exists"),
+                    Some(
+                        "gt/rivers_print already exists; a print variant is created once and never overwritten, so customise gt/rivers_print itself",
+                    ),
+                ),
+            ),
+            (
+                ErrorKind::AuthenticationRejected,
+                ServiceRefusal::new(
+                    403,
+                    Some("insufficient_permissions"),
+                    Some("Permission denied"),
+                ),
+            ),
+        ] {
+            let failure = map_service_refusal(
+                kind,
+                &refusal,
+                "the governed style already exists and a create never overwrites it",
+            );
+            let detail = failure.detail_value().expect("the route's words travel");
+            assert_eq!(detail["http_status"], refusal.status());
+            assert_eq!(detail["service_code"], refusal.code().unwrap());
+            assert_eq!(detail["service_message"], refusal.message().unwrap());
+        }
+    }
+
     #[test]
     fn native_seed_adapter_can_read_the_closed_service_code() {
         let failure = map_service_refusal(

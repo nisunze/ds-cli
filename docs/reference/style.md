@@ -34,7 +34,10 @@ variant.
 
 `ds style print plan --project <id> --ref <screen-ref>` derives the predictable
 `<screen-ref>_print` identity and shows the exact create-only clone. `ds style
-print create --ref <screen-ref> --yes` publishes it. Catalog sprite names are
+print create --ref <screen-ref> --yes` publishes it. A variant is created once:
+when the catalog already lists `<screen-ref>_print`, both commands refuse with
+`style_exists` before any write (ds-brain would answer a second create with 409)
+and name the ref to read and customise instead. Catalog sprite names are
 preserved; runtime image IDs are normalized back to their authored icon names.
 The print editor adds the reserved string field `print_paper_size` with
 `print_a0` through `print_a5` and `print_custom`. Use ordinary `style dimension`

@@ -59,6 +59,16 @@ pub const STYLE_REFUSED: Refusal = Refusal {
     when: "no such style ref, an unknown field or channel, a cartography property this layer type has no place for, or ds-brain declined the document",
     remedy: "check the ref with `ds style list`, and the fields, channels and layer type with `ds style read`",
 };
+pub const STYLE_EXISTS: Refusal = Refusal {
+    code: "style_exists",
+    when: "the create-only style (a `_print` variant, a seeded print-context source) already exists; a create never overwrites",
+    remedy: "read it with `ds style read --ref <ref>`, then customise it with the appearance, label, dimension or cartography commands",
+};
+pub const STYLE_NOT_PERMITTED: Refusal = Refusal {
+    code: "style_not_permitted",
+    when: "ds-brain refused this account the style write, which needs the `styles.edit` capability (and --project membership)",
+    remedy: "ask a platform admin for a role granting `styles.edit`; check --project with `ds auth project list`",
+};
 pub const PROJECT_INVALID: Refusal = Refusal {
     code: "context_corrupt",
     when: "--project is not one exact DS project id: blank, untrimmed, too long, or a path",
@@ -88,7 +98,9 @@ pub const FIELD_DOMAIN_REFUSED: Refusal = Refusal {
 /// What this domain decides for itself: the project fence it needs on top of a
 /// restored user, the two identity disagreements a fenced call can end in, the
 /// canonical observation `--transformer` asks for, the backend's own verdict on
-/// a document, and the five input grammars parsed here.
+/// a document, a create-only style that already exists (a plan sees it in the
+/// catalogue, a create meets ds-brain's 409), and the five input grammars
+/// parsed here.
 const OWN: &[Refusal] = &[
     PROJECT_INVALID,
     AUTH_CONTEXT_MISMATCH,
@@ -96,6 +108,7 @@ const OWN: &[Refusal] = &[
     TRANSFORMER_NOT_FOUND,
     FIELD_DOMAIN_REFUSED,
     STYLE_REFUSED,
+    STYLE_EXISTS,
     crate::INVALID_NUMBER,
     crate::INVALID_VALUE_SPEC,
     crate::INVALID_COLOR,
@@ -127,13 +140,22 @@ const fn planning() -> [Refusal; PLANNING_LEN] {
 }
 const PLANNING_SET: [Refusal; PLANNING_LEN] = planning();
 
-const PUBLISHING_LEN: usize = PLANNING_LEN + 1;
+/// What only a write can meet: the confirmation it requires, and ds-brain
+/// refusing the account the write itself.
+const WRITE_ONLY: &[Refusal] = &[crate::CONFIRMATION_REQUIRED, STYLE_NOT_PERMITTED];
+
+const PUBLISHING_LEN: usize = PLANNING_LEN + WRITE_ONLY.len();
 const fn publishing() -> [Refusal; PUBLISHING_LEN] {
     let mut all = [crate::CONFIRMATION_REQUIRED; PUBLISHING_LEN];
+    let mut index = 0;
+    while index < WRITE_ONLY.len() {
+        all[index] = WRITE_ONLY[index];
+        index += 1;
+    }
     let planned = planning();
     let mut index = 0;
     while index < PLANNING_LEN {
-        all[index + 1] = planned[index];
+        all[WRITE_ONLY.len() + index] = planned[index];
         index += 1;
     }
     all
@@ -189,7 +211,23 @@ pub fn edit(inputs: &Inputs, action: Edit, args: Value) -> Result<Value, Failure
     let reference = inputs.require("ref")?;
     let apply = args["apply"].as_bool().unwrap_or(false);
     let instruction = instruction(action, args, inputs)?;
-    let receipt = ds_cli_auth::style_edit(lane, project, reference, &instruction, apply)?;
+    // The ref a create-only edit would publish: the one to read when it exists.
+    let published = match action {
+        Edit::PrintVariant => format!("{reference}_print"),
+        _ => reference.to_owned(),
+    };
+    let receipt = ds_cli_auth::style_edit(lane, project, reference, &instruction, apply).map_err(
+        |failure| {
+            let failure = named(failure);
+            if failure.code() == STYLE_EXISTS.code {
+                failure.next(format!(
+                    "ds style read --project {project} --ref {published} --lane {lane}"
+                ))
+            } else {
+                failure
+            }
+        },
+    )?;
     let mut data = receipt.result().data().clone();
     data["lane"] = json!(receipt.lane());
     Ok(data)
@@ -251,6 +289,48 @@ pub(crate) fn instruction(
 
 fn refused(message: impl Into<String>) -> Failure {
     Failure::invalid("style_refused", message).remedy(STYLE_REFUSED.remedy)
+}
+
+/// The style route's refusals, named by this domain.
+///
+/// `ds-cli-auth` hands a governed refusal on with the route's `http_status`,
+/// `service_code` and `service_message` in `detail`, under the shared kind
+/// mapping's code — `auth_input_invalid` for a refused document, whose
+/// declared remedy is about the project id. That is how `ds style print
+/// create --ref gt/rivers` answered "pass one exact ds_project value" on
+/// 2026-09-27 when `gt/rivers_print` already existed. The kernel names who
+/// refused: `style_exists` (the catalogue already holds the create-only ref,
+/// status 0, decided before any request) or ds-brain's 409; `style_refused`
+/// (the planner's rule, status 0) or ds-brain's 400/422 with its issues; a
+/// 401/403 is the write capability. The match is on the status and code,
+/// never on prose; anything else keeps the shared mapping.
+fn named(failure: Failure) -> Failure {
+    let Some(detail) = failure.detail_value() else {
+        return failure;
+    };
+    let status = detail["http_status"].as_u64();
+    let code = detail["service_code"].as_str();
+    let sentence = detail["service_message"]
+        .as_str()
+        .unwrap_or(failure.message())
+        .to_owned();
+    let kept = detail.clone();
+    match (status, code) {
+        (Some(0), Some("style_exists")) | (Some(409), _) => {
+            Failure::invalid(STYLE_EXISTS.code, sentence)
+                .remedy(STYLE_EXISTS.remedy)
+                .detail(kept)
+        }
+        (Some(401 | 403), _) => Failure::unauthorized(STYLE_NOT_PERMITTED.code, sentence)
+            .remedy(STYLE_NOT_PERMITTED.remedy)
+            .detail(kept),
+        (Some(0), Some("style_refused")) | (Some(400 | 422), _) => {
+            Failure::invalid(STYLE_REFUSED.code, sentence)
+                .remedy(STYLE_REFUSED.remedy)
+                .detail(kept)
+        }
+        _ => failure,
+    }
 }
 
 /// What this layer's fields carry, read from CANONICAL project data with no
@@ -536,6 +616,94 @@ mod tests {
         assert_eq!(failure.code(), "style_refused");
     }
 
+    /// What `ds-cli-auth` hands this domain for one governed refusal: the
+    /// shared kind mapping's code and sentence, with the route's status, code
+    /// and words in `detail`.
+    fn handed(shared: Failure, status: u16, service_code: &str, sentence: &str) -> Failure {
+        let message = format!("{} (HTTP {status}): {sentence}", shared.message());
+        shared.with_message(message).detail(json!({
+            "http_status": status,
+            "service_code": service_code,
+            "service_message": sentence,
+        }))
+    }
+    fn input() -> Failure {
+        Failure::invalid("auth_input_invalid", "owner")
+    }
+
+    /// `ds style print create --ref gt/rivers` on 2026-09-27 answered
+    /// `auth_input_invalid` "pass one exact ds_project value" because
+    /// `gt/rivers_print` already existed. Each style refusal now reads as the
+    /// rule that refused it, with the route's own sentence.
+    #[test]
+    fn a_style_refusal_is_named_for_the_rule_that_refused_it() {
+        let exists = "gt/rivers_print already exists; a print variant is created once and never overwritten, so customise gt/rivers_print itself";
+        for failure in [
+            handed(input(), 0, "style_exists", exists),
+            handed(
+                input(),
+                409,
+                "conflict",
+                "Print style already exists; edit its _print style instead",
+            ),
+        ] {
+            let sentence = failure.detail_value().unwrap()["service_message"].clone();
+            let named = named(failure);
+            assert_eq!(named.code(), STYLE_EXISTS.code);
+            // Not `conflict`: nothing raced, and an unchanged retry can never
+            // succeed, so it must not read as retryable.
+            assert_eq!(
+                named.class(),
+                ds_cli_contract::outcome::ExitClass::InvalidInput
+            );
+            assert_eq!(named.message(), sentence.as_str().unwrap());
+            assert_eq!(named.remedy_text(), Some(STYLE_EXISTS.remedy));
+            assert!(!named.remedy_text().unwrap().contains("ds_project"));
+        }
+
+        let planner = named(handed(
+            input(),
+            0,
+            "style_refused",
+            "icon is not in the published catalog",
+        ));
+        assert_eq!(planner.code(), STYLE_REFUSED.code);
+        assert_eq!(planner.message(), "icon is not in the published catalog");
+
+        let document = named(handed(
+            input(),
+            400,
+            "validation_failed",
+            "Invalid style document: paint.line-glow: unknown paint property",
+        ));
+        assert_eq!(document.code(), STYLE_REFUSED.code);
+        assert!(document.message().contains("paint.line-glow"));
+
+        let forbidden = named(handed(
+            Failure::unauthorized("auth_rejected", "owner"),
+            403,
+            "insufficient_permissions",
+            "Permission denied",
+        ));
+        assert_eq!(forbidden.code(), STYLE_NOT_PERMITTED.code);
+        assert!(forbidden.remedy_text().unwrap().contains("styles.edit"));
+
+        // Negative controls: a refusal this domain does not own keeps the
+        // shared mapping untouched — a bare class with no route words, and a
+        // kernel receipt refusal that is not a style rule.
+        let bare = Failure::invalid("auth_input_invalid", "invalid style reference");
+        let kept = named(bare.clone());
+        assert_eq!(kept.code(), "auth_input_invalid");
+        assert_eq!(kept.message(), bare.message());
+        let receipt = named(handed(
+            Failure::unavailable("auth_response_unreadable", "owner"),
+            0,
+            "contract_violation",
+            "style publish receipt does not match the authored target",
+        ));
+        assert_eq!(receipt.code(), "auth_response_unreadable");
+    }
+
     /// Composition, not a copy: the owner's list arrives whole, this domain's
     /// own arrives whole, and only a publishing command documents the
     /// confirmation it is the only one that can require.
@@ -561,10 +729,19 @@ mod tests {
             .map(|refusal| refusal.code)
             .collect();
         assert!(publishing.contains("confirmation_required"));
+        assert!(publishing.contains("style_not_permitted"));
+        assert!(
+            planning.contains("style_exists"),
+            "a print plan sees an existing variant in the catalogue"
+        );
+        assert!(
+            !planning.contains("style_not_permitted"),
+            "a plan writes nothing, so the write capability never refuses it"
+        );
         assert_eq!(
             publishing.len(),
-            planning.len() + 1,
-            "publishing adds the confirmation and nothing else"
+            planning.len() + 2,
+            "publishing adds the confirmation and the write capability, nothing else"
         );
         for code in [
             "desktop_not_paired",
