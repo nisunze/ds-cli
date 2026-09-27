@@ -492,7 +492,7 @@ fn a_catalogue_subset_is_extracted_from_the_installed_bundle_and_printed() {
     assert!(cold
         .omitted
         .iter()
-        .any(|o| o.layer == "roads" && o.reason == "project_dataset_not_held"));
+        .any(|o| o.layer == "roads" && o.reason.starts_with("project_dataset_not_held: ")));
     assert!(cold
         .omitted
         .iter()
@@ -760,4 +760,132 @@ fn a_cloud_resident_row_seeds_through_its_bounded_read() {
         .unwrap()
         .unwrap();
     assert_eq!(resolved.dataset.id, villages.id);
+}
+
+/// Answers every area with one footprint at its centre, and records how large
+/// each area it was asked for was.
+struct AreaRecorder {
+    areas: Vec<f64>,
+}
+
+impl Provider for AreaRecorder {
+    fn acquire(&mut self, dataset: &Dataset, area: &Value) -> Result<Acquisition, Failure> {
+        let ring = &area["coordinates"][0];
+        let (w, s) = (ring[0][0].as_f64().unwrap(), ring[0][1].as_f64().unwrap());
+        let (e, n) = (ring[2][0].as_f64().unwrap(), ring[2][1].as_f64().unwrap());
+        self.areas
+            .push(ds_command_kernel::project_dataset_cache::bounds_area_m2([w, s, e, n]).unwrap());
+        Ok(Acquisition {
+            features: vec![footprint(self.areas.len(), (w + e) / 2.0, (s + n) / 2.0)],
+            source_version: format!("{}-v1", dataset.id),
+            source_receipt: json!({"provider": "recorder"}),
+        })
+    }
+}
+
+/// 86d184cf: a whole project's overview is one district-sized gap. It is
+/// acquired in tiles no provider read may exceed, never as one request the
+/// provider refuses — and a warm seed then asks for nothing.
+#[test]
+fn a_district_sized_gap_is_acquired_in_tiles_no_provider_read_exceeds() {
+    use ds_command_kernel::project_dataset_cache::MAX_ENVELOPE_M2;
+    let root = tempfile::tempdir().unwrap();
+    let district = json!({"mv_lines": {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {}, "geometry": {"type": "LineString",
+            "coordinates": [[29.40, -2.50], [29.70, -2.20]]}}
+    ]}});
+    let extents = design_extents([("mv_data", &district)]).unwrap();
+    let policy = buffer_policy(&[200.0]).unwrap();
+    let mut provider = AreaRecorder { areas: Vec::new() };
+    let mut fetch = no_fetch;
+    let mut seed = |provider: &mut AreaRecorder| {
+        let mut hosts = Hosts {
+            provider,
+            fetch: &mut fetch,
+        };
+        ensure(
+            root.path(),
+            &scope(),
+            &buildings_dataset(),
+            &DeclaredSource::Buildings,
+            &policy,
+            &extents,
+            &[],
+            Mode::Acquire(&mut hosts),
+        )
+        .expect("a district seeds in tiles")
+    };
+    let first = seed(&mut provider);
+    assert!(first.covered, "{:?}", first.warnings);
+    assert!(provider.areas.len() > 1, "one district-sized read was made");
+    assert_eq!(first.acquired, provider.areas.len());
+    for area in &provider.areas {
+        assert!(
+            *area <= MAX_ENVELOPE_M2,
+            "a {area} m² read exceeds the bound"
+        );
+    }
+    let calls = provider.areas.len();
+    let second = seed(&mut provider);
+    assert!(second.covered);
+    assert_eq!(second.acquired, 0);
+    assert_eq!(provider.areas.len(), calls, "a warm seed asks for nothing");
+}
+
+/// 86d184cf: a national-seed subset denser than one index read returns is
+/// split into quarters and held whole, not refused for the whole layer.
+#[test]
+fn a_truncated_national_read_is_split_not_refused() {
+    let root = tempfile::tempdir().unwrap();
+    // Offset off the round grid so no point sits exactly on a quarter's edge:
+    // the area predicate does not select a point lying on the boundary.
+    let points: Vec<Value> = (0..10_050)
+        .map(|index| {
+            let (x, y) = (
+                30.0000071 + (index % 101) as f64 * 0.00002,
+                -2.0000071 + (index / 101) as f64 * 0.00002,
+            );
+            json!({"type": "Feature", "properties": {"id": format!("p{index}")},
+                "geometry": {"type": "Point", "coordinates": [x, y]}})
+        })
+        .collect();
+    let (compressed, receipt) = bundle(&points);
+    let resource = roads_resource(&receipt);
+    let bytes = compressed.clone();
+    let mut fetch = move |_: &BundleReceipt, dest: &Path| -> Result<(), String> {
+        std::fs::write(dest, &bytes).map_err(|e| e.to_string())
+    };
+    let mut provider = Footprints {
+        calls: 0,
+        fail_first: false,
+    };
+    let dense = json!({"lv_poles": {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {}, "geometry": {"type": "Point", "coordinates": [30.001, -1.999]}}
+    ]}});
+    let extents = design_extents([("tx", &dense)]).unwrap();
+    let policy = buffer_policy(&[200.0]).unwrap();
+    let outcome = {
+        let mut hosts = Hosts {
+            provider: &mut provider,
+            fetch: &mut fetch,
+        };
+        ensure(
+            root.path(),
+            &scope(),
+            &catalog_dataset(&resource),
+            &DeclaredSource::Catalog(Box::new(resource.clone())),
+            &policy,
+            &extents,
+            &[],
+            Mode::Acquire(&mut hosts),
+        )
+        .expect("a dense subset is split, not refused")
+    };
+    assert!(outcome.covered, "{:?}", outcome.warnings);
+    assert!(outcome.acquired > 1, "the dense cell was split");
+    assert_eq!(outcome.features, 10_050);
+    assert_eq!(
+        provider.calls, 0,
+        "a national subset never asks the provider"
+    );
 }

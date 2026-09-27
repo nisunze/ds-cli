@@ -18,7 +18,8 @@
 //!   `begin` refuses a repeated digest anyway.
 
 use ds_command_kernel::project_dataset_cache::{
-    assess, dataset_key, plan_focused, query_digest, BufferPolicy, Coverage, Dataset, Extent, Scope,
+    assess, bounds_area_m2, dataset_key, plan_focused, query_digest, BufferPolicy, Coverage,
+    Dataset, Extent, Scope, MAX_ENVELOPE_M2,
 };
 use serde_json::{json, Value};
 use std::path::Path;
@@ -177,13 +178,65 @@ fn polygon(cell: [f64; 4]) -> Value {
     json!({"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]})
 }
 
+/// The most rows one national-index read returns before it says it truncated.
+const CATALOG_QUERY_LIMIT: usize = 10_000;
+/// How many times a truncated national-index read is quartered before the
+/// layer is refused: 4⁴ = 256 parts of the tile it started from.
+const MAX_SPLIT_DEPTH: u32 = 4;
+
+/// One gap cell as the tiles an acquisition asks for, none larger than a
+/// provider read may be (`MAX_ENVELOPE_M2`, the bound the kernel's plan and a
+/// cloud-resident read keep). A small cell is itself.
+fn tiles(cell: [f64; 4]) -> Result<Vec<[f64; 4]>, Failure> {
+    let area = bounds_area_m2(cell).map_err(crate::store)?;
+    let mut side = (area / MAX_ENVELOPE_M2).sqrt().ceil().max(1.0) as usize;
+    loop {
+        let [w, s, e, n] = cell;
+        let (dx, dy) = ((e - w) / side as f64, (n - s) / side as f64);
+        let mut out = Vec::with_capacity(side * side);
+        for row in 0..side {
+            for column in 0..side {
+                // The last row and column end exactly on the cell's own edge,
+                // so the tiles join back to the cell with no sliver.
+                let east = if column + 1 == side {
+                    e
+                } else {
+                    w + dx * (column + 1) as f64
+                };
+                let north = if row + 1 == side {
+                    n
+                } else {
+                    s + dy * (row + 1) as f64
+                };
+                out.push([w + dx * column as f64, s + dy * row as f64, east, north]);
+            }
+        }
+        let mut largest = 0.0_f64;
+        for tile in &out {
+            largest = largest.max(bounds_area_m2(*tile).map_err(crate::store)?);
+        }
+        if largest <= MAX_ENVELOPE_M2 {
+            return Ok(out);
+        }
+        side += 1;
+    }
+}
+
+/// A cell's four quarters, for a national-index read that truncated.
+fn quadrants(cell: [f64; 4]) -> [[f64; 4]; 4] {
+    let [w, s, e, n] = cell;
+    let (x, y) = ((w + e) / 2.0, (s + n) / 2.0);
+    [[w, s, x, y], [x, s, e, y], [w, y, x, n], [x, y, e, n]]
+}
+
 /// A project subset of an installed national bundle: rows whose bounds
 /// intersect the cell, read from the machine's own index. No provider.
+/// `None` when the index truncated the read: the caller splits the cell.
 fn acquire_catalog(
     root: &Path,
     resource: &ReferenceResource,
     area: &Value,
-) -> Result<Acquisition, Failure> {
+) -> Result<Option<Acquisition>, Failure> {
     if !installed(root, &resource.identity())? {
         return Err(Failure::BundleUnavailable(format!(
             "{} ({}) is not installed on this machine",
@@ -192,14 +245,11 @@ fn acquire_catalog(
     }
     let result = ds_layer_store::reference_cache::execute_at(
         root,
-        json!({"action": "query", "identity": resource.identity(), "area": area, "limit": 10_000}),
+        json!({"action": "query", "identity": resource.identity(), "area": area, "limit": CATALOG_QUERY_LIMIT}),
     )
     .map_err(crate::store)?;
     if result["truncated"] == Value::Bool(true) {
-        return Err(Failure::AcquisitionFailed(format!(
-            "the national-cache query for {} is incomplete; split the project acquisition area before storing it",
-            resource.layer
-        )));
+        return Ok(None);
     }
     if result["cache"] != "local" || result["version"] != resource.version {
         return Err(Failure::AcquisitionFailed(
@@ -207,7 +257,7 @@ fn acquire_catalog(
         ));
     }
     let features = result["features"].as_array().cloned().unwrap_or_default();
-    Ok(Acquisition {
+    Ok(Some(Acquisition {
         source_version: resource.version.clone(),
         source_receipt: json!({
             "kind": "national_seed_subset",
@@ -219,7 +269,7 @@ fn acquire_catalog(
             "feature_count": features.len(),
         }),
         features,
-    })
+    }))
 }
 
 /// Ensure the project holds this dataset over the coverage its design needs.
@@ -293,9 +343,39 @@ pub fn ensure(
     let (mut acquired, mut skipped) = (0_usize, 0_usize);
     if !assessment.covered {
         if let Mode::Acquire(hosts) = &mut mode {
+            // A gap is acquired in tiles no provider read may exceed: a whole
+            // project's overview is one district-sized gap, and asking for it
+            // in one read is what the provider refuses and the national index
+            // truncates. Each tile is its own ticket and commit; the room's
+            // exact coverage joins them again.
+            let mut pending: Vec<([f64; 4], u32)> = Vec::new();
             for cell in assessment.gaps.cells.clone() {
+                pending.extend(tiles(cell)?.into_iter().rev().map(|tile| (tile, 0)));
+            }
+            while let Some((cell, depth)) = pending.pop() {
                 let cells = Coverage { cells: vec![cell] };
                 let area = polygon(cell);
+                // A national subset is read from this machine's own index
+                // first: a read the index truncates is split, never stored.
+                let local = match source {
+                    DeclaredSource::Catalog(resource) => {
+                        Some(acquire_catalog(root, resource, &area))
+                    }
+                    DeclaredSource::Buildings
+                    | DeclaredSource::Contours(_)
+                    | DeclaredSource::Cloud(_) => None,
+                };
+                if let (Some(Ok(None)), DeclaredSource::Catalog(resource)) = (&local, source) {
+                    if depth >= MAX_SPLIT_DEPTH {
+                        return Err(Failure::AcquisitionFailed(format!(
+                            "the national-cache query for {} still exceeds {CATALOG_QUERY_LIMIT} features in a {:.4}° cell after {MAX_SPLIT_DEPTH} splits",
+                            resource.layer,
+                            cell[2] - cell[0],
+                        )));
+                    }
+                    pending.extend(quadrants(cell).into_iter().map(|part| (part, depth + 1)));
+                    continue;
+                }
                 let held_version = status["source_version"].as_str().unwrap_or("").to_owned();
                 let digest =
                     query_digest(scope, &at_version(dataset, &held_version), policy, &cells);
@@ -308,11 +388,9 @@ pub fn ensure(
                     continue;
                 }
                 let ticket = ticket["ticket"].as_str().unwrap_or("").to_owned();
-                let page = match source {
-                    DeclaredSource::Catalog(resource) => acquire_catalog(root, resource, &area),
-                    DeclaredSource::Buildings
-                    | DeclaredSource::Contours(_)
-                    | DeclaredSource::Cloud(_) => hosts.provider.acquire(dataset, &area),
+                let page = match local {
+                    Some(read) => read.map(|page| page.expect("a truncated read was split above")),
+                    None => hosts.provider.acquire(dataset, &area),
                 };
                 match page {
                     Ok(page) => {

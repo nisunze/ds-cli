@@ -338,10 +338,13 @@ pub fn read_print_context(
             Err(Failure::Unsupported(message)) => return Err(Failure::Unsupported(message)),
             Err(error) => {
                 warnings.push(format!("{}: {}", context.label, error.message()));
+                // The code a caller can match, then the sentence that says
+                // what happened to this layer, on the layer itself.
+                let reason = format!("{}: {}", error.code(), error.message());
                 for id in expanded_layer_ids(context) {
                     omitted.push(Omission {
                         layer: id,
-                        reason: error.code().to_owned(),
+                        reason: reason.clone(),
                     });
                 }
             }

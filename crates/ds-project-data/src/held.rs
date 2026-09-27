@@ -1003,7 +1003,9 @@ mod tests {
         assert!(context.document.is_none());
         assert_eq!(context.omitted.len(), 3);
         assert_eq!(context.omitted[0].layer, "contours_intermediate");
-        assert_eq!(context.omitted[0].reason, "project_dataset_not_held");
+        assert!(context.omitted[0]
+            .reason
+            .starts_with("project_dataset_not_held: "));
         assert_eq!(
             context.omitted[2],
             omission("roads", "this layer is absent from the geographic catalog")
