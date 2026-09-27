@@ -21,6 +21,8 @@
 //!   by the host — this crate never opens a socket.
 //! * The print-context document for one transformer ([`print_context`]),
 //!   through the kernel's one recipe.
+//! * The held transformer rooms and print inputs a report prints from
+//!   ([`room_hold`]), so a Server with no link still prints.
 //!
 //! It never decides geometry, policy or document shape — those stay in the
 //! kernel — and it never fetches from a provider: the host hands it a
@@ -35,6 +37,7 @@ pub mod ensure;
 pub mod extents;
 pub mod held;
 pub mod print_context;
+pub mod room_hold;
 pub mod survey_hold;
 
 pub use bundle::{install_bundle, BundleReceipt};
