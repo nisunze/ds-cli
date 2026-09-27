@@ -3009,7 +3009,7 @@ mod tests {
         );
         assert_eq!(
             result["placements"],
-            serde_json::json!({"xlsx":["desktop","web"],"png__detail":["desktop","web"]})
+            serde_json::json!({"xlsx":["desktop","web"],"png__detail":["desktop"]})
         );
         let restricted: serde_json::Value = serde_json::from_str(&evaluate(
             br#"{"op":"output_selection","stored":{"schema":"ds.design-output-selection/v1","geospatial":["gpkg"],"execution":{"geospatial":["web"]}}}"#,

@@ -103,9 +103,11 @@ pub fn named_print_output(format: &str) -> Option<(PrintArtifactFormat, &str)> {
 }
 
 /// Where a selected output may be produced. A selection that names no
-/// placement for an output offers both; ds-brain admits a request against this
-/// same matrix (`network_reporter_individual_policy.go`), so the vocabulary and
-/// its precedence are authored here rather than in two runtimes.
+/// placement for a data output offers both; a print is only ever `Desktop`,
+/// the lane of DS GridDesign Desktop and the Linux Server alike. ds-brain
+/// admits a request against this same matrix
+/// (`network_reporter_individual_policy.go`), so the vocabulary and its
+/// precedence are authored here rather than in two runtimes.
 #[derive(Debug, Clone, Copy, Serialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum Placement {
@@ -131,8 +133,13 @@ impl<'de> Deserialize<'de> for Placement {
     }
 }
 
-/// The answer for an output no execution entry names.
+/// The answer for a data output no execution entry names.
 pub const BOTH_PLACEMENTS: &[Placement] = &[Placement::Desktop, Placement::Web];
+/// The one answer for every print output, whatever the matrix says. Printing
+/// is Desktop and the Linux Server only (owner ruling 2026-09-25) and the
+/// cloud never renders a printout (`plan_data_outputs`), so a print placed on
+/// `web` alone would be produced nowhere.
+pub const PRINT_PLACEMENTS: &[Placement] = &[Placement::Desktop];
 /// The catch-all execution key, tried after the exact id and the class.
 pub const EXECUTION_WILDCARD: &str = "*";
 /// The three classes an execution entry may be keyed by. `print` is singular
@@ -203,16 +210,55 @@ impl DesignOutputSelection {
         Ok(())
     }
 
-    /// Which runtimes may produce one output of this selection. Precedence is
-    /// ds-brain's: the exact output id, then its class, then `*`, then both.
-    /// An entry naming an empty list refuses the output on every lane, as it
-    /// does there.
+    /// Which runtimes may produce one output of this selection. A print — the
+    /// fixed A0/A3 PDFs and every named spelling — is always
+    /// [`PRINT_PLACEMENTS`]: no entry moves it to the cloud or refuses it on
+    /// the desktop. For a data output the precedence is ds-brain's: the exact
+    /// output id, then its class, then `*`, then both. An entry naming an
+    /// empty list refuses the output on every lane, as it does there.
     pub fn placements(&self, output_id: &str) -> &[Placement] {
+        let class = output_class(output_id);
+        if class == "print" {
+            return PRINT_PLACEMENTS;
+        }
         self.execution
             .get(output_id)
-            .or_else(|| self.execution.get(output_class(output_id)))
+            .or_else(|| self.execution.get(class))
             .or_else(|| self.execution.get(EXECUTION_WILDCARD))
             .map_or(BOTH_PLACEMENTS, Vec::as_slice)
+    }
+
+    /// A selection a host authors or saves never places a print off the
+    /// desktop. ds-brain's desktop grant still reads this matrix for a print,
+    /// and the cloud never renders one, so an entry reaching a print without
+    /// `desktop` — its exact id, the `print` class, or `*` when no `print`
+    /// entry shadows it — would have that print produced nowhere, silently.
+    /// Refused rather than rewritten: the bytes a host chose are the bytes
+    /// stored. Reading a stored selection never refuses; `placements` answers
+    /// the desktop.
+    pub fn require_desktop_prints(&self) -> Result<(), String> {
+        // A data-only selection may deliberately run in the cloud. Its
+        // wildcard cannot strand a print that the selection does not request.
+        if !self
+            .tokens()?
+            .iter()
+            .any(|token| output_class(token) == "print")
+        {
+            return Ok(());
+        }
+        let reaches_prints = |key: &str| {
+            key == "print"
+                || output_class(key) == "print"
+                || (key == EXECUTION_WILDCARD && !self.execution.contains_key("print"))
+        };
+        match self.execution.iter().find(|(key, placements)| {
+            reaches_prints(key) && !placements.contains(&Placement::Desktop)
+        }) {
+            Some((key, _)) => Err(format!(
+                "output execution placement for {key} keeps prints off the desktop; prints render only on Desktop and the Linux Server, so place them `desktop`"
+            )),
+            None => Ok(()),
+        }
     }
 
     /// The placement answer for every output this selection yields, so a host
@@ -320,6 +366,7 @@ pub fn normalize_output_selection(
         }
         selection.tokens()?;
         selection.require_deliverable()?;
+        selection.require_desktop_prints()?;
         return Ok(selection);
     }
     let formats = legacy_formats.ok_or("output selection is required")?;
@@ -366,6 +413,7 @@ pub fn normalize_output_selection(
     };
     selection.tokens()?;
     selection.require_deliverable()?;
+    selection.require_desktop_prints()?;
     Ok(selection)
 }
 
@@ -884,6 +932,7 @@ pub fn apply_output_selection(
 ) -> Result<String, String> {
     settings_rows_for_patch(rows)?;
     selection.tokens()?;
+    selection.require_desktop_prints()?;
     let value = serde_json::to_value(selection).map_err(|error| error.to_string())?;
     match output_setting_index(rows) {
         Some(index) => {
@@ -1467,9 +1516,10 @@ mod tests {
         assert_eq!(outputs[2].suffix, ".aderm-a3.jpg");
     }
 
-    /// ds-brain's precedence, reproduced: exact output id, then the output
-    /// class, then `*`, then both lanes. The class token is `print`, singular,
-    /// as `network_reporter_individual_policy.go:206,:225` matches it.
+    /// ds-brain's precedence for a data output, reproduced: exact output id,
+    /// then the output class, then `*`, then both lanes. The class token is
+    /// `print`, singular, as `network_reporter_individual_policy.go:206,:225`
+    /// matches it — and a print never consults the matrix (next test).
     #[test]
     fn execution_placement_follows_the_brains_precedence_exactly() {
         let selection = |execution: Value| -> DesignOutputSelection {
@@ -1479,14 +1529,13 @@ mod tests {
             .expect("selection deserializes")
         };
         let absent = selection(json!({}));
-        for output in ["pdf__detail", "gpkg", "xlsx", "pdf_a0"] {
+        for output in ["gpkg", "shp", "xlsx", "network_information"] {
             assert_eq!(absent.placements(output), BOTH_PLACEMENTS, "{output}");
         }
-        let exact = selection(json!({"pdf__detail":["desktop"],"print":["web"],"*":[]}));
-        assert_eq!(exact.placements("pdf__detail"), [Placement::Desktop]);
-        assert_eq!(exact.placements("png__detail"), [Placement::Web]);
-        assert_eq!(exact.placements("pdf_a3"), [Placement::Web]);
-        assert_eq!(exact.placements("gpkg"), [] as [Placement; 0]);
+        let exact = selection(json!({"gpkg":["desktop"],"geospatial":["web"],"*":[]}));
+        assert_eq!(exact.placements("gpkg"), [Placement::Desktop]);
+        assert_eq!(exact.placements("shp"), [Placement::Web]);
+        assert_eq!(exact.placements("xlsx"), [] as [Placement; 0]);
         let classes =
             selection(json!({"geospatial":["desktop"],"tabular":["web"],"*":["desktop"]}));
         assert_eq!(classes.placements("gpkg"), [Placement::Desktop]);
@@ -1512,6 +1561,160 @@ mod tests {
             json!({"schema":OUTPUT_SELECTION_SCHEMA,"execution":{"gpkg":["cloud"]}})
         )
         .is_err());
+    }
+
+    /// Printing is Desktop and the Linux Server only, both `Desktop`, and the
+    /// cloud never renders a printout. Every print spelling the kernel's
+    /// grammar reads resolves there under any stored matrix — absent, both
+    /// lanes, `web` alone or refused on every lane, by exact id, class or `*` —
+    /// and reading such a project never refuses it. Data placement is not
+    /// touched by the rule.
+    #[test]
+    fn every_print_output_resolves_to_the_desktop_whatever_the_matrix_says() {
+        let prints = [
+            "pdf_a0",
+            "pdf_a3",
+            "pdf__detail",
+            "png__detail",
+            "jpeg__detail",
+            "jpg__detail",
+            "svg__detail",
+        ];
+        for output in prints {
+            assert!(is_printout(output), "{output} is a print");
+            assert_eq!(output_class(output), "print", "{output}");
+        }
+        for execution in [
+            json!({}),
+            json!({"print":["desktop","web"]}),
+            json!({"print":["web"]}),
+            json!({"print":[]}),
+            json!({"*":["web"]}),
+            json!({"*":[]}),
+            json!({"pdf_a0":["web"],"pdf_a3":[],"pdf__detail":["web"],
+                "png__detail":["web"],"jpeg__detail":["web"],"svg__detail":[]}),
+        ] {
+            // The fixed PDFs sit in `geospatial`, where the legacy upgrade
+            // puts them; `output_class` still reads them as prints.
+            let stored = stored_output_selection(&json!({"schema":OUTPUT_SELECTION_SCHEMA,
+                "prints":[{"layout_id":"detail","formats":["pdf","png","jpeg"]}],
+                "geospatial":["pdf_a0","pdf_a3","gpkg"],"tabular":["xlsx"],
+                "execution":execution}))
+            .expect("reading a stored selection never refuses its placement");
+            for output in prints {
+                assert_eq!(
+                    stored.placements(output),
+                    PRINT_PLACEMENTS,
+                    "{output} under {execution}"
+                );
+            }
+            let map = stored.placement_map().unwrap();
+            for token in [
+                "pdf_a0",
+                "pdf_a3",
+                "pdf__detail",
+                "png__detail",
+                "jpeg__detail",
+            ] {
+                assert_eq!(map[token], PRINT_PLACEMENTS, "{token} under {execution}");
+            }
+        }
+        let legacy = stored_output_selection(&json!("A3_PDF;pdf;jpg__detail;xlsx")).unwrap();
+        for (token, placements) in legacy.placement_map().unwrap() {
+            let expected = if token == "xlsx" {
+                BOTH_PLACEMENTS
+            } else {
+                PRINT_PLACEMENTS
+            };
+            assert_eq!(placements, expected, "{token}");
+        }
+        let data = stored_output_selection(&json!({"schema":OUTPUT_SELECTION_SCHEMA,
+            "geospatial":["gpkg"],"tabular":["xlsx"],"execution":{"print":["web"],"*":["web"]}}))
+        .unwrap();
+        assert_eq!(data.placements("gpkg"), [Placement::Web]);
+        assert_eq!(data.placements("xlsx"), [Placement::Web]);
+    }
+
+    /// The door the silent loss came through, closed where a matrix is
+    /// authored and saved. ds-brain's desktop grant reads the stored matrix
+    /// for a print, so an entry that reaches one without `desktop` is refused
+    /// by name — never rewritten — and a refused save leaves the row as it was.
+    /// Keeping data on `web` alone stays open, and so does naming both lanes.
+    #[test]
+    fn a_saved_matrix_may_not_place_a_print_off_the_desktop() {
+        let versioned = |execution: &Value| -> DesignOutputSelection {
+            serde_json::from_value(json!({"schema":OUTPUT_SELECTION_SCHEMA,
+                "prints":[{"layout_id":"detail","formats":["pdf"]}],
+                "geospatial":["gpkg"],"tabular":["xlsx"],"execution":execution}))
+            .expect("selection deserializes")
+        };
+        for (execution, key) in [
+            (json!({"print":["web"]}), "print"),
+            (json!({"print":[]}), "print"),
+            (json!({"pdf__detail":["desktop"],"print":["web"]}), "print"),
+            (
+                json!({"pdf__detail":["web"],"print":["desktop"]}),
+                "pdf__detail",
+            ),
+            (json!({"pdf_a3":["web"]}), "pdf_a3"),
+            (json!({"jpeg__detail":[]}), "jpeg__detail"),
+            (json!({"*":["web"]}), "*"),
+            (json!({"*":[]}), "*"),
+        ] {
+            let selection = versioned(&execution);
+            assert!(
+                selection.tokens().is_ok(),
+                "reading {execution} still works"
+            );
+            let refused = normalize_output_selection(Some(selection.clone()), None, None)
+                .expect_err("authoring refuses it");
+            assert!(
+                refused.contains(&format!("placement for {key} keeps prints off the desktop")),
+                "{execution}: {refused}"
+            );
+            let upgraded = normalize_output_selection(
+                None,
+                Some(vec!["pdf__detail".into(), "xlsx".into()]),
+                Some(serde_json::from_value(execution.clone()).unwrap()),
+            );
+            assert_eq!(upgraded, Err(refused.clone()), "the legacy upgrade too");
+            let mut rows = vec![json!({"parameter":"design_export_format","value":"xlsx"})];
+            let held = rows.clone();
+            assert_eq!(apply_output_selection(&mut rows, &selection), Err(refused));
+            assert_eq!(rows, held, "a refused save leaves the row as it was");
+        }
+        let data_only: DesignOutputSelection = serde_json::from_value(json!({
+            "schema": OUTPUT_SELECTION_SCHEMA,
+            "geospatial": ["gpkg"], "tabular": ["xlsx"],
+            "execution": {"*": ["web"]}
+        }))
+        .unwrap();
+        assert!(normalize_output_selection(Some(data_only.clone()), None, None).is_ok());
+        assert_eq!(data_only.placements("gpkg"), [Placement::Web]);
+        assert_eq!(data_only.placements("xlsx"), [Placement::Web]);
+        for execution in [
+            json!({}),
+            json!({"print":["desktop"]}),
+            json!({"print":["desktop","web"]}),
+            json!({"*":["web"],"print":["desktop"]}),
+            json!({"*":["desktop","web"]}),
+            json!({"geospatial":["web"],"tabular":["web"],"gpkg":[]}),
+            json!({"not_an_output":["web"]}),
+        ] {
+            let selection = versioned(&execution);
+            assert_eq!(
+                normalize_output_selection(Some(selection.clone()), None, None).as_ref(),
+                Ok(&selection),
+                "{execution}"
+            );
+            let mut rows = Vec::new();
+            apply_output_selection(&mut rows, &selection).unwrap();
+            assert_eq!(
+                rows[0]["value"],
+                serde_json::to_value(&selection).unwrap(),
+                "{execution} is stored as chosen"
+            );
+        }
     }
 
     /// The empty `execution` map the Settings matrix writes on the first edit
