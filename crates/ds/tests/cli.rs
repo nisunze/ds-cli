@@ -856,6 +856,48 @@ fn ds_json(args: &[&str]) -> (Value, i32) {
     (run.envelope, run.code)
 }
 
+/// `project-cache seed --refresh` re-reads coverage the project already
+/// holds, so it is a declared switch that is never on by default and stays
+/// behind seed's own confirmation: without `--yes` nothing is acquired.
+#[test]
+fn project_cache_refresh_is_an_explicit_switch_behind_seed_confirmation() {
+    let (descriptor, code) = ds_json(&[
+        "capabilities",
+        "data.project-cache.seed",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0);
+    let command = &descriptor["data"]["command"];
+    assert_eq!(command["confirmation_required"], true);
+    let refresh = command["inputs"]
+        .as_array()
+        .expect("seed inputs")
+        .iter()
+        .find(|input| input["name"] == "refresh")
+        .expect("seed declares --refresh");
+    assert_eq!(refresh["kind"], "switch");
+    assert_eq!(refresh["required"], false);
+    assert!(refresh.get("default").is_none(), "{refresh}");
+
+    let run = ds(&[
+        "data",
+        "project-cache",
+        "seed",
+        "--project",
+        "demo",
+        "--refresh",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        run.envelope["error"]["code"], "confirmation_required",
+        "{}",
+        run.stdout
+    );
+    assert_ne!(run.code, 0);
+}
+
 #[test]
 fn an_environment_descriptor_is_used_and_the_flag_still_wins() {
     // `DS_DESKTOP_DESCRIPTOR` is how a terminal opened by the desktop's own

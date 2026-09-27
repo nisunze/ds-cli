@@ -220,6 +220,23 @@ to leave. Naming `--dataset` remains the explicit act of adding one dataset the
 project does not declare; once added, it is refreshed by later unqualified runs
 rather than silently dropped.
 
+### `--refresh`: re-acquire what coverage already claims
+
+Completed coverage cannot prove the rows under it are the provider's: a room
+seeded before a provider or tiling fix can claim an area whose rows are wrong or
+missing, and an ordinary seed then acquires nothing there. `--refresh` is the
+one explicit door for that (`ds_project_data::refresh`): it re-acquires every
+tile the plan needs, held or not, under the same `--yes` confirmation. Each tile
+is committed alone and replaces that tile's rows; held rows are never removed
+before their replacement lands, and a failed tile ends the refresh with its
+cause on the dataset's row. It is never implicit — without the flag seed reads
+only gaps, so the next ordinary seed is warm again. The receipt carries
+`refresh: true`.
+
+```bash
+ds data project-cache seed --project gisagara --dataset google_open_buildings --refresh --yes --output json
+```
+
 ### Partial is partial
 
 Datasets are seeded one at a time and each keeps its own truth. One dataset's

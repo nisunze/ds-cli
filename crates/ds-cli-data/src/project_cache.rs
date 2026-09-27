@@ -66,6 +66,13 @@ const LANE_ARG: Arg = Arg::value(
 .default("stable")
 .choices(&["stable", "canary"]);
 
+// Never implicit: without it seed reads only gaps, so the seed after a
+// refresh is warm again.
+const REFRESH_ARG: Arg = Arg::switch(
+    "refresh",
+    "Re-acquire every planned tile, held or not, for rows seeded before a fix; held rows stay until replaced.",
+);
+
 const SUMMARY_ARG: Arg = Arg::switch(
     "summary",
     "Compact identities, source, readiness and coverage counts, without coverage geometry or history.",
@@ -468,13 +475,19 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Derives coverage from the explicitly named project's active transformer designs, exact governed MV route segments, and an optional local DS Grid draft supplied with --mv-model. It buffers and fuses them, then acquires only missing data; a re-run over unchanged design acquires nothing. With no --dataset it seeds what this project declares plus what it holds. Confirmed, because it queries a source. Saved active-project selection is ignored. Held data survives a failure, and a partial acquisition is never ready.",
+    purpose: "Derives coverage from the explicitly named project's active transformer designs, exact governed MV route segments, and an optional local DS Grid draft supplied with --mv-model. It buffers and fuses them, then acquires only missing data; a re-run over unchanged design acquires nothing unless --refresh. With no --dataset it seeds what this project declares plus what it holds. Confirmed, because it queries a source. Saved active-project selection is ignored. Held data survives a failure, and a partial acquisition is never ready.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PROJECT_ARG, DATASET_ARG, MV_MODEL_ARG, LANE_ARG],
-    output: "Per dataset: clusters, cells acquired this run, coverage, feature count, local holding, warnings and its own failure cause; plus `failed` and `complete`.",
+    args: &[
+        PROJECT_ARG,
+        DATASET_ARG,
+        MV_MODEL_ARG,
+        REFRESH_ARG,
+        LANE_ARG,
+    ],
+    output: "Per dataset: clusters, cells acquired this run, coverage, feature count, local holding, warnings and its own failure cause; plus `refresh`, `failed` and `complete`.",
     examples: &[
         Example {
             command: "ds data project-cache seed --project gisagara --dataset google_open_buildings --yes --output json",
@@ -1331,6 +1344,7 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
     let project = inputs.require("project")?;
     let explicit = explicit_dataset(inputs)?;
+    let refresh = inputs.switch("refresh");
     let requested = ds_cli_auth::TransformerSet::new(Vec::<String>::new())
         .map_err(|error| Failure::invalid(INVALID_SCOPE.code, error.to_string()))?;
     let inventory = ds_cli_auth::transformer_inventory_for_project(lane, project, &requested)?;
@@ -1416,16 +1430,32 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             provider: &mut provider,
             fetch: &mut fetch,
         };
-        match ds_project_data::ensure(
-            &root,
-            &scope,
-            &entry.dataset,
-            &entry.source,
-            &policy,
-            &extents,
-            &[],
-            Mode::Acquire(&mut hosts),
-        ) {
+        // `--refresh` is the only door to the crate's refresh: it re-reads
+        // the whole plan, where an ordinary seed acquires only the gaps.
+        let settled = if refresh {
+            ds_project_data::refresh(
+                &root,
+                &scope,
+                &entry.dataset,
+                &entry.source,
+                &policy,
+                &extents,
+                &[],
+                &mut hosts,
+            )
+        } else {
+            ds_project_data::ensure(
+                &root,
+                &scope,
+                &entry.dataset,
+                &entry.source,
+                &policy,
+                &extents,
+                &[],
+                Mode::Acquire(&mut hosts),
+            )
+        };
+        match settled {
             Ok(outcome) => {
                 let mut row = json!({
                     "dataset_id": entry.dataset.id,
@@ -1467,6 +1497,7 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "project": project,
         "datasets": rows,
         "seeded": rows.len(),
+        "refresh": refresh,
         "failed": failed,
         "complete": failed == 0,
         "transformer_extent_count": transformer_extent_count,
@@ -1633,7 +1664,12 @@ pub fn render_query(data: &Value) -> String {
 pub fn render_seed(data: &Value) -> String {
     let datasets = data["datasets"].as_array().cloned().unwrap_or_default();
     let mut out = format!(
-        "seeded {} dataset(s) for {}\n",
+        "{} {} dataset(s) for {}\n",
+        if data["refresh"] == Value::Bool(true) {
+            "refreshed"
+        } else {
+            "seeded"
+        },
         datasets.len(),
         data["project"].as_str().unwrap_or("?")
     );
@@ -1772,6 +1808,44 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Only the explicit flag reaches `ds_project_data::refresh`: it is a
+    /// switch with no default, an ordinary seed parses with it off, and the
+    /// receipt reports which door ran.
+    #[test]
+    fn only_an_explicit_refresh_flag_selects_the_refresh_door() {
+        use ds_cli_contract::spec::ArgKind;
+        let arg = SEED_COMMAND
+            .args
+            .iter()
+            .find(|arg| arg.name == "refresh")
+            .expect("seed declares --refresh");
+        assert_eq!(arg.kind, ArgKind::Switch);
+        assert!(!arg.required);
+        assert_eq!(arg.default, None);
+        let parse = |tokens: &[&str]| {
+            let tokens: Vec<String> = tokens.iter().map(|token| token.to_string()).collect();
+            ds_cli_contract::args::parse(&SEED_COMMAND, &tokens).expect("seed inputs parse")
+        };
+        assert!(!parse(&["--project", "p"]).switch("refresh"));
+        assert!(
+            !parse(&["--project", "p", "--dataset", "google_open_buildings"]).switch("refresh")
+        );
+        assert!(parse(&["--project", "p", "--refresh"]).switch("refresh"));
+        // A refresh re-acquires, so it is the same confirmed effect as seed.
+        assert!(SEED_COMMAND.effect.needs_confirmation());
+        assert!(SEED_COMMAND.output.contains("`refresh`"));
+        let rendered = render_seed(&json!({"project": "p", "refresh": true, "datasets": []}));
+        assert!(
+            rendered.starts_with("refreshed 0 dataset(s) for p"),
+            "{rendered}"
+        );
+        let rendered = render_seed(&json!({"project": "p", "refresh": false, "datasets": []}));
+        assert!(
+            rendered.starts_with("seeded 0 dataset(s) for p"),
+            "{rendered}"
+        );
     }
 
     /// The descriptor and the executor say the same thing about an omitted
