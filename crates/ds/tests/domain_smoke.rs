@@ -5690,6 +5690,64 @@ fn a_partly_successful_export_is_declared_as_a_result_not_a_refusal() {
     );
 }
 
+/// A publishing export reuses the data outputs the project already holds
+/// from the same inputs and engine build, and regenerates every print. The
+/// one way to say "regenerate everything" is `--force`: it must be declared
+/// as a switch, parse to the command's own documented refusals rather than
+/// the parser's `unknown_flag`, and the declared output must name where a
+/// caller reads what was reused and why the rest was generated.
+#[test]
+fn export_reuse_is_declared_forceable_and_reported() {
+    let descriptor = ok(&["capabilities", "report.project.export", "--output", "json"]);
+    let command = &descriptor["command"];
+    let force = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .find(|input| input["name"] == "force")
+        .expect("--force is declared");
+    assert_eq!(force["kind"], "switch");
+    let purpose = command["purpose"].as_str().expect("purpose");
+    assert!(
+        purpose.contains("prints always regenerate"),
+        "a caller must see from the descriptor that a print is never reused: {purpose}"
+    );
+    let output = command["output"].as_str().expect("output");
+    for member in [
+        "reuse",
+        "work_id",
+        "generate reasons",
+        "every output was reused",
+    ] {
+        assert!(output.contains(member), "output no longer names `{member}`");
+    }
+    let documented: Vec<&str> = command["refusals"]
+        .as_array()
+        .expect("refusals")
+        .iter()
+        .filter_map(|refusal| refusal["code"].as_str())
+        .collect();
+    let out_dir = temp_root("export-force");
+    let code = native_refusal(&[
+        "report",
+        "project",
+        "export",
+        "--force",
+        "--out-dir",
+        out_dir.to_str().expect("utf-8 temp path"),
+        "--project",
+        "test-project",
+        "--output",
+        "json",
+    ]);
+    let _ = std::fs::remove_dir_all(&out_dir);
+    assert_ne!(code, "unknown_flag", "--force must parse");
+    assert!(
+        documented.contains(&code.as_str()),
+        "a signed-out --force export refuses with a documented code, not {code:?}"
+    );
+}
+
 /// The collision read: a report cannot be produced while a collision stands,
 /// so `ds` has to be able to say how many there are. It reads the project-wide
 /// document the report owner wrote; it starts no detection and takes no

@@ -42,7 +42,8 @@ use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::{
     envelope::Class,
     report::PublicationState,
-    report_export::{InputReceipt, reportable_transformer},
+    report_export::{EngineIdentity, InputReceipt, reportable_transformer},
+    report_formats::DesignOutputSelection,
 };
 use ds_report_artifacts::{VerifiedSidecarArtifact, confined_fs::HeldDirectory};
 use ds_report_host::{
@@ -54,6 +55,7 @@ use ds_report_host::{
 use ds_sync_runtime::reports::{SealOutcome, SealRequest};
 use serde_json::{Value, json};
 
+use super::reuse::{self, Decision, OutputPlan, RunScope};
 use super::{LANE_ARG, TRANSFORMER_ARG};
 use crate::{DISCOVERY_TIMEOUT, DS_REPORT, EXPORT_TIMEOUT};
 
@@ -89,6 +91,10 @@ const DRY_RUN_ARG: Arg = Arg::switch(
     "dry-run",
     "Produce local files and publish NOTHING; the receipt says so.",
 );
+/// A publishing run reuses every non-print output the project already holds
+/// from this run's exact input base and engine build (`super::reuse`);
+/// `--force` generates the whole policy without consulting that evidence.
+const FORCE_ARG: Arg = Arg::switch("force", "Regenerate all outputs; reuse none.");
 const SERVER_STATE_DIR_ARG: Arg = Arg::value(
     "server-state-dir",
     "<absolute-path>",
@@ -293,7 +299,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and print outputs with project numbering; enqueue every artifact. --dry-run skips publication. Prints held rooms; fetches only new or changed ones, even offline. --seed acquires context. Photos need a media grant.",
+    purpose: "Export active transformers and print outputs with project numbering; reuse current data outputs (prints always regenerate) and enqueue the rest. --dry-run skips publication. Prints held rooms; fetches only new or changed ones, even offline. --seed acquires context. Photos need a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -320,6 +326,7 @@ pub static COMMAND: Command = Command {
         ),
         SEED_ARG,
         DRY_RUN_ARG,
+        FORCE_ARG,
         SERVER_STATE_DIR_ARG,
         SURVEY_REFRESH_ARG,
         LANE_ARG,
@@ -329,8 +336,8 @@ pub static COMMAND: Command = Command {
 Lane, project, scope, engine identity, publication state, batch counts and receipt \
 (partial_formats), context diagnostics, survey and ordered transformer results: artifact \
 inventory, room_source, survey_layers(_omitted), failed_formats (output_id, code, remedy, layout knob: \
-overflow/panels/row_mm), or typed error. `publication.stage` is `queued`, or \
-`nothing_published` for a dry run.",
+overflow/panels/row_mm), reuse (scope, work_id, generate reasons), or typed error. \
+`publication.stage` is `queued`, or `nothing_published` for a dry run or when every output was reused.",
     examples: &[
         Example {
             command: "ds report project export --out-dir ./reports --output json --project <exact-id>",
@@ -978,6 +985,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // so they are dry runs by nature — not a silent local-only export, and
     // their receipt still says it published nothing.
     let dry_run = inputs.switch("dry-run");
+    let force = inputs.switch("force");
     // A preview's own refusals are decided before a city-vectors directory
     // is read, so they are local whatever that directory holds.
     let preview_request = preview_request(inputs, !proof_paths.is_empty())?;
@@ -1278,6 +1286,171 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
     })?;
 
+    // Which rooms this batch reads from the service: the kernel's plan over
+    // what this machine holds and the heads the service reports. With no
+    // link there are no heads, and an unknown head is no evidence of change.
+    // The same rows are the only reuse evidence, kept whole and only when
+    // the answer is for this account and this project.
+    let read_status = |link: &mut super::hold::Link| match link
+        .read(|| ds_cli_auth::transformer_status_for_project(lane, project, &requested))
+    {
+        Ok(Some(status)) => {
+            let rows = status.result().rows();
+            let evidence = (status.identity() == &identity && status.project_id() == project_id)
+                .then(|| {
+                    rows.iter()
+                        .map(|row| (row.name().to_string(), row.row().clone()))
+                        .collect::<BTreeMap<String, Value>>()
+                });
+            let heads = rows
+                .iter()
+                .map(|row| json!({"name": row.name(), "version": super::hold::head_version(row.row())}))
+                .collect();
+            (evidence, super::hold::Heads::Read(heads))
+        }
+        Ok(None) => (None, super::hold::Heads::Unreachable),
+        Err(failure) => (
+            None,
+            super::hold::Heads::Refused(format!("{}: {}", failure.code(), failure.message())),
+        ),
+    };
+    let (status_rows, mut heads) = read_status(&mut link);
+
+    // The survey forms the project appends to a delivered report, from the
+    // core's held copy of each: refreshed once for the whole batch, then cut
+    // per transformer by the kernel. Their photos become links under one
+    // report grant, the same links the cloud export writes.
+    let survey_forms =
+        ds_command_kernel::report_export::survey_forms(&receipt).map_err(|error| {
+            Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
+        })?;
+
+    // Which outputs this run may reuse (`super::reuse`): planned once per
+    // transformer against the installed engine's one `build-info` and the
+    // head revision its status row names. A transformer whose every output
+    // is current leaves the batch; the rest hand the engine only what they
+    // lack, or the full policy when there is no evidence.
+    let same_publisher = publish_scope
+        .as_ref()
+        .is_some_and(|fence| fence.uid() == identity.uid());
+    let withheld = reuse_withheld(
+        publish,
+        force,
+        !survey_forms.is_empty(),
+        status_rows.is_some(),
+        same_publisher,
+    );
+    let mut engine_now = match withheld {
+        None => Some(installed_engine()?),
+        Some(_) => None,
+    };
+    let (mut reuse_plans, mut unplanned, policy) = match (&engine_now, &status_rows) {
+        (Some(engine), Some(rows)) => {
+            let policy = reuse::policy_outputs(&receipt).map_err(|error| {
+                Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
+            })?;
+            let (plans, unplanned) = plan_reuse(
+                &names,
+                rows,
+                &policy,
+                &receipt,
+                &engine.build_manifest_sha256,
+            );
+            (plans, unplanned, policy)
+        }
+        _ => (BTreeMap::new(), BTreeMap::new(), Vec::new()),
+    };
+    // A run that would generate nothing claims every output current, so that
+    // claim rests on evidence read after the plan, not on the read it was
+    // planned from: a save, a newer run's copy or a replaced engine landing
+    // in between withdraws the transformer's reuse, and it runs the full
+    // policy like any transformer without evidence. The batch that follows
+    // then plans its rooms from these later heads.
+    if !names.is_empty()
+        && names.iter().all(|name| {
+            matches!(
+                reuse_plans.get(name).map(|plan| &plan.scope),
+                Some(RunScope::AllReused)
+            )
+        })
+    {
+        let engine = installed_engine()?;
+        let (confirming, confirming_heads) = read_status(&mut link);
+        heads = confirming_heads;
+        let withdrawn = reconfirm_all_reused(
+            &reuse_plans,
+            confirming.as_ref(),
+            &policy,
+            &receipt,
+            &engine.build_manifest_sha256,
+        );
+        for (name, reason) in withdrawn {
+            reuse_plans.remove(&name);
+            unplanned.insert(name, reason);
+        }
+        engine_now = Some(engine);
+    }
+    let names: Vec<String> = names
+        .into_iter()
+        .filter(|name| {
+            !matches!(
+                reuse_plans.get(name).map(|plan| &plan.scope),
+                Some(RunScope::AllReused)
+            )
+        })
+        .collect();
+    if names.is_empty() {
+        // Every requested output is the project's current copy, confirmed on
+        // the later read above: no room is read, no engine runs, nothing is
+        // sealed. The native scope is re-proved last, so a changed account
+        // or project never reads as current.
+        let fence = publish_scope.as_ref().ok_or_else(|| {
+            Failure::conflict(
+                PUBLISH_SCOPE_CHANGED.code,
+                "no native publication scope was captured for a run that reuses the project's outputs",
+            )
+            .remedy(PUBLISH_SCOPE_CHANGED.remedy)
+        })?;
+        verify_publish_scope(lane, fence, fence.uid(), &project_id)?;
+        output["out_dir"] = json!(out_dir.display().to_string());
+        output["scope"] = scope;
+        output["publication_enqueued"] = json!(false);
+        output["publication"] = json!({
+            "stage": "nothing_published",
+            "published_nothing": true,
+            "state": "all_outputs_current",
+            "reason": "every_output_reused",
+            "note": "Nothing was generated or published: the project already holds every requested output from this run's exact inputs and engine build. `reuse.transformers[]` names each copy; pass --force to regenerate.",
+        });
+        output["engine"] = engine_now.as_ref().map_or(Value::Null, |engine| {
+            json!({
+                "engine_version": engine.engine_version,
+                "build_manifest_sha256": engine.build_manifest_sha256,
+                "publication_state": engine.publication_state().ok(),
+            })
+        });
+        output["batch"] = json!({
+            "status": "reused",
+            "requested_count": 0,
+            "completed": 0,
+            "failed": 0,
+            "partial_formats": 0,
+            "concurrency": 0,
+            "receipt": null,
+        });
+        output["results"] = json!([]);
+        output["rooms"] = json!({"reused": 0, "rooms_fetched": 0, "not_held": [], "heads": "read"});
+        output["inputs"] = inputs_receipt;
+        output["reuse"] = reuse_receipt(
+            withheld,
+            engine_now.as_ref(),
+            &reuse_plans,
+            &unplanned,
+            &BTreeMap::new(),
+        );
+        return Ok(output);
+    }
+
     let processors = std::thread::available_parallelism()
         .map(|count| count.get())
         .unwrap_or(1);
@@ -1286,27 +1459,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     })?;
 
     let staging = out_dir.join(STAGING_DIRECTORY);
-    // Which rooms this batch reads from the service: the kernel's plan over
-    // what this machine holds and the heads the service reports. With no
-    // link there are no heads, and an unknown head is no evidence of change.
-    let heads = match link
-        .read(|| ds_cli_auth::transformer_status_for_project(lane, project, &requested))
-    {
-        Ok(Some(status)) => super::hold::Heads::Read(
-            status
-                .result()
-                .rows()
-                .iter()
-                .map(|row| {
-                    json!({"name": row.name(), "version": super::hold::head_version(row.row())})
-                })
-                .collect(),
-        ),
-        Ok(None) => super::hold::Heads::Unreachable,
-        Err(failure) => {
-            super::hold::Heads::Refused(format!("{}: {}", failure.code(), failure.message()))
-        }
-    };
     let rooms = RefCell::new(super::hold::Rooms::plan(hold, &plan.names, heads)?);
     let link = RefCell::new(link);
     // One transformer's room as this command admits it: an active saved
@@ -1388,14 +1540,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         );
     }
 
-    // The survey forms the project appends to a delivered report, from the
-    // core's held copy of each: refreshed once for the whole batch, then cut
-    // per transformer by the kernel. Their photos become links under one
-    // report grant, the same links the cloud export writes.
-    let survey_forms =
-        ds_command_kernel::report_export::survey_forms(&receipt).map_err(|error| {
-            Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
-        })?;
     let survey_refresh = inputs.require("survey-refresh")?;
     let (held_survey, survey_omitted, survey_grant) = survey_append_inputs(
         lane,
@@ -1419,8 +1563,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         concurrency: plan.concurrency,
         media_grant: survey_grant.as_deref(),
     };
+    // Subset runs whose room moved past the planned head: they ran in full.
+    let mut room_moved: BTreeMap<String, i64> = BTreeMap::new();
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
         let (room, server_version) = fetch_room(name).map_err(failure_to_host)?;
+        let (selection, moved) = run_selection(reuse_plans.get(name), server_version);
+        if moved {
+            room_moved.insert(name.to_string(), server_version);
+        }
         let layers_value = serde_json::to_value(&room.layers)
             .map_err(|error| HostFailure::new(INPUTS_INVALID.code, error.to_string()))?;
         let print_context = if let Some(context) = &local_context {
@@ -1496,7 +1646,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             server_version,
             content_digest: room.content_digest.clone(),
             layers: room.layers,
-            selection: None,
+            selection,
             print_context,
             sheet,
             survey,
@@ -1516,6 +1666,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     "inputs": inputs_receipt,
                 })),
         );
+    }
+
+    // The reuse plan compared the project's copies against one engine build;
+    // a batch that ran under another would publish beside them outputs the
+    // plan never compared, so nothing is sealed.
+    if let Some(planned) = engine_now.as_ref()
+        && reuse_plans
+            .values()
+            .any(|plan| !matches!(plan.scope, RunScope::Full))
+        && outcome.engine != *planned
+    {
+        return Err(Failure::failed(
+            IDENTITY_CHANGED.code,
+            "`ds-report` was replaced after the reuse plan compared the project's outputs against its build; nothing was sealed",
+        )
+        .remedy(IDENTITY_CHANGED.remedy));
     }
 
     let publication_state = if receipt.local_print_recipe.is_some() {
@@ -1634,6 +1800,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     output["rooms"] = rooms.borrow().receipt();
     output["inputs"] = inputs_receipt;
+    output["reuse"] = reuse_receipt(
+        withheld,
+        engine_now.as_ref(),
+        &reuse_plans,
+        &unplanned,
+        &room_moved,
+    );
     output["context"] = json!({
         "selected_layers": local_context.as_ref().map_or_else(
             || contexts.iter().map(|layer| layer.id.clone()).collect::<Vec<_>>(),
@@ -2243,6 +2416,255 @@ fn context_failure(error: ds_project_data::Failure) -> HostFailure {
 /// The batch as one screen, or the preview's pages: a delivery prints its
 /// concurrency, engine identity and batch receipt; a preview has none of
 /// those and prints its draft's output id and each page's path.
+/// The installed engine's identity from one `build-info`, read the way the
+/// batch reads it.
+fn installed_engine() -> Result<EngineIdentity, Failure> {
+    let document = CliEngine.build_info().map_err(host_failure)?;
+    ds_command_kernel::report_export::engine_identity(&document).map_err(|error| {
+        Failure::failed(CONTRACT_MISMATCH.code, error).remedy(CONTRACT_MISMATCH.remedy)
+    })
+}
+
+/// Why this run consults no reuse evidence, or `None` when it may.
+fn reuse_withheld(
+    publish: bool,
+    force: bool,
+    survey_appended: bool,
+    evidence_read: bool,
+    same_publisher: bool,
+) -> Option<&'static str> {
+    if force {
+        Some("forced")
+    } else if !publish {
+        // A local run's out-dir is its whole answer; a reused output would
+        // be missing from it.
+        Some("run_publishes_nothing")
+    } else if survey_appended {
+        // The input base fingerprints no survey row a report appends.
+        Some("survey_append_freshness_unproven")
+    } else if !evidence_read {
+        // Unreachable, refused, or answered for another account or project.
+        Some("status_unread")
+    } else if !same_publisher {
+        Some("publisher_identity_changed")
+    } else {
+        None
+    }
+}
+
+/// One transformer's reuse decision, made at the head revision its status
+/// row named: a subset run must read that revision.
+#[derive(Debug)]
+struct TransformerReuse {
+    head_version: i64,
+    scope: RunScope,
+    outputs: Vec<OutputPlan>,
+}
+
+/// Plan every named transformer against its status row. No row, no saved
+/// head revision or a row not shaped as ds-brain writes it is no evidence:
+/// that transformer is left unplanned (it runs the full policy) and the
+/// reason is kept for the receipt.
+fn plan_reuse(
+    names: &[String],
+    rows: &BTreeMap<String, Value>,
+    policy: &[String],
+    receipt: &InputReceipt,
+    engine_build: &str,
+) -> (BTreeMap<String, TransformerReuse>, BTreeMap<String, String>) {
+    let mut planned = BTreeMap::new();
+    let mut unplanned = BTreeMap::new();
+    for name in names {
+        let attempt = || -> Result<TransformerReuse, String> {
+            let row = rows.get(name).ok_or("the status read returned no row")?;
+            let head_version = super::hold::head_version(row)
+                .as_i64()
+                .filter(|version| *version > 0)
+                .ok_or("the status row names no saved head revision")?;
+            let evidence = reuse::evidence_from_status_row(row)
+                .map_err(|error| format!("evidence refused: {error}"))?;
+            let input_base = reuse::current_input_base(name, head_version, receipt)?;
+            let current = reuse::CurrentInputs {
+                input_base_fingerprint: &input_base,
+                engine_build_manifest_sha256: engine_build,
+            };
+            let outputs = reuse::plan_outputs(policy, current, &evidence, false)?;
+            Ok(TransformerReuse {
+                head_version,
+                scope: reuse::run_scope(&outputs)?,
+                outputs,
+            })
+        };
+        match attempt() {
+            Ok(plan) => {
+                planned.insert(name.clone(), plan);
+            }
+            Err(reason) => {
+                unplanned.insert(name.clone(), reason);
+            }
+        }
+    }
+    (planned, unplanned)
+}
+
+/// Which all-reused claims a status read made after the plan no longer
+/// supports, each with why. A claim stands only when that read is this
+/// account's and project's answer (`confirming`), names the same head
+/// revision, and plans every output again to the same copy from the same
+/// run under the engine build installed now. No answer, a missing row, a
+/// moved head, a replaced copy or engine: the claim is withdrawn.
+fn reconfirm_all_reused(
+    plans: &BTreeMap<String, TransformerReuse>,
+    confirming: Option<&BTreeMap<String, Value>>,
+    policy: &[String],
+    receipt: &InputReceipt,
+    engine_build: &str,
+) -> BTreeMap<String, String> {
+    let mut withdrawn = BTreeMap::new();
+    for (name, planned) in plans {
+        if planned.scope != RunScope::AllReused {
+            continue;
+        }
+        let reason = match confirming {
+            None => Some(
+                "the confirming status read was unavailable or not this account's and project's answer"
+                    .to_owned(),
+            ),
+            Some(rows) => {
+                let (again, refused) = plan_reuse(
+                    std::slice::from_ref(name),
+                    rows,
+                    policy,
+                    receipt,
+                    engine_build,
+                );
+                match again.get(name) {
+                    None => Some(refused.get(name).cloned().unwrap_or_default()),
+                    Some(now) if now.head_version != planned.head_version => Some(format!(
+                        "head revision {} became {}",
+                        planned.head_version, now.head_version
+                    )),
+                    Some(now) if now.outputs == planned.outputs => None,
+                    Some(now) => Some(
+                        now.outputs
+                            .iter()
+                            .zip(&planned.outputs)
+                            .find(|(now, then)| now != then)
+                            .map_or_else(
+                                || "the planned outputs changed".to_owned(),
+                                |(now, _)| match &now.decision {
+                                    Decision::Generate { reason } => format!(
+                                        "{} must now be generated ({})",
+                                        now.output_id,
+                                        json!(reason).as_str().unwrap_or_default()
+                                    ),
+                                    Decision::Reuse { .. } => {
+                                        format!("{}'s copy was replaced", now.output_id)
+                                    }
+                                },
+                            ),
+                    ),
+                }
+            }
+        };
+        if let Some(reason) = reason {
+            withdrawn.insert(
+                name.clone(),
+                format!("reuse withdrawn at confirmation: {reason}"),
+            );
+        }
+    }
+    withdrawn
+}
+
+/// The selection one transformer's run hands the engine, and whether its
+/// room moved: the planned subset while the room is the revision the plan
+/// was made at, otherwise the full policy so no reused copy sits beside
+/// outputs of a newer revision.
+fn run_selection(
+    plan: Option<&TransformerReuse>,
+    server_version: i64,
+) -> (Option<DesignOutputSelection>, bool) {
+    match plan {
+        Some(TransformerReuse {
+            head_version,
+            scope: RunScope::Subset(selection),
+            ..
+        }) if *head_version == server_version => (Some(selection.clone()), false),
+        Some(TransformerReuse {
+            scope: RunScope::Subset(_),
+            ..
+        }) => (None, true),
+        _ => (None, false),
+    }
+}
+
+/// What the reuse plan decided, one compact row per planned transformer:
+/// reused copies with their bytes and producing run, and the generated
+/// outputs grouped by reason.
+fn reuse_receipt(
+    withheld: Option<&str>,
+    engine: Option<&EngineIdentity>,
+    plans: &BTreeMap<String, TransformerReuse>,
+    unplanned: &BTreeMap<String, String>,
+    room_moved: &BTreeMap<String, i64>,
+) -> Value {
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut rows = Vec::with_capacity(plans.len());
+    for (name, plan) in plans {
+        let moved = room_moved.get(name);
+        let mut reused = Vec::new();
+        let mut generate: BTreeMap<String, Vec<&str>> = BTreeMap::new();
+        for output in &plan.outputs {
+            let reason = match (&output.decision, moved) {
+                (Decision::Reuse { sha256, work_id }, None) => {
+                    reused.push(json!({
+                        "output_id": output.output_id,
+                        "sha256": sha256,
+                        "work_id": work_id,
+                    }));
+                    continue;
+                }
+                (Decision::Reuse { .. }, Some(_)) => "room_moved".to_owned(),
+                (Decision::Generate { reason }, _) => {
+                    json!(reason).as_str().unwrap_or_default().to_owned()
+                }
+            };
+            generate.entry(reason).or_default().push(&output.output_id);
+        }
+        let scope = match (&plan.scope, moved) {
+            (_, Some(_)) => "full_room_moved",
+            (RunScope::Full, None) => "full",
+            (RunScope::Subset(_), None) => "subset",
+            (RunScope::AllReused, None) => "all_reused",
+        };
+        *counts.entry(scope).or_default() += 1;
+        let mut row = json!({
+            "transformer": name,
+            "scope": scope,
+            "head_version": plan.head_version,
+            "reused": reused,
+            "generate": generate,
+        });
+        if let Some(version) = moved {
+            row["room_version"] = json!(version);
+        }
+        rows.push(row);
+    }
+    json!({
+        "mode": match withheld {
+            None => "incremental",
+            Some("forced") => "forced",
+            Some(_) => "not_applied",
+        },
+        "withheld": withheld,
+        "engine_build_manifest_sha256": engine.map(|engine| engine.build_manifest_sha256.as_str()),
+        "counts": counts,
+        "transformers": rows,
+        "no_evidence": unplanned,
+    })
+}
+
 pub fn render(data: &Value) -> String {
     let preview = data["preview"].is_object();
     let mut out = format!(
@@ -2984,5 +3406,235 @@ mod tests {
                 .code(),
             PUBLISH_ROOT.code,
         );
+    }
+}
+
+#[cfg(test)]
+mod reuse_wiring {
+    use super::*;
+    use ds_command_kernel::report_export::input_base_fingerprint;
+
+    const SHEETS: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+    const ENGINE: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+    const BYTES: &str = "3333333333333333333333333333333333333333333333333333333333333333";
+    const REFERENCE: &str = "4444444444444444444444444444444444444444444444444444444444444444";
+    const OTHER_ENGINE: &str = "5555555555555555555555555555555555555555555555555555555555555555";
+
+    fn receipt() -> InputReceipt {
+        InputReceipt {
+            local_print_recipe: None,
+            schema: 1,
+            country: "RW".into(),
+            sheets_json: "{}".into(),
+            sheets_sha256: SHEETS.into(),
+            reference_semantic_sha256: REFERENCE.into(),
+        }
+    }
+
+    fn ids(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    /// A status row as ds-brain returns it: head `head`, with xlsx/shp/kmz
+    /// produced by ENGINE from revision `produced_at`, and no pdf.
+    fn row(name: &str, head: i64, produced_at: i64) -> Value {
+        let base = input_base_fingerprint(name, produced_at, SHEETS, "RW", REFERENCE).unwrap();
+        let artifact = |id: &str| {
+            json!({"output_id": id, "sha256": BYTES, "origin": {
+                "work_id": "work-1",
+                "input_base_fingerprint": base,
+                "engine_build_manifest_sha256": ENGINE,
+            }})
+        };
+        json!({
+            "name": name,
+            "metadata": {"version": head},
+            "report_artifacts": [artifact("xlsx"), artifact("shp"), artifact("kmz")],
+        })
+    }
+
+    fn rows(entries: &[(&str, Value)]) -> BTreeMap<String, Value> {
+        entries
+            .iter()
+            .map(|(name, row)| (name.to_string(), row.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn a_current_head_runs_only_the_missing_print_and_a_moved_one_runs_everything() {
+        let policy = ids(&["xlsx", "shp", "kmz", "pdf__a3_sheet"]);
+        let status = rows(&[("tr_a", row("tr_a", 7, 7)), ("tr_b", row("tr_b", 8, 7))]);
+        let (plans, unplanned) = plan_reuse(
+            &ids(&["tr_a", "tr_b"]),
+            &status,
+            &policy,
+            &receipt(),
+            ENGINE,
+        );
+        assert!(unplanned.is_empty(), "{unplanned:?}");
+        let RunScope::Subset(selection) = &plans["tr_a"].scope else {
+            panic!("tr_a holds current data outputs and lacks its print");
+        };
+        assert_eq!(selection.tokens().unwrap(), ["pdf__a3_sheet"]);
+        // tr_b's copies came from revision 7 and its head is 8.
+        assert_eq!(plans["tr_b"].scope, RunScope::Full);
+
+        // The fetched room decides: the planned revision runs the subset, a
+        // room that moved since the status read runs the full policy.
+        assert_eq!(
+            run_selection(plans.get("tr_a"), 7),
+            (Some(selection.clone()), false)
+        );
+        assert_eq!(run_selection(plans.get("tr_a"), 8), (None, true));
+        assert_eq!(run_selection(plans.get("tr_b"), 8), (None, false));
+
+        let moved = BTreeMap::from([("tr_a".to_string(), 8)]);
+        let current = reuse_receipt(None, None, &plans, &unplanned, &BTreeMap::new());
+        assert_eq!(current["mode"], "incremental");
+        assert_eq!(current["transformers"][0]["scope"], "subset");
+        assert_eq!(
+            current["transformers"][0]["reused"][0],
+            json!({"output_id": "xlsx", "sha256": BYTES, "work_id": "work-1"})
+        );
+        assert_eq!(
+            current["transformers"][0]["generate"],
+            json!({"print_freshness_unproven": ["pdf__a3_sheet"]})
+        );
+        assert_eq!(
+            current["transformers"][1]["generate"]["inputs_changed"],
+            json!(["xlsx", "shp", "kmz"])
+        );
+        let fell_back = reuse_receipt(None, None, &plans, &unplanned, &moved);
+        assert_eq!(fell_back["transformers"][0]["scope"], "full_room_moved");
+        assert_eq!(fell_back["transformers"][0]["reused"], json!([]));
+        assert_eq!(fell_back["transformers"][0]["room_version"], 8);
+    }
+
+    #[test]
+    fn a_printless_policy_can_be_wholly_reused_but_never_across_an_engine_build() {
+        let policy = ids(&["xlsx", "shp", "kmz"]);
+        let status = rows(&[("tr_a", row("tr_a", 7, 7))]);
+        let (same, _) = plan_reuse(&ids(&["tr_a"]), &status, &policy, &receipt(), ENGINE);
+        assert_eq!(same["tr_a"].scope, RunScope::AllReused);
+        let (moved, _) = plan_reuse(&ids(&["tr_a"]), &status, &policy, &receipt(), OTHER_ENGINE);
+        assert_eq!(moved["tr_a"].scope, RunScope::Full);
+    }
+
+    #[test]
+    fn an_all_reused_claim_is_withdrawn_when_the_confirming_read_no_longer_proves_it() {
+        let policy = ids(&["xlsx", "shp", "kmz"]);
+        let planned_from = rows(&[("tr_a", row("tr_a", 7, 7)), ("tr_b", row("tr_b", 7, 7))]);
+        let (plans, unplanned) = plan_reuse(
+            &ids(&["tr_a", "tr_b"]),
+            &planned_from,
+            &policy,
+            &receipt(),
+            ENGINE,
+        );
+        assert!(unplanned.is_empty(), "{unplanned:?}");
+        assert!(plans.values().all(|plan| plan.scope == RunScope::AllReused));
+        let confirm = |confirming: Option<&BTreeMap<String, Value>>, engine: &str| {
+            reconfirm_all_reused(&plans, confirming, &policy, &receipt(), engine)
+        };
+
+        // Nothing moved between the plan and the confirmation: every claim stands.
+        assert!(confirm(Some(&planned_from), ENGINE).is_empty());
+
+        // A save landed on tr_a after the plan: its head is 8, its copies
+        // still come from 7, so tr_a is regenerated and tr_b stays reused.
+        let saved = rows(&[("tr_a", row("tr_a", 8, 7)), ("tr_b", row("tr_b", 7, 7))]);
+        let withdrawn = confirm(Some(&saved), ENGINE);
+        assert_eq!(withdrawn.keys().collect::<Vec<_>>(), ["tr_a"]);
+        assert_eq!(
+            withdrawn["tr_a"],
+            "reuse withdrawn at confirmation: head revision 7 became 8"
+        );
+
+        // Same head, but another run replaced tr_b's xlsx copy: the plan's
+        // bytes are no longer the project's copy.
+        let mut replaced = planned_from.clone();
+        replaced.get_mut("tr_b").unwrap()["report_artifacts"][0]["origin"]["work_id"] =
+            json!("work-2");
+        let withdrawn = confirm(Some(&replaced), ENGINE);
+        assert_eq!(withdrawn.keys().collect::<Vec<_>>(), ["tr_b"]);
+        assert!(withdrawn["tr_b"].ends_with("xlsx's copy was replaced"));
+
+        // The engine was replaced after the plan: no copy is current for it.
+        let withdrawn = confirm(Some(&planned_from), OTHER_ENGINE);
+        assert_eq!(withdrawn.len(), 2);
+        assert!(withdrawn["tr_a"].ends_with("xlsx must now be generated (engine_changed)"));
+
+        // A row gone from the confirming read, or no usable read at all
+        // (unreachable, refused, another account or project): withdrawn.
+        let missing = rows(&[("tr_a", row("tr_a", 7, 7))]);
+        let withdrawn = confirm(Some(&missing), ENGINE);
+        assert_eq!(withdrawn.keys().collect::<Vec<_>>(), ["tr_b"]);
+        assert!(withdrawn["tr_b"].ends_with("the status read returned no row"));
+        assert_eq!(confirm(None, ENGINE).len(), 2);
+
+        // A withdrawn transformer leaves the plan and runs the full policy.
+        let withdrawn = confirm(Some(&saved), ENGINE);
+        let mut plans = plans;
+        for name in withdrawn.keys() {
+            plans.remove(name);
+        }
+        assert_eq!(run_selection(plans.get("tr_a"), 8), (None, false));
+        assert_eq!(plans["tr_b"].scope, RunScope::AllReused);
+    }
+
+    #[test]
+    fn no_row_no_saved_head_or_a_malformed_row_is_no_evidence() {
+        let status = rows(&[
+            ("tr_unsaved", json!({"name": "tr_unsaved", "metadata": {}})),
+            (
+                "tr_bad",
+                json!({"name": "tr_bad", "metadata": {"version": 7}, "report_artifacts": {"xlsx": {}}}),
+            ),
+        ]);
+        let (plans, unplanned) = plan_reuse(
+            &ids(&["tr_missing", "tr_unsaved", "tr_bad"]),
+            &status,
+            &ids(&["xlsx"]),
+            &receipt(),
+            ENGINE,
+        );
+        assert!(plans.is_empty());
+        assert_eq!(unplanned.len(), 3);
+        assert!(unplanned["tr_bad"].starts_with("evidence refused"));
+        assert_eq!(run_selection(None, 7), (None, false));
+    }
+
+    #[test]
+    fn reuse_is_consulted_only_by_a_connected_publishing_run_of_the_same_publisher() {
+        assert_eq!(reuse_withheld(true, false, false, true, true), None);
+        assert_eq!(
+            reuse_withheld(true, true, false, true, true),
+            Some("forced")
+        );
+        assert_eq!(
+            reuse_withheld(false, false, false, true, true),
+            Some("run_publishes_nothing")
+        );
+        assert_eq!(
+            reuse_withheld(true, false, true, true, true),
+            Some("survey_append_freshness_unproven")
+        );
+        assert_eq!(
+            reuse_withheld(true, false, false, false, true),
+            Some("status_unread")
+        );
+        assert_eq!(
+            reuse_withheld(true, false, false, true, false),
+            Some("publisher_identity_changed")
+        );
+        let forced = reuse_receipt(
+            Some("forced"),
+            None,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
+        assert_eq!(forced["mode"], "forced");
+        assert_eq!(forced["transformers"], json!([]));
     }
 }

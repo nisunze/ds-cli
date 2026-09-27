@@ -28,6 +28,7 @@ pub mod grouping;
 pub mod hold;
 pub mod map_inputs;
 pub mod publish;
+pub mod reuse;
 pub mod scope;
 pub mod settings;
 
