@@ -21,9 +21,6 @@ mod machine;
 #[cfg(test)]
 mod tests;
 
-/// One backoff curve for the whole client. `response_policy` reuses it rather
-/// than declaring a second one that would drift from it.
-pub(crate) use machine::backoff_ms;
 pub use machine::evaluate;
 
 pub const TRANSFER_SCHEMA: &str = "ds.transfer/v1";

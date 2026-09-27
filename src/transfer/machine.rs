@@ -1,10 +1,10 @@
 use super::*;
 
-/// Deterministic backoff. The host may add bounded jitter before sleeping; it
-/// may not shorten the delay. Kept pure so a replayed transfer is reproducible.
-pub(crate) fn backoff_ms(stalled_attempts: u32) -> u64 {
-    let shift = stalled_attempts.saturating_sub(1).min(5);
-    1_000u64.saturating_mul(1u64 << shift).min(30_000)
+/// Deterministic backoff: the one retry curve (`crate::retry`). The host may
+/// add bounded jitter before sleeping; it may not shorten the delay. Kept pure
+/// so a replayed transfer is reproducible.
+fn backoff_ms(stalled_attempts: u32) -> u64 {
+    crate::retry::pause_ms(stalled_attempts)
 }
 
 fn align_chunk(requested: Option<u64>, total: u64) -> u64 {

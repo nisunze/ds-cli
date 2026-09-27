@@ -3,23 +3,26 @@
 //! Field networks blink: a timeout, a reset connection, a gateway answering
 //! 503 for the second it takes a backend to come back. A blink is not an
 //! answer, so one blink must not end a sign-in, a token refresh, or a dataset
-//! download. This is the policy report export already applied (three pauses of
-//! 2, 6 and 15 seconds, then the last blink is returned as it came), moved
-//! here so every native caller retries by the same rule instead of each
-//! inventing one.
+//! download. The pauses are the kernel's one retry curve
+//! (`ds_command_kernel::retry`: 2, 6 and 15 seconds, then the last blink is
+//! returned as it came) — the same pauses the resumable transfer and the
+//! gateway response policy wait — so every native caller retries by the same
+//! rule instead of each inventing one.
 //!
 //! What is retried is decided by the caller's own transient classification and
 //! only ever for requests that are safe to send again. A definitive answer (a
 //! 401/403, a validation refusal) and a non-idempotent write are never retried.
 use std::time::Duration;
 
+use ds_command_kernel::retry::PAUSES_MS;
+
 /// The pauses between attempts when the network blinks: the desktop's own
 /// tolerance for a weak link, so a batch of eighty sheets does not lose
 /// seventy rows to one dropped second.
 pub const WEAK_NETWORK_DELAYS: [Duration; 3] = [
-    Duration::from_secs(2),
-    Duration::from_secs(6),
-    Duration::from_secs(15),
+    Duration::from_millis(PAUSES_MS[0]),
+    Duration::from_millis(PAUSES_MS[1]),
+    Duration::from_millis(PAUSES_MS[2]),
 ];
 
 /// A bounded retry schedule: one pause before each retry, and no retry after
@@ -117,9 +120,15 @@ mod tests {
     }
 
     #[test]
-    fn the_field_policy_is_the_report_export_schedule() {
+    fn the_field_policy_is_the_kernels_one_retry_curve() {
         assert_eq!(WeakNetwork::FIELD.max_retries(), 3);
         assert_eq!(WEAK_NETWORK_DELAYS.map(|delay| delay.as_secs()), [2, 6, 15]);
+        for (retry, delay) in (1u32..).zip(WEAK_NETWORK_DELAYS) {
+            assert_eq!(
+                u64::try_from(delay.as_millis()).unwrap(),
+                ds_command_kernel::retry::pause_ms(retry)
+            );
+        }
     }
 
     #[test]

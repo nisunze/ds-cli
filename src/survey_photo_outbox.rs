@@ -1022,8 +1022,8 @@ mod tests {
         .unwrap();
         let state = reply.row.unwrap();
         assert_eq!(state.status, Status::Pending);
-        assert_eq!(state.next_attempt_at, 1_000);
-        assert_eq!(reply.actions, vec![Action::WakeAt { at: 1_000 }]);
+        assert_eq!(state.next_attempt_at, 1_900);
+        assert_eq!(reply.actions, vec![Action::WakeAt { at: 1_900 }]);
     }
 
     #[test]

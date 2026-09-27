@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::transfer::{backoff_ms, Cause};
+use crate::transfer::Cause;
 
 pub const RESPONSE_POLICY_SCHEMA: &str = "ds.response-policy/v1";
 
@@ -180,10 +180,11 @@ fn should_report_to_sre(status: Option<u16>, error_code: Option<&str>, timed_out
     !matches!(status, Some(status) if safe_to_resend(status))
 }
 
-/// Same curve as the transfer machine, one place: 1s doubling to a 30s cap.
-/// Returned shy of the base so the host's bounded jitter lands around it.
+/// The one retry curve (`crate::retry`), the same pauses the transfer machine
+/// and the native client wait. Returned shy of the base so the host's bounded
+/// jitter lands around it.
 fn retry_backoff(attempt: u32) -> (u64, u64) {
-    let base = backoff_ms(attempt.saturating_add(1));
+    let base = crate::retry::pause_ms(attempt.saturating_add(1));
     let delay = base.saturating_sub(base / 10).max(MIN_RETRY_DELAY_MS);
     (delay, (base / 5).max(1))
 }
@@ -601,15 +602,13 @@ mod tests {
 
     #[test]
     fn backoff_is_deterministic_and_leaves_room_for_host_jitter() {
-        // Same curve the transfer machine already runs: 1s doubling to 30s.
-        assert_eq!(retry_backoff(0), (900, 200));
-        assert_eq!(retry_backoff(1), (1_800, 400));
-        assert_eq!(retry_backoff(2), (3_600, 800));
-        assert_eq!(retry_backoff(4), (14_400, 3_200));
-        // Capped at 30s from attempt 5 on, and it stays there.
-        assert_eq!(retry_backoff(5), (27_000, 6_000));
-        assert_eq!(retry_backoff(9), (27_000, 6_000));
-        assert_eq!(retry_backoff(u32::MAX), (27_000, 6_000));
+        // The one retry curve: 2, 6 and 15 seconds, then the last one holds.
+        assert_eq!(retry_backoff(0), (1_800, 400));
+        assert_eq!(retry_backoff(1), (5_400, 1_200));
+        assert_eq!(retry_backoff(2), (13_500, 3_000));
+        assert_eq!(retry_backoff(4), (13_500, 3_000));
+        assert_eq!(retry_backoff(9), (13_500, 3_000));
+        assert_eq!(retry_backoff(u32::MAX), (13_500, 3_000));
     }
 
     #[test]
@@ -659,14 +658,14 @@ mod tests {
         assert_eq!(decision["retry_jitter_ms"], 0);
 
         let decision = classify_json(json!({"status": 429, "attempt": 0, "retries_allowed": 2}));
-        assert_eq!(decision["retry_delay_ms"], 900);
-        assert_eq!(decision["retry_jitter_ms"], 200);
+        assert_eq!(decision["retry_delay_ms"], 1_800);
+        assert_eq!(decision["retry_jitter_ms"], 400);
 
         // An unparseable header leaves the caller's own backoff standing.
         let decision = classify_json(json!({"status": 503, "attempt": 1, "retries_allowed": 2,
             "retry_after": "whenever"}));
-        assert_eq!(decision["retry_delay_ms"], 1_800);
-        assert_eq!(decision["retry_jitter_ms"], 400);
+        assert_eq!(decision["retry_delay_ms"], 5_400);
+        assert_eq!(decision["retry_jitter_ms"], 1_200);
     }
 
     #[test]
@@ -1002,8 +1001,13 @@ mod parity {
         }
     }
 
+    /// A named divergence. The deleted TypeScript backed off 1 s doubling to a
+    /// 30 s cap; since 09-27 every caller waits the kernel's one retry curve
+    /// (`crate::retry`: 2, 6, 15 s, then 15 s), the pauses the native client
+    /// already used. The envelope keeps the TypeScript's shape — a floor 10 %
+    /// under the base and a window to 10 % over it — around the new base.
     #[test]
-    fn every_backoff_envelope_matches_the_deleted_typescript() {
+    fn every_backoff_envelope_keeps_the_deleted_typescripts_shape_on_the_one_curve() {
         for row in corpus()["backoff"].as_array().unwrap() {
             let attempt = row["attempt"].as_u64().unwrap();
             let decision = decide(classify_request(
@@ -1014,13 +1018,16 @@ mod parity {
             let delay = decision["retry_delay_ms"].as_u64().unwrap();
             let jitter = decision["retry_jitter_ms"].as_u64().unwrap();
             // TypeScript drew its own jitter inside the delay; the kernel is
-            // deterministic and hands the host the same envelope to draw from.
-            assert_eq!(delay, row["min_ms"].as_u64().unwrap(), "min {attempt}");
+            // deterministic and hands the host the envelope to draw from.
+            let typescript_base = row["min_ms"].as_u64().unwrap() * 10 / 9;
             assert_eq!(
-                delay + jitter - 1,
                 row["max_ms"].as_u64().unwrap(),
-                "max {attempt}"
+                typescript_base + typescript_base / 10 - 1,
+                "the corpus is the deleted doubling curve, attempt {attempt}"
             );
+            let base = crate::retry::pause_ms(u32::try_from(attempt).unwrap() + 1);
+            assert_eq!(delay, base - base / 10, "min {attempt}");
+            assert_eq!(delay + jitter - 1, base + base / 10 - 1, "max {attempt}");
         }
     }
 

@@ -1701,6 +1701,10 @@ pub fn compute_artifact_cache_wasm(input: &[u8]) -> Result<String, wasm_bindgen:
     compute_artifact_cache::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
+/// The one retry curve every caller waits by after a network blink: the
+/// resumable transfer, the gateway response policy and the native client.
+pub mod retry;
+
 /// What one HTTP outcome means: transient or terminal, retry and when, worth
 /// an SRE report, and what the operator is told. Hosts report facts and
 /// execute the decision; the browser, the shell and `ds` cannot answer a
