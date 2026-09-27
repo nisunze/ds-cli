@@ -884,7 +884,9 @@ mod tests {
             retained: BTreeMap::from([(mv.id.clone(), retained_for(&mv, prepared))]),
             ..Default::default()
         };
-        let context = resolve(None, &[mv.clone()], &held).unwrap().unwrap();
+        let context = resolve(None, std::slice::from_ref(&mv), &held)
+            .unwrap()
+            .unwrap();
         // Each emitted id is merged under its own id; the empty one is not
         // attached and not named — the host held it.
         assert_eq!(
@@ -912,7 +914,9 @@ mod tests {
             retained: BTreeMap::from([(mv.id.clone(), other)]),
             ..Default::default()
         };
-        let context = resolve(None, &[mv.clone()], &held).unwrap().unwrap();
+        let context = resolve(None, std::slice::from_ref(&mv), &held)
+            .unwrap()
+            .unwrap();
         assert!(context.document.is_none());
         assert_eq!(
             context.omitted,
@@ -950,7 +954,9 @@ mod tests {
             retained: BTreeMap::from([(contours.id.clone(), retained_for(&contours, prepared))]),
             ..Default::default()
         };
-        let context = resolve(None, &[contours.clone()], &held).unwrap().unwrap();
+        let context = resolve(None, std::slice::from_ref(&contours), &held)
+            .unwrap()
+            .unwrap();
         assert_eq!(
             context.layers,
             vec!["contours_index", "contours_intermediate"]
