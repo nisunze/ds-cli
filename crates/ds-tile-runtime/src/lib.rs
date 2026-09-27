@@ -167,12 +167,13 @@ impl Prepared {
             options: request.options.clone(),
             force: request.force,
         })?;
-        for text in request.layers.values() {
+        for (name, text) in &request.layers {
+            let mut features = 0;
             for record in text.as_bytes().split(|c| *c == b'\n') {
                 if record.len() > MAX_RECORD_BYTES {
                     bail!("tile feature exceeds record limit");
                 }
-                validate_record(record)?;
+                features += validate_record(name, features + 1, record)?;
             }
         }
         Ok(request)
@@ -504,11 +505,10 @@ fn validate_request(request: &Request) -> Result<()> {
     Ok(())
 }
 
-fn snapshot(
-    request: &Request,
-    root: &Path,
-    cancel: &Cancel,
-) -> Result<(BTreeMap<String, PathBuf>, BTreeMap<String, String>, u64)> {
+/// The staged layer files, their digests and the feature count.
+type Snapshot = (BTreeMap<String, PathBuf>, BTreeMap<String, String>, u64);
+
+fn snapshot(request: &Request, root: &Path, cancel: &Cancel) -> Result<Snapshot> {
     let mut layers = BTreeMap::new();
     let mut digests = BTreeMap::new();
     let mut total = 0;
@@ -523,6 +523,7 @@ fn snapshot(
         let mut writer = private_create(&path)?;
         let mut hash = Sha256::new();
         let mut record = Vec::new();
+        let mut layer_features = 0;
         let mut buf = [0u8; 64 * 1024];
         loop {
             cancel.check()?;
@@ -538,7 +539,7 @@ fn snapshot(
             writer.write_all(&buf[..n])?;
             for byte in &buf[..n] {
                 if *byte == b'\n' {
-                    features += validate_record(&record)?;
+                    layer_features += validate_record(name, layer_features + 1, &record)?;
                     record.clear();
                 } else {
                     record.push(*byte);
@@ -548,13 +549,16 @@ fn snapshot(
                 }
             }
         }
-        features += validate_record(&record)?;
+        layer_features += validate_record(name, layer_features + 1, &record)?;
+        features += layer_features;
         layers.insert(name.clone(), path);
         digests.insert(name.clone(), format!("{:x}", hash.finalize()));
     }
     Ok((layers, digests, features))
 }
-fn validate_record(record: &[u8]) -> Result<u64> {
+/// One GeoJSONSeq record of `layer`; `number` is its 1-based feature number
+/// there, which a refusal names.
+fn validate_record(layer: &str, number: u64, record: &[u8]) -> Result<u64> {
     let record = record.strip_prefix(&[0x1e]).unwrap_or(record);
     if record.iter().all(u8::is_ascii_whitespace) {
         return Ok(0);
@@ -563,7 +567,51 @@ fn validate_record(record: &[u8]) -> Result<u64> {
     if value["type"] != "Feature" || !value["geometry"].is_object() {
         bail!("tile input record must be a Feature with geometry");
     }
+    if covers_a_hemisphere(&value["geometry"]) {
+        bail!(
+            "source_polygons_inverted: {layer} feature {number} is a polygon covering half the \
+             globe or more, an inverted ring or a full-globe polygon that would fill every tile \
+             of the world at every zoom. Nothing was tiled; repair the source geometry (in \
+             BigQuery: ST_GEOGFROMTEXT(ST_ASTEXT(geom), make_valid => TRUE)) and tile again."
+        );
+    }
     Ok(1)
+}
+/// Half the globe in longitude and in latitude. BigQuery writes a polygon
+/// whose ring runs the wrong way, or the full globe, as the whole world with
+/// the real ring as a hole; no layer a map tiles is that large.
+const HEMISPHERE_DEGREES: (f64, f64) = (180.0, 90.0);
+/// Whether one polygon of `geometry` has an outer ring spanning half the globe
+/// or more in both directions. Lines and points never fill tiles, and the parts
+/// of a multipolygon are judged one by one: parts spread across the world are
+/// not one polygon covering it.
+fn covers_a_hemisphere(geometry: &Value) -> bool {
+    let outer_rings: Vec<&Value> = match geometry["type"].as_str() {
+        Some("Polygon") => geometry["coordinates"].get(0).into_iter().collect(),
+        Some("MultiPolygon") => geometry["coordinates"]
+            .as_array()
+            .map(|parts| parts.iter().filter_map(|part| part.get(0)).collect())
+            .unwrap_or_default(),
+        Some("GeometryCollection") => {
+            return geometry["geometries"]
+                .as_array()
+                .is_some_and(|parts| parts.iter().any(covers_a_hemisphere))
+        }
+        _ => return false,
+    };
+    outer_rings.into_iter().any(|ring| {
+        let (mut west, mut south) = (f64::INFINITY, f64::INFINITY);
+        let (mut east, mut north) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for position in ring.as_array().into_iter().flatten() {
+            if let (Some(x), Some(y)) = (
+                position.get(0).and_then(Value::as_f64),
+                position.get(1).and_then(Value::as_f64),
+            ) {
+                (west, south, east, north) = (west.min(x), south.min(y), east.max(x), north.max(y));
+            }
+        }
+        east - west >= HEMISPHERE_DEGREES.0 && north - south >= HEMISPHERE_DEGREES.1
+    })
 }
 fn read_receipt(receipt: &Path, archive: &Path, key: &str) -> Result<Receipt> {
     let file = File::open(receipt)?;
@@ -708,15 +756,84 @@ mod tests {
     }
     #[test]
     fn corrupt_sources_never_become_an_authoritative_empty_result() {
-        assert!(validate_record(b"not json").is_err());
-        assert!(validate_record(br#"{"type":"Feature","geometry":null}"#).is_err());
-        assert_eq!(validate_record(b" \t\r").unwrap(), 0);
+        assert!(validate_record("poles", 1, b"not json").is_err());
+        assert!(validate_record("poles", 1, br#"{"type":"Feature","geometry":null}"#).is_err());
+        assert_eq!(validate_record("poles", 1, b" \t\r").unwrap(), 0);
         let mut bad = request("input".into());
         bad.layers = BTreeMap::from([("poles:/tmp/other".into(), "input".into())]);
         assert!(validate_request(&bad).is_err());
         bad = request("input".into());
         bad.scope.project.clear();
         assert!(validate_request(&bad).is_err());
+    }
+    /// The line BigQuery's export writes for a lake whose ring runs the wrong
+    /// way: the whole world, with the lake as a hole.
+    const INVERTED_LAKE: &str = r#"{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[180,90],[-180,90],[-180,-90],[180,-90],[180,90]],[[30,-2],[30.1,-2],[30.1,-2.1],[30,-2.1],[30,-2]]]},"properties":{"name":"lake"},"tippecanoe":{"minzoom":0,"maxzoom":14}}"#;
+    const LAKE: &str = r#"{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[30,-2],[30.1,-2],[30.1,-2.1],[30,-2.1],[30,-2]]]},"properties":{"name":"lake"}}"#;
+    fn geometry(geometry: &str) -> String {
+        format!(r#"{{"type":"Feature","properties":{{}},"geometry":{geometry}}}"#)
+    }
+    #[test]
+    fn an_inverted_or_full_globe_polygon_is_refused_before_anything_is_tiled() {
+        let work = TempDir::new().unwrap();
+        let lakes = work.path().join("lakes.geojsonl");
+        std::fs::write(&lakes, format!("{LAKE}\n{INVERTED_LAKE}\n")).unwrap();
+        let mut both = request(work.path().join("poles.geojsonl"));
+        std::fs::write(&both.layers["poles"], feature(29.8)).unwrap();
+        both.layers.insert("lakes".into(), lakes);
+        let staged = work.path().join("staged");
+        std::fs::create_dir(&staged).unwrap();
+        let refused = snapshot(&both, &staged, &Cancel::default())
+            .expect_err("an inverted polygon is refused")
+            .to_string();
+        assert!(
+            refused.starts_with("source_polygons_inverted: lakes feature 2 "),
+            "{refused}"
+        );
+
+        let prepared = json!({
+            "schema": "ds.tiles.prepared/v1",
+            "project": "project-a",
+            "layers": {"lakes": format!("{LAKE}\n{INVERTED_LAKE}")},
+            "options": TippecanoeOptions::project_default(),
+        });
+        let refused = Prepared::decode(&serde_json::to_vec(&prepared).unwrap())
+            .err()
+            .expect("a prepared inverted polygon is refused")
+            .to_string();
+        assert!(
+            refused.starts_with("source_polygons_inverted: lakes feature 2 "),
+            "{refused}"
+        );
+
+        let world = r#"{"type":"Polygon","coordinates":[[[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]]]}"#;
+        let hemisphere = r#"{"type":"MultiPolygon","coordinates":[[[[30,-2],[30.1,-2],[30.1,-2.1],[30,-2]]],[[[0,-90],[180,-90],[180,90],[0,90],[0,-90]]]]}"#;
+        let collection = format!(r#"{{"type":"GeometryCollection","geometries":[{world}]}}"#);
+        for shape in [world, hemisphere, collection.as_str()] {
+            let refused = validate_record("lakes", 1, geometry(shape).as_bytes()).unwrap_err();
+            assert!(refused
+                .to_string()
+                .starts_with("source_polygons_inverted: "));
+        }
+    }
+    #[test]
+    fn large_lines_spread_parts_and_polar_strips_still_tile() {
+        for shape in [
+            // A strip around a pole spans every longitude but not half the latitudes.
+            r#"{"type":"Polygon","coordinates":[[[-180,-90],[180,-90],[180,-60],[-180,-60],[-180,-90]]]}"#,
+            // Parts on opposite sides of the world are not one polygon covering it.
+            r#"{"type":"MultiPolygon","coordinates":[[[[-179,-80],[-178,-80],[-178,-79],[-179,-80]]],[[[178,80],[179,80],[179,79],[178,80]]]]}"#,
+            // A line never fills tiles, however far it runs.
+            r#"{"type":"LineString","coordinates":[[-180,-90],[180,90]]}"#,
+            r#"{"type":"Point","coordinates":[29.8,-2.4]}"#,
+        ] {
+            assert_eq!(
+                validate_record("context", 1, geometry(shape).as_bytes()).unwrap(),
+                1,
+                "{shape}"
+            );
+        }
+        assert_eq!(validate_record("lakes", 1, LAKE.as_bytes()).unwrap(), 1);
     }
     #[cfg(unix)]
     #[tokio::test]
