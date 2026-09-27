@@ -226,11 +226,10 @@ fn invalid(e: impl std::fmt::Display) -> Failure {
         .remedy("Select a reviewed PDF or PNG and its exact paper metadata")
 }
 fn attach_native_mv(i: &Inputs) -> Result<Value, Failure> {
-    if i.require("map-family")? != "mv-map" || i.value("page-role").unwrap_or("sheet") != "sheet" {
-        return Err(invalid(
-            "Native MV attachment requires mv-map and a single sheet",
-        ));
+    if i.require("map-family")? != "mv-map" {
+        return Err(invalid("Native MV attachment requires mv-map"));
     }
+    let page_role = i.value("page-role").unwrap_or("sheet");
     let path = Path::new(i.require("path")?);
     let mut bytes = Vec::new();
     std::fs::File::open(path)
@@ -248,6 +247,7 @@ fn attach_native_mv(i: &Inputs) -> Result<Value, Failure> {
         layout: i.require("layout")?.into(),
         paper: i.require("paper-size")?.into(),
         orientation: i.require("orientation")?.into(),
+        page_role: page_role.into(),
         source_receipt: i.value("source-receipt-sha256").unwrap_or("").into(),
     };
     let project = i.value("project").ok_or_else(|| {
@@ -260,6 +260,6 @@ fn attach_native_mv(i: &Inputs) -> Result<Value, Failure> {
     let result = ds_cli_auth::report_artifact(i.require("lane")?, project, &command)?;
     let result = result.into_result();
     Ok(
-        json!({"project":result["project_id"],"scope":"mv","transformer":"mv_data","file_name":result["file_name"],"sha256":result["sha256"],"artifact":result["gcs_path"],"map_family":result["map_family"],"layout":i.require("layout")?,"paper_size":i.require("paper-size")?,"orientation":i.require("orientation")?,"page_role":"sheet"}),
+        json!({"project":result["project_id"],"scope":"mv","transformer":"mv_data","file_name":result["file_name"],"sha256":result["sha256"],"artifact":result["gcs_path"],"map_family":result["map_family"],"layout":i.require("layout")?,"paper_size":i.require("paper-size")?,"orientation":i.require("orientation")?,"page_role":page_role}),
     )
 }
