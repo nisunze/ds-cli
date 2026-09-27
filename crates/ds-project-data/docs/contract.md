@@ -82,7 +82,11 @@ is the kernel's `print_context_document` over the sheet-shaped capture area
 used by project-cache seed (both page orientations, with the widest selected
 metre buffer as a floor), its layers
 in `BTreeMap` order, its `sources` naming every layer; `sha256` is what the
-engine re-verifies and the run receipt records.
+engine re-verifies and the run receipt records. A layer that would carry the
+document past the engine's feature, byte or layer bounds cannot be supplied
+either: the largest is omitted first (by bytes when the byte bound refused),
+reason `print_context_too_large: …; <layer> alone carries N features`, until
+the rest fits. The held coverage stays whole for smaller prints.
 
 ## Failure codes
 

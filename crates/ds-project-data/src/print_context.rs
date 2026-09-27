@@ -350,7 +350,13 @@ pub fn read_print_context(
             }
         }
     }
-    if document_layers.is_empty() {
+    let fitted = if document_layers.is_empty() {
+        None
+    } else {
+        let coverage = sheet_area(scope, transformer, layers, widest.max(0.0))?;
+        fit_document(&coverage, &mut sources, &mut document_layers, &mut omitted)?
+    };
+    let Some(bytes) = fitted else {
         return Ok(PrintContext {
             document: None,
             sha256: None,
@@ -359,10 +365,7 @@ pub fn read_print_context(
             warnings,
             reused,
         });
-    }
-    let coverage = sheet_area(scope, transformer, layers, widest.max(0.0))?;
-    let bytes = print_context_document(&coverage, &json!(sources), &document_layers)
-        .map_err(document_failure)?;
+    };
     let sha256 = sha256_hex(&bytes);
     Ok(PrintContext {
         layers: document_layers.keys().cloned().collect(),
@@ -372,6 +375,76 @@ pub fn read_print_context(
         warnings,
         reused,
     })
+}
+
+/// Counts the bytes a value encodes to without keeping them.
+struct Measure(usize);
+
+impl std::io::Write for Measure {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 += bytes.len();
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The document the engine accepts. A layer that would carry it past the
+/// engine's bounds cannot be supplied to this print, so it is omitted and
+/// named like any other such layer: the largest first — by features, or by
+/// bytes when the byte bound refused — until the rest fits. `None` when no
+/// layer fits.
+fn fit_document(
+    coverage: &Value,
+    sources: &mut Vec<Value>,
+    layers: &mut BTreeMap<String, Value>,
+    omitted: &mut Vec<Omission>,
+) -> Result<Option<Vec<u8>>, Failure> {
+    let sizes: BTreeMap<String, (usize, usize)> = layers
+        .iter()
+        .map(|(id, collection)| {
+            let features = collection["features"].as_array().map_or(0, Vec::len);
+            let mut bytes = Measure(0);
+            let _ = serde_json::to_writer(&mut bytes, collection);
+            (id.clone(), (features, bytes.0))
+        })
+        .collect();
+    while !layers.is_empty() {
+        let bound = match print_context_document(coverage, &json!(sources), layers)
+            .map_err(document_failure)
+        {
+            Ok(bytes) => return Ok(Some(bytes)),
+            Err(Failure::TooLarge(bound)) => bound,
+            Err(other) => return Err(other),
+        };
+        let by_bytes = bound.contains("bytes");
+        let Some(largest) = layers
+            .keys()
+            .max_by_key(|id| {
+                let (features, bytes) = sizes[*id];
+                if by_bytes {
+                    (bytes, features)
+                } else {
+                    (features, bytes)
+                }
+            })
+            .cloned()
+        else {
+            break;
+        };
+        layers.remove(&largest);
+        sources.retain(|source| source["layer"].as_str() != Some(largest.as_str()));
+        let features = sizes[&largest].0;
+        omitted.push(Omission {
+            reason: format!(
+                "print_context_too_large: {bound}; {largest} alone carries {features} features — print a smaller area"
+            ),
+            layer: largest,
+        });
+    }
+    Ok(None)
 }
 
 /// The `kind` a context layer's source spells in the document's source
@@ -390,5 +463,99 @@ impl SourceKind for PrintContextLayer {
             PrintContextSource::ElevationContours { .. } => "elevation_contours",
             PrintContextSource::ProjectDsgridMv { .. } => "project_dsgrid_mv",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ds_command_kernel::report_export::{MAX_PRINT_CONTEXT_FEATURES, MAX_PRINT_CONTEXT_LAYERS};
+
+    fn points(count: usize) -> Value {
+        let point = json!({
+            "type": "Feature",
+            "properties": {},
+            "geometry": {"type": "Point", "coordinates": [29.74, -2.61]},
+        });
+        collection(vec![point; count])
+    }
+
+    fn coverage() -> Value {
+        json!({"type": "Polygon", "coordinates": [[
+            [29.7, -2.7], [29.8, -2.7], [29.8, -2.6], [29.7, -2.6], [29.7, -2.7]
+        ]]})
+    }
+
+    fn fit(
+        layers: &mut BTreeMap<String, Value>,
+        omitted: &mut Vec<Omission>,
+    ) -> (Option<Vec<u8>>, Vec<Value>) {
+        let mut sources: Vec<Value> = layers.keys().map(|id| json!({"layer": id})).collect();
+        let bytes = fit_document(&coverage(), &mut sources, layers, omitted).unwrap();
+        (bytes, sources)
+    }
+
+    #[test]
+    fn a_layer_past_the_feature_bound_is_omitted_and_the_rest_prints() {
+        let mut layers = BTreeMap::from([
+            (
+                "buildings_context".to_owned(),
+                points(MAX_PRINT_CONTEXT_FEATURES + 1),
+            ),
+            ("roads".to_owned(), points(2)),
+        ]);
+        let mut omitted = Vec::new();
+        let (bytes, sources) = fit(&mut layers, &mut omitted);
+        let document: Value = serde_json::from_slice(&bytes.expect("roads fit")).unwrap();
+        let carried: Vec<&String> = document["layers"].as_object().unwrap().keys().collect();
+        assert_eq!(carried, ["roads"]);
+        assert_eq!(sources, [json!({"layer": "roads"})]);
+        assert_eq!(document["sources"], json!([{"layer": "roads"}]));
+        assert_eq!(omitted.len(), 1);
+        assert_eq!(omitted[0].layer, "buildings_context");
+        let reason = &omitted[0].reason;
+        assert!(reason.starts_with("print_context_too_large: "), "{reason}");
+        assert!(
+            reason.contains("buildings_context alone carries 100001 features"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn a_context_where_nothing_fits_prints_without_one() {
+        let mut layers = BTreeMap::from([(
+            "buildings_context".to_owned(),
+            points(MAX_PRINT_CONTEXT_FEATURES + 1),
+        )]);
+        let mut omitted = Vec::new();
+        let (bytes, sources) = fit(&mut layers, &mut omitted);
+        assert_eq!(bytes, None);
+        assert!(layers.is_empty() && sources.is_empty());
+        assert_eq!(omitted.len(), 1);
+        assert_eq!(omitted[0].layer, "buildings_context");
+    }
+
+    #[test]
+    fn past_the_layer_bound_the_largest_layer_is_omitted_until_the_rest_fits() {
+        let mut layers: BTreeMap<String, Value> = (0..=MAX_PRINT_CONTEXT_LAYERS)
+            .map(|n| (format!("layer_{n:02}"), points(if n == 7 { 3 } else { 1 })))
+            .collect();
+        let mut omitted = Vec::new();
+        let (bytes, sources) = fit(&mut layers, &mut omitted);
+        assert!(bytes.is_some());
+        assert_eq!(layers.len(), MAX_PRINT_CONTEXT_LAYERS);
+        assert_eq!(sources.len(), MAX_PRINT_CONTEXT_LAYERS);
+        assert_eq!(omitted.len(), 1);
+        assert_eq!(omitted[0].layer, "layer_07");
+    }
+
+    #[test]
+    fn a_context_within_the_bounds_is_untouched() {
+        let mut layers = BTreeMap::from([("roads".to_owned(), points(2))]);
+        let mut omitted = Vec::new();
+        let (bytes, sources) = fit(&mut layers, &mut omitted);
+        assert!(bytes.is_some());
+        assert_eq!(sources.len(), 1);
+        assert!(omitted.is_empty());
     }
 }
