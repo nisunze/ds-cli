@@ -92,7 +92,7 @@ ours, not ds-network's.
 
 ## 2. What is snapshotted
 
-15 files, `vendor/ds-geo-lite/MANIFEST.json`, taken at ds-network `a6288ad`
+15 files, `vendor/ds-geo-lite/MANIFEST.json`, taken at ds-network `a644fb0`
 (`577ec83` until geometry admission was added, 2026-09-27):
 
 | Vendored | ds-network source | Whole |

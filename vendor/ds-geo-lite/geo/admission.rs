@@ -190,6 +190,35 @@ where
     }
 }
 
+/// Drop the altitude of every position of `geometry`, in place.
+///
+/// DS holds 2D geometry, and BigQuery refuses a position's third element. A
+/// door that reads a user's file drops an altitude before admitting the
+/// geometry — the KML and shapefile readers always have, and the GeoJSON
+/// readers do so through this — while a door receiving a geometry DS itself
+/// writes (a survey entry, an area, a bundle) does not, so a third element
+/// there is refused. Anything that is not a numeric position is left for
+/// [`admit_geometry`] to refuse.
+pub fn drop_altitude(geometry: &mut Value) {
+    if let Some(Value::Array(members)) = geometry.get_mut("geometries") {
+        members.iter_mut().for_each(drop_altitude);
+    }
+    if let Some(coordinates) = geometry.get_mut("coordinates") {
+        drop_position_altitude(coordinates);
+    }
+}
+
+fn drop_position_altitude(value: &mut Value) {
+    let Value::Array(items) = value else { return };
+    if items.first().is_some_and(Value::is_number) {
+        if items.len() > 2 && items[..2].iter().all(Value::is_number) {
+            items.truncate(2);
+        }
+        return;
+    }
+    items.iter_mut().for_each(drop_position_altitude);
+}
+
 fn json_kind(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
@@ -875,6 +904,29 @@ mod tests {
                 [[1,1],[9,1],[9,9],[1,9],[1,1]],
                 [[3,3],[5,3],[5,5],[3,5],[3,3]]]})),
             "geometry_invalid: Polygon ring 2 lies inside ring 1; holes may not nest"
+        );
+    }
+
+    #[test]
+    fn a_file_door_drops_the_altitude_bigquery_would_refuse() {
+        let mut geometry = json!({"type":"GeometryCollection","geometries":[
+            {"type":"Point","coordinates":[30,-2,1500]},
+            {"type":"MultiPolygon","coordinates":[[[[30,-2,1],[30.1,-2,1],[30.1,-1.9,1],[30,-2,1]]]]},
+            {"type":"Point","coordinates":[30]}]});
+        assert_eq!(code(&geometry), GEOMETRY_INVALID);
+        drop_altitude(&mut geometry);
+        assert_eq!(
+            geometry,
+            json!({"type":"GeometryCollection","geometries":[
+                {"type":"Point","coordinates":[30,-2]},
+                {"type":"MultiPolygon","coordinates":[[[[30,-2],[30.1,-2],[30.1,-1.9],[30,-2]]]]},
+                {"type":"Point","coordinates":[30]}]})
+        );
+        // What is not a position stays for admission to refuse.
+        assert_eq!(
+            reason(geometry),
+            "geometry_invalid: GeometryCollection geometry 2 (Point) position has 1 value; a \
+             position is exactly [longitude, latitude]"
         );
     }
 
