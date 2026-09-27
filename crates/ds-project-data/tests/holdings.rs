@@ -862,37 +862,22 @@ fn a_district_sized_gap_is_acquired_in_tiles_no_provider_read_exceeds() {
     assert_eq!(provider.areas.len(), calls, "a warm seed asks for nothing");
 }
 
-/// 86d184cf: a national-seed subset denser than one index read returns is
-/// split into quarters and held whole, not refused for the whole layer.
-#[test]
-fn a_truncated_national_read_is_split_not_refused() {
-    let root = tempfile::tempdir().unwrap();
-    // Offset off the round grid so no point sits exactly on a quarter's edge:
-    // the area predicate does not select a point lying on the boundary.
-    let points: Vec<Value> = (0..10_050)
-        .map(|index| {
-            let (x, y) = (
-                30.0000071 + (index % 101) as f64 * 0.00002,
-                -2.0000071 + (index / 101) as f64 * 0.00002,
-            );
-            json!({"type": "Feature", "properties": {"id": format!("p{index}")},
-                "geometry": {"type": "Point", "coordinates": [x, y]}})
-        })
-        .collect();
-    let (compressed, receipt) = bundle(&points);
+/// Seed one national layer holding `features` from its installed bundle.
+fn seed_national(
+    root: &Path,
+    features: &[Value],
+    design: &Value,
+) -> ds_project_data::EnsureOutcome {
+    let (compressed, receipt) = bundle(features);
     let resource = roads_resource(&receipt);
-    let bytes = compressed.clone();
     let mut fetch = move |_: &BundleReceipt, dest: &Path| -> Result<(), String> {
-        std::fs::write(dest, &bytes).map_err(|e| e.to_string())
+        std::fs::write(dest, &compressed).map_err(|e| e.to_string())
     };
     let mut provider = Footprints {
         calls: 0,
         fail_first: false,
     };
-    let dense = json!({"lv_poles": {"type": "FeatureCollection", "features": [
-        {"type": "Feature", "properties": {}, "geometry": {"type": "Point", "coordinates": [30.001, -1.999]}}
-    ]}});
-    let extents = design_extents([("tx", &dense)]).unwrap();
+    let extents = design_extents([("tx", design)]).unwrap();
     let policy = buffer_policy(&[200.0]).unwrap();
     let outcome = {
         let mut hosts = Hosts {
@@ -900,7 +885,7 @@ fn a_truncated_national_read_is_split_not_refused() {
             fetch: &mut fetch,
         };
         ensure(
-            root.path(),
+            root,
             &scope(),
             &catalog_dataset(&resource),
             &DeclaredSource::Catalog(Box::new(resource.clone())),
@@ -909,13 +894,256 @@ fn a_truncated_national_read_is_split_not_refused() {
             &[],
             Mode::Acquire(&mut hosts),
         )
-        .expect("a dense subset is split, not refused")
+        .expect("a national subset seeds")
     };
-    assert!(outcome.covered, "{:?}", outcome.warnings);
-    assert!(outcome.acquired > 1, "the dense cell was split");
-    assert_eq!(outcome.features, 10_050);
     assert_eq!(
         provider.calls, 0,
         "a national subset never asks the provider"
     );
+    outcome
+}
+
+fn point(id: String, x: f64, y: f64) -> Value {
+    json!({"type": "Feature", "properties": {"id": id},
+        "geometry": {"type": "Point", "coordinates": [x, y]}})
+}
+
+/// 86d184cf: a national-seed subset denser than one index read returns is
+/// split into quarters and held whole, not refused for the whole layer.
+/// 2026-09-27 review: on the round grid the quarters' replacements dropped
+/// 100 of these 10,050 rows while the seed read covered.
+#[test]
+fn a_truncated_national_read_is_split_not_refused() {
+    let dense = json!({"lv_poles": {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {}, "geometry": {"type": "Point", "coordinates": [30.001, -1.999]}}
+    ]}});
+    for (grid, offset) in [("round", 0.0), ("offset", 0.0000071)] {
+        let root = tempfile::tempdir().unwrap();
+        let points: Vec<Value> = (0..10_050)
+            .map(|index| {
+                point(
+                    format!("p{index}"),
+                    30.0 + offset + (index % 101) as f64 * 0.00002,
+                    -2.0 - offset + (index / 101) as f64 * 0.00002,
+                )
+            })
+            .collect();
+        let outcome = seed_national(root.path(), &points, &dense);
+        assert!(outcome.covered, "{grid}: {:?}", outcome.warnings);
+        assert!(outcome.acquired > 1, "{grid}: the dense cell was split");
+        assert_eq!(outcome.features, 10_050, "{grid} grid");
+    }
+}
+
+/// Records the bounds of every tile it is asked for, and answers nothing.
+struct TileRecorder {
+    tiles: Vec<[f64; 4]>,
+}
+
+impl Provider for TileRecorder {
+    fn acquire(&mut self, dataset: &Dataset, area: &Value) -> Result<Acquisition, Failure> {
+        let ring = &area["coordinates"][0];
+        let at = |corner: usize, axis: usize| ring[corner][axis].as_f64().unwrap();
+        self.tiles.push([at(0, 0), at(0, 1), at(2, 0), at(2, 1)]);
+        Ok(Acquisition {
+            features: Vec::new(),
+            source_version: format!("{}-v1", dataset.id),
+            source_receipt: json!({"provider": "tile-recorder"}),
+        })
+    }
+}
+
+/// 2026-09-27 review: a tiled national seed holds every row its tiles share.
+/// The room replaces a tile's rows under the kernel's selection rule; a page
+/// read under a narrower one lost what a later tile's replacement removed —
+/// points a float's width from an interior edge, and every road whose bounds
+/// cross into a later tile it never enters — while the seed read covered.
+#[test]
+fn a_tiled_national_seed_keeps_every_row_its_tiles_share() {
+    let district = json!({"mv_lines": {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {}, "geometry": {"type": "LineString",
+            "coordinates": [[29.40, -2.50], [29.70, -2.20]]}}
+    ]}});
+    // The interior edges of the tiles a seed of this plan reads.
+    let scratch = tempfile::tempdir().unwrap();
+    let mut recorder = TileRecorder { tiles: Vec::new() };
+    let mut fetch = no_fetch;
+    let mut hosts = Hosts {
+        provider: &mut recorder,
+        fetch: &mut fetch,
+    };
+    ensure(
+        scratch.path(),
+        &scope(),
+        &buildings_dataset(),
+        &DeclaredSource::Buildings,
+        &buffer_policy(&[200.0]).unwrap(),
+        &design_extents([("tx", &district)]).unwrap(),
+        &[],
+        Mode::Acquire(&mut hosts),
+    )
+    .unwrap();
+    let tiles = recorder.tiles;
+    assert!(tiles.len() >= 9, "{} tiles", tiles.len());
+    let edges = |axis: usize| {
+        let outer = tiles.iter().map(|t| t[axis + 2]).fold(f64::MIN, f64::max);
+        let mut edges: Vec<f64> = tiles
+            .iter()
+            .map(|t| t[axis + 2])
+            .filter(|edge| *edge < outer)
+            .collect();
+        edges.sort_by(f64::total_cmp);
+        edges.dedup();
+        edges
+    };
+    let (columns, rows) = (edges(0), edges(1));
+    assert!(columns.len() >= 2 && rows.len() >= 2);
+    let (x0, y0) = (
+        (tiles[0][0] + tiles[0][2]) / 2.0,
+        (tiles[0][1] + tiles[0][3]) / 2.0,
+    );
+    // Round: on each edge. Offset: a float's width to a metre either side.
+    let offsets = [
+        -1e-5, -2e-6, -1e-6, -3e-7, -1e-7, 0.0, 1e-7, 3e-7, 1e-6, 2e-6, 1e-5,
+    ];
+    let mut rows_held = Vec::new();
+    for (i, x) in columns.iter().enumerate() {
+        for (j, d) in offsets.iter().enumerate() {
+            rows_held.push(point(format!("v{i}-{j}"), x + d, y0));
+        }
+    }
+    for (i, y) in rows.iter().enumerate() {
+        for (j, d) in offsets.iter().enumerate() {
+            rows_held.push(point(format!("h{i}-{j}"), x0, y + d));
+        }
+    }
+    // North-west to south-east across several tiles, an L down the west and
+    // along the south, and a triangle leaning the same way: each one's bounds
+    // reach a north-eastern tile it never enters.
+    for k in 0..5 {
+        let x = 29.42 + k as f64 * 0.01;
+        rows_held.push(
+            json!({"type": "Feature", "properties": {"id": format!("d{k}")},
+            "geometry": {"type": "LineString", "coordinates": [[x, -2.22], [x + 0.15, -2.37]]}}),
+        );
+    }
+    rows_held.push(json!({"type": "Feature", "properties": {"id": "l"},
+        "geometry": {"type": "LineString", "coordinates": [[29.45, -2.30], [29.45, -2.45], [29.60, -2.45]]}}));
+    rows_held.push(json!({"type": "Feature", "properties": {"id": "t"},
+        "geometry": {"type": "Polygon", "coordinates": [[[29.47, -2.27], [29.47, -2.42], [29.62, -2.42], [29.47, -2.27]]]}}));
+    let root = tempfile::tempdir().unwrap();
+    let outcome = seed_national(root.path(), &rows_held, &district);
+    assert!(outcome.covered, "{:?}", outcome.warnings);
+    assert_eq!(outcome.acquired, tiles.len(), "one commit per tile");
+    assert_eq!(outcome.features, rows_held.len() as i64);
+}
+
+/// 2026-09-27 review: a later seed never loses a row an earlier one holds. The
+/// road is held from the first seed's tile; its bounds reach across the
+/// interior edge into the tile the grown design adds, where the road never
+/// goes. That tile's replacement selected the road by its bounds grown by a
+/// provider margin and deleted it, and the index, answering exact
+/// intersection, never handed it back.
+#[test]
+fn an_incremental_national_seed_keeps_what_an_earlier_seed_holds() {
+    let poles = |points: &[[f64; 2]]| {
+        let features: Vec<Value> = points
+            .iter()
+            .map(|p| json!({"type": "Feature", "properties": {}, "geometry": {"type": "Point", "coordinates": p}}))
+            .collect();
+        json!({"lv_poles": {"type": "FeatureCollection", "features": features}})
+    };
+    let first = poles(&[[30.0, -2.0]]);
+    let grown = poles(&[[30.0, -2.0], [30.012, -2.0]]);
+    // The first seed's tile, then the one tile the grown design adds.
+    let scratch = tempfile::tempdir().unwrap();
+    let mut recorded = Vec::new();
+    for design in [&first, &grown] {
+        let mut recorder = TileRecorder { tiles: Vec::new() };
+        let mut fetch = no_fetch;
+        let mut hosts = Hosts {
+            provider: &mut recorder,
+            fetch: &mut fetch,
+        };
+        ensure(
+            scratch.path(),
+            &scope(),
+            &buildings_dataset(),
+            &DeclaredSource::Buildings,
+            &buffer_policy(&[200.0]).unwrap(),
+            &design_extents([("tx", design)]).unwrap(),
+            &[],
+            Mode::Acquire(&mut hosts),
+        )
+        .unwrap();
+        recorded.push(recorder.tiles);
+    }
+    let ([held], [added]) = (recorded[0].as_slice(), recorded[1].as_slice()) else {
+        panic!("one tile each: {recorded:?}");
+    };
+    let [_, s, e, n] = *held;
+    let [west, south, _, north] = *added;
+    assert_eq!(west, e, "the added tile shares the held tile's east edge");
+    assert!(s < south - 0.0045 && north < n, "{added:?}");
+    let mid = (south + north) / 2.0;
+    let rows = vec![
+        point("inside".into(), e - 0.001, mid),
+        point("added".into(), e + 0.001, mid),
+        // On the interior edge, and half a metre inside the held tile.
+        point("edge".into(), e, mid),
+        point("near".into(), e - 0.000005, mid),
+        // Leaves the held tile through that edge 200 m below the added tile,
+        // whose south-west corner its bounds cover.
+        json!({"type": "Feature", "properties": {"id": "road"}, "geometry": {"type": "LineString",
+            "coordinates": [[e - 0.0005, south + 0.0005], [e + 0.0005, south - 0.0045]]}}),
+    ];
+    let root = tempfile::tempdir().unwrap();
+    let before = seed_national(root.path(), &rows, &first);
+    assert!(before.covered, "{:?}", before.warnings);
+    assert_eq!(before.features, 4, "all but the added tile's row");
+    let after = seed_national(root.path(), &rows, &grown);
+    assert!(after.covered, "{:?}", after.warnings);
+    assert_eq!(after.acquired, 1, "only the added tile is read");
+    assert_eq!(
+        after.features, 5,
+        "the earlier seed's rows are all still held"
+    );
+}
+
+/// 2026-09-27 review: tiling had no upper bound, so an extent no project has
+/// became tens of thousands of sequential provider rounds. It is refused by
+/// name before the first one; a district still seeds (above).
+#[test]
+fn an_implausibly_wide_extent_is_refused_before_any_provider_round() {
+    let root = tempfile::tempdir().unwrap();
+    // Nine degrees by eight and a half: about 37,000 tiles of 25 km².
+    let wide = json!({"lv_lines": {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {}, "geometry": {"type": "LineString",
+            "coordinates": [[29.0, -2.5], [38.0, 6.0]]}}
+    ]}});
+    let mut provider = AreaRecorder { areas: Vec::new() };
+    let mut fetch = no_fetch;
+    let mut hosts = Hosts {
+        provider: &mut provider,
+        fetch: &mut fetch,
+    };
+    let refused = ensure(
+        root.path(),
+        &scope(),
+        &buildings_dataset(),
+        &DeclaredSource::Buildings,
+        &buffer_policy(&[200.0]).unwrap(),
+        &design_extents([("tx", &wide)]).unwrap(),
+        &[],
+        Mode::Acquire(&mut hosts),
+    )
+    .expect_err("an implausible extent is refused");
+    assert_eq!(refused.code(), "project_dataset_acquisition_failed");
+    assert!(
+        refused.message().contains("more than the 400 reads")
+            && refused.message().contains("narrow the seed"),
+        "{}",
+        refused.message()
+    );
+    assert!(provider.areas.is_empty(), "no provider round was made");
 }

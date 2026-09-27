@@ -183,15 +183,29 @@ const CATALOG_QUERY_LIMIT: usize = 10_000;
 /// How many times a truncated national-index read is quartered before the
 /// layer is refused: 4⁴ = 256 parts of the tile it started from.
 const MAX_SPLIT_DEPTH: u32 = 4;
+/// The most tiles one gap cell may become. A district's overview — about 30
+/// tiles for Gisagara — sits far below it; a cell needing more is not a
+/// project's extent (a pole in the wrong hemisphere, a degree-wide buffer) and
+/// is refused before the first provider round, never read as thousands of
+/// sequential ones.
+const MAX_CELL_TILES: usize = 400;
 
 /// One gap cell as the tiles an acquisition asks for, none larger than a
 /// provider read may be (`MAX_ENVELOPE_M2`, the bound the kernel's plan and a
-/// cloud-resident read keep). A small cell is itself.
+/// cloud-resident read keep). A small cell is itself; a cell needing more than
+/// `MAX_CELL_TILES` is refused.
 fn tiles(cell: [f64; 4]) -> Result<Vec<[f64; 4]>, Failure> {
     let area = bounds_area_m2(cell).map_err(crate::store)?;
     let mut side = (area / MAX_ENVELOPE_M2).sqrt().ceil().max(1.0) as usize;
     loop {
         let [w, s, e, n] = cell;
+        if side.saturating_mul(side) > MAX_CELL_TILES {
+            return Err(Failure::AcquisitionFailed(format!(
+                "the missing area [{w:.4}, {s:.4}, {e:.4}, {n:.4}] is {:.0} km², more than the {MAX_CELL_TILES} reads of {:.0} km² one cell may take; no project extent is this wide — narrow the seed to the transformers it is for, or correct the design extent that reaches this far",
+                area / 1e6,
+                MAX_ENVELOPE_M2 / 1e6,
+            )));
+        }
         let (dx, dy) = ((e - w) / side as f64, (n - s) / side as f64);
         let mut out = Vec::with_capacity(side * side);
         for row in 0..side {
@@ -229,9 +243,13 @@ fn quadrants(cell: [f64; 4]) -> [[f64; 4]; 4] {
     [[w, s, x, y], [x, s, e, y], [w, y, x, n], [x, y, e, n]]
 }
 
-/// A project subset of an installed national bundle: rows whose bounds
-/// intersect the cell, read from the machine's own index. No provider.
-/// `None` when the index truncated the read: the caller splits the cell.
+/// A project subset of an installed national bundle: rows that intersect the
+/// cell, read from the machine's own index. No provider.
+///
+/// The index answers exactly the rule the room replaces the cell's rows under
+/// (`acquisition_selects` for the reference cache is exact intersection), so a
+/// commit deletes only rows this page puts back — rows an earlier seed holds
+/// included. `None` when the index truncated the read: the caller splits the cell.
 fn acquire_catalog(
     root: &Path,
     resource: &ReferenceResource,

@@ -977,7 +977,7 @@ pub const CONTOURS_DATASET_ID: &str = "elevation_contours";
 ///
 /// National reference subsets are addressed by per-resource digests, so their
 /// rule is recorded against the *provider*: the desktop reference cache selects
-/// rows whose bounds intersect the area (`reference_cache::intersects_area`),
+/// rows whose geometry intersects the area (`reference_cache::intersects_area`),
 /// which is the same rule its subsets are admitted and refreshed under.
 pub const REFERENCE_CACHE_PROVIDER: &str = "desktop:reference_resource_cache";
 
@@ -1010,6 +1010,9 @@ pub fn acquisition_selection(dataset_id: &str, provider: &str) -> Result<AreaSel
 /// provider's rule written down, not a relaxation of it: a row farther out
 /// than any provider margin is still the overfetch or boundary defect the
 /// refusal exists to catch.
+///
+/// The desktop reference cache has no margin: its index answers this very
+/// predicate (`reference_cache::intersects_area`) exactly, in the plane.
 pub const PROVIDER_BOUNDARY_MARGIN_DEG: f64 = 1e-5;
 
 /// Does this dataset's acquisition select `feature` for `area`?
@@ -1019,6 +1022,12 @@ pub const PROVIDER_BOUNDARY_MARGIN_DEG: f64 = 1e-5;
 /// intersects rule carries the provider's boundary margin, so a row the
 /// provider selected at its edge is selected here at the same edge — on
 /// admission and on the deletion that replaces it.
+///
+/// The margin grows a row's bounds, not its geometry, so it selects a road
+/// whose bounds cross into the area where the road itself does not. A remote
+/// provider may return that road; the desktop reference cache never does, so
+/// a margin there would delete, on any later tile's replacement, a road an
+/// earlier seed holds and the index never hands back. It selects exactly.
 pub fn acquisition_selects(
     dataset_id: &str,
     provider: &str,
@@ -1029,7 +1038,7 @@ pub fn acquisition_selects(
     if crate::reference_cache::selects_area(feature, area, selection)? {
         return Ok(true);
     }
-    if selection != AreaSelection::Intersects {
+    if selection != AreaSelection::Intersects || provider == REFERENCE_CACHE_PROVIDER {
         return Ok(false);
     }
     // Within the margin: the feature's bounds, grown by the margin, meet the
@@ -2998,6 +3007,39 @@ mod tests {
             AreaSelection::CentroidInside
         )
         .unwrap());
+    }
+
+    /// 2026-09-27 review: a road an earlier national seed held was deleted by
+    /// a later tile its bounds cross into, and the index never handed it back.
+    #[test]
+    fn the_reference_cache_selects_exactly_what_its_index_reads() {
+        let tile = json!({"type":"Polygon","coordinates":[[
+            [30.012, -2.008], [30.02, -2.008], [30.02, -2.0], [30.012, -2.0], [30.012, -2.008]]]});
+        // Leaning south-east: its bounds cover the tile, the road passes 300 m
+        // south-west of it.
+        let road = json!({"type":"Feature","properties":{},
+            "geometry":{"type":"LineString","coordinates":[[30.0, -2.0], [30.02, -2.02]]}});
+        // Half a metre west of the tile, and one ending on its edge.
+        let near = json!({"type":"Feature","properties":{},
+            "geometry":{"type":"Point","coordinates":[30.011995, -2.004]}});
+        let touching = json!({"type":"Feature","properties":{},
+            "geometry":{"type":"LineString","coordinates":[[30.0, -2.004], [30.012, -2.004]]}});
+        let national = "a".repeat(64);
+        for (feature, index_reads) in [(&road, false), (&near, false), (&touching, true)] {
+            assert_eq!(
+                crate::reference_cache::intersects_area(feature, &tile).unwrap(),
+                index_reads
+            );
+            assert_eq!(
+                acquisition_selects(&national, REFERENCE_CACHE_PROVIDER, feature, &tile).unwrap(),
+                index_reads,
+                "{feature}"
+            );
+        }
+        // A remote provider keeps its margin, grown bounds and all.
+        for feature in [&road, &near, &touching] {
+            assert!(acquisition_selects(&national, CLOUD_READ_PROVIDER, feature, &tile).unwrap());
+        }
     }
 
     #[test]
