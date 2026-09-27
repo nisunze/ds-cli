@@ -36,6 +36,22 @@ struct CacheSummary {
 /// refused whole, and the message names that feature.
 pub const BUNDLE_INVALID: &str = "bundle_invalid";
 
+/// Refuse a reference feature whose geometry DS does not admit, naming it by
+/// its 1-based `number` in the resource. A feature without geometry passes.
+fn admit_reference_feature(number: usize, feature: &Value) -> Result<(), String> {
+    if feature["geometry"].is_null() {
+        return Ok(());
+    }
+    geometry_admission::admit_geometry(&feature["geometry"]).map_err(|refusal| {
+        let id = match &feature["id"] {
+            Value::String(id) => format!(" (id {id:?})"),
+            Value::Number(id) => format!(" (id {id})"),
+            _ => String::new(),
+        };
+        format!("{BUNDLE_INVALID}: feature {number}{id} {refusal}")
+    })
+}
+
 /// Native bundle ingestion is not cloud response pagination. A thousand large
 /// polygons can exceed a response's byte ceiling. Stream features into SQLite
 /// instead, and commit the metadata only after the caller verifies the complete
@@ -74,19 +90,7 @@ impl BundleIndexWriter {
         {
             return Err("invalid bundle feature".into());
         }
-        if !feature["geometry"].is_null() {
-            geometry_admission::admit_geometry(&feature["geometry"]).map_err(|refusal| {
-                let id = match &feature["id"] {
-                    Value::String(id) => format!(" (id {id:?})"),
-                    Value::Number(id) => format!(" (id {id})"),
-                    _ => String::new(),
-                };
-                format!(
-                    "{BUNDLE_INVALID}: feature {}{id} {refusal}",
-                    self.features + 1
-                )
-            })?;
-        }
+        admit_reference_feature(self.features + 1, feature)?;
         let json = serde_json::to_string(feature).map_err(|e| e.to_string())?;
         self.connection
             .prepare_cached("INSERT INTO features(id,feature_json) VALUES (?1,?2)")
@@ -830,7 +834,11 @@ fn execute_locked(dir: &Path, identity: &Identity, request: Value) -> Result<Val
             .map_err(|_| "page offset exceeds platform limit")?;
             let page: Page = serde_json::from_value(request["page"].clone())
                 .map_err(|_| "reference page is required")?;
-            contract::validate_page(identity, offset, &page)?;
+            // A page carrying a geometry DS does not admit is never cached.
+            let rows = contract::validate_page(identity, offset, &page)?;
+            for (index, feature) in rows.iter().enumerate() {
+                admit_reference_feature(offset + index + 1, feature)?;
+            }
             let target = dir.join(format!("{offset}.json"));
             if target.exists() {
                 let held = read_page(dir, identity, offset)?;
@@ -969,6 +977,22 @@ mod tests {
         req["offset"] = json!(offset);
         req["page"] = page;
         execute_at(root, req)
+    }
+    #[test]
+    fn a_reference_page_carrying_a_geometry_ds_does_not_admit_is_never_cached() {
+        let root = tempfile::tempdir().unwrap();
+        let inverted = json!({"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[
+            [[180.,90.],[-180.,90.],[-180.,-90.],[180.,-90.],[180.,90.]],
+            [[30.,-2.],[30.1,-2.],[30.1,-2.1],[30.,-2.1],[30.,-2.]]]}});
+        let refused = install(root.path(), 0, one_feature_page(inverted)).unwrap_err();
+        assert!(
+            refused.starts_with("bundle_invalid: feature 1 polygon_covers_hemisphere: "),
+            "{refused}"
+        );
+        assert_eq!(
+            execute_at(root.path(), request("status")).unwrap()["ready"],
+            false
+        );
     }
     #[test]
     fn interrupted_download_resumes_and_queries_after_reopen() {
