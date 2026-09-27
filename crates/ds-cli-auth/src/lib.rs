@@ -434,6 +434,12 @@ const IDENTITY_REFUSAL: Refusal = Refusal {
     when: "Firebase returns an identity outside the bound session",
     remedy: "sign in again and report a repeated mismatch",
 };
+/// The transformer context route's per-item refusal token, as a failure's
+/// `detail.service_code` carries it: the service answered, about one room.
+pub const TRANSFORMER_READ_FAILED: &str = "TRANSFORMER_READ_FAILED";
+/// Core's closed diagnostic for that token (`ds-client-core::transformers`).
+const TRANSFORMER_READ_FAILED_MESSAGE: &str =
+    "the transformer context service could not read the selected transformer";
 const TRANSIENT_REFUSAL: Refusal = Refusal {
     code: "auth_transient",
     when: "the fixed native transport is temporarily unavailable",
@@ -4308,6 +4314,18 @@ fn map_client(error: ClientError) -> Failure {
         return Failure::unavailable("auth_transient", message)
             .remedy("retry the exact sealed publication without changing local state");
     }
+    // The transformer context route answered and named ONE transformer it
+    // could not read (`TRANSFORMER_READ_FAILED`). Core keeps it retryable,
+    // but the service was reached: the token crosses in `detail` so a caller
+    // never reads one room's refusal as a whole-service outage.
+    if error.kind() == ErrorKind::Transient && message == TRANSFORMER_READ_FAILED_MESSAGE {
+        return Failure::unavailable("auth_transient", TRANSFORMER_READ_FAILED_MESSAGE)
+            .remedy("retry that transformer alone; a repeated refusal means the service cannot read its saved room")
+            .detail(json!({
+                "service_code": TRANSFORMER_READ_FAILED,
+                "owner_message": TRANSFORMER_READ_FAILED_MESSAGE,
+            }));
+    }
     // A governed route that authored its own bounded refusal has said
     // something the coarse class cannot: which status it used and what is
     // wrong. Collapsing that into `auth_response_unreadable` is what made a
@@ -6940,6 +6958,39 @@ mod tests {
         assert_eq!(detail["service_code"], "solar_seed_digest_mismatch");
         assert_eq!(detail["http_status"], 409);
         assert!(detail.get("service_message").is_none());
+    }
+
+    /// One transformer the route answered it could not read is the
+    /// service's answer about that room, and says so by name; an unreachable
+    /// route carries no such token.
+    #[test]
+    fn a_transformer_read_failure_is_named_apart_from_an_unreachable_route() {
+        use crate::test_support::{FixtureTransport, NOW, linked_device};
+        let transport = FixtureTransport::default();
+        transport
+            .lock()
+            .transformer_context
+            .push_back(ds_client_core::TransportResponse::new(
+                200,
+                serde_json::to_vec(&json!({
+                    "total": 1, "found_count": 0, "failed_count": 1,
+                    "results": [{"transformer_name": "t1", "ok": false,
+                                 "error_code": "TRANSFORMER_READ_FAILED"}],
+                }))
+                .unwrap(),
+            ));
+        let mut device = linked_device(transport, NOW);
+        let read = map_client(device.transformer_context("project-1", "t1").unwrap_err());
+        assert_eq!(read.code(), "auth_transient");
+        assert!(read.class().retryable());
+        assert_eq!(
+            read.detail_value().unwrap()["service_code"],
+            TRANSFORMER_READ_FAILED
+        );
+
+        let down = map_client(device.transformer_context("project-1", "t2").unwrap_err());
+        assert_eq!(down.code(), "auth_transient");
+        assert!(down.detail_value().is_none(), "{down:?}");
     }
 }
 #[cfg(test)]

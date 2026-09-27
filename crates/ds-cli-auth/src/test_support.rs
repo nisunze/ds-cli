@@ -43,6 +43,9 @@ pub(crate) struct Scripted {
     pub project_properties: VecDeque<TransportResponse>,
     /// Scripted answers for the design tag route; Unreachable when empty.
     pub design_tags: VecDeque<TransportResponse>,
+    /// Scripted answers for the transformer context route; Unreachable when
+    /// empty.
+    pub transformer_context: VecDeque<TransportResponse>,
     /// Every call recorded as `door bearer device-id|user`, or with the
     /// request body for the approval door.
     pub calls: Vec<String>,
@@ -92,7 +95,7 @@ impl FixtureTransport {
         self.lock().calls.clone()
     }
 
-    fn lock(&self) -> MutexGuard<'_, Scripted> {
+    pub(crate) fn lock(&self) -> MutexGuard<'_, Scripted> {
         self.0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -226,7 +229,10 @@ impl Transport for FixtureTransport {
         &mut self,
         _call: TransformerContextCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
+        self.lock()
+            .transformer_context
+            .pop_front()
+            .ok_or(TransportError::Unreachable)
     }
 
     fn project_forms(

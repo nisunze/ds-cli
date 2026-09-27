@@ -894,6 +894,20 @@ fn dry_run_reason(dry_run: bool, proofs: bool, preview: bool) -> &'static str {
     }
 }
 
+/// The receipt of a publishing run that sealed nothing because the service
+/// could not be reached after the retry curve: its prints may carry held
+/// inputs or held rooms nobody could prove current, so none is published.
+fn withheld_offline(unreachable: &str) -> Value {
+    json!({
+        "stage": "nothing_published",
+        "published_nothing": true,
+        "state": "withheld_service_unreachable",
+        "reason": "service_unreachable",
+        "unreachable": unreachable,
+        "note": "THIS RUN PUBLISHED NOTHING. The service could not be reached, so these prints may carry held inputs or rooms nobody could prove current, and a held print is never published as current. Re-run the export when connected.",
+    })
+}
+
 fn verify_publish_scope(
     lane: &str,
     fence: &ds_cli_auth::LayerScopeFence,
@@ -1319,12 +1333,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .remedy(NOT_ACTIVE.remedy));
             }
         }
+        // A weak link blinks; the link asks a room fetch refused by an outage
+        // again under the shared curve before the row is written off.
         let room = rooms.borrow_mut().room(name, &mut link.borrow_mut(), || {
-            // A weak link blinks; a room fetch that was refused by an outage
-            // is asked again before the row is written off.
-            let context = with_weak_network(&WeakNetwork::FIELD, || {
-                ds_cli_auth::transformer_context_for_project(lane, project, name)
-            })?;
+            let context = ds_cli_auth::transformer_context_for_project(lane, project, name)?;
             require_same_context(
                 &identity,
                 &project_id,
@@ -1511,9 +1523,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         outcome.engine.publication_state().ok()
     };
-    let sealed_publications = if let (Some(fence), Some(queue)) =
-        (publish_scope.as_ref(), publish_queue.as_ref())
-    {
+    // A print made after the service could not be reached may carry held
+    // inputs or a held room whose head nobody could check: it is never
+    // sealed as the current publication.
+    let unreachable = link.borrow().unreachable().map(str::to_owned);
+    let sealed_publications = if let (Some(fence), Some(queue), None) = (
+        publish_scope.as_ref(),
+        publish_queue.as_ref(),
+        unreachable.as_ref(),
+    ) {
         let mut publications = Vec::with_capacity(outcome.runs.len());
         for run in &outcome.runs {
             // The seal is the durable effect: bytes and the store row in
@@ -1552,7 +1570,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     output["out_dir"] = json!(out_dir.display().to_string());
     output["scope"] = scope;
-    output["publication_enqueued"] = json!(publish);
+    output["publication_enqueued"] = json!(sealed_publications.is_some());
     output["publication"] = match (publish_queue, sealed_publications) {
         (Some(queue), Some(publications)) => json!({
             "stage": ds_command_kernel::report::PublicationStage::Queued.as_str(),
@@ -1565,6 +1583,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         // Acceptance B, literally. A dry run's receipt has to say it published
         // nothing IN THOSE WORDS, because the failure being closed here is a
         // receipt that looked exactly like a publication.
+        _ if publish => withheld_offline(unreachable.as_deref().unwrap_or("unreachable")),
         _ => json!({
             "stage": "nothing_published",
             "published_nothing": true,
@@ -2509,6 +2528,21 @@ mod tests {
                 vec!["detail"]
             );
         }
+    }
+
+    /// Acceptance A: a publishing run whose link latched unreachable says,
+    /// in words, that it published nothing and why — never a queued row.
+    #[test]
+    fn a_print_held_because_unreachable_is_never_published_as_current() {
+        let receipt = super::withheld_offline("auth_transient: the service answered 503");
+        assert_eq!(receipt["stage"], "nothing_published");
+        assert_eq!(receipt["published_nothing"], true);
+        assert_eq!(receipt["reason"], "service_unreachable");
+        assert_ne!(
+            receipt["stage"],
+            ds_command_kernel::report::PublicationStage::Queued.as_str()
+        );
+        assert!(receipt["unreachable"].as_str().unwrap().contains("503"));
     }
 
     /// The field schedule with its pauses removed: the same attempts, no wait.

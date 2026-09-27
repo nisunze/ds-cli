@@ -15,8 +15,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use ds_cli_auth::{
-    DEVICE_AUTH_TRANSIENT_REFUSAL, ProviderIdentity, TransformerInventory, TransformerKind,
-    TransformerLifecycle, TransformerSet,
+    DEVICE_AUTH_TRANSIENT_REFUSAL, ProviderIdentity, TRANSFORMER_READ_FAILED, TransformerInventory,
+    TransformerKind, TransformerLifecycle, TransformerSet, WeakNetwork,
 };
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::Refusal;
@@ -34,6 +34,19 @@ const UNREACHABLE: [&str; 2] = [
     super::AUTH_TRANSIENT.code,
 ];
 
+/// Whether `failure` says the service could not be reached. The transformer
+/// context route shares the transient code when it answers that it could
+/// not read one transformer; that is a deterministic answer about one room,
+/// never evidence of an outage.
+fn unreachable(failure: &Failure) -> bool {
+    UNREACHABLE.contains(&failure.code())
+        && failure
+            .detail_value()
+            .and_then(|detail| detail.get("service_code"))
+            .and_then(Value::as_str)
+            != Some(TRANSFORMER_READ_FAILED)
+}
+
 pub(super) const INPUTS_NOT_HELD: Refusal = Refusal {
     code: "report_inputs_not_held",
     when: "the service is unreachable and no print inputs are held for the project",
@@ -45,27 +58,43 @@ pub(super) const ROOM_NOT_HELD: Refusal = Refusal {
     remedy: "export that transformer once while connected",
 };
 
-/// Whether the service answered this run. Once one read found it
-/// unreachable, every later read answers from the hold at once instead of
-/// spending the weak-network schedule again.
-#[derive(Default)]
+/// Whether the service answered this run. Every read is asked under the
+/// shared weak-network curve first; once one read still found the service
+/// unreachable after it, every later read answers from the hold at once
+/// instead of spending the curve again.
 pub(super) struct Link {
+    schedule: WeakNetwork,
     unreachable: Option<String>,
 }
 
+impl Default for Link {
+    fn default() -> Self {
+        Self::with_schedule(WeakNetwork::FIELD)
+    }
+}
+
 impl Link {
-    /// The service's answer, or `None` when it could not be reached (now or
-    /// earlier in this run). Any other refusal is returned as it came.
+    pub(super) fn with_schedule(schedule: WeakNetwork) -> Self {
+        Self {
+            schedule,
+            unreachable: None,
+        }
+    }
+
+    /// The service's answer, or `None` when it could not be reached (now,
+    /// after the whole retry curve, or earlier in this run). Any other
+    /// refusal is returned as it came — including the service's own answer
+    /// that it could not read one transformer, which says it WAS reached.
     pub(super) fn read<T>(
         &mut self,
-        read: impl FnOnce() -> Result<T, Failure>,
+        read: impl FnMut() -> Result<T, Failure>,
     ) -> Result<Option<T>, Failure> {
         if self.unreachable.is_some() {
             return Ok(None);
         }
-        match read() {
+        match super::export::with_weak_network(&self.schedule, read) {
             Ok(value) => Ok(Some(value)),
-            Err(failure) if UNREACHABLE.contains(&failure.code()) => {
+            Err(failure) if unreachable(&failure) => {
                 self.unreachable = Some(format!("{}: {}", failure.code(), failure.message()));
                 Ok(None)
             }
@@ -279,12 +308,13 @@ impl Rooms {
 
     /// One transformer's room: the held copy the plan reuses, or the
     /// service's, held as it is read. `read` is never called for a room the
-    /// plan reuses and this machine can still read.
+    /// plan reuses and this machine can still read; it is asked again under
+    /// the link's retry curve while the service blinks.
     pub(super) fn room(
         &mut self,
         name: &str,
         link: &mut Link,
-        read: impl FnOnce() -> Result<Room, Failure>,
+        read: impl FnMut() -> Result<Room, Failure>,
     ) -> Result<Room, Failure> {
         if !self.planned.contains_key(name)
             && let Ok(Some(room)) = room_hold::room(&self.hold.root, &self.hold.scope, name)
@@ -381,6 +411,93 @@ mod tests {
         list.iter().map(|name| (*name).to_owned()).collect()
     }
 
+    /// The field curve with its pauses removed: the same attempts, no wait.
+    fn quick_link() -> Link {
+        Link::with_schedule(WeakNetwork::new(&[std::time::Duration::ZERO; 3]))
+    }
+
+    fn blink() -> Failure {
+        Failure::unavailable(
+            super::super::AUTH_TRANSIENT.code,
+            "the service answered 503",
+        )
+    }
+
+    /// Acceptance A: one early 503 on a read is a blink, not an outage. It
+    /// is asked again under the shared curve, the service's answer is used,
+    /// and nothing latches — so no later read is answered from the hold.
+    #[test]
+    fn an_early_blink_is_retried_and_never_latches_an_outage() {
+        let mut link = quick_link();
+        let mut attempts = 0;
+        let read = link.read(|| {
+            attempts += 1;
+            if attempts == 1 {
+                Err(blink())
+            } else {
+                Ok("inventory")
+            }
+        });
+        assert_eq!(read.unwrap(), Some("inventory"));
+        assert_eq!(attempts, 2);
+        assert_eq!(link.unreachable(), None);
+        assert_eq!(link.read(|| Ok(1)).unwrap(), Some(1));
+    }
+
+    /// Only a service still unreachable after the whole curve latches, and
+    /// then no later read spends the curve again.
+    #[test]
+    fn only_an_outage_that_outlives_the_curve_latches() {
+        let mut link = quick_link();
+        let mut attempts = 0;
+        let read = link.read(|| {
+            attempts += 1;
+            Err::<(), _>(blink())
+        });
+        assert!(read.unwrap().is_none());
+        assert_eq!(attempts, 1 + WeakNetwork::FIELD.max_retries());
+        assert!(link.unreachable().unwrap().contains("503"));
+        assert!(
+            link.read(|| -> Result<(), Failure> { panic!("latched") })
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    /// Acceptance B: the service answering that it could not read ONE
+    /// transformer is that transformer's row. It latches no outage, and every
+    /// later room is still asked for.
+    #[test]
+    fn one_unreadable_transformer_is_its_row_not_an_outage() {
+        let dir = tempfile::tempdir().unwrap();
+        let hold = Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+        let mut link = quick_link();
+        let mut rooms =
+            Rooms::plan(hold, &names(&["t1", "t2", "t3"]), Heads::Read(Vec::new())).unwrap();
+        let failure = rooms
+            .room("t1", &mut link, || {
+                Err(Failure::unavailable(
+                    super::super::AUTH_TRANSIENT.code,
+                    "the transformer context service could not read the selected transformer",
+                )
+                .detail(json!({"service_code": TRANSFORMER_READ_FAILED})))
+            })
+            .unwrap_err();
+        assert_eq!(failure.code(), super::super::AUTH_TRANSIENT.code);
+        assert_eq!(
+            failure.detail_value().unwrap()["service_code"],
+            TRANSFORMER_READ_FAILED
+        );
+        assert_eq!(link.unreachable(), None);
+        for name in ["t2", "t3"] {
+            rooms.room(name, &mut link, || Ok(room(name, 1))).unwrap();
+            assert_eq!(rooms.source(name), Some("fetched"));
+        }
+        let receipt = rooms.receipt();
+        assert_eq!(receipt["rooms_fetched"], 2);
+        assert_eq!(receipt["not_held"], json!([]));
+    }
+
     /// The acceptance: once every room is held and the heads have not moved,
     /// a run reads no room from the service at all.
     #[test]
@@ -388,7 +505,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
         let batch = names(&["t1", "t2"]);
-        let mut link = Link::default();
+        let mut link = quick_link();
 
         let mut cold = Rooms::plan(hold(), &batch, Heads::Read(Vec::new())).unwrap();
         for name in &batch {
@@ -417,7 +534,7 @@ mod tests {
     fn a_moved_head_reads_that_room_again_and_holds_it() {
         let dir = tempfile::tempdir().unwrap();
         let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
-        let mut link = Link::default();
+        let mut link = quick_link();
         let mut cold = Rooms::plan(hold(), &names(&["t1"]), Heads::Unreachable).unwrap();
         cold.room("t1", &mut link, || Ok(room("t1", 3))).unwrap();
 
@@ -443,7 +560,7 @@ mod tests {
     fn refused_heads_read_every_room_again() {
         let dir = tempfile::tempdir().unwrap();
         let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
-        let mut link = Link::default();
+        let mut link = quick_link();
         let mut cold = Rooms::plan(hold(), &names(&["t1"]), Heads::Unreachable).unwrap();
         cold.room("t1", &mut link, || Ok(room("t1", 3))).unwrap();
         let mut refused = Rooms::plan(
@@ -464,11 +581,11 @@ mod tests {
     fn with_no_link_held_rooms_print_and_the_rest_are_named() {
         let dir = tempfile::tempdir().unwrap();
         let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
-        let mut link = Link::default();
+        let mut link = quick_link();
         let mut cold = Rooms::plan(hold(), &names(&["t1"]), Heads::Unreachable).unwrap();
         cold.room("t1", &mut link, || Ok(room("t1", 3))).unwrap();
 
-        let mut offline = Link::default();
+        let mut offline = quick_link();
         assert!(
             offline
                 .read(|| Err::<(), _>(unreachable()))
@@ -506,7 +623,7 @@ mod tests {
     /// refusal is still the answer.
     #[test]
     fn a_refusal_is_not_an_outage() {
-        let mut link = Link::default();
+        let mut link = quick_link();
         let refused = link
             .read(|| Err::<(), _>(Failure::unauthorized("headless_signed_out", "signed out")))
             .unwrap_err();
