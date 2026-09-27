@@ -193,12 +193,11 @@ where
 /// Drop the altitude of every position of `geometry`, in place.
 ///
 /// DS holds 2D geometry, and BigQuery refuses a position's third element. A
-/// door that reads a user's file drops an altitude before admitting the
-/// geometry — the KML and shapefile readers always have, and the GeoJSON
-/// readers do so through this — while a door receiving a geometry DS itself
-/// writes (a survey entry, an area, a bundle) does not, so a third element
-/// there is refused. Anything that is not a numeric position is left for
-/// [`admit_geometry`] to refuse.
+/// door that reads a user's file strips an altitude before admitting the
+/// geometry and keeps it beside it ([`set_altitude_aside`]), while a door
+/// receiving a geometry DS itself writes (a survey entry, an area, a bundle)
+/// does not, so a third element there is refused. Anything that is not a
+/// numeric position is left for [`admit_geometry`] to refuse.
 pub fn drop_altitude(geometry: &mut Value) {
     if let Some(Value::Array(members)) = geometry.get_mut("geometries") {
         members.iter_mut().for_each(drop_altitude);
@@ -217,6 +216,86 @@ fn drop_position_altitude(value: &mut Value) {
         return;
     }
     items.iter_mut().for_each(drop_position_altitude);
+}
+
+/// The property a file door keeps a stripped altitude in.
+pub const ALTITUDE_PROPERTY: &str = "z";
+/// Where the altitude goes when the feature already has a `z` property.
+pub const ALTITUDE_PROPERTY_FALLBACK: &str = "geometry_z";
+
+/// Strip every altitude from `feature`'s geometry and keep it beside the
+/// geometry (owner, 2026-09-27: "stripping z - and putting the z property
+/// aside"; DS geometry is longitude/latitude, an elevation lives outside it).
+///
+/// The altitudes go to `properties.z`: a number for a Point, and for every
+/// other geometry the altitudes nested exactly as its coordinates are, `null`
+/// where a position had none (a GeometryCollection nests one entry per
+/// member). Nothing is written when no position carries an altitude. An
+/// existing `z` property is never overwritten: the altitudes then go to
+/// `geometry_z`. Returns whether an altitude was found.
+pub fn set_altitude_aside(feature: &mut Value) -> bool {
+    let Some(geometry) = feature.get_mut("geometry") else {
+        return false;
+    };
+    let mut found = false;
+    let altitudes = geometry_altitudes(geometry, &mut found);
+    if !found {
+        return false;
+    }
+    drop_altitude(geometry);
+    let Some(object) = feature.as_object_mut() else {
+        return true;
+    };
+    let properties = object
+        .entry("properties")
+        .or_insert_with(|| Value::Object(Default::default()));
+    if !properties.is_object() {
+        *properties = Value::Object(Default::default());
+    }
+    if let Value::Object(properties) = properties {
+        let key = if properties.contains_key(ALTITUDE_PROPERTY) {
+            ALTITUDE_PROPERTY_FALLBACK
+        } else {
+            ALTITUDE_PROPERTY
+        };
+        properties.insert(key.to_owned(), altitudes);
+    }
+    true
+}
+
+fn geometry_altitudes(geometry: &Value, found: &mut bool) -> Value {
+    if let Some(Value::Array(members)) = geometry.get("geometries") {
+        return Value::Array(
+            members
+                .iter()
+                .map(|member| geometry_altitudes(member, found))
+                .collect(),
+        );
+    }
+    geometry
+        .get("coordinates")
+        .map_or(Value::Null, |coordinates| {
+            position_altitudes(coordinates, found)
+        })
+}
+
+fn position_altitudes(value: &Value, found: &mut bool) -> Value {
+    let Value::Array(items) = value else {
+        return Value::Null;
+    };
+    if items.first().is_some_and(Value::is_number) {
+        if items.len() > 2 && items[..2].iter().all(Value::is_number) {
+            *found = true;
+            return items[2].clone();
+        }
+        return Value::Null;
+    }
+    Value::Array(
+        items
+            .iter()
+            .map(|item| position_altitudes(item, found))
+            .collect(),
+    )
 }
 
 fn json_kind(value: &Value) -> &'static str {
@@ -905,6 +984,43 @@ mod tests {
                 [[3,3],[5,3],[5,5],[3,5],[3,3]]]})),
             "geometry_invalid: Polygon ring 2 lies inside ring 1; holes may not nest"
         );
+    }
+
+    #[test]
+    fn a_stripped_altitude_is_kept_beside_the_geometry() {
+        let mut point = json!({"type":"Feature","properties":{"name":"pole"},
+            "geometry":{"type":"Point","coordinates":[30,-2,1500.5]}});
+        assert!(set_altitude_aside(&mut point));
+        assert_eq!(
+            point,
+            json!({"type":"Feature","properties":{"name":"pole","z":1500.5},
+                "geometry":{"type":"Point","coordinates":[30,-2]}})
+        );
+        assert_eq!(code(&point["geometry"]), "admits");
+
+        // Nested as the coordinates are; null where a position had none; an
+        // existing `z` is never overwritten; null properties become an object.
+        let mut collection = json!({"type":"Feature","properties":null,
+            "geometry":{"type":"GeometryCollection","geometries":[
+                {"type":"LineString","coordinates":[[30,-2,10],[30.1,-2]]},
+                {"type":"Point","coordinates":[30,-2]}]}});
+        assert!(set_altitude_aside(&mut collection));
+        assert_eq!(collection["properties"]["z"], json!([[10, null], null]));
+        assert_eq!(
+            collection["geometry"]["geometries"][0]["coordinates"],
+            json!([[30, -2], [30.1, -2]])
+        );
+        let mut taken = json!({"type":"Feature","properties":{"z":"zone 3"},
+            "geometry":{"type":"Point","coordinates":[30,-2,7]}});
+        assert!(set_altitude_aside(&mut taken));
+        assert_eq!(taken["properties"], json!({"z":"zone 3","geometry_z":7}));
+
+        // A 2D feature is left exactly as it was.
+        let flat = json!({"type":"Feature","properties":{},
+            "geometry":{"type":"Point","coordinates":[30,-2]}});
+        let mut unchanged = flat.clone();
+        assert!(!set_altitude_aside(&mut unchanged));
+        assert_eq!(unchanged, flat);
     }
 
     #[test]
