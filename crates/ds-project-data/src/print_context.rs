@@ -354,7 +354,13 @@ pub fn read_print_context(
         None
     } else {
         let coverage = sheet_area(scope, transformer, layers, widest.max(0.0))?;
-        fit_document(&coverage, &mut sources, &mut document_layers, &mut omitted)?
+        fit_document(
+            &coverage,
+            &mut sources,
+            &mut document_layers,
+            &mut omitted,
+            &mut warnings,
+        )?
     };
     let Some(bytes) = fitted else {
         return Ok(PrintContext {
@@ -401,6 +407,7 @@ fn fit_document(
     sources: &mut Vec<Value>,
     layers: &mut BTreeMap<String, Value>,
     omitted: &mut Vec<Omission>,
+    warnings: &mut Vec<String>,
 ) -> Result<Option<Vec<u8>>, Failure> {
     let sizes: BTreeMap<String, (usize, usize)> = layers
         .iter()
@@ -437,10 +444,12 @@ fn fit_document(
         layers.remove(&largest);
         sources.retain(|source| source["layer"].as_str() != Some(largest.as_str()));
         let features = sizes[&largest].0;
+        let reason = format!(
+            "print_context_too_large: {bound}; {largest} alone carries {features} features — print a smaller area"
+        );
+        warnings.push(reason.clone());
         omitted.push(Omission {
-            reason: format!(
-                "print_context_too_large: {bound}; {largest} alone carries {features} features — print a smaller area"
-            ),
+            reason,
             layer: largest,
         });
     }
@@ -489,10 +498,12 @@ mod tests {
     fn fit(
         layers: &mut BTreeMap<String, Value>,
         omitted: &mut Vec<Omission>,
-    ) -> (Option<Vec<u8>>, Vec<Value>) {
+    ) -> (Option<Vec<u8>>, Vec<Value>, Vec<String>) {
         let mut sources: Vec<Value> = layers.keys().map(|id| json!({"layer": id})).collect();
-        let bytes = fit_document(&coverage(), &mut sources, layers, omitted).unwrap();
-        (bytes, sources)
+        let mut warnings = Vec::new();
+        let bytes =
+            fit_document(&coverage(), &mut sources, layers, omitted, &mut warnings).unwrap();
+        (bytes, sources, warnings)
     }
 
     #[test]
@@ -505,7 +516,7 @@ mod tests {
             ("roads".to_owned(), points(2)),
         ]);
         let mut omitted = Vec::new();
-        let (bytes, sources) = fit(&mut layers, &mut omitted);
+        let (bytes, sources, warnings) = fit(&mut layers, &mut omitted);
         let document: Value = serde_json::from_slice(&bytes.expect("roads fit")).unwrap();
         let carried: Vec<&String> = document["layers"].as_object().unwrap().keys().collect();
         assert_eq!(carried, ["roads"]);
@@ -513,6 +524,7 @@ mod tests {
         assert_eq!(document["sources"], json!([{"layer": "roads"}]));
         assert_eq!(omitted.len(), 1);
         assert_eq!(omitted[0].layer, "buildings_context");
+        assert_eq!(warnings, [omitted[0].reason.as_str()]);
         let reason = &omitted[0].reason;
         assert!(reason.starts_with("print_context_too_large: "), "{reason}");
         assert!(
@@ -528,11 +540,12 @@ mod tests {
             points(MAX_PRINT_CONTEXT_FEATURES + 1),
         )]);
         let mut omitted = Vec::new();
-        let (bytes, sources) = fit(&mut layers, &mut omitted);
+        let (bytes, sources, warnings) = fit(&mut layers, &mut omitted);
         assert_eq!(bytes, None);
         assert!(layers.is_empty() && sources.is_empty());
         assert_eq!(omitted.len(), 1);
         assert_eq!(omitted[0].layer, "buildings_context");
+        assert_eq!(warnings, [omitted[0].reason.as_str()]);
     }
 
     #[test]
@@ -541,21 +554,23 @@ mod tests {
             .map(|n| (format!("layer_{n:02}"), points(if n == 7 { 3 } else { 1 })))
             .collect();
         let mut omitted = Vec::new();
-        let (bytes, sources) = fit(&mut layers, &mut omitted);
+        let (bytes, sources, warnings) = fit(&mut layers, &mut omitted);
         assert!(bytes.is_some());
         assert_eq!(layers.len(), MAX_PRINT_CONTEXT_LAYERS);
         assert_eq!(sources.len(), MAX_PRINT_CONTEXT_LAYERS);
         assert_eq!(omitted.len(), 1);
         assert_eq!(omitted[0].layer, "layer_07");
+        assert_eq!(warnings, [omitted[0].reason.as_str()]);
     }
 
     #[test]
     fn a_context_within_the_bounds_is_untouched() {
         let mut layers = BTreeMap::from([("roads".to_owned(), points(2))]);
         let mut omitted = Vec::new();
-        let (bytes, sources) = fit(&mut layers, &mut omitted);
+        let (bytes, sources, warnings) = fit(&mut layers, &mut omitted);
         assert!(bytes.is_some());
         assert_eq!(sources.len(), 1);
         assert!(omitted.is_empty());
+        assert!(warnings.is_empty());
     }
 }
