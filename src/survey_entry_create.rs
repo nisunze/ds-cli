@@ -157,6 +157,7 @@ impl Request {
                 .as_deref()
                 .is_some_and(|v| !valid_context_key(v))
             || self.geometry.as_ref().is_some_and(|v| !valid_geometry(v))
+            || self.geometry.as_ref().is_some_and(|v| admitted(v).is_err())
             || !finite_json(&Value::Object(self.data.clone()))
             || self.geometry.as_ref().is_some_and(|v| !finite_json(v))
             || self
@@ -534,6 +535,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if wire.schema != SURVEY_ENTRY_CREATE_SCHEMA {
         return Err(Refusal::InvalidInput.message().into());
     }
+    if let Some(geometry) = &wire.request.geometry {
+        admitted(geometry)?;
+    }
     let (request, project) =
         canonical_wire_request(wire.request, wire.row).map_err(|e| e.message().to_owned())?;
     let plan = plan(&request, &project).map_err(|e| e.message().to_owned())?;
@@ -575,6 +579,9 @@ pub fn evaluate_geometry(input: &[u8]) -> Result<String, String> {
     }
     let request: GeometryRequest =
         serde_json::from_slice(input).map_err(|_| Refusal::InvalidInput.message().to_owned())?;
+    if request.schema == "ds.survey-entry-geometry/v1" {
+        admitted(&request.geometry)?;
+    }
     if request.schema != "ds.survey-entry-geometry/v1"
         || !valid_geometry(&request.geometry)
         || !finite_json(&request.geometry)
@@ -585,6 +592,13 @@ pub fn evaluate_geometry(input: &[u8]) -> Result<String, String> {
         .map_err(|_| "Survey geometry result encoding failed".into())
 }
 
+/// A Survey entry geometry DS admits: what BigQuery would refuse, and a polygon
+/// covering a hemisphere, never reach the outbox. The sentence names the rule
+/// and the part; `Request::validate` folds it into `Refusal::InvalidInput`.
+fn admitted(geometry: &Value) -> Result<(), String> {
+    crate::geometry_admission::admit_geometry(geometry)
+        .map_err(|refusal| format!("the Survey entry geometry is not admitted: {refusal}"))
+}
 fn valid_form_slug(v: &str) -> bool {
     let b = v.as_bytes();
     (2..=MAX_FORM_SLUG_BYTES).contains(&b.len())
@@ -796,5 +810,55 @@ mod tests {
     fn geometry_surface_is_exact_create_geojson_grammar() {
         assert_eq!(evaluate_geometry(br#"{"schema":"ds.survey-entry-geometry/v1","geometry":{"type":"Point","coordinates":[30.0,-1.0]}}"#).unwrap(), r#"{"type":"Point","coordinates":[30.0,-1.0]}"#);
         assert!(evaluate_geometry(br#"{"schema":"ds.survey-entry-geometry/v1","geometry":{"type":"Feature","geometry":null}}"#).is_err());
+    }
+    #[test]
+    fn a_geometry_ds_does_not_admit_never_reaches_the_outbox() {
+        let bowtie = json!({"type":"Polygon","coordinates":[[[30.0,-2.0],[30.2,-1.8],[30.2,-2.0],[30.0,-1.8],[30.0,-2.0]]]});
+        let with = |geometry: &Value| {
+            Request::new(
+                "survey_points",
+                "entry_1",
+                "outbox-1",
+                Map::new(),
+                "2026-08-30T00:00:00Z",
+                Origin::Web,
+            )
+            .unwrap()
+            .with_geometry(geometry.clone())
+        };
+        assert_eq!(with(&bowtie).unwrap_err(), Refusal::InvalidInput);
+        let altitude = json!({"type":"Point","coordinates":[30.0,-1.0,1500.0]});
+        assert_eq!(with(&altitude).unwrap_err(), Refusal::InvalidInput);
+        let plan = |geometry: &Value| {
+            evaluate(
+                &serde_json::to_vec(
+                    &json!({"schema":"ds.survey-entry-create/v1","operation":"plan",
+                    "project_id":"project_a","form_id":"survey_points","doc_id":"entry_1",
+                    "idempotency_key":"outbox-1","data":{},"created_at":"2026-08-30T00:00:00Z",
+                    "geometry":geometry}),
+                )
+                .unwrap(),
+            )
+        };
+        assert_eq!(
+            plan(&bowtie).unwrap_err(),
+            "the Survey entry geometry is not admitted: geometry_invalid: Polygon ring 0 crosses \
+             itself: edges 0 and 2 cross at [30.1, -1.9]"
+        );
+        let inverted = json!({"type":"Polygon","coordinates":[
+            [[180.0,90.0],[-180.0,90.0],[-180.0,-90.0],[180.0,-90.0],[180.0,90.0]],
+            [[30.0,-2.0],[30.1,-2.0],[30.1,-2.1],[30.0,-2.1],[30.0,-2.0]]]});
+        assert!(plan(&inverted)
+            .unwrap_err()
+            .starts_with("the Survey entry geometry is not admitted: polygon_covers_hemisphere: "));
+        assert!(plan(&json!({"type":"Point","coordinates":[30.0,-1.0]})).is_ok());
+        assert!(evaluate_geometry(
+            &serde_json::to_vec(
+                &json!({"schema":"ds.survey-entry-geometry/v1","geometry":altitude})
+            )
+            .unwrap()
+        )
+        .unwrap_err()
+        .contains("geometry_invalid: Point position has 3 values"));
     }
 }
