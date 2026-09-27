@@ -49,6 +49,7 @@ use crate::private;
 use fs2::FileExt;
 use serde_json::{json, Value};
 
+use ds_command_kernel::geometry_admission;
 use ds_command_kernel::local_layers::{self as kernel, REGISTRY_SCHEMA};
 pub use ds_command_kernel::local_layers::{GeometryType, Host, LocalLayer, Registry, Scope};
 
@@ -721,6 +722,22 @@ fn admit_feature_collection(
             return Err(refuse(&format!("has no coordinates at {index}")));
         }
     }
+    // Every geometry is one DS admits. The bytes are copied as read, so each
+    // is judged as the other file doors judge it: its altitude dropped first.
+    let judged: Vec<Value> = features
+        .iter()
+        .map(|feature| {
+            let mut geometry = feature["geometry"].clone();
+            geometry_admission::drop_altitude(&mut geometry);
+            json!({"id": feature["id"], "geometry": geometry})
+        })
+        .collect();
+    geometry_admission::admit_features(&judged).map_err(|refusals| {
+        StoreError::Payload(format!(
+            "{shown} {}: {refusals}; nothing was prepared",
+            refusals.code()
+        ))
+    })?;
     Ok(features.len() as u64)
 }
 
@@ -1380,6 +1397,45 @@ mod tests {
             execute_at(root, &lane, register("Empty", Some(&empty), Some(CLOCK))).unwrap()
                 ["receipt"]["featureCount"],
             0
+        );
+    }
+
+    #[test]
+    fn a_file_carrying_a_geometry_ds_does_not_admit_is_refused_by_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let lane = scope("run", "u1");
+        let line = |id: &str, coordinates: Value| {
+            json!({"type": "Feature", "id": id, "properties": {},
+                "geometry": {"type": "LineString", "coordinates": coordinates}})
+        };
+        let file = root.join("roads.geojson");
+        fs::write(
+            &file,
+            serde_json::to_vec(&json!({"type": "FeatureCollection", "features": [
+                line("r1", json!([[30.0, -1.9, 1500.0], [30.1, -1.8, 1490.0]])),
+                line("r2", json!([[30.0, -1.9]])),
+                line("r3", json!([[30.0, -95.0], [30.1, -1.8]])),
+            ]}))
+            .unwrap(),
+        )
+        .unwrap();
+        let error = execute_at(root, &lane, register("Roads", Some(&file), Some(CLOCK)))
+            .expect_err("must refuse");
+        assert_eq!(error.code(), "invalid_payload");
+        let message = error.to_string();
+        assert!(
+            message.contains(
+                "roads.geojson geometry_invalid: 2 of 3 features carry a geometry DS does not \
+                 admit: feature 2 (id \"r2\") geometry_invalid: LineString has 1 position; a \
+                 line needs at least 2; feature 3 (id \"r3\") geometry_invalid: LineString \
+                 position 0 has latitude -95, outside [-90, 90]; nothing was prepared"
+            ),
+            "{message}"
+        );
+        assert!(
+            !scope_dir(root, &lane).unwrap().exists(),
+            "a refused payload opened a store"
         );
     }
 
