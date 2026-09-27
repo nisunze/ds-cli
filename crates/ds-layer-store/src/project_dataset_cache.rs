@@ -347,12 +347,16 @@ fn index_state(connection: &Connection, features: i64) -> Result<&'static str, S
 /// acquisition, carrying the coverage it still accounts for and the source
 /// version it landed under. Later acquisitions subtract from earlier ones, so
 /// these coverages partition completed coverage rather than overlapping it.
+///
+/// Retained coverage is the holding, not `status`: only a completion writes
+/// it, so a record that never completed retains nothing. A refresh of a tile
+/// begins at the version the room holds, so its ticket reuses that tile's
+/// completed record and moves its status to requested, then failed or expired.
+/// None of those touched the rows, and the old completion keeps accounting for
+/// them until a commit replaces it.
 fn held_versions(connection: &Connection) -> Result<Vec<policy::HeldVersion>, String> {
     let mut statement = connection
-        .prepare(
-            "SELECT result_source_version, retained_cells FROM queries
-             WHERE status = 'completed' ORDER BY query_digest",
-        )
+        .prepare("SELECT result_source_version, retained_cells FROM queries ORDER BY query_digest")
         .map_err(io_error)?;
     let rows = statement
         .query_map([], |row| {
@@ -2198,6 +2202,108 @@ mod tests {
             rows.iter().any(|row| row["refresh"] == true),
             "a refresh is recorded as one: {rows:?}"
         );
+    }
+
+    #[test]
+    fn a_failed_refresh_of_an_exact_tile_keeps_its_completed_provenance() {
+        // An explicit refresh begins at the version the room holds, so over a
+        // tile it completed before, its ticket has that completion's digest and
+        // reuses its record. Until a commit replaces the tile, the old
+        // completion still accounts for its rows — in flight, after a failure,
+        // and once the ticket expires.
+        let root = tempfile::tempdir().unwrap();
+        let key = open(root.path(), &scope(), &buildings());
+        let cell = [29.9, -2.1, 30.1, -1.9];
+        let [w, s, e, n] = cell;
+        let digest = acquisition_digest_at(cell, "v1");
+        acquire_at(
+            root.path(),
+            &key,
+            cell,
+            vec![feature(30.0, -2.0, "held")],
+            "v1",
+            false,
+        );
+        open(
+            root.path(),
+            &scope(),
+            &Dataset {
+                source_version: "v2".into(),
+                ..buildings()
+            },
+        );
+        let held = |label: &str| {
+            let status = status_of(root.path(), &key);
+            assert_eq!(status["source_version"], "v1", "{label}");
+            assert_eq!(status["source_versions"], json!(["v1"]), "{label}");
+            assert_eq!(status["fresh"], false, "{label}");
+            assert_eq!(status["stale"]["cells"], json!([cell]), "{label}");
+            assert_eq!(status["unattributed"]["cells"], json!([]), "{label}");
+            assert_eq!(status["completed"]["cells"], json!([cell]), "{label}");
+            assert_eq!(status["feature_count"], 1, "{label}");
+            let report = execute_at(
+                root.path(),
+                json!({"action":"freshness","dataset_key":key,"principal":"uid-1","project":"project-a"}),
+            )
+            .unwrap();
+            assert_eq!(report["versions"], json!(["v1"]), "{label}");
+            assert_eq!(report["stale"]["cells"], json!([cell]), "{label}");
+            let rows = execute_at(
+                root.path(),
+                json!({"action":"query","dataset_key":key,"principal":"uid-1","project":"project-a",
+                    "area":area(w,s,e,n)}),
+            )
+            .unwrap();
+            assert_eq!(rows["features"][0]["properties"]["name"], "held", "{label}");
+            assert_eq!(rows["features"].as_array().unwrap().len(), 1, "{label}");
+        };
+        held("completed");
+        let begin = || {
+            execute_at(
+                root.path(),
+                json!({"action":"begin","dataset_key":key,"principal":"uid-1","project":"project-a",
+                    "query_digest":digest,"area":area(w,s,e,n),"cells":{"cells":[cell]},
+                    "source_version":"v1","refresh":true}),
+            )
+            .unwrap()
+        };
+
+        let pending = begin();
+        assert_eq!(pending["accepted"], true, "{pending}");
+        held("refresh in flight");
+        let failed = execute_at(
+            root.path(),
+            json!({"action":"fail","dataset_key":key,"principal":"uid-1","project":"project-a",
+                "query_digest":digest,"ticket":pending["ticket"],"message":"the provider was unreachable"}),
+        )
+        .unwrap();
+        assert_eq!(failed["last_error"], "the provider was unreachable");
+        held("refresh failed");
+
+        let abandoned = begin();
+        assert_eq!(abandoned["accepted"], true, "{abandoned}");
+        age_requests(
+            root.path(),
+            &key,
+            ds_command_kernel::project_dataset_cache::ACQUISITION_TICKET_TTL_MS + 1,
+        );
+        held("refresh expired");
+
+        // Only a successful replacement moves the tile to the new version.
+        let refreshed = begin();
+        assert_eq!(refreshed["accepted"], true, "{refreshed}");
+        let replaced = execute_at(
+            root.path(),
+            json!({"action":"commit","dataset_key":key,"principal":"uid-1","project":"project-a",
+                "query_digest":digest,"ticket":refreshed["ticket"],"cells":{"cells":[cell]},
+                "features":[feature(30.0, -2.0, "re-acquired")],"source_version":"v2"}),
+        )
+        .unwrap();
+        assert_eq!(replaced["source_version"], "v2");
+        assert_eq!(replaced["source_versions"], json!(["v2"]));
+        assert_eq!(replaced["fresh"], true);
+        assert_eq!(replaced["feature_count"], 1);
+        assert_eq!(replaced["completed"]["cells"], json!([cell]));
     }
 
     #[test]
