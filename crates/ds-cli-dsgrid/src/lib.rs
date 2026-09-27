@@ -49,6 +49,7 @@ pub mod model;
 pub mod mutation;
 pub mod objects;
 pub mod package;
+pub mod preview_receipt;
 pub mod profile;
 pub mod project;
 pub mod replace_structure;
@@ -95,6 +96,7 @@ pub static DOMAIN: Domain = Domain {
         &validate::COMMAND,
         &describe::COMMAND,
         &run::COMMAND,
+        &preview_receipt::COMMAND,
         &apply::COMMAND,
         &apply_batch::COMMAND,
         &apply_batch::CORRECTION,
