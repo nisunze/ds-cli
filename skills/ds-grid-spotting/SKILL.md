@@ -10,6 +10,30 @@ metadata:
 
 Use the `ds` skill first. Model and policy govern preferences, prohibitions, span limits, clearance cases and type weights. This skill sets computation order and scope, not constants. Read live descriptors and the exact revision before each step. In MCP, use `ds_catalog`, grid-model `describe`/`invoke`, or the typed grid profile.
 
+## Project setup and proof
+
+Keep spotting rules and preference weights in the versioned setup that travels
+with the template/library and model, with project overrides in the project's
+setup. Read the active policy and live planner contract; do not turn a
+project-specific price or type preference into a skill default. Record the
+setup digest, model revision and accepted conditions in the run receipt.
+
+Before a whole-model run or print batch, spot one representative alignment
+end to end under the intended setup. Verify the complete sealed plan and
+revision-pinned application (including a dry run), inspect clearance and
+structure duties, and print a selected plan/profile sheet. A preview,
+truncated diagnostic or render alone is not an applied engineering result.
+Then execute the model as one project-owned job with bounded, receipt-backed
+retry behavior. Independent parameter variants should have separate setup
+identities and output directories, so an engineer can compare them without
+manual edits to individual poles. The MV booklet convention is in the
+`ds-printout` skill.
+
+An empty prohibited-zone table is valid only when the project's own source
+inventory and owner decision establish it. Record that condition in the model
+and delivery receipt, and retain the prohibited-zone print layer. Never infer
+that another model has no zones or silently disable the zone check.
+
 ## Initial pass: pay the large search cost once
 
 1. Validate the one working model. Read `project_plan`, `spotting_graph`, the project policy and the structure catalog through `ds dsgrid run`. Fix termini, tap/T-off, transformer and eligible angle supports first. Preserve their stable IDs.

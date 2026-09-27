@@ -1,6 +1,6 @@
 ---
 name: ds-printout
-description: "Produce or resume DS transformer sheets, project atlases, district MV and custom-area printouts through visual QA and verified delivery. Use for a finished print set, not isolated styling or redesign. Default to a signed-in headless server; pair a desktop only where required."
+description: "Produce or resume DS transformer sheets, MV plan/profile booklets, project atlases, district MV and custom-area printouts through visual QA and verified delivery. Use for a finished print set, not isolated styling or redesign. Default to a signed-in headless server; pair a desktop only where required."
 metadata:
   ds-chapters: reports
   ds-mcp-profile: printing
@@ -10,6 +10,9 @@ metadata:
 
 Deliver a verified print set from current project data or reusable outputs:
 `ds` for live operations, `ds-map-composition` for cartographic judgment.
+
+For MV plan/profile sets, read [booklet workflow](references/mv-plan-profile-booklet.md)
+before selecting the project setup or starting a batch.
 
 ## Establish the assignment and host
 
