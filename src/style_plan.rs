@@ -186,6 +186,34 @@ fn bounded(value: f64, min: f64, max: f64, name: &str) -> Result<f64, String> {
         Ok(value)
     }
 }
+/// Why a print variant of `reference` cannot be created: the catalog already
+/// holds its `_print` ref. `None` when it does not.
+///
+/// A print variant is created exactly once. ds-brain's write boundary answers
+/// a second create with `409 CONFLICT` and never overwrites, so a plan that
+/// ignored the existing variant could only end in that refusal at publish
+/// time — which is how `style print plan --ref gt/rivers` answered ok for a
+/// create that could never succeed (2026-09-27). The catalog is read, not
+/// guessed: ds-brain lists every persisted variant whose source it lists.
+pub fn print_variant_exists(snapshot: &Value, reference: &str) -> Option<String> {
+    let print_ref = format!("{reference}{PRINT_SUFFIX}");
+    let styled = snapshot["styles"]
+        .get(&print_ref)
+        .is_some_and(Value::is_object);
+    let edited = snapshot["style_editors"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|editor| editor["style_ref"] == print_ref.as_str());
+    (styled || edited).then(|| {
+        format!(
+            "{print_ref} already exists; a print variant is created once and never overwritten, so customise {print_ref} itself"
+        )
+    })
+}
+
+const PRINT_SUFFIX: &str = "_print";
+
 fn style_editor<'a>(snapshot: &'a Value, reference: &str) -> Result<&'a Value, String> {
     snapshot["style_editors"]
         .as_array()
@@ -685,12 +713,15 @@ pub fn plan_style_edit(
     }
 
     if matches!(instruction, StyleInstruction::PrintVariant) {
-        if reference.ends_with("_print") {
+        if reference.ends_with(PRINT_SUFFIX) {
             return Err("source style is already a print variant".into());
         }
-        let print_ref = format!("{reference}_print");
+        let print_ref = format!("{reference}{PRINT_SUFFIX}");
         if print_ref.len() > 500 {
             return Err("print style ref exceeds 500 characters".into());
+        }
+        if let Some(exists) = print_variant_exists(snapshot, reference) {
+            return Err(exists);
         }
         // Reuse the existing authored-save normalization so a runtime sprite
         // id is converted back to its catalog icon name before cloning.
@@ -1635,6 +1666,40 @@ mod tests {
             &StyleInstruction::PrintVariant
         )
         .is_err());
+    }
+
+    /// The gt/rivers defect of 2026-09-27: the catalog already listed
+    /// `gt/rivers_print`, the plan still answered ok, and the create met
+    /// ds-brain's create-only 409. A plan now refuses by name exactly when the
+    /// catalog holds the variant — as a style or as an editor row — and a
+    /// sibling variant of another source changes nothing.
+    #[test]
+    fn print_variant_plan_refuses_a_variant_the_catalog_already_holds() {
+        let state = snapshot(json!({"type":"line","paint":{"line-width":3}}));
+        assert_eq!(print_variant_exists(&state, "master/poles"), None);
+        assert!(plan_style_edit(&state, "master/poles", &StyleInstruction::PrintVariant).is_ok());
+
+        // Negative control: another layer's variant is not this one's.
+        let mut sibling = state.clone();
+        sibling["styles"]["master/lines_print"] = json!({"type":"line"});
+        assert!(plan_style_edit(&sibling, "master/poles", &StyleInstruction::PrintVariant).is_ok());
+
+        let mut styled = state.clone();
+        styled["styles"]["master/poles_print"] = json!({"type":"line","paint":{"line-width":1}});
+        let mut edited = state.clone();
+        edited["style_editors"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"style_ref":"master/poles_print","style_target":"print","layer_name":"master/poles_print"}));
+        for held in [styled, edited] {
+            let refused = plan_style_edit(&held, "master/poles", &StyleInstruction::PrintVariant)
+                .expect_err("an existing variant is never planned again");
+            assert_eq!(
+                refused,
+                "master/poles_print already exists; a print variant is created once and never overwritten, so customise master/poles_print itself"
+            );
+            assert_eq!(print_variant_exists(&held, "master/poles"), Some(refused));
+        }
     }
     #[test]
     fn seed_is_create_only_and_limited_to_backend_declared_print_context() {

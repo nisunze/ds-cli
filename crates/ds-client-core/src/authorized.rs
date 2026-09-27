@@ -1413,14 +1413,21 @@ pub(crate) fn style_edit<T: AuthorizedTransport>(
         ));
     }
     let snapshot = style_catalog(profile, transport, authority, ds_project)?;
+    // A print variant is created once. When the catalog already lists it, the
+    // write can only meet ds-brain's create-only 409, so it is refused here
+    // by name, before any request, with the ref to customise instead.
+    if matches!(instruction, crate::StyleInstruction::PrintVariant) {
+        if let Some(sentence) =
+            ds_command_kernel::style_plan::print_variant_exists(snapshot.document(), reference)
+        {
+            return Err(crate::styles::exists(&sentence));
+        }
+    }
+    // The planner names the rule an instruction broke; that sentence is the
+    // kernel's own, so it crosses rather than being replaced by a class.
     let plan =
         ds_command_kernel::style_plan::plan_style_edit(snapshot.document(), reference, instruction)
-            .map_err(|_| {
-                ClientError::new(
-            ErrorKind::InvalidInput,
-            "style instruction violates the published field, type, range or routing contract",
-        )
-            })?;
+            .map_err(|sentence| crate::styles::planner_refused(&sentence))?;
     // The kernel owns what a publish may carry — the closed field set, the
     // typed identities and the 2 MiB bound — so the body it builds for the
     // call below is the payload it already admitted.
@@ -1450,7 +1457,7 @@ pub(crate) fn style_edit<T: AuthorizedTransport>(
             authority: authority.call(),
         })?;
         if response.status != 200 {
-            return Err(classify_tile_error(response.status));
+            return Err(crate::styles::refusal(&response));
         }
         // Whether the receipt is the style that was authored, and what its
         // warnings say, is the kernel's answer — the same one the browser

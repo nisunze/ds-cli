@@ -7164,6 +7164,228 @@ fn headless_style_publish_normalises_issue_warnings_and_refuses_a_foreign_receip
     );
 }
 
+fn push_refused_style(transport: &FixtureTransport, status: u16, wire: serde_json::Value) {
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .styles
+        .push_back(TransportResponse::new(
+            status,
+            serde_json::to_vec(&wire).unwrap(),
+        ));
+}
+
+fn style_refusal_of(error: &ds_client_core::ClientError) -> (u16, Option<String>, Option<String>) {
+    let refusal = error
+        .service_refusal()
+        .expect("a style refusal carries what refused it");
+    (
+        refusal.status(),
+        refusal.code().map(str::to_owned),
+        refusal.message().map(str::to_owned),
+    )
+}
+
+/// `ds style print create --ref gt/rivers` on 2026-09-27: the catalog
+/// already listed `gt/rivers_print`, ds-brain refused the create-only write
+/// with `409 CONFLICT`, and the shared tile classifier turned that into "the
+/// managed tile service refused the bounded operation" — which `ds` rendered
+/// with a remedy about the project id. Every style refusal now names what
+/// refused it: an existing variant before any request, ds-brain's code,
+/// sentence and issues after one, and the planner's own rule.
+#[test]
+fn headless_style_refusals_name_the_rule_that_refused_them() {
+    use ds_client_core::StyleInstruction;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut fixture = headless_style_fixture("project_a");
+    fixture["data"]["styles"] = serde_json::json!({
+        "gt/rivers": {"type":"line","paint":{"line-color":"#4B4B8F","line-width":3.6}},
+        "gt/roads": {"type":"line","paint":{"line-width":2}}
+    });
+    fixture["data"]["style_editors"] = serde_json::json!([
+        {"style_ref":"gt/rivers","style_target":"global_tile","layer_name":"rivers","available_fields":["name"]},
+        {"style_ref":"gt/roads","style_target":"global_tile","layer_name":"roads","available_fields":["name"]}
+    ]);
+    let mut held = fixture.clone();
+    held["data"]["styles"]["gt/rivers_print"] =
+        serde_json::json!({"type":"line","paint":{"line-color":"#5B8FA3","line-width":1}});
+    held["data"]["style_editors"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"style_ref":"gt/rivers_print","style_target":"print","layer_name":"gt/rivers_print"}));
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let posted = |transport: &FixtureTransport| {
+        transport
+            .calls()
+            .iter()
+            .filter(|call| call.starts_with("styles "))
+            .count()
+    };
+
+    // 1. The catalog holds the variant: refused by name, nothing is sent,
+    //    for a plan and a create alike.
+    for apply in [false, true] {
+        push_layers(&transport, held.clone());
+        let exists = client
+            .style_edit(
+                "project_a",
+                "gt/rivers",
+                &StyleInstruction::PrintVariant,
+                apply,
+                NOW + 1,
+            )
+            .err()
+            .expect("an existing print variant is never created again");
+        assert_eq!(exists.kind(), ErrorKind::InvalidInput);
+        assert_eq!(
+            style_refusal_of(&exists),
+            (
+                0,
+                Some("style_exists".into()),
+                Some("gt/rivers_print already exists; a print variant is created once and never overwritten, so customise gt/rivers_print itself".into())
+            )
+        );
+    }
+    assert_eq!(posted(&transport), 0, "a refused create sends no write");
+
+    // 2. Negative control: the variant is absent, so the create is planned
+    //    create-only and published.
+    push_layers(&transport, fixture.clone());
+    let plan = client
+        .style_edit(
+            "project_a",
+            "gt/roads",
+            &StyleInstruction::PrintVariant,
+            false,
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(plan.data()["ref"], "gt/roads_print");
+    push_layers(&transport, fixture.clone());
+    push_styles(
+        &transport,
+        serde_json::json!({"success":true,"data":{"updated":true,"style_target":"print","layer_name":"gt/roads_print","style_data":plan.data()["document"]}}),
+    );
+    let created = client
+        .style_edit(
+            "project_a",
+            "gt/roads",
+            &StyleInstruction::PrintVariant,
+            true,
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(created.data()["published"], true);
+    assert!(transport
+        .calls()
+        .iter()
+        .any(|call| call.starts_with("styles ")
+            && call.contains("\"style_ref\":\"gt/roads_print\"")
+            && call.contains("\"create_only\":true")));
+
+    // 3. ds-brain's own refusals, when the catalog could not have known.
+    let cases = [
+        (
+            409,
+            serde_json::json!({"success":false,"error":{"code":"CONFLICT","message":"Print style already exists; edit its _print style instead","timestamp":1}}),
+            ErrorKind::InvalidInput,
+            "conflict",
+            "Print style already exists; edit its _print style instead".to_owned(),
+        ),
+        (
+            400,
+            serde_json::json!({"success":false,"error":{"code":"VALIDATION_FAILED","message":"Invalid style document","details":{"issues":[
+                {"path":"paint.line-glow","message":"unknown paint property"},
+                {"property":"label.text-field","severity":"error","issue":{"path":"","message":"field \"nme\" is not in available_fields"}},
+                {"path":"layout.foo","message":"unknown layout property"},
+                {"path":"layout.bar","message":"unknown layout property"}
+            ]},"timestamp":1}}),
+            ErrorKind::InvalidInput,
+            "validation_failed",
+            "Invalid style document: paint.line-glow: unknown paint property; label.text-field: field \"nme\" is not in available_fields; layout.foo: unknown layout property; +1 more".to_owned(),
+        ),
+        (
+            403,
+            serde_json::json!({"success":false,"error":{"code":"INSUFFICIENT_PERMISSIONS","message":"Permission denied","timestamp":1}}),
+            ErrorKind::AuthenticationRejected,
+            "insufficient_permissions",
+            "Permission denied".to_owned(),
+        ),
+    ];
+    for (status, wire, kind, code, sentence) in cases {
+        push_layers(&transport, fixture.clone());
+        push_refused_style(&transport, status, wire);
+        let refused = client
+            .style_edit(
+                "project_a",
+                "gt/roads",
+                &StyleInstruction::PrintVariant,
+                true,
+                NOW + 1,
+            )
+            .err()
+            .expect("a refused write is an error");
+        assert_eq!(refused.kind(), kind, "HTTP {status}");
+        assert_eq!(
+            style_refusal_of(&refused),
+            (status, Some(code.into()), Some(sentence)),
+            "HTTP {status}"
+        );
+        assert!(
+            !refused
+                .to_string()
+                .contains("managed tile service refused the bounded operation"),
+            "HTTP {status} must not read as a tile refusal"
+        );
+    }
+
+    // A body that is not the envelope still classifies, with nothing to say.
+    push_layers(&transport, fixture.clone());
+    push_refused_style(&transport, 409, serde_json::json!("gateway page"));
+    let bare = client
+        .style_edit(
+            "project_a",
+            "gt/roads",
+            &StyleInstruction::PrintVariant,
+            true,
+            NOW + 1,
+        )
+        .err()
+        .unwrap();
+    assert_eq!(bare.kind(), ErrorKind::InvalidInput);
+    assert!(bare.service_refusal().is_none());
+
+    // 4. The planner's own rule crosses in its words, before any request.
+    push_layers(&transport, fixture);
+    let before = posted(&transport);
+    let planned = client
+        .style_edit(
+            "project_a",
+            "gt/roads",
+            &StyleInstruction::Appearance {
+                icon_overlap: None,
+                color: None,
+                icon: None,
+                size: None,
+            },
+            true,
+            NOW + 1,
+        )
+        .err()
+        .unwrap();
+    assert_eq!(planned.kind(), ErrorKind::InvalidInput);
+    assert_eq!(
+        style_refusal_of(&planned),
+        (
+            0,
+            Some("style_refused".into()),
+            Some("choose colour, icon, size or icon overlap".into())
+        )
+    );
+    assert_eq!(posted(&transport), before);
+}
+
 fn push_project_data(transport: &FixtureTransport, data: serde_json::Value) {
     transport
         .0
