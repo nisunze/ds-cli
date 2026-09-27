@@ -275,7 +275,12 @@ impl Profile {
             // file-in/file-out sibling of `import-structure` that sits beside
             // it: a router that can add a definition but not replace one
             // leaves raised allowable tables to post-export patches.
-            Self::Grid => 30,
+            // Raised to 31 on 2026-09-27 for `dsgrid spotting
+            // preview-receipt`: `ds-grid-spotting` names this profile, and
+            // a router that plans whole-model spotting but cannot show a
+            // receipt whose rejected rows were truncated leaves that
+            // proposal unviewable.
+            Self::Grid => 31,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -390,6 +395,11 @@ impl Profile {
                     // part of the bounded native-model reading/editing set.
                     && !matches!(tool.id.as_str(),
                         "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
+                    // A visualization-only view of a truncated spotting
+                    // receipt is the spotting workflow's, published by the
+                    // `grid` profile `ds-grid-spotting` names; it is not a
+                    // native-model read or edit.
+                    && tool.id != "dsgrid.spotting.preview-receipt"
                     // The working-copy family became authority-free on
                     // 2026-09-18 when it stopped asking an application for
                     // this machine's catalogue. It is still a different job

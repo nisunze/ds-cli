@@ -1653,7 +1653,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // add two file-authoring leaves; see the profile's matching limit.
             // 2026-09-25: `dsgrid replace-structure` and the combined schema
             // workflow bring the reviewed broad profile to 30 tools.
-            "grid" => 30,
+            // 2026-09-27: `dsgrid spotting preview-receipt` joins `dsgrid
+            // run` in the profile `ds-grid-spotting` names, so a truncated
+            // whole-model spotting receipt stays viewable: 31 tools.
+            "grid" => 31,
             // Seventeen working-copy leaves plus bootstrap: the four
             // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
             // admin-refresh`, `dsgrid profile labels set|show`) were routed

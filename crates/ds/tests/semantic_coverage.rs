@@ -635,6 +635,13 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.describe", "discovery", "none"),
     ("dsgrid.inspect", "discovery", "none"),
     ("dsgrid.run", "read_only", "none"),
+    // A pinned whole-model spotting receipt becomes a new isolated
+    // visualization package and sidecar; the base package is never written.
+    (
+        "dsgrid.spotting.preview-receipt",
+        "local_file_write",
+        "none",
+    ),
     ("dsgrid.template.apply", "local_file_write", "none"),
     ("dsgrid.template.compile", "local_file_write", "none"),
     ("dsgrid.validate", "discovery", "none"),

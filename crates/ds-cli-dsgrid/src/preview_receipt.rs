@@ -101,12 +101,12 @@ the artifact is not engineering-proved or publishable.",
             remedy: "check the path and preserve the original receipt",
         },
         Refusal {
-            code: "receipt_sha256_invalid",
+            code: "receipt_digest_invalid",
             when: "expected digest is not a SHA-256 hex digest",
             remedy: "copy the raw receipt SHA-256 from its manifest",
         },
         Refusal {
-            code: "receipt_sha256_mismatch",
+            code: "receipt_digest_mismatch",
             when: "compressed receipt bytes do not match the supplied digest",
             remedy: "use the receipt whose bytes match the manifest digest",
         },
@@ -161,13 +161,18 @@ the artifact is not engineering-proved or publishable.",
             remedy: "report source model and receipt digests with engine detail",
         },
         Refusal {
+            code: "preview_receipt_encode_failed",
+            when: "the preview marker sidecar cannot be serialized",
+            remedy: "report this serialization failure with the receipt digest",
+        },
+        Refusal {
             code: "output_unwritable",
             when: "isolated package cannot be written",
             remedy: "check output path permissions and disk space",
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["spotting visualization preview"],
+    search: &["truncated", "rejected rows", "scenario"],
     requires: Requires::Server,
     availability: available,
 };
@@ -595,7 +600,7 @@ fn normalize_sha256(raw: &str) -> Result<String, Failure> {
     let hex = raw.strip_prefix("sha256:").unwrap_or(raw);
     if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(Failure::invalid(
-            "receipt_sha256_invalid",
+            "receipt_digest_invalid",
             "expected receipt digest is not SHA-256 hex",
         )
         .remedy("copy the raw receipt SHA-256 from its manifest"));
@@ -608,13 +613,20 @@ fn verify_receipt_sha256(bytes: &[u8], expected: &str) -> Result<String, Failure
     let actual = sha256_hex(bytes);
     if actual != expected {
         return Err(Failure::conflict(
-            "receipt_sha256_mismatch",
+            "receipt_digest_mismatch",
             "compressed receipt bytes do not match the expected SHA-256",
         )
         .remedy("use the receipt whose bytes match the manifest digest")
         .detail(json!({"expected": expected, "actual": actual})));
     }
     Ok(actual)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]
@@ -637,14 +649,7 @@ mod tests {
             verify_receipt_sha256(compressed_receipt, &"0".repeat(64))
                 .unwrap_err()
                 .code(),
-            "receipt_sha256_mismatch"
+            "receipt_digest_mismatch"
         );
     }
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
 }
