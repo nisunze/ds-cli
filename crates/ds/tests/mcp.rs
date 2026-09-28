@@ -162,6 +162,15 @@ fn write_skill_bundle(root: &Path, source_sha: &str) {
             "sha256": format!("{:x}", Sha256::digest(text.as_bytes())),
         }));
     }
+    let reference = "skills/ds-mcp-host/references/host-setup.md";
+    let reference_text = "# Host setup\nUse the verified MCP resource.\n";
+    let reference_path = root.join(reference);
+    fs::create_dir_all(reference_path.parent().unwrap()).expect("reference directory");
+    fs::write(&reference_path, reference_text).expect("reference document");
+    files.push(json!({
+        "path": reference,
+        "sha256": format!("{:x}", Sha256::digest(reference_text.as_bytes())),
+    }));
     fs::write(
         root.join("receipt.json"),
         serde_json::to_vec(&json!({
@@ -279,6 +288,7 @@ fn no_published_mcp_text_names_a_terminal_sign_in() {
         requests.push(json!({ "jsonrpc": "2.0", "id": next_id, "method": "resources/read", "params": { "uri": format!("ds-skill://bundle/{name}/SKILL.md") } }));
         next_id += 1;
     }
+    requests.push(json!({ "jsonrpc": "2.0", "id": next_id, "method": "resources/read", "params": { "uri": "ds-skill://bundle/ds-mcp-host/references/host-setup.md" } }));
     let (responses, _) = mcp_with_env(
         &["--exposure", "chapters"],
         &requests,
@@ -526,6 +536,7 @@ fn mcp_only_agent_reads_receipt_verified_skills_without_a_skills_home() {
             json!({ "jsonrpc": "2.0", "id": 5, "method": "resources/read", "params": { "uri": "file:///etc/passwd" } }),
             json!({ "jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "identity" } } }),
             json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": {} } }),
+            json!({ "jsonrpc": "2.0", "id": 8, "method": "resources/read", "params": { "uri": "ds-skill://bundle/ds-mcp-host/references/host-setup.md" } }),
         ],
         &[("DS_CLI_SKILLS_BUNDLE", &bundle), ("HOME", &missing_home)],
     );
@@ -537,9 +548,10 @@ fn mcp_only_agent_reads_receipt_verified_skills_without_a_skills_home() {
     let resources = response(&responses, 2)["result"]["resources"]
         .as_array()
         .expect("resources");
-    assert_eq!(resources.len(), 2);
+    assert_eq!(resources.len(), 3);
     assert_eq!(resources[0]["name"], "ds");
     assert_eq!(resources[1]["name"], "ds-mcp-host");
+    assert_eq!(resources[2]["name"], "ds-mcp-host/host-setup");
     assert!(
         response(&responses, 3)["result"]["contents"][0]["text"]
             .as_str()
@@ -553,6 +565,12 @@ fn mcp_only_agent_reads_receipt_verified_skills_without_a_skills_home() {
             .contains("live MCP contract")
     );
     assert_eq!(response(&responses, 5)["error"]["code"], -32602);
+    assert!(
+        response(&responses, 8)["result"]["contents"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("verified MCP resource")
+    );
     let identity = &response(&responses, 6)["result"]["structuredContent"]["data"];
     assert_eq!(identity["skills"]["source_sha"], source_sha);
     assert_eq!(identity["skills"]["count"], 2);
