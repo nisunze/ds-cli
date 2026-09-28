@@ -52,6 +52,15 @@
       ]
     },
     {
+      "key": "voltage_drop",
+      "label": "Voltage Drop",
+      "settings": [
+        "calculate_voltage_drop",
+        "assign_customer_phases",
+        "rebalance_customer_phases"
+      ]
+    },
+    {
       "key": "renumbering",
       "label": "Renumbering",
       "settings": [
@@ -609,6 +618,42 @@
       "default": true,
       "key": "delete_strange_cols",
       "label": "Drop unknown columns"
+    },
+    {
+      "default": true,
+      "key": "calculate_voltage_drop",
+      "label": "Calculate voltage drop",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "assign_customer_phases",
+      "label": "Assign customer connection phases",
+      "value_when_hidden": true,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "rebalance_customer_phases",
+      "label": "Rebalance draft customer phases",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
     }
   ]
 }

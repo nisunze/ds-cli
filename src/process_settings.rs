@@ -917,10 +917,11 @@ mod tests {
     #[test]
     fn the_model_carries_every_engine_default_and_group() {
         let m = model(&catalog(), None).unwrap();
-        assert_eq!(m.keys.len(), 35);
-        assert_eq!(m.groups.len(), 10);
-        assert_eq!(m.base_settings.len(), 35);
+        assert_eq!(m.keys.len(), 38);
+        assert_eq!(m.groups.len(), 11);
+        assert_eq!(m.base_settings.len(), 38);
         assert!(m.base_settings.contains_key("weld_tolerance"));
+        assert!(m.base_settings.contains_key("calculate_voltage_drop"));
     }
 
     #[test]
