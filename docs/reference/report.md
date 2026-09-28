@@ -900,8 +900,8 @@ sign-off and sheet fields without reducing either drawing panel.
 identity. Up to three `--logos` keep their native aspect ratios. Alignment,
 station and scale notes sit in the free lower margin. The exact model
 revision stays in the result receipt and PDF information metadata; the
-visible revision is the human drawing issue. `--ds-branding off` omits the
-discrete margin credit.
+visible revision is the human drawing issue. Every PDF page carries the
+mandatory discrete `DS GridDesign by datasolutions.rw` margin credit.
 `--span-labels show` prints each physical span length in both plan and
 profile, in black ink with a white halo in either colour mode.
 `--obstacle-sticks on` adds a short, thin mark at surveyed crossings only when
