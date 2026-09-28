@@ -505,6 +505,8 @@ has agreed to drop unsaved edits. Documents never cross this boundary.
 
 `ds report layout schema` documents all four transactions, `save` included, so a request derived from discovery is one a command accepts. A layout the deployed validator refuses comes back as `print_layout_invalid` naming the offending field, and a validator that cannot answer at all as `print_validator_unavailable` — never as an authentication failure.
 
+`layout save` returns a compact committed receipt by default: setup id, exact revision, bounded changed layout paths and verification source. For an update it reads the prior revision once to identify changed paths, while the write remains revision fenced. Pass `--full` to receive the complete saved setup, including embedded assets; `layout get --id <id>` also reads that complete setup explicitly.
+
 ## Printable inventory and report plans
 
 `ds report transformers --project <id> --limit 100 --output json` reads the

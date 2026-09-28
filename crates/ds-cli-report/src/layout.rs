@@ -6,6 +6,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::io::Read;
 fn local() -> Availability {
     Availability::Available
@@ -566,15 +567,24 @@ pub static GET: Command = Command {
 pub static SAVE: Command = Command {
     id: "report.layout.save",
     path: &["report", "layout", "save"],
-    contract: 1,
+    contract: 2,
     summary: "Publish a printing setup; with a revision it updates, else creates.",
     purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[SCOPE, PROJECT, LANE, REQUEST],
-    output: "The authoritative layout, schema, shared setup receipt or artifact manifest.",
+    args: &[
+        SCOPE,
+        PROJECT,
+        LANE,
+        REQUEST,
+        Arg::switch(
+            "full",
+            "Return the complete saved setup, including embedded assets; by default return a compact verified receipt.",
+        ),
+    ],
+    output: "By default: id, revision, changed layout paths and commit verification, without embedded assets. --full returns the complete saved setup.",
     examples: &[Example {
         command: "ds report layout save --output json",
         note: "See command arguments and report.layout.schema before invocation.",
@@ -957,12 +967,121 @@ fn publication(
     }
 }
 
+const MAX_CHANGED_PATHS: usize = 32;
+
+fn changed_layout_paths(
+    before: &Value,
+    after: &Value,
+    path: &str,
+    paths: &mut Vec<String>,
+    truncated: &mut bool,
+) {
+    if before == after {
+        return;
+    }
+    if paths.len() == MAX_CHANGED_PATHS {
+        *truncated = true;
+        return;
+    }
+    match (before, after) {
+        (Value::Object(old), Value::Object(new)) => {
+            let keys: BTreeSet<&str> = old.keys().chain(new.keys()).map(String::as_str).collect();
+            for key in keys {
+                let next = format!("{path}.{key}");
+                match (old.get(key), new.get(key)) {
+                    (Some(old), Some(new)) => {
+                        changed_layout_paths(old, new, &next, paths, truncated)
+                    }
+                    _ => {
+                        if paths.len() == MAX_CHANGED_PATHS {
+                            *truncated = true;
+                            break;
+                        }
+                        paths.push(next);
+                    }
+                }
+            }
+        }
+        (Value::Array(old), Value::Array(new)) => {
+            for index in 0..old.len().max(new.len()) {
+                let next = format!("{path}[{index}]");
+                match (old.get(index), new.get(index)) {
+                    (Some(old), Some(new)) => {
+                        changed_layout_paths(old, new, &next, paths, truncated)
+                    }
+                    _ => {
+                        if paths.len() == MAX_CHANGED_PATHS {
+                            *truncated = true;
+                            break;
+                        }
+                        paths.push(next);
+                    }
+                }
+            }
+        }
+        _ => paths.push(path.to_owned()),
+    }
+}
+
+fn compact_save_receipt(
+    saved: &Value,
+    previous_layout: Option<&Value>,
+    requested_id: &str,
+) -> Result<Value, Failure> {
+    let id = saved["id"]
+        .as_str()
+        .filter(|id| *id == requested_id)
+        .ok_or_else(|| invalid("printing service returned a different saved setup id"))?;
+    let revision = saved["revision"]
+        .as_str()
+        .filter(|revision| {
+            revision.len() == 64 && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+        .ok_or_else(|| invalid("printing service returned no exact saved revision"))?;
+    let layout = saved
+        .get("layout")
+        .filter(|layout| layout.get("id").and_then(Value::as_str) == Some(id))
+        .ok_or_else(|| invalid("printing service returned no matching saved layout"))?;
+    let mut paths = Vec::new();
+    let mut truncated = false;
+    if let Some(previous) = previous_layout {
+        changed_layout_paths(previous, layout, "layout", &mut paths, &mut truncated);
+    } else {
+        paths.push("layout".into());
+    }
+    Ok(json!({
+        "id": id,
+        "revision": revision,
+        "name": saved["name"],
+        "updated_at": saved["updated_at"],
+        "changed_paths": paths,
+        "changed_paths_truncated": truncated,
+        "verification": "committed_backend_result",
+    }))
+}
+
 pub fn save(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let request: ds_cli_auth::PrintingRequest =
         serde_json::from_slice(&bytes(i.require("request")?, 800_000)?).map_err(invalid)?;
     let (layout, expected_revision) = publication(request)?;
     ds_command_kernel::printing::validate(&layout).map_err(invalid)?;
     let global = i.require("scope")? == "global";
+    let lane = i.require("lane")?;
+    let project = i.value("project");
+    let requested_id = layout.id.clone();
+    let previous = if !i.switch("full") && !expected_revision.is_empty() {
+        let held = ds_cli_auth::printing(
+            lane,
+            global,
+            project,
+            &ds_cli_auth::PrintingRequest::Get {
+                id: requested_id.clone(),
+            },
+        )?;
+        Some(held["layout"].clone())
+    } else {
+        None
+    };
     // Whether this publish is a create or an update is the kernel's
     // decision — the same one the Printing setup page takes from the
     // revision it holds — so `ds` never sends the compatibility `save`
@@ -999,7 +1118,12 @@ pub fn save(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             ));
         }
     };
-    ds_cli_auth::printing(i.require("lane")?, global, i.value("project"), &request)
+    let saved = ds_cli_auth::printing(lane, global, project, &request)?;
+    if i.switch("full") {
+        Ok(saved)
+    } else {
+        compact_save_receipt(&saved, previous.as_ref(), &requested_id)
+    }
 }
 fn typed_request(i: &Inputs) -> Result<ds_cli_auth::PrintingRequest, Failure> {
     serde_json::from_slice(&bytes(i.require("request")?, 800_000)?).map_err(invalid)
@@ -1086,6 +1210,39 @@ pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn save_receipt_names_one_heading_change_without_echoing_embedded_assets() {
+        let previous = json!({
+            "id":"gisagara-a0",
+            "assets":{"logo": format!("data:image/png;base64,{}", "A".repeat(400_000))},
+            "elements":[{"id":"pole-schedule","table":{"headings":["Pole", "Angle Â°"]}}]
+        });
+        let mut updated = previous.clone();
+        updated["elements"][0]["table"]["headings"][1] = json!("Angle (deg)");
+        let saved = json!({
+            "id":"gisagara-a0", "name":"A0", "revision":"b".repeat(64),
+            "updated_at":"2026-09-28T11:46:48Z", "layout":updated
+        });
+        let receipt = compact_save_receipt(&saved, Some(&previous), "gisagara-a0").unwrap();
+        assert_eq!(receipt["revision"], "b".repeat(64));
+        assert_eq!(
+            receipt["changed_paths"],
+            json!(["layout.elements[0].table.headings[1]"])
+        );
+        assert_eq!(receipt["verification"], "committed_backend_result");
+        let encoded = serde_json::to_string(&receipt).unwrap();
+        assert!(
+            encoded.len() < 1_000 && !encoded.contains("base64"),
+            "{encoded}"
+        );
+        assert_eq!(
+            compact_save_receipt(&saved, None, "gisagara-a0").unwrap()["changed_paths"],
+            json!(["layout"])
+        );
+        assert!(SAVE.args.iter().any(|arg| arg.name == "full"));
+        assert_eq!(saved["layout"]["assets"], previous["assets"]);
+    }
 
     /// Fill one documented transaction's placeholders with real values.
     ///
