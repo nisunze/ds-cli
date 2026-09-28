@@ -638,6 +638,7 @@ mod tests {
             geospatial: Vec::new(),
             tabular: Vec::new(),
             execution: Default::default(),
+            voltage_drop_report: Default::default(),
         }
     }
 
