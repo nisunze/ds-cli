@@ -548,6 +548,44 @@ fn discard_resumes_after_artifact_was_already_removed() {
 }
 
 #[test]
+fn discard_resumes_after_receipt_was_removed_but_entry_remains() {
+    let test = TestDirectory::new("discard-empty-orphan");
+    let root = test.0.join("pending-upload");
+    let locator = locator(0x47);
+    let bytes = b"published artifact";
+    let entry = write_fixture(&root, &locator, bytes);
+    let expected = format!("{:x}", Sha256::digest(bytes));
+    std::fs::remove_file(entry.join(ARTIFACT_FILE)).unwrap();
+    std::fs::remove_file(entry.join(RECEIPT_FILE)).unwrap();
+
+    discard_artifact_from_root(&root, &locator, &expected)
+        .expect("committed empty entry completes the interrupted discard");
+    assert!(!entry.exists());
+    let pending = HeldDirectory::open_absolute(&root).unwrap().unwrap();
+    assert!(
+        publication::committed_receipt(&pending, locator_id(&locator).unwrap())
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn discard_refuses_receiptless_bytes() {
+    let test = TestDirectory::new("discard-receiptless-bytes");
+    let root = test.0.join("pending-upload");
+    let locator = locator(0x48);
+    let bytes = b"published artifact";
+    let entry = write_fixture(&root, &locator, bytes);
+    let expected = format!("{:x}", Sha256::digest(bytes));
+    std::fs::remove_file(entry.join(RECEIPT_FILE)).unwrap();
+
+    assert!(discard_artifact_from_root(&root, &locator, &expected)
+        .expect_err("receiptless bytes must remain untouched")
+        .contains("no receipt-derived read authority"));
+    assert_eq!(std::fs::read(entry.join(ARTIFACT_FILE)).unwrap(), bytes);
+}
+
+#[test]
 fn nonregular_artifact_is_rejected_without_deletion() {
     let test = TestDirectory::new("nonregular");
     let root = test.0.join("pending-upload");

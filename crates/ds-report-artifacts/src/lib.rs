@@ -1471,7 +1471,23 @@ pub fn sweep_abandoned_pending_upload_locked(
             .ok_or_else(|| {
                 "Network Reporter pending artifact changed during recovery".to_string()
             })?;
-        exact_entry_names(&entry)?;
+        let names = exact_entry_names(&entry)?;
+        if !names.iter().any(|name| name == RECEIPT_FILE) {
+            // A discard may have removed the bytes and receipt before it
+            // could remove the empty entry. Leave that committed orphan for
+            // the caller's authorized discard retry; never sweep bytes that
+            // have lost their receipt.
+            let matching_batches = committed
+                .iter()
+                .filter(|batch| batch.outputs.iter().any(|output| output.locator == locator))
+                .count();
+            if names.is_empty() && matching_batches == 1 {
+                continue;
+            }
+            return Err(
+                "Network Reporter artifact entry has no receipt-derived read authority".to_string(),
+            );
+        }
         let artifact_receipt = read_receipt(&entry, &locator)?;
         let Some(batch) = committed_by_id.get(artifact_receipt.batch_id.as_str()) else {
             pending_root.remove_child_tree(entry)?;
@@ -1578,9 +1594,33 @@ where
     let has_discarding = names.iter().any(|name| name == DISCARDING_FILE);
 
     if !has_receipt {
-        return Err(
-            "Network Reporter artifact entry has no receipt-derived read authority".to_string(),
-        );
+        if has_artifact || has_discarding {
+            return Err(
+                "Network Reporter artifact entry has no receipt-derived read authority".to_string(),
+            );
+        }
+        // The entry is empty only after a prior discard removed both the
+        // verified artifact and its receipt. Its committed batch still binds
+        // the locator and digest; the caller must authorize that batch again.
+        let committed =
+            committed_publication_for_locator(&held.root, locator)?.ok_or_else(|| {
+                "Network Reporter artifact entry has no receipt-derived read authority".to_string()
+            })?;
+        let output = committed
+            .outputs
+            .iter()
+            .find(|output| output.locator == locator)
+            .expect("matched publication contains the locator");
+        authorize(&committed)?;
+        if output.sha256 != expected_sha256 {
+            return Err(
+                "Network Reporter discard digest does not match the committed publication"
+                    .to_string(),
+            );
+        }
+        held.root.remove_child_tree(held.entry)?;
+        publication::retire_if_all_outputs_absent(&pending_root, &committed.batch_id)?;
+        return Ok(());
     }
     if has_artifact && has_discarding {
         return Err("Network Reporter artifact entry has conflicting discard state".to_string());
