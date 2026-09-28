@@ -1035,6 +1035,27 @@ overlapping corridors cannot be summed because the same UPI can occur in
 several corridors; a full-model total needs one authoritative union or UPI
 deduplication before a workbook is issued.
 
+## Shared publication heads
+
+`ds report publication list|show` reads the current compute-artifact heads
+directly under the native account and an explicit project. It does not open
+the local report outbox, pair a Desktop, download bytes, or publish anything.
+The list is paged and includes all engines. A head contains the current
+revision, input fingerprint, each output's digest and byte count, and
+per-output origins where the service recorded them. The shared kernel validates
+every returned head before `ds` displays it.
+
+```bash
+ds report publication list --lane canary --project <exact-id> --output json
+ds report publication list --lane canary --project <exact-id> --cursor <next_cursor> --output json
+ds report publication show --lane canary --project <exact-id> --engine network_reporter --operation <operation> --variant default --output json
+```
+
+A head is evidence of shared metadata at read time. It does not verify the
+downloaded output bytes. Compare its declarations with the sealed local
+outbox receipts when reconciling a damaged local store; preserve both sides
+until every output and its origin agree.
+
 ## The publication queue
 
 A produced report is not finished when the engine stops: its verified bytes

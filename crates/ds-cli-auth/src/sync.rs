@@ -18,7 +18,7 @@ use ds_edge_authority::{
 };
 use ds_sync_runtime::{Gateway, GatewayError, SyncRoute, TransferReceipt};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::{
     context::ProviderIdentity,
@@ -160,6 +160,102 @@ pub struct NativeSyncSession {
     app_version: String,
     authority_dir: std::path::PathBuf,
     state: Mutex<SessionState>,
+}
+
+/// The two read-only compute-artifact discovery calls. The caller supplies
+/// selectors, never an action, route, bearer, or request body.
+pub enum PublicationHeadQuery<'a> {
+    List {
+        limit: u8,
+        cursor: Option<&'a str>,
+    },
+    Show {
+        engine: &'a str,
+        operation: &'a str,
+        variant: &'a str,
+    },
+}
+
+/// Read the shared publication heads through the native user's project-fenced
+/// Sync Center session. This opens no report outbox or local SQLite store.
+pub fn publication_heads_for_project(
+    lane_value: &str,
+    project: &str,
+    query: PublicationHeadQuery<'_>,
+) -> Result<Value, ds_cli_contract::Failure> {
+    use ds_cli_contract::Failure;
+
+    let lane = Lane::parse(lane_value)?;
+    let principal = crate::headless_identity_for_named_project(lane_value)?;
+    let credential_binding = crate::runtime_credential_binding(lane_value)?;
+    let session = NativeSyncSession::open(lane, principal, project.to_owned(), credential_binding)
+        .map_err(|detail| {
+            Failure::unavailable("publication_unavailable", detail)
+                .remedy("check the native account and project, then retry the read")
+        })?;
+    let body = match query {
+        PublicationHeadQuery::List { limit, cursor } => {
+            let mut body = json!({
+                "action": "list", "project_id": project, "limit": limit,
+            });
+            if let Some(cursor) = cursor {
+                body["cursor"] = json!(cursor);
+            }
+            body
+        }
+        PublicationHeadQuery::Show {
+            engine,
+            operation,
+            variant,
+        } => json!({
+            "action": "read", "project_id": project,
+            "engine": engine, "operation": operation, "variant": variant,
+        }),
+    };
+    session
+        .post(SyncRoute::ComputeArtifacts, &body)
+        .map_err(publication_read_error)
+}
+
+fn publication_read_error(error: GatewayError) -> ds_cli_contract::Failure {
+    use ds_cli_contract::Failure;
+
+    let detail = json!({
+        "http_status": error.status,
+        "service_code": error.code,
+    });
+    match error.status {
+        Some(400 | 422) => Failure::invalid(
+            "publication_selector_invalid",
+            "the publication selector or cursor was refused",
+        )
+        .detail(detail)
+        .remedy("use the exact project, head identity, or cursor returned by a prior list"),
+        Some(401 | 403) => Failure::unauthorized(
+            "publication_not_permitted",
+            "the native account cannot read this project's publications",
+        )
+        .detail(detail)
+        .remedy("check this account's access to the named project"),
+        Some(404) => Failure::invalid(
+            "publication_not_found",
+            "that publication head was not found",
+        )
+        .detail(detail)
+        .remedy("list the project's publication heads and use an exact identity"),
+        Some(409) => Failure::conflict(
+            "publication_conflict",
+            "the shared publication head has an inconsistent record",
+        )
+        .detail(detail)
+        .remedy("report the project and head identity; do not infer publication from local files"),
+        _ => Failure::unavailable(
+            "publication_unavailable",
+            "the shared publication authority did not return a usable answer",
+        )
+        .detail(detail)
+        .remedy("retry the same read when the service is available"),
+    }
 }
 
 impl NativeSyncSession {
