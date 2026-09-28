@@ -792,6 +792,18 @@ and a desktop given the same rooms stages byte-identical context. A media
 scope grant is not minted here, so a room carrying photos is refused by the
 engine with a typed blocker.
 
+An individual layout can bind `style_refs.neighbor_transformers` to a governed
+point print style that labels only the `transfo` field. This adds
+only the other active transformers' saved points and exact names to that
+sheet's print context. The map viewport clips them; the current transformer's
+design still sets the scale. No neighboring LV lines, poles, customers or
+schedules enter the artifact or its geographic exports. The batch builds one
+project-scoped point catalogue from checksum-verified held rooms and refreshes
+only rooms absent or behind the project's reported heads. If a required point
+is missing or malformed, `neighbor_transformer_points_unavailable` refuses the
+print instead of silently dropping a neighbor. Layouts without the binding
+perform no point-catalogue read.
+
 ### Multipage drawing collections
 
 Discover `report.bundle` and the reporter's `export_compounded_report` task. Its
