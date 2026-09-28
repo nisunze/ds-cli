@@ -863,6 +863,18 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // gated like every other publication.
     ("report.outbox.status", "read_only", "none"),
     ("report.outbox.drain", "artifact_write", "headless_project"),
+    // Shared heads require the restored native session and exact project but
+    // never read a local room or publication queue.
+    (
+        "report.publication.list",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "report.publication.show",
+        "local_auth_state",
+        "headless_project",
+    ),
     // Publishing a set the machine already holds seals artifacts of record
     // from bytes on disk. It never runs the engine, but what it produces is
     // indistinguishable from an export's output once it is up, so it carries

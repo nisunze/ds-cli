@@ -88,7 +88,7 @@ pub static LIST: Command = Command {
     id: "report.publication.list",
     path: &["report", "publication", "list"],
     contract: 1,
-    summary: "List the project's shared publication heads without reading local report state.",
+    summary: "List shared project publication heads without local report state.",
     purpose: "\
 Reads one bounded page of current compute-artifact heads under the restored native user \
 and the explicitly named project. The server enforces project membership. Every returned \

@@ -34,7 +34,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "focus-bounds",
             "<west,south,east,north>",
-            "Optional WGS84 plan-page bounds (up to 0.05 degrees) for acquiring context and retaining design vectors around one MV sheet; does not change the printed extent.",
+            "WGS84 sheet bounds up to 0.05 degrees; acquire context and nearby vectors without changing print extent.",
         ),
         Arg::value(
             "area-bounds",

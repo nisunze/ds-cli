@@ -39,7 +39,11 @@ page. Its HTML/CSS is the template; supply project-owned data, not a new
 layout. Verify exact parties and logo bytes through the project's records and
 assets. A missing contract number stays absent until verified. Preview the
 effective front matter beside the project key map and a representative sheet
-at paper size before making the full booklet.
+at paper size before making the full booklet. If this host cannot read the
+governed template or the project-owned facts through its declared DS surface,
+name the missing access or command in feedback and stop that booklet job.
+Do not redraw a cover from a screenshot, borrow another project's branding,
+or fill a blank with a plausible value.
 
 1. Cover: project and document names, exact formal client, employer,
    consultant, contractor, logos and contract number where available in
@@ -47,9 +51,11 @@ at paper size before making the full booklet.
    construction status. Use one simple document version.
 2. Structure naming convention: the current governed library and a
    digest-linked naming key. The stay indicator precedes the structure
-   strength/class in the canonical grammar. Show only verified canonical
-   examples. Put unresolved legacy names or pending library members in the
-   internal receipt, never on an external page.
+   strength/class in the canonical grammar. Show verified canonical examples
+   only where the placed native names have a proved member mapping. Otherwise
+   use the standard's native-name variant with exact placed names and counts,
+   without implying a DS equivalence. Put unresolved mappings and library
+   members in the internal receipt, never on an external page.
 3. Key map: show the model's location in appropriate geographic context.
    Use the exact model revision; label transformers by their actual project
    names, at a readable A3 size without crowding. Keep roads, power lines and

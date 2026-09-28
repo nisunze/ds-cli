@@ -305,7 +305,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and print outputs with project numbering; reuse current data outputs (prints always regenerate) and enqueue the rest. --dry-run skips publication and opens no Server queue even when --server-state-dir is supplied. Prints held rooms; fetches only new or changed ones, even offline. A setup binding neighbor_transformers gets a cached, project-scoped point-only catalogue; --seed acquires geographic context. Photos need a media grant.",
+    purpose: "Export transformer reports and prints with project numbering. Reuse fresh data; regenerate prints. --dry-run opens no publication queue, even with --server-state-dir. Use held rooms or fetch changes; --seed acquires map context. neighbor_transformers uses cached project points. Photos need a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -318,12 +318,12 @@ pub static COMMAND: Command = Command {
         Arg::repeated(
             "print-layout",
             "<json-file>",
-            "Local proof replacement for an existing project layout; preserves engineering inputs and paper identity, records source/recipe digests, and cannot publish.",
+            "Local proof of an existing layout; preserves inputs and paper, records digests, cannot publish.",
         ),
         Arg::value(
             "preview-layout",
             "<json-file>",
-            "One SVG preview per transformer, with outlined text and template pens; any draft id or paper. Cannot publish or combine with --print-layout.",
+            "One SVG per transformer with outlined text and template pens. No publication or --print-layout.",
         ),
         Arg::value(
             "context-vectors",
@@ -338,12 +338,7 @@ pub static COMMAND: Command = Command {
         LANE_ARG,
         super::PROJECT_ARG,
     ],
-    output: "\
-Lane, project, scope, engine identity, publication state, batch counts and receipt \
-(partial_formats), context diagnostics, survey and ordered transformer results: artifact \
-inventory, room_source, survey_layers(_omitted), failed_formats (output_id, code, remedy, layout knob: \
-overflow/panels/row_mm), reuse (scope, work_id, generate reasons), or typed error. \
-`publication.stage` is `queued`, or `nothing_published` for a dry run or when every output was reused.",
+    output: "Lane, project, scope, engine, publication stage, counts and receipt; context, survey and ordered transformer results with artifacts, room source, omitted layers, failed formats and reuse reasons. Publication is `queued` or `nothing_published`.",
     examples: &[
         Example {
             command: "ds report project export --out-dir ./reports --output json --project <exact-id>",
@@ -351,23 +346,13 @@ overflow/panels/row_mm), reuse (scope, work_id, generate reasons), or typed erro
             runnable: false,
         },
         Example {
-            command: "ds report project export --transformer tx_a --transformer tx_b --out-dir ./reports --concurrency 2 --project <exact-id>",
-            note: "Two named transformers, two engines at once.",
-            runnable: false,
-        },
-        Example {
-            command: "ds report project export --transformer tx_a --out-dir ./reports --dry-run --output json --project <exact-id>",
-            note: "Local files only; `.data.publication.published_nothing` is true.",
-            runnable: false,
-        },
-        Example {
             command: "ds report project export --transformer tx_a --out-dir ./proof --dry-run --server-state-dir /isolated/server-state --output json --project <exact-id>",
-            note: "Local proof; no publication queue is opened. The state-dir flag is ignored and the receipt names that fact.",
+            note: "Local proof; state-dir ignored and no queue opened.",
             runnable: false,
         },
         Example {
             command: "ds report project export --transformer tx_a --preview-layout ./draft.json --out-dir ./preview --output json --project <exact-id>",
-            note: "tx_a's sheet as the draft composes it, with its pens, as one SVG page; `.data.preview` names the output.",
+            note: "One SVG sheet; `.data.preview` names the output.",
             runnable: false,
         },
     ],
