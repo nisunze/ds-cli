@@ -664,6 +664,156 @@ fn work_grant_is_bound_to_exact_project_engine_scope_and_snapshot() {
     assert!(serde_json::from_value::<NetworkReporterSnapshotManifest>(extended).is_err());
 }
 
+fn edge_output(format: &str) -> IndividualExecutionOutput {
+    let definition = ds_command_kernel::report_formats::output(format).unwrap();
+    IndividualExecutionOutput {
+        output_id: definition.output_id,
+        format: definition.format,
+        content_type: definition.content_type.to_string(),
+    }
+}
+
+fn with_outputs(outputs: Vec<IndividualExecutionOutput>) -> WorkGrantPayload {
+    let mut payload = work_payload();
+    payload.individual_execution.outputs = outputs;
+    payload
+}
+
+#[test]
+fn edge_outputs_follow_the_kernel_output_policy() {
+    use ds_command_kernel::report_formats::{DEFAULT_INDIVIDUAL, INDIVIDUAL, TABULAR};
+    let ranks: Vec<usize> = EDGE_INDIVIDUAL_OUTPUTS
+        .iter()
+        .map(|format| INDIVIDUAL.iter().position(|known| known == format).unwrap())
+        .collect();
+    assert!(
+        ranks.windows(2).all(|pair| pair[0] < pair[1]),
+        "edge outputs keep report_formats::INDIVIDUAL order"
+    );
+    for format in DEFAULT_INDIVIDUAL.iter().chain(TABULAR) {
+        assert!(
+            EDGE_INDIVIDUAL_OUTPUTS.contains(format),
+            "{format} is a default or tabular output, so a desktop grant may carry it"
+        );
+    }
+}
+
+#[test]
+fn default_plan_edge_export_is_admitted_with_voltage_drop() {
+    use ds_command_kernel::report_formats::DEFAULT_INDIVIDUAL;
+    let default_plan: Vec<_> = DEFAULT_INDIVIDUAL.iter().map(|f| edge_output(f)).collect();
+    assert_eq!(default_plan.len(), 4);
+    assert_eq!(default_plan[3].content_type, "application/json");
+
+    let root = TestRoot::new();
+    let verified = verifier(&root)
+        .verify_work_with_keys(
+            work_request(with_outputs(default_plan.clone()), "2026-08-18T12:00:03Z"),
+            &keys(),
+        )
+        .unwrap();
+    assert_eq!(
+        verified
+            .individual_execution
+            .outputs
+            .iter()
+            .map(|output| output.format.as_str())
+            .collect::<Vec<_>>(),
+        ["shp", "kmz", "xlsx", "voltage_drop"]
+    );
+
+    let mut read = artifact_read_payload();
+    read.individual_execution.outputs = default_plan;
+    let root = TestRoot::new();
+    assert!(verifier(&root)
+        .verify_artifact_read_with_keys(
+            artifact_read_request(read, "2026-08-18T12:00:05Z"),
+            &keys()
+        )
+        .is_ok());
+
+    // Every admitted output at once is the longest inventory there is.
+    let every: Vec<_> = EDGE_INDIVIDUAL_OUTPUTS
+        .iter()
+        .map(|f| edge_output(f))
+        .collect();
+    let root = TestRoot::new();
+    assert!(verifier(&root)
+        .verify_work_with_keys(
+            work_request(with_outputs(every), "2026-08-18T12:00:03Z"),
+            &keys()
+        )
+        .is_ok());
+}
+
+#[test]
+fn non_admitted_edge_outputs_are_still_refused() {
+    let json_as = |format: &str, content_type: &str| IndividualExecutionOutput {
+        output_id: format.to_string(),
+        format: format.to_string(),
+        content_type: content_type.to_string(),
+    };
+    let cases: Vec<(&str, Vec<IndividualExecutionOutput>)> = vec![
+        ("empty", vec![]),
+        ("gpkg", vec![edge_output("shp"), edge_output("gpkg")]),
+        ("print", vec![edge_output("pdf_a0")]),
+        ("cloud-only geojson", vec![edge_output("geojson")]),
+        ("unknown", vec![json_as("csv", "text/csv")]),
+        (
+            "voltage_drop wrong content type",
+            vec![json_as("voltage_drop", "application/zip")],
+        ),
+        (
+            "voltage_drop renamed",
+            vec![IndividualExecutionOutput {
+                output_id: "voltage-drop".to_string(),
+                ..edge_output("voltage_drop")
+            }],
+        ),
+        (
+            "out of order",
+            vec![edge_output("voltage_drop"), edge_output("xlsx")],
+        ),
+        (
+            "duplicate",
+            vec![edge_output("voltage_drop"), edge_output("voltage_drop")],
+        ),
+        (
+            "longer than the admitted set",
+            EDGE_INDIVIDUAL_OUTPUTS
+                .iter()
+                .map(|f| edge_output(f))
+                .chain([edge_output("voltage_drop")])
+                .collect(),
+        ),
+    ];
+    for (case, outputs) in cases {
+        let root = TestRoot::new();
+        assert!(
+            verifier(&root)
+                .verify_work_with_keys(
+                    work_request(with_outputs(outputs.clone()), "2026-08-18T12:00:03Z"),
+                    &keys()
+                )
+                .unwrap_err()
+                .contains("requested desktop work"),
+            "work grant: {case}"
+        );
+        let mut read = artifact_read_payload();
+        read.individual_execution.outputs = outputs;
+        let root = TestRoot::new();
+        assert!(
+            verifier(&root)
+                .verify_artifact_read_with_keys(
+                    artifact_read_request(read, "2026-08-18T12:00:05Z"),
+                    &keys()
+                )
+                .is_err(),
+            "artifact read: {case}"
+        );
+    }
+}
+
 #[test]
 fn artifact_read_entitlement_is_short_lived_and_bound_to_exact_batch() {
     let root = TestRoot::new();

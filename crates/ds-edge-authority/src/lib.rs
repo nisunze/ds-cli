@@ -1462,23 +1462,47 @@ fn valid_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
+/// The individual outputs a signed desktop work grant may carry.
+///
+/// The geospatial pair the desktop engine has always produced under a grant,
+/// and every tabular output (`report_formats::TABULAR`): `xlsx` and the two
+/// tabular JSON documents, `network_information` and `voltage_drop`. ds-brain
+/// mints desktop grants from the same policy and already admits
+/// `network_information` there; its validator warns that a signed grant must
+/// not keep "a second, obsolete three-format interpretation" of that policy,
+/// which is what this list was (shp/kmz/xlsx, at most three) until
+/// `voltage_drop` joined the default plan and made a default export four.
+///
+/// Order, output id and content type are the kernel's report output policy
+/// (`report_formats::INDIVIDUAL` and `report_formats::output`), not a copy.
+/// Prints and `gpkg` are not admitted here: a print output carries
+/// paper/presentation fields this closed schema does not hold.
+pub const EDGE_INDIVIDUAL_OUTPUTS: &[&str] =
+    &["shp", "kmz", "xlsx", "network_information", "voltage_drop"];
+
 fn valid_individual_outputs(outputs: &[IndividualExecutionOutput]) -> bool {
-    if outputs.is_empty() || outputs.len() > 3 {
+    use ds_command_kernel::report_formats;
+    // Each admitted output at most once, in policy order, so no inventory is
+    // longer than the admitted set itself.
+    if outputs.is_empty() || outputs.len() > EDGE_INDIVIDUAL_OUTPUTS.len() {
         return false;
     }
     let mut previous = None;
     for output in outputs {
-        let (position, content_type) = match output.format.as_str() {
-            "shp" => (0, "application/zip"),
-            "kmz" => (1, "application/vnd.google-earth.kmz"),
-            "xlsx" => (
-                2,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ),
-            _ => return false,
+        let format = output.format.as_str();
+        let Some(position) = report_formats::INDIVIDUAL
+            .iter()
+            .position(|known| *known == format)
+            .filter(|_| EDGE_INDIVIDUAL_OUTPUTS.contains(&format))
+        else {
+            return false;
         };
-        if output.output_id != output.format
-            || output.content_type != content_type
+        let Ok(definition) = report_formats::output(format) else {
+            return false;
+        };
+        if output.output_id != definition.output_id
+            || output.format != definition.format
+            || output.content_type != definition.content_type
             || previous.is_some_and(|value| value >= position)
         {
             return false;
