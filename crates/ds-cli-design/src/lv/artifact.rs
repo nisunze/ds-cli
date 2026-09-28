@@ -28,6 +28,17 @@ pub(super) const RESULT: ArtifactContract = ArtifactContract {
     write_remedy: "Choose a writable absent path and retry from the unchanged input.",
 };
 
+/// The voltage-drop result reads the same request as `design.lv.process` and
+/// keeps its never-overwrite refusals; only the artifact it names differs.
+pub(super) const VOLTAGE_DROP_RESULT: ArtifactContract = ArtifactContract {
+    name: "LV voltage-drop result",
+    stage_tag: "ds-lv-voltage-drop-result",
+    exists_code: "fast_lv_output_exists",
+    write_code: "fast_lv_output_write_failed",
+    exists_remedy: "Choose a new --out path; existing results are never overwritten.",
+    write_remedy: "Choose a writable absent path and retry from the unchanged input.",
+};
+
 pub(super) const PROJECT_REQUEST: ArtifactContract = ArtifactContract {
     name: "LV project request",
     stage_tag: "ds-fast-lv-project-request",

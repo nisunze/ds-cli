@@ -99,6 +99,63 @@ Keep the operation ID and exact files for retries; re-export and reprocess when
 the source or configuration changes. Reports are a subsequent
 `report.project.export` operation, not a side effect of network processing.
 
+## LV voltage drop
+
+`ds design lv voltage-drop` checks whether every customer of an LV transformer
+stays within REG's ±10 % of 230 V at the saturation design load (REG VII
+§1.2.1), by method `ds-lv-vd/1`
+(`ds-work/standards/voltage-drop/02-METHOD-CONTRACT.md`). It reads the same
+closed `ds.fast-lv.request/v1` file as `ds design lv process`, with the same
+bounds and refusals, and processes each transformer with the voltage drop
+forced on. Export with `--project-config`: the method reads cos φ from
+`project_settings` and the `electrical_params` of the `lv_lines`,
+`service_cable_sizes` and `transfo_sizes` seeds; without them a job reports
+`not_calculated` and names what is missing.
+
+```bash
+ds design lv project-export --project <id> --transformer T-1042 \
+  --project-config --out ./T-1042.fast-lv.json --output json
+ds design lv voltage-drop --input ./T-1042.fast-lv.json \
+  --out ./T-1042.vd.json --output json
+```
+
+The absent `--out` path receives one `ds.lv-voltage-drop.result/v1` document:
+
+```json
+{
+  "schema": "ds.lv-voltage-drop.result/v1",
+  "method": "ds-lv-vd/1",
+  "engine_core_version": "…",
+  "jobs": [{
+    "transformer_name": "T-1042",
+    "ok": true,
+    "report": { "status": "calculated", "summary": { "compliant": true } },
+    "sizing": { "status": "compliant_as_drawn", "changes": [] },
+    "layers": { "customers": { "type": "FeatureCollection", "features": [] } }
+  }]
+}
+```
+
+Jobs keep input order. `report` is the analysis of the design as drawn: every
+customer's supply voltage and drop, section and transformer loading, and a
+summary whose `compliant` holds only when every customer is calculated from
+complete data, within the limit, and nothing is loaded beyond its rating.
+`sizing` is stage 2: the cheapest set of LV-line or service-cable upgrades,
+and a larger transformer when the present one is overloaded, that makes the
+design comply (`compliant_after_changes`), or the customers no allowed
+conductor can save (`partially_resolved`, listed under `infeasible`). Existing
+and approved sections are never resized. `layers` are the processed GeoJSON
+layers carrying the `vd_*` columns and each customer's balanced
+`connection_phase`. A failed job has `ok: false` and an `error` instead of the
+three. The result is never truncated or overwritten; above 256 MiB it is
+refused.
+
+The terminal receipt carries the digests, counts and one row per job: report
+status, customers, failing customers, worst drop %, compliance, transformer
+loading %, stage-2 status, change count, the transformer change (from/to kVA)
+and the infeasible count. Nothing is written to the project: accepting a
+recommendation is a design edit, and reports and prints follow separately.
+
 ## Headless feature selection
 
 `ds design features select` is the first native, map-independent design read.

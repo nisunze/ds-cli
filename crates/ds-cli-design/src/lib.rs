@@ -6,9 +6,12 @@
 //! ds-network to encode its layers with explicit owner defaults into the same
 //! closed request consumed by `design.lv.process`. The process command writes
 //! one local result document through ds-network's native Rayon adapter.
-//! It has no project id, credential, Desktop bridge, map state, browser store,
-//! or generic engine operation. The Rust kernel is the same owner used below
-//! ds-web's WASM adapter; only host file placement differs.
+//! `design.lv.voltage-drop` reads the same request and writes ds-network's
+//! voltage-drop report (method `ds-lv-vd/1`) and stage-2 sizing beside the
+//! processed layers. Neither has a project id, credential, Desktop bridge,
+//! map state, browser store, or generic engine operation. The Rust kernel is
+//! the same owner used below ds-web's WASM adapter; only host file placement
+//! differs.
 //! `design.features.select` separately restores the governed native user and
 //! its audience-fenced project, fetches one fixed context projection, and
 //! delegates deterministic selection to `ds-geo`.
@@ -43,7 +46,7 @@
 //!
 //! ```text
 //!   status     the project's transformer status rows (headless, unreshaped)
-//!   lv         project-export → process
+//!   lv         project-export → process; project-export → voltage-drop
 //!   transformer inventory → retire | restore; status; dashboard
 //!   selection  list → read → save | archive | assign
 //!   attachment list | list-project | show | versions → publish | download | set-latest | retire
@@ -178,6 +181,7 @@ pub static DOMAIN: Domain = Domain {
         &lv::project_export::COMMAND,
         &lv::project_save::COMMAND,
         &lv::process::COMMAND,
+        &lv::voltage_drop::COMMAND,
         &process_settings::COMMAND,
         &collisions::COMMAND,
         &migrate::plan::COMMAND,

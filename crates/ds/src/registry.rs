@@ -2492,6 +2492,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::lv::process::render,
     },
     Entry {
+        command: &ds_cli_design::lv::voltage_drop::COMMAND,
+        handler: ds_cli_design::lv::voltage_drop::run,
+        render: ds_cli_design::lv::voltage_drop::render,
+    },
+    Entry {
         command: &ds_cli_design::process_settings::COMMAND,
         handler: ds_cli_design::process_settings::run,
         render: ds_cli_design::process_settings::render,

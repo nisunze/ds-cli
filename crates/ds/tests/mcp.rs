@@ -823,6 +823,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
                                 | "design.intake.upload"
                                 | "design.lv.project-export"
                                 | "design.lv.process"
+                                | "design.lv.voltage-drop"
                                 | "design.known-columns.list"
                                 | "design.known-columns.set"
                         ))
@@ -1975,6 +1976,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                                 | "design_known-columns_set"
                                 | "design_lv_project-export"
                                 | "design_lv_process"
+                                | "design_lv_voltage-drop"
                         ))
                     || (prefix == "pls_" && name.starts_with("library_"))
             })

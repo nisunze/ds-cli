@@ -4,3 +4,4 @@ mod artifact;
 pub mod process;
 pub mod project_export;
 pub mod project_save;
+pub mod voltage_drop;

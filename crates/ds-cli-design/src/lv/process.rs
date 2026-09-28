@@ -157,7 +157,7 @@ pub fn render(value: &Value) -> String {
     text
 }
 
-fn bounded_read(path: &Path) -> Result<Vec<u8>, Failure> {
+pub(super) fn bounded_read(path: &Path) -> Result<Vec<u8>, Failure> {
     let mut file = File::open(path).map_err(|error| {
         Failure::invalid(
             "fast_lv_source_not_found",
@@ -203,7 +203,7 @@ fn bounded_read(path: &Path) -> Result<Vec<u8>, Failure> {
     Ok(bytes)
 }
 
-fn map_owner_error(error: NativeFastLvError) -> Failure {
+pub(super) fn map_owner_error(error: NativeFastLvError) -> Failure {
     let code = error.code();
     match code {
         "fast_lv_input_too_large"

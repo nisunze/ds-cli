@@ -1024,6 +1024,7 @@ const DESIGN_RUN_COMMANDS: &[&str] = &[
     "design.intake.upload",
     "design.lv.project-export",
     "design.lv.process",
+    "design.lv.voltage-drop",
     "map.design.process",
     "map.design.batch.process",
     "map.design.batch.save",

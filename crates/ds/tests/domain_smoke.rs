@@ -7351,6 +7351,161 @@ fn design_lv_process_runs_the_native_batch_without_project_or_desktop_state() {
 }
 
 #[test]
+fn design_lv_voltage_drop_checks_reg_compliance_without_project_or_desktop_state() {
+    let root = temp_root("native-lv-voltage-drop");
+    std::fs::create_dir_all(&root).unwrap();
+    let input_path = root.join("request.json");
+    let output_path = root.join("result.vd.json");
+    let electrical = |params: Value| params.to_string();
+    let abc = |name: &str, r: f64, x: f64, amps: f64| {
+        json!({
+            "clean_name": name,
+            "electrical_params": electrical(json!({
+                "r_ohm_per_km": r, "x_ohm_per_km": x, "max_i_ka": amps / 1000.0
+            })),
+        })
+    };
+    // The seeds `design lv project-export --project-config` carries: the
+    // builder's project settings, cos φ, the customer category that gives a
+    // load its watts, the ABC ladder, one service cable and the transformer
+    // sizes, each with its electrical parameters.
+    let config = json!({
+        "project_settings": [
+            { "parameter": "cos_phi", "value": 0.85 },
+            { "parameter": "sc_real_length", "value": "x + (x*0.01) + 6" },
+            { "parameter": "max_service_length", "value": 37 },
+            { "parameter": "pole_spacing", "value": 50 },
+        ],
+        "cust_category": [{
+            "clean_name": "Residential",
+            "peak_power_w": 250,
+            "misspelled_names": ["Residential"],
+        }],
+        "lv_lines": [
+            abc("3 x 35 + 54.6mm² ABC", 0.868, 0.0982, 132.0),
+            abc("3 x 70 + 54.6mm² ABC", 0.443, 0.0893, 205.0),
+        ],
+        "service_cable_sizes": [{
+            "service_cable_size": "2 x 6 mm²",
+            "meter_type": "Single Phase",
+            "electrical_params": electrical(json!({
+                "r_ohm_per_km": 3.08, "x_ohm_per_km": 0.09, "max_i_ka": 0.039
+            })),
+        }],
+        "transfo_sizes": [{
+            "transfo_sizes": 100,
+            "electrical_params": electrical(json!({ "vk_percent": 4.0, "vkr_percent": 1.45 })),
+        }],
+    });
+    // A 100 kVA transformer and four 250 W single-phase customers beside a
+    // ~200 m line: comfortably within REG's ±10 %.
+    let customers: Vec<Value> = (0..4)
+        .map(|index| {
+            json!({
+                "type": "Feature",
+                "id": format!("c{index}"),
+                "geometry": { "type": "Point", "coordinates": [30.0003 + 0.0004 * index as f64, -2.00008] },
+                "properties": {
+                    "load": "Residential, 250", "meter_type": "Single Phase",
+                    "service_cable_size": "2 x 6 mm²",
+                }
+            })
+        })
+        .collect();
+    std::fs::write(
+        &input_path,
+        serde_json::to_vec(&json!({
+            "schema": "ds.fast-lv.request/v1",
+            "jobs": [{
+                "transformer_name": "VD1",
+                "gdfs": {
+                    "tr": { "type": "FeatureCollection", "features": [{
+                        "type": "Feature", "id": "VD1-tr",
+                        "geometry": { "type": "Point", "coordinates": [30.0, -2.0] },
+                        "properties": { "name": "VD1", "names": "VD1", "transfo_size": 100 }
+                    }]},
+                    "lv_lines": { "type": "FeatureCollection", "features": [{
+                        "type": "Feature", "id": "VD1-line",
+                        "geometry": { "type": "LineString", "coordinates": [[30.0, -2.0], [30.0018, -2.0]] },
+                        "properties": { "cable_size": "3 x 35 + 54.6mm² ABC" }
+                    }]},
+                    "customers": { "type": "FeatureCollection", "features": customers },
+                },
+                "settings": {},
+                "config_dfs": config,
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let input = input_path.display().to_string();
+    let output = output_path.display().to_string();
+    let run = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
+            "design",
+            "lv",
+            "voltage-drop",
+            "--input",
+            &input,
+            "--out",
+            &output,
+            "--output",
+            "json",
+        ])
+        // Like the process it wraps, the check never inspects a Desktop.
+        .env("DS_DESKTOP_DESCRIPTOR", root.join("stale-desktop.json"))
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("ds binary runs");
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let envelope: Value = serde_json::from_slice(&run.stdout).unwrap();
+    let receipt = &envelope["data"];
+    assert_eq!(receipt["method"], "ds-lv-vd/1");
+    assert_eq!(receipt["jobs"], 1);
+    assert_eq!(
+        receipt["succeeded"],
+        1,
+        "{}",
+        std::fs::read_to_string(&output_path).unwrap_or_default()
+    );
+    let row = &receipt["results"][0];
+    assert_eq!(row["transformer_name"], "VD1");
+    assert_eq!(row["status"], "calculated");
+    assert_eq!(row["customers"], 4);
+    assert_eq!(row["customers_failing"], 0);
+    assert_eq!(row["compliant"], true);
+    assert_eq!(row["sizing_status"], "compliant_as_drawn");
+    let worst = row["worst_vd_pct"].as_f64().expect("a worst drop");
+    assert!(worst > 0.0 && worst < 10.0, "worst drop {worst} %");
+
+    let result: Value = serde_json::from_slice(&std::fs::read(&output_path).unwrap()).unwrap();
+    assert_eq!(result["schema"], "ds.lv-voltage-drop.result/v1");
+    let customers = result["jobs"][0]["layers"]["customers"]["features"]
+        .as_array()
+        .expect("processed customers");
+    assert_eq!(customers.len(), 4);
+    assert!(customers.iter().all(|customer| {
+        customer["properties"]["vd_pct"]
+            .as_f64()
+            .is_some_and(|pct| pct > 0.0)
+            && customer["properties"]["vd_ok"] == true
+    }));
+    // Four equal single-phase loads are balanced across all three phases.
+    let phases: BTreeSet<&str> = customers
+        .iter()
+        .filter_map(|customer| customer["properties"]["connection_phase"].as_str())
+        .collect();
+    assert_eq!(phases.len(), 3, "{phases:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop() {
     let root = temp_root("native-fast-lv-project-export");
     std::fs::create_dir_all(&root).unwrap();
@@ -8453,8 +8608,9 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     assert_eq!(
         commands.len(),
         // Base 101, minus four retired commands, plus three version and five
-        // attachment/comment commands added on 2026-09-25.
-        105,
+        // attachment/comment commands added on 2026-09-25, plus the LV
+        // voltage-drop check (2026-09-28).
+        106,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
