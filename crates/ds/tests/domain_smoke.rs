@@ -7505,6 +7505,200 @@ fn design_lv_voltage_drop_checks_reg_compliance_without_project_or_desktop_state
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The owner's per-customer load question, asked of the real binary: one
+/// ~1.2 km 3 x 35 mm² feeder of 150 Residential customers (250 W at
+/// saturation, 60 W at commissioning) fails within its outlook as
+/// configured, complies at year 0, and complies in every year at 100 W. Each
+/// run echoes its scenario, and none of them changes the request file.
+#[test]
+fn design_lv_voltage_drop_scenarios_answer_the_per_customer_load_question() {
+    let root = temp_root("native-lv-voltage-drop-scenario");
+    std::fs::create_dir_all(&root).unwrap();
+    let input_path = root.join("request.json");
+    let electrical = |params: Value| params.to_string();
+    let abc = |name: &str, r: f64, x: f64, amps: f64| {
+        json!({
+            "clean_name": name,
+            "electrical_params": electrical(json!({
+                "r_ohm_per_km": r, "x_ohm_per_km": x, "max_i_ka": amps / 1000.0
+            })),
+        })
+    };
+    let config = json!({
+        "project_settings": [
+            { "parameter": "cos_phi", "value": 0.85 },
+            { "parameter": "sc_real_length", "value": "x + (x*0.01) + 6" },
+            { "parameter": "max_service_length", "value": 37 },
+            { "parameter": "pole_spacing", "value": 50 },
+        ],
+        "cust_category": [{
+            "clean_name": "Residential",
+            "peak_power_w": 250,
+            "initial_power_w": 60,
+            "misspelled_names": ["Residential"],
+        }],
+        "lv_lines": [
+            abc("3 x 35 + 54.6mm² ABC", 0.868, 0.0982, 132.0),
+            abc("3 x 70 + 54.6mm² ABC", 0.443, 0.0893, 205.0),
+            abc("3 x 120 + 54.6mm² ABC", 0.253, 0.0855, 300.0),
+        ],
+        "service_cable_sizes": [{
+            "service_cable_size": "2 x 6 mm²",
+            "meter_type": "Single Phase",
+            "electrical_params": electrical(json!({
+                "r_ohm_per_km": 3.08, "x_ohm_per_km": 0.09, "max_i_ka": 0.039
+            })),
+        }],
+        "transfo_sizes": [
+            { "transfo_sizes": 100, "electrical_params": electrical(json!({ "vk_percent": 4.0, "vkr_percent": 1.45 })) },
+            { "transfo_sizes": 160, "electrical_params": electrical(json!({ "vk_percent": 4.0, "vkr_percent": 1.375 })) },
+        ],
+    });
+    let length_deg = 0.0108;
+    let customers: Vec<Value> = (0..150)
+        .map(|index| {
+            let x = 30.0002 + (length_deg - 0.0002) * index as f64 / 150.0;
+            json!({
+                "type": "Feature",
+                "id": format!("c{index}"),
+                "geometry": { "type": "Point", "coordinates": [x, -2.00008] },
+                "properties": {
+                    "load": "Residential, 250", "meter_type": "Single Phase",
+                    "service_length": 10.0, "service_cable_size": "2 x 6 mm²",
+                }
+            })
+        })
+        .collect();
+    let request = serde_json::to_vec(&json!({
+        "schema": "ds.fast-lv.request/v1",
+        "jobs": [{
+            "transformer_name": "LONG",
+            "gdfs": {
+                "tr": { "type": "FeatureCollection", "features": [{
+                    "type": "Feature", "id": "LONG-tr",
+                    "geometry": { "type": "Point", "coordinates": [30.0, -2.0] },
+                    "properties": { "name": "LONG", "names": "LONG", "transfo_size": 100 }
+                }]},
+                "lv_lines": { "type": "FeatureCollection", "features": [{
+                    "type": "Feature", "id": "LONG-line",
+                    "geometry": { "type": "LineString", "coordinates": [[30.0, -2.0], [30.0 + length_deg, -2.0]] },
+                    "properties": { "cable_size": "3 x 35 + 54.6mm² ABC" }
+                }]},
+                "customers": { "type": "FeatureCollection", "features": customers },
+            },
+            "settings": {},
+            "config_dfs": config,
+        }]
+    }))
+    .unwrap();
+    std::fs::write(&input_path, &request).unwrap();
+
+    let input = input_path.display().to_string();
+    let check = |name: &str, format: &str, flags: &[&str]| {
+        let output = root.join(name).display().to_string();
+        let mut args = vec![
+            "design",
+            "lv",
+            "voltage-drop",
+            "--input",
+            &input,
+            "--out",
+            &output,
+        ];
+        args.extend_from_slice(flags);
+        args.extend_from_slice(&["--output", format]);
+        Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(&args)
+            .env("DS_DESKTOP_DESCRIPTOR", root.join("stale-desktop.json"))
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("ds binary runs")
+    };
+    let receipt = |name: &str, flags: &[&str]| -> Value {
+        let run = check(name, "json", flags);
+        assert_eq!(
+            run.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&run.stdout)
+        );
+        let envelope: Value = serde_json::from_slice(&run.stdout).unwrap();
+        envelope["data"].clone()
+    };
+
+    // As configured: fails within the outlook, which starts compliant.
+    let base = receipt("base.vd.json", &[]);
+    let row = &base["results"][0];
+    assert_eq!(row["compliant"], false, "{row}");
+    assert_eq!(row["design_year"], 5, "{row}");
+    let failing = row["first_failing_year"]
+        .as_u64()
+        .expect("the drawn design fails in an outlook year");
+    assert!((1..=5).contains(&failing), "{row}");
+    assert_eq!(row["schedule"].as_array().map(Vec::len), Some(6), "{row}");
+    assert_eq!(row["schedule"][0]["as_drawn"]["compliant"], true, "{row}");
+    assert_eq!(
+        base["scenario"],
+        json!({ "project_settings": {}, "loads": [] })
+    );
+    let written: Value =
+        serde_json::from_slice(&std::fs::read(root.join("base.vd.json")).unwrap()).unwrap();
+    assert_eq!(row["schedule"], written["jobs"][0]["sizing"]["schedule"]);
+
+    // Year 0 at the 60 W commissioning load: the same feeder complies.
+    let early = receipt("year0.vd.json", &["--year", "0", "--no-outlook"]);
+    let row = &early["results"][0];
+    assert_eq!(row["design_year"], 0, "{row}");
+    assert_eq!(row["compliant"], true, "{row}");
+    assert_eq!(row["schedule"], json!([]), "{row}");
+    assert_eq!(
+        early["scenario"]["project_settings"],
+        json!({ "vd_design_year": 0, "vd_staged_plan": false })
+    );
+
+    // Residential at 100 W: complies in every outlook year.
+    let light = receipt("res100.vd.json", &["--load", "Residential=100"]);
+    let row = &light["results"][0];
+    assert_eq!(row["compliant"], true, "{row}");
+    assert_eq!(row["customers_failing"], 0, "{row}");
+    assert_eq!(row["first_failing_year"], Value::Null, "{row}");
+    assert_eq!(
+        light["scenario"]["loads"],
+        json!([{
+            "category": "Residential", "saturation_w": 100.0, "initial_w": 100.0,
+            "customer_loads_rewritten": 150,
+        }])
+    );
+
+    // The human outlook: one line per year, then the first failing year.
+    let text = check("text.vd.json", "human", &[]);
+    assert_eq!(text.status.code(), Some(0));
+    let text = String::from_utf8_lossy(&text.stdout);
+    for year in 0..=5 {
+        assert!(
+            text.contains(&format!("  year {year}: worst drop ")),
+            "{text}"
+        );
+    }
+    assert!(
+        text.contains(&format!("First failing year: {failing}.")),
+        "{text}"
+    );
+
+    // `--set` takes voltage-drop settings only, and refuses before writing.
+    let refused = check("refused.vd.json", "json", &["--set", "cos_phi=0.9"]);
+    assert_ne!(refused.status.code(), Some(0));
+    let envelope: Value = serde_json::from_slice(&refused.stdout).unwrap();
+    assert_eq!(
+        envelope["error"]["code"], "vd_scenario_setting_refused",
+        "{envelope}"
+    );
+    assert!(!root.join("refused.vd.json").exists());
+
+    assert_eq!(std::fs::read(&input_path).unwrap(), request);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop() {
     let root = temp_root("native-fast-lv-project-export");

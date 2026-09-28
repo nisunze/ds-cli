@@ -102,8 +102,10 @@ the source or configuration changes. Reports are a subsequent
 ## LV voltage drop
 
 `ds design lv voltage-drop` checks whether every customer of an LV transformer
-stays within REG's ±10 % of 230 V at the saturation design load (REG VII
-§1.2.1), by method `ds-lv-vd/1`
+stays within the voltage limit of the project's rule set (REG's ±10 % of 230 V,
+REG VII §1.2.1; IEC 60038 ±10 % when the project has no rule) at the design
+year's load, and from which outlook year the drawn design fails, by method
+`ds-lv-vd/1`
 (`ds-work/standards/voltage-drop/02-METHOD-CONTRACT.md`). It reads the same
 closed `ds.fast-lv.request/v1` file as `ds design lv process`, with the same
 bounds and refusals, and processes each transformer with the voltage drop
@@ -150,11 +152,59 @@ layers carrying the `vd_*` columns and each customer's balanced
 three. The result is never truncated or overwritten; above 256 MiB it is
 refused.
 
-The terminal receipt carries the digests, counts and one row per job: report
-status, customers, failing customers, worst drop %, compliance, transformer
-loading %, stage-2 status, change count, the transformer change (from/to kVA)
-and the infeasible count. Nothing is written to the project: accepting a
-recommendation is a design edit, and reports and prints follow separately.
+The terminal receipt carries the digests, counts, the run's `scenario` and one
+row per job: report status, customers, failing customers, worst drop %, limit
+%, compliance, transformer loading %, stage-2 status, change count, the
+transformer change (from/to kVA), the infeasible count, added cost and its
+basis, the design year, and the engine's `first_failing_year` and `schedule`
+(one entry per outlook year, exactly as `sizing` has them). Human output adds
+one line per outlook year — worst drop as drawn, customers over the limit, the
+reinforcement first needed and its cost — then the first failing year. Nothing
+is written to the project: accepting a recommendation is a design edit, and
+reports and prints follow separately.
+
+### Year scenarios
+
+Five inputs change what one run checks, never the project or the input file.
+Each is written into every job's `config_dfs` in memory, as the setting the
+method already reads, before the engine runs:
+
+| Input | Becomes | Bounds and default |
+|---|---|---|
+| `--year <n>` | `project_settings.vd_design_year` | 0..50. Default: `vd_growth_years`, else the rule set's `growth_years`, else 5 |
+| `--outlook <years>` | `vd_outlook_years` | comma-separated, each 0..50, sorted and deduplicated. Default: every year from 0 to the design year |
+| `--no-outlook` | `vd_staged_plan=false` | the design year only: an empty `schedule` and no staged plan. Conflicts with `--outlook` |
+| `--load <Category>=<W>[:<W>]` | the category's `cust_category` `peak_power_w` and `initial_power_w`, its rule-set `category_loads` entry, and each matching customer's `load` (`"<Category>, <W>"`) | saturation 0 < W ≤ 100000, then initial 0..saturation (flat at saturation when omitted); up to 32; the category must be one a job defines |
+| `--set vd_<name>=<value>` | `project_settings.vd_<name>` | lowercase `vd_` names of at most 64 characters, values of 1..256 characters (`true`/`false`, a number, else text); up to 32 |
+
+`--set` takes the other settings the method reads: `vd_limit_pct`,
+`vd_years_to_saturation`, `vd_max_recommended_abc_mm2`, `vd_max_new_circuits`,
+`vd_calculate_<nature>`, `vd_calculate_untagged`, and the voltage and
+resistance settings. The three settings with their own flag are refused there.
+
+```bash
+ds design lv voltage-drop --input ./T-1042.fast-lv.json \
+  --out ./T-1042.res100.vd.json --load Residential=100:60 --outlook 0,5,10 \
+  --output json
+```
+
+The receipt and the result document both carry the `scenario` block, empty
+when nothing was overridden:
+
+```json
+{ "scenario": {
+    "project_settings": { "vd_outlook_years": "0,5,10" },
+    "loads": [{ "category": "Residential", "saturation_w": 100.0,
+                "initial_w": 60.0, "customer_loads_rewritten": 150 }] } }
+```
+
+Where the method took each value from is `report.parameters.sources`
+(`project_settings.vd_limit_pct`, for one). A malformed or out-of-bound flag is
+`vd_scenario_invalid` and names the flag; a non-`vd_` or flag-owned name is
+`vd_scenario_setting_refused`; a repeated override or `--outlook` with
+`--no-outlook` is `vd_scenario_conflict`; a `--load` category no job defines is
+`vd_scenario_category_unknown` and lists the defined ones. No refusal writes
+anything.
 
 ## Headless feature selection
 

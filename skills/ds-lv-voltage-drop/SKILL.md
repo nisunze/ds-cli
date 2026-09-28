@@ -70,6 +70,16 @@ project workbook's `cust_category` (`peak_power_w`, `initial_power_w`).
 when asked "why". No simultaneity factor is applied: the rule set's
 `diversity` text states why.
 
+## Run a scenario
+
+The run-only inputs of `design.lv.voltage-drop` change what one check assumes,
+never the project: `--year` (design year), `--outlook` (years to check),
+`--no-outlook`, `--load <Category>=<saturation W>[:<initial W>]` (repeatable)
+and `--set vd_<name>=<value>` (repeatable, `vd_*` settings only). Write each
+scenario to its own `--out`, run the unchanged input once as the baseline,
+and compare the rows side by side. The result's `scenario` block lists every
+override; quote it with the numbers.
+
 ## Explain, don't decide
 
 - Lead with the verdict and the first failing year, then the plan and its

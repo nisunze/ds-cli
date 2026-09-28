@@ -4,9 +4,11 @@
 //! It reads the same closed `ds.fast-lv.request/v1` that `design.lv.process`
 //! reads, with the same bounds and refusals, and processes each transformer
 //! with the voltage drop forced on. Every engineering decision — the load
-//! flow, each customer's connection phase, the REG ±10 % verdict and the
-//! cheapest compliant upgrade — is ds-network's
-//! (`process_lv_transformer_with_voltage_drop`); this command reads the file,
+//! flow, each customer's connection phase, the verdict against the project
+//! rule set's voltage limit, the outlook by year and the cheapest compliant
+//! upgrade — is ds-network's (`process_lv_transformer_with_voltage_drop`);
+//! this command reads the file, writes the run's scenario (`--year`,
+//! `--outlook`, `--no-outlook`, `--load`, `--set`) into the in-memory request,
 //! runs the jobs in input order and writes one result document it never
 //! overwrites. Nothing here reaches a project.
 
@@ -28,6 +30,7 @@ use serde_json::{Map, Value, json};
 
 use super::artifact::{VOLTAGE_DROP_RESULT, ensure_absent, sha256, write_new};
 use super::process::{bounded_read, map_owner_error};
+use super::scenario::Scenario;
 
 /// The schema of the document written to `--out`.
 pub const RESULT_SCHEMA: &str = "ds.lv-voltage-drop.result/v1";
@@ -36,8 +39,8 @@ pub static COMMAND: Command = Command {
     id: "design.lv.voltage-drop",
     path: &["design", "lv", "voltage-drop"],
     contract: 1,
-    summary: "Check LV voltage drop against REG and recommend compliant upgrades.",
-    purpose: "Check whether every customer of an LV transformer stays within REG's ±10 % of 230 V at saturation design load (method ds-lv-vd/1). Supply the same ds.fast-lv.request/v1 design.lv.process reads: design.lv.project-export --project-config carries the conductor and transformer seeds the method needs. Each transformer is processed with voltage drop on, every customer gets a balanced connection phase and a supply voltage, and stage 2 recommends the cheapest conductor or transformer upgrades that comply. Only the result file is written; nothing is saved to the project. Reports and printing follow separately.",
+    summary: "Check LV voltage drop by year and recommend compliant upgrades.",
+    purpose: "Check whether every customer of an LV transformer stays within the voltage limit of the project's rule set (IEC 60038 ±10 % when it has none) at the design year's load, and the first outlook year the drawn design fails (method ds-lv-vd/1). Input: the ds.fast-lv.request/v1 of design.lv.project-export --project-config. Stage 2 recommends the cheapest compliant upgrades, each scheduled by the year it is first needed. --year, --outlook, --no-outlook, --load and --set change this run only, never the project; the result echoes them.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -55,14 +58,65 @@ pub static COMMAND: Command = Command {
             "Absent path for the complete ds.lv-voltage-drop.result/v1 document.",
         )
         .required(),
+        Arg::value(
+            "year",
+            "<n>",
+            "Design year to check, 0..50 (vd_design_year). Default: vd_growth_years, else 5.",
+        ),
+        Arg::value(
+            "outlook",
+            "<years>",
+            "Comma-separated years, each 0..50 (vd_outlook_years). Default: 0 to the design year.",
+        ),
+        Arg::switch(
+            "no-outlook",
+            "Design year only: no outlook or schedule (vd_staged_plan=false).",
+        ),
+        Arg::repeated(
+            "load",
+            "<Category>=<W>[:<W>]",
+            "Category saturation load, 0 < W ≤ 100000, then initial, 0..saturation (flat if omitted); up to 32. Sets cust_category and customer loads. Default: the project's.",
+        ),
+        Arg::repeated(
+            "set",
+            "<vd_name>=<value>",
+            "Another vd_* project setting, e.g. vd_limit_pct=8; up to 32. Default: the project's. Other names are refused.",
+        ),
     ],
-    output: "`out`, input/result SHA-256 digests, byte count, engine version, method, job/success/failure/compliant counts, and one input-ordered row per job: report status, customers, failing customers, worst drop %, compliance, transformer loading %, stage-2 status, change count, transformer change and infeasible count. Reports, sizing, processed layers and per-job diagnostics are written only to `out`.",
-    examples: &[Example {
-        command: "ds design lv voltage-drop --input ./T-1042.fast-lv.json --out ./T-1042.vd.json --output json",
-        note: "Check one exported transformer against REG without a Desktop session or project identity.",
-        runnable: false,
-    }],
+    output: "`out`, digests, byte count, engine version, method, counts, `scenario` (every override), and one row per job: status, customers, failing customers, worst drop %, limit %, compliance, transformer loading %, stage-2 status, changes, transformer change, infeasible, added cost and basis, design year, first failing year and the engine's outlook schedule. Layers and diagnostics go only to `out`.",
+    examples: &[
+        Example {
+            command: "ds design lv voltage-drop --input ./T-1042.fast-lv.json --out ./T-1042.vd.json --output json",
+            note: "Check one exported transformer offline, with no project identity.",
+            runnable: false,
+        },
+        Example {
+            command: "ds design lv voltage-drop --input ./T-1042.fast-lv.json --out ./T-1042.res100.vd.json --load Residential=100:60 --outlook 0,5,10",
+            note: "Residential at 100 W (60 W at commissioning), years 0, 5 and 10.",
+            runnable: true,
+        },
+    ],
     refusals: &[
+        Refusal {
+            code: "vd_scenario_invalid",
+            when: "a scenario flag is malformed or outside its bound",
+            remedy: "the refusal names the flag and its accepted form",
+        },
+        Refusal {
+            code: "vd_scenario_setting_refused",
+            when: "--set names a non-vd_* setting or one a flag owns",
+            remedy: "--set only vd_* settings; the refusal names the flag",
+        },
+        Refusal {
+            code: "vd_scenario_conflict",
+            when: "an override is repeated, or --outlook meets --no-outlook",
+            remedy: "give each override once",
+        },
+        Refusal {
+            code: "vd_scenario_category_unknown",
+            when: "--load names a category no job's cust_category defines",
+            remedy: "use a clean_name the refusal lists",
+        },
         Refusal {
             code: "fast_lv_source_not_found",
             when: "--input is absent, not a regular file, or cannot be read",
@@ -116,6 +170,9 @@ pub static COMMAND: Command = Command {
         "connection phase",
         "cable sizing",
         "conductor sizing",
+        "scenario",
+        "load growth",
+        "reinforcement",
     ],
     requires: Requires::Server,
     availability: || Availability::Available,
@@ -131,22 +188,28 @@ struct Solved {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let input_path = PathBuf::from(inputs.require("input")?);
     let output_path = PathBuf::from(inputs.require("out")?);
+    // A malformed scenario is refused before anything is read.
+    let scenario = Scenario::parse(inputs)?;
     ensure_absent(&output_path, &VOLTAGE_DROP_RESULT)?;
 
     let input = bounded_read(&input_path)?;
     let input_sha256 = sha256(&input);
-    let request = decode_native_fast_lv_request(&input).map_err(map_owner_error)?;
+    let mut request = decode_native_fast_lv_request(&input).map_err(map_owner_error)?;
     drop(input);
+    // The scenario changes this run's copy of the request only: the file and
+    // the project keep their own settings and loads.
+    let rewritten = scenario.apply(&mut request.jobs)?;
 
     // Input order is the result order; each job is independent, so one that
     // fails or panics is reported in its row and never stops the rest.
     let solved: Vec<Solved> = request.jobs.into_iter().map(solve).collect();
+    let scenario = scenario.echo(&rewritten);
     let rows: Vec<Value> = solved.iter().map(row).collect();
     let jobs = rows.len();
     let succeeded = solved.iter().filter(|job| job.outcome.is_ok()).count();
     let compliant = rows.iter().filter(|row| row["compliant"] == true).count();
 
-    let output = encode(solved)?;
+    let output = encode(solved, &scenario)?;
     let result_sha256 = sha256(&output);
     write_new(&output_path, &output, &VOLTAGE_DROP_RESULT)?;
 
@@ -157,6 +220,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "byte_count": output.len(),
         "engine_core_version": ds_network::CORE_VERSION,
         "method": METHOD,
+        "scenario": scenario,
         "jobs": jobs,
         "succeeded": succeeded,
         "failed": jobs - succeeded,
@@ -185,14 +249,28 @@ pub fn render(value: &Value) -> String {
         count("partially_resolved"),
         count("not_calculated"),
     );
+    if let Some(line) = scenario_line(&value["scenario"]) {
+        text.push('\n');
+        text.push_str(&line);
+    }
     let worst = rows
         .iter()
         .filter_map(|row| row["worst_vd_pct"].as_f64())
         .reduce(f64::max);
     if let Some(worst) = worst {
-        text.push_str(&format!(
-            "\nWorst customer drop: {worst:.2} % (limit 10 %)."
-        ));
+        let at = uniform(rows, "design_year")
+            .and_then(|year| year.as_u64())
+            .map(|year| format!(" at design year {year}"))
+            .unwrap_or_default();
+        let limit = uniform(rows, "limit_pct")
+            .and_then(|limit| limit.as_f64())
+            .map(|limit| format!(" (limit {limit} %)"))
+            .unwrap_or_default();
+        text.push_str(&format!("\nWorst customer drop{at}: {worst:.2} %{limit}."));
+    }
+    for line in outlook_lines(rows) {
+        text.push('\n');
+        text.push_str(&line);
     }
     text.push_str(&format!(
         "\nResult: {}\nSHA-256: {}",
@@ -203,6 +281,175 @@ pub fn render(value: &Value) -> String {
         text.push_str("\nInspect the result document for per-transformer diagnostics.");
     }
     text
+}
+
+/// The one value every calculated row carries for `key`, when they agree.
+fn uniform<'a>(rows: &'a [Value], key: &str) -> Option<&'a Value> {
+    let mut values = rows
+        .iter()
+        .filter(|row| row["ok"] == true)
+        .map(|row| &row[key])
+        .filter(|value| !value.is_null());
+    let first = values.next()?;
+    values.all(|value| value == first).then_some(first)
+}
+
+/// `Scenario (this run only): vd_design_year=3; Residential 100 W (initial 60 W).`
+fn scenario_line(scenario: &Value) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(settings) = scenario["project_settings"].as_object() {
+        let settings: Vec<String> = settings
+            .iter()
+            .map(|(name, value)| match value {
+                Value::String(text) => format!("{name}={text}"),
+                other => format!("{name}={other}"),
+            })
+            .collect();
+        if !settings.is_empty() {
+            parts.push(settings.join(", "));
+        }
+    }
+    if let Some(loads) = scenario["loads"].as_array() {
+        let loads: Vec<String> = loads
+            .iter()
+            .map(|load| {
+                format!(
+                    "{} {} W (initial {} W)",
+                    load["category"].as_str().unwrap_or(""),
+                    load["saturation_w"].as_f64().unwrap_or(0.0),
+                    load["initial_w"].as_f64().unwrap_or(0.0),
+                )
+            })
+            .collect();
+        if !loads.is_empty() {
+            parts.push(loads.join(", "));
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(format!("Scenario (this run only): {}.", parts.join("; ")))
+}
+
+/// One year of the outlook over every calculated transformer.
+#[derive(Default)]
+struct OutlookYear {
+    worst_vd_pct: Option<f64>,
+    customers_failing: u64,
+    /// Change kind → count, for the changes first needed this year.
+    changes: std::collections::BTreeMap<String, u64>,
+    transformers: Vec<f64>,
+    added_cost: f64,
+}
+
+/// One line per outlook year — worst drop as drawn, customers over the
+/// limit, the reinforcement first needed and its cost — then the first
+/// failing year. Several transformers are summed per year.
+fn outlook_lines(rows: &[Value]) -> Vec<String> {
+    let scheduled: Vec<&Value> = rows
+        .iter()
+        .filter(|row| {
+            row["schedule"]
+                .as_array()
+                .is_some_and(|years| !years.is_empty())
+        })
+        .collect();
+    if scheduled.is_empty() {
+        return Vec::new();
+    }
+    let mut years: std::collections::BTreeMap<u64, OutlookYear> = Default::default();
+    for row in &scheduled {
+        for entry in row["schedule"].as_array().into_iter().flatten() {
+            let Some(year) = entry["year"].as_u64() else {
+                continue;
+            };
+            let outlook = years.entry(year).or_default();
+            if let Some(worst) = entry["as_drawn"]["worst_vd_pct"].as_f64() {
+                outlook.worst_vd_pct =
+                    Some(outlook.worst_vd_pct.map_or(worst, |seen| seen.max(worst)));
+            }
+            outlook.customers_failing +=
+                entry["as_drawn"]["customers_failing"].as_u64().unwrap_or(0);
+            for change in entry["changes"].as_array().into_iter().flatten() {
+                let kind = change["kind"].as_str().unwrap_or("change").to_string();
+                *outlook.changes.entry(kind).or_default() += 1;
+            }
+            if let Some(kva) = entry["transformer_to_kva"].as_f64() {
+                outlook.transformers.push(kva);
+            }
+            outlook.added_cost += entry["added_cost"].as_f64().unwrap_or(0.0);
+        }
+    }
+    let basis = uniform(rows, "cost_basis").and_then(Value::as_str);
+    let mut lines = vec![if scheduled.len() == 1 {
+        "Outlook of the drawn design:".to_string()
+    } else {
+        format!(
+            "Outlook of the drawn design across {} transformers (worst drop; customers, changes and cost summed):",
+            scheduled.len()
+        )
+    }];
+    for (year, outlook) in &years {
+        let worst = outlook
+            .worst_vd_pct
+            .map_or("no drop calculated".to_string(), |worst| {
+                format!("worst drop {worst:.2} %")
+            });
+        let mut needed: Vec<String> = outlook
+            .changes
+            .iter()
+            .map(|(kind, count)| {
+                let noun = match kind.as_str() {
+                    "lv_line" => "conductor upgrade",
+                    "new_circuit" => "new circuit",
+                    "service_cable" => "service cable upgrade",
+                    _ => "change",
+                };
+                plural(*count, noun)
+            })
+            .collect();
+        match outlook.transformers.as_slice() {
+            [] => {}
+            [kva] => needed.push(format!("transformer to {kva} kVA")),
+            many => needed.push(plural(many.len() as u64, "transformer upgrade")),
+        }
+        let reinforcement = if needed.is_empty() {
+            "no reinforcement first needed".to_string()
+        } else {
+            format!("reinforcement first needed: {}", needed.join(", "))
+        };
+        let cost = match basis {
+            Some(_) => format!("; cost {}", amount(outlook.added_cost)),
+            None => String::new(),
+        };
+        lines.push(format!(
+            "  year {year}: {worst}, {} over the limit, {reinforcement}{cost}",
+            plural(outlook.customers_failing, "customer"),
+        ));
+    }
+    let first_failing = scheduled
+        .iter()
+        .filter_map(|row| row["first_failing_year"].as_u64())
+        .min();
+    lines.push(match first_failing {
+        Some(year) => format!("First failing year: {year}."),
+        None => "The drawn design complies in every outlook year.".to_string(),
+    });
+    lines.push(match basis {
+        Some(basis) => format!("Cost basis: {basis}."),
+        None => "Cost bases differ between transformers; each row carries its own.".to_string(),
+    });
+    lines
+}
+
+fn plural(count: u64, noun: &str) -> String {
+    ds_cli_contract::args::plural(count, noun)
+}
+
+/// A cost with at most two decimals and no trailing zeros.
+fn amount(value: f64) -> String {
+    let text = format!("{value:.2}");
+    text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
 fn solve(job: NativeFastLvJobV1) -> Solved {
@@ -223,13 +470,16 @@ fn solve(job: NativeFastLvJobV1) -> Solved {
     }
 }
 
-/// The compact receipt row: the verdict and what stage 2 asks for, never the
-/// layers, the per-customer results or an error text.
+/// The receipt row: the verdict, what stage 2 asks for and the engine's
+/// outlook schedule, never the layers, the per-customer results or an error
+/// text.
 fn row(job: &Solved) -> Value {
     let Ok((_, run)) = &job.outcome else {
         return json!({ "transformer_name": job.transformer_name, "ok": false });
     };
     let summary = &run.report.summary;
+    let parameters = run.report.parameters.as_ref();
+    let sizing = &run.sizing;
     json!({
         "transformer_name": job.transformer_name,
         "ok": true,
@@ -237,20 +487,26 @@ fn row(job: &Solved) -> Value {
         "customers": summary.customers,
         "customers_failing": summary.customers_failing,
         "worst_vd_pct": summary.worst_vd_pct,
+        "limit_pct": parameters.map(|parameters| parameters.voltage_limit_pct),
         "compliant": summary.compliant,
         "transformer_loading_pct": run.report.transformer.as_ref().and_then(|t| t.loading_pct),
-        "sizing_status": run.sizing.status,
-        "changes": run.sizing.changes.len(),
-        "transformer_change": run.sizing.transformer_change.as_ref().map(|change| json!({
+        "sizing_status": sizing.status,
+        "changes": sizing.changes.len(),
+        "transformer_change": sizing.transformer_change.as_ref().map(|change| json!({
             "from_kva": change.from_kva,
             "to_kva": change.to_kva,
         })),
-        "infeasible": run.sizing.infeasible.len(),
+        "infeasible": sizing.infeasible.len(),
+        "total_added_cost": sizing.total_added_cost,
+        "cost_basis": (!sizing.cost_basis.is_empty()).then_some(&sizing.cost_basis),
+        "design_year": parameters.map(|parameters| parameters.growth_years),
+        "first_failing_year": sizing.first_failing_year,
+        "schedule": sizing.schedule,
     })
 }
 
 /// The complete result document, or a refusal. It is never truncated.
-fn encode(solved: Vec<Solved>) -> Result<Vec<u8>, Failure> {
+fn encode(solved: Vec<Solved>, scenario: &Value) -> Result<Vec<u8>, Failure> {
     let encoding = |error: serde_json::Error| {
         map_owner_error(NativeFastLvError::ResultEncoding(error.to_string()))
     };
@@ -285,6 +541,7 @@ fn encode(solved: Vec<Solved>) -> Result<Vec<u8>, Failure> {
         "engine_core_version".into(),
         ds_network::CORE_VERSION.into(),
     );
+    document.insert("scenario".into(), scenario.clone());
     document.insert("jobs".into(), Value::Array(jobs));
     let bytes = serde_json::to_vec(&document).map_err(encoding)?;
     if bytes.len() > MAX_NATIVE_FAST_LV_OUTPUT_BYTES {
@@ -366,9 +623,15 @@ mod tests {
     /// A 100 kVA transformer, one ~200 m LV line and `customers` 250 W
     /// single-phase customers beside it.
     fn job(name: &str, customers: usize) -> Value {
+        feeder(name, customers, 0.0018)
+    }
+
+    /// A 100 kVA transformer, one 3 x 35 mm² line `length_deg` long (0.0018°
+    /// ≈ 200 m) and `customers` 250 W single-phase customers spread along it.
+    fn feeder(name: &str, customers: usize, length_deg: f64) -> Value {
         let customers: Vec<Value> = (0..customers)
             .map(|index| {
-                let x = 30.0002 + 0.0016 * index as f64 / customers.max(1) as f64;
+                let x = 30.0002 + (length_deg - 0.0002) * index as f64 / customers.max(1) as f64;
                 json!({
                     "type": "Feature",
                     "id": format!("{name}-c{index}"),
@@ -394,7 +657,7 @@ mod tests {
                 "lv_lines": { "type": "FeatureCollection", "features": [{
                     "type": "Feature",
                     "id": format!("{name}-line"),
-                    "geometry": { "type": "LineString", "coordinates": [[30.0, -2.0], [30.0018, -2.0]] },
+                    "geometry": { "type": "LineString", "coordinates": [[30.0, -2.0], [30.0 + length_deg, -2.0]] },
                     "properties": { "cable_size": "3 x 35 + 54.6mm² ABC" }
                 }]},
                 "customers": { "type": "FeatureCollection", "features": customers },
@@ -563,5 +826,187 @@ mod tests {
         assert!(document["jobs"][0]["error"].is_string());
         assert!(document["jobs"][0].get("layers").is_none());
         assert!(render(&receipt).contains("Inspect the result document"));
+    }
+
+    fn scenario_inputs(input: &std::path::Path, out: &std::path::Path, flags: &[&str]) -> Inputs {
+        let mut tokens = vec![
+            "--input".to_string(),
+            input.display().to_string(),
+            "--out".to_string(),
+            out.display().to_string(),
+        ];
+        tokens.extend(flags.iter().map(|flag| flag.to_string()));
+        ds_cli_contract::parse(&COMMAND, &tokens).expect("declared inputs")
+    }
+
+    fn document(path: &std::path::Path) -> Value {
+        serde_json::from_slice(&std::fs::read(path).expect("a result")).expect("json")
+    }
+
+    /// The owner's question to the utility, answered by the method: the same
+    /// ~1.2 km feeder of 150 customers fails at 250 W per Residential
+    /// customer and complies at 100 W; at commissioning (year 0, 60 W) it
+    /// complies too. Each scenario is echoed and the request is untouched.
+    #[test]
+    fn a_scenario_changes_what_the_method_checks_and_is_echoed() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let input = root.path().join("request.json");
+        let mut long = feeder("LONG", 150, 0.0108);
+        long["config_dfs"]["cust_category"][0]["initial_power_w"] = json!(60);
+        let bytes = request(vec![long]);
+        std::fs::write(&input, &bytes).unwrap();
+
+        // As configured: 250 W at saturation, checked at year 5.
+        let base_out = root.path().join("base.vd.json");
+        let base = run(&scenario_inputs(&input, &base_out, &[]), &context()).expect("solved");
+        let row = &base["results"][0];
+        assert_eq!(row["status"], "calculated", "{row}");
+        assert_eq!(row["compliant"], false, "{row}");
+        assert!(
+            row["customers_failing"].as_u64().is_some_and(|n| n > 0),
+            "{row}"
+        );
+        assert_eq!(row["design_year"], 5, "{row}");
+        assert_eq!(row["limit_pct"], 10.0, "{row}");
+        let failing = row["first_failing_year"]
+            .as_u64()
+            .expect("the drawn design fails in an outlook year");
+        assert!(failing > 0 && failing <= 5, "{row}");
+        // The receipt carries the engine's outlook exactly as the document has it.
+        let written = document(&base_out);
+        assert_eq!(row["schedule"], written["jobs"][0]["sizing"]["schedule"]);
+        assert_eq!(
+            row["first_failing_year"],
+            written["jobs"][0]["sizing"]["first_failing_year"]
+        );
+        let years: Vec<u64> = row["schedule"]
+            .as_array()
+            .expect("a schedule")
+            .iter()
+            .filter_map(|year| year["year"].as_u64())
+            .collect();
+        assert_eq!(years, [0, 1, 2, 3, 4, 5]);
+        assert_eq!(row["schedule"][0]["as_drawn"]["compliant"], true, "{row}");
+        let empty = json!({ "project_settings": {}, "loads": [] });
+        assert_eq!(base["scenario"], empty);
+        assert_eq!(written["scenario"], empty);
+        let text = render(&base);
+        assert!(text.contains("Outlook of the drawn design:"), "{text}");
+        assert!(text.contains("  year 0: worst drop "), "{text}");
+        assert!(text.contains("  year 5: worst drop "), "{text}");
+        assert!(text.contains(" over the limit"), "{text}");
+        assert!(
+            text.contains(&format!("First failing year: {failing}.")),
+            "{text}"
+        );
+        assert!(text.contains("(limit 10 %)"), "{text}");
+        assert!(!text.contains("Scenario"), "{text}");
+
+        // Residential at 100 W: the same feeder complies in every year.
+        let light_out = root.path().join("light.vd.json");
+        let light = run(
+            &scenario_inputs(
+                &input,
+                &light_out,
+                &[
+                    "--load",
+                    "Residential=100",
+                    "--set",
+                    "vd_max_recommended_abc_mm2=70",
+                ],
+            ),
+            &context(),
+        )
+        .expect("solved");
+        let row = &light["results"][0];
+        assert_eq!(row["compliant"], true, "{row}");
+        assert_eq!(row["customers_failing"], 0, "{row}");
+        assert_eq!(row["first_failing_year"], Value::Null, "{row}");
+        assert_eq!(row["sizing_status"], "compliant_as_drawn", "{row}");
+        assert_eq!(
+            light["scenario"],
+            json!({
+                "project_settings": { "vd_max_recommended_abc_mm2": 70 },
+                "loads": [{
+                    "category": "Residential", "saturation_w": 100.0, "initial_w": 100.0,
+                    "customer_loads_rewritten": 150,
+                }],
+            })
+        );
+        let written = document(&light_out);
+        assert_eq!(written["scenario"], light["scenario"]);
+        // The method took the setting from the scenario, and says so.
+        assert_eq!(
+            written["jobs"][0]["report"]["parameters"]["sources"]["vd_max_recommended_abc_mm2"],
+            "project_settings.vd_max_recommended_abc_mm2"
+        );
+        let text = render(&light);
+        assert!(
+            text.contains(
+                "Scenario (this run only): vd_max_recommended_abc_mm2=70; \
+                 Residential 100 W (initial 100 W)."
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("The drawn design complies in every outlook year."),
+            "{text}"
+        );
+
+        // Year 0, the 60 W commissioning load, without the outlook, at 8 %.
+        let early_out = root.path().join("year0.vd.json");
+        let early = run(
+            &scenario_inputs(
+                &input,
+                &early_out,
+                &["--year", "0", "--no-outlook", "--set", "vd_limit_pct=8"],
+            ),
+            &context(),
+        )
+        .expect("solved");
+        let row = &early["results"][0];
+        assert_eq!(row["design_year"], 0, "{row}");
+        assert_eq!(row["limit_pct"], 8.0, "{row}");
+        assert_eq!(row["compliant"], true, "{row}");
+        assert_eq!(row["schedule"], json!([]), "{row}");
+        assert_eq!(
+            early["scenario"]["project_settings"],
+            json!({ "vd_design_year": 0, "vd_limit_pct": 8, "vd_staged_plan": false })
+        );
+        let text = render(&early);
+        assert!(!text.contains("Outlook"), "{text}");
+        assert!(text.contains("at design year 0: "), "{text}");
+        assert!(text.contains("(limit 8 %)"), "{text}");
+
+        // Run-scoped: the request on disk is byte-identical.
+        assert_eq!(std::fs::read(&input).unwrap(), bytes);
+    }
+
+    #[test]
+    fn scenario_refusals_come_before_anything_is_written() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let input = root.path().join("request.json");
+        let out = root.path().join("result.vd.json");
+        std::fs::write(&input, request(vec![job("T1", 3)])).unwrap();
+        let refused = |flags: &[&str]| {
+            run(&scenario_inputs(&input, &out, flags), &context())
+                .expect_err("refused")
+                .code()
+                .to_string()
+        };
+        assert_eq!(
+            refused(&["--set", "cos_phi=0.9"]),
+            "vd_scenario_setting_refused"
+        );
+        assert_eq!(
+            refused(&["--set", "max_service_length=40"]),
+            "vd_scenario_setting_refused"
+        );
+        assert_eq!(refused(&["--year", "99"]), "vd_scenario_invalid");
+        assert_eq!(
+            refused(&["--load", "Industrial=5000"]),
+            "vd_scenario_category_unknown"
+        );
+        assert!(!out.exists(), "a refused scenario writes nothing");
     }
 }
