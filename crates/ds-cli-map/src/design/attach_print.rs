@@ -96,7 +96,7 @@ transformer's files and combined atlas/joined pages at archive root.",
         },
         Example {
             command: "ds map design attach-print --path '/deliverables/project-mv-A1.pdf' --scope combined --map-family mv-map --layout 'Project MV A1' --paper-size A1 --orientation landscape --page-role joined --yes --output json",
-            note: "Attach a multipage MV PDF that Combined Report archives place at top level.",
+            note: "Attach a multipage MV PDF that Compounded Report archives place at top level.",
             runnable: false,
         },
     ],

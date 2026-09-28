@@ -12,7 +12,7 @@
 //! subcommand, and reads the document that comes back.
 //!
 //! The `project` family is the other door: the governed report service
-//! produces the Combined Report in the background for the
+//! produces a Compounded Report ZIP in the background for the
 //! CLI-selected project, with no local engine, map, or Desktop. See
 //! [`project`].
 //!
@@ -98,6 +98,7 @@ pub static DOMAIN: Domain = Domain {
         &outbox::DRAIN,
         &project::scope::COMMAND,
         &project::combined::COMMAND,
+        &project::combined::COMBINED_ALIAS,
         &project::compute::COMMAND,
         &project::archives::COMMAND,
         &project::settings::COMMAND,

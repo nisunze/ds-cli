@@ -31,7 +31,7 @@ archives to clean, save, and report as one project delivery.
    Treat an unexplained all-current distribution as a delivery blocker and
    record the bounded change-capture gap instead of repairing row history in
    the skill or CLI.
-5. Read the descriptor for `report.project.combined`. Submit the full explicit
+5. Read the descriptor for `report.project.compounded`. Submit the full explicit
    scope once with `--project <exact-id>`, one `--transformer` per saved name,
    the requested `--file-level` and `--yes`.
 

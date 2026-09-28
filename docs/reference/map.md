@@ -407,8 +407,8 @@ Repeat for every required map family, layout and paper size. Families are
 `--scope combined` targets the combined report; `--scope mv` publishes natively
 to `mv_data` of the project named by `--project` (required there; the saved
 selection is never read); `--page-role atlas|joined`
-marks an atlas or top-level joined PDF. A later `ds report project combined` includes
-the attached variants in the new Combined Report archive. It never modifies an
+marks an atlas or top-level joined PDF. A later `ds report project compounded` includes
+the attached variants in the new Compounded Report archive. It never modifies an
 existing archive.
 
 ## The two identifiers

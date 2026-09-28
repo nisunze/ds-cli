@@ -750,7 +750,7 @@ ds design collisions --project <id> --output json
 
 A collision means two or more transformers claim overlapping ground or a
 clashing identity, and a Combined Report cannot be produced while one
-stands — so this is the read to make before `ds report project combined`
+stands — so this is the read to make before `ds report project compounded`
 fails.
 
 It reads the project-wide collisions document the report owner writes. The

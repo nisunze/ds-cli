@@ -887,6 +887,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
+        "report.project.compounded",
+        "artifact_write",
+        "headless_project",
+    ),
+    (
         "report.project.combined",
         "artifact_write",
         "headless_project",

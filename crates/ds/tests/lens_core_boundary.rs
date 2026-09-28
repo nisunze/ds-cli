@@ -284,8 +284,8 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // Profile view/set are display controls in the paired window.
     // 41 → 39 on 2026-09-23: survey migrate plan/apply left for the headless
     // `ds survey migrate` (both projects explicit). 39 → 38 on 2026-09-26:
-    // `map design batch report` deleted; Combined Report archives are
-    // `ds report project combined` only.
+    // `map design batch report` deleted; Compounded Report archives are
+    // `ds report project compounded` only.
     ("ds-cli-map", 38),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
@@ -532,7 +532,7 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     ("dsgrid", 1),
     // 41 → 39 on 2026-09-23: survey migrate plan/apply run headless as
     // `ds survey migrate`, both projects explicit. 39 → 38 on 2026-09-26:
-    // `map.design.batch.report` deleted (`ds report project combined`).
+    // `map.design.batch.report` deleted (`ds report project compounded`).
     ("map", 38),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.

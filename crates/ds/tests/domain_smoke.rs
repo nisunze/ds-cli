@@ -5334,7 +5334,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             BTreeSet::from(["group-by", "lane", "project", "transformer", "where"]),
         ),
         (
-            "report.project.combined",
+            "report.project.compounded",
             "artifact_write",
             BTreeSet::from([
                 "combine-per-group",
@@ -5348,7 +5348,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             ]),
         ),
         // The cloud twin of `report.project.export`: the same three inputs
-        // as the Combined Report's scope — the names, the lane, and the
+        // as the Compounded Report's scope — the names, the lane, and the
         // framework's `--yes` — and not one option more.
         (
             "report.project.compute",

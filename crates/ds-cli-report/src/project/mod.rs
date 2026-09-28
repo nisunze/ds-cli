@@ -1,4 +1,4 @@
-//! `ds report project` — the project's Combined Report, produced by
+//! `ds report project` — the project's Compounded Report ZIP, produced by
 //! the governed report service in the background.
 //!
 //! These commands need no map, no room, no Desktop and no local reporter
@@ -11,7 +11,7 @@
 //! replays those phases and never holds a token.
 //!
 //! ```text
-//!   scope → combined → archives
+//!   scope → compounded → archives
 //!   scope → compute            (individual reports, computed in the cloud)
 //! ```
 //!
@@ -249,11 +249,11 @@ const REPORT_GROUPING_INCOMPLETE: Refusal = Refusal {
     remedy: "apply a grouping that covers them, or narrow the requested scope",
 };
 
-/// The four ways a Combined Report refuses over its input rooms, and the one
+/// The four ways a Compounded Report refuses over its input rooms, and the one
 /// way the predicate itself cannot answer.
 ///
 /// They are declared here rather than built from the kernel's reply so that
-/// `ds capabilities report.project.combined` lists every code the command can
+/// `ds capabilities report.project.compounded` lists every code the command can
 /// emit, and so `refusal_coverage` can see them. The kernel owns WHICH one
 /// applies; this owns the fact that it exists.
 pub const COMBINED_INPUTS_PUBLICATION_PENDING: Refusal = Refusal {
@@ -332,7 +332,7 @@ pub const SCOPE_REFUSALS: &[Refusal] = &joined::<
     { NATIVE_READ_REFUSALS.len() + grouping::REFUSALS.len() },
 >(&[NATIVE_READ_REFUSALS, &grouping::REFUSALS]);
 
-/// `combined`: the write lane, the readiness refusals the published receipt
+/// `compounded`: the write lane, the readiness refusals the published receipt
 /// is read through, the grouping's own refusals, and the grouped run that
 /// did not publish every group.
 pub const COMBINED_REFUSALS: &[Refusal] =
@@ -477,15 +477,14 @@ pub fn scope_rows_json(requested: &TransformerSet, rows: &[hold::Row]) -> Value 
         "excluded": excluded,
         "excluded_count": excluded.len(),
         "project_level": project_level,
-        // The deliverable is the Combined Report. `compounded_ready` is the
-        // retired spelling of the same boolean, kept beside it for one release
-        // so a consumer reading the old key is not broken by the rename.
+        // `compounded_ready` describes the archive scope. `combined_ready` is
+        // an existing compatibility key for readers of the old CLI contract.
         "combined_ready": !participating.is_empty(),
         "compounded_ready": !participating.is_empty(),
     })
 }
 
-/// How a Combined Report archive is laid out, in the report layer's own vocabulary.
+/// How a Compounded Report archive is laid out, in the report layer's own vocabulary.
 ///
 /// Two spellings describe one choice — `file_level` is current and
 /// `transformer_grouping` is the legacy twin older archives were written with —

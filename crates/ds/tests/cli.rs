@@ -226,6 +226,58 @@ fn a_declared_refusal_leaves_with_the_remedy_its_help_promises() {
 }
 
 #[test]
+fn the_old_report_archive_command_labels_parse_and_confirmation_refusals() {
+    for (args, expected_code) in [
+        (
+            vec!["report", "project", "combined", "--project", "demo"],
+            "confirmation_required",
+        ),
+        (
+            vec![
+                "report",
+                "project",
+                "combined",
+                "--project",
+                "demo",
+                "--bogus",
+            ],
+            "unknown_flag",
+        ),
+    ] {
+        let mut json_args = args.clone();
+        json_args.extend(["--output", "json"]);
+        let run = ds(&json_args);
+        let error = &run.envelope["error"];
+        assert_eq!(error["code"], expected_code, "{}", run.stdout);
+        assert_eq!(
+            error["message"]
+                .as_str()
+                .expect("refusal message")
+                .matches("Deprecated")
+                .count(),
+            1
+        );
+        assert!(error["remedy"].is_string());
+        assert!(
+            error["next"]
+                .as_array()
+                .expect("next commands")
+                .iter()
+                .any(|step| step == "ds report project compounded")
+        );
+
+        let text = ds(&args);
+        assert_ne!(text.code, 0);
+        assert!(
+            format!("{}{}", text.stdout, text.stderr).contains("Deprecated"),
+            "{}{}",
+            text.stdout,
+            text.stderr
+        );
+    }
+}
+
+#[test]
 fn machine_output_is_stdout_and_diagnostics_are_stderr() {
     let model = common::fixture();
     let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
@@ -692,17 +744,24 @@ fn near_misses_are_suggested() {
     // An unknown leaf of a real group names the leaf and the group. It said
     // "`project` is not a command of `ds report`" — false, and an agent
     // reading it would conclude the whole group was gone.
-    let run = ds(&["report", "project", "combnied", "--yes", "--output", "json"]);
+    let run = ds(&[
+        "report",
+        "project",
+        "compundded",
+        "--yes",
+        "--output",
+        "json",
+    ]);
     assert_eq!(run.envelope["error"]["code"], "unknown_command");
     assert_eq!(
         run.envelope["error"]["message"],
-        "`combnied` is not a command of `ds report project`"
+        "`compundded` is not a command of `ds report project`"
     );
     assert!(
         run.envelope["error"]["remedy"]
             .as_str()
             .expect("remedy")
-            .contains("ds report project combined"),
+            .contains("ds report project compounded"),
         "{}",
         run.envelope
     );

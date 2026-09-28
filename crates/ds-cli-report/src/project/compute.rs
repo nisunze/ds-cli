@@ -4,7 +4,7 @@
 //! This is the headless twin of the application's "Export reports" button.
 //! Two doors already produced an individual report: `ds report project
 //! export` runs the EDGE engine on this machine and seals the result into the
-//! publication queue, and `ds report project combined` asks the cloud for the
+//! publication queue, and `ds report project compounded` asks the cloud for the
 //! COMBINED archive. Nothing headless asked the cloud for an individual, so
 //! edge↔cloud parity — produce on the edge, produce in the cloud, watch them
 //! meet in the project — could only be proven with a browser.
@@ -300,7 +300,7 @@ mod tests {
             "the edge twin is named: {}",
             COMMAND.purpose
         );
-        // The refusals the route emits, not the Combined Report's grouping ones.
+        // The refusals the route emits, not the Compounded Report's grouping ones.
         let codes: Vec<&str> = COMMAND.refusals.iter().map(|r| r.code).collect();
         assert!(codes.contains(&"report_compute_partial"));
         assert!(codes.contains(&"report_compute_scope_empty"));

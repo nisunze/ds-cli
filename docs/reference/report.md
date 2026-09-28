@@ -91,7 +91,7 @@ documents. The reporter performs no download.
 
 ## Background project reports
 
-`ds report project scope|combined|archives` is the other door of this
+`ds report project scope|compounded|archives` is the other door of this
 domain: no local engine, no map, no Desktop. The commands restore the native
 user for `--lane stable|canary`, use the required `--project <exact-id>` on
 each request, and call the governed report service's fixed
@@ -103,12 +103,12 @@ streams one ZIP with its manifest and writes a registry row. Retired
 transformers (`ds design transformer retire`) are never in scope. The reserved
 computed identities — `collisions`, `combined_transformer` and its aliases
 (`all_transformers`, `combined_transformers`) — are report output, never
-participants: `scope` and `combined` refuse them locally with
+participants: `scope` and `compounded` refuse them locally with
 `reserved_transformer_identity` before any credential is restored.
 
 ```bash
 ds report project scope --project <exact-id> --output json                      # the plan
-ds report project combined --project <exact-id> --file-level sector --yes      # publish
+ds report project compounded --project <exact-id> --file-level sector --yes      # publish
 ds report project archives --project <exact-id> --output json                   # the registry
 ```
 
@@ -129,15 +129,19 @@ ds report project compute --transformer akagerero --lane canary --yes --output j
 ds design status --project it_rwanda --transformer akagerero --lane canary --output json   # the report the cloud stamped
 ```
 
-`combined` is `artifact_write` and needs `--yes`: it publishes a durable
+`compounded` is `artifact_write` and needs `--yes`: it publishes a durable
 archive of record. Its receipt carries `status` (`success` or `partial`), the
 archive `prefix` (the registry stem), cloud locators, individual artifact
 coverage, the missing individuals with typed causes, bounded errors and
 `registry_write_failed`. A receipt advertising an archive for zero individual
 artifacts is refused as unreadable, as the application refuses it. The scope
 rules, layout vocabulary and archive tree are ds-brain's
-`docs/contracts/compounded-reports.md`. Since 2026-09-26 this is the only way
-to request a Combined Report archive; the application no longer composes one.
+`ds-brain/docs/contracts/compounded-reports.md`. The separate Combined Report
+is the `combined_transformer` data report (Excel and spatial outputs). The
+Compounded Report is a ZIP snapshot containing individual artifacts and a
+combined set; publishing it does not update the Combined Report row.
+`ds report project combined` remains a deprecated compatibility alias for
+the ZIP and marks its receipt with `deprecated_command`.
 
 ## The project's output policy
 
@@ -198,7 +202,7 @@ decides whether this request is allowed.
 }
 ```
 
-A Combined Report archive consumes the project's applied `report_archive` consumer
+A Compounded Report archive consumes the project's applied `report_archive` consumer
 grouping: that plan, not this request, is the folder and section authority.
 `ds design consumer-grouping read|preview|apply --purpose report_archive` is
 where it is inspected, re-planned and applied, and a project without it is one
@@ -229,9 +233,9 @@ expiry out of its signature (`Expires`, or `X-Goog-Date` plus
 `download_url_seconds_remaining` and `download_url_expired`; check that before
 fetching, and list again for a fresh signature.
 
-## When the Combined Report refuses
+## When the Compounded Report refuses
 
-`ds report project combined` packages one archive out of the rooms' own
+`ds report project compounded` packages one archive out of the rooms' own
 reports, so a room whose report is not current can only contribute an
 out-of-date file. It used to be dropped from the archive without a word —
 that is how one project's archive combined nothing and another's carried
@@ -251,19 +255,19 @@ the queue exists to end. The room list is bounded, and the reply says how
 many more rooms there are and whether the printed command reaches all of
 them.
 
-## Grouped Combined Reports: one archive per city, tag or administrative level
+## Grouped Compounded Reports: one archive per city, tag or administrative level
 
-A grouped Combined Report is a custom deliverable the user asks for
+A grouped Compounded Report is a custom deliverable the user asks for
 explicitly (owner ruling, 2026-09-26): one archive per city, per tag value, or
 per administrative unit, optionally nested. It is read-only with respect to
 the project — no tag, no consumer grouping and no setting is saved — and it
 needs no new service route: each group is published through the same
-`combined` request, with that group's transformers as its explicit scope.
+`compounded` request, with that group's transformers as its explicit scope.
 
 ```bash
 ds report project scope    --project <exact-id> --group-by city --group-by phase --output json   # preview
-ds report project combined --project <exact-id> --group-by city --group-by phase --yes --output json
-ds report project combined --project <exact-id> --group-by loc_admin_level_2 --where phase=i --yes
+ds report project compounded --project <exact-id> --group-by city --group-by phase --yes --output json
+ds report project compounded --project <exact-id> --group-by loc_admin_level_2 --where phase=i --yes
 ```
 
 - `--group-by <definition-id>` repeats; **order is nesting**: the first id is
@@ -369,7 +373,7 @@ for the full table.
 assembles a ZIP at a path the caller names, from local documents whose digests
 it verifies, and contacts nothing.
 
-`report project combined` is the contrast: `artifact_write`, because the ZIP
+`report project compounded` is the contrast: `artifact_write`, because the ZIP
 it publishes lands in the project's cloud registry where every member reads it
 as the delivery. `scope`, `settings` and `archives` are `local_auth_state` like
 every headless read — they may rotate the native credential, and write nothing
@@ -797,7 +801,7 @@ project-wide sheet number. Keep A0 and A3 in separate collections. Source hashes
 are checked before the archive is published; a missing or invalid source refuses
 the collection rather than silently dropping a drawing.
 
-The governed `report.project.combined` workflow adds one collection per named
+The governed `report.project.compounded` workflow adds one collection per named
 PDF layout to the overall archive and each requested grouping slice. Selected
 sector exports keep the complete project's original drawing numbers.
 

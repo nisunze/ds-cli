@@ -1,4 +1,4 @@
-//! `ds report project archives` — the published Combined Report archives.
+//! `ds report project archives` — the published Compounded Report ZIPs.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,11 +13,11 @@ pub static COMMAND: Command = Command {
     id: "report.project.archives",
     path: &["report", "project", "archives"],
     contract: 1,
-    summary: "List the named project's published Combined Report archives.",
+    summary: "List the named project's published Compounded Report ZIPs.",
     purpose: "\
 Restores the native user and reads only its audience-fenced selected \
-project's Combined Report archive registry, newest first, through the fixed list \
-call. Each row is the durable record of one `combined` run and the only \
+project's Compounded Report archive registry, newest first, through the fixed list \
+call. Each row is the durable record of one `compounded` run and the only \
 place its achieved foldering is confirmed. No project, URL, body or action \
 override is accepted.",
     chapter: Chapter::Reports,

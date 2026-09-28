@@ -1357,8 +1357,8 @@ fn the_admin_hierarchy_no_longer_travels_through_the_window() {
 
 #[test]
 fn the_combined_report_archive_no_longer_travels_through_the_window() {
-    // Owner ruling 2026-09-26: a Combined Report archive is requested, and
-    // grouped, only through the headless `ds report project combined`. The
+    // Owner ruling 2026-09-26: a Compounded Report archive is requested, and
+    // grouped, only through the headless `ds report project compounded`. The
     // paired `ds map design batch report` and the Desktop operation it sent,
     // `design.report.export_batch`, were deleted on both sides, so neither
     // can return as a second, window-bound way to author one.
@@ -1367,7 +1367,7 @@ fn the_combined_report_archive_no_longer_travels_through_the_window() {
         !ds_cli_map::BRIDGE_OPS
             .iter()
             .any(|operation| operation.operation == retired),
-        "`ds map` declares {retired} again; Combined Report archives are `ds report project combined` only"
+        "`ds map` declares {retired} again; Compounded Report archives are `ds report project compounded` only"
     );
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");

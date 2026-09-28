@@ -1,8 +1,8 @@
-//! `--group-by` / `--where` on `ds report project scope|combined`: one
-//! Combined Report archive per leaf tag group, each over its own explicit
+//! `--group-by` / `--where` on `ds report project scope|compounded`: one
+//! Compounded Report archive per leaf tag group, each over its own explicit
 //! transformer scope.
 //!
-//! Owner ruling, 2026-09-26: a grouped Combined Report is a custom report the
+//! Owner ruling, 2026-09-26: a grouped Compounded Report is a ZIP the
 //! user asks for explicitly — per city, by tags, or by administrative level
 //! (an ordinary tag definition once governed enrichment has run) — and the
 //! grouping may nest. Nothing is saved on the project: no tag, no consumer

@@ -1655,8 +1655,12 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // workflow bring the reviewed broad profile to 30 tools.
             // 2026-09-27: `dsgrid spotting preview-receipt` joins `dsgrid
             // run` in the profile `ds-grid-spotting` names, so a truncated
-            // whole-model spotting receipt stays viewable: 31 tools.
-            "grid" => 31,
+            // whole-model spotting receipt stays viewable. The installed
+            // canary exposes 30 leaves plus two bootstrap tools; reporter
+            // engine identity remains beside export so a delivery can name
+            // the binary that produced it. The deprecated `combined` ZIP
+            // alias is kept out of this profile.
+            "grid" => 32,
             // Seventeen working-copy leaves plus bootstrap: the four
             // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
             // admin-refresh`, `dsgrid profile labels set|show`) were routed
@@ -1678,9 +1682,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Four more attachment actions complete that workflow. The bound
             // includes both bootstrap tools.
             "grid-local-model" => 57,
-            // The file-in/file-out engine workflow; `dsgrid replace-structure`
-            // joined `import-structure` here on 2026-09-25.
-            "grid-native" => 17,
+            // Sixteen file-in/file-out leaves plus bootstrap. Native backup
+            // preview belongs before import and restore in this workflow;
+            // the installed canary already advertises all eighteen tools.
+            "grid-native" => 18,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,

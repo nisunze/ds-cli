@@ -58,7 +58,7 @@ detection run would cover.",
         },
         Example {
             command: "ds design collisions",
-            note: "Read before `ds report project combined`: a collision blocks it.",
+            note: "Read before `ds report project compounded`: a collision blocks it.",
             runnable: false,
         },
     ],

@@ -280,7 +280,11 @@ impl Profile {
             // a router that plans whole-model spotting but cannot show a
             // receipt whose rejected rows were truncated leaves that
             // proposal unviewable.
-            Self::Grid => 31,
+            // Thirty report/model leaves plus both bootstrap tools. The
+            // installed canary already publishes this exact 32-tool set:
+            // report.engine is the reporter identity needed to prove a
+            // local export, while the new deprecated ZIP alias is excluded.
+            Self::Grid => 32,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -372,11 +376,11 @@ impl Profile {
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
             Self::Datasets => 19,
-            // The file-in/file-out engine workflow: fifteen leaves plus both
-            // bootstrap tools. Raised from the default on 2026-09-25 by
-            // `dsgrid replace-structure`, which belongs beside
-            // `import-structure` in the same file workflow.
-            Self::GridNative => 17,
+            // The file-in/file-out engine workflow: sixteen leaves plus both
+            // bootstrap tools. `dsgrid replace-structure` belongs beside
+            // `import-structure`; `dsgrid.backup.preview` inspects the native
+            // package before the same file workflow imports or restores it.
+            Self::GridNative => 18,
             _ => 16,
         }
     }
@@ -417,6 +421,9 @@ impl Profile {
                     && !matches!(tool.id.as_str(),
                         "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
+                    // The old ZIP command remains a CLI compatibility alias;
+                    // focused MCP profiles expose its canonical successor.
+                    && tool.id != "report.project.combined"
                     && tool.id != "report.spatial.workbook"
                     // Printing has its own workflow profile and Reports router;
                     // changing that profile must not expand the Grid surface.
@@ -993,7 +1000,7 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "report.project.scope",
     "report.project.settings",
     "report.project.outputs.set",
-    "report.project.combined",
+    "report.project.compounded",
     "report.project.archives",
     "report.project.export",
     // The cloud twin of `export`: the same individual report, computed and

@@ -182,7 +182,7 @@ measured furniture in a rendered preview before queuing the whole project.
   pump (`ds server serve`) transfers committed batches, and the shared head
   revision is the proof.
 - The Combined Report deliverable · `report.project.scope` →
-  `report.project.combined --yes` → `report.project.archives` · packages
+  `report.project.compounded --yes` → `report.project.archives` · packages
   individual reports that already exist in the cloud registry; it computes
   none.
 - Local packaging · `report.bundle --request <file>` · ZIP path, SHA-256.

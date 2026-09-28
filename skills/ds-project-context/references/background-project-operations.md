@@ -31,7 +31,7 @@ prepare: the native report path reads rooms from the service, and the former
 5. Plan the deliverable: `ds report project scope --project <exact-id> --output json` shows the
    exact participating set and every excluded name with its state. Report
    `compounded_ready` and the exclusions to the user before generating.
-6. Publish: `ds report project combined --project <exact-id> [--transformer …] --file-level
+6. Publish: `ds report project compounded --project <exact-id> [--transformer …] --file-level
    <transformer|sector|district|root> [--combine-per-group] [--force]
    --yes --output json`. The call blocks until the service answers (up to
    ten minutes). Return `status`, `prefix`, the archive locators, individual

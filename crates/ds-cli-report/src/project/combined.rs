@@ -1,24 +1,18 @@
-//! `ds report project combined` — publish one **Combined Report** archive in
-//! the background against the CLI-named project.
-//!
-//! This is the command that used to be called `compounded`. One deliverable
-//! had two names — the governed service already titled it "Combined Report"
-//! for humans while every id, receipt key and help screen said "compounded" —
-//! and an operator cannot ask a question about a thing whose name changes
-//! between the screen and the command line. The old id worked, deprecated,
-//! for one release (stable 487c432 and canary 5318beb both carried it) and is
-//! gone; `compounded` stays a search word so an agent using it lands here.
+//! `ds report project compounded` publishes a ZIP containing individual
+//! reports and an overall combined data set. The distinct `combined_transformer`
+//! report is updated through its own export path.
+//! `ds report project combined` remains a labeled compatibility alias.
 //!
 //! The other change is that this command REFUSES.
 //!
 //! The governed service can publish an archive over a scope it has quietly
 //! shrunk: a room whose report is missing, months old, or sealed on somebody's
 //! PC and never drained contributes nothing, and the archive is still labelled
-//! a success. An operator then hands over a Combined Report that is missing
+//! a success. An operator then hands over a Compounded Report that is missing
 //! half a project, or that contains June's files, believing it is the answer.
 //! So the receipt is read through
 //! [`ds_command_kernel::combined_readiness`] — the same predicate the Desktop
-//! dialog refuses from, so the two cannot disagree — and a Combined Report
+//! dialog refuses from, so the two cannot disagree — and a Compounded Report
 //! whose inputs are not current fails, naming the rooms and the command that
 //! makes them current.
 
@@ -62,8 +56,8 @@ pub(super) const ARGS: &[Arg] = &[
 ];
 
 pub(super) const PURPOSE: &str = "\
-After confirmation, asks the governed report service for a Combined Report \
-archive over the named project: it resolves the scope, composes the sets and publishes one \
+After confirmation, asks the governed report service for a Compounded Report \
+ZIP archive over the named project: it resolves the scope, composes the sets and publishes one \
 ZIP with a registry row. District and sector folders come from the project's \
 applied `report_archive` grouping, not from this request. Retired \
 transformers are never in scope. Rooms not current refuse the run. Blocks \
@@ -82,10 +76,10 @@ causes, bounded errors and registry-write failure. Grouped: `grouping` \
 and one `groups` receipt per archive.";
 
 pub static COMMAND: Command = Command {
-    id: "report.project.combined",
-    path: &["report", "project", "combined"],
+    id: "report.project.compounded",
+    path: &["report", "project", "compounded"],
     contract: 1,
-    summary: "Publish a Combined Report archive, or one per tag group (needs --yes).",
+    summary: "Publish a Compounded Report ZIP, or one per tag group (needs --yes).",
     purpose: PURPOSE,
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
@@ -95,28 +89,66 @@ pub static COMMAND: Command = Command {
     output: OUTPUT,
     examples: &[
         Example {
-            command: "ds report project combined --file-level sector --yes --output json --project <exact-id>",
+            command: "ds report project compounded --file-level sector --yes --output json --project <exact-id>",
             note: "`ds report project archives` then confirms the foldering built.",
             runnable: false,
         },
         Example {
-            command: "ds report project combined --group-by district --group-by city --where phase=i --yes --output json --project <exact-id>",
+            command: "ds report project compounded --group-by district --group-by city --where phase=i --yes --output json --project <exact-id>",
             note: "An archive per district/city pair, phase i only.",
             runnable: false,
         },
     ],
     refusals: super::COMBINED_REFUSALS,
     reference: Some("docs/reference/report.md"),
-    search: &[
-        "compounded",
-        "combined report",
-        "zip",
-        "per city",
-        "group by",
-    ],
+    search: &["combined archive", "per city", "group by"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
+
+/// Existing scripts may keep using this path for a compatibility window.
+/// Discovery and receipts state what it actually publishes.
+pub static COMBINED_ALIAS: Command = Command {
+    id: "report.project.combined",
+    path: &["report", "project", "combined"],
+    contract: 1,
+    summary: "Deprecated: use `report project compounded` for the ZIP.",
+    purpose: "Compatibility alias for `ds report project compounded`. This publishes a Compounded Report ZIP archive; it does not refresh the separate `combined_transformer` report. Move scripts and MCP callers to the compounded command.",
+    chapter: Chapter::Reports,
+    effect: Effect::ArtifactWrite,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: ARGS,
+    output: "The Compounded Report receipt, plus `deprecated_command` naming the canonical command.",
+    examples: &[Example {
+        command: "ds report project compounded --project <exact-id> --yes --output json",
+        note: "Canonical ZIP archive command.",
+        runnable: false,
+    }],
+    refusals: super::COMBINED_REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    search: &[],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
+
+pub fn run_combined_alias(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    let mut receipt = run(inputs, context)?;
+    if let Some(object) = receipt.as_object_mut() {
+        object.insert(
+            "deprecated_command".to_owned(),
+            json!({"use": "ds report project compounded", "publishes": "compounded_report_zip"}),
+        );
+    }
+    Ok(receipt)
+}
+
+pub fn render_combined_alias(data: &Value) -> String {
+    format!(
+        "Deprecated command: use `ds report project compounded`.\n{}",
+        render(data)
+    )
+}
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let file_level = ReportFileLevel::parse(inputs.require("file-level")?)
@@ -207,7 +239,7 @@ fn not_run_count(receipts: &[Value]) -> usize {
         .count()
 }
 
-/// One Combined Report archive over one request's scope, read for what it
+/// One Compounded Report archive over one request's scope, read for what it
 /// does not contain.
 fn publish(lane: &str, project: &str, request: &CompoundedReportRequest) -> Result<Value, Failure> {
     let file_level = request.file_level();
@@ -252,7 +284,7 @@ fn publish(lane: &str, project: &str, request: &CompoundedReportRequest) -> Resu
         .extend(fields.as_object().expect("fields are an object").clone());
 
     // The receipt is read for what it does NOT contain. A published archive
-    // with missing rooms is not a Combined Report an operator may hand over;
+    // with missing rooms is not a Compounded Report an operator may hand over;
     // succeeding here is how a project was delivered with June's files in it.
     if let Some(failure) = readiness_refusal(&causes, &output)? {
         return Err(failure);
@@ -308,7 +340,7 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
         .map_err(|error| {
             Failure::unavailable(
                 super::COMBINED_READINESS_UNAVAILABLE.code,
-                format!("The Combined Report readiness predicate could not answer: {error}"),
+                format!("The Compounded Report readiness predicate could not answer: {error}"),
             )
             .remedy(super::COMBINED_READINESS_UNAVAILABLE.remedy)
         })?;
@@ -324,7 +356,7 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
         .unwrap_or_default();
     let more = refusal["rooms"]["more"].as_u64().unwrap_or(0);
     let mut message = format!(
-        "The Combined Report was published without {} room(s): {}",
+        "The Compounded Report was published without {} room(s): {}",
         refusal["rooms"]["total"]
             .as_u64()
             .unwrap_or(named.len() as u64),
@@ -392,7 +424,7 @@ pub fn render(data: &Value) -> String {
     }
     let mut out = String::new();
     out.push_str(&format!(
-        "project {} ({}) · {} · {} · Combined Report {} · {} individual artifact(s), {} missing\n",
+        "project {} ({}) · {} · {} · Compounded Report {} · {} individual artifact(s), {} missing\n",
         data["project"]["project_name"].as_str().unwrap_or("?"),
         data["project"]["ds_project"].as_str().unwrap_or("?"),
         data["lane"].as_str().unwrap_or("?"),
@@ -432,7 +464,7 @@ pub fn render(data: &Value) -> String {
 fn render_grouped(data: &Value) -> String {
     let groups = data["groups"].as_array().cloned().unwrap_or_default();
     let mut out = format!(
-        "project {} · {} · {} Combined Report archive(s) of {} group(s) over {} transformer(s)\n",
+        "project {} · {} · {} Compounded Report archive(s) of {} group(s) over {} transformer(s)\n",
         data["project"]["ds_project"].as_str().unwrap_or("?"),
         data["lane"].as_str().unwrap_or("?"),
         data["published_count"].as_u64().unwrap_or(0),
@@ -471,7 +503,7 @@ mod tests {
         });
         let rendered = render(&data);
         assert!(
-            rendered.contains("2 Combined Report archive(s) of 2 group(s)"),
+            rendered.contains("2 Compounded Report archive(s) of 2 group(s)"),
             "{rendered}"
         );
         assert!(rendered.contains("city=bere"), "{rendered}");
@@ -503,20 +535,19 @@ mod tests {
         json!({"transformer": name, "code": code, "detail": ""})
     }
 
-    /// The deliverable has ONE name on the command line, and that name is the
-    /// one the governed service already shows humans.
+    /// The archive has its own command; the old name remains visibly deprecated.
     #[test]
-    fn the_command_is_named_combined_everywhere_a_caller_reads_it() {
-        assert_eq!(COMMAND.id, "report.project.combined");
-        assert_eq!(COMMAND.path, &["report", "project", "combined"]);
+    fn the_archive_command_is_named_compounded() {
+        assert_eq!(COMMAND.id, "report.project.compounded");
+        assert_eq!(COMMAND.path, &["report", "project", "compounded"]);
         assert!(
-            COMMAND.summary.contains("Combined Report"),
+            COMMAND.summary.contains("Compounded Report ZIP"),
             "{}",
             COMMAND.summary
         );
-        assert!(!COMMAND.summary.to_lowercase().contains("compounded"));
-        // A stranger who only knows the old word must still find it.
-        assert!(COMMAND.search.contains(&"compounded"));
+        assert_eq!(COMBINED_ALIAS.id, "report.project.combined");
+        assert!(COMBINED_ALIAS.summary.contains("Deprecated"));
+        assert!(COMBINED_ALIAS.purpose.contains("does not refresh"));
     }
 
     /// Rooms whose reports are sealed on a PC and not drained must be told to
@@ -539,7 +570,7 @@ mod tests {
         );
     }
 
-    /// A Combined Report published over a scope it silently shrank must not
+    /// A Compounded Report published over a scope it silently shrank must not
     /// exit zero. That success is what let a project be handed over missing
     /// half its rooms.
     #[test]
@@ -640,7 +671,7 @@ mod tests {
 
     /// The refusal a reader sees first is the one line the render prints.
     #[test]
-    fn the_render_says_combined_report_and_never_the_retired_name() {
+    fn the_render_says_compounded_report() {
         let data = json!({
             "project": {"project_name": "p", "ds_project": "p1"},
             "lane": "stable", "status": "success", "prefix": "run-1",
@@ -648,10 +679,6 @@ mod tests {
             "missing_individual_artifact_count": 0,
         });
         let rendered = render(&data);
-        assert!(rendered.contains("Combined Report"), "{rendered}");
-        assert!(
-            !rendered.to_lowercase().contains("compounded"),
-            "{rendered}"
-        );
+        assert!(rendered.contains("Compounded Report"), "{rendered}");
     }
 }

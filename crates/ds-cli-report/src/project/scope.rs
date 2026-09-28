@@ -1,4 +1,4 @@
-//! `ds report project scope` — the plan: who participates in a Combined Report run.
+//! `ds report project scope` — the plan: who participates in a Compounded Report ZIP.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
@@ -12,17 +12,17 @@ pub static COMMAND: Command = Command {
     id: "report.project.scope",
     path: &["report", "project", "scope"],
     contract: 1,
-    summary: "Show which transformers a Combined Report would include.",
+    summary: "Show which transformers a Compounded Report ZIP would include.",
     purpose: "\
 Start here. Restores the native user and reads only its audience-fenced \
 named project's transformer lifecycle inventory. Without --transformer the \
-scope is every active saved transformer, which is exactly what `combined` \
+scope is every active saved transformer, which is exactly what `compounded` \
 resolves; with names it checks each one, so a retired, deleted or missing \
 name is reported before any artifact is produced. A reserved computed \
 identity — `collisions`, `combined_transformer` and its aliases — is what a \
 report produces, never a participant, and is refused outright. With \
 --group-by/--where it previews, from the tag projection, the archives a \
-grouped `combined` would publish. Nothing is \
+grouped `compounded` would publish. Nothing is \
 generated or saved. No project, Desktop descriptor, URL, body or action \
 override is accepted.",
     chapter: Chapter::Reports,
@@ -39,14 +39,14 @@ override is accepted.",
     output: "\
 Lane and named-project identity/status, the scope `mode`, the participating \
 transformers and count, the excluded names with their lifecycle state and \
-retirement reason, project-level inventory rows (which are never Combined \
-Report inputs), and `combined_ready` (at least one active LV transformer). \
+retirement reason, project-level inventory rows (which are never Compounded \
+Report inputs), and `compounded_ready` (at least one active LV transformer). \
 Grouped: `grouping` with its counts, the projection sha256, and each group's \
 `path` and `transformers`.",
     examples: &[
         Example {
             command: "ds report project scope --output json --project <exact-id>",
-            note: "`.data.excluded` lists what a Combined Report run would leave out, and why.",
+            note: "`.data.excluded` lists what a Compounded Report ZIP would leave out, and why.",
             runnable: false,
         },
         Example {
@@ -89,14 +89,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 pub fn render(data: &Value) -> String {
     let scope = &data["scope"];
     let mut out = format!(
-        "project {} ({}) · {} · scope {} · {} participating · {} excluded · combined {}\n",
+        "project {} ({}) · {} · scope {} · {} participating · {} excluded · compounded {}\n",
         data["project"]["project_name"].as_str().unwrap_or("?"),
         data["project"]["ds_project"].as_str().unwrap_or("?"),
         data["lane"].as_str().unwrap_or("?"),
         scope["mode"].as_str().unwrap_or("?"),
         scope["participating_count"].as_u64().unwrap_or(0),
         scope["excluded_count"].as_u64().unwrap_or(0),
-        if scope["combined_ready"].as_bool().unwrap_or(false) {
+        if scope["compounded_ready"].as_bool().unwrap_or(false) {
             "ready"
         } else {
             "not ready"

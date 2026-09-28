@@ -803,6 +803,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::project::combined::render,
     },
     Entry {
+        command: &ds_cli_report::project::combined::COMBINED_ALIAS,
+        handler: ds_cli_report::project::combined::run_combined_alias,
+        render: ds_cli_report::project::combined::render_combined_alias,
+    },
+    Entry {
         command: &ds_cli_report::outbox::STATUS,
         handler: ds_cli_report::outbox::status,
         render: ds_cli_report::outbox::render,
@@ -3138,6 +3143,30 @@ pub fn all_commands() -> Vec<&'static Command> {
 /// its effect class implies, then hand off. Confirmation is checked here, in
 /// one place, so a handler cannot forget it.
 pub fn dispatch(entry: &Entry, tokens: &[String], context: &Context) -> Result<Value, Failure> {
+    label_deprecated_alias_refusal(entry, dispatch_entry(entry, tokens, context))
+}
+
+fn label_deprecated_alias_refusal(
+    entry: &Entry,
+    result: Result<Value, Failure>,
+) -> Result<Value, Failure> {
+    // This compatibility alias can fail before its handler (parse, confirmation,
+    // or availability). Label every refusal at the single dispatch boundary.
+    if entry.command.id == "report.project.combined" {
+        return result.map_err(|failure| {
+            let message = format!(
+                "Deprecated `ds report project combined`; use `ds report project compounded`. {}",
+                failure.message()
+            );
+            failure
+                .with_message(message)
+                .next("ds report project compounded")
+        });
+    }
+    result
+}
+
+fn dispatch_entry(entry: &Entry, tokens: &[String], context: &Context) -> Result<Value, Failure> {
     let inputs: Inputs = ds_cli_contract::parse(entry.command, tokens)?;
 
     // A machine-write command may expose one declared `--write` switch for a
@@ -3274,5 +3303,30 @@ mod identity_preflight_tests {
         let mismatched_profile =
             Failure::unavailable("native_profile_digest_mismatch", "mismatched profile");
         assert!(!headless_probe_means_absent(&mismatched_profile));
+    }
+}
+
+#[cfg(test)]
+mod report_alias_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_handler_refusal_keeps_its_code_remedy_and_detail_with_one_alias_label() {
+        let entry = find_by_id("report.project.combined").expect("compatibility alias exists");
+        let refusal = Failure::conflict("combined_inputs_not_current", "tx_a is stale")
+            .remedy("regenerate tx_a")
+            .detail(json!({"rooms": ["tx_a"]}));
+        let error = label_deprecated_alias_refusal(entry, Err(refusal)).expect_err("refuses");
+        assert_eq!(error.code(), "combined_inputs_not_current");
+        assert_eq!(error.remedy_text(), Some("regenerate tx_a"));
+        assert_eq!(error.detail_value().unwrap()["rooms"][0], "tx_a");
+        assert_eq!(error.message().matches("Deprecated").count(), 1);
+        assert!(error.message().contains("tx_a is stale"));
+        assert!(
+            error
+                .next_commands()
+                .contains(&"ds report project compounded".to_owned())
+        );
     }
 }

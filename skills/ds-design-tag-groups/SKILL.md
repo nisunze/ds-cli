@@ -154,8 +154,8 @@ ds design consumer-grouping archive --purpose report_archive --yes
 - Report `member_count`, `unassigned_count` and the group keys as returned. The
   UI, CLI, report receipt and archive manifest state the same numbers because
   exactly one authority decides them.
-- Solar seeding/reporting consumes the applied `solar_report` plan. A combined
-  or Combined Report archive consumes the applied `report_archive` plan and
+- Solar seeding/reporting consumes the applied `solar_report` plan. Combined
+  and Compounded Reports consume the applied `report_archive` plan and
   the exact digest-pinned tag document for the same transformer inventory.
   Refuse publication when either projection coverage or its digest is stale;
   never regroup from administrative columns inside transformer data.
