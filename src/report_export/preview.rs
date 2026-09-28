@@ -108,6 +108,7 @@ pub fn with_layout(source: &InputReceipt, layout: &Layout) -> Result<Preview, St
         geospatial: Vec::new(),
         tabular: Vec::new(),
         execution: BTreeMap::new(),
+        voltage_drop_report: Default::default(),
     };
     // The in-memory policy names the preview page so the engine accepts it;
     // this receipt is never saved, which is what `require_deliverable`

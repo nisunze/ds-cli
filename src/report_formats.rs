@@ -167,6 +167,54 @@ pub fn output_class(output_id: &str) -> &'static str {
 
 pub const OUTPUT_SELECTION_SCHEMA: &str = "ds.design-output-selection/v1";
 
+/// The selection field that carries [`VoltageDropReportFormat`], named once
+/// for every host that describes it (`options`) or reads it.
+pub const VOLTAGE_DROP_REPORT_FIELD: &str = "voltage_drop_report";
+
+/// How the per-transformer `voltage_drop` report is laid out. Owner ruling
+/// 2026-09-29: the extended report is the default, and the choice is the
+/// project's, configured with its design exports.
+#[derive(Debug, Clone, Copy, Default, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VoltageDropReportFormat {
+    /// Every sheet, with compact tables.
+    #[default]
+    Extended,
+    /// The summary, the maps, the outlook and the remediation.
+    Brief,
+}
+
+impl VoltageDropReportFormat {
+    pub const ALL: &[Self] = &[Self::Extended, Self::Brief];
+
+    pub fn token(self) -> &'static str {
+        match self {
+            Self::Extended => "extended",
+            Self::Brief => "brief",
+        }
+    }
+
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Read the way a [`Placement`] is read — trimmed and case-folded, as ds-brain
+/// reads the same field — and refused by name otherwise, so a stored typo is
+/// never silently a different report.
+impl<'de> Deserialize<'de> for VoltageDropReportFormat {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "extended" => Ok(Self::Extended),
+            "brief" => Ok(Self::Brief),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown voltage-drop report format `{other}`, expected `extended` or `brief`"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct NamedPrintSelection {
@@ -197,9 +245,27 @@ pub struct DesignOutputSelection {
     /// the guard was right, the field was absent.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub execution: BTreeMap<String, Vec<Placement>>,
+    /// The layout of the `voltage_drop` report: `extended` (the default) or
+    /// `brief`. Absent means `extended`; it has no effect while
+    /// `voltage_drop` is not selected.
+    //
+    // `extended` is never written. Every reader older than this field
+    // refuses a selection that carries it (`deny_unknown_fields` here,
+    // `unknown output-selection field` in ds-brain), so only a project that
+    // chose `brief` carries it, and a project that never chose keeps reading
+    // everywhere, as extended. The schema states the default the skip hides.
+    #[serde(default, skip_serializing_if = "VoltageDropReportFormat::is_default")]
+    #[schemars(extend("default" = "extended"))]
+    pub voltage_drop_report: VoltageDropReportFormat,
 }
 
 impl DesignOutputSelection {
+    /// The voltage-drop report layout this selection asks for; `extended`
+    /// when it never chose.
+    pub fn voltage_drop_report_format(&self) -> VoltageDropReportFormat {
+        self.voltage_drop_report
+    }
+
     /// A selection a project stores, or a host saves, delivers: the shared
     /// preview page is never among its outputs.
     pub fn require_deliverable(&self) -> Result<(), String> {
@@ -416,6 +482,8 @@ pub fn normalize_output_selection(
         // invent one. Absent means both lanes, which is what the legacy
         // setting meant.
         execution: execution.unwrap_or_default(),
+        // Nor a report layout: a legacy token list never chose one.
+        voltage_drop_report: VoltageDropReportFormat::default(),
     };
     selection.tokens()?;
     selection.require_deliverable()?;
@@ -452,6 +520,7 @@ pub fn stored_output_selection(value: &Value) -> Result<DesignOutputSelection, S
             geospatial: Vec::new(),
             tabular: Vec::new(),
             execution: BTreeMap::new(),
+            voltage_drop_report: VoltageDropReportFormat::default(),
         });
     }
     normalize_output_selection(None, Some(tokens), None)
@@ -462,6 +531,35 @@ pub fn output_selection_schema() -> Value {
         .expect("output selection schema")
 }
 
+/// The voltage-drop layout choice as a host renders it: the selection field
+/// that carries it, the values it takes, and the one a project that never
+/// chose gets.
+pub fn voltage_drop_report_option() -> Value {
+    serde_json::json!({
+        "field": VOLTAGE_DROP_REPORT_FIELD,
+        "values": VoltageDropReportFormat::ALL
+            .iter()
+            .map(|format| format.token())
+            .collect::<Vec<_>>(),
+        "default": VoltageDropReportFormat::default().token(),
+    })
+}
+
+/// The voltage-drop report layout a project's sealed settings ask for: the
+/// versioned selection's choice, read by the one reader, and `extended` for
+/// an absent export row or any legacy shape, none of which could choose.
+/// The reporter writes this into each voltage-drop document it produces.
+pub fn project_voltage_drop_report_format(
+    sheets: &Value,
+) -> Result<VoltageDropReportFormat, String> {
+    match project_output_setting(sheets)? {
+        Some(row) if row["value"]["schema"] == OUTPUT_SELECTION_SCHEMA => {
+            Ok(stored_output_selection(&row["value"])?.voltage_drop_report_format())
+        }
+        _ => Ok(VoltageDropReportFormat::default()),
+    }
+}
+
 pub fn options(setups: &[Value]) -> Result<Vec<Value>, String> {
     if setups.len() > 200 {
         return Err("Printing setup catalog exceeds 200 entries".into());
@@ -469,6 +567,11 @@ pub fn options(setups: &[Value]) -> Result<Vec<Value>, String> {
     let mut result: Vec<Value> = INDIVIDUAL.iter().filter(|f| !f.starts_with("pdf_")).map(|f|
         serde_json::json!({"value":f,"label":if *f == "geojson" { "GeoJSON".into() } else { f.to_ascii_uppercase() }})
     ).collect();
+    // The one output with a layout choice declares it, its selection field
+    // and its default, so no host re-states `extended` as the default.
+    if let Some(row) = result.iter_mut().find(|row| row["value"] == "voltage_drop") {
+        row["report_format"] = voltage_drop_report_option();
+    }
     let mut ids = std::collections::BTreeSet::new();
     for setup in setups {
         let id = setup["id"]
@@ -972,6 +1075,14 @@ pub fn selected_plan(
     if !selection.execution.is_empty() {
         return Err("Local output overrides never carry an execution placement matrix".into());
     }
+    // Likewise the report layout: the reporter reads it from the project's
+    // sealed settings, so an override naming one would be silently ignored.
+    if !selection.voltage_drop_report.is_default() {
+        return Err(
+            "Local output overrides never carry a voltage-drop report format; set it in the project's design exports"
+                .into(),
+        );
+    }
     let tokens = selection.tokens()?;
     if tokens.is_empty() || tokens.len() > 32 {
         return Err("Local output selection must contain 1..32 outputs".into());
@@ -1053,6 +1164,11 @@ pub fn inspect_project_settings(
         "mode":mode.token(),
     });
     let setting = project_output_setting(sheets)?;
+    // The voltage-drop layout the reporter will write, or null when the
+    // stored selection cannot be read (the issue below names why).
+    let voltage_drop_report = project_voltage_drop_report_format(sheets)
+        .ok()
+        .map(VoltageDropReportFormat::token);
     let prepared = plan(sheets, false)
         .and_then(|outputs| named_layouts(sheets).map(|layouts| (outputs, layouts)));
     let (outputs, layouts) = match prepared {
@@ -1060,7 +1176,8 @@ pub fn inspect_project_settings(
         Err(issue) => {
             return Ok(
                 serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
-            "setting":setting,"ready":false,"issues":[issue],"outputs":[],"papers":[],"refusal":refusal}),
+            "setting":setting,"ready":false,"issues":[issue],"outputs":[],"papers":[],"refusal":refusal,
+            "voltage_drop_report":voltage_drop_report}),
             );
         }
     };
@@ -1071,7 +1188,8 @@ pub fn inspect_project_settings(
     }).collect::<Vec<_>>();
     Ok(
         serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
-        "setting":setting,"ready":true,"issues":[],"outputs":outputs,"papers":papers,"refusal":Value::Null}),
+        "setting":setting,"ready":true,"issues":[],"outputs":outputs,"papers":papers,"refusal":Value::Null,
+        "voltage_drop_report":voltage_drop_report}),
     )
 }
 
@@ -1357,6 +1475,7 @@ mod tests {
             geospatial: vec![],
             tabular: vec![],
             execution: BTreeMap::new(),
+            voltage_drop_report: VoltageDropReportFormat::default(),
         };
         assert!(selected_plan(&sheets, false, Some(&empty)).is_err());
     }
@@ -1943,5 +2062,179 @@ mod tests {
             Some("voltage_drop")
         );
         assert!(!combined(&["voltage_drop".into()]).contains(&"voltage_drop"));
+    }
+
+    /// Owner ruling 2026-09-29: the extended voltage-drop report is the
+    /// default. A project that never chose — no export row, a legacy token
+    /// list, a versioned selection without the field — reads as extended,
+    /// and its stored bytes stay free of the field every older reader
+    /// refuses.
+    #[test]
+    fn a_selection_that_never_chose_a_voltage_drop_layout_is_extended() {
+        let versioned = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],
+            "geospatial":["shp"],"tabular":["voltage_drop"]});
+        let selection = stored_output_selection(&versioned).unwrap();
+        assert_eq!(
+            selection.voltage_drop_report_format(),
+            VoltageDropReportFormat::Extended
+        );
+        assert_eq!(serde_json::to_value(&selection).unwrap(), versioned);
+        for stored in [json!(null), json!("shp,voltage_drop"), versioned.clone()] {
+            assert_eq!(
+                stored_output_selection(&stored)
+                    .unwrap()
+                    .voltage_drop_report_format(),
+                VoltageDropReportFormat::Extended,
+                "{stored}"
+            );
+        }
+        for sheets in [
+            json!({}),
+            json!({"project_settings":[{"parameter":"report_formats","value":"shp,voltage_drop"}]}),
+            json!({"project_settings":[{"parameter":"design_export_format","value":versioned}]}),
+        ] {
+            assert_eq!(
+                project_voltage_drop_report_format(&sheets).unwrap(),
+                VoltageDropReportFormat::Extended,
+                "{sheets}"
+            );
+        }
+        // An explicit `extended` is honoured and written back as the absence
+        // it means, as an empty `execution` map is.
+        let explicit = stored_output_selection(&json!({"schema":OUTPUT_SELECTION_SCHEMA,
+            "tabular":["voltage_drop"],"voltage_drop_report":"extended"}))
+        .unwrap();
+        assert_eq!(
+            explicit.voltage_drop_report,
+            VoltageDropReportFormat::Extended
+        );
+        assert!(serde_json::to_value(&explicit).unwrap()[VOLTAGE_DROP_REPORT_FIELD].is_null());
+    }
+
+    /// `brief` survives every path a selection travels: reading, authoring
+    /// normalisation, the settings-row patch and the planner reading the row
+    /// back — and the reporter's reader answers it.
+    #[test]
+    fn a_brief_voltage_drop_layout_round_trips_through_every_path() {
+        let stored = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],
+            "geospatial":["shp"],"tabular":["xlsx","voltage_drop"],"voltage_drop_report":"brief"});
+        let selection = stored_output_selection(&stored).unwrap();
+        assert_eq!(
+            selection.voltage_drop_report_format(),
+            VoltageDropReportFormat::Brief
+        );
+        assert_eq!(serde_json::to_value(&selection).unwrap(), stored);
+        // Read as ds-brain reads it: trimmed and case-folded, written canonical.
+        let spelled = stored_output_selection(&json!({"schema":OUTPUT_SELECTION_SCHEMA,
+            "tabular":["voltage_drop"],"voltage_drop_report":" Brief "}))
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&spelled).unwrap()[VOLTAGE_DROP_REPORT_FIELD],
+            "brief"
+        );
+        let normalized = normalize_output_selection(Some(selection.clone()), None, None).unwrap();
+        assert_eq!(normalized, selection);
+        let mut rows = vec![json!({"parameter":"design_export_format","value":"shp"})];
+        apply_output_selection(&mut rows, &normalized).unwrap();
+        assert_eq!(rows[0]["value"], stored);
+        let sheets = json!({"project_settings":rows});
+        assert_eq!(
+            project_voltage_drop_report_format(&sheets).unwrap(),
+            VoltageDropReportFormat::Brief
+        );
+        assert_eq!(
+            plan(&sheets, false)
+                .unwrap()
+                .iter()
+                .map(|output| output.output_id.as_str())
+                .collect::<Vec<_>>(),
+            ["shp", "xlsx", "voltage_drop"]
+        );
+        let inspected = inspect_project_settings(&sheets, None).unwrap();
+        assert_eq!(inspected["voltage_drop_report"], "brief");
+        assert_eq!(
+            inspect_project_settings(&json!({}), None).unwrap()["voltage_drop_report"],
+            "extended"
+        );
+    }
+
+    /// A stored value no report has is refused by name, never read as the
+    /// default: a typo must not silently become a different report.
+    #[test]
+    fn an_unknown_voltage_drop_layout_is_refused_by_name() {
+        for value in [json!("summary"), json!(""), json!(2), json!(null)] {
+            let stored = json!({"schema":OUTPUT_SELECTION_SCHEMA,
+                "tabular":["voltage_drop"],"voltage_drop_report":value});
+            let error = stored_output_selection(&stored).unwrap_err();
+            assert!(
+                error.starts_with("Invalid design output selection:"),
+                "{value}: {error}"
+            );
+            let sheets =
+                json!({"project_settings":[{"parameter":"design_export_format","value":stored}]});
+            assert!(project_voltage_drop_report_format(&sheets).is_err());
+            assert!(
+                inspect_project_settings(&sheets, None).unwrap()["voltage_drop_report"].is_null()
+            );
+        }
+        let error = stored_output_selection(&json!({"schema":OUTPUT_SELECTION_SCHEMA,
+            "voltage_drop_report":"summary"}))
+        .unwrap_err();
+        assert!(
+            error.contains(
+                "unknown voltage-drop report format `summary`, expected `extended` or `brief`"
+            ),
+            "{error}"
+        );
+    }
+
+    /// Hosts learn the choice, its field and its default from the kernel: the
+    /// selection schema and the `voltage_drop` option row both carry it.
+    #[test]
+    fn the_voltage_drop_layout_is_declared_with_its_default() {
+        let schema = output_selection_schema();
+        let property = &schema["properties"][VOLTAGE_DROP_REPORT_FIELD];
+        assert_eq!(property["default"], "extended", "{schema}");
+        assert!(!schema["required"]
+            .as_array()
+            .is_some_and(|required| required.iter().any(|r| r == VOLTAGE_DROP_REPORT_FIELD)));
+        let text = schema.to_string();
+        assert!(
+            text.contains("\"extended\"") && text.contains("\"brief\""),
+            "{text}"
+        );
+        let expected = json!({"field":"voltage_drop_report","values":["extended","brief"],"default":"extended"});
+        assert_eq!(voltage_drop_report_option(), expected);
+        let rows = options(&[]).unwrap();
+        for row in &rows {
+            if row["value"] == "voltage_drop" {
+                assert_eq!(row["report_format"], expected);
+            } else {
+                assert!(row["report_format"].is_null(), "{row}");
+            }
+        }
+    }
+
+    /// The layout is project policy the reporter reads from the sealed
+    /// settings; a one-run override naming one would be silently ignored.
+    #[test]
+    fn a_local_override_may_not_carry_a_voltage_drop_layout() {
+        let sheets =
+            json!({"project_settings":[{"parameter":"report_formats","value":"voltage_drop"}]});
+        let brief: DesignOutputSelection = serde_json::from_value(json!({
+            "schema":OUTPUT_SELECTION_SCHEMA,"tabular":["voltage_drop"],"voltage_drop_report":"brief"}))
+        .unwrap();
+        assert!(selected_plan(&sheets, false, Some(&brief))
+            .is_err_and(|error| error.contains("never carry a voltage-drop report format")));
+        let extended = DesignOutputSelection {
+            voltage_drop_report: VoltageDropReportFormat::Extended,
+            ..brief
+        };
+        assert_eq!(
+            selected_plan(&sheets, false, Some(&extended))
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }

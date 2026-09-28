@@ -60,7 +60,7 @@ fn every_stored_output_shape_reads_the_same_in_rust_as_the_corpus_records() {
             serde_json::from_value(serde_json::to_value(&selection).unwrap()).unwrap();
         assert_eq!(restored, selection, "{id} round trip");
     }
-    assert_eq!(divergences, 5, "the recorded divergence count changed");
+    assert_eq!(divergences, 6, "the recorded divergence count changed");
 }
 
 #[test]

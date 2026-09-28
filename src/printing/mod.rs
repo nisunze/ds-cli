@@ -2174,7 +2174,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 }
             }
             let placements = selection.placement_map()?;
-            json!({"selection":selection,"placements":placements})
+            // The selection omits the default layout; the reply states it, so
+            // a host renders the choice without re-stating `extended`.
+            let voltage_drop_report = selection.voltage_drop_report_format();
+            json!({"selection":selection,"placements":placements,
+                "voltage_drop_report":voltage_drop_report})
         }
         Command::ProjectOutputPatch {
             current,
@@ -3092,6 +3096,39 @@ mod tests {
             assert_eq!(read["placements"], serde_json::json!({}));
         }
         assert!(evaluate(br#"{"op":"output_selection"}"#).is_err());
+    }
+
+    /// The reply states the voltage-drop layout whether or not the selection
+    /// carries it, and the settings patch writes a chosen `brief` through.
+    #[test]
+    fn output_selection_answers_the_voltage_drop_layout_and_the_patch_keeps_it() {
+        let read = |request: &[u8]| -> serde_json::Value {
+            serde_json::from_str(&evaluate(request).unwrap()).unwrap()
+        };
+        let default = read(br#"{"op":"output_selection","stored":"shp,voltage_drop"}"#);
+        assert_eq!(default["voltage_drop_report"], "extended");
+        assert!(default["selection"]["voltage_drop_report"].is_null());
+        let brief = read(
+            br#"{"op":"output_selection","selection":{"schema":"ds.design-output-selection/v1","tabular":["voltage_drop"],"voltage_drop_report":"brief"}}"#,
+        );
+        assert_eq!(brief["voltage_drop_report"], "brief");
+        assert_eq!(brief["selection"]["voltage_drop_report"], "brief");
+        let refused = evaluate(
+            br#"{"op":"output_selection","stored":{"schema":"ds.design-output-selection/v1","voltage_drop_report":"summary"}}"#,
+        )
+        .unwrap_err();
+        assert!(
+            refused.contains("unknown voltage-drop report format `summary`"),
+            "{refused}"
+        );
+
+        let patched = read(
+            br#"{"op":"project_output_patch","current":[{"parameter":"design_export_format","value":"shp"}],"selection":{"schema":"ds.design-output-selection/v1","tabular":["voltage_drop"],"voltage_drop_report":"brief"}}"#,
+        );
+        assert_eq!(
+            patched["project_settings"][0]["value"]["voltage_drop_report"],
+            "brief"
+        );
     }
 
     #[test]

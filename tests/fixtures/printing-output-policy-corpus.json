@@ -831,6 +831,65 @@
       "tokens": [
         "xlsx"
       ]
+    },
+    {
+      "id": "v1-brief-voltage-drop-report",
+      "stored": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "shp"
+        ],
+        "tabular": [
+          "xlsx",
+          "voltage_drop"
+        ],
+        "voltage_drop_report": "brief"
+      },
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "shp"
+        ],
+        "tabular": [
+          "xlsx",
+          "voltage_drop"
+        ],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "shp"
+        ],
+        "tabular": [
+          "xlsx",
+          "voltage_drop"
+        ],
+        "voltage_drop_report": "brief"
+      },
+      "placements": {
+        "shp": [
+          "desktop",
+          "web"
+        ],
+        "voltage_drop": [
+          "desktop",
+          "web"
+        ],
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "shp",
+        "xlsx",
+        "voltage_drop"
+      ],
+      "why": "`voltage_drop_report` (owner ruling 2026-09-29: `extended` by default, `brief` by choice) postdates the deleted TypeScript, so this `expected_ts` is not a recording: it is what that `selection()` returns for this value by construction, since it rebuilt a v1 selection from `schema`, `prints`, `geospatial`, `tabular` and `execution` alone. It dropped every other key, so the next save of a brief project would have quietly made it extended again. The kernel keeps the choice, and never writes the default."
     }
   ],
   "sheet_cases": [
