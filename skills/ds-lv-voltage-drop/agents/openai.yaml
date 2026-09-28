@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS LV Voltage Drop"
+  short_description: "Check and explain LV voltage drop through the DS CLI"
+  default_prompt: "Use $ds-lv-voltage-drop to check a transformer's LV voltage drop against its country rule, read the year-by-year outlook and the proposed reinforcement, and explain them through the deployed DS CLI."

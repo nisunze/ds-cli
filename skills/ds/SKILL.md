@@ -93,9 +93,9 @@ acceptance. Never create a gap file, call the API or bypass `ds`.
 - Maps — `ds-map-composition` (print hierarchy, relief), `ds-map-local-data`
   (temporary layers, viewport), `ds-style-composite` (two-field cartography).
 - Design and delivery — `ds-grid-spotting`, `ds-lv-design-revision`,
-  `ds-pls-cadd-terrain-roundtrip`, `ds-pls-cadd-backup-delivery`,
-  `ds-pls-cadd-native-dialogs`, `ds-report-consumption`,
-  `ds-boq-staking-table`, `ds-boq-combined-report`.
+  `ds-lv-voltage-drop`, `ds-pls-cadd-terrain-roundtrip`,
+  `ds-pls-cadd-backup-delivery`, `ds-pls-cadd-native-dialogs`,
+  `ds-report-consumption`, `ds-boq-staking-table`, `ds-boq-combined-report`.
 - Surface and backlog — `ds-mcp-host`, `ds-workstation-setup`,
   `ds-feedback-triage`.
 
