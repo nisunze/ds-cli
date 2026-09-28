@@ -439,10 +439,11 @@ Firebase token, so it cannot read Storage directly; one `/report`
 `reports.export` on the named project and on every other project the photos
 belong to (a migrated entry keeps its source project's references; at most 32
 projects). Each photo is then read through the grant's resolver link with no
-credential attached. A grant covers `projects/<project>/` in the deployment's
-media bucket, which holds the field app's photos; a reference in the browser's
-older `<project>/forms/...` layout is reported as failed, not fetched from
-elsewhere.
+credential attached. The grants cover `projects/<project>/` for current field
+app photos and the narrower `<project>/forms/` prefix for older survey photos
+in the deployment's media bucket. Both scopes are minted only after the same
+project's `reports.export` check. A reference outside these project scopes is
+reported as failed, never fetched from elsewhere.
 
 One photo's failure (`survey_photo_not_found`, `survey_photo_transient`, …)
 does not stop the rest; it is listed under `failed` and `complete` is false.
