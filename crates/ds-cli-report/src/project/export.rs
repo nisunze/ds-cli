@@ -98,7 +98,7 @@ const FORCE_ARG: Arg = Arg::switch("force", "Regenerate all outputs; reuse none.
 const SERVER_STATE_DIR_ARG: Arg = Arg::value(
     "server-state-dir",
     "<absolute-path>",
-    "Matching `ds server serve --state-dir` directory when the Server uses a custom state root.",
+    "Publication queue root for a publishing run. A dry-run or local layout proof opens no queue and ignores this path; its receipt says so.",
 );
 /// How the project's survey forms are read from this machine's held copy
 /// (`ds survey entries read`'s refresh vocabulary, narrowed to the two a
@@ -305,7 +305,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and print outputs with project numbering; reuse current data outputs (prints always regenerate) and enqueue the rest. --dry-run skips publication. Prints held rooms; fetches only new or changed ones, even offline. A setup binding neighbor_transformers gets a cached, project-scoped point-only catalogue; --seed acquires geographic context. Photos need a media grant.",
+    purpose: "Export active transformers and print outputs with project numbering; reuse current data outputs (prints always regenerate) and enqueue the rest. --dry-run skips publication and opens no Server queue even when --server-state-dir is supplied. Prints held rooms; fetches only new or changed ones, even offline. A setup binding neighbor_transformers gets a cached, project-scoped point-only catalogue; --seed acquires geographic context. Photos need a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -358,6 +358,11 @@ overflow/panels/row_mm), reuse (scope, work_id, generate reasons), or typed erro
         Example {
             command: "ds report project export --transformer tx_a --out-dir ./reports --dry-run --output json --project <exact-id>",
             note: "Local files only; `.data.publication.published_nothing` is true.",
+            runnable: false,
+        },
+        Example {
+            command: "ds report project export --transformer tx_a --out-dir ./proof --dry-run --server-state-dir /isolated/server-state --output json --project <exact-id>",
+            note: "Local proof; no publication queue is opened. The state-dir flag is ignored and the receipt names that fact.",
             runnable: false,
         },
         Example {
@@ -1024,13 +1029,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             inputs.value("server-state-dir").map(Path::new),
         )?)
     } else {
-        if inputs.value("server-state-dir").is_some() {
-            return Err(Failure::invalid(
-                "report_inputs_invalid",
-                "--server-state-dir names the queue a publication enters, and this run publishes nothing",
-            )
-            .remedy("drop --dry-run (or --print-layout/--preview-layout), or remove --server-state-dir"));
-        }
+        // A proof never opens either the custom or default Server queue.
+        // Retain the caller's path only as explicit receipt evidence below.
         None
     };
 
@@ -1589,6 +1589,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 lane,
                 scope,
             },
+            inputs.value("server-state-dir").is_some(),
         );
     }
 
@@ -1813,6 +1814,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "published_nothing": true,
             "state": "dry_run",
             "reason": dry_run_reason(dry_run, proofs_requested, preview_requested),
+            "queue_opened": false,
+            "server_state_dir_ignored": inputs.value("server-state-dir").is_some(),
             "note": "THIS RUN PUBLISHED NOTHING. The files are local only and no queue can see them. Re-run without --dry-run to publish, or `ds report project publish --from <out-dir>` to publish what is already on disk.",
         }),
     };
@@ -2095,6 +2098,7 @@ fn preview_pages(
     out_dir: &Path,
     fetch_room: impl Fn(&str) -> Result<(ds_project_data::room_hold::Room, i64), Failure>,
     facts: PreviewFacts<'_>,
+    server_state_dir_ignored: bool,
 ) -> Result<Value, Failure> {
     // The rooms this machine holds are read, never acquired: without a
     // geographic data root every room-read layer is a named omission on the
@@ -2191,6 +2195,8 @@ fn preview_pages(
         "published_nothing": true,
         "state": "dry_run",
         "reason": dry_run_reason(false, false, true),
+        "queue_opened": false,
+        "server_state_dir_ignored": server_state_dir_ignored,
         "note": "THIS RUN PUBLISHED NOTHING. A preview is a review file; export the governed recipe to publish.",
     });
     for member in ["preview", "results", "batch"] {
