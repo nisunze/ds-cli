@@ -53,6 +53,8 @@ pub const EXPOSURES: &[&str] = &["chapters", "commands"];
 // slips through from a descriptor, and `crates/ds/tests/mcp.rs` proves the
 // published surface carries none.
 const DEVICE_LINK_GUIDANCE: &str = "If signed out, run `ds account connect` on this machine (or call the account.connect tool), then approve the request in the signed-in DS GridDesign Desktop under Account > Link a trusted device; call account.connect again once approved. Keep the same lane throughout. That is the only sign-in.";
+const PROJECT_WORK_GUIDANCE: &str = "For substantive delivery on a named DS project, read `ds-project-work` from the receipt-verified skill resources. Use Project Work as the delivery record: as the signed-in user and for the exact project, inspect `pm.plan` and existing `pm.task` items, reuse a matching task or open one, assign only through the declared project-member workflow, and record observed progress, review and verified completion. Trace real correspondence, design comments, submissions and exact revisions through their declared commands; verify asset links before claiming an attachment. If delivery is blocked, record its real cause and next condition in the task; `pm.task.block` is only for an answer owed on a record. Server-owned notifications follow applicable committed PM writes; an assignment receipt is not proof that a notification reached anyone. Do not create tasks for casual reads or claim to act for another user.";
+const REGRESSION_GUIDANCE: &str = "For reported regressions, replay the exact command against installed `ds` and a negative control, compare the last working result, then distinguish a code defect, unclear CLI/MCP guidance, a missing authorized capability, and misuse of a clear contract. Fix or clarify only the demonstrated gap; note or close official feedback with evidence and remove resolved work from `ds-work/backlog/OPEN.md` when that workspace is available.";
 /// Word for word `ds_cli_auth::SIGNED_OUT_REMEDY`. Spelled here because this
 /// crate reaches `ds` only through its executable, never its crates;
 /// `crates/ds/tests/mcp.rs` holds the two equal.
@@ -1254,7 +1256,9 @@ impl Surface {
             (Exposure::Commands, None) => "Compatibility command exposure: every advertised tool is one canonical ds command generated from its live descriptor. Pass confirm=true only when declared, branch on the returned DS envelope, and follow typed remedies.".to_string(),
             (Exposure::Chapters, Some(_)) => unreachable!("invalid surface is refused"),
         };
-        format!("{instructions} {DEVICE_LINK_GUIDANCE}")
+        format!(
+            "{instructions} {DEVICE_LINK_GUIDANCE} {PROJECT_WORK_GUIDANCE} {REGRESSION_GUIDANCE}"
+        )
     }
 
     pub fn tool_list(&self) -> Vec<Value> {
@@ -2384,6 +2388,40 @@ mod tests {
                 "{instructions}"
             );
             assert!(!names_terminal_sign_in(&instructions), "{instructions}");
+        }
+    }
+
+    #[test]
+    fn mcp_guides_project_work_and_regression_triage_for_every_exposure() {
+        for (exposure, profile) in [
+            (Exposure::Chapters, None),
+            (Exposure::Commands, None),
+            (Exposure::Commands, Some(Profile::Project)),
+            (Exposure::Commands, Some(Profile::Correspondence)),
+        ] {
+            let instructions = Surface::new(exposure, profile, vec![])
+                .expect("surface")
+                .instructions();
+            for expected in [
+                "ds-project-work",
+                "signed-in user",
+                "exact project",
+                "pm.task",
+                "verified completion",
+                "verify asset links",
+                "next condition",
+                "notification reached",
+                "negative control",
+                "unclear CLI/MCP guidance",
+                "official feedback",
+            ] {
+                assert!(
+                    instructions.contains(expected),
+                    "missing {expected}: {instructions}"
+                );
+            }
+            assert!(!PROJECT_WORK_GUIDANCE.contains("feedback"));
+            assert!(REGRESSION_GUIDANCE.contains("official feedback"));
         }
     }
 

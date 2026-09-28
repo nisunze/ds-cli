@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Project Work"
+  short_description: "Track real DS project work, correspondence and submissions"
+  default_prompt: "Use $ds-project-work to find or open the right Project Work task for this authorized DS project work, record verified progress, and link real communications and assets through the installed ds contract."

@@ -341,6 +341,20 @@ fn no_published_mcp_text_names_a_terminal_sign_in() {
         instructions.contains("Link a trusted device"),
         "{instructions}"
     );
+    for expected in [
+        "ds-project-work",
+        "pm.task",
+        "verify asset links",
+        "next condition",
+        "notification reached",
+        "negative control",
+        "official feedback",
+    ] {
+        assert!(
+            instructions.contains(expected),
+            "missing {expected}: {instructions}"
+        );
+    }
     assert_eq!(
         response(&responses, 6)["result"]["structuredContent"]["results"][0]["id"],
         "account.connect"

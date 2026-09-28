@@ -86,7 +86,7 @@ acceptance. Never create a gap file, call the API or bypass `ds`.
 
 ## Narrower skills
 
-- Project and data — `ds-project-context` (active project), `ds-assets`
+- Project and data — `ds-project-context` (context), `ds-project-work` (tasks and records), `ds-assets`
   (documents), `ds-survey-lifecycle` (coverage, capture, forms),
   `ds-dirty-categories` (category seeds), `ds-cloud-datasets` (parcels,
   customers in a boundary; seeded per project).
