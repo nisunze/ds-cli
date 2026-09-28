@@ -79,13 +79,9 @@ changed write, fully quit and restart Codex and begin a new agent session. An
 exact legacy `ds` entry for this executable and argument list is migrated to
 the derived key; a non-identical legacy entry is never overwritten. VS Code is
 not involved.
-The same plan-then-write flow supports `gemini-cli`, `antigravity`, `windsurf`,
-and `github-copilot`; each targets that host's verified user profile directly,
-preserves sibling registrations, performs the same exact-only legacy
-migration, and refuses conflicts. Google Antigravity is a separate host whose
-configuration is `~/.gemini/config/mcp_config.json`; do not confuse it with
-Gemini CLI's `~/.gemini/settings.json`. Do not guess a Cline target while its
-global configuration contract is moving.
+The same flow supports `gemini-cli`, `antigravity`, `windsurf`, and
+`github-copilot`. Follow each host's live install proposal for its target and
+conflicts; do not guess a Cline target.
 
 ## MCP-only bootstrap
 
