@@ -588,9 +588,9 @@ mechanical checks, never a claim of visual or engineering approval.
 
 ### Transformer display names and project models
 
-Plan titles and transformer labels use Python `str.title()` casing, owned by
-`printing::names::transformer_title`. Separators are preserved (`upgrade_munyinya`
-prints as `Upgrade_Munyinya`). Transformer text bindings and title/drawing aliases
+Plan titles and transformer labels use presentation casing, owned by
+`printing::names::transformer_title`. Underscores become spaces (`upgrade_munyinya`
+prints as `Upgrade Munyinya`). Transformer text bindings and title/drawing aliases
 containing that same name are normalized; separately authored drawing references
 remain unchanged. This is presentation only: lookup keys, filenames, source
 properties, model IDs, revisions and authorization context retain exact identities.
