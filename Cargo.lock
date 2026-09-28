@@ -1122,6 +1122,7 @@ dependencies = [
  "ds-cli-server",
  "ds-command-kernel",
  "ds-compute-runtime",
+ "ds-geo-lite",
  "ds-layer-store",
  "ds-project-data",
  "ds-report-artifacts",
