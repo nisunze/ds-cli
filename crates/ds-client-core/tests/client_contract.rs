@@ -2588,6 +2588,69 @@ fn project_forms_decodes_the_activation_payload_ds_brain_actually_sends() {
 }
 
 #[test]
+fn project_forms_accepts_matching_orphan_lineage_also_present_in_forms() {
+    // The activation response retains archived masters' definitions so their
+    // existing entries can still render, and repeats their lineage in the
+    // orphan audit. The two views must agree on binding state and reason.
+    let body = serde_json::json!({
+        "status": "success",
+        "project_id": "active-project",
+        "resolved_at": 1,
+        "user": { "email": "user@example.com", "roles": [], "is_owner": false, "is_admin": false },
+        "forms": [{
+            "slug": "old_form", "display_name": "Old Form", "enabled": true,
+            "settings_revision": 2, "master_availability": "master_archived",
+            "metadata": {}
+        }],
+        "orphaned_project_forms": [{
+            "project_id": "active-project", "form_slug": "old_form",
+            "reason": "master_archived", "enabled": true, "settings_revision": 2
+        }],
+        "field_types": [], "condition_operators": [], "type_aliases": {}
+    });
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project_forms(200, &serde_json::to_vec(&body).unwrap());
+    let mut client = signed_in(transport, MemoryStore::default());
+    let snapshot = client.project_forms("active-project", NOW + 1).unwrap();
+    assert_eq!(snapshot.forms().len(), 1);
+    assert!(!snapshot.forms()[0].available());
+    assert_eq!(snapshot.orphaned_project_forms()[0].form_slug(), "old_form");
+}
+
+#[test]
+fn project_forms_rejects_orphan_lineage_disagreement() {
+    for (availability, enabled, revision) in [
+        ("master_available", true, 2),
+        ("master_archived", false, 2),
+        ("master_archived", true, 3),
+    ] {
+        let body = serde_json::json!({
+            "status": "success", "project_id": "active-project", "resolved_at": 1,
+            "user": { "email": "user@example.com", "roles": [], "is_owner": false, "is_admin": false },
+            "forms": [{
+                "slug": "old_form", "display_name": "Old Form", "enabled": enabled,
+                "settings_revision": revision, "master_availability": availability
+            }],
+            "orphaned_project_forms": [{
+                "project_id": "active-project", "form_slug": "old_form",
+                "reason": "master_archived", "enabled": true, "settings_revision": 2
+            }],
+            "field_types": [], "condition_operators": [], "type_aliases": {}
+        });
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_project_forms(200, &serde_json::to_vec(&body).unwrap());
+        let mut client = signed_in(transport, MemoryStore::default());
+        assert_eq!(
+            client
+                .project_forms("active-project", NOW + 1)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+    }
+}
+
+#[test]
 fn project_forms_profile_and_response_fail_closed() {
     for mutate in [
         |input: &mut ClientProfileInput| input.project_forms_method = "GET".to_owned(),

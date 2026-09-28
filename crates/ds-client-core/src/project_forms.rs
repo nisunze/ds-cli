@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
@@ -135,6 +135,8 @@ struct FormWire {
     drawing_settings: Option<DrawingSettingsWire>,
     #[serde(default)]
     metadata: Option<MetadataWire>,
+    #[serde(default)]
+    master_availability: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -188,12 +190,23 @@ pub(crate) fn decode_project_forms(
     let _ = (payload.user.is_owner, payload.user.is_admin);
 
     let mut seen = BTreeSet::new();
+    let mut lineage = BTreeMap::new();
     let mut forms = Vec::with_capacity(payload.forms.len());
     for form in payload.forms {
         if !bounded(&form.slug, MAX_FORM_SLUG_CHARS)
             || !bounded(&form.display_name, MAX_DISPLAY_NAME_CHARS)
             || !seen.insert(form.slug.clone())
         {
+            return Err(unreadable());
+        }
+        let master_availability = form
+            .master_availability
+            .as_deref()
+            .unwrap_or("master_available");
+        if !matches!(
+            master_availability,
+            "master_available" | "master_archived" | "master_missing"
+        ) {
             return Err(unreadable());
         }
         let geometry_type = form
@@ -205,11 +218,20 @@ pub(crate) fn decode_project_forms(
         {
             return Err(unreadable());
         }
+        lineage.insert(
+            form.slug.clone(),
+            (
+                master_availability.to_owned(),
+                form.enabled,
+                form.settings_revision,
+            ),
+        );
         forms.push(ProjectFormSummary {
             slug: form.slug,
             display_name: form.display_name,
             enabled: form.enabled,
-            available: !form.metadata.unwrap_or_default().unavailable,
+            available: master_availability == "master_available"
+                && !form.metadata.unwrap_or_default().unavailable,
             settings_revision: form.settings_revision,
             geometry_type,
         });
@@ -221,11 +243,21 @@ pub(crate) fn decode_project_forms(
     for orphan in payload.orphaned_project_forms {
         if orphan.project_id != ds_project
             || !bounded(&orphan.form_slug, MAX_FORM_SLUG_CHARS)
+            || !matches!(orphan.reason.as_str(), "master_archived" | "master_missing")
             || !bounded(&orphan.reason, MAX_ORPHAN_REASON_CHARS)
-            || seen.contains(&orphan.form_slug)
             || !orphan_slugs.insert(orphan.form_slug.clone())
         {
             return Err(unreadable());
+        }
+        // The server also returns renderable archived and missing-master forms
+        // in `forms`. Their audit row is a second view of the same binding.
+        if let Some((availability, enabled, revision)) = lineage.get(&orphan.form_slug) {
+            if availability != &orphan.reason
+                || *enabled != orphan.enabled
+                || *revision != orphan.settings_revision
+            {
+                return Err(unreadable());
+            }
         }
         orphaned_project_forms.push(ProjectFormOrphan {
             form_slug: orphan.form_slug,
