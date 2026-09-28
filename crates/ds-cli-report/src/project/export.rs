@@ -236,6 +236,11 @@ const CONTEXT_TOO_LARGE: Refusal = Refusal {
     when: "a preview's held context exceeds the engine's bounds",
     remedy: "narrow the draft's context buffers, or drop a context layer",
 };
+const NEIGHBOR_POINTS_UNAVAILABLE: Refusal = Refusal {
+    code: "neighbor_transformer_points_unavailable",
+    when: "a sheet binds neighbor_transformers but an active project room has no verified transformer point",
+    remedy: "refresh the active transformer rooms for this project, then retry the sheet",
+};
 const HOLDINGS_STORE: Refusal = Refusal {
     code: "project_dataset_store_failed",
     when: "a preview could not read the geographic holdings this machine keeps",
@@ -288,6 +293,7 @@ pub(super) const REFUSALS: &[Refusal] = &[
     CONTEXT_BUNDLE,
     CONTEXT_ACQUISITION,
     CONTEXT_TOO_LARGE,
+    NEIGHBOR_POINTS_UNAVAILABLE,
     HOLDINGS_STORE,
     ds_cli_auth::DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL,
     super::hold::INPUTS_NOT_HELD,
@@ -299,7 +305,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and print outputs with project numbering; reuse current data outputs (prints always regenerate) and enqueue the rest. --dry-run skips publication. Prints held rooms; fetches only new or changed ones, even offline. --seed acquires context. Photos need a media grant.",
+    purpose: "Export active transformers and print outputs with project numbering; reuse current data outputs (prints always regenerate) and enqueue the rest. --dry-run skips publication. Prints held rooms; fetches only new or changed ones, even offline. A setup binding neighbor_transformers gets a cached, project-scoped point-only catalogue; --seed acquires geographic context. Photos need a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -1167,6 +1173,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         selected_contexts(&receipt, &held_inputs.setups, seed)?
     };
+    let neighbor_points_selected = preview_request.is_none()
+        && super::neighbor_points::selected(&receipt, &held_inputs.setups).map_err(|error| {
+            Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
+        })?;
     let mv_buffer = contexts
         .iter()
         .filter_map(|c| match &c.source {
@@ -1291,8 +1301,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // link there are no heads, and an unknown head is no evidence of change.
     // The same rows are the only reuse evidence, kept whole and only when
     // the answer is for this account and this project.
+    let all_transformers = ds_cli_auth::TransformerSet::default();
+    let status_scope = if neighbor_points_selected {
+        &all_transformers
+    } else {
+        &requested
+    };
     let read_status = |link: &mut super::hold::Link| match link
-        .read(|| ds_cli_auth::transformer_status_for_project(lane, project, &requested))
+        .read(|| ds_cli_auth::transformer_status_for_project(lane, project, status_scope))
     {
         Ok(Some(status)) => {
             let rows = status.result().rows();
@@ -1450,6 +1466,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         );
         return Ok(output);
     }
+    if neighbor_points_selected && status_rows.is_none() && link.unreachable().is_none() {
+        return Err(Failure::unavailable(
+            NEIGHBOR_POINTS_UNAVAILABLE.code,
+            "the project-wide transformer status could not be verified for the neighboring point catalogue",
+        )
+        .remedy(NEIGHBOR_POINTS_UNAVAILABLE.remedy));
+    }
 
     let processors = std::thread::available_parallelism()
         .map(|count| count.get())
@@ -1457,6 +1480,35 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let plan = batch_plan(&names, processors, resident_limit).map_err(|error| {
         Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
     })?;
+
+    // A sheet opts into the neighboring transformer marker layer through its
+    // governed style binding. Build the project point catalogue once; held
+    // rooms at their current heads cost no network read, and an unheld room is
+    // acquired once before any of this batch's sheets render.
+    let neighbor_markers = neighbor_points_selected
+        .then(|| {
+            super::neighbor_points::catalogue(
+                lane,
+                &project_id,
+                &identity,
+                &drawing_names,
+                status_rows.as_ref(),
+                &hold,
+                &mut link,
+            )
+        })
+        .transpose()?;
+    if let Some(markers) = &neighbor_markers {
+        let bytes = serde_json::to_vec(markers).map_err(|error| {
+            Failure::failed(NEIGHBOR_POINTS_UNAVAILABLE.code, error.to_string())
+                .remedy(NEIGHBOR_POINTS_UNAVAILABLE.remedy)
+        })?;
+        output["neighbor_transformers"] = json!({
+            "points": markers.len(),
+            "sha256": ds_command_kernel::report_export::sha256_hex(&bytes),
+            "room_source": if status_rows.is_some() { "verified_or_refreshed" } else { "held_offline" },
+        });
+    }
 
     let staging = out_dir.join(STAGING_DIRECTORY);
     let rooms = RefCell::new(super::hold::Rooms::plan(hold, &plan.names, heads)?);
@@ -1625,6 +1677,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let print_context = if let Some(buffer) = mv_buffer {
             super::mv_context::attach(print_context, &mv_models, name, &layers_value, buffer)
                 .map_err(failure_to_host)?
+        } else {
+            print_context
+        };
+        let print_context = if let Some(markers) = &neighbor_markers {
+            super::neighbor_points::attach(name, markers, print_context)
+                .map_err(|error| HostFailure::new(CONTEXT_INVALID.code, error))?
         } else {
             print_context
         };

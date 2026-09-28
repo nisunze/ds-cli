@@ -37,6 +37,7 @@ pub mod plan_profile;
 pub mod plan_profile_config;
 pub mod planning;
 pub mod project;
+pub mod publication;
 pub mod spatial_workbook;
 pub mod tasks;
 
@@ -96,6 +97,8 @@ pub static DOMAIN: Domain = Domain {
         &spatial_workbook::COMMAND,
         &outbox::STATUS,
         &outbox::DRAIN,
+        &publication::LIST,
+        &publication::SHOW,
         &project::scope::COMMAND,
         &project::combined::COMMAND,
         &project::combined::COMBINED_ALIAS,

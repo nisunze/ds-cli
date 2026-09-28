@@ -1004,6 +1004,8 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "report.project.outputs.set",
     "report.project.compounded",
     "report.project.archives",
+    "report.publication.list",
+    "report.publication.show",
     "report.project.export",
     // The cloud twin of `export`: the same individual report, computed and
     // published server-side. Listed here so the broad `grid` chapter router,

@@ -792,6 +792,18 @@ and a desktop given the same rooms stages byte-identical context. A media
 scope grant is not minted here, so a room carrying photos is refused by the
 engine with a typed blocker.
 
+An individual layout can bind `style_refs.neighbor_transformers` to a governed
+point print style that labels only the `transfo` field. This adds
+only the other active transformers' saved points and exact names to that
+sheet's print context. The map viewport clips them; the current transformer's
+design still sets the scale. No neighboring LV lines, poles, customers or
+schedules enter the artifact or its geographic exports. The batch builds one
+project-scoped point catalogue from checksum-verified held rooms and refreshes
+only rooms absent or behind the project's reported heads. If a required point
+is missing or malformed, `neighbor_transformer_points_unavailable` refuses the
+print instead of silently dropping a neighbor. Layouts without the binding
+perform no point-catalogue read.
+
 ### Multipage drawing collections
 
 Discover `report.bundle` and the reporter's `export_compounded_report` task. Its
@@ -1022,6 +1034,27 @@ plan hash and counts. One workbook represents one bounded query. Counts from
 overlapping corridors cannot be summed because the same UPI can occur in
 several corridors; a full-model total needs one authoritative union or UPI
 deduplication before a workbook is issued.
+
+## Shared publication heads
+
+`ds report publication list|show` reads the current compute-artifact heads
+directly under the native account and an explicit project. It does not open
+the local report outbox, pair a Desktop, download bytes, or publish anything.
+The list is paged and includes all engines. A head contains the current
+revision, input fingerprint, each output's digest and byte count, and
+per-output origins where the service recorded them. The shared kernel validates
+every returned head before `ds` displays it.
+
+```bash
+ds report publication list --lane canary --project <exact-id> --output json
+ds report publication list --lane canary --project <exact-id> --cursor <next_cursor> --output json
+ds report publication show --lane canary --project <exact-id> --engine network_reporter --operation <operation> --variant default --output json
+```
+
+A head is evidence of shared metadata at read time. It does not verify the
+downloaded output bytes. Compare its declarations with the sealed local
+outbox receipts when reconciling a damaged local store; preserve both sides
+until every output and its origin agree.
 
 ## The publication queue
 

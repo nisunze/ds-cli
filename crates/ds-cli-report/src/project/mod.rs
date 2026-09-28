@@ -27,6 +27,7 @@ pub mod export;
 pub mod grouping;
 pub mod hold;
 pub mod map_inputs;
+mod neighbor_points;
 pub mod publish;
 pub mod reuse;
 pub mod scope;

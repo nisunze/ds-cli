@@ -818,6 +818,16 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::outbox::render,
     },
     Entry {
+        command: &ds_cli_report::publication::LIST,
+        handler: ds_cli_report::publication::list,
+        render: ds_cli_report::publication::render,
+    },
+    Entry {
+        command: &ds_cli_report::publication::SHOW,
+        handler: ds_cli_report::publication::show,
+        render: ds_cli_report::publication::render,
+    },
+    Entry {
         command: &ds_cli_report::project::compute::COMMAND,
         handler: ds_cli_report::project::compute::run,
         render: ds_cli_report::project::compute::render,

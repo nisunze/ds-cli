@@ -21,6 +21,7 @@ sha2 = { workspace = true }
 # The reserved computed report identities are the kernel's rule; the headless
 # scope lane applies the same predicate the offline lane already enforces.
 ds-command-kernel = { workspace = true }
+ds-geo-lite = { path = "../../../ds-command-kernel/crates/ds-geo-lite" }
 ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }
 ds-report-artifacts = { path = "../../../ds-command-kernel/crates/ds-report-artifacts" }
 # The native host of one transformer report run (staging, byte verification,

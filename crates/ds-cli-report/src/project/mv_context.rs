@@ -194,6 +194,7 @@ pub(super) fn attach(
             );
         }
     }
+    suppress_angle_symbols_at_poles(&mut mv, network);
     let versions = models.iter().map(|m| json!({"id":m.identity.id,"revision":m.identity.revision_id,"sha256":m.identity.digest})).collect::<Vec<_>>();
     for (id, features) in mv {
         if features.is_empty() {
@@ -231,6 +232,48 @@ pub(super) fn attach(
     }))
 }
 
+/// An angle point and a pole at the same site are one mark on an individual
+/// transformer sheet. Keep the model projection intact: MV overviews still
+/// print every angle point, and an unmatched point remains visible here.
+fn suppress_angle_symbols_at_poles(mv: &mut BTreeMap<String, Vec<Value>>, network: &Value) {
+    const COINCIDENT_M: f64 = 1.0;
+    let mut poles = ["lv_poles", "tapping_poles"]
+        .into_iter()
+        .filter_map(|layer| network[layer]["features"].as_array())
+        .flat_map(|features| features.iter())
+        .filter_map(point_coords)
+        .collect::<Vec<_>>();
+    if let Some(structures) = mv.get("dsgrid_mv_structures") {
+        poles.extend(structures.iter().filter_map(point_coords));
+    }
+    if poles.is_empty() {
+        return;
+    }
+    if let Some(angles) = mv.get_mut("dsgrid_mv_angle_points") {
+        angles.retain(|angle| {
+            point_coords(angle).is_none_or(|[lon, lat]| {
+                !poles.iter().any(|[pole_lon, pole_lat]| {
+                    ds_geo_lite::haversine_m(lon, lat, *pole_lon, *pole_lat) <= COINCIDENT_M
+                })
+            })
+        });
+    }
+}
+
+fn point_coords(feature: &Value) -> Option<[f64; 2]> {
+    if feature["geometry"]["type"] != "Point" {
+        return None;
+    }
+    let coordinates = feature["geometry"]["coordinates"].as_array()?;
+    let lon = coordinates.first()?.as_f64()?;
+    let lat = coordinates.get(1)?.as_f64()?;
+    (lon.is_finite()
+        && lat.is_finite()
+        && (-180.0..=180.0).contains(&lon)
+        && (-90.0..=90.0).contains(&lat))
+    .then_some([lon, lat])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,5 +299,66 @@ mod tests {
         assert_eq!(feature["geometry"], projection["features"][0]["geometry"]);
         assert_eq!(attached.sha256, report_export::sha256_hex(&attached.bytes));
         assert_eq!(models[0].projection, projection);
+    }
+
+    #[test]
+    fn individual_sheet_suppresses_only_angle_symbols_at_poles() {
+        let projection = json!({"type":"FeatureCollection","features":[
+            {"type":"Feature","id":"on-lv","geometry":{"type":"Point","coordinates":[30.000004,-2.0]},"properties":{"_layer":"angle_points"}},
+            {"type":"Feature","id":"on-mv","geometry":{"type":"Point","coordinates":[30.002,-2.0]},"properties":{"_layer":"angle_points"}},
+            {"type":"Feature","id":"free","geometry":{"type":"Point","coordinates":[30.004,-2.0]},"properties":{"_layer":"angle_points"}},
+            {"type":"Feature","id":"pole","geometry":{"type":"Point","coordinates":[30.002,-2.0]},"properties":{"_layer":"structures"}}
+        ]});
+        let models = [Model {
+            identity: map::Model {
+                id: "mv-model".into(),
+                label: "MV".into(),
+                revision_id: "rev-1".into(),
+                digest: "a".repeat(64),
+            },
+            projection,
+        }];
+        let network = json!({
+            "tr":{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"transfo":"tx_a"}}]},
+            "lv_poles":{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"pole_number":"P1"}}]}
+        });
+        let individual = attach(None, &models, "tx_a", &network, 600.)
+            .unwrap()
+            .unwrap();
+        let document: Value = serde_json::from_slice(&individual.bytes).unwrap();
+        let angles = document["layers"]["dsgrid_mv_angle_points"]["features"]
+            .as_array()
+            .unwrap();
+        assert_eq!(angles.len(), 1);
+        assert_eq!(angles[0]["id"], "mv-model:\"free\"");
+        assert_eq!(
+            document["layers"]["dsgrid_mv_structures"]["features"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let mv_overview = overview(&models).unwrap();
+        assert_eq!(
+            mv_overview["dsgrid_mv_angle_points"]["features"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+
+    #[test]
+    fn individual_sheet_keeps_angle_symbols_without_matching_poles() {
+        let mut mv = BTreeMap::from([(
+            "dsgrid_mv_angle_points".to_string(),
+            vec![json!({"geometry":{"type":"Point","coordinates":[30.0,-2.0]}})],
+        )]);
+        suppress_angle_symbols_at_poles(
+            &mut mv,
+            &json!({"lv_poles":{"type":"FeatureCollection","features":[]}}),
+        );
+        assert_eq!(mv["dsgrid_mv_angle_points"].len(), 1);
     }
 }

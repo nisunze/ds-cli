@@ -216,6 +216,16 @@ impl Hold {
         }
     }
 
+    /// Reuse one checksum-verified saved room for print-only project context.
+    /// The same scoped hold feeds the normal report room plan.
+    pub(super) fn room(&self, transformer: &str) -> Result<Option<Room>, String> {
+        room_hold::room(&self.root, &self.scope, transformer)
+    }
+
+    pub(super) fn hold_room(&self, room: &Room) -> Result<(), String> {
+        room_hold::hold_room(&self.root, &self.scope, room)
+    }
+
     /// The inputs as last read from the service, or the refusal that names
     /// why neither the service nor this machine can supply them.
     pub(super) fn inputs(&self, unreachable: &str) -> Result<Inputs, Failure> {
