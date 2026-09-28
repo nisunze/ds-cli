@@ -99,6 +99,10 @@ Skill guidance is lazy. Call `resources/list`, select one receipt-listed
 `ds-skill://bundle/<skill>/SKILL.md` identifier, then call `resources/read` for
 that exact resource. Read the smallest receipt-current skill that governs the
 task; do not preload every skill or require a writable local skills directory.
+When that skill links a workflow reference, select its listed
+`ds-skill://bundle/<skill>/references/<reference>.md` resource and read it
+before acting. An unlisted or changed reference is a refusal, not a cue to
+reconstruct its instructions from memory.
 The same structured identity and skill-resource availability are echoed by
 `ds_catalog` after reconnects.
 
