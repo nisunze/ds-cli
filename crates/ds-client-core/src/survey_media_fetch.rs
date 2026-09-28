@@ -10,11 +10,10 @@
 //! (`/api/v1/media/link/{token}?o=`) to a short-lived signature. No
 //! credential accompanies a byte fetch.
 //!
-//! A grant covers one project's `projects/{project}/` tree in the
-//! deployment's media bucket: the field app's layout and the `projects/`
-//! layout. The browser's older `{project}/forms/...` layout is outside every
-//! grant ds-brain mints today, and is refused here in those words rather than
-//! fetched from somewhere else.
+//! The service mints separate scopes for the field app's
+//! `projects/{project}/forms/...` layout and the browser's older
+//! `{project}/forms/...` layout. Both are issued only after the same project
+//! access and report-export checks.
 //!
 //! The route is hard-coded, not a profile route, so the credential audience
 //! is unchanged.
@@ -76,8 +75,8 @@ impl MediaGrant {
     }
 }
 
-/// The grants of one fetch: the named project first, then every other
-/// project the references name.
+/// The grants of one fetch: modern project scopes first, then each paired
+/// legacy survey-forms scope when the service provides it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaGrants {
     grants: Vec<MediaGrant>,
@@ -104,8 +103,8 @@ impl MediaGrants {
 
     /// The grants as the document the report engine reads
     /// (`ds-network-reporter` `media_link::MediaScopeGrants`): one flat grant
-    /// for a single project — the shape every engine release accepts — or
-    /// `{"grants": [...]}` for several. The token leaves this type only here,
+    /// when the older service supplies one scope, or `{"grants": [...]}` for
+    /// modern and legacy scopes. The token leaves this type only here,
     /// written into a host's private staging for the engine.
     pub fn report_grant_document(&self) -> Result<Vec<u8>, ClientError> {
         let scope = |grant: &MediaGrant| {
@@ -252,8 +251,9 @@ pub(crate) fn grant_for<T: AuthorizedTransport>(
     }
 }
 
-/// Every requested project has exactly its own `projects/{project}/` grant,
-/// resolving on an https origin; anything else is refused whole.
+/// Every requested project needs its modern grant. A paired legacy forms
+/// grant is accepted only for the same requested project and HTTPS resolver.
+/// Old services that issue modern grants alone remain readable.
 fn decode_grants(body: &[u8], requested: &[&str]) -> Result<MediaGrants, ClientError> {
     let value: Value =
         serde_json::from_slice(body).map_err(|_| unreadable("the media grant is not JSON"))?;
@@ -268,9 +268,8 @@ fn decode_grants(body: &[u8], requested: &[&str]) -> Result<MediaGrants, ClientE
             .map(str::to_owned)
             .ok_or_else(|| unreadable("a media grant is missing a field"))
     };
-    let mut grants = Vec::with_capacity(requested.len());
-    for project in requested {
-        let prefix = format!("projects/{project}/");
+    let mut grants = Vec::with_capacity(requested.len() * 2);
+    let mut decode = |project: &str, prefix: String| -> Result<(), ClientError> {
         let row = rows
             .iter()
             .find(|row| row.get("prefix").and_then(Value::as_str) == Some(prefix.as_str()))
@@ -291,13 +290,29 @@ fn decode_grants(body: &[u8], requested: &[&str]) -> Result<MediaGrants, ClientE
             return Err(unreadable("the media grant's token is not one URL segment"));
         }
         grants.push(MediaGrant {
-            project: (*project).to_owned(),
+            project: project.to_owned(),
             bucket: text(row, "bucket")?,
             prefix,
             expires_at: text(row, "expires_at")?,
             resolver_origin: resolver_origin.trim_end_matches('/').to_owned(),
             token,
         });
+        Ok(())
+    };
+    for project in requested {
+        decode(project, format!("projects/{project}/"))?;
+    }
+    // A mixed response must not silently leave one source project's old
+    // survey layout ungranted. The backend issues legacy scopes as a set.
+    let has_legacy = requested.iter().any(|project| {
+        let prefix = format!("{project}/forms/");
+        rows.iter()
+            .any(|row| row.get("prefix").and_then(Value::as_str) == Some(prefix.as_str()))
+    });
+    if has_legacy {
+        for project in requested {
+            decode(project, format!("{project}/forms/"))?;
+        }
     }
     Ok(MediaGrants { grants })
 }
@@ -369,11 +384,7 @@ fn prepare(grants: &MediaGrants, object_path: &str) -> Result<(String, String), 
     let address = ds_command_kernel::survey_media_address::parse(object_path)
         .map_err(|_| invalid("the reference is not a survey media address"))?;
     let link = grants.link_for(&address.object_path).ok_or_else(|| {
-        invalid(if address.object_path.starts_with("projects/") {
-            "the photo belongs to a project outside this fetch's grants"
-        } else {
-            "the photo is in the browser's {project}/forms/ layout, which no media grant covers yet"
-        })
+        invalid("the photo belongs to a project or survey layout outside this fetch's grants")
     })?;
     Ok((address.object_path, link))
 }
@@ -460,6 +471,21 @@ mod tests {
             .into_bytes()
     }
 
+    fn paired_grant_body(projects: &[&str]) -> Vec<u8> {
+        let mut value: Value = serde_json::from_slice(&grant_body(projects)).unwrap();
+        let grants = value["grants"].as_array_mut().unwrap();
+        for project in projects {
+            grants.push(json!({
+                "resolver_origin": "https://brain.example",
+                "bucket": "media-bucket",
+                "prefix": format!("{project}/forms/"),
+                "token": format!("legacy-{project}"),
+                "expires_at": "2026-09-25T02:00:00Z"
+            }));
+        }
+        serde_json::to_vec(&value).unwrap()
+    }
+
     #[test]
     fn a_report_grant_asks_for_the_default_life_and_becomes_the_engine_document() {
         // A report's links live as long as the browser's: no TTL is named.
@@ -506,6 +532,31 @@ mod tests {
             .unwrap()
             .replace("https://", "http://");
         assert!(decode_grants(insecure.as_bytes(), &["p1"]).is_err());
+    }
+
+    #[test]
+    fn paired_legacy_grants_cover_only_requested_projects_and_reach_the_report() {
+        let grants = decode_grants(&paired_grant_body(&["p1", "p0"]), &["p1", "p0"]).unwrap();
+        let legacy = "p1/forms/field_notes/e1/DSC_0570.JPG";
+        assert_eq!(
+            grants.link_for(legacy).unwrap(),
+            "https://brain.example/api/v1/media/link/legacy-p1?o=p1%2Fforms%2Ffield_notes%2Fe1%2FDSC_0570.JPG"
+        );
+        assert!(grants
+            .link_for("p9/forms/field_notes/e1/secret.jpg")
+            .is_none());
+        assert!(grants
+            .link_for("p1/assets/confidential/contract.pdf")
+            .is_none());
+        assert_eq!(prepare(&grants, legacy).unwrap().0, legacy);
+        let document: Value =
+            serde_json::from_slice(&grants.report_grant_document().unwrap()).unwrap();
+        assert_eq!(document["grants"].as_array().unwrap().len(), 4);
+        assert_eq!(document["grants"][2]["prefix"], "p1/forms/");
+
+        let mut partial: Value = serde_json::from_slice(&paired_grant_body(&["p1", "p0"])).unwrap();
+        partial["grants"].as_array_mut().unwrap().pop();
+        assert!(decode_grants(&serde_json::to_vec(&partial).unwrap(), &["p1", "p0"]).is_err());
     }
 
     #[test]
