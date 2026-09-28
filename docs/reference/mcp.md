@@ -432,14 +432,15 @@ existing executable-layout `install_profile` evidence.
 
 At startup only the packaged bundle's bounded receipt metadata is indexed. When
 that receipt matches this CLI source SHA,
-`resources/list` returns one `ds-skill://bundle/<receipt-id>/SKILL.md` resource
-per shipped skill. `resources/read` accepts only one of those closed URIs,
-then runs the same complete inventory/digest verification as doctor and returns
-that one UTF-8 document.
-It cannot read a caller path, a nested reference, a symlink, or an arbitrary
-file. Resource metadata carries the receipt contract/source/source SHA and
-dirty state. No skill is preloaded into initialization and no writable
-Codex/Claude/Copilot skills home is required.
+`resources/list` returns `ds-skill://bundle/<receipt-id>/SKILL.md` for each
+shipped skill and a closed `ds-skill://bundle/<receipt-id>/references/<id>.md`
+URI for each receipt-listed Markdown reference. `resources/read` accepts only
+those identifiers, reruns the complete inventory/digest verification, and
+returns the selected UTF-8 document. It cannot read a caller path, an unlisted
+reference, a symlink, or an arbitrary file. Resource metadata carries the
+receipt contract/source/source SHA and dirty state. No document is preloaded
+into initialization and no writable Codex/Claude/Copilot skills home is
+required.
 
 ## Headless support matrix
 
