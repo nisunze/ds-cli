@@ -121,18 +121,22 @@ fn parse_bounds(raw: &str, name: &str, max_span: f64) -> Result<[f64; 4], Failur
     }
     Ok(bounds)
 }
-pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+fn read_layout(path: &str) -> Result<printing::Layout, Failure> {
     let mut bytes = Vec::new();
-    std::fs::File::open(i.require("layout")?)
-        .map_err(invalid)?
+    std::fs::File::open(path)
+        .map_err(|error| invalid(format!("open --layout `{path}`: {error}")))?
         .take(16 * 1024 * 1024 + 1)
         .read_to_end(&mut bytes)
-        .map_err(invalid)?;
+        .map_err(|error| invalid(format!("read --layout `{path}`: {error}")))?;
     if bytes.len() > 16 * 1024 * 1024 {
         return Err(invalid("layout exceeds 16 MiB"));
     }
     let layout: printing::Layout = serde_json::from_slice(&bytes).map_err(invalid)?;
     printing::validate(&layout).map_err(invalid)?;
+    Ok(layout)
+}
+pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let layout = read_layout(i.require("layout")?)?;
     let out = PathBuf::from(i.require("out-dir")?);
     if out.exists() {
         return Err(Failure::invalid(
@@ -345,8 +349,23 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bounds, read_context_batch};
+    use super::{parse_bounds, read_context_batch, read_layout};
     use ds_cli_contract::outcome::Failure;
+
+    #[test]
+    fn missing_layout_refusal_names_the_exact_authored_file() {
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("maps/layout-rulindo.json");
+        let error = read_layout(missing.to_str().unwrap()).unwrap_err();
+        assert_eq!(error.code(), "report_inputs_invalid");
+        assert!(error.message().contains("open --layout"), "{error:?}");
+        assert!(
+            error
+                .message()
+                .contains(&missing.to_string_lossy().to_string()),
+            "{error:?}"
+        );
+    }
 
     #[test]
     fn transient_context_batch_is_retried_then_read() {
