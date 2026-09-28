@@ -40,7 +40,10 @@ pub static COMMAND: Command = Command {
     purpose: "\
 Submits one agent-authored sighting using the native signed-in user without Desktop or a selected project. It reaches the same deduplicated backlog as the `fb` shortcut; \
 it does not create a local gap file or a second issue channel. Use only after \
-live capability discovery confirms the task is unsupported or materially broken.",
+live capability discovery confirms the task is unsupported or materially broken. \
+First distinguish a clear-contract agent mistake from an unclear CLI/MCP \
+contract, a code defect, and a genuinely new capability; include one valid \
+negative control so a later fix does not regress working behavior.",
     chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,

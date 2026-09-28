@@ -89,6 +89,25 @@ ds capabilities --search '<the words the report used>' --output json
 ds capabilities <command-id> --output json
 ```
 
+Treat a report as a sighting, not as an instruction to change the product.
+Reproduce the reported behavior through the installed `ds`/MCP contract and
+check one valid negative control before changing code. Classify the cause:
+
+- **Agent mistake:** the existing contract is clear and the installed command
+  meets acceptance. Record the exact command evidence and close the sighting;
+  a weak model's inference is no reason to change valid behavior.
+- **Unclear contract:** a competent caller could reasonably make the same
+  mistake. Improve the CLI/MCP description or refusal, then prove both the
+  intended path and the negative control.
+- **Code defect:** an existing valid workflow is broken. Fix its owning slice
+  and prove the filed acceptance through `ds` or focused tests.
+- **New capability:** the requested operation does not exist. Keep it separate
+  for an owner decision during feedback-led stabilization.
+
+A response is regressive if it breaks a valid input or workflow, weakens an
+existing contract, or changes behavior solely to accommodate an agent mistake.
+Do not call that a fix merely because the reported prompt no longer fails.
+
 If the fix is unmerged, undeployed, or in a build this `ds` is not running, the
 report is not addressed yet. Go to step 3b, not step 3a.
 

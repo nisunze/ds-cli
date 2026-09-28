@@ -29,7 +29,11 @@ submit` and then actually fixed is retired here, with the resolution a reader \
 of the `fb` tab will see. This is that tab's own triage mutation — same status \
 vocabulary, same optimistic version, same platform capability — so the backlog \
 does not keep counting work that is already done. Close only what the session \
-can show is addressed; the resolution is the record, not a formality.",
+can show is addressed on the deployed `ds`, including the filed acceptance \
+and a valid negative control. If the report came from an agent misunderstanding \
+an already clear contract, close it with command evidence rather than changing \
+working behavior. A code fix awaiting release stays open with a note. The \
+resolution is the record, not a formality.",
     chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
