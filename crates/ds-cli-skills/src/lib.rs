@@ -78,6 +78,27 @@ impl IndexedBundle {
         &self.bundle.receipt.skills
     }
 
+    /// Markdown references are discoverable only when named by the verified
+    /// receipt. MCP callers cannot invent a path outside a shipped skill.
+    pub fn references(&self) -> Vec<(String, String)> {
+        self.bundle
+            .receipt
+            .files
+            .keys()
+            .filter_map(|path| {
+                let (skill, file) = path.strip_prefix("skills/")?.split_once("/references/")?;
+                let stem = file.strip_suffix(".md")?;
+                if self.bundle.receipt.skills.iter().any(|item| item == skill)
+                    && valid_skill_name(stem)
+                {
+                    Some((skill.to_string(), stem.to_string()))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     /// Read only the selected skill's entry document. The name must be one
     /// of the receipt identifiers; callers never supply a path. Re-validate
     /// the complete bundle and the selected digest at read time so a prior
@@ -87,16 +108,29 @@ impl IndexedBundle {
         if !valid_skill_name(name) || !self.bundle.receipt.skills.iter().any(|item| item == name) {
             return Err(format!("unknown shipped skill `{name}`"));
         }
+        self.read_document(&format!("skills/{name}/SKILL.md"))
+    }
+
+    pub fn read_reference(&self, skill: &str, stem: &str) -> Result<String, String> {
+        if !valid_skill_name(skill)
+            || !valid_skill_name(stem)
+            || !self.bundle.receipt.skills.iter().any(|item| item == skill)
+        {
+            return Err("unknown shipped skill reference".to_string());
+        }
+        self.read_document(&format!("skills/{skill}/references/{stem}.md"))
+    }
+
+    fn read_document(&self, relative: &str) -> Result<String, String> {
         let current = validate_bundle(&self.bundle.root, self.source_sha())?;
         if current != self.bundle.receipt {
             return Err("skill bundle changed after it was selected".to_string());
         }
-        let relative = format!("skills/{name}/SKILL.md");
         let expected = current
             .files
-            .get(&relative)
+            .get(relative)
             .ok_or_else(|| format!("receipt omits {relative}"))?;
-        let path = self.bundle.root.join(&relative);
+        let path = self.bundle.root.join(relative);
         let metadata = fs::symlink_metadata(&path)
             .map_err(|error| format!("skill document is unreadable: {error}"))?;
         if !metadata.file_type().is_file() || metadata.len() > MAX_SKILL_DOCUMENT_BYTES {
@@ -965,6 +999,27 @@ mod tests {
         assert!(indexed.read_skill("ds").is_ok());
         fs::write(temp.0.join("skills/ds/SKILL.md"), "changed\n").unwrap();
         assert!(indexed.read_skill("ds").is_err());
+    }
+
+    #[test]
+    fn reference_is_receipt_named_and_rechecked_at_read_time() {
+        let temp = TestDir::new();
+        let cli_sha = "2222222222222222222222222222222222222222";
+        let reference = temp.0.join("skills/ds/references/guide.md");
+        fs::create_dir_all(reference.parent().unwrap()).unwrap();
+        fs::write(&reference, "governed guide\n").unwrap();
+        write_bundle(&temp.0, cli_sha);
+        let indexed = verdict_from_candidates(std::slice::from_ref(&temp.0), cli_sha)
+            .bundle
+            .expect("verified bundle");
+        assert_eq!(indexed.references(), vec![("ds".into(), "guide".into())]);
+        assert_eq!(
+            indexed.read_reference("ds", "guide").unwrap(),
+            "governed guide\n"
+        );
+        assert!(indexed.read_reference("ds", "missing").is_err());
+        fs::write(&reference, "changed\n").unwrap();
+        assert!(indexed.read_reference("ds", "guide").is_err());
     }
 
     /// The Windows case of 2026-09-22 (feedback 8c1e8b93): one bundle, one

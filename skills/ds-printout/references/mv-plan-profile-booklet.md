@@ -29,25 +29,42 @@ conflicts without supervising every sheet.
    print merely because a selected proof succeeded when the operator has
    reserved the full-job decision.
 
-## Booklet order and paper
+## Governed front matter and booklet order
 
 Every page, including front matter, is A3 landscape at its native size:
 
-1. Cover: project and document names, project logo where governed, exact
-   formal client, employer, consultant, contractor and contract number
-   available in project records. Do not invent parties, signatures,
-   approvals or a construction status.
+Use the reusable standard at
+`ds-work/standards/mv-plan-profile/frontmatter/` for the cover and naming
+page. Its HTML/CSS is the template; supply project-owned data, not a new
+layout. Verify exact parties and logo bytes through the project's records and
+assets. A missing contract number stays absent until verified. Preview the
+effective front matter beside the project key map and a representative sheet
+at paper size before making the full booklet.
+
+1. Cover: project and document names, exact formal client, employer,
+   consultant, contractor, logos and contract number where available in
+   project records. Do not invent parties, signatures, approvals or a
+   construction status. Use one simple document version.
 2. Structure naming convention: the current governed library and a
    digest-linked naming key. The stay indicator precedes the structure
-   strength/class in the canonical grammar. Mark unresolved legacy names
-   or pending library members instead of implying migration is complete.
+   strength/class in the canonical grammar. Show only verified canonical
+   examples. Put unresolved legacy names or pending library members in the
+   internal receipt, never on an external page.
 3. Key map: show the model's location in appropriate geographic context.
    Use the exact model revision; label transformers by their actual project
-   names, at a readable A3 size without crowding. Mark source names that
-   are missing instead of substituting another field without authority.
+   names, at a readable A3 size without crowding. Keep roads, power lines and
+   a small set of relevant places; omit rivers and settlement-site detail at
+   this overview scale. Record missing source names internally instead of
+   substituting another field without authority.
 4. Numbered plan/profile sheets for that model, with the model identity and
    revision traceable to the booklet. For multiple models, use separate
    booklets or a clearly indexed combined set; do not mingle revisions.
+
+Print `DS GridDesign by datasolutions.rw` discreetly and legibly on every
+page, clear of engineering content. Confirm page dimensions, page count,
+sequence, identity, version and credit on the assembled PDF itself. If the
+live `ds` contract has no atomic booklet command, report that gap. A local
+assembly is not a governed project publication or verified online delivery.
 
 ## Plan/profile context
 

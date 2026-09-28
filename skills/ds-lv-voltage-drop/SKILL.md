@@ -2,7 +2,7 @@
 name: ds-lv-voltage-drop
 description: Check an LV transformer's voltage drop against its country rule, read the year-by-year outlook and the proposed reinforcement, and explain them. For voltage-drop questions, compliance, reinforcement timing and cost.
 metadata:
-  ds-chapters: design, report
+  ds-chapters: design, reports
 ---
 
 # Read and explain an LV voltage drop

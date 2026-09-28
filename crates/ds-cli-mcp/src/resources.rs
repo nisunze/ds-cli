@@ -6,6 +6,11 @@ use serde_json::{Value, json};
 const URI_PREFIX: &str = "ds-skill://bundle/";
 const URI_SUFFIX: &str = "/SKILL.md";
 
+enum ResourcePath<'a> {
+    Skill(&'a str),
+    Reference(&'a str, &'a str),
+}
+
 #[derive(Debug)]
 pub struct SkillResources {
     verdict: BundleVerdict,
@@ -34,6 +39,8 @@ impl SkillResources {
         identity["dirty"] = json!(false);
         identity["requires_skills_home"] = json!(false);
         identity["uri_template"] = json!("ds-skill://bundle/<receipt-skill-id>/SKILL.md");
+        identity["reference_uri_template"] =
+            json!("ds-skill://bundle/<receipt-skill-id>/references/<receipt-reference-id>.md");
         identity
     }
 
@@ -41,7 +48,7 @@ impl SkillResources {
         let resources = self
             .bundle()
             .map(|bundle| {
-                bundle
+                let mut listed = bundle
                     .skills()
                     .iter()
                     .map(|name| {
@@ -54,7 +61,18 @@ impl SkillResources {
                             "_meta": resource_meta(bundle.source_sha()),
                         })
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                listed.extend(bundle.references().into_iter().map(|(skill, stem)| {
+                    json!({
+                        "uri": reference_uri(&skill, &stem),
+                        "name": format!("{skill}/{stem}"),
+                        "title": format!("DS skill reference: {skill}/{stem}"),
+                        "description": "Receipt-verified workflow detail. Read when its entry skill cites this reference.",
+                        "mimeType": "text/markdown",
+                        "_meta": resource_meta(bundle.source_sha()),
+                    })
+                }));
+                listed
             })
             .unwrap_or_default();
         json!({ "resources": resources, "_meta": { "dsSkills": self.identity() } })
@@ -74,7 +92,7 @@ impl SkillResources {
             .get("uri")
             .and_then(Value::as_str)
             .ok_or_else(|| (-32602, "`uri` is required and must be a string".to_string()))?;
-        let name =
+        let resource =
             parse_uri(uri).ok_or_else(|| (-32602, format!("unknown DS skill resource `{uri}`")))?;
         let bundle = self.bundle().ok_or_else(|| {
             (
@@ -89,9 +107,11 @@ impl SkillResources {
                 ),
             )
         })?;
-        let text = bundle
-            .read_skill(name)
-            .map_err(|reason| (-32002, format!("DS skill resource refused: {reason}")))?;
+        let text = match resource {
+            ResourcePath::Skill(name) => bundle.read_skill(name),
+            ResourcePath::Reference(skill, stem) => bundle.read_reference(skill, stem),
+        }
+        .map_err(|reason| (-32002, format!("DS skill resource refused: {reason}")))?;
         Ok(json!({
             "contents": [{
                 "uri": uri,
@@ -107,22 +127,31 @@ fn skill_uri(name: &str) -> String {
     format!("{URI_PREFIX}{name}{URI_SUFFIX}")
 }
 
-fn parse_uri(uri: &str) -> Option<&str> {
-    let name = uri.strip_prefix(URI_PREFIX)?.strip_suffix(URI_SUFFIX)?;
-    if name.is_empty()
-        || name.contains('/')
-        || name.contains('\\')
-        || name.contains('%')
-        || !name.split('-').all(|part| {
+fn reference_uri(skill: &str, stem: &str) -> String {
+    format!("{URI_PREFIX}{skill}/references/{stem}.md")
+}
+
+fn closed_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.split('-').all(|part| {
             !part.is_empty()
                 && part
                     .bytes()
                     .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
         })
-    {
+}
+
+fn parse_uri(uri: &str) -> Option<ResourcePath<'_>> {
+    let path = uri.strip_prefix(URI_PREFIX)?;
+    if path.contains('\\') || path.contains('%') {
         return None;
     }
-    Some(name)
+    if let Some(name) = path.strip_suffix(URI_SUFFIX) {
+        return closed_name(name).then_some(ResourcePath::Skill(name));
+    }
+    let (skill, file) = path.split_once("/references/")?;
+    let stem = file.strip_suffix(".md")?;
+    (closed_name(skill) && closed_name(stem)).then_some(ResourcePath::Reference(skill, stem))
 }
 
 fn resource_meta(source_sha: &str) -> Value {
@@ -140,15 +169,28 @@ mod tests {
 
     #[test]
     fn resource_identifiers_are_closed_names_not_paths() {
-        assert_eq!(parse_uri("ds-skill://bundle/ds/SKILL.md"), Some("ds"));
+        assert!(matches!(
+            parse_uri("ds-skill://bundle/ds/SKILL.md"),
+            Some(ResourcePath::Skill("ds"))
+        ));
+        assert!(matches!(
+            parse_uri("ds-skill://bundle/ds-printout/references/mv-plan-profile-booklet.md"),
+            Some(ResourcePath::Reference(
+                "ds-printout",
+                "mv-plan-profile-booklet"
+            ))
+        ));
         for uri in [
             "file:///etc/passwd",
             "ds-skill://bundle/../SKILL.md",
             "ds-skill://bundle/ds/agents/openai.yaml/SKILL.md",
             "ds-skill://bundle/ds%2f..%2f/SKILL.md",
             "ds-skill://bundle/ds\\..\\/SKILL.md",
+            "ds-skill://bundle/ds/references/../SKILL.md",
+            "ds-skill://bundle/ds/references/a/b.md",
+            "ds-skill://bundle/ds/references/a%2fb.md",
         ] {
-            assert_eq!(parse_uri(uri), None, "{uri}");
+            assert!(parse_uri(uri).is_none(), "{uri}");
         }
     }
 }

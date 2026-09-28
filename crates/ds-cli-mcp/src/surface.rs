@@ -55,6 +55,7 @@ pub const EXPOSURES: &[&str] = &["chapters", "commands"];
 const DEVICE_LINK_GUIDANCE: &str = "If signed out, run `ds account connect` on this machine (or call the account.connect tool), then approve the request in the signed-in DS GridDesign Desktop under Account > Link a trusted device; call account.connect again once approved. Keep the same lane throughout. That is the only sign-in.";
 const PROJECT_WORK_GUIDANCE: &str = "For substantive delivery on a named DS project, read `ds-project-work` from the receipt-verified skill resources. Use Project Work as the delivery record: as the signed-in user and for the exact project, inspect `pm.plan` and existing `pm.task` items, reuse a matching task or open one, assign only through the declared project-member workflow, and record observed progress, review and verified completion. Trace real correspondence, design comments, submissions and exact revisions through their declared commands; verify asset links before claiming an attachment. If delivery is blocked, record its real cause and next condition in the task; `pm.task.block` is only for an answer owed on a record. Server-owned notifications follow applicable committed PM writes; an assignment receipt is not proof that a notification reached anyone. Do not create tasks for casual reads or claim to act for another user.";
 const REGRESSION_GUIDANCE: &str = "For reported regressions, replay the exact command against installed `ds` and a negative control, compare the last working result, then distinguish a code defect, unclear CLI/MCP guidance, a missing authorized capability, and misuse of a clear contract. Fix or clarify only the demonstrated gap; note or close official feedback with evidence and remove resolved work from `ds-work/backlog/OPEN.md` when that workspace is available.";
+const BOOKLET_GUIDANCE: &str = "For MV plan/profile booklets, read the receipt-verified `ds-printout` skill and its booklet reference before rendering. Use the governed A3 landscape cover and naming template at `ds-work/standards/mv-plan-profile/frontmatter`, with exact project-owned parties, contract, logos, model, version, date and canonical structure names; omit unknown facts and keep unresolved findings in the internal receipt. Assemble cover, naming, project key map, then numbered sheets, preserving A3 landscape and `DS GridDesign by datasolutions.rw` on every page. Inspect a complete representative PDF at paper size and verify online bytes before claiming delivery. If the live `ds` contract cannot perform an atomic booklet job, report that product gap; do not improvise a new cover or imply local assembly is a governed project publication.";
 /// Word for word `ds_cli_auth::SIGNED_OUT_REMEDY`. Spelled here because this
 /// crate reaches `ds` only through its executable, never its crates;
 /// `crates/ds/tests/mcp.rs` holds the two equal.
@@ -1260,7 +1261,7 @@ impl Surface {
             (Exposure::Chapters, Some(_)) => unreachable!("invalid surface is refused"),
         };
         format!(
-            "{instructions} {DEVICE_LINK_GUIDANCE} {PROJECT_WORK_GUIDANCE} {REGRESSION_GUIDANCE}"
+            "{instructions} {DEVICE_LINK_GUIDANCE} {PROJECT_WORK_GUIDANCE} {REGRESSION_GUIDANCE} {BOOKLET_GUIDANCE}"
         )
     }
 
@@ -2417,6 +2418,11 @@ mod tests {
                 "negative control",
                 "unclear CLI/MCP guidance",
                 "official feedback",
+                "ds-printout",
+                "governed A3 landscape cover and naming template",
+                "project-owned parties",
+                "canonical structure names",
+                "atomic booklet job",
             ] {
                 assert!(
                     instructions.contains(expected),
