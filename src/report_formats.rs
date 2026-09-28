@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const DEFAULT_INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx"];
+/// The outputs an absent or empty selection produces. `voltage_drop` is on by
+/// default (owner ruling 2026-09-28): ds-network solves every processed
+/// transformer, and the report states those results.
+pub const DEFAULT_INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx", "voltage_drop"];
 pub const INDIVIDUAL: &[&str] = &[
     "shp",
     "kmz",
@@ -14,7 +17,10 @@ pub const INDIVIDUAL: &[&str] = &[
     "pdf_a3",
     "geojson",
     "network_information",
+    "voltage_drop",
 ];
+/// The tabular outputs, one list for every reader that classes a token.
+pub const TABULAR: &[&str] = &["xlsx", "network_information", "voltage_drop"];
 pub const COMBINED: &[&str] = &["shp", "xlsx", "geojsonseq"];
 pub const OPTIONAL_COMBINED: &[&str] = &["gpkg", "network_information"];
 
@@ -150,7 +156,7 @@ pub const EXECUTION_CLASSES: &[&str] = &["print", "geospatial", "tabular"];
 /// The execution class of one output id, exactly as ds-brain computes it while
 /// filtering the individual output list.
 pub fn output_class(output_id: &str) -> &'static str {
-    if matches!(output_id, "xlsx" | "network_information") {
+    if TABULAR.contains(&output_id) {
         "tabular"
     } else if output_id.starts_with("pdf_") || named_print_output(output_id).is_some() {
         "print"
@@ -386,7 +392,7 @@ pub fn normalize_output_selection(
             prints.entry(id.into()).or_default().insert(format);
         } else if token.contains("__") {
             return Err(format!("invalid named print output: {raw}"));
-        } else if matches!(token.as_str(), "xlsx" | "network_information") {
+        } else if TABULAR.contains(&token.as_str()) {
             if !tabular.contains(&token) {
                 tabular.push(token);
             }
@@ -558,6 +564,7 @@ pub fn output(format: &str) -> Result<Output, String> {
     }
     let (content_type, suffix) = match format {
         "network_information" => ("application/json", ".network-information.json"),
+        "voltage_drop" => ("application/json", ".voltage-drop.json"),
         "shp" => ("application/zip", ".shp.zip"),
         "kmz" => ("application/vnd.google-earth.kmz", ".kmz"),
         "xlsx" => (
@@ -1907,5 +1914,34 @@ mod tests {
         assert_eq!(selection.tabular, ["xlsx"]);
         assert!(normalize_output_selection(None, Some(vec![]), None).is_err());
         assert!(normalize_output_selection(None, Some(vec!["gif__a3".into()]), None).is_err());
+    }
+
+    /// Voltage drop (owner ruling 2026-09-28): a per-transformer JSON result,
+    /// tabular, and produced by default. A project that stored an explicit
+    /// selection keeps exactly what it chose, and the combined report stays
+    /// data-only: its summary sheet rides the combined workbook.
+    #[test]
+    fn voltage_drop_is_a_default_tabular_json_output() {
+        assert_eq!(normalize(&[]), ["shp", "kmz", "xlsx", "voltage_drop"]);
+        assert!(!normalize(&["shp".into(), "xlsx".into()]).contains(&"voltage_drop".to_string()));
+        let definition = output("voltage_drop").unwrap();
+        assert_eq!(definition.output_id, "voltage_drop");
+        assert_eq!(definition.format, "voltage_drop");
+        assert_eq!(definition.content_type, "application/json");
+        assert_eq!(definition.suffix, ".voltage-drop.json");
+        assert_eq!(output_class("voltage_drop"), "tabular");
+        let selection = stored_output_selection(&json!("shp,voltage_drop,xlsx")).unwrap();
+        assert_eq!(selection.geospatial, ["shp"]);
+        assert_eq!(selection.tabular, ["voltage_drop", "xlsx"]);
+        assert!(options(&[])
+            .unwrap()
+            .iter()
+            .any(|option| option["value"] == "voltage_drop"));
+        let planned = plan(&json!({}), false).unwrap();
+        assert_eq!(
+            planned.last().map(|o| o.output_id.as_str()),
+            Some("voltage_drop")
+        );
+        assert!(!combined(&["voltage_drop".into()]).contains(&"voltage_drop"));
     }
 }

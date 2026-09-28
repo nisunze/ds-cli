@@ -1599,6 +1599,7 @@ pub fn valid_artifact_filename(filename: &str, format: &str) -> bool {
         "kmz" => filename.ends_with(".kmz"),
         "xlsx" => filename.ends_with(".xlsx"),
         "network_information" => filename.ends_with(".network-information.json"),
+        "voltage_drop" => filename.ends_with(".voltage-drop.json"),
         "geojsonseq" => filename.ends_with("_geojsonl.zip"),
         "gpkg" => filename.ends_with(".gpkg"),
         "pdf_a0" => filename.ends_with(".a0.pdf"),
@@ -3746,6 +3747,11 @@ mod tests {
             "network_information"
         ));
         assert!(!valid_artifact_filename("tx_a.json", "network_information"));
+        assert!(valid_artifact_filename(
+            "tx_a.voltage-drop.json",
+            "voltage_drop"
+        ));
+        assert!(!valid_artifact_filename("tx_a.json", "voltage_drop"));
         assert!(valid_artifact_filename("tx_a.detail.pdf", "pdf__detail"));
         assert!(valid_artifact_filename("tx_a.detail.png", "png__detail"));
         assert!(valid_artifact_filename("tx_a.detail.jpg", "jpeg__detail"));

@@ -908,7 +908,8 @@
       "expected_outputs": [
         "shp",
         "kmz",
-        "xlsx"
+        "xlsx",
+        "voltage_drop"
       ]
     }
   ]
