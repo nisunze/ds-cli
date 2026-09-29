@@ -72,6 +72,28 @@ ds workstation verify --component pandoc --output json
 Do not install these during Server publication. Package deployment completes
 first; host prerequisites are a separate idempotent workstation operation.
 
+For one-command local voltage-drop PDF printing, select a browser already on
+the owning desktop once. Prefer Windows Edge when no selection exists. The
+configuration proves a real headless HTML-to-PDF smoke and persists the exact
+path for later exports:
+
+```text
+ds capabilities workstation.plan --output json
+ds workstation plan --component chromium --intent configure --target reporter --output json
+ds capabilities workstation.configure --output json
+ds workstation configure --component chromium --target reporter --yes --output json
+ds workstation verify --component chromium --output json
+```
+
+Discovery checks `DS_VD_CHROME` and `CHROME`, then a verified DS selection,
+then an existing Chrome/Edge/Chromium. Windows checks Edge in Program Files
+before PATH Chrome. Linux also recognizes an already present Playwright
+headless shell. `configure` uses `--headless` and a private temporary profile;
+it never opens a browser window. The report runner reads the stored selection
+without any per-report setup. `install --component chromium` is unsupported:
+DS never downloads or installs a browser. Read the live descriptor; this new
+component exists only in a `ds` build that includes it.
+
 When a task needs Rwanda village boundaries, the explicit acquisition command
 uses the fixed official NISR 2022 Open Data layer and writes a
 provenance/version/license/SHA-256 receipt:

@@ -158,6 +158,11 @@ pub fn render(data: &Value) -> String {
         if let Some(version) = component["version"].as_str() {
             out.push_str(&format!(" · {version}"));
         }
+        if component["id"] == "chromium"
+            && let Some(path) = component["path"].as_str()
+        {
+            out.push_str(&format!(" · {path}"));
+        }
         out.push('\n');
     }
     out

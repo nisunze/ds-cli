@@ -103,6 +103,127 @@ pub fn component_root(platform: Platform) -> Option<PathBuf> {
     }
 }
 
+pub const BROWSER_SELECTION_SCHEMA: &str = "ds-workstation-browser-selection/v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BrowserSelection {
+    pub schema: String,
+    pub component: String,
+    pub executable: String,
+    pub version: String,
+    pub verified_at_unix_s: u64,
+    pub pdf_smoke: bool,
+    pub preexisting: bool,
+}
+
+pub fn browser_selection_path(platform: Platform) -> Option<PathBuf> {
+    component_root(platform).map(|root| root.join("chromium").join("browser-selection.json"))
+}
+
+pub fn read_browser_selection(platform: Platform) -> Result<Option<BrowserSelection>, String> {
+    let path = browser_selection_path(platform)
+        .ok_or_else(|| "the platform component root is unavailable".to_string())?;
+    read_browser_selection_at(&path)
+}
+
+pub(crate) fn read_browser_selection_at(path: &Path) -> Result<Option<BrowserSelection>, String> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.len() > 8 * 1024 => {
+            return Err("browser selection exceeds 8 KiB".to_string());
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "browser selection could not be inspected: {}",
+                error.kind()
+            ));
+        }
+    }
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "browser selection could not be read: {}",
+                error.kind()
+            ));
+        }
+    };
+    if bytes.len() > 8 * 1024 {
+        return Err("browser selection exceeds 8 KiB".to_string());
+    }
+    let receipt: BrowserSelection = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("browser selection is invalid JSON: {error}"))?;
+    if receipt.schema != BROWSER_SELECTION_SCHEMA
+        || receipt.component != "chromium"
+        || !Path::new(&receipt.executable).is_absolute()
+        || receipt.version.trim().is_empty()
+        || !receipt.pdf_smoke
+        || !receipt.preexisting
+    {
+        return Err(
+            "browser selection has invalid schema, path, or verification fields".to_string(),
+        );
+    }
+    Ok(Some(receipt))
+}
+
+pub fn write_browser_selection(
+    platform: Platform,
+    receipt: &BrowserSelection,
+) -> Result<PathBuf, String> {
+    let path = browser_selection_path(platform)
+        .ok_or_else(|| "the platform component root is unavailable".to_string())?;
+    write_browser_selection_at(&path, receipt)?;
+    Ok(path)
+}
+
+pub(crate) fn write_browser_selection_at(
+    path: &Path,
+    receipt: &BrowserSelection,
+) -> Result<(), String> {
+    use std::io::Write;
+    let parent = path
+        .parent()
+        .ok_or("browser selection has no parent directory")?;
+    private_dir_all(parent).map_err(|error| {
+        format!(
+            "browser settings directory could not be created: {}",
+            error.kind()
+        )
+    })?;
+    let bytes = serde_json::to_vec_pretty(receipt)
+        .map_err(|error| format!("browser selection could not be encoded: {error}"))?;
+    if bytes.len() > 8 * 1024 {
+        return Err("browser selection exceeds 8 KiB".to_string());
+    }
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = path.with_extension(format!("json.tmp.{}-{nonce}", std::process::id()));
+    let mut file = private_options()
+        .create_new(true)
+        .write(true)
+        .open(&temporary)
+        .map_err(|error| format!("browser selection temporary write failed: {}", error.kind()))?;
+    file.write_all(&bytes)
+        .and_then(|_| file.sync_all())
+        .map_err(|error| {
+            let _ = std::fs::remove_file(&temporary);
+            format!("browser selection temporary write failed: {}", error.kind())
+        })?;
+    drop(file);
+    let moved = std::fs::rename(&temporary, path)
+        .map_err(|error| format!("browser selection atomic replace failed: {}", error.kind()));
+    if moved.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    moved?;
+    Ok(())
+}
+
 pub fn reference_component_snapshot(component: &Component, platform: Platform) -> Value {
     let Some(root) = component_root(platform) else {
         return json!({

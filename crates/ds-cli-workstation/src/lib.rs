@@ -34,7 +34,7 @@ pub static DOMAIN: Domain = Domain {
 pub const COMPONENT_ARG: Arg = Arg {
     name: "component",
     kind: ArgKind::Value,
-    value: "<libreoffice|git-bash|rwanda-reference|tippecanoe|pandoc>",
+    value: "<libreoffice|git-bash|rwanda-reference|tippecanoe|pandoc|chromium>",
     required: true,
     default: None,
     choices: &[
@@ -43,6 +43,7 @@ pub const COMPONENT_ARG: Arg = Arg {
         "rwanda-reference",
         "tippecanoe",
         "pandoc",
+        "chromium",
     ],
     summary: "The governed prerequisite or reference component.",
 };

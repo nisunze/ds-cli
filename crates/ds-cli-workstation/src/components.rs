@@ -67,12 +67,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     "implemented": acquisition_implemented,
                     "availability": if acquisition_implemented { "available" } else { "unavailable" },
                     "explicit_intent_required": true,
-                    "reason": if component.id == "rwanda-reference" { "fixed official NISR source with governed version/license/hash receipt" } else if component.id == "tippecanoe" && acquisition_implemented { "kernel-pinned shared Tippecanoe and PMTiles installer" } else if acquisition_implemented { "platform package-manager lifecycle is proven" } else { "this exact acquisition lifecycle remains unproven and fails closed" },
+                    "reason": if component.id == "rwanda-reference" { "fixed official NISR source with governed version/license/hash receipt" } else if component.id == "tippecanoe" && acquisition_implemented { "kernel-pinned shared Tippecanoe and PMTiles installer" } else if component.id == "chromium" { "DS intentionally does not install browsers; configure a verified existing browser for the reporter" } else if acquisition_implemented { "platform package-manager lifecycle is proven" } else { "this exact acquisition lifecycle remains unproven and fails closed" },
                 },
                 "integrations": {
                     "libreoffice_mcp": false,
                     "third_party_qgis_mcp_allowed": false,
                     "vscode_git_bash_configuration": component.id == "git-bash" && platform == Platform::Windows,
+                    "reporter_browser_configuration": component.id == "chromium",
                 },
             })
         })

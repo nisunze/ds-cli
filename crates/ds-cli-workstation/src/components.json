@@ -131,5 +131,40 @@
       "Prefer the proven platform package manager and the official pandoc package identity.",
       "Verify the executable version before recording the receipt."
     ]
+  },
+  {
+    "id": "chromium",
+    "required": false,
+    "purpose": "Print the bundled voltage-drop A4 report locally in one command through an existing headless Chrome, Edge, or Chromium browser.",
+    "provenance": "An existing operating-system browser or a pre-existing Playwright Chromium headless shell on this workstation; DS installs no browser",
+    "linux_executables": [
+      "chromium",
+      "chromium-browser",
+      "google-chrome",
+      "microsoft-edge",
+      "chrome-headless-shell"
+    ],
+    "macos_executables": [
+      "chromium",
+      "google-chrome",
+      "msedge"
+    ],
+    "windows_executables": [
+      "chrome.exe",
+      "chromium.exe",
+      "msedge.exe"
+    ],
+    "linux_plan": [
+      "Discover DS_VD_CHROME or CHROME, then the DS-verified browser selection, PATH Chrome/Edge/Chromium, then an existing Playwright headless shell; preserve the browser.",
+      "Run `ds workstation configure --component chromium --target reporter --yes --output json` once to prove a task-owned headless HTML-to-PDF smoke and store the exact existing executable. Later report exports reuse it automatically; DS never downloads or installs a browser."
+    ],
+    "macos_plan": [
+      "Detect an existing Chrome, Edge, or Chromium executable and preserve it.",
+      "Run `ds workstation configure --component chromium --target reporter --yes --output json` to prove a headless PDF and persist its exact path without installing a browser."
+    ],
+    "windows_plan": [
+      "Use an explicit DS_VD_CHROME or prior verified selection first; otherwise prefer existing Microsoft Edge under Program Files (x86) or Program Files, then PATH or conventional Chrome/Chromium. Preserve the browser.",
+      "Run `ds workstation configure --component chromium --target reporter --yes --output json` once to prove a headless PDF with a private temporary profile and persist its exact path. DS never opens a browser window or installs a browser."
+    ]
   }
 ]

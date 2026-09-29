@@ -13,9 +13,9 @@ paths. All other acquisition and settings paths fail closed.
 | `status` | discovery | PATH executables, bounded version probes, receipt state, and separate shell facts |
 | `components` | discovery | purpose, provenance, local state, and acquisition policy |
 | `plan` | proposal | ordered policy and authorization boundaries; `mutated` is always false |
-| `install` | machine write | platform LibreOffice/Pandoc, governed NISR data, or the kernel-pinned shared Linux Tippecanoe/PMTiles pair |
-| `configure` | machine write | existing suitable Git Bash profile selected as VS Code's Windows default only |
-| `verify` | read-only | executable/version, LibreOffice headless conversion, or receipt/file hashes |
+| `install` | machine write | platform LibreOffice/Pandoc, governed NISR data, or the kernel-pinned shared Linux Tippecanoe/PMTiles pair; browsers are never installed |
+| `configure` | machine write | existing suitable Git Bash profile for VS Code, or a verified existing Chrome/Edge/Chromium for local reports |
+| `verify` | read-only | executable/version, LibreOffice and Chrome/Edge/Chromium headless PDF conversion, or receipt/file hashes |
 
 ## Components
 
@@ -33,6 +33,36 @@ paths. All other acquisition and settings paths fail closed.
   keep their declared online tiling route.
 - `pandoc` — local document conversion, so report finishing does not depend on a
   network service. Available on Linux, macOS and Windows.
+- `chromium` — local headless A4 PDF printing for voltage-drop reports through
+  an existing Chrome, Edge, or Chromium browser. Discovery respects an explicit
+  `DS_VD_CHROME` or `CHROME`, then a prior DS verified selection. On Windows,
+  it next checks Edge under `ProgramFiles(x86)` and `ProgramFiles`, then PATH and
+  conventional Chrome locations. On Linux, it checks PATH and an existing
+  Playwright headless shell under `PLAYWRIGHT_BROWSERS_PATH` or
+  `~/.cache/ms-playwright`. `PLAYWRIGHT_BROWSERS_PATH=0` is project-local; set
+  `DS_VD_CHROME` to its exact executable because DS cannot infer the project
+  directory.
+
+Run this once on the desktop that will print reports:
+
+```bash
+ds workstation plan --component chromium --intent configure --target reporter --output json
+ds workstation configure --component chromium --target reporter --yes --output json
+ds workstation verify --component chromium --output json
+```
+
+`configure` probes the browser's version, prints a task-owned HTML page to a
+real PDF with `--headless` and a private temporary profile, checks `%PDF-`,
+cleans up, and atomically stores its absolute path in the DS-owned
+`chromium/browser-selection.json`. The selection contains schema
+`ds-workstation-browser-selection/v1`, the executable/version, verification
+time, and `preexisting: true`; it never claims ownership of the browser. A
+second identical call is a no-op after the smoke. The report runner reads that
+selection automatically for later one-command exports. No visible browser
+window or per-report setup is required. The Linux smoke uses `--no-sandbox`
+for its local task-owned HTML because host AppArmor may disable Chromium's
+unprivileged user namespace. `install --component chromium` always refuses:
+DS does not download or install browsers.
 
 Pandoc and Linux LibreOffice install from the platform's own signed package
 catalog. On Linux the first of `apt-get`, `dnf`, `zypper` or `pacman` found on
@@ -130,7 +160,8 @@ Shared by more than one command:
 
 - `workstation_component_unknown` — id outside the governed catalogue.
 - `workstation_mutation_unsupported` — the component, platform or target has no
-  proven mutation contract, so `install` and `configure` fail closed.
+  proven mutation contract, so `install` and `configure` fail closed. For
+  Chromium, `install` directs the operator to configure an existing browser.
 
 `local-data status` and `local-data clean`:
 

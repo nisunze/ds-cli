@@ -32,3 +32,21 @@ the service to simplify or reduce coordinate precision. It commits GeoJSON only 
 DS-governed receipt naming source, version, license, installation time,
 ownership, and SHA-256. Discovery never downloads. A pre-existing or
 non-task-owned component is never removed by a repeatability test.
+
+## Chromium
+
+Chrome, Edge, or Chromium prints the bundled voltage-drop A4 report in one
+local export operation. `ds workstation configure --component chromium
+--target reporter --yes` selects an existing executable, proves its version and
+a real task-owned headless HTML-to-PDF conversion, and stores the exact path in
+DS-owned `chromium/browser-selection.json`. It uses a private temporary browser
+profile, cleans it, and claims no ownership of the pre-existing browser.
+
+An explicit `DS_VD_CHROME` or `CHROME` overrides the stored selection. When no
+selection exists, Windows prefers Edge in Program Files; Linux may use an
+already-present Playwright headless shell. Invalid explicit overrides fail
+instead of silently choosing another browser. The local renderer uses
+`--no-sandbox` only for bounded local HTML on Linux where AppArmor may disable
+the browser's user namespace. `install --component chromium` is unsupported;
+DS never downloads or installs a browser. The report command reuses the saved
+selection automatically and does not open a browser window.

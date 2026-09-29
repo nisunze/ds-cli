@@ -15,11 +15,13 @@ For MV plan/profile sets, read [booklet workflow](references/mv-plan-profile-boo
 before selecting the project setup or starting a batch.
 
 For voltage-drop A4 reports, use the explicit `voltage_drop_pdf` project output.
-After the new build is installed, verify local Chromium with
-`ds workstation verify --component chromium`, then run one
-`ds report project export` or `ds desktop printing export` operation. The local
-engine invokes Chromium and publishes the PDF; the web previews and downloads
-the published bytes, and does not render them. Follow `ds-lv-voltage-drop` for
+After the new build is installed, configure an existing Chrome, Edge, or
+Chromium once with `ds workstation configure --component chromium --target
+reporter --yes`, then verify it with `ds workstation verify --component
+chromium`. Run one `ds report project export` or `ds desktop printing export`
+operation. The local engine prints headlessly and queues the PDF for sync;
+verify online publication before claiming web preview or delivery. Follow
+`ds-lv-voltage-drop` for
 the calculation and remediation, and never take voltage-drop values from an
 individual or combined transformer workbook. The currently installed build
 does not yet have this output; require an actual receipt and artifact before

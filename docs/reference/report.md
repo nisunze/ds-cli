@@ -610,8 +610,12 @@ accepts them while rejecting mismatched run/output/layout identities.
 ## Headless transformer reports
 
 `ds report project export` produces individual transformer reports — prints
-included — with no browser and no Desktop. It is the door a Linux operator
-calls. Decisions and fingerprints come from
+included — without a Desktop. Most outputs need no browser; `voltage_drop_pdf`
+uses an existing Chrome, Edge, or Chromium executable in headless mode for its
+A4 print. Configure that browser once with `ds workstation configure
+--component chromium --target reporter --yes`, then the report export reuses
+the verified path automatically. It is the door a local operator calls.
+Decisions and fingerprints come from
 `ds-command-kernel::report_export`; the shared native IO host is
 `ds-command-kernel/crates/ds-report-host`, and the engine is the installed `ds-report`.
 Desktop now uses the kernel's fingerprints, while its existing sidecar and

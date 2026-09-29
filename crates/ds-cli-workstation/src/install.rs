@@ -48,7 +48,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Workstation,
     summary: "Install one explicitly requested, proven workstation component.",
-    purpose: "Installs the shared pinned Linux tiling toolchain, platform-provided LibreOffice or Pandoc, or the fixed official NISR Rwanda Village Boundary 2022 component. Existing verified components remain unchanged and platform-specific routes fail closed.",
+    purpose: "Installs the shared pinned Linux tiling toolchain, platform-provided LibreOffice or Pandoc, or the fixed official NISR Rwanda Village Boundary 2022 component. Existing verified components remain unchanged. Browser setup belongs to workstation.configure and browser installation is unsupported.",
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -114,6 +114,9 @@ fn decision(
     state: &str,
     approval: Option<&str>,
 ) -> Result<Decision, &'static str> {
+    if component == "chromium" {
+        return Err("unsupported");
+    }
     if state == "installed" {
         return Ok(Decision::AlreadySatisfied);
     }
@@ -148,6 +151,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy(crate::COMPONENT_UNKNOWN.remedy)
     })?;
+    if component_id == "chromium" {
+        return Err(Failure::unavailable(
+            "workstation_mutation_unsupported",
+            "DS does not install browsers; configure an existing Chrome, Edge, or Chromium executable",
+        )
+        .remedy("run `ds workstation plan --component chromium --intent configure --target reporter --output json`, then `ds workstation configure --component chromium --target reporter --yes --output json`"));
+    }
     let platform = Platform::current();
     let before = detect::snapshot(&component, platform, true);
     let state = before["state"].as_str().unwrap_or("unknown");
@@ -964,6 +974,18 @@ mod tests {
         assert_eq!(
             decision(Platform::Windows, "pandoc", "absent", None),
             Err("approval")
+        );
+        assert_eq!(
+            decision(Platform::Linux, "chromium", "absent", None),
+            Err("unsupported")
+        );
+        assert_eq!(
+            decision(Platform::Windows, "chromium", "installed", None),
+            Err("unsupported")
+        );
+        assert_eq!(
+            decision(Platform::Windows, "chromium", "absent", Some("interactive")),
+            Err("unsupported")
         );
         // An existing installation is still left untouched.
         assert_eq!(

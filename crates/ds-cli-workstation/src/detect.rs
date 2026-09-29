@@ -102,6 +102,177 @@ fn named_candidates(name: &str, directories: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
+fn executable(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).is_ok_and(|metadata| metadata.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn named_or_path(value: &str) -> Option<PathBuf> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if value.contains('/') || value.contains('\\') {
+        let path = PathBuf::from(value);
+        return executable(&path).then_some(path);
+    }
+    path_directories(std::env::var_os("PATH"))
+        .into_iter()
+        .map(|directory| directory.join(value))
+        .find(|path| executable(path))
+}
+
+fn playwright_headless_shell(cache: &Path) -> Option<PathBuf> {
+    let mut found = std::fs::read_dir(cache)
+        .ok()?
+        .flatten()
+        .filter_map(|entry| {
+            let revision = entry
+                .file_name()
+                .to_string_lossy()
+                .strip_prefix("chromium_headless_shell-")?
+                .parse::<u64>()
+                .ok()?;
+            let root = entry.path();
+            if !root.join("INSTALLATION_COMPLETE").is_file() {
+                return None;
+            }
+            let path = root.join("chrome-headless-shell-linux64/chrome-headless-shell");
+            executable(&path).then_some((revision, path))
+        })
+        .collect::<Vec<_>>();
+    found.sort_by_key(|(revision, _)| *revision);
+    found.pop().map(|(_, path)| path)
+}
+
+fn chromium_location(platform: Platform) -> (Option<PathBuf>, String, Option<String>) {
+    for key in ["DS_VD_CHROME", "CHROME"] {
+        if let Some(value) = std::env::var_os(key) {
+            let value = value.to_string_lossy();
+            let path = named_or_path(&value);
+            let reason = path
+                .is_none()
+                .then(|| format!("{key} is set but does not name an executable browser"));
+            return (path, format!("environment:{key}"), reason);
+        }
+    }
+    match crate::policy::read_browser_selection(platform) {
+        Ok(Some(selection)) => {
+            let path = PathBuf::from(selection.executable);
+            if executable(&path) {
+                return (Some(path), "ds_verified_selection".to_string(), None);
+            }
+            return (
+                None,
+                "ds_verified_selection".to_string(),
+                Some("the saved report browser is no longer executable; set DS_VD_CHROME to an existing browser and reconfigure".to_string()),
+            );
+        }
+        Err(reason) => {
+            return (
+                None,
+                "ds_verified_selection".to_string(),
+                Some(format!(
+                    "the saved report browser selection is invalid: {reason}; set DS_VD_CHROME to an existing browser and reconfigure"
+                )),
+            );
+        }
+        Ok(None) => {}
+    }
+    if platform == Platform::Windows {
+        for path in windows_edge_paths(
+            std::env::var_os("ProgramFiles(x86)"),
+            std::env::var_os("ProgramFiles"),
+        ) {
+            if executable(&path) {
+                return (Some(path), "windows_edge".to_string(), None);
+            }
+        }
+    }
+    let names: &[&str] = match platform {
+        Platform::Linux => &[
+            "chromium",
+            "chromium-browser",
+            "google-chrome",
+            "microsoft-edge",
+            "chrome-headless-shell",
+        ],
+        Platform::Macos => &["chromium", "google-chrome", "msedge"],
+        Platform::Windows => &["chrome.exe", "chromium.exe", "msedge.exe"],
+    };
+    for name in names {
+        if let Some(path) = named_or_path(name) {
+            return (Some(path), "system_path".to_string(), None);
+        }
+    }
+    let conventional = match platform {
+        Platform::Windows => {
+            let mut paths = Vec::new();
+            for root in [
+                std::env::var_os("ProgramFiles"),
+                std::env::var_os("ProgramFiles(x86)"),
+                std::env::var_os("LOCALAPPDATA"),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let root = PathBuf::from(root);
+                paths.push(root.join("Google/Chrome/Application/chrome.exe"));
+                paths.push(root.join("Chromium/Application/chrome.exe"));
+                paths.push(root.join("Microsoft/Edge/Application/msedge.exe"));
+            }
+            paths
+        }
+        Platform::Macos => vec![
+            PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+            PathBuf::from("/Applications/Chromium.app/Contents/MacOS/Chromium"),
+            PathBuf::from("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+        ],
+        Platform::Linux => Vec::new(),
+    };
+    if let Some(path) = conventional.into_iter().find(|path| executable(path)) {
+        return (Some(path), "conventional_path".to_string(), None);
+    }
+    if platform == Platform::Linux {
+        let cache = match std::env::var_os("PLAYWRIGHT_BROWSERS_PATH") {
+            Some(value) if value == "0" => {
+                return (
+                    None,
+                    "playwright_hermetic".to_string(),
+                    Some("PLAYWRIGHT_BROWSERS_PATH=0 uses a project-local browser cache; set DS_VD_CHROME to the exact headless-shell executable".to_string()),
+                );
+            }
+            Some(value) if !value.is_empty() => Some(PathBuf::from(value)),
+            _ => std::env::var_os("HOME")
+                .map(|home| PathBuf::from(home).join(".cache/ms-playwright")),
+        };
+        if let Some(cache) = cache {
+            if let Some(path) = playwright_headless_shell(&cache) {
+                return (Some(path), "playwright_headless_shell".to_string(), None);
+            }
+        }
+    }
+    (None, "none".to_string(), None)
+}
+
+fn windows_edge_paths(x86: Option<OsString>, native: Option<OsString>) -> Vec<PathBuf> {
+    [x86, native]
+        .into_iter()
+        .flatten()
+        .map(|root| PathBuf::from(root).join("Microsoft/Edge/Application/msedge.exe"))
+        .collect()
+}
+
 pub fn find(component: &Component, platform: Platform) -> Option<PathBuf> {
     find_in_directories(
         component.executables(platform),
@@ -168,7 +339,7 @@ fn conventional_locations(component: &str, platform: Platform) -> Vec<PathBuf> {
 pub fn version(path: &Path, component: &str) -> Result<String, String> {
     let args: &[&str] = match component {
         "libreoffice" => &["--headless", "--version"],
-        "git-bash" | "git" | "pandoc" | "tippecanoe" => &["--version"],
+        "git-bash" | "git" | "pandoc" | "tippecanoe" | "chromium" => &["--version"],
         "pmtiles" => &["version"],
         _ => return Err("this component has no executable version probe".to_string()),
     };
@@ -221,7 +392,41 @@ pub fn version(path: &Path, component: &str) -> Result<String, String> {
     Ok(line.chars().take(300).collect())
 }
 
+pub(crate) fn chromium_version_is_supported(version: &str) -> bool {
+    version.starts_with("Chromium ")
+        || version.starts_with("Google Chrome ")
+        || version.starts_with("Microsoft Edge ")
+}
+
 pub fn snapshot(component: &Component, platform: Platform, probe_version: bool) -> Value {
+    if component.id == "chromium" {
+        let (path, source, location_error) = chromium_location(platform);
+        let probe = path
+            .as_deref()
+            .filter(|_| probe_version)
+            .map(|path| version(path, "chromium"));
+        let (version, probe_error) = match probe {
+            Some(Ok(value)) if chromium_version_is_supported(&value) => (Some(value), None),
+            Some(Ok(_)) => (
+                None,
+                Some("the executable did not identify itself as Chromium".to_string()),
+            ),
+            Some(Err(error)) => (None, Some(error)),
+            None => (None, location_error),
+        };
+        return json!({
+            "id": component.id,
+            "required": component.required,
+            "purpose": component.purpose,
+            "state": if path.is_none() { if probe_error.is_some() { "variant_unverified" } else { "absent" } } else if probe_version && version.is_none() { "variant_unverified" } else { "installed" },
+            "path": path.as_deref().map(|path| path.to_string_lossy().into_owned()),
+            "version": version,
+            "probe_error": probe_error,
+            "source": source,
+            "suitable": if probe_version { version.is_some() } else { path.is_some() },
+            "ownership": crate::policy::install_ownership(platform, &component.id),
+        });
+    }
     if component.id == "git-bash" && platform != Platform::Windows {
         return json!({
             "id": component.id,
@@ -338,6 +543,7 @@ mod tests {
                 // or server owns these rather than calling a cloud service.
                 "tippecanoe",
                 "pandoc",
+                "chromium",
             ]
         );
         for (index, component) in catalog.iter().enumerate() {
@@ -370,5 +576,83 @@ mod tests {
         );
         assert_eq!(std::fs::read(&executable).unwrap(), before);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn playwright_shell_selection_requires_completion_and_uses_numeric_revision() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ds-workstation-playwright-detect-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        for (revision, complete) in [(99, true), (100, true), (999, false)] {
+            let browser = root
+                .join(format!("chromium_headless_shell-{revision}"))
+                .join("chrome-headless-shell-linux64/chrome-headless-shell");
+            std::fs::create_dir_all(browser.parent().unwrap()).unwrap();
+            std::fs::write(&browser, b"existing browser").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&browser, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+            if complete {
+                std::fs::write(
+                    browser
+                        .parent()
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .join("INSTALLATION_COMPLETE"),
+                    b"",
+                )
+                .unwrap();
+            }
+        }
+        let found = playwright_headless_shell(&root).unwrap();
+        assert!(
+            found
+                .to_string_lossy()
+                .contains("chromium_headless_shell-100/")
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn accepts_chrome_chromium_and_edge_browser_versions() {
+        for version in [
+            "Google Chrome 153.0.8010.12",
+            "Google Chrome for Testing 153.0.8010.12",
+            "Chromium 153.0.8010.12",
+            "Microsoft Edge 153.0.8010.12",
+        ] {
+            assert!(chromium_version_is_supported(version), "{version}");
+        }
+        assert!(!chromium_version_is_supported("Firefox 153.0"));
+    }
+
+    #[test]
+    fn windows_edge_is_probed_under_x86_program_files_first() {
+        let paths = windows_edge_paths(
+            Some(OsString::from(r"C:\Program Files (x86)")),
+            Some(OsString::from(r"C:\Program Files")),
+        );
+        assert_eq!(paths.len(), 2);
+        assert!(
+            paths[0]
+                .to_string_lossy()
+                .starts_with(r"C:\Program Files (x86)")
+        );
+        assert!(paths[1].to_string_lossy().starts_with(r"C:\Program Files"));
+        assert!(
+            paths
+                .iter()
+                .all(|path| path.to_string_lossy().ends_with("msedge.exe"))
+        );
     }
 }

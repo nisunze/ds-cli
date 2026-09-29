@@ -27,10 +27,10 @@ const INTENT_ARG: Arg = Arg::value(
 
 const TARGET_ARG: Arg = Arg::value(
     "target",
-    "<vscode|windows-terminal|ds-subprocess>",
-    "The one Git Bash integration to configure later.",
+    "<vscode|windows-terminal|ds-subprocess|reporter>",
+    "The existing Git Bash integration or browser reporter path to configure later.",
 )
-.choices(&["vscode", "windows-terminal", "ds-subprocess"]);
+.choices(&["vscode", "windows-terminal", "ds-subprocess", "reporter"]);
 
 pub static COMMAND: Command = Command {
     id: "workstation.plan",
@@ -53,6 +53,11 @@ pub static COMMAND: Command = Command {
         Example {
             command: "ds workstation plan --component git-bash --platform windows --intent configure --target vscode --output json",
             note: "One settings target; no write.",
+            runnable: true,
+        },
+        Example {
+            command: "ds workstation plan --component chromium --platform current --intent configure --target reporter --output json",
+            note: "Identify an existing browser and its PDF proof boundary without changing settings.",
             runnable: true,
         },
     ],
@@ -93,12 +98,21 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let intent = inputs.require("intent")?;
     let target = inputs.value("target");
-    if intent == "configure"
-        && (component_id != "git-bash" || platform != Platform::Windows || target.is_none())
-    {
+    if component_id == "chromium" && intent == "install" {
         return Err(Failure::invalid(
             "workstation_plan_invalid",
-            "configuration planning requires Git Bash on Windows and one explicit target",
+            "DS does not install browsers; plan configuration of an existing browser",
+        )
+        .remedy("run `ds workstation plan --component chromium --intent configure --target reporter --output json`"));
+    }
+    let git_bash_configuration = component_id == "git-bash"
+        && platform == Platform::Windows
+        && target.is_some_and(|target| target != "reporter");
+    let browser_configuration = component_id == "chromium" && target == Some("reporter");
+    if intent == "configure" && !(git_bash_configuration || browser_configuration) {
+        return Err(Failure::invalid(
+            "workstation_plan_invalid",
+            "configuration planning requires Git Bash on Windows with its profile target, or an existing browser with --target reporter",
         )
         .remedy(crate::PLAN_INVALID.remedy));
     }
@@ -118,18 +132,28 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
 
     let current_state = if platform == Platform::current() {
-        detect::snapshot(&component, platform, false)
+        detect::snapshot(&component, platform, component_id == "chromium")
     } else {
         json!({"state": "not_inspected", "reason": "a plan for another platform does not claim local discovery"})
     };
-    let already_satisfied = current_state["state"] == "installed";
+    // A Chromium path and version are not a PDF proof. Only `verify` runs the
+    // task-owned print smoke, so this proposal must not claim completion.
+    let already_satisfied = current_state["state"] == "installed" && component_id != "chromium";
     let steps = if intent == "configure" {
         let target = target.expect("configuration target was validated");
-        vec![
-            format!("Read the current {target} setting and retain a before value."),
-            "Merge only the selected default-profile key; preserve unrelated settings and keep Remote-SSH on the remote native shell.".to_string(),
-            "Return a before/after receipt and make an identical second call a no-op.".to_string(),
-        ]
+        if browser_configuration {
+            vec![
+                "Discover an existing Chrome, Edge, or Chromium executable; use DS_VD_CHROME to select one explicitly when needed.".to_string(),
+                "Print a task-owned HTML page to PDF, check the PDF header, and remove only the smoke files.".to_string(),
+                "Persist the exact verified executable in DS-owned browser-selection.json; the reporter will reuse it for one-command exports.".to_string(),
+            ]
+        } else {
+            vec![
+                format!("Read the current {target} setting and retain a before value."),
+                "Merge only the selected default-profile key; preserve unrelated settings and keep Remote-SSH on the remote native shell.".to_string(),
+                "Return a before/after receipt and make an identical second call a no-op.".to_string(),
+            ]
+        }
     } else {
         component.plan(platform).to_vec()
     };
@@ -139,7 +163,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             || component_id == "rwanda-reference"
             || (component_id == "tippecanoe" && platform == Platform::Linux)
             || component_id == "pandoc"))
-        || (intent == "configure" && target == Some("vscode"));
+        || (intent == "configure" && (target == Some("vscode") || browser_configuration));
     Ok(json!({
         "component": component.id,
         "platform": platform.token(),
