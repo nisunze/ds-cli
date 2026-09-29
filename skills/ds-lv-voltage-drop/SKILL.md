@@ -22,9 +22,29 @@ dramatise what the result states.
 3. The input is a saved transformer with its project seeds, as the LV project
    export command writes it. Nothing is written to the project.
 4. A processed transformer already carries its results (`vd_*` columns and
-   `vd_summary` on `tr`). Report exports include them when the project's design
-   exports select the `voltage_drop` output (on by default); the export says
-   whether it reports them "as processed" or "recomputed at export", and why.
+   `vd_summary` on `tr`). Read the structured voltage-drop result through the
+   declared `ds` command; its provenance says whether it reports the saved
+   result "as processed" or "recomputed at export", and why. Neither the
+   individual nor combined transformer XLSX is a voltage-drop source.
+
+## Produce the A4 report
+
+The owner requires a separate, system-generated A4 PDF. After the new build is
+installed, verify local Chromium with
+`ds workstation verify --component chromium`, then discover
+`ds capabilities report.project.export --output json` and
+`ds capabilities desktop.printing.export --output json`, then select the
+explicit `voltage_drop_pdf` project output. `ds report project export` and
+`ds desktop printing export` produce `<Display Name> voltage drop.pdf`; the
+extended report is the default and the brief variant is selectable. The local
+printing engine invokes Chromium in that one export command. Preview or
+download the published artifact through the app; the web does not render it.
+Do not put voltage-drop values, sheets or columns in individual or combined
+transformer Excel reports.
+
+The `voltage_drop_pdf` output is not yet available in the installed build. Do
+not claim a PDF was generated or published until the new build is installed
+and the `ds` receipt and artifact are verified.
 
 ## Read it in this order
 

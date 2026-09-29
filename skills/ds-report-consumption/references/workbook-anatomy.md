@@ -1,8 +1,11 @@
 # Report workbook anatomy
 
-Written against the reporter's XLSX export as of 2026-09-28. The installed
-engine is the authority: when a sheet or column named here is absent, trust
-the file and note the difference.
+Written against the reporter's XLSX export with the owner's 2026-09-29 rule:
+voltage-drop values, sheets and columns belong in neither individual nor
+combined transformer Excel workbooks. The voltage-drop report is a separate
+A4 PDF output. This change is awaiting a new build and install; the currently
+installed reporter can still write the old Excel content. Inspect the actual
+workbook, and do not deliver one containing voltage-drop content.
 
 ## Individual transformer workbook — `<transformer>.xlsx`
 
@@ -16,7 +19,6 @@ Sheets appear in this order; a raw sheet is omitted when its table is empty.
 | `lv_lines` | one row per LV line segment | row 3 |
 | `service_cables` | one row per service drop | row 3 |
 | `poles` | the LV staking table, grouped per line | row 2, then one merged band per line |
-| `Voltage Drop` | only when the project selects the `voltage_drop` output (on by default) | key/value blocks, then tables; see below |
 
 ### `InfoTable` sections, in order
 
@@ -68,41 +70,25 @@ poles are `lv_poles` plus `tapping_poles`; a tapping pole shows
 process time. Where a layer mixes existing and new rows the existing ones
 are highlighted; an all-existing sheet is not.
 
-### `Voltage Drop` sheet and `<transformer>.voltage-drop.json`
+### Separate voltage-drop report
 
-Both report ds-network's results (method `ds-lv-vd/1`); nothing on them is
-computed by the reporter, and the standard, clause, limit and utility are the
-project rule set's. Find blocks by their banner text, not by row number.
+After the new reporter build is installed, verify local Chromium through
+`ds workstation verify --component chromium`, select the explicit
+`voltage_drop_pdf` project output, and export through `ds report project export`
+or `ds desktop printing export`. The local printing engine invokes Chromium
+automatically and produces `<Display Name> voltage drop.pdf` on A4, with the
+extended report by default;
+the brief variant is selectable. The PDF carries the `ds-lv-vd/1` result,
+including criteria, outlook by year, reinforcement and drop chart. Preview
+and download that published PDF on the web as its own artifact; web generation
+is unavailable. Do not use either transformer workbook as a voltage-drop source.
 
-- Banners: method, the rule (`<standard> <clause>: <criterion>`), and
-  `Results: as computed during processing` or `recomputed at export: <why>`.
-- `Summary`: label in column A, value in B — `Verdict` (`Complies`,
-  `Complies with the proposed reinforcement`, `Does not comply`,
-  `Incomplete`, `Not calculated`), customers within / over the limit, worst
-  drop and customer, transformer loading, design load, issues. A transformer
-  its nature reserves (fill-in, upgrade) shows only `Verdict: Not
-  calculated` and `Reason`.
-- `Parameters`: limit, nominal and source voltage, growth factor, cos φ.
-- `Outlook by year`: a proposal sentence stated from the data (until which
-  year every customer is within the limit, from which year the utility
-  reinforces, and to which year the plan holds), then one row per year:
-  worst drop as drawn, customers over the limit, transformer loading,
-  reinforcement cost (currency in the header), worst drop with the plan, and
-  `Reinforcement First Needed` (new circuit to pole X with its length and
-  the poles the line is cut between; `LV Line NN <cable> → <cable>` per step;
-  transformer kVA). Quote the year a change is first needed from here.
-- `Stage-2 recommendation`: opens with the note that sizes are suggestions,
-  not the design; then status, cost and basis, and `Recommended cables`
-  (LV line, service cable and new-circuit rows).
-- `Customers` and `LV sections` tables: largest drop first; never a name,
-  ID, phone, UPI or meter number.
-
-`<transformer>.voltage-drop.json` is `ds.lv-voltage-drop.result/v1`: one job
-with `provenance.state` (`as_processed` / `recomputed_at_export`),
-`summary` (the `vd_summary`: `verdict`, `utility`, and
-`stage2.outlook[]` with each year's `change_list`) and the projected
-`layers`; `report` and `sizing` only when the export solved. For running the
-solve or explaining a result, load `ds-lv-voltage-drop`.
+Where a separate `<transformer>.voltage-drop.json` result is available, it is
+`ds.lv-voltage-drop.result/v1` with `provenance.state`
+(`as_processed` / `recomputed_at_export`), `summary` (`vd_summary`, including
+`verdict`, `utility` and `stage2.outlook[]`) and projected `layers`; `report`
+and `sizing` appear only when the export solved. For a check or explanation,
+load `ds-lv-voltage-drop` and follow the live command contract.
 
 ## Combined workbook — `combined_transformer.xlsx`
 
@@ -115,7 +101,9 @@ pole-by-pole detail open the individual workbooks.
 | `LV Summary` | always | one row per transformer; quantity columns grouped under pivot titles; trailing `X`, `Y` (Location) and `District`, `Sector`, `Cell`, `Village` (Admin Bounds) |
 | `Transformer Sizing` | when the project setting `include_tr_sizing_in_combined_report` is on (the default) | `Transformer Sizing and Protection Devices`: row 3 groups, row 4 headers each ending in their note marks (`Selected kVA [6]`), data from row 5, then `Notes`; see below |
 | `Dirty Categories` | only when dirty rows exist | as above, with a `Transformer` column first |
-| `Voltage Drop Summary` | only when the project selects `voltage_drop` and a transformer has results | one row per transformer: kVA, customers, worst drop, over the limit, loading, verdict, `First Failing Year` (`None` = within the limit every year), stage-2 status, changes, transformer to kVA, one `Reinforcement Cost Year N (<currency>)` column per year that adds one |
+
+The combined workbook has no `Voltage Drop Summary` sheet or voltage-drop
+columns, including in `Transformer Sizing`.
 
 `LV Summary` layout: row 1 pivot-title groups, row 2 a merged title band,
 row 3 the description headers (rotated), row 4 `Transformer`, data from row
@@ -148,7 +136,6 @@ marks. Columns, left to right:
   (rated currents), Fuse Link A (30 or 15 kV column), LV CB A,
   Transformer–DB Cable.
 - Outgoing Feeders: count, Feeder Cables, Feeder Rating A, Feeder CB A.
-- With `voltage_drop` selected: VD Verdict, First Failing Year.
 - Comments: the basis of the size (`plan_kva used`, `ex_tr_size used`,
   `calculated from demand; raised to minimum_tr_size=… kVA`) and any
   category counted as the default.

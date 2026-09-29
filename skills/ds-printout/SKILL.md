@@ -14,6 +14,17 @@ Deliver a verified print set from current project data or reusable outputs:
 For MV plan/profile sets, read [booklet workflow](references/mv-plan-profile-booklet.md)
 before selecting the project setup or starting a batch.
 
+For voltage-drop A4 reports, use the explicit `voltage_drop_pdf` project output.
+After the new build is installed, verify local Chromium with
+`ds workstation verify --component chromium`, then run one
+`ds report project export` or `ds desktop printing export` operation. The local
+engine invokes Chromium and publishes the PDF; the web previews and downloads
+the published bytes, and does not render them. Follow `ds-lv-voltage-drop` for
+the calculation and remediation, and never take voltage-drop values from an
+individual or combined transformer workbook. The currently installed build
+does not yet have this output; require an actual receipt and artifact before
+claiming delivery.
+
 ## Establish the assignment and host
 
 Recover project, source revision, audience, geography, papers, formats,
