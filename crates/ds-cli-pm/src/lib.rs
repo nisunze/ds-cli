@@ -55,6 +55,7 @@
 //! command; a caller that still passes it is told `requires_window_retired`
 //! by the parser, with the remedy of dropping the flag.
 
+pub mod deletion;
 pub mod geometry;
 pub mod party;
 pub mod plan;
@@ -75,6 +76,9 @@ pub static DOMAIN: Domain = Domain {
     summary: "Tasks, milestones, records and the plan they sit in.",
     commands: &[
         &plan::COMMAND,
+        &deletion::INVENTORY,
+        &deletion::READ,
+        &deletion::RESTORE,
         &task::list::COMMAND,
         &task::read::COMMAND,
         &task::create::COMMAND,
@@ -166,7 +170,7 @@ pub const NOT_PERMITTED: Refusal = Refusal {
 pub const CONFLICT: Refusal = Refusal {
     code: "work_revision_conflict",
     when: "the plan moved while the command was in flight",
-    remedy: "re-read with `ds pm task read` and issue the command again",
+    remedy: "re-read `ds pm plan`, review the current revision, and issue the command again",
 };
 pub const TASK_NOT_FOUND: Refusal = Refusal {
     code: "task_not_found",
@@ -271,6 +275,22 @@ pub const BODY_UNREADABLE: Refusal = Refusal {
     remedy: "pass a readable UTF-8 text file, or --body with the text",
 };
 
+pub const BACKUP_INCOMPLETE: Refusal = Refusal {
+    code: "backup_incomplete",
+    when: "a deletion backup is missing a snapshot or its hash does not match",
+    remedy: "leave the backup untouched and report its id to a project administrator",
+};
+pub const BACKUP_ALREADY_RESTORED: Refusal = Refusal {
+    code: "backup_already_restored",
+    when: "this deletion backup has already been restored",
+    remedy: "read its restore_command_id with `ds pm deletion read`; do not issue a new restore",
+};
+pub const RESTORE_ID_CONFLICT: Refusal = Refusal {
+    code: "restore_id_conflict",
+    when: "an entity from the backup already exists in the live project graph",
+    remedy: "inspect the live plan and backup before choosing how to reconcile the conflict",
+};
+
 /// Every token the correspondence door can relay, with its remedy. A token
 /// ds-brain answers that is not here is renamed `pm_refused` by
 /// [`classify`], so the surface never emits an undocumented code.
@@ -290,6 +310,9 @@ pub const CORRESPONDENCE_REFUSALS: &[Refusal] = &[
     RESPONSE_NOT_SETTABLE,
     BOUND_EXCEEDED,
     ASSET_NOT_FOUND,
+    BACKUP_INCOMPLETE,
+    BACKUP_ALREADY_RESTORED,
+    RESTORE_ID_CONFLICT,
 ];
 
 /// The refusals every correspondence command shares beyond the read set:

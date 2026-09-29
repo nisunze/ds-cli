@@ -10374,6 +10374,9 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         .collect();
     let expected: BTreeSet<&str> = [
         "pm.plan",
+        "pm.deletion.inventory",
+        "pm.deletion.read",
+        "pm.deletion.restore",
         "pm.task.list",
         "pm.task.read",
         "pm.task.create",
@@ -10426,6 +10429,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         let write = matches!(
             id,
             "pm.task.create"
+                | "pm.deletion.restore"
                 | "pm.task.update"
                 | "pm.task.assign"
                 | "pm.task.respond"
@@ -10450,6 +10454,67 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
             "`{id}` declares the wrong effect class for its blast radius"
         );
     }
+}
+
+#[test]
+fn deletion_recovery_is_project_scoped_and_restores_only_after_confirmation() {
+    for (id, effect) in [
+        ("pm.deletion.inventory", "read_only"),
+        ("pm.deletion.read", "read_only"),
+        ("pm.deletion.restore", "global_write"),
+    ] {
+        let command = ok(&["capabilities", id, "--output", "json"])["command"].clone();
+        assert_eq!(command["authority"], "headless_project");
+        assert_eq!(command["requires"], "server");
+        assert_eq!(command["effect"], effect);
+        assert!(
+            command["inputs"]
+                .as_array()
+                .expect("inputs")
+                .iter()
+                .any(|input| input["name"] == "project" && input["required"] == true)
+        );
+    }
+    assert_eq!(
+        native_pm_refusal(&[
+            "pm",
+            "deletion",
+            "inventory",
+            "--limit",
+            "101",
+            "--output",
+            "json"
+        ]),
+        "invalid_number"
+    );
+    assert_eq!(
+        native_pm_refusal(&["pm", "deletion", "read", "--output", "json"]),
+        "missing_input"
+    );
+    let restore = [
+        "pm",
+        "deletion",
+        "restore",
+        "--backup",
+        "delete-1234",
+        "--base-revision",
+        "7",
+        "--command-id",
+        "restore-1234",
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_pm_refusal(&restore), "confirmation_required");
+    let mut invalid_revision = restore.to_vec();
+    invalid_revision[6] = "-1";
+    invalid_revision.push("--yes");
+    assert_eq!(native_pm_refusal(&invalid_revision), "invalid_number");
+    let mut confirmed = restore.to_vec();
+    confirmed.push("--yes");
+    assert!(
+        NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()),
+        "a shaped restore reaches native authorization without a desktop"
+    );
 }
 
 #[test]

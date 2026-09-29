@@ -1904,6 +1904,21 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::plan::render,
     },
     Entry {
+        command: &ds_cli_pm::deletion::INVENTORY,
+        handler: ds_cli_pm::deletion::inventory,
+        render: ds_cli_pm::deletion::render_inventory,
+    },
+    Entry {
+        command: &ds_cli_pm::deletion::READ,
+        handler: ds_cli_pm::deletion::read,
+        render: ds_cli_pm::deletion::render_read,
+    },
+    Entry {
+        command: &ds_cli_pm::deletion::RESTORE,
+        handler: ds_cli_pm::deletion::restore,
+        render: ds_cli_pm::deletion::render_restore,
+    },
+    Entry {
         command: &ds_cli_pm::task::list::COMMAND,
         handler: ds_cli_pm::task::list::run,
         render: ds_cli_pm::task::list::render,

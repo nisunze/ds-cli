@@ -58,19 +58,22 @@ commands read through the correspondence contract's own actions
 (`record_list`, `record_read`, `record_thread`): one server filter, one
 bounded page, the record's attachments and blocked tasks projected beside it.
 The server scans at most 1000 records per list; past that the list says
-`truncated: true`.
+`truncated: true`. Deletion inventory and read use their own server actions to
+inspect durable backup snapshots without folding the live graph.
 
-Every read is bounded and every bound is reported. On list commands, `--limit`
-is a page, the matched `total` is always returned, and a page smaller than the
-total says so rather than ending quietly. Detail commands cap each related
+Graph and record reads are bounded and report their bounds. On task and record
+lists, `--limit` is a page, the matched `total` is returned, and a page smaller
+than the total says so rather than ending quietly. Deletion inventory uses an
+opaque `next_cursor` instead of a total. Detail commands cap each related
 collection at 250 rows and report its full `*Total`; task descriptions and
 record bodies carry an explicit truncation flag when cut.
 
 ## Writes are the same governed commands the surfaces send
 
-There is no second pipeline. A write loads the current graph, builds the same
-project command the Plan sheet would build, and commits it under optimistic
-concurrency against the revision it was authored on.
+There is no second pipeline. Task and record writes load the current graph,
+build the same project command the Plan sheet would build, and commit it under
+optimistic concurrency against the revision they were authored on. A deletion
+restore uses the explicit plan revision the operator reviewed.
 
 | | |
 |---|---|
@@ -89,6 +92,26 @@ engine's own sentence in `detail.service_message` (and its `violations`); a
 command with the same `--id` after a lost answer is refused as "already exists"
 rather than creating the work item twice. Without `--id` an id is minted for
 you, and a retry creates a second item — so pass one for any unattended use.
+
+### Recovering a deleted Project Work task
+
+A task deletion saves a durable server backup; the delete result carries its
+`backup_id`. Recovery stays in the same named project and native credential
+lane:
+
+```bash
+ds pm deletion inventory --project <exact-id> --output json
+ds pm deletion read --project <exact-id> --backup <backup-id> --output json
+ds pm plan --project <exact-id> --output json
+ds pm deletion restore --project <exact-id> --backup <backup-id> \
+  --base-revision <reviewed-plan-revision> --command-id <stable-id> --yes --output json
+```
+
+`inventory` pages with `--limit` and the returned `next_cursor`; `read` can
+open one captured document with `--item-key` from `summary.entries`. Restore
+verifies every snapshot and commits the whole graph at the reviewed head, or
+refuses it. A moved plan needs a new review and revision. Reuse the same
+`--command-id` when a response is lost so the server replays that decision.
 
 ## Assignment is a request, not a decree
 
