@@ -21,7 +21,7 @@
 //! whether that trigger needs the remote heads re-read. The only timed wake a
 //! host may honour is the one the plan names in `wake`.
 
-use ds_command_kernel::sync;
+use ds_command_kernel::{sync, sync_store::QueueBlock};
 use serde_json::Value;
 
 use crate::gateway::GatewayError;
@@ -59,6 +59,13 @@ pub trait SyncHost {
     /// The heads this host already holds for the project, and when they were
     /// read from the record. Free: no call leaves the machine.
     fn held_heads(&self, project: &str) -> Result<(Vec<RemoteRow>, Option<u64>), String>;
+    /// The store's output-only credential blocker for this exact project and
+    /// fence. Native hosts override this with the kernel's queue verdict;
+    /// a host without a durable queue has no held blocker to observe.
+    fn credential_block(&self, project: &str) -> Result<Option<QueueBlock>, String> {
+        let _ = project;
+        Ok(None)
+    }
     /// Read the record. Called **only** when the plan's `refresh_remote` says
     /// this trigger needs it.
     fn heads(&self, project: &str) -> Result<Vec<RemoteRow>, GatewayError>;
@@ -232,6 +239,33 @@ fn run_scoped(
     trigger: sync::Trigger,
     engine: Option<&str>,
 ) -> Result<SyncRun, String> {
+    if trigger == sync::Trigger::LocalChange {
+        if let Some(block) = host.credential_block(project)? {
+            // This trigger may be the Desktop's recovery wake. The same
+            // refused credential cannot publish any row, so keep the queue
+            // intact without taking a lease or creating another durable
+            // refusal receipt. An explicit trigger still tries the door.
+            let local = host.local(project)?;
+            let mut receipts = host.take_receipts(project);
+            receipts.push(Receipt::new("session", "blocked").detail(format!(
+                "{}; this local-change pass made no gateway call",
+                block.detail
+            )));
+            let (remote, read_at) = host.held_heads(project)?;
+            let plan = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
+            let replanned = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
+            let reclaimed = Reclaimed::from_receipts(&receipts);
+            return Ok(SyncRun {
+                schema: SCHEMA,
+                project: project.to_string(),
+                trigger,
+                plan,
+                receipts,
+                replanned,
+                reclaimed,
+            });
+        }
+    }
     if let Some(holder) = host.take_lease(project)? {
         // Another worker drains this project. The plan is still the honest
         // answer to "what would happen"; nothing is executed twice.
@@ -292,6 +326,7 @@ fn run_leased(
     // exactly once per run, because a second read in the same pass could only
     // repeat the first.
     if plan.refresh_remote.needed {
+        let had_credential_block = host.credential_block(project)?.is_some();
         remote = match host.heads(project) {
             Ok(heads) => heads,
             Err(error) => {
@@ -309,6 +344,16 @@ fn run_leased(
         };
         let at = host.server_now_ms();
         host.remember_heads(project, &remote, at)?;
+        if had_credential_block {
+            keep(
+                host,
+                project,
+                &mut receipts,
+                Receipt::new("session", "connected").detail(
+                    "the gateway accepted this machine's credential while reading project heads; queued work may resume",
+                ),
+            );
+        }
         // Cached replicas are observations of this exact head generation.
         // Re-observe after refresh so an older cache cannot become an upload.
         local = host.local(project)?;

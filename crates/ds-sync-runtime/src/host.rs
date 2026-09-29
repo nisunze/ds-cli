@@ -593,6 +593,15 @@ impl SyncHost for StoreHost<'_> {
         self.install_id.clone()
     }
 
+    fn credential_block(&self, project: &str) -> Result<Option<store::QueueBlock>, String> {
+        self.with_store(|store| {
+            store
+                .queue(&self.fence, Some(project), now_ms())
+                .map(|status| status.blocked)
+                .map_err(|error| error.to_string())
+        })
+    }
+
     /// The store's rows ARE the inventory: every row that is not settled as
     /// lost, as the store holds it, plus the replicas of heads this machine
     /// has downloaded. The producer is consulted for two things only, and

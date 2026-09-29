@@ -86,6 +86,14 @@ publication or retries the other rows under the same refused credential in
 that pass. A later pass with a working credential records a newer delivery
 receipt and clears the blocker. A 403 remains the record's publication verdict.
 
+While that project's fenced queue is credential-blocked, a `local_change`
+pass makes no gateway call and appends no durable retry receipt. Its returned
+`session:blocked` receipt says why it did no work. `startup`, `navigation`,
+`reconnect` and `manual` still try the gateway. A successful heads read after
+a block records `session:connected`, clearing the old blocker even if this
+pass produces no upload receipt and queued rows remain; a fresh 401 blocks it
+again. Another project's or account fence's queue is unaffected.
+
 The Sync Center renders the plan and the receipts of executed actions. It
 computes nothing.
 

@@ -653,9 +653,36 @@ fn invariant_6_and_7_credential_refusal_stops_after_one_call_and_recovery_publis
         1
     );
 
+    for _ in 0..2 {
+        let held_pass = run(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
+        assert_eq!(outcomes(&held_pass), vec!["session:blocked"]);
+        assert!(held_pass.receipts[0]
+            .detail
+            .as_deref()
+            .unwrap()
+            .contains("made no gateway call"));
+        assert_eq!(door.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            host.receipts(10).unwrap().len(),
+            receipts.len(),
+            "no retry noise persisted"
+        );
+    }
+
     door.refused.store(false, Ordering::SeqCst);
-    let recovered = run(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
-    assert_eq!(outcomes(&recovered), vec!["upload:published"; 3]);
+    let still_held = run(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
+    assert_eq!(outcomes(&still_held), vec!["session:blocked"]);
+    assert_eq!(door.calls.load(Ordering::SeqCst), 1);
+    let recovered = run(&host, PROJECT, sync::Trigger::Manual).unwrap();
+    assert_eq!(
+        outcomes(&recovered),
+        vec![
+            "session:connected",
+            "upload:published",
+            "upload:published",
+            "upload:published",
+        ]
+    );
     assert_eq!(fakes::lock(&h.world).commits, 3);
     let queue = h
         .store
@@ -718,6 +745,140 @@ fn a_refused_heads_read_keeps_a_session_receipt_and_blocks_the_held_queue() {
     let status = host.store_read().unwrap();
     assert_eq!(status["status"]["blocked"]["cause"], "credential_refused");
     assert_eq!(status["status"]["queuedBatches"], 1);
+}
+
+#[test]
+fn an_accepted_heads_read_clears_the_old_session_block_without_an_upload() {
+    use ds_sync_runtime::store::ArtifactState;
+
+    let h = Harness::new();
+    let row = solar_row();
+    h.seal(std::slice::from_ref(&row));
+    let door = CredentialDoor {
+        record: FakeGateway {
+            world: h.world.clone(),
+        },
+        refused: AtomicBool::new(true),
+        calls: AtomicUsize::new(0),
+    };
+    let producer = FakeProducer::new(h.world.clone(), vec![row]);
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = StoreHost::new(
+        h.store.clone(),
+        fence(),
+        "desktop#1".into(),
+        PROJECT,
+        &door,
+        &producer,
+        &reads,
+        &online,
+    )
+    .unwrap();
+
+    assert!(ds_sync_runtime::run::run_reports(&host, PROJECT, sync::Trigger::Manual).is_err());
+    assert!(host.credential_block(PROJECT).unwrap().is_some());
+    door.refused.store(false, Ordering::SeqCst);
+    let recovered =
+        ds_sync_runtime::run::run_reports(&host, PROJECT, sync::Trigger::Manual).unwrap();
+    assert_eq!(outcomes(&recovered), vec!["session:connected"]);
+    assert_eq!(door.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        stored_rows(&h, PROJECT)[0].state,
+        ArtifactState::Held,
+        "the Solar row is still queued"
+    );
+    assert!(host.credential_block(PROJECT).unwrap().is_none());
+    let local_change =
+        ds_sync_runtime::run::run_reports(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
+    assert!(!outcomes(&local_change).contains(&"session:blocked".to_string()));
+}
+
+#[test]
+fn a_blocked_local_change_under_one_fence_does_not_hold_another_fence() {
+    let h = Harness::new();
+    let row = local_row(b"primary held report");
+    h.seal(std::slice::from_ref(&row));
+    let refused = CredentialDoor {
+        record: FakeGateway {
+            world: h.world.clone(),
+        },
+        refused: AtomicBool::new(true),
+        calls: AtomicUsize::new(0),
+    };
+    let primary_producer = FakeProducer::new(h.world.clone(), vec![row]);
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let primary = StoreHost::new(
+        h.store.clone(),
+        fence(),
+        "primary#1".into(),
+        PROJECT,
+        &refused,
+        &primary_producer,
+        &reads,
+        &online,
+    )
+    .unwrap();
+    assert_eq!(
+        outcomes(&run(&primary, PROJECT, sync::Trigger::LocalChange).unwrap()),
+        vec!["upload:credential_refused"]
+    );
+
+    let mut other_fence = fence();
+    other_fence.account = "another-account".into();
+    let mut other_row = local_row(b"another account report");
+    other_row.identity.operation = "export-tx_other".into();
+    other_row.resource = "tx_other".into();
+    other_row.client_publish_id = "publish-other".into();
+    other_row.bytes_locator = "fake:batch:publish-other".into();
+    fakes::lock(&h.world).current_base.insert(
+        other_row.identity.operation.clone(),
+        fakes::FINGERPRINT.into(),
+    );
+    h.store
+        .lock()
+        .unwrap()
+        .apply(
+            &other_fence,
+            ds_sync_runtime::now_ms(),
+            ds_sync_runtime::store::Event::LocalProduced {
+                row: ds_sync_runtime::rows::store_row(PROJECT, &other_row, 1_000),
+            },
+        )
+        .unwrap();
+    let accepted = FakeGateway {
+        world: h.world.clone(),
+    };
+    let other_producer = FakeProducer::new(h.world.clone(), vec![other_row]);
+    let other = StoreHost::new(
+        h.store.clone(),
+        other_fence.clone(),
+        "other#1".into(),
+        PROJECT,
+        &accepted,
+        &other_producer,
+        &reads,
+        &online,
+    )
+    .unwrap();
+    assert!(other.credential_block(PROJECT).unwrap().is_none());
+    assert_eq!(
+        outcomes(&run(&other, PROJECT, sync::Trigger::LocalChange).unwrap()),
+        vec!["upload:published"]
+    );
+    assert_eq!(refused.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        primary.credential_block(PROJECT).unwrap().unwrap().cause,
+        "credential_refused"
+    );
+    assert!(other.credential_block(PROJECT).unwrap().is_none());
 }
 
 /// A locally built engine — a "+development" release no installer ever
