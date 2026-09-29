@@ -44,6 +44,21 @@ alignments, structures, tension sections, supports and terrain points with the
 delivery's expected counts. No-loss DS conversion proves canonical readability
 and engineering projection, not PLS-CADD Restore.
 
+## Structures are PLS-CADD immutables
+
+Design edits happen in DS Grid; PLS-CADD verifies the exported model as the
+authority and is not where a design is patched. DS never authors, rewrites or
+relabels a PLS-CADD structure file, and structures come only from the
+project's approved canonical library: a missing structure is modelled into
+that library and reviewed before use. Plan the native export before
+converting: a structure whose capacity block names no native loads source
+blocks the plan. Replace it with its native PLS-POLE file from the library
+(`dsgrid.replace-structure`, or `pls.structure-substitute` on the backup) and
+plan again. Deliver stick models
+by substituting the stick library members of the same names. A structure that
+fails strength in PLS-CADD gets a stronger native member or a reported gap
+(`ds feedback submit`), never an edited file.
+
 ## Native acceptance is a separate gate
 
 Restore the candidate with the required PLS-CADD version into a fresh empty

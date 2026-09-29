@@ -13,6 +13,10 @@ repair run. Read
 [references/terrain-round-trip.md](references/terrain-round-trip.md) only for
 the longer import/operator-return workflow.
 
+Edit the design in DS Grid and export it; PLS-CADD is the authority that
+verifies it (AutoSag, native checks, reports), not the place to patch it. A
+native finding becomes a DS edit and a new export.
+
 Use `ds-pls-cadd-backup-delivery` instead when the requested outcome is a
 complete `.bak`, fresh Restore/reopen, or portability acceptance without a
 terrain/alignment revision.

@@ -89,6 +89,15 @@ and changed sign; subtracting one mean offset would have invented a deep valley
 under the line. Validate against surveyed ties and distinguish datum error,
 surface mismatch and isolated outliers before correction.
 
+### The multiple-alignment gap must clear the station grid
+
+PLS-CADD 16.81 pages plan/profile sheets, and makes its own Backup, only when
+the station gap between alignments is at least the sheet's station major grid
+spacing. With a 1 m gap it stops with "Unable to cut pages" and then "No
+progress in find_next_page_start_station". DS carries the source project's gap
+through import and export, 100 m when none is authored; a workspace showing
+1 m came from an older export and is re-exported, not patched by hand.
+
 ## Native file and library integrity
 
 ### A DS Grid round trip is not native validation
@@ -123,6 +132,11 @@ site fact, infer an extension, or regenerate approved native resource bytes
 from DS Grid's reduced representation. A deliberate library change is a new
 reviewed release with digest evidence and native reopen.
 
+A structure's `Results generated for loads file:` line is its provenance. DS
+keeps the loads-file name and never relabels it. A structure whose loads source
+is unknown blocks native export; the remedy is its native PLS-POLE file, never
+a typed or edited capacity table.
+
 ### Display, shading and strength are separate gates
 
 Appending graphical-looking subdocuments to an analytical shell did not make
@@ -132,12 +146,21 @@ cover every active placement. Report native open, graphical envelope,
 material identity, analytical method, criteria coverage, native check and
 engineering approval independently.
 
+A Method 2 structure at 200 % in native Structure Usage usually means the load
+point's ray lies outside the interaction diagram's ratio range, for example
+uplift beyond the diagram's negative side, rather than an overload inside it.
+
 ### Fresh Restore is the portability test
 
 Backup walks referenced files and can reveal dangling paths not visible during
 ordinary open. Restore can also flatten or collide native member paths. A
 handover is not accepted merely because a `.bak` exists: restore into a fresh
 directory, reopen, and repeat reference/digest checks against restored bytes.
+
+Backup follows each structure file's embedded `FILENAME` header and its `.lic`,
+`.POL` and component references. A header that still names another machine's
+folder pulls that member from outside the project, or fails. Close references
+(`pls.reference-closure`) before creating the backup.
 
 ## Automation and reporting traps
 
