@@ -295,6 +295,9 @@ pub fn filename(engine: &str, operation: &str, output: &Declaration) -> String {
     if engine == "network_reporter" && output.format == "geojsonseq" {
         return format!("{stem}_geojsonl.zip");
     }
+    if engine == "network_reporter" && output.format == "voltage_drop_pdf" {
+        return crate::report_formats::voltage_drop_pdf_filename(stem);
+    }
     let extension = match output.format.as_str() {
         "pdf_a0" => "a0.pdf",
         "pdf_a3" => "a3.pdf",

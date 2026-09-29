@@ -120,11 +120,15 @@ mod tests {
             output_id: output.output_id,
             format: output.format,
             content_type: output.content_type.into(),
-            filename: format!("tx_1{}", output.suffix),
+            filename: if id == "voltage_drop_pdf" {
+                report_formats::voltage_drop_pdf_filename("tx_1")
+            } else {
+                format!("tx_1{}", output.suffix)
+            },
             locator: format!("ds-reporter:v1:{}", "a".repeat(64)),
             sha256: "b".repeat(64),
             size_bytes: 123,
-            paper_size: None,
+            paper_size: (id == "voltage_drop_pdf").then(|| "A4".into()),
             presentation: None,
         }
     }

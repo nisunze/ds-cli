@@ -44,7 +44,7 @@ pub fn validate_artifact_presentation(
     presentation: Option<&ArtifactPresentation>,
 ) -> Result<(), String> {
     let named = crate::report_formats::named_print_output(format).map(|(_, id)| id);
-    let is_print = named.is_some() || matches!(format, "pdf_a0" | "pdf_a3");
+    let is_print = named.is_some() || matches!(format, "pdf_a0" | "pdf_a3" | "voltage_drop_pdf");
     let text = |value: &str, max: usize| {
         !value.is_empty()
             && value.len() <= max
@@ -56,9 +56,13 @@ pub fn validate_artifact_presentation(
             || !text(name, 40)
             || (format == "pdf_a0" && name != "A0")
             || (format == "pdf_a3" && name != "A3")
+            || (format == "voltage_drop_pdf" && name != "A4")
         {
             return Err("invalid artifact paper identity".into());
         }
+    }
+    if format == "voltage_drop_pdf" && paper_name != Some("A4") {
+        return Err("voltage-drop PDF must declare A4 paper".into());
     }
     if let Some(value) = presentation {
         let [width, height] = value.page_mm;
@@ -111,5 +115,12 @@ mod tests {
         assert!(
             validate_artifact_presentation("pdf__detail", Some("ANSI B"), Some(&value)).is_ok()
         );
+    }
+
+    #[test]
+    fn analytical_voltage_drop_pdf_has_exact_a4_paper_identity() {
+        assert!(validate_artifact_presentation("voltage_drop_pdf", Some("A4"), None).is_ok());
+        assert!(validate_artifact_presentation("voltage_drop_pdf", None, None).is_err());
+        assert!(validate_artifact_presentation("voltage_drop_pdf", Some("A3"), None).is_err());
     }
 }

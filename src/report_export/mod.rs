@@ -1620,6 +1620,7 @@ pub fn valid_artifact_filename(filename: &str, format: &str) -> bool {
         "xlsx" => filename.ends_with(".xlsx"),
         "network_information" => filename.ends_with(".network-information.json"),
         "voltage_drop" => filename.ends_with(".voltage-drop.json"),
+        "voltage_drop_pdf" => filename.ends_with(" voltage drop.pdf"),
         "geojsonseq" => filename.ends_with("_geojsonl.zip"),
         "gpkg" => filename.ends_with(".gpkg"),
         "pdf_a0" => filename.ends_with(".a0.pdf"),
@@ -1783,6 +1784,9 @@ pub fn verify_result(
         }
         if content_type(&artifact.format)? != output.content_type
             || !valid_artifact_filename(&artifact.filename, &artifact.format)
+            || (artifact.format == "voltage_drop_pdf"
+                && artifact.filename
+                    != report_formats::voltage_drop_pdf_filename(&plan.transformer))
             || !filenames.insert(artifact.filename.clone())
             || artifact.bytes == 0
             || artifact.bytes > MAX_ARTIFACT_BYTES
@@ -3775,6 +3779,11 @@ mod tests {
             "voltage_drop"
         ));
         assert!(!valid_artifact_filename("tx_a.json", "voltage_drop"));
+        assert!(valid_artifact_filename(
+            "Fill In Bukorota voltage drop.pdf",
+            "voltage_drop_pdf"
+        ));
+        assert!(!valid_artifact_filename("tx_a.pdf", "voltage_drop_pdf"));
         assert!(valid_artifact_filename("tx_a.detail.pdf", "pdf__detail"));
         assert!(valid_artifact_filename("tx_a.detail.png", "png__detail"));
         assert!(valid_artifact_filename("tx_a.detail.jpg", "jpeg__detail"));
@@ -3788,6 +3797,39 @@ mod tests {
         assert!(!valid_artifact_filename("../tx_a.xlsx", "xlsx"));
         assert!(!valid_artifact_filename("tx_a.xlsx", "shp"));
         assert!(!valid_artifact_filename("", "xlsx"));
+    }
+
+    #[test]
+    fn voltage_drop_pdf_result_requires_exact_display_name_and_a4_paper() {
+        let mut plan = plan_transformer_export(
+            "proj-1",
+            &simple_receipt("Benin"),
+            "fill_in_bukorota",
+            7,
+            &layers(),
+            None,
+        )
+        .unwrap();
+        plan.formats = vec!["voltage_drop_pdf".into()];
+        plan.outputs = vec![report_formats::output("voltage_drop_pdf").unwrap()];
+        let out_dir = PathBuf::from("/tmp/run/voltage-drop");
+        let filename = report_formats::voltage_drop_pdf_filename(&plan.transformer);
+        let mut document = result_document(&plan, &out_dir);
+        document["artifacts"] = json!([{
+            "format":"voltage_drop_pdf","filename":filename,
+            "path":out_dir.join(&filename),"bytes":123,"sha256":"a".repeat(64),
+            "paper_size":"A4"
+        }]);
+        let verify =
+            |value: &Value| verify_result(&serde_json::to_vec(value).unwrap(), &plan, &out_dir);
+        assert_eq!(verify(&document).unwrap().artifacts[0].filename, filename);
+        document["artifacts"][0]["filename"] = json!("Other voltage drop.pdf");
+        document["artifacts"][0]["path"] = json!(out_dir.join("Other voltage drop.pdf"));
+        assert!(verify(&document).is_err());
+        document["artifacts"][0]["filename"] = json!(filename);
+        document["artifacts"][0]["path"] = json!(out_dir.join(&filename));
+        document["artifacts"][0]["paper_size"] = json!("A3");
+        assert!(verify(&document).is_err());
     }
 
     #[test]

@@ -522,7 +522,11 @@ pub fn project_project_control_local_reports(
                     {
                         return Err(error("transformer report output metadata mismatch"));
                     }
-                    format!("{transformer}{}", definition.suffix)
+                    if output.output_id == "voltage_drop_pdf" {
+                        crate::report_formats::voltage_drop_pdf_filename(transformer)
+                    } else {
+                        format!("{transformer}{}", definition.suffix)
+                    }
                 } else {
                     crate::report_formats::combined_output_filename(
                         kind,
