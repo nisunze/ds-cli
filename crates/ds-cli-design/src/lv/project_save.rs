@@ -26,6 +26,11 @@ const LOCAL_REFUSALS: &[Refusal] = &[
         remedy: "process the unchanged fenced source again and inspect every job outcome",
     },
     Refusal {
+        code: "fast_lv_save_source_digest_mismatch",
+        when: "native save finds that the projected source layers differ from the exported source digest before contacting the server",
+        remedy: "update ds, then retry the same exact receipts and operation id; report a repeated mismatch in the current build",
+    },
+    Refusal {
         code: "confirmation_required",
         when: "the save lacks --yes",
         remedy: "review the selected processed result and pass --yes",
@@ -116,6 +121,22 @@ pub static COMMAND: Command = Command {
 fn invalid(message: impl Into<String>) -> Failure {
     Failure::invalid("fast_lv_save_input_invalid", message)
         .remedy("Retain successful project-export/process JSON receipts and their exact files; export again if the source changed.")
+}
+
+fn map_save_refusal(failure: Failure) -> Failure {
+    // Core's closed diagnostic is local validation, before any server write.
+    // It is an implementation/source-projection mismatch, not a misspelled
+    // transformer name. Keep every other auth or service refusal intact.
+    if failure.code() == "auth_input_invalid"
+        && failure.message() == "transformer_save_source_digest_mismatch"
+    {
+        return Failure::invalid(
+            "fast_lv_save_source_digest_mismatch",
+            "The native save source layers do not match the exported transformer source digest.",
+        )
+        .remedy("Update ds, then retry the same exact receipts and operation id; report a repeated mismatch in the current build.");
+    }
+    failure
 }
 
 fn read(path: &str, maximum: usize) -> Result<Vec<u8>, Failure> {
@@ -223,7 +244,8 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
                 operation_id: inputs.require("operation-id")?.to_owned(),
             }],
         },
-    )?;
+    )
+    .map_err(map_save_refusal)?;
     Ok(json!({"project":saved.project_id(), "lane":saved.lane(), "result":saved.result()}))
 }
 
@@ -318,5 +340,32 @@ mod tests {
         assert!(verify_receipts(&source, &process, "T1", "canary", b"input", b"result").is_err());
         assert!(verify_receipts(&source, &process, "T1", "stable", b"changed", b"result").is_err());
         assert!(verify_receipts(&source, &process, "T1", "stable", b"input", b"changed").is_err());
+    }
+
+    #[test]
+    fn source_digest_refusal_names_the_local_save_invariant() {
+        let mapped = map_save_refusal(Failure::invalid(
+            "auth_input_invalid",
+            "transformer_save_source_digest_mismatch",
+        ));
+        assert_eq!(mapped.code(), "fast_lv_save_source_digest_mismatch");
+        assert!(
+            mapped
+                .remedy_text()
+                .unwrap()
+                .contains("same exact receipts")
+        );
+        for failure in [
+            Failure::invalid("auth_input_invalid", "transformer_save_source_changed"),
+            Failure::unauthorized("auth_rejected", "transformer_save_source_digest_mismatch"),
+        ] {
+            let code = failure.code().to_owned();
+            let message = failure.message().to_owned();
+            let unchanged = map_save_refusal(failure);
+            assert_eq!(
+                (unchanged.code(), unchanged.message()),
+                (code.as_str(), message.as_str())
+            );
+        }
     }
 }
