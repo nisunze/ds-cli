@@ -261,7 +261,7 @@ post-export patch:
 - **The multiple-alignment gap.** Each alignment's authored
   `global_station_gap_m` (`ds dsgrid alignment gap set`) is written on the
   NUM break row after the preceding run, and the DON global stations follow
-  from it; an unauthored gap is the writer's 1 m default.
+  from it; an unauthored gap is the writer's 100 m default.
 - **An edited cable.** A cable changed with `update_cable_definition` has
   its retained `.wir` member rewritten in place — only the rows the reader
   maps into the canonical cable, the rest byte-for-byte — so the emitted

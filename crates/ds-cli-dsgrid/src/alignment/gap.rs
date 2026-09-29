@@ -24,7 +24,7 @@ const GAP_ARG: Arg = Arg::value(
 );
 const CLEAR_ARG: Arg = Arg::switch(
     "clear",
-    "Clear the authored gap so the export writes its 1 m default again.",
+    "Clear the authored gap so the export writes its 100 m default again.",
 );
 const ALIGNMENT_ARG: Arg = Arg::repeated(
     "alignment",
@@ -81,7 +81,7 @@ pub static SHOW: Command = Command {
     path: &["dsgrid", "alignment", "gap", "show"],
     contract: 1,
     summary: "Read the multiple-alignment gap and global stations.",
-    purpose: "Shows, in the order the PLS-CADD export writes alignments, each alignment's authored gap before its start (PLS-CADD's multiple-alignment gap), the gap the export writes (its 1 m default where none is authored), and the global start and end stations those gaps give it in the NUM and DON. Positions, local stations and assignments are not affected by the gap. Reads a working copy or a package; writes nothing.",
+    purpose: "Shows, in the order the PLS-CADD export writes alignments, each alignment's authored gap before its start (PLS-CADD's multiple-alignment gap), the gap the export writes (its 100 m default where none is authored), and the global start and end stations those gaps give it in the NUM and DON. Positions, local stations and assignments are not affected by the gap. Reads a working copy or a package; writes nothing.",
     chapter: Chapter::GridModel,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -110,7 +110,7 @@ pub static SET: Command = Command {
     path: &["dsgrid", "alignment", "gap", "set"],
     contract: 1,
     summary: "Author the multiple-alignment gap as one revision.",
-    purpose: "Sets the gap the model's global stationing leaves before each alignment's start — PLS-CADD's multiple-alignment gap (Terrain › Alignment › Multiple Alignment Options) — for every alignment or the named ones, through the engine's `set_alignment_station_gaps` as ONE revision of a working copy or one new package. The PLS-CADD export writes it on the NUM break rows and into every later DON global station; `--clear` returns to the export's 1 m default. Nothing else moves: positions, local stations, sections.",
+    purpose: "Sets the gap the model's global stationing leaves before each alignment's start — PLS-CADD's multiple-alignment gap (Terrain › Alignment › Multiple Alignment Options) — for every alignment or the named ones, through the engine's `set_alignment_station_gaps` as ONE revision of a working copy or one new package. The PLS-CADD export writes it on the NUM break rows and into every later DON global station; `--clear` returns to the export's 100 m default. Nothing else moves: positions, local stations, sections.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,

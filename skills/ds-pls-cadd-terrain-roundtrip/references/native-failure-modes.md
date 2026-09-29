@@ -95,8 +95,9 @@ PLS-CADD 16.81 pages plan/profile sheets, and makes its own Backup, only when
 the station gap between alignments is at least the sheet's station major grid
 spacing. With a 1 m gap it stops with "Unable to cut pages" and then "No
 progress in find_next_page_start_station". DS carries the source project's gap
-through import and export, 100 m when none is authored; a workspace showing
-1 m came from an older export and is re-exported, not patched by hand.
+through import and export, 100 m when none is authored. A model that carries
+1 m (an older DS export) keeps it: set the gap in DS Grid (`ds dsgrid alignment
+gap`) and export again, never patch it in PLS-CADD.
 
 ## Native file and library integrity
 

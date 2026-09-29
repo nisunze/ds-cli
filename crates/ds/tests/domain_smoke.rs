@@ -15621,7 +15621,7 @@ fn dsgrid_alignment_gap_is_authored_and_shown_in_export_order() {
     };
     let shown = show(&model);
     assert_eq!(shown["authored"], 0);
-    assert_eq!(shown["default_gap_m"], 1.0);
+    assert_eq!(shown["default_gap_m"], 100.0);
     let alignments = shown["alignments"].as_array().unwrap();
     assert_eq!(alignments.len(), 1);
     assert_eq!(alignments[0]["global_station_start_m"], 0.0);
