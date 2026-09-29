@@ -238,6 +238,9 @@ fn choice_refusal_code(command: &Command, arg_name: &str) -> &'static str {
         ("data.admin-bounds.list", "country" | "level") | ("data.admin-bounds.read", "country") => {
             Some("invalid_admin_scope")
         }
+        ("dsgrid-exchange.plan" | "dsgrid-exchange.convert", "include-layer") => {
+            Some("unknown_gis_layer")
+        }
         _ => None,
     };
     code.filter(|code| command.refusals.iter().any(|refusal| refusal.code == *code))

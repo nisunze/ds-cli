@@ -541,6 +541,7 @@ fn incoming_bytes(
         swap_xy: inputs.switch("swap-xy"),
         selection: Vec::new(),
         pls_project: project,
+        gis_include_layers: Vec::new(),
     };
     let plan = plan_conversion(&request);
     if !plan.blockers.is_empty() || !plan.losses.is_empty() {

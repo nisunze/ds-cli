@@ -2669,6 +2669,153 @@ fn dsgrid_exchange_inspect_classifies_and_offers_real_capabilities() {
     }
 }
 
+/// Client GIS files (owner rule, 2026-09-29). A real model's KMZ and
+/// Shapefile ZIP carry no tension sections, no terrain points and no internal
+/// exchange report unless asked; `--include-layer` brings a layer back, and a
+/// layer id the projection does not have is refused before anything runs.
+#[test]
+fn dsgrid_exchange_client_gis_files_leave_working_layers_and_the_report_out() {
+    use std::io::Read;
+
+    let model = common::fixture();
+    let root = temp_root("client-gis");
+    std::fs::create_dir_all(&root).unwrap();
+    let convert = |target: &str, out: &std::path::Path, include: &[&str]| -> Value {
+        let out = out.display().to_string();
+        let mut args: Vec<&str> = vec![
+            "dsgrid-exchange",
+            "convert",
+            "--source",
+            model.as_str(),
+            "--target",
+            target,
+            "--out",
+            out.as_str(),
+        ];
+        for layer in include {
+            args.extend(["--include-layer", *layer]);
+        }
+        args.extend(["--output", "json"]);
+        ok(&args)
+    };
+    let archive = |path: PathBuf| {
+        zip::ZipArchive::new(std::fs::File::open(&path).expect("archive written"))
+            .expect("a ZIP container")
+    };
+    let members =
+        |path: PathBuf| -> Vec<String> { archive(path).file_names().map(str::to_string).collect() };
+    let kmz_folders = |path: PathBuf| -> Vec<String> {
+        let mut kml = String::new();
+        archive(path)
+            .by_name("doc.kml")
+            .expect("the KMZ document")
+            .read_to_string(&mut kml)
+            .expect("UTF-8 KML");
+        kml.split("<Folder>")
+            .skip(1)
+            .filter_map(|block| {
+                let (name, _) = block
+                    .trim_start()
+                    .strip_prefix("<name>")?
+                    .split_once("</name>")?;
+                Some(name.to_string())
+            })
+            .collect()
+    };
+    let working = |name: &str| {
+        ["tension_sections", "terrain_points"]
+            .iter()
+            .any(|layer| name == *layer || name.starts_with(&format!("{layer}.")))
+    };
+
+    // The fixture holds 4 tension sections and 12 terrain points; the client
+    // KMZ keeps its structures and spans and leaves both working layers out.
+    let kmz = root.join("kmz");
+    let converted = convert("kmz", &kmz, &[]);
+    assert_eq!(converted["status"], "completed", "{converted}");
+    let folders = kmz_folders(kmz.join("model.kmz"));
+    assert!(
+        folders.iter().any(|folder| folder == "structures")
+            && folders.iter().any(|folder| folder == "spans"),
+        "{folders:?}"
+    );
+    assert!(
+        !folders.iter().any(|folder| working(folder)),
+        "a client KMZ carries a working layer: {folders:?}"
+    );
+    assert!(
+        converted["losses"]
+            .as_array()
+            .expect("losses")
+            .iter()
+            .any(|loss| loss
+                .as_str()
+                .unwrap_or_default()
+                .contains("client GIS file")),
+        "the omission is reported, not silent: {converted}"
+    );
+
+    // The client SHP ZIP holds shapefiles only; the engine report is beside it.
+    let shp = root.join("shp");
+    let converted = convert("shp", &shp, &[]);
+    let names = members(shp.join("model.shp.zip"));
+    assert!(
+        names.iter().any(|name| name == "structures.shp"),
+        "{names:?}"
+    );
+    assert!(
+        !names
+            .iter()
+            .any(|name| name.ends_with("exchange-report.json")),
+        "an internal report is inside the client ZIP: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|name| working(name)),
+        "a client ZIP carries a working layer: {names:?}"
+    );
+    assert!(shp.join("model.shp.zip.exchange-report.json").is_file());
+    assert!(
+        converted["written"]
+            .as_array()
+            .expect("written")
+            .iter()
+            .any(|row| row["path"] == "model.shp.zip.exchange-report.json"),
+        "{converted}"
+    );
+
+    // Named explicitly, each working layer comes back.
+    let included = root.join("included");
+    convert("kmz", &included, &["tension_sections", "terrain_points"]);
+    let folders = kmz_folders(included.join("model.kmz"));
+    assert!(
+        folders.iter().any(|folder| folder == "tension_sections")
+            && folders.iter().any(|folder| folder == "terrain_points"),
+        "{folders:?}"
+    );
+
+    // A layer id the projection does not have stops at the door.
+    let refused_out = root.join("refused");
+    let refused = ds(&[
+        "dsgrid-exchange",
+        "convert",
+        "--source",
+        &model,
+        "--target",
+        "kmz",
+        "--include-layer",
+        "tension_section",
+        "--out",
+        &refused_out.display().to_string(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refused.code, 2, "{}{}", refused.stdout, refused.stderr);
+    assert_eq!(refused.envelope["error"]["code"], "unknown_gis_layer");
+    assert!(!refused_out.exists(), "a refused conversion writes nothing");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn dsgrid_exchange_inspect_is_deterministic_over_a_directory() {
     // The engine digests the member list, so directory iteration order must

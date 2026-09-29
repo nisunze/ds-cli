@@ -67,7 +67,8 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
     ),
     (
         "unmapped_choice",
-        "raised only if a validated --target/--mode/--container choice has no          engine value behind it, which the choice list makes unreachable",
+        "raised only if a validated --target/--mode/--container/--include-layer choice has no \
+         engine value behind it, which the choice list makes unreachable",
     ),
     (
         "invalid_lane",

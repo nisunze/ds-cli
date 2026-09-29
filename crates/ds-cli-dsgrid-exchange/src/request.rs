@@ -20,6 +20,7 @@ use ds_grid_exchange::conversion::{
     TargetFormat, gis_mv_import_selection, gis_network_import_selection,
     resolve_pls_project_selection,
 };
+use ds_grid_exchange::gis::{GIS_LAYER_IDS, GisLayerId};
 use serde_json::json;
 
 /// The accepted `--target` values, in the order help prints them. These are
@@ -173,6 +174,14 @@ pub const SHARED_ARGS: &[Arg] = &[
         "<csv>",
         "Comma-separated phase attachment slot ordinals.",
     ),
+    // The engine owns the layer set; the parser enforces it and refines a
+    // miss into `unknown_gis_layer` (ds-cli-contract `choice_refusal_code`).
+    Arg::repeated(
+        "include-layer",
+        "<layer>",
+        "Keep a layer a client kmz/shp leaves out (tension_sections, terrain_points). Repeatable.",
+    )
+    .choices(&GIS_LAYER_IDS),
     Arg::switch("swap-xy", "Treat source coordinates as (y, x)."),
     Arg::value(
         "expect-lon",
@@ -225,6 +234,11 @@ pub const REQUEST_REFUSALS: &[Refusal] = &[
         code: "invalid_gis_mv_selection",
         when: "an MV source index, distance, or attachment slot is malformed",
         remedy: "use a zero-based source index, finite positive metre values, and comma-separated slot ordinals",
+    },
+    Refusal {
+        code: "unknown_gis_layer",
+        when: "--include-layer names a layer the GIS projection does not have",
+        remedy: "pass a layer id --include-layer lists, e.g. tension_sections or terrain_points",
     },
 ];
 
@@ -369,6 +383,18 @@ pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, F
         .remedy("pass --network-source-layer, or remove the network-only option"));
     }
 
+    // Parsed through the engine's own layer type. The parser already held
+    // each value to the engine's list, so a miss here is a build defect.
+    let gis_include_layers = inputs
+        .repeated("include-layer")
+        .iter()
+        .map(|layer| {
+            layer
+                .parse::<GisLayerId>()
+                .map_err(|_| unmapped("include-layer", layer, &GIS_LAYER_IDS))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     let pls_project = match inputs.value("select-project") {
         Some(leaf) => Some(
             resolve_pls_project_selection(&sources, leaf).map_err(|error| {
@@ -469,6 +495,7 @@ pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, F
         swap_xy: inputs.switch("swap-xy"),
         selection,
         pls_project,
+        gis_include_layers,
     })
 }
 
