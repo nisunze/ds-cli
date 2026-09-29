@@ -113,6 +113,10 @@ forced on. Export with `--project-config`: the method reads cos φ from
 `project_settings` and the `electrical_params` of the `lv_lines`,
 `service_cable_sizes` and `transfo_sizes` seeds; without them a job reports
 `not_calculated` and names what is missing.
+The governed `transformer_nature` tag reserves fill-in and upgrade transformers
+by default. They return a successful `reserved` row with the calculation reason
+and no load flow or reinforcement; the transformer's own `vd_calculate` may
+override that gate.
 
 ```bash
 ds design lv project-export --project <id> --transformer T-1042 \
@@ -151,6 +155,11 @@ layers carrying the `vd_*` columns and each customer's balanced
 `connection_phase`. A failed job has `ok: false` and an `error` instead of the
 three. The result is never truncated or overwritten; above 256 MiB it is
 refused.
+
+A reserved job has `ok: true`, `vd_summary` and `layers`, with no `report` or
+`sizing`. Its receipt row says `status: reserved`, `sizing_status:
+not_calculated`, the authoritative nature and the gate's `calculation` reason.
+It is counted as succeeded and never as compliant.
 
 The terminal receipt carries the digests, counts, the run's `scenario` and one
 row per job: report status, customers, failing customers, worst drop %, limit

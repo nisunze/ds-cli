@@ -40,7 +40,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "voltage-drop"],
     contract: 1,
     summary: "Check LV voltage drop by year and recommend compliant upgrades.",
-    purpose: "Check whether every customer of an LV transformer stays within the voltage limit of the project's rule set (IEC 60038 ±10 % when it has none) at the design year's load, and the first outlook year the drawn design fails (method ds-lv-vd/1). Input: the ds.fast-lv.request/v1 of design.lv.project-export --project-config. Stage 2 recommends the cheapest compliant upgrades, each scheduled by the year it is first needed. --year, --outlook, --no-outlook, --load and --set change this run only, never the project; the result echoes them.",
+    purpose: "Check whether every customer of an LV transformer stays within the voltage limit of the project's rule set (IEC 60038 ±10 % when it has none) at the design year's load, and the first outlook year the drawn design fails (method ds-lv-vd/1). Input: the ds.fast-lv.request/v1 of design.lv.project-export --project-config. A transformer whose governed nature reserves voltage drop is returned as not calculated with its reason; no load flow or reinforcement is run. Stage 2 recommends the cheapest compliant upgrades for calculated transformers, each scheduled by the year it is first needed. --year, --outlook, --no-outlook, --load and --set change this run only, never the project; the result echoes them.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -83,7 +83,7 @@ pub static COMMAND: Command = Command {
             "Another vd_* project setting, e.g. vd_limit_pct=8; up to 32. Default: the project's. Other names are refused.",
         ),
     ],
-    output: "`out`, digests, byte count, engine version, method, counts, `scenario` (every override), and one row per job: status, customers, failing customers, worst drop %, limit %, compliance, transformer loading %, stage-2 status, changes, transformer change, infeasible, added cost and basis, design year, first failing year and the engine's outlook schedule. Layers and diagnostics go only to `out`.",
+    output: "`out`, digests, byte count, engine version, method, counts, `scenario` (every override), and one row per job: calculated status, customers, failing customers, worst drop %, limit %, compliance, transformer loading %, stage-2 status, changes, transformer change, infeasible, added cost and basis, design year, first failing year and the engine's outlook schedule; or reserved status, nature and calculation reason. Layers and diagnostics go only to `out`.",
     examples: &[
         Example {
             command: "ds design lv voltage-drop --input ./T-1042.fast-lv.json --out ./T-1042.vd.json --output json",
@@ -178,11 +178,11 @@ pub static COMMAND: Command = Command {
     availability: || Availability::Available,
 };
 
-/// One transformer's outcome: its processed layers and voltage-drop run, or
-/// the reason the engine gave for not producing them.
+/// One transformer's outcome: processed layers and an optional calculation.
+/// A reserved nature has layers with `tr.vd_summary` and no calculation.
 struct Solved {
     transformer_name: String,
-    outcome: Result<(Map<String, Value>, VoltageDropRun), String>,
+    outcome: Result<(Map<String, Value>, Option<VoltageDropRun>), String>,
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -474,8 +474,20 @@ fn solve(job: NativeFastLvJobV1) -> Solved {
 /// outlook schedule, never the layers, the per-customer results or an error
 /// text.
 fn row(job: &Solved) -> Value {
-    let Ok((_, run)) = &job.outcome else {
+    let Ok((layers, run)) = &job.outcome else {
         return json!({ "transformer_name": job.transformer_name, "ok": false });
+    };
+    let Some(run) = run else {
+        let summary = &layers["tr"]["features"][0]["properties"]["vd_summary"];
+        return json!({
+            "transformer_name": job.transformer_name,
+            "ok": true,
+            "status": summary["status"],
+            "sizing_status": "not_calculated",
+            "transformer_nature": summary["transformer_nature"],
+            "calculation": summary["calculation"],
+            "compliant": null,
+        });
     };
     let summary = &run.report.summary;
     let parameters = run.report.parameters.as_ref();
@@ -521,11 +533,16 @@ fn encode(solved: Vec<Solved>, scenario: &Value) -> Result<Vec<u8>, Failure> {
         );
         entry.insert("ok".into(), Value::Bool(job.outcome.is_ok()));
         match job.outcome {
-            Ok((layers, run)) => {
+            Ok((layers, Some(run))) => {
                 let report = serde_json::to_value(&run.report).map_err(encoding)?;
                 let sizing = serde_json::to_value(&run.sizing).map_err(encoding)?;
                 entry.insert("report".into(), report);
                 entry.insert("sizing".into(), sizing);
+                entry.insert("layers".into(), Value::Object(layers));
+            }
+            Ok((layers, None)) => {
+                let summary = layers["tr"]["features"][0]["properties"]["vd_summary"].clone();
+                entry.insert("vd_summary".into(), summary);
                 entry.insert("layers".into(), Value::Object(layers));
             }
             Err(error) => {
@@ -748,6 +765,65 @@ mod tests {
         let text = render(&receipt);
         assert!(text.contains("2 compliant as drawn"), "{text}");
         assert!(!text.contains("T1") && !text.contains("layers"), "{text}");
+    }
+
+    #[test]
+    fn reserved_natures_are_successful_not_calculated_answers() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let input = root.path().join("request.json");
+        let out = root.path().join("result.vd.json");
+        let reserved = ["fill_in", "upgrade"]
+            .into_iter()
+            .map(|nature| {
+                let mut job = job(nature, 2);
+                job["gdfs"]["tr"]["features"][0]["properties"]["transformer_nature"] =
+                    json!(nature);
+                job["config_dfs"]["project_settings"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!({
+                        "parameter": format!("vd_calculate_{nature}"),
+                        "value": false,
+                    }));
+                job
+            })
+            .collect::<Vec<_>>();
+        std::fs::write(&input, request(reserved)).unwrap();
+
+        let receipt = run(&inputs(&input, &out), &context()).expect("reserved is an answer");
+        assert_eq!(receipt["succeeded"], 2);
+        assert_eq!(receipt["failed"], 0);
+        assert_eq!(receipt["compliant"], 0);
+        for (row, nature) in receipt["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(["fill_in", "upgrade"])
+        {
+            assert_eq!(row["ok"], true);
+            assert_eq!(row["status"], "reserved");
+            assert_eq!(row["sizing_status"], "not_calculated");
+            assert_eq!(row["transformer_nature"], nature);
+            assert_eq!(row["compliant"], Value::Null);
+            assert!(
+                row["calculation"]
+                    .as_str()
+                    .unwrap()
+                    .contains(&format!("vd_calculate_{nature}"))
+            );
+        }
+        let document = document(&out);
+        for entry in document["jobs"].as_array().unwrap() {
+            assert_eq!(entry["ok"], true);
+            assert_eq!(entry["vd_summary"]["status"], "reserved");
+            assert_eq!(
+                entry["layers"]["tr"]["features"][0]["properties"]["vd_summary"],
+                entry["vd_summary"]
+            );
+            assert!(entry.get("report").is_none());
+            assert!(entry.get("sizing").is_none());
+        }
+        assert!(render(&receipt).contains("2 not calculated"));
     }
 
     #[test]
