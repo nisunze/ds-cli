@@ -16,6 +16,11 @@ their normal refusal when that direct read also fails. Publication, combined
 reports and other project writes refuse as `report_reconciliation_required`
 before their handler runs.
 
+For `report project scope|settings|archives` and `report publication list|show`,
+the requested operation reads project data, but its preceding automatic touch
+can deliver older queued reports and download changed heads. Those effects
+appear in `reconciliation`; the read command does not create a new report.
+
 The local proof paths of `report project export` (`--dry-run`,
 `--preview-layout`, `--print-layout`) and `report project map-inputs` keep
 their no-publication guarantee. They do not run the pass until the shared
@@ -1084,8 +1089,10 @@ deduplication before a workbook is issued.
 ## Shared publication heads
 
 `ds report publication list|show` reads the current compute-artifact heads
-directly under the native account and an explicit project. It does not open
-the local report outbox, pair a Desktop, download bytes, or publish anything.
+directly under the native account and an explicit project. That requested
+read does not pair a Desktop or download output bytes. Its preceding automatic
+project touch opens the local sync store and may publish older queued reports
+or download changed heads, as described above.
 The list is paged and includes all engines. A head contains the current
 revision, input fingerprint, each output's digest and byte count, and
 per-output origins where the service recorded them. The shared kernel validates

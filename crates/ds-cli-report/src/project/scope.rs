@@ -14,16 +14,17 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Show which transformers a Compounded Report ZIP would include.",
     purpose: "\
-Start here. Restores the native user and reads only its audience-fenced \
-named project's transformer lifecycle inventory. Without --transformer the \
+Start here. The requested scope query reads the named project's \
+audience-fenced transformer lifecycle inventory. Before that read, the automatic \
+project touch may publish older queued local reports and pull moved remote heads. Without --transformer the \
 scope is every active saved transformer, which is exactly what `compounded` \
 resolves; with names it checks each one, so a retired, deleted or missing \
 name is reported before any artifact is produced. A reserved computed \
 identity — `collisions`, `combined_transformer` and its aliases — is what a \
 report produces, never a participant, and is refused outright. With \
 --group-by/--where it previews, from the tag projection, the archives a \
-grouped `compounded` would publish. Nothing is \
-generated or saved. No project, Desktop descriptor, URL, body or action \
+grouped `compounded` would publish. The scope query generates or saves no \
+report. No project, Desktop descriptor, URL, body or action \
 override is accepted.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,

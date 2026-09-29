@@ -88,13 +88,14 @@ pub static LIST: Command = Command {
     id: "report.publication.list",
     path: &["report", "publication", "list"],
     contract: 1,
-    summary: "List shared project publication heads without local report state.",
+    summary: "List shared project publication heads.",
     purpose: "\
 Reads one bounded page of current compute-artifact heads under the restored native user \
 and the explicitly named project. The server enforces project membership. Every returned \
 head is checked by the shared kernel before it is shown. A cursor continues this exact \
-project's list; the automatic project touch may reconcile the report queue \
-first. This list itself opens no local room, Desktop or output download.",
+project's list. Before the requested read, the automatic project touch may \
+publish older queued local reports and pull moved remote heads. The requested \
+head read opens no local room, Desktop or output download.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -121,8 +122,9 @@ pub static SHOW: Command = Command {
     purpose: "\
 Reads one engine/operation/variant head from the named project's shared compute-artifact \
 authority under the restored native user. It validates the returned identity and all output \
-declarations against the shared kernel. The automatic project touch may \
-reconcile the report queue first. This head read itself downloads no output bytes.",
+declarations against the shared kernel. Before the requested read, the automatic \
+project touch may publish older queued local reports and pull moved remote heads. \
+The requested head read downloads no output bytes.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,

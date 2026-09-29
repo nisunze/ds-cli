@@ -127,14 +127,16 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Read the project's printing outputs and whether they are ready.",
     purpose: "\
-Restores the native user and reads its audience-fenced named project's \
+The requested settings query reads the audience-fenced named project's \
 fresh configuration, then asks ds-command-kernel what that project's export \
 setting means: the outputs it will produce, the paper each named printout \
 prints on, whether the selected printing setups are actually held, whether \
 the input receipt every local export reads was minted, and — when one is \
 not — the refusal by message key with the server's reason and remedy, so \
 `ds` and the GUI refuse in the same words. Reads whatever shape the setting \
-was stored in, including every legacy one. Nothing is generated or saved. \
+was stored in, including every legacy one. The settings query generates or saves no \
+report; its automatic project touch may publish older queued local reports and \
+pull moved remote heads before the read. \
 A project is required; no Desktop descriptor, URL, body or action override is accepted.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
