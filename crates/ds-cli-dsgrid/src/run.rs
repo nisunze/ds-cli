@@ -39,6 +39,8 @@ const MAX_PARAMS_BYTES: u64 = 16 * 1024 * 1024;
 #[serde(deny_unknown_fields)]
 struct WholeModelSpottingParams {
     #[serde(default)]
+    alignment_ids: Option<Vec<AlignmentId>>,
+    #[serde(default)]
     settings: Option<ds_grid_model::SpottingSettings>,
     #[serde(default)]
     memory_budget_bytes: Option<u64>,
@@ -676,8 +678,13 @@ fn dispatch(
             )
         }
         "plan_whole_model_spotting" => {
-            let request: WholeModelSpottingParams = parse(operation_id, params)?;
-            let settings = match request.settings {
+            let WholeModelSpottingParams {
+                alignment_ids,
+                settings,
+                memory_budget_bytes,
+                max_workers,
+            } = parse(operation_id, params)?;
+            let settings = match settings {
                 Some(settings) => settings,
                 None => ds_grid_engine::spotting::requests::stored_spotting_settings(
                     session.snapshot(),
@@ -690,20 +697,20 @@ fn dispatch(
                     )
                 })?,
             };
-            let memory_budget_bytes = request
-                .memory_budget_bytes
-                .or_else(crate::host_memory::spotting_memory_budget_bytes);
+            let memory_budget_bytes =
+                memory_budget_bytes.or_else(crate::host_memory::spotting_memory_budget_bytes);
             let max_workers = if memory_budget_bytes.is_none() {
-                request.max_workers.or(Some(1))
+                max_workers.or(Some(1))
             } else {
-                request.max_workers
+                max_workers
             };
             serialize(
                 operation_id,
-                ds_grid_engine::spotting::batch::plan_whole_model(
+                ds_grid_engine::spotting::batch::plan_whole_model_for_alignments(
                     session.snapshot(),
                     session.current_revision(),
                     &settings,
+                    alignment_ids.as_deref(),
                     memory_budget_bytes,
                     max_workers,
                 )
@@ -863,6 +870,28 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whole_model_spotting_accepts_exact_selected_alignments_and_omitted_all() {
+        let descriptor = operation_descriptor("plan_whole_model_spotting").unwrap();
+        let selected = json!({ "alignment_ids": ["al-second", "al-first"] });
+        validate_params(&descriptor, &selected).expect("native descriptor admits selected IDs");
+        let parsed: WholeModelSpottingParams =
+            parse("plan_whole_model_spotting", &selected).expect("typed selected IDs");
+        assert_eq!(
+            parsed.alignment_ids,
+            Some(vec![
+                AlignmentId::new("al-second").unwrap(),
+                AlignmentId::new("al-first").unwrap(),
+            ])
+        );
+
+        let all = json!({});
+        validate_params(&descriptor, &all).expect("omitted IDs remain valid");
+        let parsed: WholeModelSpottingParams =
+            parse("plan_whole_model_spotting", &all).expect("omitted IDs");
+        assert!(parsed.alignment_ids.is_none());
+    }
 
     #[test]
     fn every_admitted_engine_operation_has_a_dispatch_branch() {
