@@ -58,24 +58,16 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      # `tests/bridge_parity.rs` reads the web bridge and Cargo also compiles
-      # the exact pinned Tauri-independent native client core from this tree.
+      # `tests/bridge_parity.rs` reads the current web bridge. The native
+      # client core is owned by ds-command-kernel and verified below.
       - name: Check out ds-web
         uses: actions/checkout@v4
         with:
           repository: nisunze/ds-web
-          ref: ${{ steps.native-client-core.outputs.sha }}
+          ref: run
           path: data-solutions/ds-web
           token: ${{ secrets.WORKSPACE_TOKEN }}
           persist-credentials: false
-
-      - name: Verify native client core authority pin
-        working-directory: data-solutions/ds-web
-        env:
-          EXPECTED_CORE_SHA: ${{ steps.native-client-core.outputs.sha }}
-        run: |
-          test "$(git rev-parse HEAD)" = "$EXPECTED_CORE_SHA"
-          test -f crates/ds-client-core/Cargo.toml
 
       - name: Check out ds-command-kernel
         uses: actions/checkout@v4
@@ -93,6 +85,17 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_KERNEL_SHA"
           test -f Cargo.toml
+
+      - name: Verify native client core authority pin
+        working-directory: data-solutions/ds-command-kernel
+        env:
+          EXPECTED_CORE_SHA: ${{ steps.native-client-core.outputs.sha }}
+        run: |
+          git cat-file -e "$EXPECTED_CORE_SHA^{commit}"
+          test -f crates/ds-client-core/Cargo.toml
+          for crate in ds-client-core ds-report-host ds-sync-runtime ds-layer-store ds-project-data ds-edge-authority; do
+            test "$(git rev-parse "$EXPECTED_CORE_SHA:crates/$crate")" = "$(git rev-parse "HEAD:crates/$crate")"
+          done
 
       # The two engines `ds` reaches over a typed process contract. Unlike
       # ds-web these are needed as *binaries*: `tests/engine_parity.rs` asks
