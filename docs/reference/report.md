@@ -652,14 +652,24 @@ run refuses `report_inputs_not_held`. `--seed` acquires nothing without a
 link, and the prints carry the context this machine holds. Each result row
 names its `room_source` (`held` or `fetched`).
 
-When the output policy selects `voltage_drop`, export also reads the current
+When the output policy selects `voltage_drop` JSON or `voltage_drop_pdf`, export also reads the current
 project `transformer_nature` tag projection and passes those assignments to
 the reporter separately from the saved room. The room content digest still
 covers the exact saved layers. If the projection cannot be verified, export
 refuses with `report_transformer_nature_unavailable` rather than producing a
 voltage-drop result from an unverified or stale tag. An unassigned transformer
 stays unassigned; its name is never used to infer a nature. An export whose
-policy does not select `voltage_drop` does not read this tag projection.
+policy selects neither voltage-drop output does not read this tag projection.
+
+`voltage_drop_pdf` is the A4 voltage-drop report. Select it in the project's
+`ds.design-output-selection/v1` document, under `geospatial`, then use
+`ds report project export` or `ds desktop printing export`. The report format
+field `voltage_drop_report` chooses `extended` (the default) or `brief` for
+both voltage-drop outputs. The PDF is rendered by the same reporter on the
+Desktop, headless Server, and Web execution lanes; cartographic print layouts
+remain Desktop/Server outputs. A local desktop selection override can select
+the PDF without changing project settings, but the report format itself is
+read from the project's saved selection.
 
 Survey forms the project appends to delivered reports
 (`include_survey_data_in_transformer_exports`,

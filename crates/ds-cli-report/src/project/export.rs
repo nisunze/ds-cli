@@ -148,7 +148,7 @@ pub(super) const INPUTS_INVALID: Refusal = Refusal {
 };
 const TRANSFORMER_NATURE_UNAVAILABLE: Refusal = Refusal {
     code: "report_transformer_nature_unavailable",
-    when: "voltage_drop is selected but the current project transformer_nature projection could not be verified",
+    when: "a voltage-drop output is selected but the current project transformer_nature projection could not be verified",
     remedy: "retry while connected and signed in to the named project; do not publish a voltage-drop report without current governed tags",
 };
 const STAGING_FAILED: Refusal = Refusal {
@@ -2423,7 +2423,9 @@ fn transformer_nature_unavailable(reason: &str) -> Failure {
 }
 
 fn voltage_drop_selected(outputs: &[String]) -> bool {
-    outputs.iter().any(|output| output == "voltage_drop")
+    outputs
+        .iter()
+        .any(|output| matches!(output.as_str(), "voltage_drop" | "voltage_drop_pdf"))
 }
 
 /// The inputs as the service answers them now, or `None` when it cannot be
@@ -3036,6 +3038,9 @@ mod tests {
         assert!(super::voltage_drop_selected(&[
             "xlsx".to_string(),
             "voltage_drop".to_string()
+        ]));
+        assert!(super::voltage_drop_selected(&[
+            "voltage_drop_pdf".to_string()
         ]));
     }
 

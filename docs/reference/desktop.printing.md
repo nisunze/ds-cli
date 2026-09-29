@@ -63,6 +63,15 @@ Local force does not require the Cloud Run force password.
 Outputs appear in the transformer's Report Files inventory and PDF preview.
 The CLI returns artifact evidence without downloading a ZIP.
 
+For one A4 voltage-drop PDF without regenerating other formats, pass a local
+selection file containing
+`{"schema":"ds.design-output-selection/v1","geospatial":["voltage_drop_pdf"]}`
+to `ds desktop printing export --selection <file>`. The fixed analytical PDF
+does not require a named print layout. Its filename is
+`<Display Name> voltage drop.pdf`; `paper_size` in the receipt is `A4`.
+The saved project selection chooses `voltage_drop_report: "extended"` by
+default, or `"brief"` when explicitly set.
+
 ## Map export
 
 `ds desktop printing map export --request recipe.json --yes --output json`
