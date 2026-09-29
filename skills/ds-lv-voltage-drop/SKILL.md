@@ -88,3 +88,7 @@ override; quote it with the numbers.
   declared inputs, show both results side by side, and let the owner decide.
 - Report a refusal by its code and remedy. A missing capability is feedback
   (`ds feedback submit`), never a workaround.
+
+Stops at: the owner's engineering decision. Which scenario, load basis or
+reinforcement plan to adopt is theirs; hand over the baseline and scenario
+results side by side, with the rule-set sources quoted.
