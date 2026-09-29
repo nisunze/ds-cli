@@ -84,6 +84,7 @@ impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
             self.authority,
             project,
             transformer,
+            crate::TransformerContextProjection::Full,
         )?;
         Ok(
             json!({"project":observed.ds_project(),"transformer":observed.transformer_name(),

@@ -830,18 +830,24 @@ impl Transport for FixtureTransport {
     ) -> Result<TransportResponse, TransportError> {
         let mut state = self.0.lock().unwrap();
         let body = call.body();
-        let exact_body = br#"{"action":"get_transformers_data","eds_project_id":"active-project","transformers":["tx_1"],"fields":"full"}"#;
+        let exact_body = serde_json::json!({
+            "action": "get_transformers_data",
+            "eds_project_id": "active-project",
+            "transformers": ["tx_1"],
+            "fields": call.projection().token(),
+        });
         let correlation_valid = call.correlation_headers() == ["X-Request-Id", "X-DS-Action-Id"];
         if correlation_valid {
             state.correlated_transformer_requests += 1;
         }
         state.calls.push(format!(
-            "transformer_context method={} origin={} path={} content_type={} body_exact={} lane_absent={} limit={} timeout={} api_key={} authorization={} forwarded_authorization={} email={} client_id={} correlation={}",
+            "transformer_context method={} origin={} path={} content_type={} projection={} body_exact={} lane_absent={} limit={} timeout={} api_key={} authorization={} forwarded_authorization={} email={} client_id={} correlation={}",
             call.method(),
             call.gateway_origin(),
             call.path(),
             call.content_type(),
-            serde_json::from_slice::<serde_json::Value>(body.as_bytes()).unwrap() == serde_json::from_slice::<serde_json::Value>(exact_body).unwrap(),
+            call.projection().token(),
+            serde_json::from_slice::<serde_json::Value>(body.as_bytes()).unwrap() == exact_body,
             !body.as_bytes().windows(b"\"lane\"".len()).any(|window| window == b"\"lane\""),
             call.response_limit(),
             call.timeout_seconds(),
@@ -2379,11 +2385,19 @@ fn transformer_context_reads_full_source_with_nested_properties() {
     assert!(call
         .contains("method=POST origin=https://eds-gateway-3c0q477h.ue.gateway.dev path=/report"));
     assert!(call.contains("body_exact=true lane_absent=true"));
+    assert!(call.contains("projection=full"));
     assert!(call.contains("limit=67108864 timeout=120"));
     assert!(call.contains("authorization=true forwarded_authorization=true"));
     assert!(call.contains("client_id=ds-native-client correlation=true"));
     assert!(!call.contains("public-gateway-key"));
     assert!(!call.contains("e30."));
+
+    transport.push_transformer_context(200, &serde_json::to_vec(&response).unwrap());
+    client
+        .transformer_context_saved("active-project", "tx_1", NOW + 2)
+        .unwrap();
+    let saved_call = transport.calls().last().unwrap().clone();
+    assert!(saved_call.contains("projection=saved body_exact=true lane_absent=true"));
 }
 
 #[test]
@@ -2395,6 +2409,8 @@ fn transformer_context_profile_and_runtime_inputs_have_no_escape_hatch() {
             input.transformer_context_action = "query_entries".to_owned()
         },
         |input: &mut ClientProfileInput| input.transformer_context_fields = "context".to_owned(),
+        |input: &mut ClientProfileInput| input.transformer_context_fields = "saved".to_owned(),
+        |input: &mut ClientProfileInput| input.transformer_context_fields = "full,saved".to_owned(),
     ] {
         let mut input = profile_input(DeploymentLane::Stable);
         mutate(&mut input);

@@ -23,8 +23,8 @@ use crate::{
     SurveyEntriesSelectCall, SurveyEntriesSelectRequest, SurveyEntriesSelection,
     SurveyEntryCreateCall, SurveyEntryCreateReceipt, SurveyEntryCreateRequest, SurveyQueryCall,
     SurveyQueryRequest, SurveyQueryResult, TileCall, TileOperationResult, TilePreflight, TileType,
-    TransformerContext, TransformerContextCall, TransportError, TransportResponse,
-    PROJECT_STATUS_ORDER,
+    TransformerContext, TransformerContextCall, TransformerContextProjection, TransportError,
+    TransportResponse, PROJECT_STATUS_ORDER,
 };
 
 #[derive(Clone, Copy)]
@@ -282,11 +282,13 @@ pub(crate) fn transformer_context<T: AuthorizedTransport>(
     authority: Authority<'_>,
     ds_project: &str,
     transformer: &str,
+    projection: TransformerContextProjection,
 ) -> Result<TransformerContext, ClientError> {
     let response = transport.transformer_context(TransformerContextCall {
         profile,
         ds_project,
         transformer,
+        fields: projection,
         authority: authority.call(),
     })?;
     if response.status != 200 {

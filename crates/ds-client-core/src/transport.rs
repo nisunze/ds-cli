@@ -309,10 +309,32 @@ pub struct TransformerContextCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) ds_project: &'a str,
     pub(crate) transformer: &'a str,
+    pub(crate) fields: TransformerContextProjection,
     pub(crate) authority: CallAuthority<'a>,
 }
 
+/// Fixed server projections for a transformer read. The raw saved projection
+/// is reserved for report content-digest verification; normal callers retain
+/// the governed `full` projection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TransformerContextProjection {
+    Full,
+    Saved,
+}
+
+impl TransformerContextProjection {
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Full => TRANSFORMER_CONTEXT_FIELDS,
+            Self::Saved => crate::profile::TRANSFORMER_CONTEXT_SAVED_FIELDS,
+        }
+    }
+}
+
 impl TransformerContextCall<'_> {
+    pub const fn projection(&self) -> TransformerContextProjection {
+        self.fields
+    }
     pub fn gateway_origin(&self) -> &str {
         self.profile.gateway_origin()
     }
@@ -378,7 +400,7 @@ impl TransformerContextCall<'_> {
                 action: TRANSFORMER_CONTEXT_ACTION,
                 eds_project_id: self.ds_project,
                 transformers: [self.transformer],
-                fields: TRANSFORMER_CONTEXT_FIELDS,
+                fields: self.fields.token(),
             })
             .expect("a struct containing only strings always serializes"),
         )

@@ -237,6 +237,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
             authority,
             project,
             &item.transformer_name,
+            crate::TransformerContextProjection::Full,
         )?;
         if preflight(item, &snapshot, &digest(&item.gdfs)?)? {
             receipts.insert(
@@ -328,7 +329,14 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 );
                 continue;
             }
-            match authorized::transformer_context(profile, transport, authority, project, name) {
+            match authorized::transformer_context(
+                profile,
+                transport,
+                authority,
+                project,
+                name,
+                crate::TransformerContextProjection::Full,
+            ) {
                 Ok(snapshot)
                     if snapshot.metadata().version() == result["version"].as_u64()
                         && snapshot.metadata().content_digest() == Some(result_digest.as_str())

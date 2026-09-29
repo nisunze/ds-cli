@@ -26,6 +26,7 @@ pub const TRANSFORMER_CONTEXT_METHOD: &str = "POST";
 pub const TRANSFORMER_CONTEXT_PATH: &str = "/report";
 pub const TRANSFORMER_CONTEXT_ACTION: &str = "get_transformers_data";
 pub const TRANSFORMER_CONTEXT_FIELDS: &str = "full";
+pub const TRANSFORMER_CONTEXT_SAVED_FIELDS: &str = "saved";
 pub const PROJECT_FORMS_METHOD: &str = "POST";
 pub const PROJECT_FORMS_PATH: &str = "/api/v1/project-forms";
 pub const PROJECT_FORMS_ACTION: &str = "activate";

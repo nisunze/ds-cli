@@ -568,6 +568,33 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             },
             ds_project,
             transformer,
+            crate::TransformerContextProjection::Full,
+        )
+    }
+
+    /// Read persisted transformer layers for report integrity verification.
+    /// Ordinary reads continue to use the governed full projection.
+    pub fn transformer_context_saved(
+        &mut self,
+        ds_project: &str,
+        transformer: &str,
+        now_epoch_seconds: u64,
+    ) -> Result<TransformerContext, ClientError> {
+        crate::authorized::validate_transformer_context(ds_project, transformer)?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::authorized::transformer_context(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            ds_project,
+            transformer,
+            crate::TransformerContextProjection::Saved,
         )
     }
 

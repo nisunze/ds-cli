@@ -1104,6 +1104,28 @@ impl DeviceApiAuthorization<'_> {
             self.authority(),
             ds_project,
             transformer,
+            crate::TransformerContextProjection::Full,
+        )
+    }
+
+    /// Read persisted transformer layers for report integrity verification.
+    /// Ordinary reads continue to use the governed full projection.
+    pub fn transformer_context_saved<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        transformer: &str,
+        now: u64,
+    ) -> Result<TransformerContext, ClientError> {
+        crate::authorized::validate_transformer_context(ds_project, transformer)?;
+        self.ensure_active(now)?;
+        crate::authorized::transformer_context(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            transformer,
+            crate::TransformerContextProjection::Saved,
         )
     }
 
