@@ -20,8 +20,8 @@ pub use jobs::{Census, JobCaller, JobContext, Recovery};
 
 use ds_command_kernel::survey_moments::{MediaRecord, SyncState};
 use ds_command_kernel::sync_store::{
-    self as kernel, ArtifactRow, Event, Fence, GrantRow, HeadRow, LeaseRow, QueueStatus,
-    ReceiptRow, RowChange, Scope, Snapshot, Transition,
+    self as kernel, ArtifactRow, ArtifactState, Event, Fence, GrantRow, HeadRow, LeaseRow,
+    QueueStatus, ReceiptRow, RowChange, Scope, Snapshot, Transition,
 };
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use std::path::Path;
@@ -332,7 +332,10 @@ impl Store {
     pub fn queue(&self, fence: &Fence, project: Option<&str>, now_ms: u64) -> Result<QueueStatus> {
         let rows = self.artifacts_of_fence(fence)?;
         let leases = self.leases_of_fence(fence)?;
-        Ok(kernel::queue_status(&rows, &leases, project, now_ms))
+        let receipts = self.latest_delivery_receipts(fence, &rows, project)?;
+        Ok(kernel::queue_status(
+            &rows, &leases, &receipts, project, now_ms,
+        ))
     }
 
     /// The queue as this whole file holds it, every fence together: what a
@@ -342,11 +345,60 @@ impl Store {
     /// under — a local diagnostic, never an execution: the fence still
     /// decides what a worker may drain.
     pub fn queue_all(&self, project: Option<&str>, now_ms: u64) -> Result<QueueStatus> {
-        let rows = self.all::<ArtifactRow>(
-            "SELECT row FROM artifacts ORDER BY account, deployment, install_id, scope, engine, operation, variant",
+        let mut statement = self.connection.prepare(
+            "SELECT DISTINCT account, deployment, install_id FROM artifacts ORDER BY account, deployment, install_id",
         )?;
-        let leases = self.all::<LeaseRow>("SELECT row FROM leases ORDER BY scope")?;
-        Ok(kernel::queue_status(&rows, &leases, project, now_ms))
+        let fences = statement.query_map([], |row| {
+            Ok(Fence {
+                account: row.get(0)?,
+                deployment: row.get(1)?,
+                install_id: row.get(2)?,
+            })
+        })?;
+        let mut statuses = Vec::new();
+        for fence in fences {
+            statuses.push(self.queue(&fence?, project, now_ms)?);
+        }
+        Ok(kernel::combine_queue_statuses(&statuses))
+    }
+
+    /// Only the newest delivery receipt for each queued project under this
+    /// exact fence. The append sequence orders attempts; wall clocks do not.
+    fn latest_delivery_receipts(
+        &self,
+        fence: &Fence,
+        rows: &[ArtifactRow],
+        project: Option<&str>,
+    ) -> Result<Vec<ReceiptRow>> {
+        let projects: std::collections::BTreeSet<&str> = rows
+            .iter()
+            .filter(|row| matches!(row.state, ArtifactState::Held | ArtifactState::Uploading))
+            .map(|row| row.scope.project())
+            .filter(|id| !id.is_empty() && project.is_none_or(|wanted| *id == wanted))
+            .collect();
+        let mut statement = self.connection.prepare(
+            "SELECT row FROM receipts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND scope=?4 \
+             AND json_extract(row, '$.action') IN ('upload', 'download', 'session') \
+             ORDER BY sequence DESC LIMIT 1",
+        )?;
+        let mut receipts = Vec::new();
+        for id in projects {
+            let raw: Option<String> = statement
+                .query_row(
+                    params![
+                        fence.account,
+                        fence.deployment,
+                        fence.install_id,
+                        scope_key(&Scope::Project { project: id.into() })
+                    ],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if let Some(raw) = raw {
+                receipts.push(serde_json::from_str(&raw)?);
+            }
+        }
+        Ok(receipts)
     }
 
     /// The most recent receipts of one scope, newest first.
@@ -422,16 +474,6 @@ impl Store {
         }
         tx.commit()?;
         Ok(transition)
-    }
-
-    fn all<T: serde::de::DeserializeOwned>(&self, sql: &str) -> Result<Vec<T>> {
-        let mut statement = self.connection.prepare(sql)?;
-        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(serde_json::from_str(&row?)?);
-        }
-        Ok(out)
     }
 
     /// How many rows of every kind this file holds for one project, across

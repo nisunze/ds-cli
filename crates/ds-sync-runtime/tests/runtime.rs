@@ -8,7 +8,7 @@
 //! by a second host; a transfer failure; and a cancellation. They run the same
 //! `run()` every host runs, so a drift between hosts is a drift here.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use ds_sync_runtime::fakes::{
@@ -16,9 +16,9 @@ use ds_sync_runtime::fakes::{
 };
 use ds_sync_runtime::store::Fence;
 use ds_sync_runtime::{
-    kernel_sync as sync, open_store, projects_of_fence, run, LocalOutput, LocalRow, Producer,
-    Producers, SharedStore, SolarPublishOutcome, SolarPublisher, StoreHost, SyncHost, SyncRun,
-    TransferReceipt,
+    kernel_sync as sync, open_store, projects_of_fence, run, Gateway, GatewayError, LocalOutput,
+    LocalRow, Producer, Producers, SharedStore, SolarPublishOutcome, SolarPublisher, StoreHost,
+    SyncHost, SyncRoute, SyncRun, TransferReceipt,
 };
 use sha2::Digest;
 
@@ -126,6 +126,28 @@ fn outcomes(run: &SyncRun) -> Vec<String> {
         .iter()
         .map(|receipt| format!("{}:{}", receipt.action, receipt.outcome))
         .collect()
+}
+
+/// A stand-in for the gateway's missing/expired API credential. It refuses
+/// before the record sees the request, including a heads read.
+struct CredentialDoor {
+    record: FakeGateway,
+    refused: AtomicBool,
+    calls: AtomicUsize,
+}
+
+impl Gateway for CredentialDoor {
+    fn post(
+        &self,
+        route: SyncRoute,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, GatewayError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.refused.load(Ordering::SeqCst) {
+            return Err(GatewayError::refused(401, None, "the gateway answered 401"));
+        }
+        self.record.post(route, body)
+    }
 }
 
 fn solar_row() -> LocalRow {
@@ -533,6 +555,169 @@ fn one_unreachable_open_does_not_hold_other_uploads_in_the_batch() {
         "unexpected detail: {detail}"
     );
     assert_eq!(failed.outcome, "failed");
+}
+
+#[test]
+fn invariant_6_and_7_credential_refusal_stops_after_one_call_and_recovery_publishes_every_row() {
+    use ds_sync_runtime::store::ArtifactState;
+
+    let h = Harness::new();
+    let rows: Vec<LocalRow> = (1..=3)
+        .map(|number| {
+            let mut row = local_row(format!("report-{number}").as_bytes());
+            row.identity.operation = format!("export-tx_{number}");
+            row.resource = format!("tx_{number}");
+            row.client_publish_id = format!("publish-{number}");
+            row.bytes_locator = format!("fake:batch:publish-{number}");
+            row
+        })
+        .collect();
+    {
+        let mut world = fakes::lock(&h.world);
+        for row in &rows {
+            world
+                .current_base
+                .insert(row.identity.operation.clone(), fakes::FINGERPRINT.into());
+        }
+    }
+    h.seal(&rows);
+    let door = CredentialDoor {
+        record: FakeGateway {
+            world: h.world.clone(),
+        },
+        refused: AtomicBool::new(true),
+        calls: AtomicUsize::new(0),
+    };
+    let producer = FakeProducer::new(h.world.clone(), rows);
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = StoreHost::new(
+        h.store.clone(),
+        fence(),
+        "desktop#1".into(),
+        PROJECT,
+        &door,
+        &producer,
+        &reads,
+        &online,
+    )
+    .unwrap();
+
+    let refused = run(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
+    assert_eq!(outcomes(&refused), vec!["upload:credential_refused"]);
+    assert_eq!(
+        door.calls.load(Ordering::SeqCst),
+        1,
+        "one refused call per pass"
+    );
+    assert!(
+        fakes::lock(&h.world).declarations.is_empty(),
+        "the record was not reached"
+    );
+    let held = stored_rows(&h, PROJECT);
+    assert_eq!(held.len(), 3);
+    assert!(held
+        .iter()
+        .all(|row| row.state == ArtifactState::Held && row.readable));
+    let queue = h
+        .store
+        .lock()
+        .unwrap()
+        .queue(&fence(), Some(PROJECT), ds_sync_runtime::now_ms())
+        .unwrap();
+    assert_eq!(queue.queued_batches, 3);
+    assert!(queue.stuck);
+    assert_eq!(queue.blocked.as_ref().unwrap().cause, "credential_refused");
+    assert!(queue.next.contains("sign in again"));
+    assert_eq!(
+        h.store
+            .lock()
+            .unwrap()
+            .queue_all(Some(PROJECT), ds_sync_runtime::now_ms())
+            .unwrap()
+            .blocked
+            .unwrap()
+            .cause,
+        "credential_refused",
+        "identity-free CLI status reads the same blocker"
+    );
+    let receipts = host.receipts(10).unwrap();
+    assert_eq!(
+        receipts
+            .iter()
+            .filter(|receipt| receipt.outcome == "credential_refused")
+            .count(),
+        1
+    );
+
+    door.refused.store(false, Ordering::SeqCst);
+    let recovered = run(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
+    assert_eq!(outcomes(&recovered), vec!["upload:published"; 3]);
+    assert_eq!(fakes::lock(&h.world).commits, 3);
+    let queue = h
+        .store
+        .lock()
+        .unwrap()
+        .queue(&fence(), Some(PROJECT), ds_sync_runtime::now_ms())
+        .unwrap();
+    assert_eq!(queue.queued_batches, 0);
+    assert!(queue.blocked.is_none());
+    assert!(!queue.stuck);
+    assert!(h
+        .store
+        .lock()
+        .unwrap()
+        .queue_all(Some(PROJECT), ds_sync_runtime::now_ms())
+        .unwrap()
+        .blocked
+        .is_none());
+    assert!(stored_rows(&h, PROJECT)
+        .iter()
+        .all(|row| row.state == ArtifactState::Published));
+}
+
+#[test]
+fn a_refused_heads_read_keeps_a_session_receipt_and_blocks_the_held_queue() {
+    let h = Harness::new();
+    let row = local_row(b"sealed before heads read");
+    h.seal(std::slice::from_ref(&row));
+    let door = CredentialDoor {
+        record: FakeGateway {
+            world: h.world.clone(),
+        },
+        refused: AtomicBool::new(true),
+        calls: AtomicUsize::new(0),
+    };
+    let producer = FakeProducer::new(h.world.clone(), vec![row]);
+    let reads = FakeReads {
+        world: h.world.clone(),
+        root: h.reads_root.clone(),
+    };
+    let online = || true;
+    let host = StoreHost::new(
+        h.store.clone(),
+        fence(),
+        "desktop#1".into(),
+        PROJECT,
+        &door,
+        &producer,
+        &reads,
+        &online,
+    )
+    .unwrap();
+    let error = run(&host, PROJECT, sync::Trigger::Navigation).unwrap_err();
+    assert_eq!(error, "the gateway answered 401");
+    assert_eq!(door.calls.load(Ordering::SeqCst), 1);
+    let receipts = host.receipts(10).unwrap();
+    assert!(receipts
+        .iter()
+        .any(|receipt| receipt.action == "session" && receipt.outcome == "credential_refused"));
+    let status = host.store_read().unwrap();
+    assert_eq!(status["status"]["blocked"]["cause"], "credential_refused");
+    assert_eq!(status["status"]["queuedBatches"], 1);
 }
 
 /// A locally built engine — a "+development" release no installer ever

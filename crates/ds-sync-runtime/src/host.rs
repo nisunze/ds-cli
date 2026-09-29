@@ -314,6 +314,11 @@ impl<'a> StoreHost<'a> {
         let snapshot = self.snapshot()?;
         let receipts = self.receipts(200)?;
         let read_at = self.read_at()?;
+        let status = self.with_store(|store| {
+            store
+                .queue(&self.fence, Some(&self.project), now_ms())
+                .map_err(|error| error.to_string())
+        })?;
         let artifacts: Vec<Value> = snapshot
             .artifacts
             .iter()
@@ -340,6 +345,7 @@ impl<'a> StoreHost<'a> {
             })).collect::<Vec<_>>(),
             "lease": snapshot.lease,
             "receipts": receipts,
+            "status": status,
         }))
     }
 
@@ -758,6 +764,7 @@ impl SyncHost for StoreHost<'_> {
             "open_grant"
                 | "upload"
                 | "download"
+                | "session"
                 | "conflict"
                 | "refused"
                 | "cancel"
@@ -819,7 +826,7 @@ impl SyncHost for StoreHost<'_> {
         });
     }
 
-    fn heads(&self, project: &str) -> Result<Vec<RemoteRow>, String> {
+    fn heads(&self, project: &str) -> Result<Vec<RemoteRow>, GatewayError> {
         let mut rows: Vec<RemoteRow> = Vec::new();
         let mut cursor = String::new();
         let mut seen = std::collections::BTreeSet::new();
@@ -880,7 +887,7 @@ impl SyncHost for StoreHost<'_> {
         Ok(receipt)
     }
 
-    fn fetch(&self, project: &str, head: &RemoteRow) -> Result<u64, String> {
+    fn fetch(&self, project: &str, head: &RemoteRow) -> Result<u64, GatewayError> {
         self.ensure_active()?;
         crate::reads::validate_output_names(head)?;
         let root = self.reads.head_root(project, &head.identity)?;
@@ -900,7 +907,7 @@ impl SyncHost for StoreHost<'_> {
             )?;
             let url = text(&ticket, "download_url");
             if url.is_empty() {
-                return Err("that head output has no readable location".to_string());
+                return Err("that head output has no readable location".into());
             }
             self.reads.download_verified(
                 &url,

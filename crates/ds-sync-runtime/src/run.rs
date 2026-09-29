@@ -61,7 +61,7 @@ pub trait SyncHost {
     fn held_heads(&self, project: &str) -> Result<(Vec<RemoteRow>, Option<u64>), String>;
     /// Read the record. Called **only** when the plan's `refresh_remote` says
     /// this trigger needs it.
-    fn heads(&self, project: &str) -> Result<Vec<RemoteRow>, String>;
+    fn heads(&self, project: &str) -> Result<Vec<RemoteRow>, GatewayError>;
     /// Remember what was just read, with the server time it was read at.
     fn remember_heads(
         &self,
@@ -96,7 +96,7 @@ pub trait SyncHost {
         session_uri: &str,
     ) -> Result<TransferReceipt, String>;
     /// The gateway read of one head's outputs into the local store.
-    fn fetch(&self, project: &str, head: &RemoteRow) -> Result<u64, String>;
+    fn fetch(&self, project: &str, head: &RemoteRow) -> Result<u64, GatewayError>;
     /// Free the bytes of a publication that lost. Owner, 2026-09-20: "when
     /// there's a conflict, online overwrites local artefacts"; an artefact
     /// never accumulates on the edge. Answers the bytes freed; a batch that
@@ -292,7 +292,21 @@ fn run_leased(
     // exactly once per run, because a second read in the same pass could only
     // repeat the first.
     if plan.refresh_remote.needed {
-        remote = host.heads(project)?;
+        remote = match host.heads(project) {
+            Ok(heads) => heads,
+            Err(error) => {
+                if error.credential_refused() {
+                    // A failed heads read must remain visible even though this
+                    // pass cannot return a SyncRun. No row was acknowledged.
+                    host.record_receipt(
+                        project,
+                        &Receipt::new("session", "credential_refused")
+                            .detail(credential_refusal_detail()),
+                    )?;
+                }
+                return Err(error.into());
+            }
+        };
         let at = host.server_now_ms();
         host.remember_heads(project, &remote, at)?;
         // Cached replicas are observations of this exact head generation.
@@ -312,11 +326,15 @@ fn run_leased(
             // no second credential to obtain first.
             sync::Action::OpenGrant { .. } => {}
             sync::Action::Upload { identity, .. } => {
-                // One publication's verdict holds or settles that row alone;
-                // it never stops the rest of the batch.
+                // A publication verdict affects only its row. A refused
+                // session affects every remaining gateway call in this pass.
                 let receipt = upload(host, project, &local, identity);
+                let credential_refused = receipt.outcome == "credential_refused";
                 let settled = settled_verdict(&receipt);
                 keep(host, project, &mut receipts, receipt);
+                if credential_refused {
+                    break;
+                }
                 // A verdict the record passed on this publication is final:
                 // the bytes leave this machine in the pass that heard it.
                 if let Some(verdict) = settled {
@@ -326,7 +344,11 @@ fn run_leased(
             }
             sync::Action::Download { identity, .. } => {
                 let receipt = download(host, project, &remote, identity);
+                let credential_refused = receipt.outcome == "credential_refused";
                 keep(host, project, &mut receipts, receipt);
+                if credential_refused {
+                    break;
+                }
             }
             sync::Action::Conflict {
                 identity,
@@ -445,6 +467,7 @@ fn batch_name(row: &LocalRow) -> String {
 /// The record decides everything a publication can lose on. `open` refuses a
 /// declaration whose source inputs moved (409), that the project's current
 /// inputs do not produce (400), or that the account may not publish (403);
+/// a 401 is a refused session and holds this and every remaining row;
 /// `finalize` re-checks the source inside the transaction that advances the
 /// head and answers `stored_stale` when it lost. A verdict settles the row —
 /// `conflict` or `refused`, and the bytes leave this machine on the next
@@ -564,9 +587,10 @@ enum Stage {
 /// A verdict about THIS publication settles it: 409 (its source moved, or it
 /// conflicts with what the record holds) is a conflict; 403 (the account may
 /// not publish reports here, or the project is closed) and a 400 at `open`
-/// (the project's inputs do not produce this declaration) are refusals. Every
+/// (the project's inputs do not produce this declaration) are refusals. A 401
+/// refuses the session, holds the row and ends this pass. Every
 /// other answer is about the moment, not the publication — a lane whose
-/// server predates this door, an expired session, a 5xx, no network, or a 400
+/// server predates this door, a 5xx, no network, or a 400
 /// at `finalize` for bytes the record has not seen yet — and holds the row.
 fn record_refusal(
     identity: &sync::Identity,
@@ -577,12 +601,15 @@ fn record_refusal(
 ) -> Receipt {
     let predates_door = error.code.as_deref() == Some("WORK_GRANT_REQUIRED");
     let outcome = match error.status {
+        Some(401) => "credential_refused",
         Some(409) => "conflict",
         Some(403) if !predates_door => "refused",
         Some(400) if stage == Stage::Open => "refused",
         _ => "failed",
     };
-    let detail = if predates_door {
+    let detail = if error.credential_refused() {
+        credential_refusal_detail().to_string()
+    } else if predates_door {
         format!(
             "{}; this lane's authority does not open the report door yet, so the publication is held until it does",
             error.detail
@@ -596,6 +623,10 @@ fn record_refusal(
     receipt.work_id = work_id;
     receipt.transfers = transfers;
     receipt
+}
+
+fn credential_refusal_detail() -> &'static str {
+    "the gateway refused this machine's credential (401): sign in again; nothing was lost"
 }
 
 /// The output head identity that stands after a publish. The source-input
@@ -623,8 +654,11 @@ fn download(
             receipt.bytes = Some(bytes);
             receipt
         }
+        Err(error) if error.credential_refused() => Receipt::new("download", "credential_refused")
+            .about(identity)
+            .detail(credential_refusal_detail()),
         Err(error) => Receipt::new("download", "failed")
             .about(identity)
-            .detail(error),
+            .detail(error.detail),
     }
 }

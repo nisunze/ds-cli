@@ -966,6 +966,18 @@ pub struct QueuedProject {
     /// Whether a live lease is held on this project right now: a worker is
     /// pumping it.
     pub pumped: bool,
+    /// A credential refusal is a session blocker while this project has
+    /// queued rows. Derived from receipts; never persisted on an artifact.
+    pub blocked: Option<QueueBlock>,
+}
+
+/// Output-only verdict over a held queue and its latest delivery receipt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueBlock {
+    pub cause: String,
+    pub since_ms: u64,
+    pub detail: String,
 }
 
 /// What `ds report outbox status` answers, decided here from the store's own
@@ -988,10 +1000,13 @@ pub struct QueueStatus {
     pub projects: Vec<QueuedProject>,
     /// The live leases under this fence at `now_ms`: who is pumping what.
     pub leases: Vec<LeaseRow>,
+    /// The first blocked queued project, if any. Each project also carries
+    /// its own verdict.
+    pub blocked: Option<QueueBlock>,
     /// Whether an operator has to do something. A non-empty queue is not
-    /// stuck — a queue exists to hold work. Queued work that has waited
-    /// longer than [`ABANDONED_AFTER_MS`] with no live lease on its project
-    /// is.
+    /// stuck merely because it is waiting. A refused credential blocks it
+    /// immediately; an unpumped queue becomes abandoned after
+    /// [`ABANDONED_AFTER_MS`].
     pub stuck: bool,
     /// The one command to run next, always stated.
     pub next: &'static str,
@@ -1021,6 +1036,7 @@ fn room_of(row: &ArtifactRow) -> String {
 pub fn queue_status(
     rows: &[ArtifactRow],
     leases: &[LeaseRow],
+    receipts: &[ReceiptRow],
     project: Option<&str>,
     now_ms: u64,
 ) -> QueueStatus {
@@ -1060,6 +1076,7 @@ pub fn queue_status(
                     reclaimable_batches: 0,
                     reclaimable_bytes: 0,
                     pumped: live.iter().any(|lease| lease.scope.project() == project_id),
+                    blocked: None,
                 });
                 projects.last_mut().expect("just pushed")
             }
@@ -1109,6 +1126,25 @@ pub fn queue_status(
         if entry.oldest_produced_at_ms > 0 {
             entry.oldest_age_ms = now_ms.saturating_sub(entry.oldest_produced_at_ms);
         }
+        // The caller supplies newest-first delivery receipts from the same
+        // fence and scope as the rows. Clock values are for display only:
+        // ordering is the store's append sequence, not two unrelated clocks.
+        if entry.batches > 0 {
+            if let Some(receipt) = receipts.iter().find(|receipt| {
+                receipt.scope.project() == entry.project_id
+                    && matches!(receipt.action.as_str(), "upload" | "download" | "session")
+            }) {
+                if receipt.outcome == "credential_refused" {
+                    entry.blocked = Some(QueueBlock {
+                        cause: "credential_refused".into(),
+                        since_ms: receipt.at_ms,
+                        detail: receipt.detail.clone().unwrap_or_else(|| {
+                            "the gateway refused this machine's credential (401)".into()
+                        }),
+                    });
+                }
+            }
+        }
     }
     projects.sort_by(|left, right| {
         right
@@ -1131,6 +1167,7 @@ pub fn queue_status(
     let abandoned = projects.iter().any(|project| {
         project.batches > 0 && !project.pumped && project.oldest_age_ms > ABANDONED_AFTER_MS
     });
+    let blocked = projects.iter().find_map(|project| project.blocked.clone());
     QueueStatus {
         queued_batches,
         queued_bytes: projects
@@ -1145,16 +1182,79 @@ pub fn queue_status(
         reclaimable_bytes: projects.iter().fold(0_u64, |total, project| {
             total.saturating_add(project.reclaimable_bytes)
         }),
-        next: if abandoned {
+        next: if blocked.is_some() {
+            "sign in again in DS GridDesign Desktop, or run `ds account connect` for CLI and Server; the queue resumes automatically"
+        } else if abandoned {
             "no publisher holds this queue — start DS GridDesign or the DS Server, which pumps it, or run `ds report outbox drain`"
         } else if queued_batches == 0 && reclaimable_batches == 0 {
             "nothing is queued on this machine"
         } else {
             "ds report outbox drain"
         },
-        stuck: abandoned,
+        stuck: blocked.is_some() || abandoned,
+        blocked,
         projects,
         leases: live,
+    }
+}
+
+/// The identity-free machine diagnostic combines separately fenced queue
+/// readings. A credential verdict from one fence never clears another
+/// fence's refusal merely because both used the same project id.
+pub fn combine_queue_statuses(statuses: &[QueueStatus]) -> QueueStatus {
+    let mut projects: Vec<QueuedProject> = statuses
+        .iter()
+        .flat_map(|status| status.projects.iter().cloned())
+        .collect();
+    projects.sort_by(|left, right| {
+        right
+            .oldest_age_ms
+            .cmp(&left.oldest_age_ms)
+            .then_with(|| left.project_id.cmp(&right.project_id))
+    });
+    let blocked = projects.iter().find_map(|project| project.blocked.clone());
+    let abandoned = statuses
+        .iter()
+        .any(|status| status.stuck && status.blocked.is_none());
+    let queued_batches = statuses.iter().map(|status| status.queued_batches).sum();
+    let reclaimable_batches = statuses
+        .iter()
+        .map(|status| status.reclaimable_batches)
+        .sum();
+    QueueStatus {
+        queued_batches,
+        queued_bytes: statuses.iter().fold(0_u64, |total, status| {
+            total.saturating_add(status.queued_bytes)
+        }),
+        oldest_age_ms: statuses
+            .iter()
+            .map(|status| status.oldest_age_ms)
+            .max()
+            .unwrap_or(0),
+        held_batches: statuses.iter().map(|status| status.held_batches).sum(),
+        held_bytes: statuses.iter().fold(0_u64, |total, status| {
+            total.saturating_add(status.held_bytes)
+        }),
+        reclaimable_batches,
+        reclaimable_bytes: statuses.iter().fold(0_u64, |total, status| {
+            total.saturating_add(status.reclaimable_bytes)
+        }),
+        projects,
+        leases: statuses
+            .iter()
+            .flat_map(|status| status.leases.iter().cloned())
+            .collect(),
+        blocked: blocked.clone(),
+        stuck: blocked.is_some() || abandoned,
+        next: if blocked.is_some() {
+            "sign in again in DS GridDesign Desktop, or run `ds account connect` for CLI and Server; the queue resumes automatically"
+        } else if abandoned {
+            "no publisher holds this queue — start DS GridDesign or the DS Server, which pumps it, or run `ds report outbox drain`"
+        } else if queued_batches == 0 && reclaimable_batches == 0 {
+            "nothing is queued on this machine"
+        } else {
+            "ds report outbox drain"
+        },
     }
 }
 
@@ -1767,7 +1867,7 @@ mod tests {
                 now - 5_000,
             ),
         ];
-        let status = queue_status(&rows, &[], None, now);
+        let status = queue_status(&rows, &[], &[], None, now);
         assert_eq!(status.queued_batches, 2);
         assert_eq!(status.queued_bytes, 20);
         assert_eq!(status.held_batches, 1);
@@ -1790,10 +1890,10 @@ mod tests {
         assert_eq!(status.next, "ds report outbox drain");
         assert_eq!(serde_json::to_value(&status).unwrap()["queuedBatches"], 2);
 
-        let scoped = queue_status(&rows, &[], Some("q"), now);
+        let scoped = queue_status(&rows, &[], &[], Some("q"), now);
         assert_eq!(scoped.queued_batches, 1);
         assert_eq!(scoped.projects.len(), 1);
-        let empty = queue_status(&rows, &[], Some("r"), now);
+        let empty = queue_status(&rows, &[], &[], Some("r"), now);
         assert_eq!(empty.queued_batches, 0);
         assert_eq!(empty.next, "nothing is queued on this machine");
     }
@@ -1812,7 +1912,7 @@ mod tests {
         );
         waiting.state_reason = Some("the gateway answered 503".into());
         let rows = vec![waiting];
-        let abandoned = queue_status(&rows, &[], None, now);
+        let abandoned = queue_status(&rows, &[], &[], None, now);
         assert!(abandoned.stuck);
         assert!(abandoned.next.contains("no publisher holds this queue"));
         assert_eq!(
@@ -1821,7 +1921,7 @@ mod tests {
         );
         assert!(!abandoned.projects[0].pumped);
 
-        let pumped = queue_status(&rows, &[lease("p", "server#1", now + 1)], None, now);
+        let pumped = queue_status(&rows, &[lease("p", "server#1", now + 1)], &[], None, now);
         assert!(
             !pumped.stuck,
             "a live lease is a pump; old work under it is slow, not abandoned"
@@ -1830,10 +1930,10 @@ mod tests {
         assert_eq!(pumped.leases.len(), 1);
         assert_eq!(pumped.next, "ds report outbox drain");
 
-        let dead = queue_status(&rows, &[lease("p", "server#1", now)], None, now);
+        let dead = queue_status(&rows, &[lease("p", "server#1", now)], &[], None, now);
         assert!(dead.stuck, "an expired lease is no pump");
         assert!(dead.leases.is_empty());
-        let elsewhere = queue_status(&rows, &[lease("q", "server#1", now + 1)], None, now);
+        let elsewhere = queue_status(&rows, &[lease("q", "server#1", now + 1)], &[], None, now);
         assert!(
             elsewhere.stuck,
             "a lease on another project pumps that project"
@@ -1847,7 +1947,7 @@ mod tests {
             row_in("p", "export-tx_head", "k2", ArtifactState::Published, 1),
             row_in("p", "export-tx_lost", "k3", ArtifactState::Conflict, 1),
         ];
-        let status = queue_status(&rows, &[], None, now);
+        let status = queue_status(&rows, &[], &[], None, now);
         assert_eq!(status.queued_batches, 0);
         assert_eq!(status.oldest_age_ms, 0);
         assert!(!status.stuck);
@@ -1855,7 +1955,49 @@ mod tests {
             status.next, "ds report outbox drain",
             "a lost row is freed by the next pass"
         );
-        let only_head = queue_status(&rows[..1], &[], None, now);
+        let only_head = queue_status(&rows[..1], &[], &[], None, now);
         assert_eq!(only_head.next, "nothing is queued on this machine");
+    }
+
+    #[test]
+    fn a_refused_credential_blocks_a_live_queue_until_a_newer_delivery_receipt() {
+        let now = 10_000;
+        let rows = vec![row_in(
+            "p",
+            "export-tx_1",
+            "k1",
+            ArtifactState::Held,
+            now - 1,
+        )];
+        let lease = lease("p", "desktop#1", now + 1);
+        let mut refused = receipt("upload", "credential_refused", "export-tx_1");
+        refused.detail = Some("the gateway refused this machine's credential (401)".into());
+        let blocked = queue_status(&rows, &[lease.clone()], &[refused.clone()], None, now);
+        assert!(
+            blocked.stuck,
+            "a live worker cannot pump with a refused credential"
+        );
+        assert_eq!(
+            blocked.blocked.as_ref().unwrap().cause,
+            "credential_refused"
+        );
+        assert_eq!(blocked.projects[0].blocked, blocked.blocked);
+        assert!(blocked.next.contains("sign in again"));
+        assert_eq!(
+            serde_json::to_value(&blocked).unwrap()["blocked"]["sinceMs"],
+            1_000
+        );
+
+        // A refused heads read is evidence even when the loop returned no
+        // run, and a later accepted attempt supersedes the old refusal.
+        let mut session = receipt("session", "credential_refused", "export-tx_1");
+        session.identity = None;
+        let heads_blocked = queue_status(&rows, &[lease.clone()], &[session], None, now);
+        assert_eq!(heads_blocked.blocked.unwrap().cause, "credential_refused");
+        let accepted = receipt("upload", "failed", "export-tx_1");
+        let recovered = queue_status(&rows, &[lease], &[accepted, refused], None, now);
+        assert!(recovered.blocked.is_none());
+        assert!(!recovered.stuck);
+        assert_eq!(recovered.next, "ds report outbox drain");
     }
 }
