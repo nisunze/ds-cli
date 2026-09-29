@@ -692,4 +692,10 @@ A minimal fit request is `{"operation":"fit"}`. Results use `zoom`, `pan_x`,
 
 ## Interactive model Profile viewport
 
-`ds map profile view` reads and `ds map profile set` stages the paired Desktop's transient model Profile viewport: vertical exaggeration, layer visibility, zoom, pan, fit and rebuild. Fit/rebuild require an open model Profile; other settings can be staged before opening it. These commands do not author structure-label fields. Use `ds dsgrid profile labels show|set` for the portable model Profile label policy. Fixed-paper sheet Profile and sheet Plan composition are separate from both commands.
+`ds map profile view` reads and `ds map profile set` stages the paired Desktop's transient model Profile viewport: vertical exaggeration, layer visibility, zoom, pan, fit and rebuild. Fit/rebuild require an open model Profile; other settings can be staged before opening it. The view also returns `edit_mode` and the live `selection`:
+
+```json
+{"selection":{"entity_ids":["<structure-id>"],"primary":"<structure-id>","kind":"structures","structures":[{"id":"<structure-id>","number":"<display-number>"}]},"edit_mode":true}
+```
+
+`kind` is `none`, `structures`, `tension_sections`, `alignments`, `terrain_points`, or `mixed`. `entity_ids` follows the engine's order for a single selected family; mixed selections retain the selected IDs. `primary` is an ID in the selection or `null`. `structures` contains ID and display number only for a homogeneous structure selection; `number` is `null` if unknown. These fields describe the paired Desktop's current focus and do not pin a model revision or authorize a model edit. Use an explicit model and revision in the corresponding `ds dsgrid` command. These commands do not author structure-label fields. Use `ds dsgrid profile labels show|set` for the portable model Profile label policy. Fixed-paper sheet Profile and sheet Plan composition are separate from both commands.

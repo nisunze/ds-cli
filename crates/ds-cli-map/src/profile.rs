@@ -6,7 +6,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 use crate::DESCRIPTOR_ARG;
 
@@ -40,16 +40,16 @@ pub static VIEW: Command = Command {
     path: &["map", "profile", "view"],
     contract: 1,
     summary: "Read the paired Profile's exact visual state.",
-    purpose: "Returns the Profile occupant and current vertical exaggeration, visibility, zoom and pan from the running Desktop. Reads no engineering model and does not change the view.",
+    purpose: "Returns the Profile occupant, viewport, selected entities and edit mode from the running Desktop. Selection is transient UI context, not an engineering model read; this command does not change the view or the model.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[DESCRIPTOR_ARG],
-    output: "The paired Profile's exact visual state, including occupant, scale, visibility and viewport.",
+    output: "The paired Profile's occupant, scale, visibility, viewport, edit_mode boolean and selection {entity_ids, primary, kind, structures:[{id,number}]}. Selection IDs follow engine order for one family; mixed selections retain the selected IDs. kind is none, structures, tension_sections, alignments, terrain_points or mixed. structures is populated only for a structures selection; number is the displayed structure number or null when unknown.",
     examples: &[Example {
         command: "ds map profile view --output json",
-        note: "Read the live Profile's visual state before changing it.",
+        note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
         runnable: false,
     }],
     refusals: &[
