@@ -77,6 +77,15 @@ with attribution and `base_revisions` (the server re-authorizes live and checks
 concurrency); downloads through the gateway read — then re-plan. The browser
 holds no local compute artifacts: it shows remote heads and downloads.
 
+The Desktop sync door sends the signed-in webview's validated `x-api-key`
+alongside its bearer. An empty key is allowed only for a local stack that does
+not require one. A 401 from the gateway or the record is a credential blocker:
+the pass records `credential_refused`, stops after that first refused call, and
+keeps every sealed artifact readable in its held queue. It never settles a
+publication or retries the other rows under the same refused credential in
+that pass. A later pass with a working credential records a newer delivery
+receipt and clears the blocker. A 403 remains the record's publication verdict.
+
 The Sync Center renders the plan and the receipts of executed actions. It
 computes nothing.
 

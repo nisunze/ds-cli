@@ -110,14 +110,21 @@ to every Solar row. A lost row of an engine this host has no producer for is
 `reclaim_failed` with the engine named, and keeps naming its bytes: no
 reclaim is silent, and no producer says another engine's bytes are gone.
 
-`sync_store::queue_status(rows, leases, project?, now_ms)` is the queue's
-reading, pure over one fence's rows and leases: queued = `held | uploading`
+`sync_store::queue_status(rows, leases, receipts, project?, now_ms)` is the queue's
+reading, pure over one fence's rows, leases and newest-first delivery receipts:
+queued = `held | uploading`
 (count, bytes, oldest `produced_at_ms`, rooms, distinct hold reasons),
 published copies = `published`, reclaimable = `conflict | refused` whose bytes
 are still here (`readable` and a `bytes_locator`), per project. Liveness is
 the store's lease: a live lease on a project is its pump. `stuck` = queued
 work older than `ABANDONED_AFTER_MS` (60 min) on a project with no live
-lease; `next` names the pump. The bytes directory's file lock
+lease. A project with queued rows whose newest upload or session delivery
+receipt is `credential_refused` has an output-only `blocked` verdict
+(`cause`, `sinceMs`, `detail`); `stuck` is true and `next` names the sign-in
+remedy. A newer successful delivery receipt clears that verdict. This does not
+add a persisted row field or change an artifact's five states. A refused
+credential leaves all held bytes readable and stops the pass after one refused
+call. The bytes directory's file lock
 (`.publication.lock`) serialises writers of that directory and is not a
 liveness signal. `Store::queue(fence, project?, now_ms)` reads it;
 `Store::open_read_only(path)` opens an existing store for that read with no
