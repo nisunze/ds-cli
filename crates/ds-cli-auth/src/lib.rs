@@ -1524,6 +1524,25 @@ pub fn transformer_context_for_project(
     })
 }
 
+/// Read the exact persisted layer snapshot for a report's saved-content digest
+/// check. Normal design/UI callers continue to receive the full projection.
+pub fn saved_transformer_context_for_project(
+    lane_value: &str,
+    project: &str,
+    transformer: &str,
+) -> Result<HeadlessNamedTransformerContext, Failure> {
+    let report = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.transformer_context_saved(project, transformer),
+        |client, project| client.transformer_context_saved(project, transformer, now()),
+    )?;
+    Ok(HeadlessNamedTransformerContext {
+        identity: report.identity().clone(),
+        snapshot: report.into_result(),
+    })
+}
+
 /// Read the managed tile state of the caller's explicit project. The saved
 /// native selection is never read; there is no URL or action override.
 pub fn tile_list(

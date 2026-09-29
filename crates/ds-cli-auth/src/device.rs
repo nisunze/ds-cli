@@ -680,6 +680,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<TransformerContext, ClientError> {
         fixed_device_call!(self, transformer_context, project, transformer)
     }
+    pub fn transformer_context_saved(
+        &mut self,
+        project: &str,
+        transformer: &str,
+    ) -> Result<TransformerContext, ClientError> {
+        fixed_device_call!(self, transformer_context_saved, project, transformer)
+    }
     pub fn project_forms(&mut self, project: &str) -> Result<ProjectFormsSnapshot, ClientError> {
         fixed_device_call!(self, project_forms, project)
     }

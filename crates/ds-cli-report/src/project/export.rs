@@ -1463,8 +1463,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let output_policy = reuse::policy_outputs(&receipt).map_err(|error| {
         Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
     })?;
-    let voltage_drop_selected =
-        preview_request.is_none() && voltage_drop_selected(&output_policy);
+    let voltage_drop_selected = preview_request.is_none() && voltage_drop_selected(&output_policy);
     let transformer_natures = if voltage_drop_selected {
         if link.unreachable().is_some() {
             return Err(transformer_nature_unavailable(
@@ -1555,7 +1554,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         // A weak link blinks; the link asks a room fetch refused by an outage
         // again under the shared curve before the row is written off.
         let room = rooms.borrow_mut().room(name, &mut link.borrow_mut(), || {
-            let context = ds_cli_auth::transformer_context_for_project(lane, project, name)?;
+            let context = ds_cli_auth::saved_transformer_context_for_project(lane, project, name)?;
             require_same_context(
                 &identity,
                 &project_id,
