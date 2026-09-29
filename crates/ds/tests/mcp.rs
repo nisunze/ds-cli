@@ -1757,11 +1757,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // report produced in the cloud, which is how edge and cloud
             // production are proven to meet in one project.
             "project-operations" => 18,
-            // Seventeen leaves plus bootstrap: the three task-geometry leaves
-            // (2026-09-20) let an agent that read a comment naming structures
-            // say WHERE the task is — the proposal a person confirms and the
-            // read the map paints from.
-            "project" => 22,
+            // The task-geometry leaves preserve the comment's WHERE; delete
+            // and its three backup leaves complete the task recovery loop.
+            // Twenty-four Project Work leaves plus two bootstrap tools.
+            "project" => 26,
             _ => 16,
         };
         assert!(
@@ -1882,8 +1881,13 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "the correspondence profile carries file, reply, party, block and the plan"
     );
     assert!(
-        published["project"].contains("pm_task_create") && published["project"].contains("pm_plan"),
-        "the project profile keeps the task workflow and the plan"
+        published["project"].contains("pm_task_create")
+            && published["project"].contains("pm_task_delete")
+            && published["project"].contains("pm_deletion_inventory")
+            && published["project"].contains("pm_deletion_read")
+            && published["project"].contains("pm_deletion_restore")
+            && published["project"].contains("pm_plan"),
+        "the project profile keeps task authoring, deletion, recovery and the plan"
     );
     assert!(
         !published["project"].contains("pm_record_create"),

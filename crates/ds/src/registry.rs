@@ -1944,6 +1944,11 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::task::update::render,
     },
     Entry {
+        command: &ds_cli_pm::task::delete::COMMAND,
+        handler: ds_cli_pm::task::delete::run,
+        render: ds_cli_pm::task::delete::render,
+    },
+    Entry {
         command: &ds_cli_pm::task::assign::COMMAND,
         handler: ds_cli_pm::task::assign::run,
         render: ds_cli_pm::task::assign::render,

@@ -10409,6 +10409,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.task.read",
         "pm.task.create",
         "pm.task.update",
+        "pm.task.delete",
         "pm.task.assign",
         "pm.task.respond",
         "pm.task.propose",
@@ -10459,6 +10460,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
             "pm.task.create"
                 | "pm.deletion.restore"
                 | "pm.task.update"
+                | "pm.task.delete"
                 | "pm.task.assign"
                 | "pm.task.respond"
                 | "pm.task.propose"
@@ -10542,6 +10544,55 @@ fn deletion_recovery_is_project_scoped_and_restores_only_after_confirmation() {
     assert!(
         NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()),
         "a shaped restore reaches native authorization without a desktop"
+    );
+}
+
+#[test]
+fn task_delete_requires_reviewed_revision_stable_id_and_confirmation() {
+    let described = ok(&["capabilities", "pm.task.delete", "--output", "json"]);
+    let command = &described["command"];
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["requires"], "server");
+    assert_eq!(command["effect"], "global_write");
+    assert!(
+        command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .any(|input| input["name"] == "project" && input["required"] == true)
+    );
+
+    let delete = [
+        "pm",
+        "task",
+        "delete",
+        "--task",
+        "T-0007",
+        "--base-revision",
+        "7",
+        "--command-id",
+        "delete-1234",
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_pm_refusal(&delete), "confirmation_required");
+    let mut missing_task = delete.to_vec();
+    missing_task.splice(3..5, []);
+    missing_task.push("--yes");
+    assert_eq!(native_pm_refusal(&missing_task), "missing_input");
+    let mut invalid_revision = delete.to_vec();
+    invalid_revision[6] = "-1";
+    invalid_revision.push("--yes");
+    assert_eq!(native_pm_refusal(&invalid_revision), "invalid_number");
+    let mut invalid_id = delete.to_vec();
+    invalid_id[8] = "delete.short";
+    invalid_id.push("--yes");
+    assert_eq!(native_pm_refusal(&invalid_id), "invalid_command_id");
+    let mut confirmed = delete.to_vec();
+    confirmed.push("--yes");
+    assert!(
+        NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()),
+        "a shaped deletion reaches native authorization without a desktop"
     );
 }
 

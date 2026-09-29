@@ -20,6 +20,7 @@
 pub mod assign;
 pub mod block;
 pub mod create;
+pub mod delete;
 pub mod list;
 pub mod proposals;
 pub mod read;

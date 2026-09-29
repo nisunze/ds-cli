@@ -1192,6 +1192,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pm.task.admit", "global_write", "headless_project"),
     ("pm.task.block", "global_write", "headless_project"),
     ("pm.task.create", "global_write", "headless_project"),
+    ("pm.task.delete", "global_write", "headless_project"),
     ("pm.task.decline", "global_write", "headless_project"),
     // Where the work is (task-geometry-from-objects.md, 2026-09-20).
     ("pm.task.geometry.clear", "global_write", "headless_project"),

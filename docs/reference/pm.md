@@ -70,10 +70,12 @@ record bodies carry an explicit truncation flag when cut.
 
 ## Writes are the same governed commands the surfaces send
 
-There is no second pipeline. Task and record writes load the current graph,
-build the same project command the Plan sheet would build, and commit it under
-optimistic concurrency against the revision they were authored on. A deletion
-restore uses the explicit plan revision the operator reviewed.
+There is no second pipeline. Most task and record writes load the current
+graph, build the same project command the Plan sheet would build, and commit
+it under optimistic concurrency against the revision they were authored on.
+Task deletion and backup restore take the explicit plan revision the operator
+reviewed. They send that exact revision and a stable command id directly to
+the server, so a lost response can be retried against its command ledger.
 
 | | |
 |---|---|
@@ -95,9 +97,20 @@ you, and a retry creates a second item — so pass one for any unattended use.
 
 ### Recovering a deleted Project Work task
 
-A task deletion saves a durable server backup; the delete result carries its
-`backup_id`. Recovery stays in the same named project and native credential
-lane:
+A task or milestone deletion removes the selected item, its hierarchy
+descendants, and their attached dependencies and residuals. An assigned
+descendant refuses the cascade. The server saves an exact pre-delete backup
+atomically with an accepted deletion; the result carries its `backup_id`.
+Review the item and current plan before deleting:
+
+```bash
+ds pm task read --project <exact-id> --task T-0007 --output json
+ds pm plan --project <exact-id> --output json
+ds pm task delete --project <exact-id> --task T-0007 \
+  --base-revision <reviewed-plan-revision> --command-id <stable-delete-id> --yes --output json
+```
+
+Recovery stays in the same named project and native credential lane:
 
 ```bash
 ds pm deletion inventory --project <exact-id> --output json
@@ -112,6 +125,8 @@ open one captured document with `--item-key` from `summary.entries`. Restore
 verifies every snapshot and commits the whole graph at the reviewed head, or
 refuses it. A moved plan needs a new review and revision. Reuse the same
 `--command-id` when a response is lost so the server replays that decision.
+Likewise, retry a lost delete response with the exact original task, revision
+and command id; do not create a second id for the same intended deletion.
 
 ## Assignment is a request, not a decree
 

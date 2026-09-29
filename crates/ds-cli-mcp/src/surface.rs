@@ -345,14 +345,13 @@ impl Profile {
             // individual report produced in the cloud, which is how edge and
             // cloud production are proven to meet in one project.
             Self::ProjectOperations => 18,
-            // Twenty leaves plus both bootstrap tools. Raised from the
-            // default on 2026-09-20 by the three task-geometry leaves (`pm task
-            // geometry read|set|clear`): an agent that reads a comment naming
-            // structures 74, 76, 77 in a swamp and can create the task, but
-            // cannot say WHERE it is, leaves the plan and the map without the
-            // one thing the comment was about. The proposal is what the person
-            // confirms; the read is what the map paints from.
-            Self::Project => 22,
+            // Twenty-four Project Work leaves plus both bootstrap tools.
+            // The task-geometry reads/writes keep a comment's WHERE attached
+            // to its plan item. Task delete and the three deletion-backup
+            // leaves now complete one reviewed delete/recover workflow: a
+            // caller can inspect the plan, delete at its exact revision,
+            // inspect the durable backup, and restore at a fresh revision.
+            Self::Project => 26,
             // Seventeen working-copy leaves plus both bootstrap tools. Raised
             // from the default on 2026-09-22 when the four 2026-09-21 leaves
             // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
