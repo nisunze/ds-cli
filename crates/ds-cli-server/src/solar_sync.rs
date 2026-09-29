@@ -1115,6 +1115,7 @@ mod report_wake_tests {
         };
         wake.applied(crate::server_reports::Pass {
             inventory: inventory("same"),
+            refreshed_remote: true,
             retry_eligible: false,
             offline: false,
             wake_at_ms: None,

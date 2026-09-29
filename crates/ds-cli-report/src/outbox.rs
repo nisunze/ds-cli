@@ -119,7 +119,7 @@ project selection and no running Server.",
     output: "\
 `queued_batches`, `queued_bytes`, `oldest_age_ms`, `held_batches`, \
 `reclaimable_batches`; `projects[]` (queued, bytes, oldest age, rooms, \
-`reasons`, `pumped`); `leases[]`; `bytes_lock`; `stuck` — whether anything \
+`reasons`, `pumped`, `blocked`); `leases[]`; `bytes_lock`; `blocked` and `stuck` — whether anything \
 needs a human — and `next`, the one command to run.",
     examples: &[
         Example {
@@ -224,6 +224,7 @@ fn queue(state: &Path, project: Option<&str>) -> Result<QueueStatus, Failure> {
         None => Ok(ds_command_kernel::sync_store::queue_status(
             &[],
             &[],
+            &[],
             project,
             now,
         )),
@@ -254,6 +255,7 @@ fn reading(status: &QueueStatus) -> Value {
                 "held_batches": project.held_batches,
                 "reclaimable_batches": project.reclaimable_batches,
                 "pumped": project.pumped,
+                "blocked": project.blocked,
             }))
             .collect::<Vec<_>>(),
         "leases": status
@@ -301,6 +303,7 @@ pub fn status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let fields = json!({
         "bytes_lock": bytes_lock(&state)?,
         "stuck": status.stuck,
+        "blocked": status.blocked,
         "next": status.next,
     });
     value
@@ -437,6 +440,7 @@ pub fn drain(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "projects": passes,
         "bytes_lock": bytes_lock(&state)?,
         "stuck": after.stuck,
+        "blocked": after.blocked,
         "next": after.next,
     }))
 }
@@ -495,6 +499,14 @@ pub fn render(data: &Value) -> String {
                 })
                 .unwrap_or_default(),
         ));
+        if let Some(cause) = project["blocked"]["cause"].as_str() {
+            out.push_str(&format!(
+                "    blocked: {cause} · {}\n",
+                project["blocked"]["detail"]
+                    .as_str()
+                    .unwrap_or("credential refused"),
+            ));
+        }
     }
     if data["after"].is_object() {
         out.push_str(&format!(

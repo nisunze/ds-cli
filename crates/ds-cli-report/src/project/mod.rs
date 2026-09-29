@@ -85,6 +85,11 @@ refusal!(
     "reinstall one complete ds release"
 );
 pub const HEADLESS_SIGNED_OUT: Refusal = ds_cli_auth::SIGNED_OUT_REFUSAL;
+pub const RECONCILIATION_REQUIRED: Refusal = Refusal {
+    code: "report_reconciliation_required",
+    when: "the named project's report sync pass could not finish before a publication or mutation",
+    remedy: "restore this machine's report sync connection, then retry the same command",
+};
 // Legacy planning commands still use saved context until their domain migrates.
 pub const HEADLESS_NO_PROJECT: Refusal = Refusal {
     code: "headless_project_not_selected",
@@ -305,6 +310,7 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     INVALID_SCOPE,
     RESERVED_IDENTITY,
     CONFIRMATION_REQUIRED,
+    RECONCILIATION_REQUIRED,
     REPORT_NO_INDIVIDUAL_ARTIFACTS,
     REPORT_GROUPING_STALE,
     REPORT_GROUPING_INCOMPLETE,

@@ -28,6 +28,9 @@ pub struct Inventory {
 /// moved when nothing did.
 pub struct Pass {
     pub inventory: Inventory,
+    /// The shared plan required a remote-head read, and this run held the
+    /// project lease so the runtime actually performed it.
+    pub refreshed_remote: bool,
     pub retry_eligible: bool,
     pub offline: bool,
     pub wake_at_ms: Option<u64>,
@@ -112,6 +115,26 @@ pub fn drain(
         match result {
             Ok(run) => Ok(pass(inventory(session)?, run)),
             Err(error) => {
+                // A refused heads read has already left the kernel's
+                // `session:credential_refused` receipt in this store. Do not
+                // append a newer generic `upload:failed` receipt: the queue
+                // derives its blocked verdict from the newest delivery
+                // receipt, and replacing it would hide the 401 again.
+                let credential_blocked = session
+                    .store()
+                    .lock()
+                    .map_err(|_| "The sync gate is unavailable".to_string())?
+                    .queue(
+                        session.fence(),
+                        Some(session.project()),
+                        ds_sync_runtime::now_ms(),
+                    )
+                    .map_err(|failure| failure.to_string())?
+                    .blocked
+                    .is_some();
+                if credential_blocked {
+                    return Err(error);
+                }
                 // A failed heartbeat or head read happens before any
                 // publication is attempted. Each queued row stays held and
                 // carries that cause, so the reader sees why it did not move.
@@ -135,6 +158,8 @@ pub fn drain(
 
 fn pass(inventory: Inventory, run: SyncRun) -> Pass {
     let idle = run.idle();
+    let refreshed_remote = run.plan.refresh_remote.needed
+        && !run.receipts.iter().any(|receipt| receipt.action == "lease");
     let SyncRun {
         replanned: plan,
         receipts,
@@ -143,6 +168,7 @@ fn pass(inventory: Inventory, run: SyncRun) -> Pass {
     } = run;
     Pass {
         inventory,
+        refreshed_remote,
         retry_eligible: plan.summary.uploads != 0,
         offline: plan
             .actions

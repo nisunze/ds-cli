@@ -2,6 +2,28 @@
 
 Tier-4 reference. `ds report <command> --help` is the contract.
 
+## Project touch before a headless report command
+
+On Linux, CLI and MCP report commands with an exact `--project` first run one
+Network Reporter scoped sync pass for that project. The kernel's `manual`
+trigger re-reads the remote heads on every command; the pass also publishes
+queued local reports and pulls moved heads. JSON answers carry
+`reconciliation` with the pass outcome, head-read time, pending counts and
+bounded receipts. A failed pass marks `reconciliation.state` as `held` with
+the last local head-read age. A read handler may still fetch its own remote
+source; `report publication list/show` have no held-data fallback and keep
+their normal refusal when that direct read also fails. Publication, combined
+reports and other project writes refuse as `report_reconciliation_required`
+before their handler runs.
+
+The local proof paths of `report project export` (`--dry-run`,
+`--preview-layout`, `--print-layout`) and `report project map-inputs` keep
+their no-publication guarantee. They do not run the pass until the shared
+runtime offers a read-only reconciliation operation. On non-Linux hosts,
+project writes currently refuse with `desktop_touch_bridge_pending` in the
+reconciliation detail until the paired Desktop can perform the same scoped
+pass.
+
 ## Why this domain calls a binary instead of linking a crate
 
 `ds-network-reporter` publishes exactly one surface an agent host may call,

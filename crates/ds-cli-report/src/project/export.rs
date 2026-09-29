@@ -257,6 +257,7 @@ pub(super) const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE_DIGEST,
     super::NATIVE_PROFILE_UNSAFE,
     super::HEADLESS_SIGNED_OUT,
+    super::RECONCILIATION_REQUIRED,
     super::NATIVE_STATE_UNSAFE,
     super::NATIVE_STATE_UNAVAILABLE,
     super::NATIVE_STATE_PROTECTION,

@@ -425,7 +425,22 @@ fn finish(
     render: fn(&serde_json::Value) -> String,
 ) -> Result<(), (ExitClass, ())> {
     output
-        .success(command.id, command.contract, data, render)
+        .success(command.id, command.contract, data, |data| {
+            let mut answer = render(data);
+            let touch = &data["reconciliation"];
+            if matches!(touch["state"].as_str(), Some("held" | "not_checked")) {
+                answer.push_str(&format!(
+                    "\nReport sync: {} ({}) · last head read {}\n",
+                    touch["state"].as_str().unwrap_or("held"),
+                    touch["reason"].as_str().unwrap_or("unknown"),
+                    touch["held_age_ms"]
+                        .as_u64()
+                        .map(|age| format!("{age} ms ago"))
+                        .unwrap_or_else(|| "unknown".into()),
+                ));
+            }
+            answer
+        })
         .map_err(|_| (ExitClass::Internal, ()))
 }
 

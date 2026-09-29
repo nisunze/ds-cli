@@ -3219,7 +3219,67 @@ fn dispatch_entry(entry: &Entry, tokens: &[String], context: &Context) -> Result
     // domain arguments. Pure backend commands remain Desktop-independent.
     let _headless_identity = scope_headless_identity(entry.command, &inputs)?;
 
-    (entry.handler)(&inputs, context)
+    // A report command's explicit project is a touch of that project's
+    // publication domain. The scoped kernel pass reads its remote heads on
+    // every touch; no CLI timer or second freshness rule is involved. MCP
+    // invokes this same binary dispatch path.
+    let touch = if report_project_touch(entry.command.id, &inputs) {
+        Some(ds_cli_report::touch::project(
+            inputs.require("lane")?,
+            inputs.require("project")?,
+            inputs.value("server-state-dir"),
+        ))
+    } else {
+        None
+    };
+    if let Some(touch) = &touch
+        && !touch.current
+        && !report_held_read(entry.command.id)
+    {
+        return Err(Failure::unavailable(
+            "report_reconciliation_required",
+            "this project's reports could not be reconciled before publication or mutation",
+        )
+        .detail(touch.receipt.clone())
+        .remedy("restore this machine's report sync connection, then retry the same command"));
+    }
+    let mut answer = (entry.handler)(&inputs, context)?;
+    if let Some(touch) = touch {
+        if let Some(object) = answer.as_object_mut() {
+            object.insert("reconciliation".to_owned(), touch.receipt);
+        }
+    }
+    Ok(answer)
+}
+
+fn report_project_touch(id: &str, inputs: &Inputs) -> bool {
+    // A local proof promises no publication queue. The existing scoped pass
+    // can upload older rows, so these modes wait for a read-only reconcile
+    // hook instead of silently breaking that promise.
+    if id == "report.project.map-inputs"
+        || (id == "report.project.export"
+            && (inputs.switch("dry-run")
+                || inputs.value("preview-layout").is_some()
+                || !inputs.repeated("print-layout").is_empty()))
+    {
+        return false;
+    }
+    id.starts_with("report.project.")
+        || matches!(
+            id,
+            "report.publication.list" | "report.publication.show" | "report.artifact.remove"
+        )
+}
+
+fn report_held_read(id: &str) -> bool {
+    match id {
+        "report.project.scope"
+        | "report.project.settings"
+        | "report.project.archives"
+        | "report.publication.list"
+        | "report.publication.show" => true,
+        _ => false,
+    }
 }
 
 fn scope_headless_identity(
@@ -3343,5 +3403,44 @@ mod report_alias_tests {
                 .next_commands()
                 .contains(&"ds report project compounded".to_owned())
         );
+    }
+}
+
+#[cfg(test)]
+mod report_touch_tests {
+    use super::*;
+
+    fn inputs(command: &Command, args: &[&str]) -> Inputs {
+        ds_cli_contract::parse(
+            command,
+            &args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>(),
+        )
+        .expect("declared inputs")
+    }
+
+    #[test]
+    fn publishing_and_reading_touch_the_exact_project_but_local_proofs_do_not_publish() {
+        let scope = inputs(&ds_cli_report::project::scope::COMMAND, &["--project", "p"]);
+        assert!(report_project_touch("report.project.scope", &scope));
+        assert!(report_held_read("report.project.scope"));
+
+        let publish = inputs(
+            &ds_cli_report::project::publish::COMMAND,
+            &["--project", "p", "--from", "/tmp/prints"],
+        );
+        assert!(report_project_touch("report.project.publish", &publish));
+        assert!(!report_held_read("report.project.publish"));
+
+        let dry = inputs(
+            &ds_cli_report::project::export::COMMAND,
+            &["--project", "p", "--out-dir", "/tmp/proof", "--dry-run"],
+        );
+        assert!(!report_project_touch("report.project.export", &dry));
+
+        let ordinary = inputs(
+            &ds_cli_report::project::export::COMMAND,
+            &["--project", "p", "--out-dir", "/tmp/prints"],
+        );
+        assert!(report_project_touch("report.project.export", &ordinary));
     }
 }

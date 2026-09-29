@@ -40,6 +40,7 @@ pub mod project;
 pub mod publication;
 pub mod spatial_workbook;
 pub mod tasks;
+pub mod touch;
 
 use std::time::Duration;
 

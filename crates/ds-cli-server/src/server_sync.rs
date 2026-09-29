@@ -22,6 +22,15 @@ use ds_sync_runtime::{Gateway, Producer, Reads, SharedStore, StoreHost, open_sto
 
 use crate::{auth, host::Connection};
 
+/// Use the Server's own protected connection record for a direct CLI sync
+/// touch. This can initialize the record before `server serve` starts; it
+/// does not create another queue or bypass the owner's identity fence.
+pub fn native_connection(state: &Path, lane: &str) -> Result<Connection, String> {
+    let owner = auth::owner_fence(lane)?;
+    crate::host::connection(state, owner, lane.to_owned())
+        .map_err(|error| error.message().to_owned())
+}
+
 /// One refreshed native account and selected project, bound to the server's
 /// protected local control identity.
 pub struct ServerSyncSession {
