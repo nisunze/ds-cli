@@ -167,6 +167,10 @@ pub struct TransformerReportInputs {
     /// ds-brain's `metadata.content_digest` when the room came from the
     /// service; recorded against the kernel's own digest of the same bytes.
     pub content_digest: Option<String>,
+    /// Project-governed transformer nature assignments. Kept separate from
+    /// the saved room layers so the content digest continues to cover the
+    /// exact bytes the project saved.
+    pub transformer_natures: Option<BTreeMap<String, String>>,
     pub selection: Option<DesignOutputSelection>,
     /// External print context, when the host assembled one. `None` prints the
     /// named outputs without it and records that in the receipt.
@@ -677,6 +681,7 @@ pub fn run_transformer_report_with(
             sheet: inputs.sheet,
             survey_layers: survey_document
                 .map(|(_, digest)| (survey_layers_path.as_path(), digest.as_str())),
+            transformer_natures: inputs.transformer_natures.as_ref(),
         },
     )
     .map_err(|error| HostFailure::new(CODE_INPUTS_INVALID, error))?;
@@ -1189,6 +1194,7 @@ pub(crate) mod tests {
             server_version: 7,
             layers,
             content_digest: None,
+            transformer_natures: None,
             selection: None,
             print_context: None,
             sheet: None,
@@ -1221,6 +1227,8 @@ pub(crate) mod tests {
         /// `tamper`, `extra`, `slow`; for a page, `not_svg`, `two_pages`,
         /// `oversized`.
         pub(crate) behaviour: Mutex<BTreeMap<String, &'static str>>,
+        /// The optional governed project nature map named by the last run.
+        transformer_natures_seen: Mutex<Option<Value>>,
         /// The media grant bytes the last request named, read from the
         /// staged path, or `None` when the request named no grant.
         pub(crate) media_grant_seen: Mutex<Option<Vec<u8>>>,
@@ -1280,6 +1288,8 @@ pub(crate) mod tests {
             let live = self.concurrent.fetch_add(1, Ordering::SeqCst) + 1;
             self.peak.fetch_max(live, Ordering::SeqCst);
             let request: Value = serde_json::from_slice(&fs::read(request).unwrap()).unwrap();
+            *self.transformer_natures_seen.lock().unwrap() =
+                request.get("transformer_natures").cloned();
             let transformer = request["transformer"].as_str().unwrap().to_string();
             let behaviour = self
                 .behaviour
@@ -1685,6 +1695,50 @@ pub(crate) mod tests {
         assert_eq!(failure.code, CODE_INPUTS_INVALID);
         assert!(!out.exists());
         assert!(!temp.path().join("staging").exists());
+    }
+
+    #[test]
+    fn governed_nature_is_sent_separately_after_saved_room_digest_verification() {
+        let temp = tempfile::tempdir().unwrap();
+        let out = temp.path().join("out");
+        let receipt = receipt("Benin");
+        let mut room = inputs("held_fill_in");
+        let plan = decisions::plan_transformer_export(
+            "project-a",
+            &receipt,
+            &room.transformer,
+            room.server_version,
+            &room.layers,
+            None,
+        )
+        .unwrap();
+        let saved_layers = room.layers.clone();
+        room.content_digest = Some(plan.content_digest);
+        room.transformer_natures = Some(BTreeMap::from([(
+            room.transformer.clone(),
+            "fill_in".to_string(),
+        )]));
+        let engine = FakeEngine::release();
+
+        let run = run_transformer_report(
+            &engine,
+            &settings(&receipt, &out, &temp.path().join("staging")),
+            &room,
+        )
+        .unwrap();
+
+        assert_eq!(room.layers, saved_layers);
+        assert_eq!(
+            engine
+                .transformer_natures_seen
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap(),
+            &json!({"held_fill_in": "fill_in"})
+        );
+        assert_eq!(run.receipt["formats_requested"], json!(["shp", "xlsx"]));
+        assert_eq!(run.receipt["content_digest_verified"], true);
     }
 
     #[test]

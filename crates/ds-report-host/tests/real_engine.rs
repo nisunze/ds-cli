@@ -94,6 +94,7 @@ fn room(path: &Path, name: &str) -> TransformerReportInputs {
         server_version: 3,
         layers,
         content_digest: None,
+        transformer_natures: None,
         selection: None,
         print_context: None,
         sheet: None,

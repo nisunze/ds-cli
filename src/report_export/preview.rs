@@ -345,6 +345,7 @@ mod tests {
             print_context: None,
             sheet: None,
             survey_layers: None,
+            transformer_natures: None,
         };
         assert_eq!(
             engine_request(&plan, &inputs).unwrap()["formats"],

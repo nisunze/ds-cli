@@ -265,6 +265,7 @@ pub fn transformer_page(
         server_version: room.server_version,
         layers: room.layers.clone(),
         content_digest: room.content_digest.clone(),
+        transformer_natures: None,
         selection: Some(preview.selection.clone()),
         print_context: context,
         sheet: room.sheet,

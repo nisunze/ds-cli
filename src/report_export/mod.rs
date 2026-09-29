@@ -1055,6 +1055,9 @@ pub struct StagedInputs<'a> {
     /// The `ds.survey-layers/v1` document (`survey::survey_append`) and the
     /// SHA-256 of its exact bytes, when the plan appends held survey layers.
     pub survey_layers: Option<(&'a Path, &'a str)>,
+    /// Current project-governed transformer nature assignments. This remains
+    /// separate from the saved room document and its content digest.
+    pub transformer_natures: Option<&'a BTreeMap<String, String>>,
 }
 
 /// The exact typed request document `ds-report export-transformer-report`
@@ -1088,6 +1091,20 @@ pub fn engine_request(plan: &ExportPlan, staged: &StagedInputs<'_>) -> Result<Va
         } else {
             "the run appends held survey layers but their document is not staged".to_string()
         });
+    }
+    if let Some(natures) = staged.transformer_natures {
+        if natures
+            .keys()
+            .any(|transformer| transformer != &plan.transformer)
+            || natures
+                .values()
+                .any(|nature| !matches!(nature.as_str(), "new_transformer" | "fill_in" | "upgrade"))
+        {
+            return Err(
+                "transformer_natures must contain only this transformer and a governed value"
+                    .into(),
+            );
+        }
     }
     let mut request = serde_json::Map::new();
     request.insert(
@@ -1134,6 +1151,9 @@ pub fn engine_request(plan: &ExportPlan, staged: &StagedInputs<'_>) -> Result<Va
     if let Some((path, digest)) = staged.survey_layers {
         request.insert("survey_layers_asset".into(), json!(path));
         request.insert("survey_layers_sha256".into(), json!(digest));
+    }
+    if let Some(transformer_natures) = staged.transformer_natures {
+        request.insert("transformer_natures".into(), json!(transformer_natures));
     }
     request.insert("formats".into(), json!(plan.formats));
     Ok(Value::Object(request))
@@ -2495,6 +2515,7 @@ mod tests {
             print_context: None,
             sheet: None,
             survey_layers: None,
+            transformer_natures: None,
         };
         assert_eq!(
             engine_request(&plan, &staged).unwrap()["survey_layers_omitted"],
@@ -2673,6 +2694,7 @@ mod tests {
             print_context: None,
             sheet: None,
             survey_layers: Some((&survey_path, digest)),
+            transformer_natures: None,
         };
         assert_eq!(*digest, sha256_hex(bytes));
         let request = engine_request(&plan, &staged).unwrap();
@@ -3023,6 +3045,7 @@ mod tests {
             print_context: None,
             sheet: None,
             survey_layers: None,
+            transformer_natures: None,
         };
         let request = engine_request(&plan, &staged).unwrap();
         assert_eq!(
