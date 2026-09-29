@@ -1,10 +1,12 @@
 //! Publish an exact native result to the project its sealed export receipt names.
+use std::collections::BTreeMap;
 use std::io::Read;
 
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
+use ds_command_kernel::report_export::jcs::layers_content_digest;
 use ds_network::network::native_fast_lv::{
     MAX_NATIVE_FAST_LV_INPUT_BYTES, MAX_NATIVE_FAST_LV_OUTPUT_BYTES, project_native_fast_lv_result,
 };
@@ -205,6 +207,7 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             Failure::invalid("fast_lv_publication_invalid", error.to_string())
                 .remedy("Process the unchanged fenced source again and inspect every job outcome.")
         })?;
+    let source_layers = source_layers_for_fence(projection.source_layers, &source_content_digest)?;
     let saved = ds_cli_auth::save_transformers(
         lane,
         &ds_client_core::TransformerSaveBatch {
@@ -213,7 +216,7 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
                 transformer_name: transformer.to_owned(),
                 base_version,
                 source_content_digest,
-                source_layers: projection.source_layers,
+                source_layers,
                 gdfs: projection.gdfs,
                 config_dfs: projection.config_dfs,
                 process_metadata: projection.process_metadata,
@@ -224,6 +227,43 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     Ok(json!({"project":saved.project_id(), "lane":saved.lane(), "result":saved.result()}))
 }
 
+fn source_layers_for_fence(
+    mut layers: BTreeMap<String, Value>,
+    expected_digest: &str,
+) -> Result<BTreeMap<String, Value>, Failure> {
+    let digest = |layers: &BTreeMap<String, Value>| {
+        layers_content_digest(layers)
+            .map_err(|error| Failure::invalid("fast_lv_save_input_invalid", error))
+    };
+    if digest(&layers)? == expected_digest {
+        // A legacy saved transformer may already carry this field. In that
+        // case it belongs to the exact saved source fence.
+        return Ok(layers);
+    }
+    // Project-export may have added governed transformer nature for this
+    // process run. Remove only that transient projection and require the
+    // resulting source bytes to match the saved digest exactly.
+    if let Some(features) = layers
+        .get_mut("tr")
+        .and_then(|layer| layer.get_mut("features"))
+        .and_then(Value::as_array_mut)
+    {
+        for feature in features {
+            if let Some(properties) = feature.get_mut("properties").and_then(Value::as_object_mut) {
+                properties.remove("transformer_nature");
+            }
+        }
+    }
+    if digest(&layers)? != expected_digest {
+        return Err(Failure::invalid(
+            "fast_lv_save_input_invalid",
+            "The processed source layers do not match the saved transformer digest.",
+        )
+        .remedy("Export the saved transformer again before processing and saving it."));
+    }
+    Ok(layers)
+}
+
 pub fn render(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()
 }
@@ -231,6 +271,34 @@ pub fn render(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn source_fence_accepts_saved_nature_or_strips_only_run_projection() {
+        let layers = BTreeMap::from([(
+            "tr".to_string(),
+            json!({
+                "type":"FeatureCollection", "features":[{
+                    "type":"Feature", "id":"tr-1", "geometry":{"type":"Point","coordinates":[30,-2]},
+                    "properties":{"transformer_nature":"new_transformer"}
+                }]
+            }),
+        )]);
+        let saved_digest = layers_content_digest(&layers).unwrap();
+        assert_eq!(
+            source_layers_for_fence(layers.clone(), &saved_digest).unwrap(),
+            layers
+        );
+        let mut without_nature = layers.clone();
+        without_nature.get_mut("tr").unwrap()["features"][0]["properties"]
+            .as_object_mut()
+            .unwrap()
+            .remove("transformer_nature");
+        let digest_without = layers_content_digest(&without_nature).unwrap();
+        assert_eq!(
+            source_layers_for_fence(layers.clone(), &digest_without).unwrap(),
+            without_nature
+        );
+        assert!(source_layers_for_fence(layers, &"0".repeat(64)).is_err());
+    }
     #[test]
     fn save_requires_successful_receipts_and_exact_bytes_before_authentication() {
         assert!(
