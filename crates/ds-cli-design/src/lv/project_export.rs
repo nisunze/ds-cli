@@ -216,7 +216,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformer = inputs.require("transformer")?;
     let lane = inputs.require("lane")?;
     let project = inputs.require("project")?;
-    let headless = ds_cli_auth::transformer_context_for_project(lane, project, transformer)?;
+    let headless = ds_cli_auth::saved_transformer_context_for_project(lane, project, transformer)?;
     let snapshot = headless.snapshot();
     let (Some(version), Some(content_digest)) = (
         snapshot.metadata().version(),
@@ -228,6 +228,24 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy("Refresh or migrate the transformer until the context call returns both fences."));
     };
+
+    // The saved projection is the source of the publication digest. The full
+    // projection carries governed transformer nature for this run only; the
+    // network processor removes it from the saved result.
+    let projected = ds_cli_auth::transformer_context_for_project(lane, project, transformer)?;
+    if projected.identity() != headless.identity()
+        || projected.snapshot().ds_project() != snapshot.ds_project()
+        || projected.snapshot().transformer_name() != snapshot.transformer_name()
+        || projected.snapshot().metadata() != snapshot.metadata()
+    {
+        return Err(Failure::conflict(
+            "project_context_stale",
+            "The saved and governed transformer projections have different source fences.",
+        )
+        .remedy("Export the transformer again after the project state settles."));
+    }
+    let mut process_layers = snapshot.layers().clone();
+    carry_projected_nature(&mut process_layers, projected.snapshot().layers())?;
 
     let mut config_sha256 = None;
     let request = if inputs.switch("project-config") {
@@ -262,11 +280,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         })?));
         encode_native_fast_lv_request_with_config(
             snapshot.transformer_name(),
-            snapshot.layers(),
+            &process_layers,
             &sheets,
         )
     } else {
-        encode_native_fast_lv_request_from_layers(snapshot.transformer_name(), snapshot.layers())
+        encode_native_fast_lv_request_from_layers(snapshot.transformer_name(), &process_layers)
     }
     .map_err(map_owner_error)?;
     let request_sha256 = sha256(&request);
@@ -290,6 +308,43 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "project_config": if config_sha256.is_some() { "included" } else { "not-included" },
         "project_config_sha256": config_sha256,
     }))
+}
+
+fn carry_projected_nature(
+    saved: &mut std::collections::BTreeMap<String, Value>,
+    projected: &std::collections::BTreeMap<String, Value>,
+) -> Result<(), Failure> {
+    let saved_tr = saved
+        .get_mut("tr")
+        .and_then(|layer| layer.get_mut("features"))
+        .and_then(Value::as_array_mut)
+        .and_then(|features| features.first_mut());
+    let projected_tr = projected
+        .get("tr")
+        .and_then(|layer| layer.get("features"))
+        .and_then(Value::as_array)
+        .and_then(|features| features.first());
+    let (Some(saved_tr), Some(projected_tr)) = (saved_tr, projected_tr) else {
+        return Err(Failure::conflict(
+            "transformer_context_unfenced",
+            "The transformer point is absent from a saved or governed projection.",
+        ));
+    };
+    if saved_tr.get("id") != projected_tr.get("id") {
+        return Err(Failure::conflict(
+            "project_context_stale",
+            "The saved and governed transformer points differ.",
+        ));
+    }
+    if let Some(nature) = projected_tr
+        .get("properties")
+        .and_then(|properties| properties.get("transformer_nature"))
+        .and_then(Value::as_str)
+        .filter(|nature| !nature.trim().is_empty())
+    {
+        saved_tr["properties"]["transformer_nature"] = Value::String(nature.to_string());
+    }
+    Ok(())
 }
 
 fn map_owner_error(error: NativeFastLvError) -> Failure {
@@ -334,6 +389,24 @@ mod tests {
                 json!({ "type": "FeatureCollection", "features": [] }),
             ),
         ])
+    }
+
+    #[test]
+    fn nature_is_carried_only_from_the_matching_governed_point() {
+        let mut saved = layers();
+        saved.get_mut("tr").unwrap()["features"] = json!([{
+            "type":"Feature", "id":"tr-1", "properties":{}
+        }]);
+        let mut projected = saved.clone();
+        projected.get_mut("tr").unwrap()["features"][0]["properties"]["transformer_nature"] =
+            json!("fill_in");
+        carry_projected_nature(&mut saved, &projected).unwrap();
+        assert_eq!(
+            saved["tr"]["features"][0]["properties"]["transformer_nature"],
+            "fill_in"
+        );
+        projected.get_mut("tr").unwrap()["features"][0]["id"] = json!("another-tr");
+        assert!(carry_projected_nature(&mut saved, &projected).is_err());
     }
 
     #[test]
