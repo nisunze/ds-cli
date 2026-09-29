@@ -54,7 +54,7 @@ pub(super) const INPUTS_NOT_HELD: Refusal = Refusal {
 };
 pub(super) const ROOM_NOT_HELD: Refusal = Refusal {
     code: "report_room_not_held",
-    when: "the service is unreachable and a room is unheld or older than its head (batch row)",
+    when: "the service is unreachable and a room is unheld, older than its head, or its held saved content digest does not match its layers (batch row)",
     remedy: "export that transformer once while connected",
 };
 
@@ -326,14 +326,28 @@ impl Rooms {
         link: &mut Link,
         read: impl FnMut() -> Result<Room, Failure>,
     ) -> Result<Room, Failure> {
-        if !self.planned.contains_key(name)
-            && let Ok(Some(room)) = room_hold::room(&self.hold.root, &self.hold.scope, name)
-        {
-            self.sources.insert(name.to_owned(), "held");
-            return Ok(room);
+        let mut invalid_held = false;
+        if !self.planned.contains_key(name) {
+            match room_hold::room(&self.hold.root, &self.hold.scope, name) {
+                Ok(Some(room)) if held_room_digest_matches(&room) => {
+                    self.sources.insert(name.to_owned(), "held");
+                    return Ok(room);
+                }
+                Ok(Some(_)) => invalid_held = true,
+                Ok(None) | Err(_) => {}
+            }
         }
         match link.read(read)? {
             Some(room) => {
+                if !fetched_room_digest_consistent(&room) {
+                    return Err(Failure::invalid(
+                        super::export::INPUTS_INVALID.code,
+                        format!(
+                            "saved transformer content digest does not match the fetched layers for {name}"
+                        ),
+                    )
+                    .remedy(super::export::INPUTS_INVALID.remedy));
+                }
                 if room_hold::hold_room(&self.hold.root, &self.hold.scope, &room).is_err() {
                     self.unkept.push(name.to_owned());
                 }
@@ -344,6 +358,8 @@ impl Rooms {
                 self.not_held.push(name.to_owned());
                 let held = if self.planned.get(name) == Some(&"head_moved") {
                     "holds an older revision of"
+                } else if invalid_held {
+                    "holds a room whose saved content digest does not match its layers for"
                 } else {
                     "does not hold"
                 };
@@ -381,6 +397,25 @@ impl Rooms {
     }
 }
 
+/// A file checksum proves that a held room was read intact, not that its
+/// saved server digest describes its layer content. Without a saved digest,
+/// the held room cannot be verified and must be refreshed when online.
+fn held_room_digest_matches(room: &Room) -> bool {
+    room.content_digest.as_deref().is_some_and(|expected| {
+        ds_command_kernel::report_export::jcs::layers_content_digest(&room.layers)
+            .is_ok_and(|actual| actual == expected)
+    })
+}
+
+/// New rooms may still come from an older service that does not return a
+/// saved digest. Preserve that existing fetch behavior; when it does return a
+/// digest, reject the answer before it can replace a good held copy.
+fn fetched_room_digest_consistent(room: &Room) -> bool {
+    room.content_digest
+        .as_deref()
+        .is_none_or(|_| held_room_digest_matches(room))
+}
+
 /// The head revision a status row carries for one transformer, or null. The
 /// kernel reads an unknown revision as absence of evidence, never staleness.
 pub(super) fn head_version(row: &Value) -> Value {
@@ -399,7 +434,7 @@ mod tests {
     use super::*;
 
     fn room(name: &str, version: i64) -> Room {
-        Room {
+        let mut room = Room {
             transformer: name.into(),
             version: Some(version),
             content_digest: None,
@@ -407,7 +442,21 @@ mod tests {
                 "tr".to_string(),
                 json!({"type": "FeatureCollection", "features": [{"type": "Feature"}]}),
             )]),
-        }
+        };
+        room.content_digest = Some(
+            ds_command_kernel::report_export::jcs::layers_content_digest(&room.layers).unwrap(),
+        );
+        room
+    }
+
+    fn consistent_room(name: &str, version: i64) -> Room {
+        room(name, version)
+    }
+
+    fn stale_projection(name: &str, version: i64) -> Room {
+        let mut room = room(name, version);
+        room.content_digest = Some("0".repeat(64));
+        room
     }
 
     fn unreachable() -> Failure {
@@ -537,6 +586,141 @@ mod tests {
         }
         assert_eq!(warm.receipt()["rooms_fetched"], 0);
         assert_eq!(warm.receipt()["reused"], 2);
+    }
+
+    #[test]
+    fn valid_saved_digest_is_reused_without_a_room_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+        let expected = consistent_room("t1", 8);
+        hold().hold_room(&expected).unwrap();
+        let mut rooms = Rooms::plan(
+            hold(),
+            &names(&["t1"]),
+            Heads::Read(vec![json!({"name": "t1", "version": 8})]),
+        )
+        .unwrap();
+        let mut link = quick_link();
+        let actual = rooms
+            .room("t1", &mut link, || {
+                panic!("a valid held room was refetched")
+            })
+            .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(rooms.receipt()["reused"], 1);
+        assert_eq!(rooms.receipt()["rooms_fetched"], 0);
+    }
+
+    #[test]
+    fn an_invalid_projected_hold_is_refetched_and_replaced_online() {
+        let dir = tempfile::tempdir().unwrap();
+        let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+        let old = stale_projection("t1", 8);
+        hold().hold_room(&old).unwrap();
+        let fresh = consistent_room("t1", 8);
+        let mut rooms = Rooms::plan(
+            hold(),
+            &names(&["t1"]),
+            Heads::Read(vec![json!({"name": "t1", "version": 8})]),
+        )
+        .unwrap();
+        let mut link = quick_link();
+        let mut reads = 0;
+        let actual = rooms
+            .room("t1", &mut link, || {
+                reads += 1;
+                Ok(fresh.clone())
+            })
+            .unwrap();
+        assert_eq!(reads, 1);
+        assert_eq!(actual, fresh);
+        assert_eq!(
+            room_hold::room(&hold().root, &hold().scope, "t1").unwrap(),
+            Some(fresh)
+        );
+        assert_eq!(rooms.receipt()["reused"], 0);
+        assert_eq!(rooms.receipt()["rooms_fetched"], 1);
+    }
+
+    #[test]
+    fn an_invalid_projected_hold_is_named_and_preserved_offline() {
+        let dir = tempfile::tempdir().unwrap();
+        let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+        let old = stale_projection("t1", 8);
+        hold().hold_room(&old).unwrap();
+        let mut link = quick_link();
+        assert!(link.read(|| Err::<(), _>(unreachable())).unwrap().is_none());
+        let mut rooms = Rooms::plan(hold(), &names(&["t1"]), Heads::Unreachable).unwrap();
+        let failure = rooms
+            .room("t1", &mut link, || {
+                panic!("an offline room read was attempted")
+            })
+            .unwrap_err();
+        assert_eq!(failure.code(), ROOM_NOT_HELD.code);
+        assert!(failure.message().contains("t1"));
+        assert!(failure.message().contains("content digest"));
+        assert_eq!(
+            room_hold::room(&hold().root, &hold().scope, "t1").unwrap(),
+            Some(old)
+        );
+        assert_eq!(rooms.receipt()["reused"], 0);
+        assert_eq!(rooms.receipt()["rooms_fetched"], 0);
+        assert_eq!(rooms.receipt()["not_held"], json!(["t1"]));
+    }
+
+    #[test]
+    fn a_digestless_legacy_hold_refreshes_once_when_online() {
+        let dir = tempfile::tempdir().unwrap();
+        let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+        let mut legacy = room("t1", 8);
+        legacy.content_digest = None;
+        hold().hold_room(&legacy).unwrap();
+        let fresh = consistent_room("t1", 8);
+        let mut rooms = Rooms::plan(
+            hold(),
+            &names(&["t1"]),
+            Heads::Read(vec![json!({"name": "t1", "version": 8})]),
+        )
+        .unwrap();
+        let mut link = quick_link();
+        let mut reads = 0;
+        assert_eq!(
+            rooms
+                .room("t1", &mut link, || {
+                    reads += 1;
+                    Ok(fresh.clone())
+                })
+                .unwrap(),
+            fresh
+        );
+        assert_eq!(reads, 1);
+        assert_eq!(rooms.receipt()["rooms_fetched"], 1);
+    }
+
+    #[test]
+    fn an_inconsistent_fresh_room_is_refused_without_replacing_the_hold() {
+        let dir = tempfile::tempdir().unwrap();
+        let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+        let old = stale_projection("t1", 8);
+        hold().hold_room(&old).unwrap();
+        let mut rooms = Rooms::plan(
+            hold(),
+            &names(&["t1"]),
+            Heads::Read(vec![json!({"name": "t1", "version": 8})]),
+        )
+        .unwrap();
+        let mut link = quick_link();
+        let failure = rooms
+            .room("t1", &mut link, || Ok(stale_projection("t1", 8)))
+            .unwrap_err();
+        assert_eq!(failure.code(), "report_inputs_invalid");
+        assert!(failure.message().contains("t1"));
+        assert_eq!(
+            room_hold::room(&hold().root, &hold().scope, "t1").unwrap(),
+            Some(old)
+        );
+        assert_eq!(rooms.receipt()["reused"], 0);
+        assert_eq!(rooms.receipt()["rooms_fetched"], 0);
     }
 
     /// A moved head is read again; the service's answer replaces the copy.

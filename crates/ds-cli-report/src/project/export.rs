@@ -141,7 +141,7 @@ const EXPORT_BLOCKED: Refusal = Refusal {
     when: "the engine produced NO format for a transformer (a batch row carries its blockers)",
     remedy: "read `error.detail.blockers`, fix the named input, and re-run that transformer",
 };
-const INPUTS_INVALID: Refusal = Refusal {
+pub(super) const INPUTS_INVALID: Refusal = Refusal {
     code: "report_inputs_invalid",
     when: "the input receipt, a transformer's saved layers or the output policy cannot be run as given",
     remedy: "run `ds report project settings`; it names the missing input and the repair",
