@@ -152,6 +152,17 @@ mod tests {
     }
 
     #[test]
+    fn local_voltage_drop_pdf_requires_a4_at_the_artifact_bridge() {
+        assert!(validate(vec![artifact("voltage_drop_pdf")], false, false, false).is_ok());
+        let mut missing_paper = artifact("voltage_drop_pdf");
+        missing_paper.paper_size = None;
+        assert!(validate(vec![missing_paper], false, false, false).is_err());
+        let mut wrong_paper = artifact("voltage_drop_pdf");
+        wrong_paper.paper_size = Some("A3".into());
+        assert!(validate(vec![wrong_paper], false, false, false).is_err());
+    }
+
+    #[test]
     fn recovery_keeps_scope_order_and_duplicate_refusals() {
         assert!(validate(vec![artifact("xlsx"), artifact("shp")], false, false, false).is_err());
         assert!(validate(vec![artifact("xlsx"), artifact("xlsx")], false, true, false).is_err());

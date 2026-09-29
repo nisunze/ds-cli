@@ -696,6 +696,17 @@ fn edge_outputs_follow_the_kernel_output_policy() {
             "{format} is a default or tabular output, so a desktop grant may carry it"
         );
     }
+    assert!(EDGE_INDIVIDUAL_OUTPUTS.contains(&"voltage_drop_pdf"));
+    assert_eq!(edge_output("voltage_drop_pdf").content_type, "application/pdf");
+    let sheets = serde_json::json!({"project_settings":[{"parameter":"design_export_format",
+        "value":{"schema":"ds.design-output-selection/v1",
+            "geospatial":["voltage_drop_pdf"]}}]});
+    assert!(
+        ds_command_kernel::report_formats::plan_data_outputs(&sheets)
+            .unwrap()
+            .is_empty(),
+        "the local signed output is absent from the Web compute plan"
+    );
 }
 
 #[test]

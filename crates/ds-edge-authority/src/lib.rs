@@ -1462,7 +1462,7 @@ fn valid_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
-/// The individual outputs a signed reporter work grant may carry.
+/// The individual outputs a signed Desktop reporter work grant may carry.
 ///
 /// The geospatial pair the desktop engine has always produced under a grant,
 /// every tabular output (`report_formats::TABULAR`), and the analytical A4
@@ -1475,10 +1475,11 @@ fn valid_sha256(value: &str) -> bool {
 ///
 /// Order, output id and content type are the kernel's report output policy
 /// (`report_formats::INDIVIDUAL` and `report_formats::output`), not a copy.
-/// Cartographic prints and `gpkg` are not admitted here: a map print carries
-/// paper/presentation fields this closed grant schema does not hold. The
-/// analytical `voltage_drop_pdf` is declared here by ID and media type; its
-/// A4 paper identity is verified on the resulting artifact.
+/// Map prints and `gpkg` are not admitted here: a map print carries
+/// layout/presentation fields this closed grant schema does not hold. The
+/// local `voltage_drop_pdf` is declared here by ID and media type; its A4
+/// paper identity is verified on the resulting artifact. This grant does not
+/// authorize Web execution; the cloud output policy excludes prints.
 pub const EDGE_INDIVIDUAL_OUTPUTS: &[&str] = &[
     "shp",
     "kmz",
