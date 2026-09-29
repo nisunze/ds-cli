@@ -422,6 +422,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::feature_codes::report::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::feature_codes::cleared_forest_offset::COMMAND,
+        handler: ds_cli_dsgrid::feature_codes::cleared_forest_offset::run,
+        render: ds_cli_dsgrid::feature_codes::cleared_forest_offset::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::feature_codes::import::COMMAND,
         handler: ds_cli_dsgrid::feature_codes::import::run,
         render: ds_cli_dsgrid::feature_codes::import::render,

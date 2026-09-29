@@ -122,6 +122,7 @@ pub static DOMAIN: Domain = Domain {
         &report::structures::COMMAND,
         &report::staking::COMMAND,
         &feature_codes::report::COMMAND,
+        &feature_codes::cleared_forest_offset::COMMAND,
         &feature_codes::import::COMMAND,
         &feature_codes::migrate::COMMAND,
         &feature_codes::export::COMMAND,

@@ -815,6 +815,7 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
 // feature code; the surrounding file workflow stays in `grid-native`.
 const GRID_CLEARANCE_COMMANDS: &[&str] = &[
     "dsgrid.feature-codes.report",
+    "dsgrid.feature-codes.cleared-forest-offset.set",
     "dsgrid.feature-codes.import",
     "dsgrid.feature-codes.migrate",
     "dsgrid.feature-codes.export",

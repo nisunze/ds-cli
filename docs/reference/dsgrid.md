@@ -489,6 +489,7 @@ through the same plumbing as every typed mutation: `--revision` pin,
 ds dsgrid feature-codes report  --model local-<id> --output json
 ds dsgrid feature-codes import  --model local-<id> --standard pls-feature-codes.v1.json --voltage-class MV --yes
 ds dsgrid feature-codes migrate --model local-<id> --standard pls-feature-codes.v1.json --yes      # --deliver refuses while any 999 remains
+ds dsgrid feature-codes cleared-forest-offset set --model local-<id> --code FOREST_EDGE --additional-clearance-m 2.5 --dry-run
 ds dsgrid criteria show         --model local-<id>
 ds dsgrid criteria clearance set --model local-<id> --voltage-class MV \
     --vertical-case "Maximum Conductor Temperature" --horizontal-case "High wind" --yes
@@ -504,7 +505,19 @@ exactly as the standard's classifier script — normalise, exact alias,
 heuristics, residue — joins legacy FEA numbers through the standard's legacy
 map, renders each point's description from the code's template, and lists
 the mapping, the counts per code and the UNKNOWN tokens; `--deliver` refuses
-`feature_code_unknown_in_delivery`. `criteria clearance set` fills the
+`feature_code_unknown_in_delivery`.
+
+`cleared-forest-offset set` stores a nonnegative DS model allowance for
+`FOREST_EDGE` or `FOREST_INSIDE`; absent or zero means no allowance. Cleared
+forest points retain their surveyed elevation, use the model's `GROUND`
+vertical clearance plus this allowance, and never use survey `h=` or a
+standing-tree height. The standard's authored FEA values remain pinned in
+the model. Native clearance analysis, Profile/print and spotting read one
+effective rule; FEA export projects the same effective ground RV/RH and TIN
+membership for PLS-CADD without changing the issued standard bytes. A
+standard reimport preserves the model allowance.
+
+`criteria clearance set` fills the
 criterion set's clearance voltage, survey-point vertical and horizontal cases
 and wire clearance line from the class; a label the model's weather set does
 not carry is `clearance_case_missing`, and a vertical case colder than the

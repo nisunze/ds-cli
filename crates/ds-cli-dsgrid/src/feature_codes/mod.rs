@@ -10,6 +10,7 @@
 //! revised in place or `--package` → `--out`, the revision pin, `--dry-run`
 //! xor `--yes`, one receipt shape.
 
+pub mod cleared_forest_offset;
 pub mod export;
 pub mod import;
 pub mod migrate;

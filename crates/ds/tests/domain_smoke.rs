@@ -15393,6 +15393,102 @@ fn dsgrid_feature_codes_family_runs_over_a_package_and_refuses_by_name() {
         .expect("ROAD_PUBLIC listed");
     assert_eq!(road["code_number"], 30);
     assert_eq!(road["required_vertical_m"], 8.0);
+    let forest = report["codes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|code| code["name"] == "FOREST_EDGE")
+        .unwrap();
+    assert_eq!(forest["cleared_ground_additional_clearance_m"], 0.0);
+
+    let dry = ok(&[
+        "dsgrid",
+        "feature-codes",
+        "cleared-forest-offset",
+        "set",
+        "--package",
+        imported_text,
+        "--code",
+        "FOREST_EDGE",
+        "--additional-clearance-m",
+        "2.5",
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(dry["before_m"], 0.0);
+    assert_eq!(dry["additional_clearance_m"], 2.5);
+    assert_eq!(dry["persisted"], false);
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "feature-codes",
+            "cleared-forest-offset",
+            "set",
+            "--package",
+            imported_text,
+            "--code",
+            "FOREST_EDGE",
+            "--additional-clearance-m",
+            "-1",
+            "--dry-run",
+            "--output",
+            "json",
+        ]),
+        "invalid_additional_clearance"
+    );
+    let revised = root.join("mv-forest-offset.dsgrid");
+    let revised_text = revised.to_str().unwrap();
+    let saved = ok(&[
+        "dsgrid",
+        "feature-codes",
+        "cleared-forest-offset",
+        "set",
+        "--package",
+        imported_text,
+        "--out",
+        revised_text,
+        "--code",
+        "FOREST_EDGE",
+        "--additional-clearance-m",
+        "2.5",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(saved["persisted"], true);
+    assert_eq!(saved["pls_members_affected"], json!([]));
+    let revised_report = ok(&[
+        "dsgrid",
+        "feature-codes",
+        "report",
+        "--package",
+        revised_text,
+        "--limit",
+        "100",
+        "--output",
+        "json",
+    ]);
+    let revised_forest = revised_report["codes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|code| code["name"] == "FOREST_EDGE")
+        .unwrap();
+    assert_eq!(revised_forest["cleared_ground_additional_clearance_m"], 2.5);
+    let preserved = ok(&[
+        "dsgrid",
+        "feature-codes",
+        "import",
+        "--package",
+        revised_text,
+        "--voltage-class",
+        "MV",
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(preserved["changed"], false);
 
     // Migration over a model without terrain: nothing to migrate, nothing
     // written, and the delivery gate has nothing to refuse.

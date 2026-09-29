@@ -44,7 +44,8 @@ delivery carries no unknown code.",
         .default(package::DEFAULT_LIMIT),
     ],
     output: "\
-The target, the table (codes with number, RV/RH, TIN, class, assumed, usage), \
+The target, the table (codes with number, RV/RH, TIN, class, assumed, usage, \
+and each cleared forest code's added ground clearance), \
 the unresolved tokens with counts, resolved/unresolved/UNKNOWN totals and the \
 voltage classes and standard namespaces the table carries. `more.truncated` \
 names any list shortened by --limit.",
@@ -138,7 +139,7 @@ pub fn render(data: &Value) -> String {
     );
     for code in data["codes"].as_array().into_iter().flatten() {
         out.push_str(&format!(
-            "  {:>4} {:<24} RV {:<5} RH {:<5} {:<8} used {}{}\n",
+            "  {:>4} {:<24} RV {:<5} RH {:<5} {:<8} used {}{}{}\n",
             code["code_number"]
                 .as_u64()
                 .map(|n| n.to_string())
@@ -158,6 +159,10 @@ pub fn render(data: &Value) -> String {
                 None => "—",
             },
             code["usage"],
+            code["cleared_ground_additional_clearance_m"]
+                .as_f64()
+                .map(|value| format!(" · cleared ground +{value} m"))
+                .unwrap_or_default(),
             if code["retired"].as_bool().unwrap_or(false) {
                 " (retired)"
             } else {

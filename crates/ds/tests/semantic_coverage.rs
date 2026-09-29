@@ -700,6 +700,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // copy or a package; the writes are one revision of a working copy (in
     // place) or one new package, never a governed object.
     ("dsgrid.feature-codes.report", "read_only", "none"),
+    (
+        "dsgrid.feature-codes.cleared-forest-offset.set",
+        "local_file_write",
+        "none",
+    ),
     ("dsgrid.feature-codes.import", "local_file_write", "none"),
     ("dsgrid.feature-codes.migrate", "local_file_write", "none"),
     ("dsgrid.feature-codes.export", "local_file_write", "none"),
