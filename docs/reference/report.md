@@ -652,6 +652,15 @@ run refuses `report_inputs_not_held`. `--seed` acquires nothing without a
 link, and the prints carry the context this machine holds. Each result row
 names its `room_source` (`held` or `fetched`).
 
+When the output policy selects `voltage_drop`, export also reads the current
+project `transformer_nature` tag projection and passes those assignments to
+the reporter separately from the saved room. The room content digest still
+covers the exact saved layers. If the projection cannot be verified, export
+refuses with `report_transformer_nature_unavailable` rather than producing a
+voltage-drop result from an unverified or stale tag. An unassigned transformer
+stays unassigned; its name is never used to infer a nature. An export whose
+policy does not select `voltage_drop` does not read this tag projection.
+
 Survey forms the project appends to delivered reports
 (`include_survey_data_in_transformer_exports`,
 `survey_forms_in_transformer_exports`) come from this machine's held copy of

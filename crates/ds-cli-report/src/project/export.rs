@@ -28,7 +28,7 @@
 //! and writes one page with its run receipt per transformer, no batch receipt.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -145,6 +145,11 @@ const INPUTS_INVALID: Refusal = Refusal {
     code: "report_inputs_invalid",
     when: "the input receipt, a transformer's saved layers or the output policy cannot be run as given",
     remedy: "run `ds report project settings`; it names the missing input and the repair",
+};
+const TRANSFORMER_NATURE_UNAVAILABLE: Refusal = Refusal {
+    code: "report_transformer_nature_unavailable",
+    when: "voltage_drop is selected but the current project transformer_nature projection could not be verified",
+    remedy: "retry while connected and signed in to the named project; do not publish a voltage-drop report without current governed tags",
 };
 const STAGING_FAILED: Refusal = Refusal {
     code: "report_staging_failed",
@@ -275,6 +280,7 @@ pub(super) const REFUSALS: &[Refusal] = &[
     ENGINE_REFUSED,
     EXPORT_BLOCKED,
     INPUTS_INVALID,
+    TRANSFORMER_NATURE_UNAVAILABLE,
     STAGING_FAILED,
     OUTPUT_EXISTS,
     RESULT_INVALID,
@@ -1451,6 +1457,30 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         );
         return Ok(output);
     }
+    // Only voltage-drop runs need the project-governed nature projection.
+    // Keep it separate from the held/fetched room bytes; the report host first
+    // verifies those exact bytes against their saved content digest.
+    let output_policy = reuse::policy_outputs(&receipt).map_err(|error| {
+        Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
+    })?;
+    let voltage_drop_selected =
+        preview_request.is_none() && voltage_drop_selected(&output_policy);
+    let transformer_natures = if voltage_drop_selected {
+        if link.unreachable().is_some() {
+            return Err(transformer_nature_unavailable(
+                "the service was already confirmed unreachable before the tag projection",
+            ));
+        }
+        match project_transformer_natures(lane, &project_id, &identity, &names) {
+            Ok(natures) => Some(natures),
+            Err(failure) if failure.class() == ExitClass::Unavailable => {
+                return Err(transformer_nature_unavailable(failure.message()));
+            }
+            Err(failure) => return Err(failure),
+        }
+    } else {
+        None
+    };
     if neighbor_points_selected && status_rows.is_none() && link.unreachable().is_none() {
         return Err(Failure::unavailable(
             NEIGHBOR_POINTS_UNAVAILABLE.code,
@@ -1690,6 +1720,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             server_version,
             content_digest: room.content_digest.clone(),
             layers: room.layers,
+            transformer_natures: transformer_natures.as_ref().map(|natures| {
+                natures
+                    .get(name)
+                    .map(|nature| BTreeMap::from([(name.to_string(), nature.clone())]))
+                    .unwrap_or_default()
+            }),
             selection,
             print_context,
             sheet,
@@ -1835,6 +1871,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             };
             // Where its room came from: this machine's hold, or the service.
             row["room_source"] = json!(rooms.borrow().source(&name));
+            if voltage_drop_selected {
+                row["transformer_nature"] = transformer_natures
+                    .as_ref()
+                    .and_then(|natures| natures.get(&name))
+                    .map_or_else(
+                        || json!({"status": "unassigned"}),
+                        |nature| json!({"status": "resolved", "value": nature}),
+                    );
+            }
             if let Some(run) = outcome.runs.iter().find(|run| run.transformer == name) {
                 row["print_context"] = json!({
                     "sha256": run.receipt["print_context_sha256"],
@@ -2253,6 +2298,133 @@ fn project_inputs(
     let inputs = hold.inputs(&unreachable)?;
     let receipt = json!({"source": "held", "read_at": inputs.read_at, "unreachable": unreachable});
     Ok((inputs, receipt))
+}
+
+/// Read the governed transformer nature assignments for the rooms this batch
+/// will actually run. A project without this active definition has no nature
+/// to attach; other refusals remain refusals.
+fn project_transformer_natures(
+    lane: &str,
+    project: &str,
+    identity: &ds_cli_auth::ProviderIdentity,
+    transformers: &[String],
+) -> Result<BTreeMap<String, String>, Failure> {
+    let request = ds_cli_auth::DesignTagsCommand::Projection {
+        transformers: transformers.to_vec(),
+        definitions: vec!["transformer_nature".to_string()],
+    };
+    let projection = match ds_cli_auth::design_tags(lane, project, &request) {
+        Ok(projection) => projection,
+        Err(failure) if failure.code() == ds_cli_auth::TAG_DEFINITION_UNKNOWN_REFUSAL.code => {
+            return Ok(BTreeMap::new());
+        }
+        Err(failure) => return Err(failure),
+    };
+    require_same_context(
+        identity,
+        project,
+        projection.identity(),
+        projection.project_id(),
+    )
+    .map_err(host_failure)?;
+    let document = projection
+        .result()
+        .get("document")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid_transformer_nature_projection("the projection has no document"))?;
+    transformer_natures_from_projection(document, project, transformers)
+}
+
+fn transformer_natures_from_projection(
+    document: &str,
+    project: &str,
+    transformers: &[String],
+) -> Result<BTreeMap<String, String>, Failure> {
+    let invalid = |reason: &str| invalid_transformer_nature_projection(reason);
+    let document: Value = serde_json::from_str(document)
+        .map_err(|error| invalid_transformer_nature_projection(&error.to_string()))?;
+    if document["schema_version"] != "ds-report.design-tags/v3"
+        || document["project_id"] != project
+        || document["selected_definition_ids"] != json!(["transformer_nature"])
+    {
+        return Err(invalid(
+            "the projection is for another schema, project, or definition",
+        ));
+    }
+    let group = document["groups"]
+        .as_array()
+        .and_then(|groups| {
+            groups
+                .iter()
+                .find(|group| group["definition_id"] == "transformer_nature")
+        })
+        .ok_or_else(|| invalid("the projection does not describe transformer_nature"))?;
+    if group["state"] != "active" || group["cardinality"] != "single" {
+        return Err(invalid(
+            "transformer_nature is not an active single-value definition",
+        ));
+    }
+    let allowed: BTreeSet<&str> = group["values"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value["value"].as_str())
+        .collect();
+    if allowed.is_empty() {
+        return Err(invalid("transformer_nature has no allowed values"));
+    }
+    let requested: BTreeSet<&str> = transformers.iter().map(String::as_str).collect();
+    let mut natures = BTreeMap::new();
+    for assignment in document["assignments"].as_array().into_iter().flatten() {
+        if assignment["definition_id"] != "transformer_nature" {
+            continue;
+        }
+        let Some(name) = assignment["object"]["id"].as_str() else {
+            return Err(invalid("an assignment has no transformer id"));
+        };
+        if assignment["object"]["kind"] != "lv_transformer" || !requested.contains(name) {
+            return Err(invalid("an assignment is outside this transformer scope"));
+        }
+        let values = assignment["values"]
+            .as_array()
+            .ok_or_else(|| invalid("an assignment has no value list"))?;
+        if values.len() != 1 {
+            return Err(invalid("transformer_nature must have exactly one value"));
+        }
+        let nature = values[0]
+            .as_str()
+            .ok_or_else(|| invalid("an assignment value is not text"))?;
+        if !allowed.contains(nature)
+            || natures
+                .insert(name.to_string(), nature.to_string())
+                .is_some()
+        {
+            return Err(invalid(
+                "an assignment has an unknown value or is duplicated",
+            ));
+        }
+    }
+    Ok(natures)
+}
+
+fn invalid_transformer_nature_projection(reason: &str) -> Failure {
+    Failure::invalid(
+        INPUTS_INVALID.code,
+        format!("invalid transformer_nature projection: {reason}"),
+    )
+    .remedy(INPUTS_INVALID.remedy)
+}
+
+fn transformer_nature_unavailable(reason: &str) -> Failure {
+    Failure::unavailable(
+        TRANSFORMER_NATURE_UNAVAILABLE.code,
+        format!("could not verify the named project's transformer_nature assignments: {reason}"),
+    )
+    .remedy(TRANSFORMER_NATURE_UNAVAILABLE.remedy)
+}
+
+fn voltage_drop_selected(outputs: &[String]) -> bool {
+    outputs.iter().any(|output| output == "voltage_drop")
 }
 
 /// The inputs as the service answers them now, or `None` when it cannot be
@@ -2856,6 +3028,76 @@ pub fn render(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn transformer_nature_projection_is_required_only_for_voltage_drop_output() {
+        assert!(!super::voltage_drop_selected(&[
+            "shp".to_string(),
+            "xlsx".to_string()
+        ]));
+        assert!(super::voltage_drop_selected(&[
+            "xlsx".to_string(),
+            "voltage_drop".to_string()
+        ]));
+    }
+
+    #[test]
+    fn governed_transformer_nature_resolves_held_and_fetched_transformers() {
+        let document = serde_json::json!({
+            "schema_version": "ds-report.design-tags/v3",
+            "project_id": "project-a",
+            "selected_definition_ids": ["transformer_nature"],
+            "groups": [{
+                "definition_id": "transformer_nature",
+                "state": "active",
+                "cardinality": "single",
+                "values": [
+                    {"value": "new_transformer"},
+                    {"value": "fill_in"},
+                    {"value": "upgrade"}
+                ]
+            }],
+            "assignments": [
+                {
+                    "object": {"kind": "lv_transformer", "id": "held_fill_in"},
+                    "definition_id": "transformer_nature",
+                    "values": ["fill_in"]
+                },
+                {
+                    "object": {"kind": "lv_transformer", "id": "fetched_upgrade"},
+                    "definition_id": "transformer_nature",
+                    "values": ["upgrade"]
+                }
+            ]
+        });
+        let names = vec!["held_fill_in".to_string(), "fetched_upgrade".to_string()];
+        let natures =
+            super::transformer_natures_from_projection(&document.to_string(), "project-a", &names)
+                .unwrap();
+        assert_eq!(natures["held_fill_in"], "fill_in");
+        assert_eq!(natures["fetched_upgrade"], "upgrade");
+    }
+
+    #[test]
+    fn unassigned_transformers_do_not_inherit_a_name_based_or_stale_nature() {
+        let document = serde_json::json!({
+            "schema_version": "ds-report.design-tags/v3",
+            "project_id": "project-a",
+            "selected_definition_ids": ["transformer_nature"],
+            "groups": [{
+                "definition_id": "transformer_nature",
+                "state": "active",
+                "cardinality": "single",
+                "values": [{"value": "fill_in"}, {"value": "upgrade"}]
+            }],
+            "assignments": []
+        });
+        let names = vec!["fill_in_unassigned".to_string()];
+        let natures =
+            super::transformer_natures_from_projection(&document.to_string(), "project-a", &names)
+                .unwrap();
+        assert!(natures.is_empty());
+    }
+
     /// 09b78d74: a proof's refs the receipt never sealed are named all at
     /// once, with the source each was looked for in, instead of failing in
     /// the engine one ref at a time.

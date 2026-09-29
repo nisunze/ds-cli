@@ -120,6 +120,7 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
         // for the project, or for one room, the refusal names it.
         "report_inputs_not_held",
         "report_room_not_held",
+        "report_transformer_nature_unavailable",
     ] {
         assert!(refusals.contains(&expected), "{expected} is not documented");
     }
