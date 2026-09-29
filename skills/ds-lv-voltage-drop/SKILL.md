@@ -30,8 +30,9 @@ dramatise what the result states.
 ## Produce the A4 report
 
 The owner requires a separate, system-generated A4 PDF. After the new build is
-installed, verify local Chromium with
-`ds workstation verify --component chromium`, then discover
+installed, configure an existing Chrome, Edge, or Chromium once with
+`ds workstation configure --component chromium --target reporter --yes`, then
+verify it with `ds workstation verify --component chromium`. Discover
 `ds capabilities report.project.export --output json` and
 `ds capabilities desktop.printing.export --output json`, then select the
 explicit `voltage_drop_pdf` project output. `ds report project export` and
