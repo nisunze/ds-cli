@@ -8,82 +8,75 @@ metadata:
 
 # DS Printout specialist
 
-Deliver a verified print set from current project data or reusable outputs:
-`ds` for live operations, `ds-map-composition` for cartographic judgment.
+Use `ds` for live printouts and `ds-map-composition` for cartography.
 
 For MV plan/profile sets, read [booklet workflow](references/mv-plan-profile-booklet.md)
-before selecting the project setup or starting a batch.
+before setup or batching.
 
-For voltage-drop A4 reports, use the explicit `voltage_drop_pdf` project output.
-After the new build is installed, configure an existing Chrome, Edge, or
-Chromium once with `ds workstation configure --component chromium --target
-reporter --yes`, then verify it with `ds workstation verify --component
-chromium`. Run one `ds report project export` or `ds desktop printing export`
-operation. The local engine prints headlessly and queues the PDF for sync;
-verify online publication before claiming web preview or delivery. Follow
-`ds-lv-voltage-drop` for
-the calculation and remediation, and never take voltage-drop values from an
-individual or combined transformer workbook. The currently installed build
-does not yet have this output; require an actual receipt and artifact before
-claiming delivery.
+For voltage-drop A4, choose `voltage_drop_pdf`. Once a build with this output
+is installed, configure existing Chrome, Edge or Chromium once with `ds
+workstation configure --component chromium --target reporter --yes`, then run
+`ds workstation verify --component chromium`. One `ds report project export`
+or `ds desktop printing export` prints headlessly and queues sync; verify online
+publication before web preview or delivery. See `ds-lv-voltage-drop` for
+calculation and remediation. Neither individual nor combined transformer
+workbooks carry voltage drop. The installed build lacks this output; require a
+receipt and artifact before claiming delivery.
 
 ## Establish the assignment and host
 
 Recover project, source revision, audience, geography, papers, formats,
-destination and earlier decisions; build the subject/layout/format matrix.
-“All” means complete inventory, resolved pagination and explicit exclusions.
-Keep authorization, input/recipe revisions, receipts, QA coverage and next
-action in host task state or the deliverables directory.
+destination and decisions; build the subject/layout/format matrix. “All” means
+complete inventory, resolved pagination and explicit exclusions. Keep
+authorization, input/recipe revisions, receipts, QA coverage and next action
+in host task state or the deliverables directory.
 
-Default to a signed-in headless server/workstation. Verify executable and lane
-through `auth.status`; name the project with `--project` on every call. Discover
+Use a signed-in headless server/workstation. Check `auth.status`; pass
+`--project` on every call. Discover
 `report.project.export`, project output settings, `report.layout.*`, and
-`data.project-cache.status|seed`. A paired desktop is needed only where the live
-contract names an app-owned operation; never borrow its credentials or lane.
-Native exports acquire exact MV heads read-only; model publication is a
-separate lifecycle. A district/project sheet can use a held `.dsgrid` and
-staged designs: see `ds-map-composition`.
+`data.project-cache.status|seed`. Pair a desktop only for app-owned operations;
+never borrow its credentials or lane. Native exports read exact MV heads;
+model publication is separate. District/project sheets may use a held `.dsgrid`
+and staged designs; see `ds-map-composition`.
 
-Distinguish local proof, saved project recipe, queued publication and verified
-online delivery. Preserve existing authorization; ask only for material added
-scope while continuing independent work. One writer owns rooms and recipes.
+Distinguish local proof, saved recipe, queued publication and verified online
+delivery. Preserve authorization; ask only for added material scope. One writer
+owns rooms and recipes.
 
 ## Prepare sources and context
 
-Inspect the design/model inventory through its owner; verify CRS, extent,
-attributes and canonical identities. Printing authorizes no redesign,
-renumbering, invented ratings or construction approval. Preserve existing
-infrastructure, dirty rooms, model versions and unrelated outputs.
+Inspect design/model inventory through its owner; verify CRS, extent, attributes
+and identities. Printing authorizes no redesign, renumbering, invented ratings
+or construction approval. Preserve infrastructure, dirty rooms, model versions
+and unrelated outputs.
 
 Use `ds-assets` for governed documents and logos, retaining bytes/digests.
 Keep unknown contract numbers or signatures unresolved; never inherit approvals
 or branding from another project. Missing required evidence is a named
 delivery limit.
 
-Acquire only context needed for the printed extent and purpose, including
-margins and disconnected clusters. Ready-empty, incomplete and stale differ.
-Seed through the governed project context route; reads never fetch missing
-providers silently. National bundles are machine holdings; buildings and
-contours are project context. Do not seed every dataset by habit or substitute
-reference transformers for the project network. Check carried/omitted layers,
-coverage, freshness and source digests; optional exclusions only where the
-map’s purpose survives.
+Acquire context for the printed extent and purpose, including margins and
+disconnected clusters. Ready-empty, incomplete and stale differ. Seed through
+governed project context; reads never fetch missing providers silently.
+National bundles are machine holdings; buildings and contours are project
+context. Do not seed every dataset by habit or substitute reference
+transformers for the project network. Check carried/omitted layers, coverage,
+freshness and digests; exclude optional layers only if the map's purpose survives.
 
 Source rules: [sources and context](references/sources-and-context.md).
 
 ## Author sheets from the contract
 
-Start from the published paper/family default, then compare the project recipe.
-Keep source identity/revision when adopting a project copy. Preserve globals,
-live-map styles, unselected output policy and per-subject exceptions. Compose
-each paper independently: a reduced A0 is not a readable A3. Prepare and
-inspect a concrete recipe before any required approval.
+Start from the published paper/family default; compare the project recipe.
+Keep source identity/revision when adopting a copy. Preserve globals, live-map
+styles, unselected output policy and subject exceptions. Compose each paper
+independently: a reduced A0 is not a readable A3. Inspect a concrete recipe
+before any required approval.
 
-Read the live schema and current optimistic revision. `report.project.export`
-supports local same-paper recipe proofs (discover their inputs): they keep
-governed provenance, leave saved recipes intact and cannot publish. Save a
-governed recipe before requesting publication. An error does not imply
-rollback: read back ambiguous writes before retrying.
+Read live schema and optimistic revision. `report.project.export` supports local
+same-paper recipe proofs (discover inputs): they keep provenance, leave saved
+recipes intact and cannot publish. Save a governed recipe before publication.
+Read back ambiguous writes after errors before retrying.
 
 Follow these printing contracts:
 

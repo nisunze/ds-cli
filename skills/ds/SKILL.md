@@ -5,16 +5,15 @@ description: "Use deployed `ds` as the sole DS interface: discover one live comm
 
 # Work through `ds`
 
-Everything you learn about or do to the stack passes through `ds`. Never
-substitute an API, desktop bridge, store, parser, repository, or skill-local
-program. Report capabilities proven absent through `ds`.
+Use `ds` for DS data and effects. Do not substitute an API, desktop bridge,
+store, parser, repository or skill-local program. Report absent capabilities
+through `ds`.
 
-Use `--output json` for agent calls.
+Use `--output json` for agents.
 
 ## Find one command
 
-Establish the installed surface, then walk the tiers; each names the next.
-Memory is not evidence.
+Check the installed surface and follow its discovery tiers. Memory is not evidence.
 
 ```
 ds --version
@@ -24,7 +23,7 @@ ds capabilities <domain> --output json
 ds capabilities --search '<words>' --output json
 ```
 
-Try domain and product terms before declaring a gap.
+Try domain and product terms first.
 
 ## Read, then invoke, the contract
 
@@ -32,8 +31,8 @@ Try domain and product terms before declaring a gap.
 ds capabilities <command-id> --output json
 ```
 
-Inspect availability, authority, effect, confirmation and refusals. Use only
-declared inputs; `--yes` only for the user's exact authorized effect.
+Inspect availability, authority, effects and refusals. Use declared inputs;
+`--yes` only for the user's authorized effect.
 
 Follow returned remedies. Pair only with the desktop profile matching `ds`.
 Never repeat non-retryable calls, switch identity/project to force success, or
@@ -44,9 +43,9 @@ reconstruct a refused answer.
 Signed out (`headless_signed_out`): run `ds account connect` (MCP: the
 `account.connect` tool), have the person approve it in their signed-in DS
 GridDesign Desktop under Account > Link a trusted device, then run it again.
-That is the only sign-in; never ask for an address or a secret. CLI and map
-lane/principal must match; a mismatch is a refusal, never permission to borrow
-credentials, projects or lanes.
+Only this signs in; never ask for an address or secret. CLI and map
+lane/principal must match. A mismatch is a refusal; never borrow credentials,
+projects or lanes.
 
 ## Through MCP
 
@@ -58,9 +57,8 @@ covers installation and profile selection.
 
 ## Where `ds` stops, and who continues
 
-`ds` owns DS data and DS effects. Four continuations are outside it. Hand over
-only on the condition that selects one, name the handover, return with the
-result:
+Four tasks need another tool. Hand over only when one applies, name it, and
+return with its result:
 
 - Native PLS-CADD — the model must be solved or accepted as the authority:
   edit in DS Grid, export, let PLS-CADD verify; `ds` never drives that UI.
@@ -82,10 +80,9 @@ ds capabilities feedback.submit --output json
 ```
 
 Submit one non-secret sighting with expected behavior, evidence, impact and
-acceptance. The job still gets done: you may improvise a disposable local step
-over files `ds` produced or read (filter, reshape, compare) and name it in the
-sighting. Never improvise DS data or effects: no gap file, API call or other
-route around `ds`.
+acceptance. To finish, you may filter, reshape or compare files produced or read
+through `ds` in a disposable local step; name it in the sighting. Never improvise
+DS data or effects or route around `ds` with a gap file or API call.
 
 ## Narrower skills
 
