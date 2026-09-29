@@ -600,6 +600,16 @@ fn dispatch(
                     .map_err(|error| engine_error(operation_id, error))?,
             )
         }
+        "engineering_issue_layer" => {
+            let params: RequestParams<ds_grid_engine::EngineeringIssueLayerRequest> =
+                parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                session
+                    .engineering_issue_layer(&params.request)
+                    .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
         "terrain_anomaly_analysis" => {
             let options: TerrainAnomalyOptions = parse(operation_id, params)?;
             serialize(
@@ -870,6 +880,22 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn engineering_issue_layer_admits_exact_typed_request_wrapper() {
+        let descriptor = operation_descriptor("engineering_issue_layer").unwrap();
+        assert!(is_admitted(&descriptor));
+        let params = json!({ "request": { "clearance": {}, "structure_screening": null, "max_features_per_kind": 42 } });
+        validate_params(&descriptor, &params).expect("descriptor admits request wrapper");
+        let parsed: RequestParams<ds_grid_engine::EngineeringIssueLayerRequest> =
+            parse("engineering_issue_layer", &params).expect("typed native request");
+        assert_eq!(parsed.request.max_features_per_kind, 42);
+        assert!(parsed.request.structure_screening.is_none());
+
+        validate_params(&descriptor, &json!({})).expect_err("request wrapper is required");
+        validate_params(&descriptor, &json!({ "clearance": {} }))
+            .expect_err("unwrapped request is refused");
+    }
 
     #[test]
     fn whole_model_spotting_accepts_exact_selected_alignments_and_omitted_all() {
