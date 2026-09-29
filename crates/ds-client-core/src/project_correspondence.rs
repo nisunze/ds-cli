@@ -1,12 +1,12 @@
-//! Correspondence, headlessly: parties, records, threads and the blockers a
-//! task carries (ds-brain `docs/contracts/correspondence.md`, §ds-brain API
-//! bodies).
+//! Project Work actions, headlessly: correspondence, task blockers, and
+//! durable task deletion backups (ds-brain's `/api/v1/pm` contract).
 //!
 //! The same door as [`crate::project_management`] — `POST /api/v1/pm`, the
 //! bearer as the authority, no pairing and no device — carrying the
 //! correspondence actions that contract added. Every `ds pm party …`, `ds pm
-//! record …` and `ds pm task block|unblock|read --timeline` request is one
-//! [`Action`] here; what the answer MEANS is the kernel's and the CLI's.
+//! record …`, `ds pm task block|unblock|read --timeline`, and deletion
+//! backup request is one [`Action`] here; what the answer MEANS is the
+//! kernel's and the CLI's.
 //!
 //! **This module is the DOOR, not the decisions.** It sends a closed set of
 //! actions with the fields each action reads — ds-brain decodes the envelope
@@ -116,6 +116,23 @@ pub enum Action {
         task_id: String,
         timeline: bool,
     },
+    /// Project-scoped inventory of durable task/milestone deletion backups.
+    DeletionInventory {
+        limit: Option<i64>,
+        cursor: Option<String>,
+    },
+    /// One backup manifest, or one exact archived entity named by its key.
+    DeletionRead {
+        backup_id: String,
+        item_key: Option<String>,
+    },
+    /// Governed restore under the current graph revision. The server owns
+    /// backup bytes and the graph revalidation; the client sends only ids.
+    DeletionRestore {
+        backup_id: String,
+        command_id: String,
+        base_revision: i64,
+    },
     /// One ordinary project command against one base revision —
     /// `commit_command`, as the Plan sheet sends it. The command is already
     /// shaped `{kind, <kind>: {…}}`; ds-brain rechecks permission, membership
@@ -142,6 +159,9 @@ impl Action {
             Self::TaskBlock { .. } => "task_block",
             Self::TaskUnblock { .. } => "task_unblock",
             Self::TaskRead { .. } => "task_read",
+            Self::DeletionInventory { .. } => "deletion_inventory",
+            Self::DeletionRead { .. } => "deletion_read",
+            Self::DeletionRestore { .. } => "deletion_restore",
             Self::Commit { .. } => "commit_command",
         }
     }
@@ -257,6 +277,41 @@ impl Action {
             Self::TaskRead { task_id, .. } => {
                 if !identifier(task_id) {
                     return Err(invalid("a task read names one task"));
+                }
+            }
+            Self::DeletionInventory { limit, cursor } => {
+                if limit.is_some_and(|limit| !(1..=100).contains(&limit)) {
+                    return Err(invalid("a deletion inventory reads 1 through 100 backups"));
+                }
+                if cursor
+                    .as_deref()
+                    .is_some_and(|cursor| !backup_id_valid(cursor))
+                {
+                    return Err(invalid("a deletion cursor names one bounded backup id"));
+                }
+            }
+            Self::DeletionRead {
+                backup_id,
+                item_key,
+            } => {
+                if !backup_id_valid(backup_id) {
+                    return Err(invalid("a deletion read names one bounded backup id"));
+                }
+                if item_key
+                    .as_deref()
+                    .is_some_and(|key| !backup_item_key_valid(key))
+                {
+                    return Err(invalid("a deletion item key is one SHA-256 hex digest"));
+                }
+            }
+            Self::DeletionRestore {
+                backup_id,
+                command_id,
+                base_revision,
+            } => {
+                if !backup_id_valid(backup_id) || !backup_id_valid(command_id) || *base_revision < 0
+                {
+                    return Err(invalid("a deletion restore needs a backup id, command id and non-negative base revision"));
                 }
             }
             Self::Commit {
@@ -392,6 +447,28 @@ impl Action {
                     payload["timeline"] = json!(true);
                 }
             }
+            Self::DeletionInventory { limit, cursor } => {
+                if let Some(limit) = limit {
+                    payload["limit"] = json!(limit);
+                }
+                set(&mut payload, "cursor", cursor.as_ref());
+            }
+            Self::DeletionRead {
+                backup_id,
+                item_key,
+            } => {
+                payload["backup_id"] = json!(backup_id);
+                set(&mut payload, "item_key", item_key.as_ref());
+            }
+            Self::DeletionRestore {
+                backup_id,
+                command_id,
+                base_revision,
+            } => {
+                payload["backup_id"] = json!(backup_id);
+                payload["command_id"] = json!(command_id);
+                payload["base_revision"] = json!(base_revision);
+            }
             Self::Commit {
                 command_id,
                 base_revision,
@@ -423,6 +500,20 @@ fn command_id_valid(id: &str) -> bool {
         && id
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+}
+
+// ds-brain's deletion backup IDs and restore command IDs use the PM command
+// ledger's stricter 8..128 character spelling, rather than general entity IDs.
+fn backup_id_valid(id: &str) -> bool {
+    (8..=128).contains(&id.len())
+        && id.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+}
+
+fn backup_item_key_valid(key: &str) -> bool {
+    key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// Classify one refused action, carrying the server's own code, sentence and
@@ -536,10 +627,13 @@ pub(crate) fn run<T: AuthorizedTransport>(
     if data.is_null() {
         return Err(unreadable());
     }
-    // A blocker command answers `{result: {…}}`; the result is what a caller
-    // reads. Every other action's data IS the answer.
+    // Graph mutations answer `{result: {…}}`; the result is what a caller
+    // reads. Every read action's data IS the answer.
     Ok(match action {
-        Action::TaskBlock { .. } | Action::TaskUnblock { .. } | Action::Commit { .. } => data
+        Action::TaskBlock { .. }
+        | Action::TaskUnblock { .. }
+        | Action::Commit { .. }
+        | Action::DeletionRestore { .. } => data
             .get("result")
             .filter(|result| result.is_object())
             .cloned()
@@ -611,6 +705,121 @@ mod tests {
         })
         .payload("proj");
         assert_eq!(parties["include_archived"], true);
+    }
+
+    #[test]
+    fn deletion_actions_match_the_project_work_backup_contract() {
+        let inventory = Action::DeletionInventory {
+            limit: Some(25),
+            cursor: Some("delete_0001".into()),
+        };
+        assert!(inventory.validate().is_ok());
+        assert_eq!(
+            inventory.payload("project-1"),
+            json!({
+                "action": "deletion_inventory", "ds_project": "project-1",
+                "limit": 25, "cursor": "delete_0001",
+            })
+        );
+        assert_eq!(
+            Action::DeletionInventory {
+                limit: None,
+                cursor: None
+            }
+            .payload("project-1"),
+            json!({
+                "action": "deletion_inventory", "ds_project": "project-1",
+            })
+        );
+
+        let digest = "a".repeat(64);
+        let read = Action::DeletionRead {
+            backup_id: "delete_0001".into(),
+            item_key: Some(digest.clone()),
+        };
+        assert!(read.validate().is_ok());
+        assert_eq!(
+            read.payload("project-1"),
+            json!({
+                "action": "deletion_read", "ds_project": "project-1",
+                "backup_id": "delete_0001", "item_key": digest,
+            })
+        );
+        assert_eq!(
+            Action::DeletionRead {
+                backup_id: "delete_0001".into(),
+                item_key: None,
+            }
+            .payload("project-1"),
+            json!({
+                "action": "deletion_read", "ds_project": "project-1", "backup_id": "delete_0001",
+            })
+        );
+
+        let restore = Action::DeletionRestore {
+            backup_id: "delete_0001".into(),
+            command_id: "restore_0001".into(),
+            base_revision: 42,
+        };
+        assert!(restore.validate().is_ok());
+        assert_eq!(
+            restore.payload("project-1"),
+            json!({
+                "action": "deletion_restore", "ds_project": "project-1", "backup_id": "delete_0001",
+                "command_id": "restore_0001", "base_revision": 42,
+            })
+        );
+    }
+
+    #[test]
+    fn deletion_actions_refuse_malformed_selectors_before_transport() {
+        let invalid = |action: Action| action.validate().expect_err("invalid action").kind();
+        for limit in [0, 101] {
+            assert_eq!(
+                invalid(Action::DeletionInventory {
+                    limit: Some(limit),
+                    cursor: None
+                }),
+                ErrorKind::InvalidInput
+            );
+        }
+        assert_eq!(
+            invalid(Action::DeletionInventory {
+                limit: None,
+                cursor: Some("../wrong".into())
+            }),
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            invalid(Action::DeletionRead {
+                backup_id: "short".into(),
+                item_key: None
+            }),
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            invalid(Action::DeletionRead {
+                backup_id: "delete_0001".into(),
+                item_key: Some("not-a-digest".into())
+            }),
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            invalid(Action::DeletionRestore {
+                backup_id: "delete_0001".into(),
+                command_id: "bad.id0001".into(),
+                base_revision: 0
+            }),
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            invalid(Action::DeletionRestore {
+                backup_id: "delete_0001".into(),
+                command_id: "restore_0001".into(),
+                base_revision: -1
+            }),
+            ErrorKind::InvalidInput
+        );
     }
 
     #[test]
