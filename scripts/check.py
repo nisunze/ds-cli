@@ -12,7 +12,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_DESCRIPTION_CHARS = 512
-MAX_ENTRY_SKILL_BYTES = 4 * 1024
+# +256 (owner, 2026-09-29): the entry skill grants a bounded right to improvise
+# a disposable file step where ds stops, reported as feedback.
+MAX_ENTRY_SKILL_BYTES = 4 * 1024 + 256
 MAX_SKILL_BYTES = 8 * 1024
 # Tokens that only appear when something routes around `ds`, or tells the
 # reader to switch off a platform security control to run something. A skill

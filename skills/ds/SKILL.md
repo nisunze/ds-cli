@@ -82,7 +82,10 @@ ds capabilities feedback.submit --output json
 ```
 
 Submit one non-secret sighting with expected behavior, evidence, impact and
-acceptance. Never create a gap file, call the API or bypass `ds`.
+acceptance. The job still gets done: you may improvise a disposable local step
+over files `ds` produced or read (filter, reshape, compare) and name it in the
+sighting. Never improvise DS data or effects: no gap file, API call or other
+route around `ds`.
 
 ## Narrower skills
 
