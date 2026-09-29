@@ -6,7 +6,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::DESCRIPTOR_ARG;
 
@@ -26,13 +26,23 @@ const VISIBILITY_KEYS: &[&str] = &[
 
 const PROFILE_CLOSED: Refusal = Refusal {
     code: "profile_closed",
-    when: "fit or rebuild is requested while the paired Desktop has no open Profile",
+    when: "fit or rebuild has no open Profile, or selection has no open model Profile and scene",
     remedy: "open a model with ds dsgrid profile open, then retry",
 };
 const INVALID_PROFILE_VIEW: Refusal = Refusal {
     code: "invalid_profile_view",
     when: "a visibility, scale, viewport, or action value is invalid",
     remedy: "use the exact fields and ranges in ds map profile set --help",
+};
+const INVALID_PROFILE_SELECTION: Refusal = Refusal {
+    code: "invalid_profile_selection",
+    when: "an endpoint ID or mode is invalid, the endpoints are unknown or cross families, or the native scene refuses the range",
+    remedy: "read map profile view for the current model and use IDs from one scene family with replace, add, remove or intersect",
+};
+const PROFILE_SELECTION_STALE: Refusal = Refusal {
+    code: "profile_selection_stale",
+    when: "the named model or revision differs from the open Profile or its held scene changed during selection",
+    remedy: "read map profile view again, use its model_id and revision, and retry against the current scene",
 };
 
 pub static VIEW: Command = Command {
@@ -46,7 +56,7 @@ pub static VIEW: Command = Command {
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[DESCRIPTOR_ARG],
-    output: "The paired Profile's occupant, scale, visibility, viewport, edit_mode boolean and selection {entity_ids, primary, kind, structures:[{id,number}]}. Selection IDs follow engine order for one family; mixed selections retain the selected IDs. kind is none, structures, tension_sections, alignments, terrain_points or mixed. structures is populated only for a structures selection; number is the displayed structure number or null when unknown.",
+    output: "The paired Profile's occupant, model_id and revision (null without an open model), scale, visibility, viewport, edit_mode boolean and selection {entity_ids, primary, kind, structures:[{id,number}]}. The legacy model field also remains. Selection IDs follow engine order for one family; mixed selections retain the selected IDs. kind is none, structures, tension_sections, alignments, terrain_points, attachment_points or mixed. structures is populated only for a structures selection; number is the displayed structure number or null when unknown.",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
@@ -129,6 +139,76 @@ pub static SET: Command = Command {
     availability: crate::paired_availability,
 };
 
+pub static SELECT: Command = Command {
+    id: "map.profile.select",
+    path: &["map", "profile", "select"],
+    contract: 1,
+    summary: "Select one entity or a same-family range in the paired model Profile.",
+    purpose: "Changes only the paired Desktop's transient Profile selection. The Desktop checks the explicitly named model and revision against its held scene, asks the native scene for the inclusive same-family range, and applies the named set mode. Use the same ID for --from and --to to select one entity. No engineering model is changed.",
+    chapter: Chapter::MapPresentation,
+    effect: Effect::LocalUi,
+    authority: Authority::DesktopPairing,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value("model", "<model-id>", "Exact ID of the open model Profile.").required(),
+        Arg::value(
+            "revision",
+            "<revision-id>",
+            "Expected held model revision from map profile view.",
+        )
+        .required(),
+        Arg::value(
+            "from",
+            "<entity-id>",
+            "First Profile entity ID; an inclusive range endpoint.",
+        )
+        .required(),
+        Arg::value(
+            "to",
+            "<entity-id>",
+            "Last Profile entity ID; use --from's ID for one entity.",
+        )
+        .required(),
+        Arg::value(
+            "mode",
+            "<replace|add|remove|intersect>",
+            "How to combine the native range with the current selection.",
+        )
+        .choices(&["replace", "add", "remove", "intersect"])
+        .default("replace"),
+        DESCRIPTOR_ARG,
+    ],
+    output: "The paired Desktop's native selection receipt with the held model and revision, selected entity IDs and primary focus. The range follows the native scene's family order; no range is calculated by the CLI.",
+    examples: &[Example {
+        command: "ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> --mode replace --desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.json --output json",
+        note: "Select one entity by using the same ID twice; the explicit descriptor addresses the local development Desktop without discovery.",
+        runnable: false,
+    }],
+    refusals: &[
+        crate::NOT_PAIRED,
+        crate::AMBIGUOUS,
+        crate::UNREACHABLE,
+        crate::PAIRING_REJECTED,
+        PROFILE_CLOSED,
+        PROFILE_SELECTION_STALE,
+        INVALID_PROFILE_SELECTION,
+        crate::UNSUPPORTED,
+        crate::UNREADABLE,
+        crate::REFUSED,
+    ],
+    reference: Some("docs/reference/map.md"),
+    search: &[
+        "selection",
+        "range",
+        "structures",
+        "tension sections",
+        "terrain points",
+        "attachment points",
+    ],
+    requires: Requires::Window,
+    availability: crate::paired_availability,
+};
+
 pub fn view(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
@@ -148,6 +228,50 @@ pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Value::Object(patch),
         crate::UI_TIMEOUT,
     )
+}
+
+pub fn select(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let request = selection_request(inputs)?;
+    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
+    crate::invoke(
+        &descriptor,
+        &crate::PROFILE_SELECT,
+        request,
+        crate::UI_TIMEOUT,
+    )
+}
+
+fn selection_request(inputs: &Inputs) -> Result<Value, Failure> {
+    let model = selection_id(inputs.require("model")?, "model")?;
+    let revision = selection_id(inputs.require("revision")?, "revision")?;
+    let from = selection_id(inputs.require("from")?, "from")?;
+    let to = selection_id(inputs.require("to")?, "to")?;
+    let mode = inputs.value("mode").unwrap_or("replace");
+    if !matches!(mode, "replace" | "add" | "remove" | "intersect") {
+        return Err(invalid_selection(
+            "mode must be replace, add, remove or intersect",
+        ));
+    }
+    Ok(json!({
+        "model_id": model,
+        "expected_revision": revision,
+        "from_entity_id": from,
+        "to_entity_id": to,
+        "mode": mode,
+    }))
+}
+
+fn selection_id<'a>(raw: &'a str, flag: &str) -> Result<&'a str, Failure> {
+    if raw.trim().is_empty() || raw.len() > 200 || raw.chars().any(char::is_control) {
+        return Err(invalid_selection(format!(
+            "--{flag} must be a nonblank ID of at most 200 bytes without control characters"
+        )));
+    }
+    Ok(raw)
+}
+
+fn invalid_selection(message: impl Into<String>) -> Failure {
+    Failure::invalid("invalid_profile_selection", message.into())
 }
 
 fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
@@ -227,6 +351,10 @@ pub fn render(data: &Value) -> String {
     format!("profile visual state {}\n", data)
 }
 
+pub fn render_selection(data: &Value) -> String {
+    format!("profile selection {}\n", data)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,5 +369,74 @@ mod tests {
         );
         assert!(parse_visibility(r#"{"ground":"false"}"#).is_err());
         assert!(parse_visibility(r#"{"bogus":true}"#).is_err());
+    }
+
+    #[test]
+    fn selection_request_preserves_opaque_ids_and_defaults_to_replace() {
+        let from = r#"["attachment-1","pole-2"]"#;
+        let args = [
+            "--model",
+            "model-a",
+            "--revision",
+            "revision-b",
+            "--from",
+            from,
+            "--to",
+            from,
+        ]
+        .map(str::to_owned);
+        let inputs = ds_cli_contract::args::parse(&SELECT, &args).expect("declared inputs");
+        assert_eq!(
+            selection_request(&inputs).expect("selection request"),
+            json!({
+                "model_id": "model-a",
+                "expected_revision": "revision-b",
+                "from_entity_id": from,
+                "to_entity_id": from,
+                "mode": "replace",
+            })
+        );
+        let override_args = [
+            "--model",
+            "model-a",
+            "--revision",
+            "revision-b",
+            "--from",
+            from,
+            "--to",
+            from,
+            "--mode",
+            "intersect",
+        ]
+        .map(str::to_owned);
+        let override_inputs =
+            ds_cli_contract::args::parse(&SELECT, &override_args).expect("declared mode");
+        assert_eq!(
+            selection_request(&override_inputs).expect("selection request")["mode"],
+            "intersect"
+        );
+    }
+
+    #[test]
+    fn selection_request_rejects_blank_or_oversized_ids_before_pairing() {
+        let oversized = "x".repeat(201);
+        for id in [" ", "\n", oversized.as_str()] {
+            let args = [
+                "--model",
+                "model-a",
+                "--revision",
+                "revision-b",
+                "--from",
+                id,
+                "--to",
+                "pole-2",
+            ]
+            .map(str::to_owned);
+            let inputs = ds_cli_contract::args::parse(&SELECT, &args).expect("declared inputs");
+            assert_eq!(
+                selection_request(&inputs).unwrap_err().code(),
+                "invalid_profile_selection"
+            );
+        }
     }
 }

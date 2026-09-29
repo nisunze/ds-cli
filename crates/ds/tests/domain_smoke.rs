@@ -7016,6 +7016,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.camera.set",
         "map.profile.view",
         "map.profile.set",
+        "map.profile.select",
         "map.renderer.configure",
         "map.draw",
         "map.remove",
@@ -7069,6 +7070,33 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     assert_eq!(
         actual, expected,
         "map command coverage list changed; add a specific smoke assertion for the new command before accepting it"
+    );
+    let profile_select = ok(&["capabilities", "map.profile.select", "--output", "json"]);
+    assert_eq!(profile_select["command"]["effect"], "local_ui");
+    assert_eq!(profile_select["command"]["authority"], "desktop_pairing");
+    assert!(
+        profile_select["command"]["purpose"]
+            .as_str()
+            .expect("purpose")
+            .contains("native scene")
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "profile",
+            "select",
+            "--model",
+            " ",
+            "--revision",
+            "rev-a",
+            "--from",
+            "pole-1",
+            "--to",
+            "pole-1",
+            "--output",
+            "json",
+        ]),
+        "invalid_profile_selection"
     );
     let printing = ok(&["map", "print", "schema", "--output", "json"]);
     assert!(

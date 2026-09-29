@@ -813,6 +813,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.camera.set", "local_ui", "desktop_pairing"),
     ("map.profile.view", "read_only", "desktop_pairing"),
     ("map.profile.set", "local_ui", "desktop_pairing"),
+    ("map.profile.select", "local_ui", "desktop_pairing"),
     ("map.renderer.configure", "local_ui", "desktop_pairing"),
     ("map.zoom", "local_ui", "desktop_pairing"),
     ("mcp.install", "machine_write", "none"),

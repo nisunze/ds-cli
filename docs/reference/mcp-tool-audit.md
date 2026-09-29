@@ -258,6 +258,7 @@ Columns: **Typed tool** is the leaf under `--exposure commands` and in any profi
 | `map.camera.set` | `map_camera_set` | `ds_map_presentation` | local_ui | n/n/n | — | yes | tool |
 | `map.profile.view` | `map_profile_view` | `ds_map_presentation` | read_only | y/n/y | — | yes | tool |
 | `map.profile.set` | `map_profile_set` | `ds_map_presentation` | local_ui | n/n/n | — | yes | tool |
+| `map.profile.select` | `map_profile_select` | `ds_map_presentation` | local_ui | n/n/n | — | yes | tool |
 | `map.renderer.configure` | `map_renderer_configure` | `ds_map_presentation` | local_ui | n/n/n | — | yes | tool |
 | `map.draw` | `map_draw` | `ds_survey` | local_ui | n/n/n | — | yes | tool |
 | `map.remove` | `map_remove` | `ds_survey` | local_ui | n/n/n | — | yes | tool |

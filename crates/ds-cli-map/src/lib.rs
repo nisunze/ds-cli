@@ -57,6 +57,7 @@ pub static DOMAIN: Domain = Domain {
         &renderer_configure::COMMAND,
         &profile::VIEW,
         &profile::SET,
+        &profile::SELECT,
         &draw::COMMAND,
         &remove::COMMAND,
         &zoom::COMMAND,
@@ -159,6 +160,16 @@ pub const PROFILE_SET: BridgeOp = BridgeOp {
         "pan_x",
         "pan_y",
         "action",
+    ],
+};
+pub const PROFILE_SELECT: BridgeOp = BridgeOp {
+    operation: "map.profile.select",
+    arguments: &[
+        "model_id",
+        "expected_revision",
+        "from_entity_id",
+        "to_entity_id",
+        "mode",
     ],
 };
 pub const CAMERA_SET: BridgeOp = BridgeOp {
@@ -372,6 +383,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &CAMERA_SET,
     &PROFILE_VIEW,
     &PROFILE_SET,
+    &PROFILE_SELECT,
     &RENDERER_CONFIGURE,
     &UI_OPEN,
     &EVIDENCE_CAPTURE,

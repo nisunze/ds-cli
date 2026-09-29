@@ -281,12 +281,16 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     ("ds-cli-desktop", 25),
     // The lens crate. Window commands are its purpose; its server commands
     // (the machine-local layer catalogue) are not counted here.
-    // Profile view/set are display controls in the paired window.
+    // Profile view/set/select are display and transient selection controls in
+    // the paired window. The 2026-09-29 owner decision admits select as a
+    // lens command because its target is the held Profile scene and viewport;
+    // the native scene resolves same-family ranges without model mutation.
     // 41 → 39 on 2026-09-23: survey migrate plan/apply left for the headless
     // `ds survey migrate` (both projects explicit). 39 → 38 on 2026-09-26:
     // `map design batch report` deleted; Compounded Report archives are
     // `ds report project compounded` only.
-    ("ds-cli-map", 38),
+    // 38 → 39: the explicit revision-guarded map.profile.select lens command.
+    ("ds-cli-map", 39),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
     // command headless (contract 01 of the dsgrid-authority program).
@@ -533,7 +537,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // 41 → 39 on 2026-09-23: survey migrate plan/apply run headless as
     // `ds survey migrate`, both projects explicit. 39 → 38 on 2026-09-26:
     // `map.design.batch.report` deleted (`ds report project compounded`).
-    ("map", 38),
+    // 38 → 39 on 2026-09-29: revision-guarded map.profile.select is an
+    // authorized transient Profile lens command; the native scene owns range.
+    ("map", 39),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
@@ -547,10 +553,11 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 /// 114 → 86 the same day (`design`), 86 → 85 the same day (`dsgrid`),
 /// then 85 → 88 on 2026-09-22 when three shipped Profile controls were admitted,
 /// 88 → 86 on 2026-09-23 (survey migration, headless), and 86 → 85 on
-/// 2026-09-26 (`map.design.batch.report` deleted).
+/// 2026-09-26 (`map.design.batch.report` deleted), then 85 → 86 on
+/// 2026-09-29 (authorized revision-guarded Profile selection lens command).
 // The 2026-09-22 audit admits three existing Profile window commands that
 // landed after the prior snapshot: dsgrid.profile.open and map.profile.view/set.
-const WINDOW_BACKLOG_TOTAL: u64 = 85;
+const WINDOW_BACKLOG_TOTAL: u64 = 86;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {
