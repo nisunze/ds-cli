@@ -75,7 +75,7 @@ full. Long lists are truncated and the withheld count reported.",
 
 /// The source refusals, then the request refusals. Spliced at compile time so
 /// the list cannot fall out of step with what the two modules actually emit.
-static REFUSALS: [Refusal; 10] =
+static REFUSALS: [Refusal; 11] =
     refusals::splice(&[sources::SHARED_REFUSALS, request::REQUEST_REFUSALS]);
 
 fn available() -> Availability {
@@ -142,6 +142,7 @@ pub fn project(plan: &ConversionPlan) -> Value {
         "pinned_digests": plan.pinned_digests,
         "declared_crs": plan.declared_crs,
         "swap_xy": plan.swap_xy,
+        "include_layers": plan.gis_include_layers,
         "blockers": plan.blockers,
         "warnings": plan.warnings,
         "losses": plan.losses,

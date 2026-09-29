@@ -51,7 +51,9 @@ Plans the conversion, refuses if the plan carries a blocker, then executes it \
 and writes every artifact under --out together with an exchange-report.json. \
 Source bytes are re-digested against the plan's pins before anything is \
 written, so a source that changed since planning stops the run. Existing \
-output paths are never overwritten.",
+output paths are never overwritten. A kmz or shp is a client GIS file: it \
+leaves out tension_sections and terrain_points unless --include-layer names \
+them, and its engine report is written beside it, never inside.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -70,6 +72,11 @@ the exchange report.",
         Example {
             command: "ds dsgrid-exchange convert --source ./model.dsgrid --target kmz --out ./out --output json",
             note: "Export a model for GIS, after reading the losses `plan` reported.",
+            runnable: false,
+        },
+        Example {
+            command: "ds dsgrid-exchange convert --source ./model.dsgrid --target shp --include-layer tension_sections --out ./out --output json",
+            note: "A client Shapefile ZIP that keeps tension sections; terrain points stay out.",
             runnable: false,
         },
         Example {
@@ -106,7 +113,7 @@ const fn args() -> [Arg; request::SHARED_ARGS.len() + 1] {
     out
 }
 
-static REFUSALS: [Refusal; 16] = refusals::splice(&[
+static REFUSALS: [Refusal; 17] = refusals::splice(&[
     sources::SHARED_REFUSALS,
     request::REQUEST_REFUSALS,
     CONVERT_REFUSALS,

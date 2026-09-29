@@ -239,6 +239,22 @@ Three rules hold, and they are the reason this is safe to hand to an agent:
 `convert` is `local_file_write`, not `artifact_write`, so it does not require
 `--yes`. It writes into a directory the caller named, and publishes nothing.
 
+### Client GIS files: `kmz` and `shp`
+
+A KMZ or Shapefile ZIP is what a client receives, so by default it carries no
+`tension_sections`, no `terrain_points` and no internal report (owner rule,
+2026-09-29). `plan` lists the two omitted layers under losses, and the engine's
+exchange report is written beside the artifact (`model.shp.zip.exchange-report.json`,
+as `model.kmz.exchange-report.json` always was), never inside the ZIP. Keep a
+layer with `--include-layer <layer>` (repeatable); the accepted ids are the
+engine's layer set, and any other is refused as `unknown_gis_layer`. The other
+GIS and tabular targets keep every layer.
+
+```bash
+ds dsgrid-exchange convert --source ./model.dsgrid --target shp \
+  --include-layer tension_sections --out ./out
+```
+
 Three model facts a whole-design PLS-CADD export writes that used to need a
 post-export patch:
 
