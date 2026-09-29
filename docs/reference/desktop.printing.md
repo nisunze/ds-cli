@@ -66,11 +66,13 @@ The CLI returns artifact evidence without downloading a ZIP.
 For one A4 voltage-drop PDF without regenerating other formats, pass a local
 selection file containing
 `{"schema":"ds.design-output-selection/v1","geospatial":["voltage_drop_pdf"]}`
-to `ds desktop printing export --selection <file>`. The fixed analytical PDF
-does not require a named print layout. Its filename is
+to `ds desktop printing export --selection <file>`. This PDF uses local
+Chromium printing and does not require a named map print layout. Its filename is
 `<Display Name> voltage drop.pdf`; `paper_size` in the receipt is `A4`.
 The saved project selection chooses `voltage_drop_report: "extended"` by
 default, or `"brief"` when explicitly set.
+Web execution does not generate this PDF; after local publication the Web app
+can preview and download it.
 
 ## Map export
 

@@ -665,11 +665,12 @@ policy selects neither voltage-drop output does not read this tag projection.
 `ds.design-output-selection/v1` document, under `geospatial`, then use
 `ds report project export` or `ds desktop printing export`. The report format
 field `voltage_drop_report` chooses `extended` (the default) or `brief` for
-both voltage-drop outputs. The PDF is rendered by the same reporter on the
-Desktop, headless Server, and Web execution lanes; cartographic print layouts
-remain Desktop/Server outputs. A local desktop selection override can select
-the PDF without changing project settings, but the report format itself is
-read from the project's saved selection.
+both voltage-drop outputs. The A4 PDF is printed through local Chromium on
+Desktop or the headless Server; Web execution omits it. The Web app may preview
+or download a PDF after local publication. A local desktop selection override
+can select the PDF without changing project settings, but the report format
+itself is read from the project's saved selection. This fixed A4 output does
+not require a named map print layout.
 
 Survey forms the project appends to delivered reports
 (`include_survey_data_in_transformer_exports`,
