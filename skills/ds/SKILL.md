@@ -62,8 +62,8 @@ covers installation and profile selection.
 only on the condition that selects one, name the handover, return with the
 result:
 
-- Native PLS-CADD — the model must be opened, solved or visually accepted:
-  `ds` writes and reads workspaces, never drives that UI.
+- Native PLS-CADD — the model must be solved or accepted as the authority:
+  edit in DS Grid, export, let PLS-CADD verify; `ds` never drives that UI.
 - A document renderer — a reviewed draft must become DOCX/PDF: `ds` authors
   and lints the text, installed document tools typeset it.
 - The DS GridDesign Desktop map and screen recorders — interactive geometry
