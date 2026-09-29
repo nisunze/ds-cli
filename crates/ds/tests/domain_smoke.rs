@@ -16545,3 +16545,146 @@ fn exports_and_version_markers_refuse_malformed_requests_before_authentication()
     );
     std::fs::remove_dir_all(&root).ok();
 }
+
+// ---------------------------------------------------------------------------
+// pls structure-translate
+// ---------------------------------------------------------------------------
+
+/// The public humble-pole design named into a canonical library written here
+/// (its own two structure files under canonical names: a test double, never
+/// a library anything is delivered from). Without a staking table the
+/// baseline is the design as DS reads it; the dry run translates and compares
+/// in memory, the write commits the four artifacts.
+#[test]
+fn pls_structure_translate_names_local_models_and_accepts_them_by_quantities() {
+    use sha2::{Digest, Sha256};
+    let backup = PathBuf::from(common::fixture()).with_file_name("humble-pole-16.81.bak");
+    let root = temp_root("structure-translate");
+    let library = root.join("canonical");
+    std::fs::create_dir_all(&library).unwrap();
+    for (local, canonical) in [
+        ("hp-m1-strain.012", "l-w-S190.012"),
+        ("hp-m2-strain.012", "l-w-S255.012"),
+    ] {
+        std::fs::copy(
+            workspace_file(&format!("structures/{local}")),
+            library.join(canonical),
+        )
+        .unwrap();
+    }
+    let backup = backup.display().to_string();
+    let library = library.display().to_string();
+    let base = [
+        "pls",
+        "structure-translate",
+        "--backup",
+        backup.as_str(),
+        "--crs",
+        "rwanda-tm",
+        "--library",
+        library.as_str(),
+        "--map",
+        "hp-m1-strain.012=l-w-S190.012",
+        "--map",
+        "hp-m2-strain.012=l-w-S255.012",
+    ];
+    let with = |extra: &[&str]| -> Vec<String> {
+        base.iter()
+            .chain(extra.iter())
+            .map(|arg| arg.to_string())
+            .collect()
+    };
+    fn call(args: &[String]) -> Vec<&str> {
+        args.iter().map(String::as_str).collect()
+    }
+
+    assert_eq!(
+        refusal(&call(&with(&["--output", "json"]))),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refusal(&call(&with(&[
+            "--map",
+            "no-equals-sign",
+            "--dry-run",
+            "--output",
+            "json"
+        ]))),
+        "invalid_decision"
+    );
+
+    let dry = ok(&call(&with(&["--dry-run", "--output", "json"])));
+    assert_eq!(dry["status"], "dry_run");
+    assert_eq!(dry["baseline"]["kind"], "in_memory");
+    assert_eq!(dry["counts"]["retyped"], 2);
+    assert_eq!(dry["counts"]["imported"], 2);
+    assert_eq!(dry["complete"], true);
+    assert!(dry["refusal_on_write"].is_null());
+    assert!(dry["artifacts"].as_array().unwrap().is_empty());
+    let statuses: Vec<(&str, &str)> = dry["local_models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|local| {
+            (
+                local["local_type"].as_str().unwrap(),
+                local["status"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        statuses,
+        vec![
+            ("hp-m1-strain.012", "mapped"),
+            ("hp-m2-strain.012", "mapped")
+        ]
+    );
+    assert_eq!(dry["acceptance"]["joined"], 2);
+
+    let out = root.join("out").display().to_string();
+    assert_eq!(
+        refusal(&call(&with(&[
+            "--out",
+            out.as_str(),
+            "--yes",
+            "--output",
+            "json"
+        ]))),
+        "missing_digest_pin"
+    );
+    let digest = format!(
+        "sha256:{:x}",
+        Sha256::digest(std::fs::read(&backup).unwrap())
+    );
+    let written = ok(&call(&with(&[
+        "--source-sha256",
+        digest.as_str(),
+        "--out",
+        out.as_str(),
+        "--yes",
+        "--output",
+        "json",
+    ])));
+    assert_eq!(written["status"], "written");
+    let roles: Vec<&str> = written["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|artifact| artifact["role"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        roles,
+        vec![
+            "translated_model",
+            "blind_staking_table",
+            "mapping",
+            "receipt"
+        ]
+    );
+    assert!(
+        PathBuf::from(&out)
+            .join("translation-receipt.json")
+            .is_file()
+    );
+    std::fs::remove_dir_all(&root).ok();
+}

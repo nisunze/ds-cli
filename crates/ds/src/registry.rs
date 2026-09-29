@@ -605,6 +605,11 @@ static PLS_ENTRIES: &[Entry] = &[
         render: ds_cli_pls::structure_substitute::render,
     },
     Entry {
+        command: &ds_cli_pls::structure_translate::COMMAND,
+        handler: ds_cli_pls::structure_translate::run,
+        render: ds_cli_pls::structure_translate::render,
+    },
+    Entry {
         command: &ds_cli_pls::terrain_reconcile::COMMAND,
         handler: ds_cli_pls::terrain_reconcile::run,
         render: ds_cli_pls::terrain_reconcile::render,

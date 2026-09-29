@@ -62,6 +62,56 @@ and `native_restore_reopen_accepted: false`. A fresh native PLS-CADD Restore,
 reopen, post-Restore closure and expected-count comparison remain separate
 submission gates.
 
+## Named translation into the canonical library
+
+`structure-translate` takes a local designer's backup whose structure models
+carry a private vocabulary (EDCL-style `S190_1p_strain_12`, `HS255T-OFFHor_12`,
+`C 1000_2p_tfo_ 12. Str`) and names every placed structure into a canonical
+library, one local model to one canonical member. It never renames a local
+file and never puts one member's bytes under another name; a canonical member
+no library holds is reported `missing_member`, to be authored natively.
+
+The design's staking table is the key. The dry run converts the backup in
+memory, joins every staking row to the placed structure at its easting and
+northing, and reports per local model the bill-of-quantities signatures its
+rows carry (pole column and count, assembly, H-pole or cross-arm, existing,
+transformer, stays, foundation), how the table spells it, its line angles and
+its attachment sets. Deciding the map from that evidence is a reviewer's job
+(an agent, or a person): the receipt's `mapping_template` is the document to
+fill, `--mapping` passes it back, and `--map local=canonical` adds or replaces
+one decision.
+
+```bash
+ds pls structure-translate --backup './HUYE ASCENT MV R1.bak' --crs rwanda-tm \
+  --staking './MV STAKING TABLE HUYE ASCENT.xlsx' --library ./canonical/structures --dry-run --output json
+ds pls structure-translate --backup './HUYE ASCENT MV R1.bak' --crs rwanda-tm \
+  --staking './MV STAKING TABLE HUYE ASCENT.xlsx' --library ./canonical/structures \
+  --mapping ./huye-map.json --source-sha256 'sha256:…' --out ./huye-canonical --yes --output json
+```
+
+The write brings each mapped member in with its exact library bytes (the first
+`--library` holding a name wins; a later one holding other bytes is named in
+`notes`), re-binds every wire onto the member's own sets, and applies the
+change through the engine as one `retype_structures_with_supports` command. A
+wire's side is read from stationing on the alignment it shares with its
+neighbour: arriving wires take the first dead-end set of their kind, departing
+the second, a branch the third, a pass-through the suspension set; within a
+set each wire goes to the point nearest its own. A placement whose wires the
+member cannot carry is `held_back`, never forced.
+
+Acceptance is the bill of quantities. DS writes its own staking table blind
+from the translated model and compares it with the design's, joined by
+position. `same_structure_bom` covers what names decide (poles, assemblies,
+H-pole or cross-arm, existing, transformer, foundation); stays, struts and
+flying stays are site quantities compared beside it. Differences come grouped
+as patterns (column, local spelling, canonical name) to be judged once each.
+Without `--staking` the baseline is the table DS reads from the design as it
+stands.
+
+The output root holds the translated `.dsgrid`, the blind staking table, the
+map it applied (`translation-map.json`, reusable for the next design from the
+same designer) and `translation-receipt.json`.
+
 ## Digest pinning is not optional
 
 `compare-don` is **digest-pinned**: the task requires an expected `sha256:` for
@@ -450,6 +500,7 @@ Every command calls one function in `ds-grid-tasks`:
 | `section-orientation` | `diagnose_pls_section_orientation` |
 | `compare-don` | `compare_don_assignment` |
 | `shading-variants` | `create_pls_shading_variants` |
+| `structure-translate` | `translate_pls_structure_models` |
 | `terrain-reconcile` | `reconcile_pls_terrain` |
 | `deviation-labels` | `label_pls_deviations` |
 | `delivery-verify` | `verify_pls_delivery` |

@@ -32,6 +32,7 @@ pub mod section_orientation;
 pub mod shading_variants;
 pub mod structure_inventory;
 pub mod structure_substitute;
+pub mod structure_translate;
 pub mod terrain_reconcile;
 
 use ds_cli_contract::spec::Domain;
@@ -48,6 +49,7 @@ pub static DOMAIN: Domain = Domain {
         &structure_inventory::COMMAND,
         &shading_variants::COMMAND,
         &structure_substitute::COMMAND,
+        &structure_translate::COMMAND,
         &terrain_reconcile::COMMAND,
         &deviation_labels::COMMAND,
         &delivery_verify::COMMAND,
