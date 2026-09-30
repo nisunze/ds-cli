@@ -1089,6 +1089,38 @@ impl DeviceApiAuthorization<'_> {
         )
     }
 
+    /// Read exact persisted analysis bytes using this captured device authority
+    /// and an explicit project/head fence. Server refusals retain their codes.
+    pub fn transformer_analysis<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        transformer: &str,
+        analysis_version: u64,
+        content_digest: &str,
+        analysis_sha256: &str,
+        now: u64,
+    ) -> Result<Vec<u8>, ClientError> {
+        crate::transformer_analysis::validate(
+            project,
+            transformer,
+            analysis_version,
+            content_digest,
+            analysis_sha256,
+        )?;
+        self.ensure_active(now)?;
+        crate::transformer_analysis::read(
+            self.profile,
+            transport,
+            self.authority(),
+            project,
+            transformer,
+            analysis_version,
+            content_digest,
+            analysis_sha256,
+        )
+    }
+
     pub fn transformer_context<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

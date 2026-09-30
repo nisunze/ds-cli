@@ -221,6 +221,14 @@ struct TransportState {
     refresh: VecDeque<TransportResponse>,
     projects: VecDeque<TransportResponse>,
     transformer_context: VecDeque<TransportResponse>,
+    transformer_analyses: VecDeque<
+        Result<
+            ds_client_core::TransformerAnalysisResponse,
+            ds_client_core::TransformerAnalysisTransportError,
+        >,
+    >,
+    transformer_analysis_bodies: Vec<serde_json::Value>,
+    transformer_analysis_authorities: Vec<(String, String, String, Option<String>)>,
     transformer_saves: VecDeque<TransportResponse>,
     transformer_save_bodies: Vec<serde_json::Value>,
     project_forms: VecDeque<TransportResponse>,
@@ -793,6 +801,44 @@ impl Transport for FixtureTransport {
             return Err(TransportError::Unreachable);
         }
         Ok(state.refresh.pop_front().unwrap())
+    }
+
+    fn transformer_analysis(
+        &mut self,
+        call: ds_client_core::TransformerAnalysisCall<'_>,
+    ) -> Result<
+        ds_client_core::TransformerAnalysisResponse,
+        ds_client_core::TransformerAnalysisTransportError,
+    > {
+        assert_eq!(call.method(), "POST");
+        assert_eq!(call.path(), "/api/v1/data");
+        assert_eq!(call.content_type(), "application/json");
+        assert_eq!(call.response_limit(), 32 * 1024 * 1024);
+        assert_eq!(call.timeout_seconds(), 120);
+        assert_eq!(
+            call.correlation_headers(),
+            ["X-Request-Id", "X-DS-Action-Id"]
+        );
+        assert_eq!(
+            call.gateway_origin(),
+            profile(DeploymentLane::Stable).gateway_origin()
+        );
+        assert_eq!(call.gateway_api_key(), "public-gateway-key");
+        assert_eq!(call.client_id(), "ds-native-client");
+        let mut state = self.0.lock().unwrap();
+        state
+            .transformer_analysis_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        state.transformer_analysis_authorities.push((
+            call.bearer_token().to_owned(),
+            call.canonical_uid().to_owned(),
+            call.canonical_email().to_owned(),
+            call.device_id().map(str::to_owned),
+        ));
+        state
+            .transformer_analyses
+            .pop_front()
+            .expect("one analysis answer per call")
     }
 
     fn list_projects(
@@ -12777,4 +12823,373 @@ fn native_lv_save_atomically_sends_exact_analysis_and_refuses_replaced_readback(
         assert!(row["process_metadata"].get("voltage_drop").is_none());
         assert!(row.get("process_input").is_none());
     }
+}
+
+fn analysis_sha(bytes: &[u8]) -> String {
+    format!("{:x}", sha2::Sha256::digest(bytes))
+}
+
+fn analysis_response(bytes: &[u8]) -> ds_client_core::TransformerAnalysisResponse {
+    ds_client_core::TransformerAnalysisResponse::from_reader(
+        200,
+        ds_client_core::TransformerAnalysisHeaders {
+            content_type: Some("application/json".into()),
+            analysis_sha256: Some(analysis_sha(bytes)),
+            cache_control: Some("no-store".into()),
+        },
+        bytes,
+    )
+    .unwrap()
+}
+
+fn analysis_client() -> (Client<FixtureTransport, MemoryStore>, FixtureTransport) {
+    let fixture = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = Client::new(
+        profile(DeploymentLane::Stable),
+        fixture.clone(),
+        MemoryStore::default(),
+    );
+    client
+        .sign_in("user@example.com", "protected", NOW)
+        .unwrap();
+    (client, fixture)
+}
+
+#[test]
+fn transformer_analysis_exact_bytes_explicit_project_and_body_without_wrapper_assumption() {
+    let (mut client, fixture) = analysis_client();
+    // RawValue accepts the large exponent without f64 conversion. The scalar
+    // spellings, whitespace and envelope-like field names all stay untouched.
+    let bytes =
+        b" \n{\"n\":1.00,\"exponent\":1e999,\"zero\":-0.0,\"success\":false,\"data\":{}}\t\n";
+    let sha = analysis_sha(bytes);
+    fixture
+        .0
+        .lock()
+        .unwrap()
+        .transformer_analyses
+        .push_back(Ok(analysis_response(bytes)));
+    assert_eq!(
+        client
+            .transformer_analysis("project-a", "T1", 8, &"c".repeat(64), &sha, NOW)
+            .unwrap(),
+        bytes
+    );
+    let state = fixture.0.lock().unwrap();
+    assert_eq!(
+        state.transformer_analysis_bodies,
+        vec![json!({
+            "action":"get_transformer_analysis","eds_project_id":"project-a",
+            "transformer_name":"T1","analysis_version":8,
+            "content_digest":"c".repeat(64),"analysis_sha256":sha
+        })]
+    );
+    let authority = &state.transformer_analysis_authorities[0];
+    let signed_in: serde_json::Value = serde_json::from_slice(SIGN_IN).unwrap();
+    assert_eq!(authority.0, signed_in["idToken"].as_str().unwrap());
+    assert_eq!(
+        (&authority.1, &authority.2, &authority.3),
+        (&"uid-1".to_owned(), &"user@example.com".to_owned(), &None)
+    );
+}
+
+#[test]
+fn transformer_analysis_device_auth_project_interleaving_and_expiry() {
+    let profile = profile(DeploymentLane::Stable);
+    let credential = device_credential(&profile);
+    let session = DeviceAccessSession::new("ds-memory-access-jwt".into(), NOW + 300, NOW).unwrap();
+    let authorization = credential
+        .authorize_api(&session, &profile, "uid-1", NOW)
+        .unwrap();
+    let mut fixture = FixtureTransport::default();
+    let bytes = b"{\"analysis\":1.20}";
+    for _ in 0..3 {
+        fixture
+            .0
+            .lock()
+            .unwrap()
+            .transformer_analyses
+            .push_back(Ok(analysis_response(bytes)));
+    }
+    for project in ["project-a", "project-b", "project-a"] {
+        assert_eq!(
+            authorization
+                .transformer_analysis(
+                    &mut fixture,
+                    project,
+                    "T1",
+                    8,
+                    &"c".repeat(64),
+                    &analysis_sha(bytes),
+                    NOW
+                )
+                .unwrap(),
+            bytes
+        );
+    }
+    let error = authorization
+        .transformer_analysis(
+            &mut fixture,
+            "project-a",
+            "T1",
+            8,
+            &"c".repeat(64),
+            &analysis_sha(bytes),
+            NOW + 301,
+        )
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::SignedOut);
+    let state = fixture.0.lock().unwrap();
+    assert_eq!(
+        state
+            .transformer_analysis_bodies
+            .iter()
+            .map(|v| v["eds_project_id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["project-a", "project-b", "project-a"]
+    );
+    for authority in &state.transformer_analysis_authorities {
+        assert_eq!(authority.0, "ds-memory-access-jwt");
+        assert_eq!(authority.1, "uid-1");
+        assert_eq!(authority.2, "user@example.com");
+        assert!(authority.3.is_some());
+    }
+}
+
+#[test]
+fn transformer_analysis_missing_moved_fence_and_invalid_refusals_remain_distinct() {
+    let (mut client, fixture) = analysis_client();
+    // This boundary carries the server's exact code, so it does not need a
+    // duplicate backend vocabulary or conflate the two 409 causes.
+    for (status, code) in [
+        (409, "analysis_missing"),
+        (409, "analysis_stale"),
+        (400, "analysis_invalid"),
+    ] {
+        let bytes = serde_json::to_vec(&json!({"success":false,"error":{
+            "code":code,"message":"The saved head moved", "details":{"head_version":9}
+        }}))
+        .unwrap();
+        fixture.0.lock().unwrap().transformer_analyses.push_back(Ok(
+            ds_client_core::TransformerAnalysisResponse::from_reader(
+                status,
+                Default::default(),
+                bytes.as_slice(),
+            )
+            .unwrap(),
+        ));
+        let error = client
+            .transformer_analysis("project-a", "T1", 8, &"c".repeat(64), &"a".repeat(64), NOW)
+            .unwrap_err();
+        let refusal = error.service_refusal().unwrap();
+        assert_eq!(refusal.status(), status);
+        assert_eq!(refusal.code(), Some(code));
+        assert_eq!(refusal.detail_integer("head_version"), Some(9));
+        assert_ne!(error.kind(), ErrorKind::Transient);
+    }
+    let state = fixture.0.lock().unwrap();
+    assert_eq!(state.transformer_analysis_bodies.len(), 3); // no retry/fallback
+    assert!(state
+        .transformer_analysis_bodies
+        .iter()
+        .all(|v| v["analysis_version"] == 8 && v["content_digest"] == "c".repeat(64)));
+}
+
+#[test]
+fn transformer_analysis_missing_malformed_wrong_sha_and_bad_contract_headers_are_refused() {
+    let (mut client, fixture) = analysis_client();
+    let bytes = b"{\"value\":1.00}";
+    let sha = analysis_sha(bytes);
+    for bad in 0..9 {
+        let mut response = analysis_response(bytes);
+        match bad {
+            0 => response.headers.analysis_sha256 = None,
+            1 => response.headers.analysis_sha256 = Some("no-sha".into()),
+            2 => response.headers.analysis_sha256 = Some("0".repeat(64)),
+            3 => response.headers.analysis_sha256 = Some(sha.to_uppercase()),
+            4 => response.response.body.push(b' '), // unchanged JSON, wrong exact-byte SHA
+            5 => response.headers.content_type = None,
+            6 => response.headers.content_type = Some("text/plain".into()),
+            7 => response.headers.cache_control = None,
+            8 => response.headers.cache_control = Some("public".into()),
+            _ => unreachable!(),
+        }
+        fixture
+            .0
+            .lock()
+            .unwrap()
+            .transformer_analyses
+            .push_back(Ok(response));
+        let error = client
+            .transformer_analysis("project-a", "T1", 8, &"c".repeat(64), &sha, NOW)
+            .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnreadableResponse, "case {bad}");
+        assert!(error.service_refusal().is_none());
+    }
+}
+
+#[test]
+fn transformer_analysis_matching_sha_does_not_admit_malformed_json_or_refusal() {
+    let (mut client, fixture) = analysis_client();
+    for bytes in [
+        b"{\"broken\":".as_slice(),
+        b"{}{}",
+        b"\xff",
+        b"",
+        b"{\"n\":01}",
+    ] {
+        fixture
+            .0
+            .lock()
+            .unwrap()
+            .transformer_analyses
+            .push_back(Ok(analysis_response(bytes)));
+        let error = client
+            .transformer_analysis(
+                "project-a",
+                "T1",
+                8,
+                &"c".repeat(64),
+                &analysis_sha(bytes),
+                NOW,
+            )
+            .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
+    }
+    fixture.0.lock().unwrap().transformer_analyses.push_back(Ok(
+        ds_client_core::TransformerAnalysisResponse::from_reader(
+            409,
+            Default::default(),
+            b"{}".as_slice(),
+        )
+        .unwrap(),
+    ));
+    assert!(client
+        .transformer_analysis("project-a", "T1", 8, &"c".repeat(64), &"a".repeat(64), NOW)
+        .unwrap_err()
+        .service_refusal()
+        .is_none());
+}
+
+#[test]
+fn transformer_analysis_stream_is_bounded_and_oversized_mock_cannot_bypass_cap() {
+    use ds_client_core::{
+        TransformerAnalysisHeaders, TransformerAnalysisResponse,
+        TRANSFORMER_ANALYSIS_RESPONSE_LIMIT as LIMIT,
+    };
+    use std::io::Read;
+    let mut stream = std::io::repeat(b' ').take(LIMIT as u64 + 100);
+    let overflow = TransformerAnalysisResponse::from_reader(
+        200,
+        TransformerAnalysisHeaders::default(),
+        &mut stream,
+    );
+    assert!(matches!(
+        overflow,
+        Err(ds_client_core::TransformerAnalysisTransportError::ResponseTooLarge)
+    ));
+    assert_eq!(stream.limit(), 99); // consumed only LIMIT + one sentinel
+    let (mut client, fixture) = analysis_client();
+    let response = TransformerAnalysisResponse {
+        response: TransportResponse::new(200, vec![b' '; LIMIT + 1]),
+        headers: TransformerAnalysisHeaders::default(),
+    };
+    fixture
+        .0
+        .lock()
+        .unwrap()
+        .transformer_analyses
+        .push_back(Ok(response));
+    assert_eq!(
+        client
+            .transformer_analysis("project-a", "T1", 8, &"c".repeat(64), &"a".repeat(64), NOW)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+    fixture
+        .0
+        .lock()
+        .unwrap()
+        .transformer_analyses
+        .push_back(Err(
+            ds_client_core::TransformerAnalysisTransportError::ResponseTooLarge,
+        ));
+    assert_eq!(
+        client
+            .transformer_analysis("project-a", "T1", 8, &"c".repeat(64), &"a".repeat(64), NOW)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+}
+
+#[test]
+fn transformer_analysis_exact_cap_is_accepted() {
+    let (mut client, fixture) = analysis_client();
+    let mut bytes = vec![b' '; ds_client_core::TRANSFORMER_ANALYSIS_RESPONSE_LIMIT];
+    bytes[0] = b'{';
+    bytes[1] = b'}';
+    let sha = analysis_sha(&bytes);
+    fixture
+        .0
+        .lock()
+        .unwrap()
+        .transformer_analyses
+        .push_back(Ok(analysis_response(&bytes)));
+    assert_eq!(
+        client
+            .transformer_analysis("project-a", "T1", 8, &"c".repeat(64), &sha, NOW)
+            .unwrap(),
+        bytes
+    );
+}
+
+#[test]
+fn transformer_analysis_invalid_inputs_and_signed_out_are_refused_before_transport() {
+    let (mut client, fixture) = analysis_client();
+    for (project, transformer, content, sha) in [
+        ("", "T1", "c".repeat(64), "a".repeat(64)),
+        ("project-a", "", "c".repeat(64), "a".repeat(64)),
+        ("project-a", "T1", "C".repeat(64), "a".repeat(64)),
+        ("project-a", "T1", "c".repeat(64), "abc".into()),
+        (
+            "project-a",
+            "T1",
+            "c".repeat(64),
+            format!("sha256:{}", "a".repeat(64)),
+        ),
+    ] {
+        assert_eq!(
+            client
+                .transformer_analysis(project, transformer, 8, &content, &sha, NOW)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InvalidInput
+        );
+    }
+    assert!(fixture
+        .0
+        .lock()
+        .unwrap()
+        .transformer_analysis_bodies
+        .is_empty());
+    let mut signed_out = Client::new(
+        profile(DeploymentLane::Stable),
+        fixture.clone(),
+        MemoryStore::default(),
+    );
+    assert_eq!(
+        signed_out
+            .transformer_analysis("project-a", "T1", 8, &"c".repeat(64), &"a".repeat(64), NOW)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::SignedOut
+    );
+    assert!(fixture
+        .0
+        .lock()
+        .unwrap()
+        .transformer_analysis_bodies
+        .is_empty());
 }

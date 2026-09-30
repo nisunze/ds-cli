@@ -57,7 +57,14 @@ mod survey_query;
 pub use transport::SurveyPhotoCall;
 mod sync_gateway;
 mod tiles;
+pub mod transformer_analysis;
 mod transformers;
+pub use transformer_analysis::{
+    TransformerAnalysisCall, TransformerAnalysisHeaders, TransformerAnalysisResponse,
+    TransformerAnalysisTransportError, TRANSFORMER_ANALYSIS_ACTION, TRANSFORMER_ANALYSIS_METHOD,
+    TRANSFORMER_ANALYSIS_PATH, TRANSFORMER_ANALYSIS_RESPONSE_LIMIT,
+    TRANSFORMER_ANALYSIS_SHA256_HEADER, TRANSFORMER_ANALYSIS_TIMEOUT_SECONDS,
+};
 mod transport;
 
 pub use device::{

@@ -142,3 +142,39 @@ three digests remain distinct. Matching geometry alone never proves an
 idempotent retry, and a missing or replaced analysis receipt never produces a
 verified result. The receipt returns the verified `analysis_sha256`. Every
 read and write uses the operation's explicit project and captured authority.
+
+`Client::transformer_analysis(project, transformer, analysis_version,
+content_digest, analysis_sha256, now)` returns `Result<Vec<u8>, ClientError>`.
+`DeviceApiAuthorization::transformer_analysis` takes the same inputs with an
+injected `AuthorizedTransport` first. Both capture authenticated authority and
+an explicit project for one read; neither calculates an analysis or substitutes
+local data. The version is a `u64`; both digest pins are exact lowercase
+64-character SHA-256 hex strings.
+
+The host implements the closed `transformer_analysis(TransformerAnalysisCall)`
+transport method. It posts exactly these six keys to `/api/v1/data`:
+`action=get_transformer_analysis`, `eds_project_id`, `transformer_name`,
+`analysis_version`, `content_digest`, and `analysis_sha256`. Authentication,
+identity forwarding, gateway key, native client attribution and fresh correlation
+headers use the existing typed-call transport conventions. No processing lane
+or mutable active-project lookup is added.
+
+This call returns `TransformerAnalysisResponse`, retaining status, the original
+entity bytes and the `Content-Type`, `X-DS-Analysis-SHA256`, and `Cache-Control`
+headers. Hosts look up headers case-insensitively and reject duplicate contract
+headers. `TransformerAnalysisResponse::from_reader` reads at most 32 MiB plus
+one overflow sentinel and returns `TransformerAnalysisTransportError::ResponseTooLarge` on overflow;
+the core also enforces the cap for injected buffered responses. The deadline is
+120 seconds. Existing `TransportResponse` constructors and profile pins are
+unchanged; this new operation needs its own host transport implementation.
+
+A 200 response requires `application/json`, `no-store`, and an exact lowercase
+SHA header matching the requested analysis pin. The SHA-256 of the original
+bytes must also match. JSON syntax is checked through a borrowed `RawValue`;
+whitespace, number spelling and fields are returned unchanged, with no
+`success`/`data` envelope handling. The content digest and version stay on the
+request as server-owned head fences and are not confused with the analysis SHA.
+Standard 400/409 refusal envelopes retain their exact HTTP status, code and
+bounded scalar details through `ClientError::service_refusal()`. Callers can
+therefore distinguish missing, stale and invalid codes without guessing from
+HTTP 409, retrying a moved fence or maintaining a second backend vocabulary.

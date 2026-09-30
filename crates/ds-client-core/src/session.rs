@@ -548,6 +548,43 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// Read a persisted analysis under the exact saved-head fence. No local
+    /// calculation, reserialization, or fallback is performed.
+    pub fn transformer_analysis(
+        &mut self,
+        project: &str,
+        transformer: &str,
+        analysis_version: u64,
+        content_digest: &str,
+        analysis_sha256: &str,
+        now: u64,
+    ) -> Result<Vec<u8>, ClientError> {
+        crate::transformer_analysis::validate(
+            project,
+            transformer,
+            analysis_version,
+            content_digest,
+            analysis_sha256,
+        )?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::transformer_analysis::read(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            transformer,
+            analysis_version,
+            content_digest,
+            analysis_sha256,
+        )
+    }
+
     pub fn transformer_context(
         &mut self,
         ds_project: &str,

@@ -2916,6 +2916,15 @@ pub(crate) fn save_config_body(
 }
 
 pub trait Transport {
+    /// Read exact persisted analysis bytes; adapters must retain the response
+    /// headers and obey the call's bounded response limit.
+    fn transformer_analysis(
+        &mut self,
+        _call: crate::TransformerAnalysisCall<'_>,
+    ) -> Result<crate::TransformerAnalysisResponse, crate::TransformerAnalysisTransportError> {
+        Err(TransportError::Unreachable.into())
+    }
+
     fn transformer_save(
         &mut self,
         _call: crate::TransformerSaveCall<'_>,
@@ -3231,6 +3240,15 @@ pub trait Transport {
 /// bearer as ordinary `Authorization: Bearer ...` without inferring that it is
 /// a Firebase token.
 pub trait AuthorizedTransport {
+    /// Read exact persisted analysis bytes; adapters must retain the response
+    /// headers and obey the call's bounded response limit.
+    fn transformer_analysis(
+        &mut self,
+        _call: crate::TransformerAnalysisCall<'_>,
+    ) -> Result<crate::TransformerAnalysisResponse, crate::TransformerAnalysisTransportError> {
+        Err(TransportError::Unreachable.into())
+    }
+
     fn transformer_save(
         &mut self,
         _call: crate::TransformerSaveCall<'_>,
@@ -3521,6 +3539,13 @@ pub trait AuthorizedTransport {
 }
 
 impl<T: Transport> AuthorizedTransport for T {
+    fn transformer_analysis(
+        &mut self,
+        call: crate::TransformerAnalysisCall<'_>,
+    ) -> Result<crate::TransformerAnalysisResponse, crate::TransformerAnalysisTransportError> {
+        Transport::transformer_analysis(self, call)
+    }
+
     fn transformer_save(
         &mut self,
         call: crate::TransformerSaveCall<'_>,
