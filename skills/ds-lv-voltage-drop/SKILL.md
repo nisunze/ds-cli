@@ -1,6 +1,6 @@
 ---
 name: ds-lv-voltage-drop
-description: Check an LV transformer's voltage drop against its country rule, read the year-by-year outlook and the proposed reinforcement, and explain them. For voltage-drop questions, compliance, reinforcement timing and cost.
+description: Check an LV transformer's voltage drop, explain compliance and reinforcement, and diagnose missing project seeds behind incomplete customer verdicts.
 metadata:
   ds-chapters: design, reports
 ---
@@ -80,6 +80,26 @@ and the `ds` receipt and artifact are verified.
    - `service_cable`, and `transformer_change` (to kVA).
    Costs use seeded prices when every size is priced, else cross-section ×
    length (`cost_basis`). Recommendations never change the design.
+
+## Resolve an incomplete customer verdict
+
+An individual `vd_pct` can exist while `vd_ok` is null. Treat it as incomplete,
+not as a pass inferred from the percentage. Read the process warning and the
+customer issue: a missing `service_cable_sizes.electrical_params` entry must
+name the cable size and phase basis before anyone edits the seed.
+
+For a governed seed correction, discover `design.config.sheets`,
+`design.config.read`, `design.config.diff`, and `design.config.save` through
+`ds capabilities`. Read the exact project sheet with `--out`, change only the
+reviewed missing entry in that complete local JSON, and show `config diff`
+before `config save --yes`. Electrical resistance, reactance and ampacity
+must come from an approved project or conductor standard; never infer them
+from a customer load, switch phases to obtain a verdict, or set computed
+`vd_ok` by hand. Saving a seed does not reprocess a transformer. Export the
+current transformer again, run native LV processing, and check that every
+calculated customer has a verdict before exporting its PDF. If the approved
+values or the project write authority are absent, report the exact missing
+seed and hold publication.
 
 ## Load basis — what the numbers assume
 
