@@ -456,6 +456,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("design.lv.project-save", "global_write", "headless_project"),
+    ("design.lv.project-run", "global_write", "headless_project"),
     ("design.lv.process", "local_file_write", "none"),
     ("design.lv.voltage-drop", "local_file_write", "none"),
     ("design.autoprocess.plan", "read_only", "none"),

@@ -2487,6 +2487,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::lv::project_export::render,
     },
     Entry {
+        command: &ds_cli_design::lv::project_run::COMMAND,
+        handler: ds_cli_design::lv::project_run::run,
+        render: ds_cli_design::lv::project_run::render,
+    },
+    Entry {
         command: &ds_cli_design::lv::project_save::COMMAND,
         handler: ds_cli_design::lv::project_save::run,
         render: ds_cli_design::lv::project_save::render,

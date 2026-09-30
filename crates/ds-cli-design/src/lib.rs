@@ -179,6 +179,7 @@ pub static DOMAIN: Domain = Domain {
         &comment::promote::COMMAND,
         &comment::redact::COMMAND,
         &lv::project_export::COMMAND,
+        &lv::project_run::COMMAND,
         &lv::project_save::COMMAND,
         &lv::process::COMMAND,
         &lv::voltage_drop::COMMAND,

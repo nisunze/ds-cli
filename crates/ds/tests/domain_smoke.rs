@@ -45,6 +45,47 @@ fn discoverable(command: &Value) -> bool {
 }
 
 #[test]
+fn lv_project_run_is_discoverable_and_print_gap_has_no_local_or_saved_effect() {
+    let described = ds(&["capabilities", "design.lv.project-run", "--output", "json"]);
+    assert_eq!(described.code, 0);
+    let command = &described.envelope["data"]["command"];
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["confirmation_required"], true);
+    assert!(
+        command["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|input| input["name"] == "resume")
+    );
+    let directory =
+        std::env::temp_dir().join(format!("ds-project-run-smoke-{}", std::process::id()));
+    assert!(!directory.exists());
+    let refused = native_ds(&[
+        "design",
+        "lv",
+        "project-run",
+        "--project",
+        "explicit-project",
+        "--transformer",
+        "T1",
+        "--out-dir",
+        directory.to_str().unwrap(),
+        "--print-a4",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(refused.code, 0);
+    assert_eq!(
+        refused.envelope["error"]["code"],
+        "fast_lv_run_print_unavailable"
+    );
+    assert!(refused.envelope["data"].is_null());
+    assert!(!directory.exists());
+}
+
+#[test]
 fn global_member_smoke_requires_a_restored_native_identity_for_the_exact_pin() {
     let result = native_ds(&[
         "library",
@@ -9135,8 +9176,8 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         commands.len(),
         // Base 101, minus four retired commands, plus three version and five
         // attachment/comment commands added on 2026-09-25, plus the LV
-        // voltage-drop check (2026-09-28).
-        106,
+        // voltage-drop check (2026-09-28) and one-shot project run (2026-09-30).
+        107,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -9169,6 +9210,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.customer-categories.retire-unnamed"
                     | "design.lv.project-export"
                     | "design.lv.project-save"
+                    | "design.lv.project-run"
                     | "design.status"
                     | "design.collisions"
                     // Project-to-project migration is a bulk service call on

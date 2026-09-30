@@ -139,7 +139,7 @@ fn map_save_refusal(failure: Failure) -> Failure {
     failure
 }
 
-fn read(path: &str, maximum: usize) -> Result<Vec<u8>, Failure> {
+pub(super) fn read(path: &str, maximum: usize) -> Result<Vec<u8>, Failure> {
     let file = std::fs::File::open(path)
         .map_err(|error| invalid(format!("Cannot open {path}: {error}")))?;
     let metadata = file
@@ -158,7 +158,7 @@ fn read(path: &str, maximum: usize) -> Result<Vec<u8>, Failure> {
     Ok(bytes)
 }
 
-fn receipt(bytes: &[u8], command: &str) -> Result<Value, Failure> {
+pub(super) fn receipt(bytes: &[u8], command: &str) -> Result<Value, Failure> {
     let value: Value = serde_json::from_slice(bytes).map_err(|error| invalid(error.to_string()))?;
     if value["v"] != 1
         || value["command"] != command
@@ -172,7 +172,7 @@ fn receipt(bytes: &[u8], command: &str) -> Result<Value, Failure> {
     Ok(value["data"].clone())
 }
 
-fn verify_receipts(
+pub(super) fn verify_receipts(
     source: &Value,
     process: &Value,
     transformer: &str,
@@ -208,6 +208,20 @@ fn verify_receipts(
 }
 
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    run_expected_project(inputs, None)
+}
+
+/// A composed caller keeps its explicit project address across receipt reads;
+/// a replaced local receipt must never redirect its accepted write.
+pub(super) fn run_for_project(
+    inputs: &Inputs,
+    _: &Context,
+    project: &str,
+) -> Result<Value, Failure> {
+    run_expected_project(inputs, Some(project))
+}
+
+fn run_expected_project(inputs: &Inputs, expected_project: Option<&str>) -> Result<Value, Failure> {
     // Refuse bad files before restoring credentials or contacting the project.
     let source = receipt(
         &read(inputs.require("source")?, 1024 * 1024)?,
@@ -223,6 +237,11 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
     let (project_id, base_version, source_content_digest) =
         verify_receipts(&source, &process, transformer, lane, &input, &result)?;
+    if expected_project.is_some_and(|expected| expected != project_id) {
+        return Err(invalid(
+            "The captured save receipt addresses another explicit project.",
+        ));
+    }
     let projection =
         project_native_fast_lv_result(&input, &result, transformer).map_err(|error| {
             Failure::invalid("fast_lv_publication_invalid", error.to_string())

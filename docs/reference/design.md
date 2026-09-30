@@ -99,6 +99,47 @@ Keep the operation ID and exact files for retries; re-export and reprocess when
 the source or configuration changes. Reports are a subsequent
 `report.project.export` operation, not a side effect of network processing.
 
+## One-shot LV compute and save
+
+`ds design lv project-run` composes `project-export --project-config`,
+`process`, and `project-save` for one explicit project and transformer. The
+network owner creates the request and computes the layers and
+`ds.lv-voltage-drop.analysis/v1`; the save owner checks the source/configuration
+fences and verifies the atomic working-head save. The CLI authors only receipts.
+
+```bash
+ds design lv project-run --project <id> --transformer T-1042 \
+  --out-dir ./T-1042-run --yes --output json
+```
+
+The absent output directory receives `request.json`, `source.json`,
+`result.json`, `process.json`, and the first verified `save.json`. Requests are
+bounded at 64 MiB, results at 256 MiB, and each receipt at 1 MiB. Nothing is
+overwritten. A failed job or unverified save returns a refusal, never a saved
+success. The process uses owner-default settings and current project sheets;
+use the individual commands when changing settings before processing.
+
+Retry a complete captured run with the same explicit project, transformer,
+lane and directory plus `--resume`. This never re-exports or reprocesses;
+it validates the exact artifacts and calls the save owner again for fresh
+verification. The operation ID derives from the captured project/lane/name,
+source revision/digest and input/result hashes, so a retry retains its key.
+The first verified save receipt stays immutable; the returned save receipt is
+from the current call. A crash before an export or process receipt is complete
+requires a new directory. A directory lease prevents concurrent resumes; after
+a crash remove `.run-lock` only once its owning invocation has stopped.
+
+`--print-a4` currently returns `fast_lv_run_print_unavailable` before any
+compute or save. The pinned native client exposes compact saved analysis
+metadata, but not the server's fenced raw analysis read. That read must be
+added to the native client with its closed transport, profile schema and
+package digest before composing `report.export --task voltage-drop` and
+checking its source digest against the verified save receipt. The installed
+reporter must also expose `render_voltage_drop_result`. No stale local
+analysis, recomputation, browser window or substitute report is used. PDF
+output will remain separate from named versions and `.dsgrid` backups; this
+command does not publish local compute artifacts.
+
 ## LV voltage drop
 
 `ds design lv voltage-drop` checks whether every customer of an LV transformer
