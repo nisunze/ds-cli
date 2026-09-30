@@ -154,6 +154,7 @@ pub const PROFILE_VIEW: BridgeOp = BridgeOp {
 pub const PROFILE_SET: BridgeOp = BridgeOp {
     operation: "map.profile.set",
     arguments: &[
+        "height_px",
         "vertical_exaggeration",
         "visibility",
         "zoom",

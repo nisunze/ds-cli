@@ -31,7 +31,7 @@ const PROFILE_CLOSED: Refusal = Refusal {
 };
 const INVALID_PROFILE_VIEW: Refusal = Refusal {
     code: "invalid_profile_view",
-    when: "a visibility, scale, viewport, or action value is invalid",
+    when: "a visibility, scale, dock height, viewport, or action value is invalid",
     remedy: "use the exact fields and ranges in ds map profile set --help",
 };
 const INVALID_PROFILE_SELECTION: Refusal = Refusal {
@@ -50,13 +50,13 @@ pub static VIEW: Command = Command {
     path: &["map", "profile", "view"],
     contract: 1,
     summary: "Read the paired Profile's exact visual state.",
-    purpose: "Returns the Profile occupant, viewport, selected entities and edit mode from the running Desktop. Selection is transient UI context, not an engineering model read; this command does not change the view or the model.",
+    purpose: "Returns the Profile occupant, dock height in pixels, viewport, selected entities and edit mode from the running Desktop. Selection is transient UI context, not an engineering model read; this command does not change the view or the model.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[DESCRIPTOR_ARG],
-    output: "The paired Profile's occupant, model_id and revision (null without an open model), scale, visibility, viewport, edit_mode boolean and selection {entity_ids, primary, kind, structures:[{id,number}]}. The legacy model field also remains. Selection IDs follow engine order for one family; mixed selections retain the selected IDs. kind is none, structures, tension_sections, alignments, terrain_points, attachment_points or mixed. structures is populated only for a structures selection; number is the displayed structure number or null when unknown.",
+    output: "The paired Profile's occupant, model_id and revision (null without an open model), scale, visibility, height_px (dock height in pixels), viewport, edit_mode boolean and selection {entity_ids, primary, kind, structures:[{id,number}]}. The legacy model field also remains. Selection IDs follow engine order for one family; mixed selections retain the selected IDs. kind is none, structures, tension_sections, alignments, terrain_points, attachment_points or mixed. structures is populated only for a structures selection; number is the displayed structure number or null when unknown.",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
@@ -82,7 +82,7 @@ pub static SET: Command = Command {
     path: &["map", "profile", "set"],
     contract: 1,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Patches only the named Profile display settings in the running Desktop, even before the Profile opens; omitted settings stay unchanged. The visibility object uses the documented concise keys and boolean values. Fit and rebuild are explicit actions, and the receipt returns the resulting live state. No engineering model is changed.",
+    purpose: "Patches only the named Profile display settings in the running Desktop, even before the Profile opens; omitted settings stay unchanged. The visibility object uses the documented concise keys and boolean values. Fit and rebuild are explicit actions, and the receipt returns the resulting live state including height_px (dock height in pixels). Read map profile view, set the dock height, then use map profile select with the returned model_id, revision and entity IDs. No engineering model is changed.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -97,6 +97,11 @@ pub static SET: Command = Command {
             "visibility",
             "<json-object>",
             "JSON object with ground, wire, grid, structures and the other documented profile layer keys and boolean values.",
+        ),
+        Arg::value(
+            "height-px",
+            "<pixels>",
+            "Profile dock height, finite 220..10000 pixels.",
         ),
         Arg::value("zoom", "<ratio>", "Absolute Profile zoom, 0.2..1000000."),
         Arg::value(
@@ -117,10 +122,10 @@ pub static SET: Command = Command {
         .choices(&["fit", "rebuild"]),
         DESCRIPTOR_ARG,
     ],
-    output: "The resulting exact visual state from the paired Profile, with the applied patch and optional action.",
+    output: "The resulting exact visual state from the paired Profile, including height_px (dock height in pixels), with the applied patch and optional action.",
     examples: &[Example {
-        command: "ds map profile set --vertical-exaggeration 5 --visibility '{\"ground\":true,\"wire\":false}' --action fit --output json",
-        note: "Set scale and visibility, then fit the complete Profile.",
+        command: "ds map profile set --height-px 480 --vertical-exaggeration 5 --visibility '{\"ground\":true,\"wire\":false}' --action fit --output json",
+        note: "After map profile view, set dock height, scale and visibility, then fit; use map profile select with the view receipt's model_id, revision and entity IDs.",
         runnable: false,
     }],
     refusals: &[
@@ -288,6 +293,12 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
             Value::Object(parse_visibility(raw)?),
         );
     }
+    if let Some(raw) = inputs.value("height-px") {
+        patch.insert(
+            "height_px".to_owned(),
+            json!(bounded(raw, "height-px", 220.0, 10_000.0)?),
+        );
+    }
     if let Some(raw) = inputs.value("zoom") {
         patch.insert(
             "zoom".to_owned(),
@@ -358,6 +369,57 @@ pub fn render_selection(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn height_parser_accepts_inclusive_bounds_and_fractional_pixels() {
+        for height in ["220", "480.5", "10000"] {
+            let args = ["--height-px", height].map(str::to_owned);
+            let inputs = ds_cli_contract::args::parse(&SET, &args).expect("declared height");
+            let patch = patch_from_inputs(&inputs).expect("valid height");
+            assert_eq!(
+                ds_cli_desktop::ops::undeclared_key(
+                    &crate::PROFILE_SET,
+                    &Value::Object(patch.clone())
+                ),
+                None,
+                "height payload must be admitted by the desktop bridge"
+            );
+            assert_eq!(
+                patch,
+                json!({"height_px": height.parse::<f64>().unwrap()})
+                    .as_object()
+                    .unwrap()
+                    .clone()
+            );
+        }
+    }
+
+    #[test]
+    fn height_parser_rejects_invalid_values_before_pairing() {
+        for height in [
+            "219.99", "10000.01", "NaN", "inf", "-inf", "1e309", "pixels", "",
+        ] {
+            let args = [format!("--height-px={height}")];
+            let inputs = ds_cli_contract::args::parse(&SET, &args).expect("declared height");
+            assert_eq!(
+                patch_from_inputs(&inputs).unwrap_err().code(),
+                "invalid_profile_view",
+                "height {height:?}"
+            );
+        }
+        let args = ["--height-px".to_owned()];
+        assert!(ds_cli_contract::args::parse(&SET, &args).is_err());
+    }
+
+    #[test]
+    fn height_is_omitted_when_not_requested() {
+        let args = ["--zoom", "2"].map(str::to_owned);
+        let inputs = ds_cli_contract::args::parse(&SET, &args).expect("declared zoom");
+        assert_eq!(
+            patch_from_inputs(&inputs).unwrap(),
+            json!({"zoom": 2.0}).as_object().unwrap().clone()
+        );
+    }
 
     #[test]
     fn visibility_requires_exact_boolean_keys() {
