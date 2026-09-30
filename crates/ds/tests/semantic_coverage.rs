@@ -835,6 +835,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pls.shading-variants", "local_file_write", "none"),
     ("pls.terrain-reconcile", "local_file_write", "none"),
     ("report.bundle", "local_file_write", "none"),
+    ("report.voltage-drop-combined", "local_file_write", "none"),
     ("report.artifact.remove", "global_write", "headless_project"),
     ("report.plan-profile", "local_file_write", "none"),
     ("report.engine", "discovery", "none"),
@@ -1207,6 +1208,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pm.task.list", "read_only", "headless_project"),
     ("pm.task.log-hours", "global_write", "headless_project"),
     ("pm.task.propose", "global_write", "headless_project"),
+    ("pm.task.progress", "global_write", "headless_project"),
     ("pm.task.read", "read_only", "headless_project"),
     (
         "pm.task.request-admission",
@@ -1214,6 +1216,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("pm.task.respond", "global_write", "headless_project"),
+    ("pm.task.subdivide", "global_write", "headless_project"),
     ("pm.task.update", "global_write", "headless_project"),
     ("pm.task.unblock", "global_write", "headless_project"),
     ("workstation.components", "discovery", "none"),

@@ -41,6 +41,7 @@ pub mod publication;
 pub mod spatial_workbook;
 pub mod tasks;
 pub mod touch;
+pub mod voltage_drop_combined;
 
 use std::time::Duration;
 
@@ -91,6 +92,7 @@ pub static DOMAIN: Domain = Domain {
         &engine::COMMAND,
         &tasks::COMMAND,
         &export::COMMAND,
+        &voltage_drop_combined::COMMAND,
         &bundle::COMMAND,
         &plan_profile::COMMAND,
         &plan_profile_config::COMMAND,

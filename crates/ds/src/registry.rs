@@ -778,6 +778,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::bundle::render,
     },
     Entry {
+        command: &ds_cli_report::voltage_drop_combined::COMMAND,
+        handler: ds_cli_report::voltage_drop_combined::run,
+        render: ds_cli_report::voltage_drop_combined::render,
+    },
+    Entry {
         command: &ds_cli_report::plan_profile::COMMAND,
         handler: ds_cli_report::plan_profile::run,
         render: ds_cli_report::plan_profile::render,

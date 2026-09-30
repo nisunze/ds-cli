@@ -89,6 +89,34 @@ The schemas are never copied into this repository. They are read from the
 engine installed on this machine, at the version actually installed, so they
 cannot be stale.
 
+## Combined voltage-drop overview
+
+`report.voltage-drop-combined` prints one local A3 overview for an exact
+transformer roster from held voltage-drop result files. The reporter owns
+roster checks, coverage accounting, evidence-pinned holds and PDF composition.
+Discover its installed request contract, author the request outside the
+repository, then invoke the wrapper once:
+
+```bash
+ds capabilities report.voltage-drop-combined --output json
+ds report tasks --task render_voltage_drop_combined --output json
+ds report voltage-drop-combined --request /absolute/vd-overview-request.json \
+  --result /absolute/vd-overview-receipt.json --output json
+```
+
+The request and optional receipt paths must be absolute. Both the receipt
+and the requested PDF must be absent. The answer preserves the reporter's
+coverage counts, source digests, PDF digest and page count; reserved and held
+transformers stay outside calculated coverage. This local operation performs
+no project write, sync pass or cloud publication.
+
+With `--result`, the wrapper retains the reporter's receipt on success or
+failure. Refusals carry the full decoded receipt in `error.detail.receipt`,
+with `result_path` when retained. Without `--result`, a decoded temporary
+receipt is removed after being included in the answer. An unreadable or
+malformed receipt stays at the returned `result_path`, with `receipt_error`
+explaining why it could not be returned inline.
+
 ## Flags versus `--request`
 
 `ds report export` offers named flags for the common path *and* a
