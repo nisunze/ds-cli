@@ -10,6 +10,7 @@ pub mod data;
 pub mod design;
 pub mod draw;
 pub mod evidence;
+pub mod grid_lasso;
 pub mod layer;
 pub mod line_difference;
 pub mod local;
@@ -58,6 +59,7 @@ pub static DOMAIN: Domain = Domain {
         &profile::VIEW,
         &profile::SET,
         &profile::SELECT,
+        &grid_lasso::COMMAND,
         &draw::COMMAND,
         &remove::COMMAND,
         &zoom::COMMAND,
@@ -170,6 +172,19 @@ pub const PROFILE_SELECT: BridgeOp = BridgeOp {
         "expected_revision",
         "from_entity_id",
         "to_entity_id",
+        "mode",
+    ],
+};
+pub const GRID_LASSO: BridgeOp = BridgeOp {
+    operation: "map.grid.lasso",
+    arguments: &[
+        "model_id",
+        "expected_revision",
+        "space",
+        "polygon",
+        "predicate",
+        "families",
+        "filter",
         "mode",
     ],
 };
@@ -385,6 +400,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &PROFILE_VIEW,
     &PROFILE_SET,
     &PROFILE_SELECT,
+    &GRID_LASSO,
     &RENDERER_CONFIGURE,
     &UI_OPEN,
     &EVIDENCE_CAPTURE,

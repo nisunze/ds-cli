@@ -2538,6 +2538,44 @@ fn typed_schemas_are_generated_from_the_live_descriptors() {
     }
 }
 
+#[test]
+fn grid_lasso_mcp_projects_the_contract_and_paired_authority_gate() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "map"],
+        &[
+            json!({"jsonrpc":"2.0", "id":1, "method":"tools/list"}),
+            json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"name":"map_grid_lasso", "arguments":{"model":"model-a", "revision":"rev-b", "space":"profile", "polygon":"[[0,0],[1,0],[1,1]]", "family":["structures"], "desktop-descriptor":"/missing/lasso-descriptor.json"}}}),
+        ],
+    );
+    let tools = tools_by_title(&responses, 1);
+    let tool = &tools["map.grid.lasso"];
+    assert_eq!(tool["name"], "map_grid_lasso");
+    let properties = &tool["inputSchema"]["properties"];
+    assert_eq!(properties["family"]["type"], "array");
+    let descriptor = schema("map.grid.lasso");
+    let family = descriptor["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|input| input["name"] == "family")
+        .unwrap();
+    assert_eq!(properties["family"]["items"]["enum"], family["choices"]);
+    assert_eq!(properties["mode"]["default"], "replace");
+    assert_eq!(properties["predicate"]["default"], "intersects");
+    assert_eq!(properties["filter"]["type"], "string");
+    assert!(properties.get("project").is_none());
+    assert!(properties.get("axis_pin_digest").is_none());
+    assert!(properties.get("confirm").is_none());
+    let result = responses
+        .iter()
+        .find(|response| response["id"] == 2)
+        .unwrap();
+    assert_eq!(
+        result["result"]["structuredContent"]["error"]["code"],
+        "desktop_not_paired"
+    );
+}
+
 /// Annotations are the effect class and nothing else, for every tool.
 #[test]
 fn every_tool_is_annotated_from_its_live_effect() {

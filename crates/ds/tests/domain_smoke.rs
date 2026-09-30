@@ -4263,8 +4263,13 @@ fn serve(
         (401, json!({ "error": "pairing_required" }))
     } else if request.starts_with("POST /v1/invoke") {
         let invocation: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+        let receipt = if invocation["operation"] == "map.grid.lasso" {
+            json!({"model_id":"model-a", "revision":"rev-b", "selection":{"entity_ids":["pole-2","pole-1"],"primary":"pole-2","kind":"structures","structures":[{"id":"pole-2","number":2},{"id":"pole-1","number":1}]}, "native_marker":"window-receipt"})
+        } else {
+            json!({ "ok": true })
+        };
         received.lock().expect("received").push(invocation);
-        (200, json!({ "ok": true }))
+        (200, receipt)
     } else {
         (200, session.clone())
     };
@@ -4280,6 +4285,127 @@ fn serve(
 const INSTANCE_ONE: &str = "11111111111111111111111111111111";
 const INSTANCE_TWO: &str = "22222222222222222222222222222222";
 const INSTANCE_THREE: &str = "33333333333333333333333333333333";
+
+#[test]
+fn grid_lasso_sends_one_declared_query_and_returns_the_exact_window_receipt() {
+    let mut machine = Machine::new("grid-lasso");
+    machine.live(INSTANCE_ONE, "project-held-by-window");
+    let contract = machine.ds(&["capabilities", "map.grid.lasso", "--output", "json"]);
+    let command = &contract.envelope["data"]["command"];
+    assert_eq!(command["effect"], "local_ui");
+    assert_eq!(command["authority"], "desktop_pairing");
+    assert_eq!(command["requires"], "window");
+    let input_names: BTreeSet<_> = command["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|arg| arg["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        input_names,
+        BTreeSet::from([
+            "model",
+            "revision",
+            "space",
+            "polygon",
+            "predicate",
+            "family",
+            "filter",
+            "mode",
+            "desktop-descriptor"
+        ])
+    );
+    for (space, polygon) in [
+        ("profile", "[[0,0],[1,0],[1,1]]"),
+        (
+            "plan",
+            r#"{"type":"Polygon","coordinates":[[[30,-2],[30.1,-2],[30.1,-1.9],[30,-2]]]}"#,
+        ),
+    ] {
+        let run = machine.ds(&[
+            "map",
+            "grid",
+            "lasso",
+            "--model",
+            "model-a",
+            "--revision",
+            "rev-b",
+            "--space",
+            space,
+            "--polygon",
+            polygon,
+            "--family",
+            "structures",
+            "--output",
+            "json",
+        ]);
+        assert_eq!(run.code, 0, "{} {}", run.stdout, run.stderr);
+        assert_eq!(
+            run.envelope["data"],
+            json!({"model_id":"model-a", "revision":"rev-b", "selection":{"entity_ids":["pole-2","pole-1"],"primary":"pole-2","kind":"structures","structures":[{"id":"pole-2","number":2},{"id":"pole-1","number":1}]}, "native_marker":"window-receipt"})
+        );
+    }
+    let received = machine.instance_by(INSTANCE_ONE).received.lock().unwrap();
+    assert_eq!(received.len(), 2);
+    for (invocation, space) in received.iter().zip(["profile", "plan"]) {
+        assert_eq!(invocation["operation"], "map.grid.lasso");
+        let payload = &invocation["arguments"];
+        assert_eq!(payload["model_id"], "model-a");
+        assert_eq!(payload["expected_revision"], "rev-b");
+        assert_eq!(payload["space"], space);
+        assert_eq!(payload["families"], json!(["structures"]));
+        assert_eq!(payload["predicate"], "intersects");
+        assert_eq!(payload["mode"], "replace");
+        assert_eq!(
+            ds_cli_desktop::ops::undeclared_key(&ds_cli_map::GRID_LASSO, payload),
+            None
+        );
+        assert!(payload.get("axis_pin_digest").is_none());
+        assert!(payload.get("project").is_none());
+    }
+}
+
+#[test]
+fn grid_lasso_invalid_inputs_never_pair_or_invoke() {
+    let mut machine = Machine::new("grid-lasso-invalid");
+    machine.live(INSTANCE_ONE, "project-a");
+    for (extra, code) in [
+        (vec!["--polygon", "[[0,0],[1,1]]"], "invalid_grid_lasso"),
+        (
+            vec![
+                "--polygon",
+                "[[0,0],[1,0],[1,1]]",
+                "--filter",
+                "{\"rows\":[]}",
+            ],
+            "invalid_grid_lasso",
+        ),
+        (
+            vec!["--polygon", "[[0,0],[1,0],[1,1]]", "--mode", "toggle"],
+            "invalid_choice",
+        ),
+    ] {
+        let mut args = vec![
+            "map",
+            "grid",
+            "lasso",
+            "--model",
+            "model-a",
+            "--revision",
+            "rev-b",
+            "--space",
+            "profile",
+            "--desktop-descriptor",
+            "/missing/lasso-descriptor.json",
+            "--output",
+            "json",
+        ];
+        args.extend(extra);
+        let run = machine.ds(&args);
+        assert_eq!(run.envelope["error"]["code"], code, "{}", run.stdout);
+    }
+    assert!(machine.instance_by(INSTANCE_ONE).operations().is_empty());
+}
 
 #[test]
 fn two_live_instances_refuse_without_an_explicit_target() {
@@ -7017,6 +7143,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.profile.view",
         "map.profile.set",
         "map.profile.select",
+        "map.grid.lasso",
         "map.renderer.configure",
         "map.draw",
         "map.remove",

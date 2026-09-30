@@ -1199,6 +1199,11 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::profile::render_selection,
     },
     Entry {
+        command: &ds_cli_map::grid_lasso::COMMAND,
+        handler: ds_cli_map::grid_lasso::run,
+        render: ds_cli_map::grid_lasso::render,
+    },
+    Entry {
         command: &ds_cli_map::renderer_configure::COMMAND,
         handler: ds_cli_map::renderer_configure::run,
         render: ds_cli_map::renderer_configure::render,

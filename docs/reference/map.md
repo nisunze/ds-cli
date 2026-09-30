@@ -702,4 +702,15 @@ A minimal fit request is `{"operation":"fit"}`. Results use `zoom`, `pan_x`,
 
 `ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> [--mode replace|add|remove|intersect]` changes only that transient selection. The Desktop refuses a different model or revision. The native held scene resolves an inclusive range when both IDs belong to the same entity family; use the same ID for both endpoints to select one item. The default mode is `replace`. `add`, `remove` and `intersect` combine that resolved range with the current selection. The CLI sends the two IDs unchanged and returns the Desktop's selection receipt; it does not reconstruct scene order or author the model. On a local development Desktop, pass `--desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.json` to address that instance directly.
 
+`ds map grid lasso` adds a Plan/Profile polygon selection lens with optional
+family and native table filters. Discover its complete wire-input contract with
+`ds capabilities map.grid.lasso --output json`. It sends one declared
+`map.grid.lasso` operation and returns the window's exact selection receipt.
+The window binds the held native scene and axis pin; the CLI never calculates
+hits, reads model rows, infers project context or authors the model. The paired
+Desktop binder must implement this operation before the command can succeed;
+CLI compilation alone does not prove installed or paired support. The existing
+bridge parity gate continues to require that binder's allowlist, executor and
+typed argument contract.
+
 These commands do not author structure-label fields. Use `ds dsgrid profile labels show|set` for the portable model Profile label policy. Fixed-paper sheet Profile and sheet Plan composition are separate from these commands.

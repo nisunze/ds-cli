@@ -290,7 +290,8 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // `map design batch report` deleted; Compounded Report archives are
     // `ds report project compounded` only.
     // 38 → 39: the explicit revision-guarded map.profile.select lens command.
-    ("ds-cli-map", 39),
+    // 39 → 40 on 2026-09-30: authorized Plan/Profile lasso selection lens.
+    ("ds-cli-map", 40),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
     // command headless (contract 01 of the dsgrid-authority program).
@@ -539,7 +540,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // `map.design.batch.report` deleted (`ds report project compounded`).
     // 38 → 39 on 2026-09-29: revision-guarded map.profile.select is an
     // authorized transient Profile lens command; the native scene owns range.
-    ("map", 39),
+    // 39 → 40 on 2026-09-30: authorized Plan/Profile lasso selection lens.
+    ("map", 40),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
@@ -557,7 +559,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 /// 2026-09-29 (authorized revision-guarded Profile selection lens command).
 // The 2026-09-22 audit admits three existing Profile window commands that
 // landed after the prior snapshot: dsgrid.profile.open and map.profile.view/set.
-const WINDOW_BACKLOG_TOTAL: u64 = 86;
+// 86 → 87: the Plan/Profile lasso lens only changes transient selection.
+const WINDOW_BACKLOG_TOTAL: u64 = 87;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {
