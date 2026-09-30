@@ -57,6 +57,7 @@
 
 pub mod deletion;
 pub mod geometry;
+pub mod member;
 pub mod party;
 pub mod plan;
 pub mod record;
@@ -76,6 +77,7 @@ pub static DOMAIN: Domain = Domain {
     summary: "Tasks, milestones, records and the plan they sit in.",
     commands: &[
         &plan::COMMAND,
+        &member::COMMAND,
         &deletion::INVENTORY,
         &deletion::READ,
         &deletion::RESTORE,

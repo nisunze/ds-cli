@@ -1914,6 +1914,11 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::plan::render,
     },
     Entry {
+        command: &ds_cli_pm::member::COMMAND,
+        handler: ds_cli_pm::member::run,
+        render: ds_cli_pm::member::render,
+    },
+    Entry {
         command: &ds_cli_pm::deletion::INVENTORY,
         handler: ds_cli_pm::deletion::inventory,
         render: ds_cli_pm::deletion::render_inventory,

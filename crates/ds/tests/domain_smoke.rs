@@ -10402,6 +10402,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         .collect();
     let expected: BTreeSet<&str> = [
         "pm.plan",
+        "pm.member.list",
         "pm.deletion.inventory",
         "pm.deletion.read",
         "pm.deletion.restore",

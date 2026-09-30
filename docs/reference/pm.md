@@ -38,6 +38,7 @@ is no longer an input, and a caller that still passes it is told
 
 ```bash
 ds pm plan --project <exact-id>                                   # what needs attention
+ds pm member list --project <exact-id>                            # who may be assigned
 ds pm task list --project <exact-id> --state blocked              # find the work item
 ds pm task read --project <exact-id> --task T-0007                # read it
 ds pm task update --project <exact-id> --task T-0007 --delivery in_progress --progress 40 --yes
@@ -51,7 +52,7 @@ is how a client once offered `task` for a node that was a milestone.
 
 ## Reads are one round trip each
 
-A read fetches the named project's canonical graph (`get_graph`) once and
+A plan or task read fetches the named project's canonical graph (`get_graph`) once and
 folds it in the kernel; `ds pm task read` additionally fetches the project's
 context (`get_context`) for the records that reference the task. The record
 commands read through the correspondence contract's own actions
@@ -60,6 +61,10 @@ bounded page, the record's attachments and blocked tasks projected beside it.
 The server scans at most 1000 records per list; past that the list says
 `truncated: true`. Deletion inventory and read use their own server actions to
 inspect durable backup snapshots without folding the live graph.
+`ds pm member list` makes a separate bounded server read of the project-side
+assignment roster, including each account's active and assignable status.
+It does not infer membership from `pm plan.permissions.admin`: a platform
+administrator can edit a plan without being listed on that project.
 
 Graph and record reads are bounded and report their bounds. On task and record
 lists, `--limit` is a page, the matched `total` is returned, and a page smaller
@@ -160,7 +165,7 @@ still run it.
 Every person named must be an **active member** of the project; an elevated
 platform account that can read every project is not thereby a member of any,
 and the engine refuses the request by name (`pm_refused`, "every task assignee
-must be an active project member").
+must be an active project member"). Read `ds pm member list` before assigning.
 
 ## Where the work is: task geometry from DS objects
 
