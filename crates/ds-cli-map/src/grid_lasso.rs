@@ -51,7 +51,7 @@ pub static COMMAND: Command = Command {
         Arg::value("space", "<profile|plan>", "Coordinate space of the held scene.").choices(&["profile", "plan"]).required(),
         Arg::value("polygon", "<json>", "<=64 KiB, finite exact pairs. Profile: 3..256 [scene_x,scene_y] engineering pairs (not pixels), open/closed once, abs <=1e9; or GeoJSON in those units. Plan: WGS84 GeoJSON, lon [-180,180], lat [-90,90]. GeoJSON: only {type:Polygon,coordinates:[ring]}, closed 4..256 pairs; no holes/extra keys/ordinates.").required(),
         Arg::value("predicate", "<intersects|within>", "Boundary-inclusive; within requires the whole entity.").choices(&["intersects", "within"]).default("intersects"),
-        Arg::repeated("family", "<family>", "Repeat distinct scene families; omitted = all five. terrain_points = native ground points.").choices(FAMILIES),
+        Arg::repeated("family", "<family>", "Repeat distinct scene families; omitted = the held visible families supported in that space. Plan has no attachment-point geometry. terrain_points = native ground points.").choices(FAMILIES),
         Arg::value("filter", "<json>", "Closed ProfileTableFilterQuery <=64 KiB: {filters?:[{column,op,value?,value2?}],stats_columns?:[]}. Lists default empty; <=64 AND filters, <=8 distinct stats names. Names: nonblank <=200 bytes, no surrounding whitespace/controls. Values: strings <=4096 bytes; value2 may be null. op: contains|equals|not_equals|starts_with|ends_with|gt|gte|lt|lte|between|is_empty|not_empty. Unknown/duplicate keys refused."),
         Arg::value("mode", "<replace|add|remove|intersect>", "Combine native hits with the current selection.").choices(&["replace", "add", "remove", "intersect"]).default("replace"),
         crate::DESCRIPTOR_ARG,
@@ -82,7 +82,8 @@ struct GridLassoRequest<'a> {
     space: &'a str,
     polygon: Value,
     predicate: &'a str,
-    families: Vec<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    families: Option<Vec<&'a str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     filter: Option<Value>,
     mode: &'a str,
@@ -149,13 +150,15 @@ fn request(inputs: &Inputs) -> Result<Value, Failure> {
     let mut families = Vec::new();
     for family in inputs.repeated("family") {
         let family = choice(family, FAMILIES, "family")?;
+        if space == "plan" && family == "attachment_points" {
+            return Err(invalid(
+                "Plan has no attachment-point geometry; select that family in Profile",
+            ));
+        }
         if families.contains(&family) {
             return Err(invalid("repeat only distinct --family values"));
         }
         families.push(family);
-    }
-    if families.is_empty() {
-        families.extend_from_slice(FAMILIES);
     }
     let polygon = polygon(inputs.require("polygon")?, space)?;
     let filter = inputs.value("filter").map(filter).transpose()?;
@@ -165,7 +168,7 @@ fn request(inputs: &Inputs) -> Result<Value, Failure> {
         space,
         polygon,
         predicate,
-        families,
+        families: (!families.is_empty()).then_some(families),
         filter,
         mode,
     })
@@ -393,12 +396,18 @@ mod tests {
             json!({
                 "model_id":"model-a", "expected_revision":"rev-b", "space":"plan",
                 "polygon":{"type":"Polygon","coordinates":[[[30.0,-2.0],[30.1,-2.0],[30.1,-1.9],[30.0,-2.0]]]},
-                "predicate":"intersects", "families":FAMILIES, "mode":"replace"
+                "predicate":"intersects", "mode":"replace"
             })
         );
         assert_eq!(
             ds_cli_desktop::ops::undeclared_key(&crate::GRID_LASSO, &payload),
             None
+        );
+        assert_eq!(
+            request(&inputs("plan", polygon, &["--family", "attachment_points"]).unwrap())
+                .unwrap_err()
+                .code(),
+            "invalid_grid_lasso"
         );
     }
 
