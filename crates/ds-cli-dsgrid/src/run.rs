@@ -885,12 +885,19 @@ mod tests {
     fn engineering_issue_layer_admits_exact_typed_request_wrapper() {
         let descriptor = operation_descriptor("engineering_issue_layer").unwrap();
         assert!(is_admitted(&descriptor));
-        let params = json!({ "request": { "clearance": {}, "structure_screening": null, "max_features_per_kind": 42 } });
+        let params = json!({ "request": { "clearance": {}, "structure_screening": null,
+            "max_features_per_kind": 42,
+            "filter": { "nature": "vertical_clearance", "minimum_vertical_deficit_m": 0.5 } } });
         validate_params(&descriptor, &params).expect("descriptor admits request wrapper");
         let parsed: RequestParams<ds_grid_engine::EngineeringIssueLayerRequest> =
             parse("engineering_issue_layer", &params).expect("typed native request");
         assert_eq!(parsed.request.max_features_per_kind, 42);
         assert!(parsed.request.structure_screening.is_none());
+        assert_eq!(parsed.request.filter.minimum_vertical_deficit_m, Some(0.5));
+        assert_eq!(
+            parsed.request.filter.nature,
+            Some(ds_grid_engine::EngineeringIssueNature::VerticalClearance)
+        );
 
         validate_params(&descriptor, &json!({})).expect_err("request wrapper is required");
         validate_params(&descriptor, &json!({ "clearance": {} }))
