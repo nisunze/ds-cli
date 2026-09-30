@@ -33,19 +33,20 @@ use serde_json::{Map, Value, json};
 
 use crate::{DS_REPORT, EXPORT_TIMEOUT};
 
-const TASKS: &[&str] = &["transformer", "combined"];
+const TASKS: &[&str] = &["transformer", "combined", "voltage-drop"];
 const INPUT_SHAPES: &[&str] = &["firestore_rest", "plain_local"];
 
 /// The engine subcommand behind each `--task`. Named here, in source, and
 /// never assembled from caller input.
 const TRANSFORMER_SUBCOMMAND: &str = "export-transformer-report";
 const COMBINED_SUBCOMMAND: &str = "export-combined-transformer-report";
+const VOLTAGE_DROP_SUBCOMMAND: &str = "render-voltage-drop-result";
 
 pub static COMMAND: Command = Command {
     id: "report.export",
     path: &["report", "export"],
-    contract: 1,
-    summary: "Export a transformer or combined report from local inputs.",
+    contract: 2,
+    summary: "Export local reports or print an exact voltage-drop result to A4.",
     purpose: "\
 Builds report artifacts with the installed reporter engine. Reads only local \
 bytes and makes no network call of any kind. The engine writes a result \
@@ -53,7 +54,7 @@ document describing every artifact and every blocker; this command returns \
 that document, so a refused export arrives as typed blockers rather than an \
 exit code and a file path. Use --request to supply the engine's full typed \
 request instead of the flags below; run `ds report tasks --task <name>` for \
-its schema.",
+its schema. --task voltage-drop requires --request from render_voltage_drop_result: it prints the exact calculated JSON to A4 with headless Chromium, without processing, repairing topology or inferring missing analysis. A reporter without that task refuses; there is no export fallback.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -117,7 +118,7 @@ its schema.",
     ],
     output: "\
 The engine's own result document: status, the artifacts it produced, and any \
-blockers. `result_path` is present only when --result was given.",
+blockers; voltage-drop returns the source/PDF digests, local PDF path, byte/page counts and nothing-published receipt. `result_path` is present only when --result was given.",
     examples: &[
         Example {
             command: "ds report tasks --task export_transformer_report --output json",
@@ -136,6 +137,11 @@ blockers. `result_path` is present only when --result was given.",
         },
     ],
     refusals: &[
+        Refusal {
+            code: "unknown_task",
+            when: "the installed reporter does not publish the exact voltage-drop render task",
+            remedy: "install a reporter exposing render_voltage_drop_result; no network recomputation fallback is permitted",
+        },
         Refusal {
             code: "reporter_engine_missing",
             when: "`ds-report` is not installed next to `ds`",
@@ -188,7 +194,7 @@ blockers. `result_path` is present only when --result was given.",
         },
     ],
     reference: Some("docs/reference/report.md"),
-    search: &[],
+    search: &["A4", "voltage drop", "calculated JSON", "headless Chromium"],
     requires: Requires::Server,
     availability,
 };
@@ -216,6 +222,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let subcommand = match task {
         "transformer" => TRANSFORMER_SUBCOMMAND,
         "combined" => COMBINED_SUBCOMMAND,
+        "voltage-drop" => VOLTAGE_DROP_SUBCOMMAND,
         other => {
             return Err(Failure::internal(
                 "unmapped_task",
@@ -238,6 +245,31 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy("pass either --request or the content flags, not both")
         .detail(json!({ "conflicting": used_content })));
+    }
+
+    if task == "voltage-drop" {
+        if supplied_request.is_none() {
+            return Err(Failure::invalid(
+                "missing_input",
+                "--task voltage-drop requires --request; content flags cannot supply calculated analysis",
+            )
+            .remedy("discover `ds report tasks --task render_voltage_drop_result` and supply its exact request"));
+        }
+        // Discover the installed owner's task, never route missing analysis to
+        // the general exporter, which can replay or recompute the network.
+        let schemas = crate::tasks::schemas()?;
+        if !schemas["tasks"].as_array().is_some_and(|tasks| {
+            tasks.iter().any(|task| {
+                task["name"] == "render_voltage_drop_result"
+                    && task["subcommand"] == VOLTAGE_DROP_SUBCOMMAND
+            })
+        }) {
+            return Err(Failure::unavailable(
+                "unknown_task",
+                "the installed reporter does not expose render_voltage_drop_result",
+            )
+            .remedy("install a reporter exposing render_voltage_drop_result; no network recomputation fallback is permitted"));
+        }
     }
 
     // Where the engine's result document goes. A caller-named path is theirs
@@ -484,6 +516,16 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
 }
 
 pub fn render(data: &Value) -> String {
+    if data["schema"] == "ds.voltage-drop-pdf.render/v1" {
+        return format!(
+            "{} A4 page(s) — {}\n{}\nsource SHA-256: {}\n{}",
+            data["pages"],
+            data["transformer"].as_str().unwrap_or(""),
+            data["out_pdf"].as_str().unwrap_or(""),
+            data["source_sha256"].as_str().unwrap_or(""),
+            data["publication"].as_str().unwrap_or(""),
+        );
+    }
     let artifacts = data["artifacts"].as_array().map_or(0, Vec::len);
     let blockers = data["blockers"].as_array().map_or(0, Vec::len);
     let mut out = format!(

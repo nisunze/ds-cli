@@ -89,7 +89,21 @@ The schemas are never copied into this repository. They are read from the
 engine installed on this machine, at the version actually installed, so they
 cannot be stale.
 
-## Combined voltage-drop overview
+## Voltage-drop printing
+
+Print a complete, already calculated voltage-drop JSON to A4 through the
+reporter's dedicated render task:
+
+```sh
+ds report tasks --task render_voltage_drop_result --output json
+ds report export --task voltage-drop --request ./a4-request.json \
+  --result ./a4-receipt.json --output json
+```
+
+Author the request from the installed owner's schema. This route passes the
+request unchanged and refuses when that render task is unavailable. The
+project label is presentation only; it grants no project authority. Missing
+analysis must be produced by the network owner before printing.
 
 `report.voltage-drop-combined` prints one local A3 overview for an exact
 transformer roster from held voltage-drop result files. The reporter owns
