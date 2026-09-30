@@ -61,6 +61,10 @@ pub enum Command {
     /// per-task endpoint would be a second answer that could disagree with
     /// this one.
     Graph,
+    /// The bounded project-side directory of people the server will accept
+    /// for a Project Work assignment. It is separate from graph hydration so
+    /// ordinary plan reads do not pay for a roster scan.
+    Assignees,
     /// The context rows the graph does not carry: records, work episodes and
     /// attachments, at most `limit` per collection (the server's default when
     /// `None`).
@@ -151,6 +155,7 @@ impl Command {
     fn action(&self) -> &'static str {
         match self {
             Self::Graph => "get_graph",
+            Self::Assignees => "get_assignees",
             Self::Context { .. } => "get_context",
             Self::Commit { .. } => "commit_command",
             Self::CommitBatch { .. } => "commit_batch",
@@ -167,7 +172,7 @@ impl Command {
     pub fn validate(&self) -> Result<(), ClientError> {
         let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
         match self {
-            Self::Graph => Ok(()),
+            Self::Graph | Self::Assignees => Ok(()),
             Self::Context { limit } => match limit {
                 Some(limit) if !(1..=MAX_CONTEXT_LIMIT).contains(limit) => Err(invalid(
                     "project management reads 1 through 100 context rows per collection",
@@ -267,7 +272,7 @@ impl Command {
     fn payload(&self, project: &str) -> Value {
         let mut payload = json!({ "action": self.action(), "ds_project": project });
         match self {
-            Self::Graph => {}
+            Self::Graph | Self::Assignees => {}
             Self::Context { limit } => {
                 if let Some(limit) = limit {
                     payload["limit"] = json!(limit);
@@ -498,6 +503,11 @@ pub(crate) fn run<T: AuthorizedTransport>(
             .filter(|graph| !graph.is_null())
             .cloned()
             .unwrap_or(data),
+        Command::Assignees => data
+            .get("roster")
+            .filter(|roster| roster.is_object())
+            .cloned()
+            .unwrap_or(data),
         // `{context: {…}}` for a context read; `{result: {…}}` for a single
         // command and the bare result for a draft (`response.result ??
         // response`, api/pm.ts:184 and 208). The wrapper is unwrapped where it
@@ -574,6 +584,11 @@ mod tests {
     #[test]
     fn the_action_vocabulary_is_closed_and_named() {
         assert_eq!(Command::Graph.action(), "get_graph");
+        assert_eq!(Command::Assignees.action(), "get_assignees");
+        assert_eq!(
+            Command::Assignees.payload("p"),
+            json!({"action":"get_assignees","ds_project":"p"})
+        );
         assert_eq!(Command::Context { limit: None }.action(), "get_context");
         let commit = Command::Commit {
             command_id: "c1".into(),
