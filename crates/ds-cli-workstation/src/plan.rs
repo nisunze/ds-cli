@@ -12,7 +12,7 @@ const FEEDBACK_ROUTE: &str = "ds feedback submit";
 const PLATFORM_ARG: Arg = Arg::value(
     "platform",
     "<current|windows|macos|linux|browser>",
-    "Target host; browser returns the typed unsupported-host refusal.",
+    "Target host; browser refuses with an unsupported-host code.",
 )
 .choices(&["current", "windows", "macos", "linux", "browser"])
 .default("current");
@@ -28,7 +28,7 @@ const INTENT_ARG: Arg = Arg::value(
 const TARGET_ARG: Arg = Arg::value(
     "target",
     "<vscode|windows-terminal|ds-subprocess|reporter>",
-    "The existing Git Bash integration or browser reporter path to configure later.",
+    "Integration target for later configuration.",
 )
 .choices(&["vscode", "windows-terminal", "ds-subprocess", "reporter"]);
 
@@ -38,16 +38,16 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Workstation,
     summary: "Review a no-side-effect prerequisite or integration plan.",
-    purpose: "Returns required setup steps and proof boundaries. It never runs a package manager, downloads, or writes settings.",
+    purpose: "Plan setup and proof without downloads or writes.",
     effect: Effect::Proposal,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[crate::COMPONENT_ARG, PLATFORM_ARG, INTENT_ARG, TARGET_ARG],
-    output: "Current state, ordered policy steps, authorization/proof boundaries, and the typed feedback route. `mutated` is always false.",
+    output: "Current state, steps, proof boundary and feedback route; `mutated` is false.",
     examples: &[
         Example {
             command: "ds workstation plan --component libreoffice --platform windows --output json",
-            note: "Proven package-manager path and official-Metalink/hash fallback policy; no download.",
+            note: "Package-manager route or verified fallback; no download.",
             runnable: true,
         },
         Example {
@@ -57,7 +57,7 @@ pub static COMMAND: Command = Command {
         },
         Example {
             command: "ds workstation plan --component chromium --platform current --intent configure --target reporter --output json",
-            note: "Identify an existing browser and its PDF proof boundary without changing settings.",
+            note: "Find an existing browser and PDF proof boundary; no write.",
             runnable: true,
         },
     ],

@@ -32,7 +32,13 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &crate::read_refusals::<17>(&[ROSTER_UNREADABLE]),
     reference: Some("docs/reference/pm.md"),
-    search: &["assignee", "project member", "member roster", "assignment", "active people"],
+    search: &[
+        "assignee",
+        "project member",
+        "member roster",
+        "assignment",
+        "active people",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

@@ -31,7 +31,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Workstation,
     summary: "Persist one verified existing workstation integration.",
-    purpose: "Selects an existing suitable Git Bash profile in VS Code on Windows, or verifies an existing Chrome/Edge/Chromium browser by printing a task-owned PDF and persists its exact executable path for local reports. It installs no browser and preserves unrelated settings.",
+    purpose: "Select an existing Windows VS Code Git Bash profile, or verify Chrome/Edge/Chromium with a task-owned PDF and save its executable path for local reports. Installs no browser; preserves other settings.",
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,

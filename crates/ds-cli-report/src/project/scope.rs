@@ -14,18 +14,15 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Show which transformers a Compounded Report ZIP would include.",
     purpose: "\
-Start here. The requested scope query reads the named project's \
-audience-fenced transformer lifecycle inventory. Before that read, the automatic \
-project touch may publish older queued local reports and pull moved remote heads. Without --transformer the \
-scope is every active saved transformer, which is exactly what `compounded` \
-resolves; with names it checks each one, so a retired, deleted or missing \
-name is reported before any artifact is produced. A reserved computed \
-identity — `collisions`, `combined_transformer` and its aliases — is what a \
-report produces, never a participant, and is refused outright. With \
---group-by/--where it previews, from the tag projection, the archives a \
-grouped `compounded` would publish. The scope query generates or saves no \
-report. No project, Desktop descriptor, URL, body or action \
-override is accepted.",
+Read the named project's audience-fenced transformer lifecycle inventory. \
+The automatic project touch may first publish queued local reports and pull \
+moved remote heads. Without --transformer the scope is every active saved \
+transformer used by `compounded`; with names it reports retired, deleted or \
+missing names before producing an artifact. Reserved computed identities \
+(`collisions`, `combined_transformer`, aliases) are refused. With \
+--group-by/--where it previews the tagged archives a grouped `compounded` \
+would publish. The query generates or saves no report and accepts no \
+Desktop descriptor, URL, body or action override.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,

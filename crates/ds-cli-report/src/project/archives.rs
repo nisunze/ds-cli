@@ -15,13 +15,10 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "List the named project's published Compounded Report ZIPs.",
     purpose: "\
-The requested archive query reads the audience-fenced named project's \
-Compounded Report archive registry, newest first, through the fixed list \
-call. Each row is the durable record of one `compounded` run and the only \
-place its achieved foldering is confirmed. Before the read, the automatic \
-project touch may publish older queued local reports and pull moved remote heads. \
-No project, URL, body or action \
-override is accepted.",
+Read the named project's audience-fenced Compounded Report archive registry, \
+newest first. Each row records one `compounded` run and confirms its achieved \
+foldering. The automatic project touch may first publish queued local reports \
+and pull moved remote heads. No URL, body or action override is accepted.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,

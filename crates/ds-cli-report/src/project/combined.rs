@@ -56,7 +56,7 @@ pub(super) const ARGS: &[Arg] = &[
 ];
 
 pub(super) const PURPOSE: &str = "\
-After confirmation, asks the governed report service for a Compounded Report \
+Asks the governed report service for a Compounded Report \
 ZIP archive over the named project: it resolves the scope, composes the sets and publishes one \
 ZIP with a registry row. District and sector folders come from the project's \
 applied `report_archive` grouping, not from this request. Retired \

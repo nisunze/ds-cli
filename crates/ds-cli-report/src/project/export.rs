@@ -77,7 +77,7 @@ const ADMIN_BOUNDS_ARG: Arg = Arg::value(
 );
 const SEED_ARG: Arg = Arg::switch(
     "seed",
-    "Acquire the printed transformer's missing map context first (provider cost); without it unheld context is omitted and named.",
+    "Acquire missing map context (provider cost); name omissions otherwise.",
 );
 /// Publication is not optional, so there is no `--publish`.
 ///
@@ -312,7 +312,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export transformer reports and prints with project numbering. Reuse fresh data; regenerate prints. --dry-run opens no publication queue, even with --server-state-dir. Use held rooms or fetch changes; --seed acquires map context. neighbor_transformers uses cached project points. Photos need a media grant.",
+    purpose: "Export numbered transformer reports and print outputs. Reuse fresh data; regenerate prints. --dry-run opens no publication queue. Use held rooms or fetch changes; --seed acquires map context. neighbor_transformers uses cached points; photos need a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -325,17 +325,17 @@ pub static COMMAND: Command = Command {
         Arg::repeated(
             "print-layout",
             "<json-file>",
-            "Local proof of an existing layout; preserves inputs and paper, records digests, cannot publish.",
+            "Local layout proof; preserves inputs and paper, records digests, cannot publish.",
         ),
         Arg::value(
             "preview-layout",
             "<json-file>",
-            "One SVG per transformer with outlined text and template pens. No publication or --print-layout.",
+            "One outlined-text SVG per transformer; no publication or --print-layout.",
         ),
         Arg::value(
             "context-vectors",
             "<dir>",
-            "Verified data.city-vectors output to use as this batch’s OSM/Microsoft map context.",
+            "Verified data.city-vectors map context for this batch.",
         ),
         SEED_ARG,
         DRY_RUN_ARG,

@@ -14,7 +14,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "map-inputs"],
     contract: 1,
     summary: "Prepare a district MV overview for headless PDF/PNG printing.",
-    purpose: "Reads all active LV transformers and exact current MV models, preserving revisions and geometry. Includes new LV lines, poles, service cables and customers with their saved print styles. --focus-bounds or --area-bounds keeps the emitted design vectors near that map area without straightening crossing lines. Applies an authored layout to held geographic context and writes a replayable report.layout.render request. No design writes or publication. --seed explicitly acquires missing context. Missing context is named in the receipt; inspect it before rendering.",
+    purpose: "Read active LV transformers and exact current MV models with revisions, geometry and saved print styles. Bound emitted vectors with --focus-bounds or --area-bounds without straightening crossing lines. Apply an authored layout to held context and write a replayable report.layout.render request. No design write or publication. --seed acquires missing context; the receipt names any omission.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -29,7 +29,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "mv-model",
             "<absolute.dsgrid>",
-            "Optional local DS Grid draft included in the print context and receipt with its exact digest.",
+            "Local DS Grid draft with its exact digest in the print receipt.",
         ),
         Arg::value(
             "focus-bounds",
@@ -39,7 +39,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "area-bounds",
             "<west,south,east,north>",
-            "Optional WGS84 custom or district map rectangle (up to 0.5 degrees); acquires context, retains design vectors in that area and sets the printed extent. Cannot be combined with --focus-bounds.",
+            "WGS84 map rectangle (up to 0.5 degrees); acquires context, clips vectors and sets print extent. Excludes --focus-bounds.",
         ),
         Arg::value(
             "layout",

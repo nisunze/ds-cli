@@ -36,7 +36,7 @@ pub static COMMAND: Command = Command {
     id: "pm.task.delete",
     path: &["pm", "task", "delete"],
     contract: 1,
-    summary: "Delete a task or milestone and its hierarchy, with a durable server backup.",
+    summary: "Delete a task or milestone subtree with a durable server backup.",
     purpose: "Delete the selected task or milestone, its descendants, and attached dependencies and residuals as one governed graph edit. The server atomically captures the exact pre-delete documents in a durable backup and returns its id. An assigned descendant refuses the cascade. Supply the plan revision you reviewed and a stable command id; a changed head is refused, and retrying the same command id after a lost reply replays the same decision. Headless and scoped to the exact --project.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
