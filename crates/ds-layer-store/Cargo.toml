@@ -13,8 +13,6 @@ tempfile = "3"
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
-
-[dev-dependencies]
 sha2 = "0.10"
 
 # Native host crate, separate from the portable WASM workspace.

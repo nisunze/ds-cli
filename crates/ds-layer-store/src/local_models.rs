@@ -41,6 +41,9 @@ use crate::private;
 use ds_command_kernel::local_models::{Catalogue, Op, Outcome, Scope};
 use fs2::FileExt;
 
+mod drafts;
+pub use drafts::*;
+
 /// The largest catalogue this store will write or reopen.
 pub const MAX_CATALOGUE_BYTES: usize = 1024 * 1024;
 
@@ -230,6 +233,11 @@ pub fn execute_at(
     op: Op,
     package: Option<&[u8]>,
 ) -> Result<Outcome, StoreError> {
+    if matches!(op, Op::StageDraft { .. }) {
+        return Err(StoreError::Store(
+            "staging a draft requires stage_draft_at and its exact bytes".into(),
+        ));
+    }
     let dir = scope_dir(root, scope)?;
     let catalogue_path = dir.join("catalogue.json");
 

@@ -36,6 +36,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+mod drafts;
+pub use drafts::*;
+
 /// The longest display name, id or CRS token this catalogue keeps.
 pub const MAX_NAME_CHARS: usize = 200;
 /// The most models one machine's catalogue may hold. A machine that reaches it
@@ -165,6 +168,9 @@ pub struct LocalModel {
     /// never silently overwritten.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pls_source: Option<PlsSourceLink>,
+    /// Independently pinned local recovery content; never a validated package.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<LocalDraft>,
 }
 
 /// One PLS-CADD workspace a working copy is linked to (contract 02 §1).
@@ -279,6 +285,13 @@ impl Catalogue {
         }
     }
 
+    /// Read one row with the same account/lane fence as a catalogue decision.
+    pub fn model(&self, scope: &Scope, id: &str) -> Result<&LocalModel, Refusal> {
+        scope.validate()?;
+        self.fence(scope)?;
+        Ok(&self.models[self.position(id)?])
+    }
+
     /// Every operation names the scope it believes it is in, so a catalogue
     /// belonging to another lane or account is never silently rewritten.
     fn fence(&self, scope: &Scope) -> Result<(), Refusal> {
@@ -370,6 +383,14 @@ pub enum Op {
         head_revision: Option<String>,
         /// RFC3339. `None` asks the host for its clock, exactly as `Register`.
         revised_at: Option<String>,
+    },
+    /// Pin local recovery bytes after the host has durably staged them.
+    /// Both the previous pin and immutable base identity must still match.
+    StageDraft {
+        id: String,
+        expected_base: PackageIdentity,
+        expected_draft: Option<DraftCheckpointPin>,
+        draft: LocalDraft,
     },
     /// Open one existing model as the active one.
     SetActive { id: String },
@@ -473,6 +494,7 @@ pub fn evaluate(catalogue: &Catalogue, scope: &Scope, op: Op) -> Result<Outcome,
                 // Acquisition never links: the link is a separate, explicit
                 // act whose digest the host has just verified.
                 pls_source: None,
+                draft: None,
             };
             if activate || next.models.is_empty() {
                 next.active = Some(model.id.clone());
@@ -501,6 +523,12 @@ pub fn evaluate(catalogue: &Catalogue, scope: &Scope, op: Op) -> Result<Outcome,
                 return refusal(MALFORMED, "a revision needs the host's clock");
             }
             let row = &mut next.models[index];
+            if row.draft.is_some() {
+                return refusal(
+                    DRAFT_PENDING,
+                    "a pending local draft must be resolved before revising its base package",
+                );
+            }
             if let Some(expected) = expected_sha256 {
                 if expected != row.sha256 {
                     return refusal(
@@ -528,6 +556,21 @@ pub fn evaluate(catalogue: &Catalogue, scope: &Scope, op: Op) -> Result<Outcome,
             row.head_revision = head_revision.filter(|value| bounded(value));
             row.revised_at = revised_at;
             Some(row.clone())
+        }
+        Op::StageDraft {
+            id,
+            expected_base,
+            expected_draft,
+            draft,
+        } => {
+            let index = next.position(&id)?;
+            drafts::advance(
+                &mut next.models[index],
+                &expected_base,
+                expected_draft.as_ref(),
+                draft,
+            )?;
+            Some(next.models[index].clone())
         }
         Op::SetActive { id } => {
             let index = next.position(&id)?;
