@@ -125,3 +125,20 @@ accepts the backend-issued HTTPS storage session and project-bound raw path.
 The host sends bytes without DS bearer headers and without redirects. Only a
 complete transfer may be registered; registered and tiles-ready are separate
 receipt facts. Contract tests use mock transports and require no cloud access.
+
+Native LV process saves require a separate typed `voltage_drop` analysis and
+retain the exact hydrated `process_input` locally. The client shares
+`ds-network`'s schema, status, summary, size and input/output digest validator;
+configuration must equal both that input and fresh project configuration.
+Only export's transient transformer nature may differ from the fenced saved
+source. Neither the process input nor the full analysis is copied into
+`process_metadata`. The closed `/api/v1/data` body places `voltage_drop` beside
+`gdfs` in each `save_transformers_data.transformer_saves` item for one server CAS.
+
+A verified save requires the fresh saved snapshot's network version/content
+digest and ready `voltage_drop_metadata` receipt to match. The analysis SHA-256
+is computed over the exact JSON value embedded in the request; the producer's
+three digests remain distinct. Matching geometry alone never proves an
+idempotent retry, and a missing or replaced analysis receipt never produces a
+verified result. The receipt returns the verified `analysis_sha256`. Every
+read and write uses the operation's explicit project and captured authority.

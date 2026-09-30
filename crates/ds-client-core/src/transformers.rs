@@ -17,6 +17,7 @@ pub struct TransformerContext {
     transformer_name: String,
     layers: BTreeMap<String, Value>,
     metadata: TransformerContextMetadata,
+    voltage_drop_metadata: Option<Value>,
 }
 
 impl TransformerContext {
@@ -30,6 +31,11 @@ impl TransformerContext {
 
     pub fn layers(&self) -> &BTreeMap<String, Value> {
         &self.layers
+    }
+
+    /// Same-snapshot compact receipt; full analysis is never in this response.
+    pub fn voltage_drop_metadata(&self) -> Option<&Value> {
+        self.voltage_drop_metadata.as_ref()
     }
 
     pub const fn metadata(&self) -> &TransformerContextMetadata {
@@ -85,6 +91,8 @@ struct TransformerBatchItem {
 
 #[derive(Deserialize)]
 struct TransformerData {
+    #[serde(default)]
+    voltage_drop_metadata: Option<Value>,
     layers: BTreeMap<String, Value>,
     #[serde(default)]
     metadata: Option<TransformerMetadataWire>,
@@ -182,6 +190,7 @@ pub(crate) fn decode_context(
         ds_project: ds_project.to_owned(),
         transformer_name: item.transformer_name,
         layers: data.layers,
+        voltage_drop_metadata: data.voltage_drop_metadata,
         metadata: TransformerContextMetadata {
             version: metadata.version,
             content_digest: metadata.content_digest,

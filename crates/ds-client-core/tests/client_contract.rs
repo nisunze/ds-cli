@@ -221,6 +221,8 @@ struct TransportState {
     refresh: VecDeque<TransportResponse>,
     projects: VecDeque<TransportResponse>,
     transformer_context: VecDeque<TransportResponse>,
+    transformer_saves: VecDeque<TransportResponse>,
+    transformer_save_bodies: Vec<serde_json::Value>,
     project_forms: VecDeque<TransportResponse>,
     project_form_editor: VecDeque<TransportResponse>,
     solar_snapshot: VecDeque<TransportResponse>,
@@ -824,6 +826,23 @@ impl Transport for FixtureTransport {
             correlation_valid
         ));
         Ok(state.projects.pop_front().unwrap())
+    }
+
+    fn transformer_save(
+        &mut self,
+        call: ds_client_core::TransformerSaveCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/data");
+        assert_eq!(call.method(), "POST");
+        assert!(!call.bearer_token().is_empty());
+        let mut state = self.0.lock().unwrap();
+        state
+            .transformer_save_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        Ok(state
+            .transformer_saves
+            .pop_front()
+            .expect("unexpected transformer save"))
     }
 
     fn transformer_context(
@@ -12654,4 +12673,108 @@ fn retire_carries_its_reason_to_the_audit() {
         bodies[1]["archive"],
         json!({"project_id":"project_a","attachment_id":"file_one","expected_version":3,"restore":false,"reason":"superseded by the v2 submission"})
     );
+}
+
+#[test]
+fn native_lv_save_atomically_sends_exact_analysis_and_refuses_replaced_readback() {
+    use ds_client_core::{TransformerSaveBatch, TransformerSaveItem};
+    use ds_command_kernel::report_export::jcs::layers_content_digest;
+    use ds_network::network::native_fast_lv::{
+        decode_native_fast_lv_request, encode_native_fast_lv_result, process_native_fast_lv,
+        project_native_fast_lv_result,
+    };
+    let request = include_bytes!("fixtures/native-lv-save-request.json");
+    let processed =
+        process_native_fast_lv(decode_native_fast_lv_request(request).unwrap()).unwrap();
+    let projection = project_native_fast_lv_result(
+        request,
+        &encode_native_fast_lv_result(&processed).unwrap(),
+        "T1",
+    )
+    .unwrap();
+    let item = TransformerSaveItem {
+        transformer_name: "T1".into(),
+        base_version: 7,
+        source_content_digest: layers_content_digest(&projection.source_layers).unwrap(),
+        source_layers: projection.source_layers,
+        gdfs: projection.gdfs,
+        config_dfs: projection.config_dfs,
+        process_metadata: projection.process_metadata,
+        process_input: projection.process_input,
+        voltage_drop: projection.voltage_drop,
+        operation_id: "save-T1-7".into(),
+    };
+    let result_digest = layers_content_digest(&item.gdfs).unwrap();
+    let analysis = serde_json::to_value(&item.voltage_drop).unwrap();
+    let sha = format!(
+        "{:x}",
+        sha2::Sha256::digest(serde_json::to_vec(&analysis).unwrap())
+    );
+    let a = &item.voltage_drop;
+    let meta = json!({"state":"ready","schema":a.schema,"method":a.method,"status":a.status,
+        "content_digest":result_digest,"analysis_sha256":sha,"inputs_digest":a.inputs_digest,
+        "analysis_inputs_digest":a.analysis_inputs_digest,"processed_digest":a.processed_digest,"summary":a.summary});
+    let context = |layers: &std::collections::BTreeMap<String, serde_json::Value>,
+                   version,
+                   receipt: serde_json::Value| {
+        serde_json::to_vec(&json!({"total":1,"found_count":1,"failed_count":0,"results":[{"transformer_name":"T1","ok":true,
+            "data":{"layers":layers,"metadata":{"version":version,"content_digest":layers_content_digest(layers).unwrap()},"voltage_drop_metadata":receipt}}]})).unwrap()
+    };
+    for replace_readback in [false, true] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone(), MemoryStore::default());
+        let mut readback_meta = meta.clone();
+        if replace_readback {
+            readback_meta["analysis_sha256"] = json!("0".repeat(64));
+        }
+        transport.push_transformer_context(
+            200,
+            &context(&item.source_layers, 7, serde_json::Value::Null),
+        );
+        transport.push_transformer_context(200, &context(&item.gdfs, 8, readback_meta));
+        {
+            let mut state = transport.0.lock().unwrap();
+            state.configurations.push_back(TransportResponse {
+                status: 200,
+                body: serde_json::to_vec(&json!({"sheets":item.config_dfs})).unwrap(),
+            });
+            state.transformer_saves.push_back(TransportResponse { status:200, body:serde_json::to_vec(&json!({"total":1,"saved_count":1,"failed_count":0,"results":[{
+                "transformer_name":"T1","operation_id":item.operation_id,"ok":true,"result":{"transformer_name":"T1","version":8,"content_digest":result_digest,"unchanged":false,"voltage_drop_metadata":meta}
+            }]})).unwrap() });
+        }
+        let receipt = client
+            .save_transformers(
+                "explicit-project",
+                &TransformerSaveBatch {
+                    project_id: "explicit-project".into(),
+                    items: vec![item.clone()],
+                },
+                NOW + 1,
+            )
+            .unwrap();
+        assert_eq!(receipt.project_id, "explicit-project");
+        assert_eq!(receipt.results[0].verified, !replace_readback);
+        if replace_readback {
+            assert_eq!(
+                receipt.results[0].error_code.as_deref(),
+                Some("TRANSFORMER_SAVE_READBACK_UNVERIFIED")
+            );
+        } else {
+            assert_eq!(
+                receipt.results[0].analysis_sha256.as_deref(),
+                Some(sha.as_str())
+            );
+        }
+        let state = transport.0.lock().unwrap();
+        assert_eq!(state.transformer_save_bodies.len(), 1);
+        let wire = &state.transformer_save_bodies[0];
+        assert_eq!(wire["eds_project_id"], "explicit-project");
+        assert_eq!(wire["action"], "save_transformers_data");
+        let row = &wire["transformer_saves"][0];
+        assert_eq!(row.as_object().unwrap().len(), 7);
+        assert_eq!(row["voltage_drop"], analysis);
+        assert_eq!(row["gdfs"], serde_json::to_value(&item.gdfs).unwrap());
+        assert!(row["process_metadata"].get("voltage_drop").is_none());
+        assert!(row.get("process_input").is_none());
+    }
 }
