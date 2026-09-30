@@ -241,6 +241,8 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
                 gdfs: projection.gdfs,
                 config_dfs: projection.config_dfs,
                 process_metadata: projection.process_metadata,
+                process_input: projection.process_input,
+                voltage_drop: projection.voltage_drop,
                 operation_id: inputs.require("operation-id")?.to_owned(),
             }],
         },
