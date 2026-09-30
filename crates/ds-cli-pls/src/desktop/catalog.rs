@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn the_embedded_catalogue_reads_completely() {
         let catalog = embedded().expect("the catalogue parses");
-        assert_eq!(catalog.version, "2026-09-24");
+        assert_eq!(catalog.version, "2026-09-30");
         // Pinned: a catalogue entry is a decision, and adding one is as
         // deliberate as the new digest the bundle test then asks for.
         assert_eq!(catalog.entries.len(), 58);

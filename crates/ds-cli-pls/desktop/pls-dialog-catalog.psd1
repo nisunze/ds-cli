@@ -10,10 +10,10 @@
     # frame it is logged 'unknown menu [40337]' and PLS 16.81 crashes ~13 s later (access
     # violation 0xc0000005 at pls_cadd64.exe+0x19f5123; DESKTOP-T24AHBE 2026-09-24, Nyamagabe
     # v18). AutoSag is the Section Table route: entry section_table below.
-    Version = '2026-09-24'
+    Version = '2026-09-30'
     Entries = @(
         @{ Name = 'progress';          When = 'during any report / analysis'; Title = '^(Checking Structures|Generating Structure Loads|Computing|Calculating|Please Wait|Sagging|Analyzing|Processing).*'; Text = ''; Action = 'wait'; ControlId = 2; Note = 'progress box with Cancel id 2 and a status line (id 535); never click; poll until it closes' }
-        @{ Name = 'about';             When = 'startup';            Title = '^About PLS-CADD$';                          Text = '';                                   Action = 'click'; ControlId = 1;  Note = 'licensed options box; OK id 1' }
+        @{ Name = 'about';             When = 'startup';            Title = '^About PLS-CADD$';                          Text = '';                                   Action = 'click'; ControlId = 1;  Note = 'licensed options box; visible enabled OK id 1; Nyamagabe M1 16.81 ignored posted BM_CLICK but accepted WM_COMMAND(1, BN_CLICKED) to the dialog. The watcher uses that notification directly, at most three responsive attempts, and journals each attempt and exhaustion' }
         @{ Name = 'tip_of_the_day';    When = 'startup';            Title = '^Tip of the Day$';                          Text = '';                                   Action = 'click'; ControlId = 1;  Note = 'Close id 1; Next Tip 1002; Show Tips 1001' }
         @{ Name = 'project_moved';     When = 'open of a copied project'; Title = '^Warning$';                           Text = 'has been moved from the directory';  Action = 'click_any_ok'; ControlId = 0; Note = 'single OK button with a non-standard id; structures still resolve through the .str absolute paths' }
         @{ Name = 'criteria_problem';  When = 'any loads/usage report'; Title = 'Criteria Problem$';                     Text = "doesn't exist|Continue displaying warning messages"; Action = 'click'; ControlId = 7; Note = 'No = redirect the rest to the Error Log window (modeless, ignore it)' }

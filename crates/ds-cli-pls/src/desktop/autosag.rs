@@ -27,7 +27,7 @@ pub static COMMAND: Command = Command {
     path: &["pls", "desktop", "autosag"],
     contract: 1,
     summary: "AutoSag every section of a saved PLS-CADD project, then gate it.",
-    purpose: "Opens a saved project in PLS-CADD 16.81, applies AutoSag to every section through the Section Table exactly as the proven deliver chain does, saves the project in place, runs Section Usage as the gate that shows AutoSag took, and exits. The project's .xyz is its entry point. Use deliver instead for a DS-exported backup: it also pages, backs up and makes the deliverables from a fresh restore.",
+    purpose: "Opens a saved project in PLS-CADD 16.81, applies AutoSag to every section through the Section Table exactly as the proven deliver chain does, saves the project in place, runs Section Usage as the gate that shows AutoSag took, and exits. --attach-pid instead uses an existing pinned process only when its unique frame proves the current project's exact full path and leaves it open after saving. The project's .xyz is its entry point. Use deliver instead for a DS-exported backup: it also pages, backs up and makes the deliverables from a fresh restore.",
     chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -45,9 +45,10 @@ pub static COMMAND: Command = Command {
             "Absent folder off C: for the evidence and the gate report.",
         )
         .required(),
+        ATTACH_PID_ARG,
         REPORT_TIMEOUT_ARG,
     ],
-    output: "The receipt path and driver bundle digest, the project and its sha256 before AutoSag, the Section Table fill that was applied, the watcher outcome after OK, that the project was saved, and the Section Usage gate: its report path and violation counts.",
+    output: "The receipt path and driver bundle digest, session lifecycle metadata, the project and its sha256 before AutoSag, the Section Table fill that was applied, the watcher outcome after OK, that the project was saved, and the Section Usage gate: its report path and violation counts.",
     examples: &[Example {
         command: r"ds pls desktop autosag --project 'G:\Shared drives\Pro\Working\r1\example.xyz' --out 'G:\Shared drives\Pro\Working\autosag-r1' --output json",
         note: "Saves the project in place; run it on a working copy.",
@@ -66,6 +67,7 @@ pub static COMMAND: Command = Command {
         SYSTEM_DRIVE_REFUSED,
         PLS_CADD_RUNNING,
         PLS_CADD_MISMATCH,
+        ATTACH_REFUSED,
         UNKNOWN_DIALOG,
         DIALOG_STOP,
         PLS_CADD_TIMEOUT,
@@ -89,6 +91,7 @@ struct Request {
     project: String,
     out: String,
     report_timeout: String,
+    attach_pid: Option<String>,
 }
 
 fn request(inputs: &Inputs) -> Result<Request, Failure> {
@@ -96,6 +99,7 @@ fn request(inputs: &Inputs) -> Result<Request, Failure> {
         project: project_file(inputs.require("project")?)?,
         out: new_folder(inputs.require("out")?, "out")?,
         report_timeout: report_timeout(inputs.value("report-timeout"))?,
+        attach_pid: attach_pid(inputs.value("attach-pid"))?,
     })
 }
 
@@ -108,6 +112,7 @@ fn invocation(request: &Request) -> Invocation {
     .value("ProjectPath", request.project.clone())
     .value("RunDirectory", request.out.clone())
     .value("ReportTimeoutSeconds", request.report_timeout.clone())
+    .optional("AttachProcessId", request.attach_pid.clone())
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -135,6 +140,9 @@ fn shape(receipt_path: &str, receipt: &Value) -> Result<Value, Failure> {
     shaped["autosag"] = receipt["autosag"].clone();
     shaped["saved"] = receipt["saved"].clone();
     shaped["gate_section_usage"] = receipt["gate_section_usage"].clone();
+    if let Some(session) = receipt.get("session") {
+        shaped["session"] = session.clone();
+    }
     Ok(shaped)
 }
 
@@ -191,11 +199,77 @@ mod tests {
             project: r"G:\r1\example.xyz".into(),
             out: r"G:\a".into(),
             report_timeout: "1800".into(),
+            attach_pid: None,
         });
         let declared = declared_parameters(Entry::Autosag);
         for (name, _) in &invocation.params {
             assert!(declared.iter().any(|d| d == name), "{name} is not declared");
         }
         assert_eq!(invocation.params.len(), 3);
+    }
+
+    // The request fixture lives in the Unix temp directory; Windows temp is
+    // normally on C:, which the delivery folder contract deliberately refuses.
+    #[cfg(unix)]
+    #[test]
+    fn explicit_attachment_routes_from_declared_flag_and_preserves_launch_default() {
+        let root =
+            std::env::temp_dir().join(format!("ds-cli-pls-autosag-flags-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let project = root.join("example.xyz");
+        std::fs::write(&project, "fixture").unwrap();
+        let out = root.join("new-autosag");
+        let tokens = vec![
+            "--project".into(),
+            project.display().to_string(),
+            "--out".into(),
+            out.display().to_string(),
+        ];
+        let inputs = ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap();
+        let default = invocation(&request(&inputs).unwrap());
+        assert_eq!(default.params.len(), 3);
+        assert!(
+            default
+                .params
+                .iter()
+                .all(|(name, _)| *name != "AttachProcessId")
+        );
+
+        let mut explicit = tokens;
+        explicit.extend(["--attach-pid".into(), "4242".into()]);
+        let inputs = ds_cli_contract::args::parse(&COMMAND, &explicit).unwrap();
+        let selected = invocation(&request(&inputs).unwrap());
+        assert!(
+            selected
+                .params
+                .contains(&("AttachProcessId", Some("4242".into())))
+        );
+        assert_eq!(selected.params.len(), 4);
+        let declared = declared_parameters(Entry::Autosag);
+        for (name, _) in &selected.params {
+            assert!(declared.iter().any(|d| d == name), "{name} is not declared");
+        }
+        assert_eq!(selected.timeout, default.timeout);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn attached_autosag_receipt_preserves_the_open_project_lifecycle() {
+        let receipt = json!({
+            "schema": RECEIPT_SCHEMA,
+            "saved": true,
+            "session": {
+                "mode": "attached", "process_id": 4242,
+                "main_window_handle": 1234, "project_left_open": true
+            },
+            "gate_section_usage": { "verdict": { "section_violations": 0 } }
+        });
+        let data = shape("autosag.json", &receipt).unwrap();
+        assert_eq!(data["session"], receipt["session"]);
+        assert_eq!(data["saved"], true);
+        assert_eq!(
+            data["gate_section_usage"]["verdict"]["section_violations"],
+            0
+        );
     }
 }

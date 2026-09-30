@@ -52,20 +52,44 @@ public static class DsWatch {
 }
 "@
 $clickedButtons = @{}
+$aboutAttempts = @{}
 function ClickButton([long]$dialog, [long]$button, [string]$name) {
     $r = [IntPtr]::Zero
     $answers = [DsWatch]::SendMessageTimeout([IntPtr]$dialog, 0x0000, [IntPtr]::Zero, [IntPtr]::Zero, 0x0002, 1000, [ref]$r) -ne [IntPtr]::Zero
+    if ($name -ceq 'about') {
+        # PLS-CADD 16.81 About ignored posted BM_CLICK on Nyamagabe M1.
+        # Notify this exact catalogued dialog using its visible OK, bounded to
+        # three attempts. Never use this action to dismiss an unknown prompt.
+        $id = [DsWatch]::GetDlgCtrlID([IntPtr]$button)
+        if ($id -ne 1 -or [DsWatch]::GetParent([IntPtr]$button) -ne [IntPtr]$dialog) {
+            Journal @{ event = 'button_not_visible'; dialog = $name; handle = $dialog; button = $button; controls = @(Kids $dialog) }
+            return 'unknown'
+        }
+        if (-not $aboutAttempts.ContainsKey($dialog)) { $aboutAttempts[$dialog] = 0 }
+        if ($aboutAttempts[$dialog] -ge 3) {
+            Journal @{ event = 'action_retry_exhausted'; dialog = $name; handle = $dialog; attempts = 3; controls = @(Kids $dialog) }
+            return 'timeout'
+        }
+        if ($answers) {
+            $aboutAttempts[$dialog]++
+            $posted = [DsWatch]::PostMessage([IntPtr]$dialog, 0x0111, [IntPtr]1, [IntPtr]$button)
+            Journal @{ event = 'about_command'; dialog = $name; handle = $dialog; button = $button; control_id = 1; attempt = $aboutAttempts[$dialog]; posted = $posted }
+        }
+        return 'acted'
+    }
     if ($clickedButtons.ContainsKey($button) -and [DsWatch]::IsWindow([IntPtr]$button) -and $answers) {
         $id = [DsWatch]::GetDlgCtrlID([IntPtr]$button)
         [DsWatch]::PostMessage([DsWatch]::GetParent([IntPtr]$button), 0x0111, [IntPtr]($id -band 0xFFFF), [IntPtr]$button) | Out-Null
         Journal @{ event = 'click_escalated'; dialog = $name; handle = $dialog; button = $button; control_id = $id }
     } else { Click $button }
     $clickedButtons[$button] = $true
+    return 'acted'
 }
 
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 $outcome = 'timeout'
 do {
+    $action = ''; $actionFailed = $false
     $wins = Windows
     $classified = Split-PlsWindowRows @($wins) $MainWindowHandle
     $frame = $classified.frame
@@ -92,23 +116,27 @@ do {
                 $btn = VisibleEnabled $kids $entry.ControlId
                 if (-not $btn) { Journal @{ event = 'no_visible_ok'; dialog = $entry.Name; title = $title; controls = @($kids) }; $outcome = 'unknown'; $blocking = $true; continue }
                 Journal @{ event = 'accept_options'; dialog = $entry.Name; title = $title; button = $btn }
-                ClickButton $h ([long]$btn) $entry.Name; $blocking = $true
+                $action = ClickButton $h ([long]$btn) $entry.Name; $blocking = $true
+                if ($action -in @('unknown', 'timeout')) { $outcome = $action; break }
             }
             'click'  {
                 $btn = VisibleEnabled $kids $entry.ControlId
                 if (-not $btn) { Journal @{ event = 'button_not_visible'; dialog = $entry.Name; title = $title; wanted = $entry.ControlId; controls = @($kids) }; $outcome = 'unknown'; $blocking = $true; continue }
                 Journal @{ event = 'click'; dialog = $entry.Name; title = $title; text = $text; button = $btn; control_id = $entry.ControlId }
-                ClickButton $h ([long]$btn) $entry.Name; $blocking = $true
+                $action = ClickButton $h ([long]$btn) $entry.Name; $blocking = $true
+                if ($action -in @('unknown', 'timeout')) { $outcome = $action; break }
             }
             'click_any_ok' {
                 $btn = AnyOk $kids
                 if (-not $btn) { Journal @{ event = 'no_ok_button'; dialog = $entry.Name; title = $title; controls = @($kids) }; $outcome = 'unknown'; $blocking = $true; continue }
                 Journal @{ event = 'click'; dialog = $entry.Name; title = $title; text = $text; button = $btn }
-                ClickButton $h ([long]$btn) $entry.Name; $blocking = $true
+                $action = ClickButton $h ([long]$btn) $entry.Name; $blocking = $true
+                if ($action -in @('unknown', 'timeout')) { $outcome = $action; break }
             }
         }
+        if ($action -in @('unknown', 'timeout')) { $actionFailed = $true; break }
     }
-    if ($outcome -in @('unknown', 'stop', 'flow')) { break }
+    if ($outcome -in @('unknown', 'stop', 'flow') -or $actionFailed) { break }
     $frameTitle = if ($frame) { Title $frame } else { '' }
     if (-not $blocking -and $frame -match 'en=True' -and (($UntilTitle -eq '') -or ($frameTitle -match $UntilTitle))) { $outcome = 'ready'; break }
     if ($Once) { $outcome = if ($blocking) { 'acted' } else { 'ready' }; break }

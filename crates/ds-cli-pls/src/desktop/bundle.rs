@@ -8,8 +8,8 @@
 //!   the upstream file's digest.
 //! * [`Origin::Modified`] — vendored from [`UPSTREAM`] and changed here, with
 //!   the upstream digest kept beside the new one. `pls-deliver-autosag.ps1`
-//!   is the only one: it gained `-NoSheets` (the owner no longer prints PLS
-//!   plan & profile), and its receipt schema moved to v4 with it.
+//!   gained `-NoSheets` and a v4 receipt; startup frame classification and
+//!   About action are also repaired here for the explicit review modes.
 //! * [`Origin::Owned`] — the `ds-desktop-*.ps1` entries `ds` runs, one per
 //!   verb, which compose the drivers and write the one result document `ds`
 //!   reads.
@@ -64,7 +64,7 @@ macro_rules! script {
 pub static BUNDLE: &[Script] = &[
     script!(
         "ds-desktop-autosag.ps1",
-        "e2b1923f9055a09e83bebfc88aeb049242ff0dfa973befb557843a69610aacd2",
+        "daaceaeaff5a972cc2d38ec4d7c98f340628f8d6ce205a2a5ceadb68b85f500e",
         Origin::Owned
     ),
     script!(
@@ -79,7 +79,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "ds-desktop-lib.ps1",
-        "1d88a8bf038acfe7e32aa92a23a083c3053b56cdf05f8c74a71ac18f8d555c82",
+        "0f77430e78c7412641c135281d073af343b2265844e401942986b74d71dfb331",
         Origin::Owned
     ),
     script!(
@@ -89,7 +89,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "ds-desktop-reports.ps1",
-        "34c5bc9e9b73665360898c93fbefcffca8e0fa3bc31cb57dd9dbc375c286feb4",
+        "aac472160850c63d8cd2c5bb0019e850d57e0ef904f6da656a0159050af41337",
         Origin::Owned
     ),
     script!(
@@ -176,8 +176,10 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "pls-dialog-catalog.psd1",
-        "7ff62ae6543dee0e73ca1b792592084d6996763e1cbc612a7b98eaa1d233a76c",
-        Origin::Vendored
+        "a8b2a76144103b202a00b1374288e28e4f4beff536d6ed4821b6b1eb13ce39d5",
+        Origin::Modified {
+            upstream_sha256: "7ff62ae6543dee0e73ca1b792592084d6996763e1cbc612a7b98eaa1d233a76c",
+        }
     ),
     script!(
         "pls-dialog-text.ps1",
@@ -186,13 +188,17 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "pls-dialog-watch.ps1",
-        "dbd417cf08457a2ad12f56f886903ae468f5183f9b0ab1f57c7f1b741e0d7621",
-        Origin::Vendored
+        "8f1e78bce6151927329e12e35b91d2e56dc2e7e764782b1a50b90014a3f47d1e",
+        Origin::Modified {
+            upstream_sha256: "dbd417cf08457a2ad12f56f886903ae468f5183f9b0ab1f57c7f1b741e0d7621",
+        }
     ),
     script!(
         "pls-launch-project.ps1",
-        "39d19072cd97ed272cfd85441d16043a16a8838beedf779cc3de794b82574784",
-        Origin::Vendored
+        "eb09a372543864afc76cdd0c70b405a448ac7f5528089d325ab9437ab81ec9b0",
+        Origin::Modified {
+            upstream_sha256: "39d19072cd97ed272cfd85441d16043a16a8838beedf779cc3de794b82574784",
+        }
     ),
     script!(
         "pls-printwindow.ps1",
@@ -226,8 +232,10 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "pls-window-classification.psm1",
-        "874c1b67a055c46cc83e73db288fcb002913a3ea93edb728e456d584bb960bcb",
-        Origin::Vendored
+        "516a8f4651fa59c33724dfb0f780391530a74759bfbfa5a9e0045526dd2e4ec2",
+        Origin::Modified {
+            upstream_sha256: "874c1b67a055c46cc83e73db288fcb002913a3ea93edb728e456d584bb960bcb",
+        }
     ),
     script!(
         "pls-windows.ps1",
@@ -460,13 +468,22 @@ mod tests {
     }
 
     #[test]
-    fn only_the_deliver_chain_diverges_from_upstream() {
+    fn deliberate_driver_changes_preserve_upstream_provenance() {
         let modified: Vec<&str> = BUNDLE
             .iter()
             .filter(|s| matches!(s.origin, Origin::Modified { .. }))
             .map(|s| s.path)
             .collect();
-        assert_eq!(modified, ["pls-deliver-autosag.ps1"]);
+        assert_eq!(
+            modified,
+            [
+                "pls-deliver-autosag.ps1",
+                "pls-dialog-catalog.psd1",
+                "pls-dialog-watch.ps1",
+                "pls-launch-project.ps1",
+                "pls-window-classification.psm1",
+            ]
+        );
         let deliver = text("pls-deliver-autosag.ps1").unwrap();
         assert!(deliver.contains("[switch] $NoSheets"));
         assert!(deliver.contains("'ds.pls.deliver_autosag.v4'"));
