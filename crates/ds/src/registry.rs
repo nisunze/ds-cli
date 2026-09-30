@@ -1949,6 +1949,16 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::task::create::render,
     },
     Entry {
+        command: &ds_cli_pm::task::subdivision::SUBDIVIDE,
+        handler: ds_cli_pm::task::subdivision::run_subdivide,
+        render: ds_cli_pm::task::subdivision::render,
+    },
+    Entry {
+        command: &ds_cli_pm::task::subdivision::PROGRESS,
+        handler: ds_cli_pm::task::subdivision::run_progress,
+        render: ds_cli_pm::task::subdivision::render,
+    },
+    Entry {
         command: &ds_cli_pm::task::update::COMMAND,
         handler: ds_cli_pm::task::update::run,
         render: ds_cli_pm::task::update::render,

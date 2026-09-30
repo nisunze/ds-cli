@@ -84,6 +84,8 @@ pub static DOMAIN: Domain = Domain {
         &task::list::COMMAND,
         &task::read::COMMAND,
         &task::create::COMMAND,
+        &task::subdivision::SUBDIVIDE,
+        &task::subdivision::PROGRESS,
         &task::update::COMMAND,
         &task::delete::COMMAND,
         &task::assign::COMMAND,

@@ -476,7 +476,7 @@ fn days(raw: &str, bound: i64) -> Result<i64, Failure> {
 
 /// The command id: `--id` as given, else one minted here and printed in the
 /// receipt so a lost answer can be retried against the same ledger entry.
-fn command_id(inputs: &Inputs, prefix: &str) -> Result<String, Failure> {
+pub(crate) fn command_id(inputs: &Inputs, prefix: &str) -> Result<String, Failure> {
     match inputs.value("id") {
         Some(given) => {
             let given = given.trim();
