@@ -349,7 +349,7 @@ pub fn run(
     planned: Vec<Planned>,
     writing: bool,
     extra: Value,
-    warnings: Warnings,
+    mut warnings: Warnings,
     pls_families: &[&str],
 ) -> Result<Value, Failure> {
     let Opened {
@@ -381,6 +381,19 @@ pub fn run(
 
     let resulting = outcome.final_revision.revision_id.clone();
     let touched = touched_counts(&outcome);
+    let unresolved_count: usize = outcome
+        .outcomes
+        .iter()
+        .map(|o| o.delta.unresolved_retype_attachments.len())
+        .sum();
+    if unresolved_count > 0 {
+        warnings.push(json!({
+            "code": "unresolved_retype_attachments",
+            "message": format!(
+                "Draft retype leaves {unresolved_count} unresolved attachment(s). Repair the listed section/sequence supports explicitly with verified attachment points for the chosen type; full validation, package export and publication require repair."
+            ),
+        }));
+    }
     let (pls_source, pls_members_affected) = match &target {
         Target::WorkingCopy { row, .. } => match &row.pls_source {
             Some(link) => (
@@ -408,12 +421,18 @@ pub fn run(
         "changed": resulting != head,
         "idempotent_replay": outcome.idempotent_replay,
         "touched": touched,
-        "deltas": outcome.outcomes.iter().map(|o| json!({
-            "command_id": o.delta.command_id,
-            "command_kind": o.delta.command_kind,
-            "affected_entities": o.delta.affected_entities,
-            "changed_tables": o.delta.changed_tables,
-        })).collect::<Vec<_>>(),
+        "deltas": outcome.outcomes.iter().map(|o| {
+            let mut delta = json!({
+                "command_id": o.delta.command_id,
+                "command_kind": o.delta.command_kind,
+                "affected_entities": o.delta.affected_entities,
+                "changed_tables": o.delta.changed_tables,
+            });
+            if !o.delta.unresolved_retype_attachments.is_empty() {
+                delta["unresolved_retype_attachments"] = json!(o.delta.unresolved_retype_attachments);
+            }
+            delta
+        }).collect::<Vec<_>>(),
         "warnings": warnings,
         "pls_source": pls_source,
         "pls_members_affected": pls_members_affected,
@@ -455,12 +474,21 @@ pub fn run(
         exchange_bindings: package.exchange_bindings.clone(),
     };
     let (plan, _report) = dsgrid::emit(&checkpoint.snapshot, &options).map_err(|error| {
+        let detail = if unresolved_count > 0 {
+            json!({ "engine": error.to_string(), "receipt": receipt })
+        } else {
+            json!({ "engine": error.to_string() })
+        };
         Failure::failed(
             "package_emit_failed",
             "the revised package could not be emitted",
         )
-        .remedy("report this engine failure with the model and the command receipt")
-        .detail(json!({ "engine": error.to_string() }))
+        .remedy(if unresolved_count > 0 {
+            "repair the unresolved section supports in a native draft session before exporting or publishing; this package target cannot persist an invalid draft"
+        } else {
+            "report this engine failure with the model and the command receipt"
+        })
+        .detail(detail)
     })?;
     let artifact = plan.artifacts.first().ok_or_else(|| {
         Failure::failed(

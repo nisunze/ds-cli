@@ -32,7 +32,7 @@ const STRUCTURE_ARG: Arg = Arg::repeated(
 const SKIP_ARG: Arg = Arg::repeated(
     "skip",
     "<id|number>",
-    "Leave this structure out of the selection (e.g. a T-off whose sets the new type lacks); repeat for several.",
+    "Leave this structure out of the selection; repeat for several.",
 );
 const FROM_FINDING_ARG: Arg = Arg::value(
     "from-finding",
@@ -107,16 +107,15 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Retype placed structures (single pole → H-pole) as one revision.",
     purpose: "\
-Retypes the selected placed structures to one structure type of the model \
-(a single wooden pole on a big angle to the H-pole assembly, for instance) \
-through the engine's `retype_structure` command, all of them as ONE revision \
-of a working copy or one new package. Before anything is written the REG v7 \
-angle-pole rule is evaluated for every selected structure at its line angle \
-from the model's alignment geometry: the dry-run receipt lists the findings \
-the retype clears and the ones it would leave or create, and a write that \
-would leave or create `structure_type_not_allowed` is refused. \
-`--from-finding structure_type_not_allowed` selects every structure carrying \
-that finding, so a whole line is corrected in one dry run and one write.",
+Retype selected structures to one model type through native `retype_structure`, \
+as one revision of an explicit working copy or one new package. REG v7 uses \
+each structure's alignment angle: dry-run lists cleared, remaining and created \
+findings; writes that leave or create `structure_type_not_allowed` are refused. \
+`--from-finding structure_type_not_allowed` selects all carriers. Missing used \
+slots are native drafts: sections/supports survive, exact (set, slot) matches \
+rebound and unmatched attachments clear. Repair them explicitly before full \
+validation, export or publication. Package persistence requires a valid \
+snapshot; a draft write may fail `package_emit_failed` with `detail.receipt`.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -136,12 +135,13 @@ that finding, so a whole line is corrected in one dry run and one write.",
         mutation::ACCOUNT_ARG,
     ],
     output: "\
-The family receipt plus `selection` (how each structure was selected), \
-`structures[]` (id, number, station, line angle, type before → after, \
-findings before → after), \
-`findings` {cleared, remaining, created} under the REG rule with the standard's \
-digest and the declared assumptions, and `refusal_on_write` when a dry run \
-shows the write would be refused.",
+Family receipt with `selection`, `structures[]` (id, number, station, angle, \
+before/after type and findings), `findings` {rule, cleared, remaining, created} \
+with standard digest/assumptions, and `refusal_on_write` for REG duty. When \
+present, `deltas[].unresolved_retype_attachments` carries native section_id, \
+sequence, structure_id, previous_attachment_point_id, set_label and slot with \
+repair guidance in `warnings[]`. Draft package emission failure retains the receipt \
+in `detail.receipt` with `persisted: false`.",
     examples: &[
         Example {
             command: "ds dsgrid structure retype --model local-… --structure 230 --type j-w-60d-S325.014 --dry-run",
@@ -409,5 +409,26 @@ pub fn render(data: &Value) -> String {
         data["findings"]["remaining"].as_array().map_or(0, Vec::len),
         data["findings"]["created"].as_array().map_or(0, Vec::len),
     ));
+    for delta in data["deltas"].as_array().into_iter().flatten() {
+        for finding in delta["unresolved_retype_attachments"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            out.push_str(&format!(
+                "unresolved  section {} sequence {} structure {} previous attachment {} set {} slot {}\n",
+                finding["section_id"].as_str().unwrap_or("?"),
+                finding["sequence"],
+                finding["structure_id"].as_str().unwrap_or("?"),
+                finding["previous_attachment_point_id"].as_str().unwrap_or("?"),
+                finding["set_label"].as_str().unwrap_or("?"),
+                finding["slot"],
+            ));
+        }
+    }
     out
 }
+
+#[cfg(test)]
+#[path = "retype_tests.rs"]
+mod tests;
