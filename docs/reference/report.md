@@ -937,8 +937,9 @@ or `staggered`. The equivalent direct CLI controls are `--feature-codes show`,
 `--feature-label-codes ROAD,RIVER`, `--feature-label-orientation horizontal`,
 `--feature-label-size-pt 5` and `--feature-label-placement above`.
 The standard ground-offset guide stays continuous. Thin feature-clearance
-hairs appear only when a code adds height beyond that guide; ordinary obstacle
-excess ticks are off unless `--obstacle-sticks on` is requested.
+hairs appear only when a validated feature threshold exceeds that guide.
+Optional caps at surveyed physical obstacles are off unless
+`--obstacle-sticks on` is requested.
 
 `report.plan-profile --project <id>` renders one revision-pinned DS Grid scene
 and plan headlessly. Its A3 profile and plan order, structure labels, horizontal
@@ -973,10 +974,12 @@ visible revision is the human drawing issue. Every PDF page carries the
 mandatory discrete `DS GridDesign by datasolutions.rw` margin credit.
 `--span-labels show` prints each physical span length in both plan and
 profile, in black ink with a white halo in either colour mode.
-`--obstacle-sticks on` adds a short, thin mark at surveyed crossings only when
-the obstacle top rises above the scene's standard ground-offset guide. It does
-not assert a feature-specific engineering clearance where the model has no
-resolved requirement.
+`--obstacle-sticks on` adds a short, thin cap at a validated native clearance
+threshold for a surveyed physical obstacle only when the obstacle height is
+positive and that threshold exceeds the standard ground-offset guide. When
+`--clearance hide` suppresses the feature-clearance hair, the cap keeps a thin
+stem back to the guide. These marks display the model's resolved requirement;
+they do not establish a separate design-case verdict.
 `--side-profiles /absolute/traces.json` is optional and off when omitted. The
 file must be `ds.grid-side-profiles/v1` with the same model revision and
 measured, station-ordered trace segments:

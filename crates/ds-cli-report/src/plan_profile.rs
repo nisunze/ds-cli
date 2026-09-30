@@ -100,7 +100,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "obstacle-sticks",
             "<on|off>",
-            "Optional obstacle-excess ticks; off by default. Feature-code clearance hairs use --clearance.",
+            "Optional caps at validated surveyed-obstacle clearance thresholds above the ground-offset guide; off by default. Feature-clearance hairs use --clearance. Display only, not a design verdict.",
         )
         .default("off")
         .choices(&["on", "off"]),
