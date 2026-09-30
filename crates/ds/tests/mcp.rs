@@ -14,6 +14,72 @@ use sha2::{Digest, Sha256};
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
+#[test]
+fn exact_global_member_is_discovered_and_invoked_as_the_same_cli_contract() {
+    let id = "library.global.resolve-member";
+    let direct = cli(&["capabilities", id, "--output", "json"]);
+    let (messages, stderr) = mcp(
+        &["--exposure", "chapters"],
+        &[
+            json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+            "name": "ds_catalog", "arguments": {"command": id}}}),
+            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+            "name": "ds_pls_cadd", "arguments": {"operation": "describe", "command": id}}}),
+            json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
+            "name": "ds_pls_cadd", "arguments": {"operation": "invoke", "command": id,
+                "arguments": {"library-id": "library_1", "release-id": "release_1",
+                    "relative-path": "pls-cadd/criteria/Base.CRI", "expected-digest": "invalid"}}}}),
+        ],
+    );
+    assert!(stderr.contains("serving"), "{stderr}");
+    assert_eq!(
+        response(&messages, 1)["result"]["structuredContent"]["next"]["tool"],
+        "ds_pls_cadd"
+    );
+    assert_eq!(
+        response(&messages, 2)["result"]["structuredContent"],
+        direct
+    );
+    let expected = cli_envelope(&[
+        "library",
+        "global",
+        "resolve-member",
+        "--library-id",
+        "library_1",
+        "--release-id",
+        "release_1",
+        "--relative-path",
+        "pls-cadd/criteria/Base.CRI",
+        "--expected-digest",
+        "invalid",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        response(&messages, 3)["result"]["structuredContent"],
+        expected
+    );
+    assert_eq!(expected["error"]["code"], "catalog_member_pin_invalid");
+    let (typed, _) = mcp(
+        &["--exposure", "commands", "--profile", "library-governance"],
+        &[json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})],
+    );
+    let tools = response(&typed, 1)["result"]["tools"].as_array().unwrap();
+    let member = tools
+        .iter()
+        .find(|tool| tool["name"] == "library_global_resolve-member")
+        .expect("typed member tool");
+    assert_eq!(
+        member["inputSchema"]["required"],
+        json!([
+            "library-id",
+            "release-id",
+            "relative-path",
+            "expected-digest"
+        ])
+    );
+}
+
 struct TestDir(PathBuf);
 
 impl TestDir {

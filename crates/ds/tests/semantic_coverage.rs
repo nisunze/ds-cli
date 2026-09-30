@@ -717,6 +717,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("feedback.submit", "global_write", "headless_user"),
     ("library.catalog", "read_only", "none"),
     ("library.global.read", "read_only", "headless_user"),
+    (
+        "library.global.resolve-member",
+        "read_only",
+        "headless_user",
+    ),
     ("library.global.write", "global_write", "headless_user"),
     (
         "library.global.fork-example",

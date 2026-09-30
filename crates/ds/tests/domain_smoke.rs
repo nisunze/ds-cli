@@ -45,6 +45,36 @@ fn discoverable(command: &Value) -> bool {
 }
 
 #[test]
+fn global_member_smoke_requires_a_restored_native_identity_for_the_exact_pin() {
+    let result = native_ds(&[
+        "library",
+        "global",
+        "resolve-member",
+        "--library-id",
+        "library_1",
+        "--release-id",
+        "release_1",
+        "--relative-path",
+        "pls-cadd/criteria/Base.CRI",
+        "--expected-digest",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "--lane",
+        "canary",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(result.code, 0);
+    assert_eq!(result.envelope["error"]["code"], "headless_signed_out");
+    assert!(
+        result.envelope["error"]["next"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n.as_str().unwrap().contains("--lane canary"))
+    );
+}
+
+#[test]
 fn print_removal_is_a_confirmed_headless_project_operation() {
     let described = ok(&["capabilities", "report.artifact.remove", "--output", "json"]);
     assert_eq!(described["command"]["authority"], "headless_project");

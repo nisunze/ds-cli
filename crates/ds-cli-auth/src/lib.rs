@@ -8,6 +8,7 @@ pub mod account;
 mod context;
 pub mod correspondence;
 pub mod device;
+pub mod grid_library_member;
 pub mod link_approval;
 mod profile;
 mod state;
@@ -2028,15 +2029,23 @@ pub fn grid_catalog(
     lane_value: &str,
     command: &ds_client_core::grid_catalog::Command,
 ) -> Result<serde_json::Value, Failure> {
+    run_grid_catalog(lane_value, command, map_client)
+}
+
+fn run_grid_catalog(
+    lane_value: &str,
+    command: &ds_client_core::grid_catalog::Command,
+    map_error: fn(ClientError) -> Failure,
+) -> Result<serde_json::Value, Failure> {
     let lane = Lane::parse(lane_value)?;
     if let Some(mut device) = restored_device_session(lane)? {
-        return device.grid_catalog(command).map_err(map_client);
+        return device.grid_catalog(command).map_err(map_error);
     }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
     let _user = require_restore_before_context(&mut client)?;
-    client.grid_catalog(command, now()).map_err(map_client)
+    client.grid_catalog(command, now()).map_err(map_error)
 }
 
 /// Opaque identity, audience, project and credential binding captured for one

@@ -43,6 +43,8 @@ pub(crate) struct Scripted {
     pub project_properties: VecDeque<TransportResponse>,
     /// Scripted answers for the design tag route; Unreachable when empty.
     pub design_tags: VecDeque<TransportResponse>,
+    pub grid_catalog: VecDeque<TransportResponse>,
+    pub grid_catalog_bodies: Vec<serde_json::Value>,
     /// Scripted answers for the transformer context route; Unreachable when
     /// empty.
     pub transformer_context: VecDeque<TransportResponse>,
@@ -215,7 +217,15 @@ impl Transport for FixtureTransport {
         &mut self,
         call: ds_client_core::GridCatalogCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
-        self.record("grid_catalog", call.bearer_token(), call.device_id())
+        let recorded = self.record("grid_catalog", call.bearer_token(), call.device_id());
+        let mut script = self.lock();
+        script
+            .grid_catalog_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        match script.grid_catalog.pop_front() {
+            Some(response) => Ok(response),
+            None => recorded,
+        }
     }
 
     fn global_tiles(

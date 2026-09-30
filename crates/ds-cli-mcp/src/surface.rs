@@ -852,6 +852,7 @@ const PLS_LIBRARY_COMMANDS: &[&str] = &[
 ];
 
 const LIBRARY_GOVERNANCE_COMMANDS: &[&str] = &[
+    "library.global.resolve-member",
     "library.global.read",
     "library.global.write",
     "library.global.fork-example",
