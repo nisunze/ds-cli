@@ -5,7 +5,7 @@
 //! command gets its own remote-head observation, with no freshness timer.
 
 #[cfg(target_os = "linux")]
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[cfg(target_os = "linux")]
 use ds_command_kernel::sync_store::Scope;
@@ -168,7 +168,7 @@ fn project_native(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
 }
 
 #[cfg(target_os = "linux")]
-fn read_block(state: &PathBuf, lane: &str, project: &str) -> Option<Value> {
+fn read_block(state: &Path, lane: &str, project: &str) -> Option<Value> {
     let fence = crate::outbox::fence(lane).ok()?;
     let store = ds_sync_store::Store::open_read_only(&state.join("store.sqlite")).ok()??;
     let status = store
@@ -210,7 +210,7 @@ fn pass_current(
 }
 
 #[cfg(target_os = "linux")]
-fn read_at(state: &PathBuf, lane: &str, project: &str) -> Option<u64> {
+fn read_at(state: &Path, lane: &str, project: &str) -> Option<u64> {
     let fence = crate::outbox::fence(lane).ok()?;
     let store = ds_sync_store::Store::open_read_only(&state.join("store.sqlite")).ok()??;
     store

@@ -256,10 +256,10 @@ fn chromium_location(platform: Platform) -> (Option<PathBuf>, String, Option<Str
             _ => std::env::var_os("HOME")
                 .map(|home| PathBuf::from(home).join(".cache/ms-playwright")),
         };
-        if let Some(cache) = cache {
-            if let Some(path) = playwright_headless_shell(&cache) {
-                return (Some(path), "playwright_headless_shell".to_string(), None);
-            }
+        if let Some(cache) = cache
+            && let Some(path) = playwright_headless_shell(&cache)
+        {
+            return (Some(path), "playwright_headless_shell".to_string(), None);
         }
     }
     (None, "none".to_string(), None)

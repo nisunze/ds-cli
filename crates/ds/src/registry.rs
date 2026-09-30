@@ -3304,10 +3304,10 @@ fn dispatch_entry(entry: &Entry, tokens: &[String], context: &Context) -> Result
         .remedy("restore this machine's report sync connection, then retry the same command"));
     }
     let mut answer = (entry.handler)(&inputs, context)?;
-    if let Some(touch) = touch {
-        if let Some(object) = answer.as_object_mut() {
-            object.insert("reconciliation".to_owned(), touch.receipt);
-        }
+    if let Some(touch) = touch
+        && let Some(object) = answer.as_object_mut()
+    {
+        object.insert("reconciliation".to_owned(), touch.receipt);
     }
     Ok(answer)
 }
@@ -3332,14 +3332,14 @@ fn report_project_touch(id: &str, inputs: &Inputs) -> bool {
 }
 
 fn report_held_read(id: &str) -> bool {
-    match id {
+    matches!(
+        id,
         "report.project.scope"
-        | "report.project.settings"
-        | "report.project.archives"
-        | "report.publication.list"
-        | "report.publication.show" => true,
-        _ => false,
-    }
+            | "report.project.settings"
+            | "report.project.archives"
+            | "report.publication.list"
+            | "report.publication.show"
+    )
 }
 
 fn scope_headless_identity(
