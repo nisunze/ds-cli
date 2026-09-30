@@ -47,6 +47,12 @@ pub const MAX_CONTEXT_LIMIT: i64 = 100;
 /// The longest command id one commit may carry: a UUID, or the `pm-…` form the
 /// browser minted before it had one.
 const MAX_COMMAND_ID_BYTES: usize = 128;
+/// PM subjects are advertised as 300 characters; `copyPMString` measures
+/// UTF-8 bytes after trimming. Keep that server bound at this door.
+const MAX_PROJECT_NOTE_SUBJECT_BYTES: usize = 300;
+const MAX_PROJECT_NOTE_BODY_BYTES: usize = 128 * 1024;
+/// Bound a minted ID while keeping the server's stable-reference alphabet.
+const MAX_PROJECT_NOTE_ID_BYTES: usize = 256;
 /// The most commands one saved draft may carry — ds-brain's own batch bound,
 /// republished per project as `field_model.max_batch_commands`.
 pub const MAX_BATCH_COMMANDS: usize = 200;
@@ -74,6 +80,14 @@ pub enum Command {
     /// answers nothing however many records a project holds. A window does not
     /// fix that; asking for them does.
     Context { limit: Option<i64> },
+    /// Create a quick, project-scoped Markdown note through `create_record`.
+    /// The server owns defaults, permissions, versioning and ID generation
+    /// when no stable ID is supplied.
+    ProjectNoteCreate {
+        id: Option<String>,
+        title: String,
+        body: String,
+    },
     /// One project command against one base revision — `commit_command`, the
     /// same body the Plan sheet sends for one gesture. The command is the
     /// kernel's (`ds_command_kernel::project_management::writes`), already
@@ -139,6 +153,17 @@ fn command_id_valid(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
 
+fn project_note_id_valid(id: &str) -> bool {
+    // Match `validPMReference`, rather than the narrower command-ID alphabet:
+    // stable record IDs may contain Unicode and punctuation such as ':' or '@'.
+    !id.is_empty()
+        && id.len() <= MAX_PROJECT_NOTE_ID_BYTES
+        && id != "."
+        && id != ".."
+        && !id.contains('/')
+        && !id.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
 fn wire_command_valid(command: &Value) -> bool {
     // `{kind, <kind>: {…}}` and nothing else: the shape `projectCommandToWire`
     // produces and ds-brain decodes under `DisallowUnknownFields`.
@@ -157,6 +182,7 @@ impl Command {
             Self::Graph => "get_graph",
             Self::Assignees => "get_assignees",
             Self::Context { .. } => "get_context",
+            Self::ProjectNoteCreate { .. } => "create_record",
             Self::Commit { .. } => "commit_command",
             Self::CommitBatch { .. } => "commit_batch",
             Self::Propose { .. } => "commit_command",
@@ -179,6 +205,26 @@ impl Command {
                 )),
                 _ => Ok(()),
             },
+            Self::ProjectNoteCreate { id, title, body } => {
+                let subject = title.trim();
+                if subject.is_empty()
+                    || subject.len() > MAX_PROJECT_NOTE_SUBJECT_BYTES
+                    || subject
+                        .chars()
+                        .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+                {
+                    return Err(invalid(
+                        "a project note needs a meaningful title of at most 300 UTF-8 bytes",
+                    ));
+                }
+                if body.len() > MAX_PROJECT_NOTE_BODY_BYTES {
+                    return Err(invalid("a project note body is at most 128 KiB of UTF-8"));
+                }
+                if id.as_deref().is_some_and(|id| !project_note_id_valid(id)) {
+                    return Err(invalid("a project note needs one bounded stable id"));
+                }
+                Ok(())
+            }
             Self::Commit {
                 command_id,
                 base_revision,
@@ -277,6 +323,17 @@ impl Command {
                 if let Some(limit) = limit {
                     payload["limit"] = json!(limit);
                 }
+            }
+            Self::ProjectNoteCreate { id, title, body } => {
+                if let Some(id) = id {
+                    payload["id"] = json!(id);
+                }
+                payload["data"] = json!({
+                    "category": "project_note",
+                    "record_type": "quick",
+                    "subject": title,
+                    "body": body,
+                });
             }
             Self::Commit {
                 command_id,
@@ -522,7 +579,10 @@ pub(crate) fn run<T: AuthorizedTransport>(
             .filter(|result| result.is_object())
             .cloned()
             .unwrap_or(data),
-        Command::Propose { .. }
+        // Context creation returns `{item: <PMDoc>}` intact, including the
+        // server-authored id and version for callers to shape.
+        Command::ProjectNoteCreate { .. }
+        | Command::Propose { .. }
         | Command::RequestAdmission { .. }
         | Command::Admit { .. }
         | Command::DeclineAdmission { .. }
@@ -534,6 +594,152 @@ pub(crate) fn run<T: AuthorizedTransport>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_note_create_payload_routes_the_explicit_project_and_stable_id() {
+        let command = Command::ProjectNoteCreate {
+            id: Some("note:review@example.com+2026_09-30.é".into()),
+            title: "Clearance review".into(),
+            body: "## Findings\n\n- Check **pole 12**.\n".into(),
+        };
+        command.validate().expect("valid project note");
+        assert_eq!(command.action(), "create_record");
+        for project in ["project-a", "project-b"] {
+            assert_eq!(
+                command.payload(project),
+                json!({
+                    "action": "create_record",
+                    "ds_project": project,
+                    "id": "note:review@example.com+2026_09-30.é",
+                    "data": {
+                        "category": "project_note",
+                        "record_type": "quick",
+                        "subject": "Clearance review",
+                        "body": "## Findings\n\n- Check **pole 12**.\n",
+                    },
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn project_note_create_payload_omits_an_absent_id() {
+        let command = Command::ProjectNoteCreate {
+            id: None,
+            title: "Follow up".into(),
+            body: String::new(),
+        };
+        command.validate().expect("the server may mint the id");
+        let payload = command.payload("project-c");
+        assert_eq!(
+            payload,
+            json!({
+                "action": "create_record",
+                "ds_project": "project-c",
+                "data": {
+                    "category": "project_note",
+                    "record_type": "quick",
+                    "subject": "Follow up",
+                    "body": "",
+                },
+            })
+        );
+        assert!(payload.get("id").is_none());
+    }
+
+    #[test]
+    fn project_note_title_is_meaningful_and_within_the_server_subject_bound() {
+        for title in ["a".repeat(300), "é".repeat(150), "  Review  ".into()] {
+            Command::ProjectNoteCreate {
+                id: None,
+                title,
+                body: String::new(),
+            }
+            .validate()
+            .expect("a bounded meaningful subject");
+        }
+        for title in [
+            String::new(),
+            " \t\n\u{2003}".into(),
+            "\0".into(),
+            "a".repeat(301),
+            "é".repeat(151),
+        ] {
+            let error = Command::ProjectNoteCreate {
+                id: None,
+                title,
+                body: String::new(),
+            }
+            .validate()
+            .expect_err("an invalid subject is refused locally");
+            assert_eq!(error.kind(), ErrorKind::InvalidInput);
+        }
+    }
+
+    #[test]
+    fn project_note_body_bound_counts_utf8_bytes() {
+        for body in ["a".repeat(128 * 1024), "é".repeat(64 * 1024)] {
+            Command::ProjectNoteCreate {
+                id: None,
+                title: "Review".into(),
+                body: body.clone(),
+            }
+            .validate()
+            .expect("exactly 128 KiB is accepted");
+            let error = Command::ProjectNoteCreate {
+                id: None,
+                title: "Review".into(),
+                body: format!("{body}a"),
+            }
+            .validate()
+            .expect_err("one byte over the body bound is refused locally");
+            assert_eq!(error.kind(), ErrorKind::InvalidInput);
+        }
+    }
+
+    #[test]
+    fn project_note_ids_accept_stable_references_and_refuse_invalid_bounds() {
+        for id in [
+            "550e8400-e29b-41d4-a716-446655440000".into(),
+            "note:review@example.com+2026_09-30.é".into(),
+            "a".repeat(256),
+            "é".repeat(128),
+        ] {
+            Command::ProjectNoteCreate {
+                id: Some(id),
+                title: "Review".into(),
+                body: String::new(),
+            }
+            .validate()
+            .expect("a server-valid bounded stable id");
+        }
+        for id in [
+            "",
+            ".",
+            "..",
+            "a/b",
+            " a",
+            "a ",
+            "a b",
+            "a\t",
+            "a\n",
+            "a\0",
+            "a\u{2003}b",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .chain(["a".repeat(257), "é".repeat(129)])
+        {
+            let error = Command::ProjectNoteCreate {
+                id: Some(id),
+                title: "Review".into(),
+                body: String::new(),
+            }
+            .validate()
+            .expect_err("an invalid stable id is refused locally");
+            assert_eq!(error.kind(), ErrorKind::InvalidInput);
+        }
+    }
 
     #[test]
     fn proposal_and_admission_payloads_keep_the_governed_shape() {
