@@ -189,7 +189,7 @@ pub fn workbook(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, St
     }
     if sheets.len() > 1 {
         doc.notes.push(format!(
-            "the workbook has {} sheets; ask for another by name with member (this is '{}')",
+            "the workbook has {} sheets; ask for another by name with sheet (this is '{}')",
             sheets.len(),
             sheet.name
         ));
@@ -197,7 +197,7 @@ pub fn workbook(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, St
     Ok(doc)
 }
 
-/// The sheet to show: `member` naming a sheet wins, `member` naming the
+/// The sheet to show: `sheet` naming a sheet wins, `sheet` naming the
 /// container entry falls back to the first sheet and says so, and a name that
 /// is neither is refused with the sheet names it could have been.
 fn select_sheet(sheets: &[Sheet], member: Option<&str>) -> Result<(usize, bool), String> {
