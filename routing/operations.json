@@ -774,6 +774,7 @@
             "list_examples",
             "get_library",
             "list_library_releases",
+            "resolve_library_member",
             "list_example_revisions",
             "publish_library_release",
             "publish_example_revision",

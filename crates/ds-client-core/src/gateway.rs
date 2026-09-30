@@ -272,6 +272,7 @@ mod tests {
         let catalog = op("domains.grid.catalog.action");
         assert_eq!(catalog.action_key, "action");
         assert!(catalog.allows_action("publish_library_release"));
+        assert!(catalog.allows_action("resolve_library_member"));
         assert!(!catalog.allows_action("delete_everything"));
         // A single-action operation still refuses anything else.
         let open = op("domains.compute_artifacts.open");

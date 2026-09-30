@@ -685,6 +685,8 @@ impl Transport for FixtureTransport {
         call: ds_client_core::GridCatalogCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         assert_eq!(call.path(), "/api/v1/grid/catalog");
+        assert_eq!(call.method(), "POST");
+        assert_eq!(call.response_limit(), 1024 * 1024);
         let mut state = self.0.lock().unwrap();
         state.calls.push(format!(
             "grid_catalog body={}",
@@ -6795,6 +6797,366 @@ fn project_properties_reach_the_projects_route_as_native_user_and_as_device() {
         .unwrap_err();
     assert_eq!(error.kind(), ErrorKind::SignedOut);
     assert!(idle.seen.is_empty());
+}
+
+#[test]
+fn grid_catalog_member_sends_exact_pins_and_preserves_server_evidence_without_fetching() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let data = grid_catalog_member_data();
+    transport.push_governance(
+        200,
+        &serde_json::to_vec(&json!({"success": true, "data": data})).unwrap(),
+    );
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let before = transport.calls().len();
+    let command = grid_catalog_member_pin();
+    assert_eq!(command.action(), "resolve_library_member");
+    assert!(!command.writes());
+    let result = client.grid_catalog(&command, NOW + 1).unwrap();
+    assert_eq!(
+        result, data,
+        "preserve the exact inventory record and signed URL"
+    );
+    let calls = transport.calls();
+    assert_eq!(
+        calls.len(),
+        before + 1,
+        "only one catalog call, no byte fetch"
+    );
+    let body: serde_json::Value = serde_json::from_str(
+        calls
+            .last()
+            .unwrap()
+            .strip_prefix("grid_catalog body=")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        body,
+        json!({
+            "action": "resolve_library_member",
+            "library_id": "library_1",
+            "release_id": "release_1",
+            "relative_path": "pls-cadd/criteria/Base.CRI",
+            "expected_digest": "a".repeat(64),
+        })
+    );
+}
+
+fn grid_catalog_member_pin() -> ds_client_core::grid_catalog::Command {
+    ds_client_core::grid_catalog::Command::ResolveLibraryMember {
+        library_id: "library_1".into(),
+        release_id: "release_1".into(),
+        relative_path: "pls-cadd/criteria/Base.CRI".into(),
+        expected_digest: "a".repeat(64),
+    }
+}
+
+fn grid_catalog_member_data() -> serde_json::Value {
+    json!({
+        "library_id": "library_1",
+        "release_id": "release_1",
+        "member": {
+            "relative_path": "pls-cadd/criteria/Base.CRI",
+            "class": "criteria",
+            "artifact": {
+                "digest": "a".repeat(64),
+                "object": format!("ds-grid/objects/sha256/aa/{}", "a".repeat(64)),
+                "byte_length": 42,
+            },
+            "provenance": {
+                "kind": "seed", "reference": "reviewed seed", "source_digest": "b".repeat(64),
+            },
+            "external_definition": {
+                "system": "pls_cadd", "definition_id": "base_criteria", "revision": "r1",
+            },
+        },
+        "download_url": "https://storage.googleapis.com/catalog/object?generation=123&X-Goog-Signature=Ab%2Fcd%2Bef&X-Goog-Expires=900",
+        "expires_at": "2030-03-17T17:01:40.123456789Z",
+    })
+}
+
+#[test]
+fn grid_catalog_member_invalid_pins_are_rejected_before_any_network_even_when_session_expired() {
+    use ds_client_core::grid_catalog::{Command, MAX_MEMBER_PATH_BYTES};
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let before = transport.calls();
+    let mut invalid = Vec::new();
+    for bad in [
+        "",
+        " head",
+        "release_1 ",
+        "a/b",
+        "a\\b",
+        "a\nb",
+        "LIBRARY_1",
+        "x",
+        "https://host",
+    ] {
+        for library in [true, false] {
+            invalid.push(Command::ResolveLibraryMember {
+                library_id: if library {
+                    bad.into()
+                } else {
+                    "library_1".into()
+                },
+                release_id: if library {
+                    "release_1".into()
+                } else {
+                    bad.into()
+                },
+                relative_path: "pls-cadd/criteria/Base.CRI".into(),
+                expected_digest: "a".repeat(64),
+            });
+        }
+    }
+    for bad in [
+        "",
+        "/Base.CRI",
+        "//server/Base.CRI",
+        "C:/Base.CRI",
+        "C:\\Base.CRI",
+        "pls-cadd\\Base.CRI",
+        "../Base.CRI",
+        "pls-cadd/../Base.CRI",
+        "pls-cadd/./Base.CRI",
+        "pls-cadd//Base.CRI",
+        "pls-cadd/Base.CRI/",
+        "pls-cadd/Base\n.CRI",
+        "pls-cadd/Base\0.CRI",
+        "pls-cadd/Base\u{7f}.CRI",
+        "pls-cadd/%2e%2e/Base.CRI",
+        " Base.CRI",
+        "Base.CRI ",
+    ]
+    .map(str::to_owned)
+    .into_iter()
+    .chain([
+        "x".repeat(MAX_MEMBER_PATH_BYTES + 1),
+        format!("pls-cadd/{}", "x".repeat(129)),
+        (0..5)
+            .map(|_| "x".repeat(110))
+            .collect::<Vec<_>>()
+            .join("/"),
+    ]) {
+        invalid.push(Command::ResolveLibraryMember {
+            library_id: "library_1".into(),
+            release_id: "release_1".into(),
+            relative_path: bad,
+            expected_digest: "a".repeat(64),
+        });
+    }
+    for bad in [
+        "".into(),
+        "a".repeat(63),
+        "a".repeat(65),
+        "A".repeat(64),
+        "g".repeat(64),
+        format!("sha256:{}", "a".repeat(64)),
+        format!("{} ", "a".repeat(64)),
+        format!("{}\n", "a".repeat(63)),
+    ] {
+        invalid.push(Command::ResolveLibraryMember {
+            library_id: "library_1".into(),
+            release_id: "release_1".into(),
+            relative_path: "pls-cadd/criteria/Base.CRI".into(),
+            expected_digest: bad,
+        });
+    }
+    invalid.push(Command::ResolveLibraryMember {
+        library_id: "x".repeat(129),
+        release_id: "x".repeat(129),
+        relative_path: "Base.CRI".into(),
+        expected_digest: "a".repeat(64),
+    });
+    for command in invalid {
+        assert_eq!(
+            client
+                .grid_catalog(&command, NOW + 7200)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InvalidInput
+        );
+    }
+    assert_eq!(
+        transport.calls(),
+        before,
+        "invalid pins must not refresh or contact the catalog"
+    );
+    for path in [
+        "Base.CRI".into(),
+        "pls-cadd/criteria/Base File.CRI".into(),
+        [
+            "x".repeat(128),
+            "x".repeat(128),
+            "x".repeat(128),
+            "x".repeat(125),
+        ]
+        .join("/"),
+    ] {
+        assert!(Command::ResolveLibraryMember {
+            library_id: "x".repeat(128),
+            release_id: "r1".into(),
+            relative_path: path,
+            expected_digest: "0123456789abcdef".repeat(4),
+        }
+        .validate()
+        .is_ok());
+    }
+}
+
+#[test]
+fn grid_catalog_member_legacy_inventory_404_and_server_validation_keep_existing_error_mapping() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    for (status, code, kind) in [
+        (404, "NOT_FOUND", ErrorKind::ResourceNotFound),
+        (400, "VALIDATION_FAILED", ErrorKind::InvalidInput),
+    ] {
+        transport.push_governance(status, &serde_json::to_vec(&json!({
+            "success": false, "error": {"code": code, "message": "legacy release has no inventory"},
+        })).unwrap());
+        assert_eq!(
+            client
+                .grid_catalog(&grid_catalog_member_pin(), NOW + 1)
+                .unwrap_err()
+                .kind(),
+            kind
+        );
+    }
+    assert_eq!(
+        transport.count_calls("grid_catalog"),
+        2,
+        "no retry or legacy inventory fallback"
+    );
+}
+
+#[test]
+fn grid_catalog_member_rejects_wrong_pins_malformed_evidence_and_unsafe_urls() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let mut responses = Vec::new();
+    for (pointer, value) in [
+        ("/library_id", json!("other_library")),
+        ("/release_id", json!("other_release")),
+        ("/member/relative_path", json!("pls-cadd/criteria/base.cri")),
+        ("/member/artifact/digest", json!("b".repeat(64))),
+        ("/member", json!([])),
+        ("/member/class", json!(null)),
+        ("/member/artifact", json!(null)),
+        ("/member/artifact/object", json!(7)),
+        ("/member/artifact/byte_length", json!("42")),
+        ("/member/artifact/byte_length", json!(-1)),
+        ("/member/artifact/byte_length", json!(0)),
+        ("/member/artifact/byte_length", json!(1.5)),
+        ("/member/provenance", json!(null)),
+        ("/member/provenance/kind", json!(false)),
+        ("/member/provenance/reference", json!(null)),
+        ("/member/provenance/source_digest", json!(1)),
+        ("/member/external_definition", json!({})),
+        ("/member/external_definition", json!(null)),
+        ("/member/external_definition/definition_id", json!(8)),
+        ("/member/external_definition/revision", json!(false)),
+        ("/expires_at", json!(null)),
+        ("/expires_at", json!("tomorrow")),
+        ("/download_url", json!(null)),
+        ("/download_url", json!(5)),
+    ] {
+        let mut data = grid_catalog_member_data();
+        *data.pointer_mut(pointer).unwrap() = value;
+        responses.push(json!({"success": true, "data": data}));
+    }
+    for url in [
+        "",
+        "http://storage.googleapis.com/object",
+        "https:/storage.googleapis.com/object",
+        "https://storage.googleapis.com\\object",
+        "file:///tmp/Base.CRI",
+        "//storage.googleapis.com/object",
+        "https://user:secret@storage.googleapis.com/object",
+        "https://storage.googleapis.com/object#fragment",
+        " https://storage.googleapis.com/object",
+        "https://storage.googleapis.com/object\n",
+        "https://storage.googleapis.com/ob\tject",
+    ]
+    .map(str::to_owned)
+    .into_iter()
+    .chain([format!("https://example.com/{}", "x".repeat(8192))])
+    {
+        let mut data = grid_catalog_member_data();
+        data["download_url"] = json!(url);
+        responses.push(json!({"success": true, "data": data}));
+    }
+    for key in [
+        "library_id",
+        "release_id",
+        "member",
+        "download_url",
+        "expires_at",
+    ] {
+        let mut data = grid_catalog_member_data();
+        data.as_object_mut().unwrap().remove(key);
+        responses.push(json!({"success": true, "data": data}));
+    }
+    responses.extend([
+        json!({"success": false, "data": grid_catalog_member_data()}),
+        json!({"success": true}),
+        json!({"success": true, "data": null}),
+        json!({"success": true, "data": []}),
+        json!({"success": true, "data": "not evidence"}),
+    ]);
+    for response in &responses {
+        transport.push_governance(200, &serde_json::to_vec(response).unwrap());
+        assert_eq!(
+            client
+                .grid_catalog(&grid_catalog_member_pin(), NOW + 1)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse,
+            "accepted malformed evidence: {response}"
+        );
+    }
+    for body in [b"invalid JSON".to_vec(), vec![b' '; 1024 * 1024 + 1]] {
+        transport.push_governance(200, &body);
+        assert_eq!(
+            client
+                .grid_catalog(&grid_catalog_member_pin(), NOW + 1)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+    }
+    assert_eq!(transport.count_calls("grid_catalog"), responses.len() + 2);
+}
+
+#[test]
+fn grid_catalog_member_preserves_optional_fields_and_does_not_rewrite_signed_url() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let mut data = grid_catalog_member_data();
+    data["member"]
+        .as_object_mut()
+        .unwrap()
+        .remove("external_definition");
+    data["member"]["provenance"]
+        .as_object_mut()
+        .unwrap()
+        .remove("source_digest");
+    data["download_url"] =
+        json!("https://download.example/member?signature=Ab%2Fcd%2Bef&generation=123");
+    data["server_evidence"] = json!({"generation": "123"});
+    transport.push_governance(
+        200,
+        &serde_json::to_vec(&json!({"success": true, "data": data})).unwrap(),
+    );
+    assert_eq!(
+        client
+            .grid_catalog(&grid_catalog_member_pin(), NOW + 1)
+            .unwrap(),
+        data
+    );
+    assert_eq!(transport.count_calls("grid_catalog"), 1);
 }
 
 #[test]

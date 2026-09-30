@@ -14,9 +14,9 @@
 //! change.
 //!
 //! Closed by construction: the [`Command`] enum is the complete set of actions
-//! this owner can send, each variant naming the one body key the backend's
+//! this owner can send, each variant naming the body keys the backend's
 //! `DisallowUnknownFields` decoder accepts for it. A caller cannot reach an
-//! action that is not listed, cannot add a key beside the one its action
+//! action that is not listed, cannot add a key beside those its action
 //! declares, and cannot choose the path, the method or the origin.
 
 use crate::{
@@ -28,6 +28,9 @@ use serde_json::{json, Value};
 /// The largest governed catalog body this owner will send, matching the
 /// reviewed descriptor's response cap.
 pub const MAX_REQUEST_BYTES: usize = 1024 * 1024;
+
+/// Inventory names are bounded independently of the catalog envelope.
+pub const MAX_MEMBER_PATH_BYTES: usize = 512;
 
 /// One governed catalog action.
 ///
@@ -45,6 +48,14 @@ pub enum Command {
     },
     ListLibraryReleases {
         library: String,
+    },
+    /// Resolve only this immutable inventory pin. No head selection, project,
+    /// object path or bucket can be supplied, and no member bytes are fetched.
+    ResolveLibraryMember {
+        library_id: String,
+        release_id: String,
+        relative_path: String,
+        expected_digest: String,
     },
     ListExamples,
     GetExample {
@@ -80,6 +91,35 @@ fn identifier(value: &str) -> bool {
             .any(|c| c.is_control() || matches!(c, '/' | '\\'))
 }
 
+fn pinned_identifier(value: &str) -> bool {
+    (2..=128).contains(&value.len())
+        && value.as_bytes()[0].is_ascii_alphanumeric()
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'-'))
+}
+
+fn member_path(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_MEMBER_PATH_BYTES
+        && value.trim() == value
+        && value.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment.len() <= 128
+                && segment.as_bytes()[0].is_ascii_alphanumeric()
+                && segment
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b' ' | b'-'))
+        })
+}
+
+fn sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 /// A governed write object: a bounded JSON object, never a scalar, a list, or
 /// something larger than the descriptor's bound.
 fn governed_object(value: &Value) -> bool {
@@ -111,6 +151,7 @@ impl Command {
             Self::ListLibraries => "list_libraries",
             Self::GetLibrary { .. } => "get_library",
             Self::ListLibraryReleases { .. } => "list_library_releases",
+            Self::ResolveLibraryMember { .. } => "resolve_library_member",
             Self::ListExamples => "list_examples",
             Self::GetExample { .. } => "get_example",
             Self::ListExampleRevisions { .. } => "list_example_revisions",
@@ -142,6 +183,17 @@ impl Command {
                 identifier(library) && release.as_deref().is_none_or(identifier)
             }
             Self::ListLibraryReleases { library } => identifier(library),
+            Self::ResolveLibraryMember {
+                library_id,
+                release_id,
+                relative_path,
+                expected_digest,
+            } => {
+                pinned_identifier(library_id)
+                    && pinned_identifier(release_id)
+                    && member_path(relative_path)
+                    && sha256(expected_digest)
+            }
             Self::GetExample { example, revision } => {
                 identifier(example) && revision.as_deref().is_none_or(identifier)
             }
@@ -176,6 +228,18 @@ impl Command {
             Self::ListLibraryReleases { library } => {
                 json!({ "action": action, "library_id": library })
             }
+            Self::ResolveLibraryMember {
+                library_id,
+                release_id,
+                relative_path,
+                expected_digest,
+            } => json!({
+                "action": action,
+                "library_id": library_id,
+                "release_id": release_id,
+                "relative_path": relative_path,
+                "expected_digest": expected_digest,
+            }),
             Self::GetExample { example, revision } => match revision {
                 Some(revision) => {
                     json!({ "action": action, "example_id": example, "revision_id": revision })
@@ -216,12 +280,13 @@ pub(crate) fn run<T: AuthorizedTransport>(
     })?;
     match response.status {
         200 => {}
-        // A missing library, example, release or revision is an ordinary
+        // A missing library, example, release, revision or indexed member
+        // (including a legacy release without inventory) is an ordinary
         // answer to a governed read, not a transport failure.
         404 => {
             return Err(ClientError::new(
                 ErrorKind::ResourceNotFound,
-                "no such governed library, example, release or revision",
+                "no such governed library, example, release, revision or indexed member",
             ));
         }
         // 400 is the backend's strict decoder or its service validation; 409
@@ -259,7 +324,89 @@ pub(crate) fn run<T: AuthorizedTransport>(
     if data.is_null() {
         return Err(unreadable());
     }
+    if let Command::ResolveLibraryMember {
+        library_id,
+        release_id,
+        relative_path,
+        expected_digest,
+    } = command
+    {
+        validate_member_response(
+            &data,
+            library_id,
+            release_id,
+            relative_path,
+            expected_digest,
+        )?;
+    }
     Ok(data)
+}
+
+/// Check the typed evidence and exact selection, then return the original
+/// server data unchanged. Inventory semantics and object integrity belong to
+/// the service; this client never manufactures records or dereferences URLs.
+fn validate_member_response(
+    data: &Value,
+    library_id: &str,
+    release_id: &str,
+    relative_path: &str,
+    expected_digest: &str,
+) -> Result<(), ClientError> {
+    fn text(value: &Value) -> bool {
+        value.as_str().is_some_and(|s| !s.is_empty())
+    }
+    fn optional_text(value: &Value, key: &str) -> bool {
+        value.get(key).is_none_or(Value::is_string)
+    }
+    let member = &data["member"];
+    let artifact = &member["artifact"];
+    let provenance = &member["provenance"];
+    if data["library_id"] != library_id
+        || data["release_id"] != release_id
+        || member["relative_path"] != relative_path
+        || artifact["digest"] != expected_digest
+        || !text(&member["class"])
+        || !text(&artifact["object"])
+        || !artifact["byte_length"].as_i64().is_some_and(|n| n > 0)
+        || !text(&provenance["kind"])
+        || !text(&provenance["reference"])
+        || !optional_text(provenance, "source_digest")
+    {
+        return Err(unreadable());
+    }
+    if let Some(binding) = member.get("external_definition") {
+        if !text(&binding["system"])
+            || !text(&binding["definition_id"])
+            || !optional_text(binding, "revision")
+        {
+            return Err(unreadable());
+        }
+    }
+    let expires_at = data["expires_at"].as_str().ok_or_else(unreadable)?;
+    if expires_at.len() > 64
+        || time::OffsetDateTime::parse(expires_at, &time::format_description::well_known::Rfc3339)
+            .is_err()
+    {
+        return Err(unreadable());
+    }
+    let locator = data["download_url"].as_str().ok_or_else(unreadable)?;
+    if locator.len() > 8192
+        || !locator.starts_with("https://")
+        || locator.contains('\\')
+        || locator.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return Err(unreadable());
+    }
+    let url = url::Url::parse(locator).map_err(|_| unreadable())?;
+    if url.scheme() != "https"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(unreadable());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -295,6 +442,21 @@ mod tests {
                 },
                 "list_library_releases",
                 vec!["library_id"],
+            ),
+            (
+                Command::ResolveLibraryMember {
+                    library_id: "library_1".into(),
+                    release_id: "release_1".into(),
+                    relative_path: "pls-cadd/criteria/Base.CRI".into(),
+                    expected_digest: "a".repeat(64),
+                },
+                "resolve_library_member",
+                vec![
+                    "library_id",
+                    "release_id",
+                    "relative_path",
+                    "expected_digest",
+                ],
             ),
             (Command::ListExamples, "list_examples", vec![]),
             (
@@ -429,6 +591,13 @@ mod tests {
         // `ds library global read` and `… write` gate on this, so a new action
         // landing on the wrong side is a capability error, not a cosmetic one.
         assert!(!Command::ListLibraries.writes());
+        assert!(!Command::ResolveLibraryMember {
+            library_id: "library_1".into(),
+            release_id: "release_1".into(),
+            relative_path: "pls-cadd/criteria/Base.CRI".into(),
+            expected_digest: "a".repeat(64),
+        }
+        .writes());
         assert!(!Command::GetExample {
             example: "feeder".into(),
             revision: None,
