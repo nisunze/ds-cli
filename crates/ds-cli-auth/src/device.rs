@@ -680,6 +680,24 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<TransformerContext, ClientError> {
         fixed_device_call!(self, transformer_context, project, transformer)
     }
+    pub fn transformer_analysis(
+        &mut self,
+        project: &str,
+        transformer: &str,
+        version: u64,
+        content_digest: &str,
+        analysis_sha256: &str,
+    ) -> Result<Vec<u8>, ClientError> {
+        fixed_device_call!(
+            self,
+            transformer_analysis,
+            project,
+            transformer,
+            version,
+            content_digest,
+            analysis_sha256
+        )
+    }
     pub fn transformer_context_saved(
         &mut self,
         project: &str,

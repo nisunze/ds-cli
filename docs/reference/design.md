@@ -129,16 +129,29 @@ from the current call. A crash before an export or process receipt is complete
 requires a new directory. A directory lease prevents concurrent resumes; after
 a crash remove `.run-lock` only once its owning invocation has stopped.
 
-`--print-a4` currently returns `fast_lv_run_print_unavailable` before any
-compute or save. The pinned native client exposes compact saved analysis
-metadata, but not the server's fenced raw analysis read. That read must be
-added to the native client with its closed transport, profile schema and
-package digest before composing `report.export --task voltage-drop` and
-checking its source digest against the verified save receipt. The installed
-reporter must also expose `render_voltage_drop_result`. No stale local
-analysis, recomputation, browser window or substitute report is used. PDF
-output will remain separate from named versions and `.dsgrid` backups; this
-command does not publish local compute artifacts.
+Add `--print-a4` to compute, save, fetch the exact saved analysis and render
+local A4 PDF in the same call. Before effects the CLI discovers the installed
+reporter's `render_voltage_drop_result` task and the verified existing browser
+selection. Configure that selection once with
+`ds workstation configure --component chromium --target reporter --yes` on
+Linux or Windows; no browser installation or window is involved.
+
+Printing reads saved analysis with the verified save's version, layer digest
+and analysis SHA-256. It passes those exact bytes, the complete held process
+layers only after their digest matches the saved layers, the explicit
+transformer/project label and the project's brief/extended report selection
+(default extended) to `report.export --task voltage-drop`. The returned PDF
+must match its receipt's digest, byte count and actual page count.
+
+A print failure after a successful save returns `fast_lv_run_print_failed`
+with `detail.saved:true`, `detail.printed:false` and exact save evidence.
+`--resume --print-a4` retries from the first successful save, without saving,
+exporting or processing again. Each retry makes a fresh fenced saved-analysis
+read; a moved working head refuses without replacing it with local analysis.
+Attempt directories retain the exact fetched analysis, request, PDF and owner
+receipt when available. A verified `print.json` is reused without overwriting
+its PDF. All print artifacts remain local in the output directory, separate
+from named versions and `.dsgrid` backups.
 
 ## LV voltage drop
 

@@ -45,3 +45,8 @@ ds-sync-runtime = { workspace = true }
 # and with no session: the store is where a queued report is, not a directory.
 ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
 tempfile = "3"
+
+# Reuse workstation-owned verified browser configuration before any project effect.
+ds-cli-workstation = { path = "../ds-cli-workstation" }
+# Verify the reporter PDF page receipt using the reporter's parser/version.
+lopdf = { version = "0.45", default-features = false }

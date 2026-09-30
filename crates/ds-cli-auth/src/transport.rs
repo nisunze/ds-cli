@@ -200,6 +200,37 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    fn transformer_analysis(
+        &mut self,
+        call: ds_client_core::TransformerAnalysisCall<'_>,
+    ) -> Result<
+        ds_client_core::TransformerAnalysisResponse,
+        ds_client_core::TransformerAnalysisTransportError,
+    > {
+        let (request_id, action_id) = correlation_headers();
+        let bearer = Zeroizing::new(format!("Bearer {}", call.bearer_token()));
+        let body = call.body();
+        let response = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &*bearer)
+            .header("X-Forwarded-Authorization", &*bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes())
+            .map_err(classify)?;
+        raw_transformer_analysis(response)
+    }
+
     fn transformer_context(
         &mut self,
         call: TransformerContextCall<'_>,
@@ -1857,6 +1888,37 @@ impl NativeTransport {
     }
 }
 
+// No parse/serialize step: the raw entity and contract headers belong to core.
+fn raw_transformer_analysis(
+    mut response: ureq::http::Response<ureq::Body>,
+) -> Result<
+    ds_client_core::TransformerAnalysisResponse,
+    ds_client_core::TransformerAnalysisTransportError,
+> {
+    let header = |name: &str| -> Result<Option<String>, TransportError> {
+        let mut values = response.headers().get_all(name).iter();
+        let value = values
+            .next()
+            .map(|value| value.to_str().map(str::to_owned))
+            .transpose()
+            .map_err(|_| TransportError::Unreachable)?;
+        if values.next().is_some() {
+            return Err(TransportError::Unreachable);
+        }
+        Ok(value)
+    };
+    let headers = ds_client_core::TransformerAnalysisHeaders {
+        content_type: header("content-type")?,
+        analysis_sha256: header(ds_client_core::TRANSFORMER_ANALYSIS_SHA256_HEADER)?,
+        cache_control: header("cache-control")?,
+    };
+    ds_client_core::TransformerAnalysisResponse::from_reader(
+        response.status().as_u16(),
+        headers,
+        response.body_mut().as_reader(),
+    )
+}
+
 fn transformer_context_url(origin: &str) -> String {
     format!("{origin}{}", ds_client_core::TRANSFORMER_CONTEXT_PATH)
 }
@@ -2023,6 +2085,144 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
+
+    #[test]
+    fn raw_analysis_host_preserves_exact_bytes_headers_status_and_bound() {
+        for (status, body) in [
+            (200, b"{ \"n\": 1.000e+02 }\n".to_vec()),
+            (400, br#"{"error":{"code":"analysis_invalid"}}"#.to_vec()),
+            (409, br#"{"error":{"code":"analysis_stale"}}"#.to_vec()),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let expected = body.clone();
+            let thread = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                write!(stream, "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nX-DS-Analysis-SHA256: {}\r\nConnection: close\r\n\r\n", body.len(), "a".repeat(64)).unwrap();
+                stream.write_all(&body).unwrap();
+            });
+            let response = ureq::get(format!("http://{address}"))
+                .config()
+                .http_status_as_error(false)
+                .build()
+                .call()
+                .unwrap();
+            let raw = raw_transformer_analysis(response).unwrap();
+            assert_eq!(raw.response.status, status);
+            assert_eq!(raw.response.body, expected);
+            assert_eq!(
+                raw.headers.content_type.as_deref(),
+                Some("application/json")
+            );
+            assert_eq!(raw.headers.cache_control.as_deref(), Some("no-store"));
+            assert_eq!(raw.headers.analysis_sha256, Some("a".repeat(64)));
+            thread.join().unwrap();
+        }
+        let overflow = ds_client_core::TransformerAnalysisResponse::from_reader(
+            200,
+            Default::default(),
+            std::io::repeat(b' ')
+                .take(ds_client_core::TRANSFORMER_ANALYSIS_RESPONSE_LIMIT as u64 + 1),
+        );
+        assert!(matches!(
+            overflow,
+            Err(ds_client_core::TransformerAnalysisTransportError::ResponseTooLarge)
+        ));
+    }
+
+    #[test]
+    fn raw_analysis_host_rejects_duplicate_contract_headers() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Type: application/json\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{}").unwrap();
+        });
+        let response = ureq::get(format!("http://{address}")).call().unwrap();
+        assert!(raw_transformer_analysis(response).is_err());
+        thread.join().unwrap();
+    }
+
+    #[test]
+    fn raw_analysis_client_and_device_are_explicit_and_never_retry_moved_heads() {
+        use crate::test_support::{FixtureTransport, NOW, SIGN_IN, linked_device, signed_in};
+        let bytes = b"{ \"n\": 1.000e+02 }\n";
+        let sha = format!("{:x}", Sha256::digest(bytes));
+        let content = "c".repeat(64);
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone());
+        let mut device = linked_device(transport.clone(), crate::now());
+        for project in ["project-a", "project-b"] {
+            transport.lock().transformer_analysis.push_back(
+                ds_client_core::TransformerAnalysisResponse::from_reader(
+                    200,
+                    ds_client_core::TransformerAnalysisHeaders {
+                        content_type: Some("application/json".into()),
+                        cache_control: Some("no-store".into()),
+                        analysis_sha256: Some(sha.clone()),
+                    },
+                    bytes.as_slice(),
+                )
+                .unwrap(),
+            );
+            let got = if project == "project-a" {
+                client
+                    .transformer_analysis(project, "T1", 8, &content, &sha, NOW)
+                    .unwrap()
+            } else {
+                device
+                    .transformer_analysis(project, "T1", 8, &content, &sha)
+                    .unwrap()
+            };
+            assert_eq!(got, bytes);
+        }
+        for status in [400, 409] {
+            transport.lock().transformer_analysis.push_back(
+                ds_client_core::TransformerAnalysisResponse::from_reader(
+                    status,
+                    Default::default(),
+                    br#"{"error":{"code":"analysis_stale","message":"captured fence moved"}}"#
+                        .as_slice(),
+                )
+                .unwrap(),
+            );
+            let error = client
+                .transformer_analysis("project-a", "T1", 8, &content, &sha, NOW)
+                .unwrap_err();
+            let refusal = error.service_refusal().unwrap();
+            assert_eq!(refusal.status(), status);
+            assert_eq!(refusal.code(), Some("analysis_stale"));
+        }
+        let script = transport.lock();
+        assert_eq!(script.analysis_bodies.len(), 4);
+        for (body, project) in
+            script
+                .analysis_bodies
+                .iter()
+                .zip(["project-a", "project-b", "project-a", "project-a"])
+        {
+            assert_eq!(
+                *body,
+                serde_json::json!({"action":"get_transformer_analysis","eds_project_id":project,"transformer_name":"T1","analysis_version":8,"content_digest":content,"analysis_sha256":sha})
+            );
+        }
+    }
 
     /// One scripted loopback `GET` answer. Returns the port and the thread that
     /// yields the request line and the lower-cased header names it saw.

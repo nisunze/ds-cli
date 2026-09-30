@@ -5437,6 +5437,42 @@ pub use ds_client_core::report_artifact::{
 pub use ds_client_core::{
     TransformerSaveBatch, TransformerSaveItem, TransformerSaveReceipt, TransformerSaved,
 };
+/// Read exact saved analysis under this explicit project's version and both
+/// digest pins. The protected user/device client verifies the raw response.
+pub fn transformer_analysis_for_project(
+    lane: &str,
+    project: &str,
+    transformer: &str,
+    version: u64,
+    content_digest: &str,
+    analysis_sha256: &str,
+) -> Result<Vec<u8>, Failure> {
+    headless_named_report(
+        lane,
+        project,
+        |device, project| {
+            device.transformer_analysis(
+                project,
+                transformer,
+                version,
+                content_digest,
+                analysis_sha256,
+            )
+        },
+        |client, project| {
+            client.transformer_analysis(
+                project,
+                transformer,
+                version,
+                content_digest,
+                analysis_sha256,
+                now(),
+            )
+        },
+    )
+    .map(|held| held.result)
+}
+
 /// Save one batch to the project the batch itself names (a sealed source
 /// receipt's project); the saved selection is never read.
 pub fn save_transformers(

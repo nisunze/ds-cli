@@ -28,3 +28,6 @@ ds-cli-report = { workspace = true }
 tempfile = "3"
 
 ds-command-kernel = { workspace = true }
+
+[dev-dependencies]
+lopdf = { version = "0.45", default-features = false }

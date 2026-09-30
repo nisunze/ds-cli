@@ -45,9 +45,9 @@ const LOCAL_REFUSALS: &[Refusal] = &[
         remedy: "inspect detail.save; resume the unchanged captured run to retry its fenced save",
     },
     Refusal {
-        code: "fast_lv_run_print_unavailable",
-        when: "--print-a4 is requested but the pinned native client has no fenced raw saved-analysis read",
-        remedy: "omit --print-a4 to compute and save; expose the owner's fenced raw analysis read in ds-client-core before composing report.export voltage-drop",
+        code: "fast_lv_run_print_failed",
+        when: "the verified save succeeded but the fenced analysis read or A4 print failed",
+        remedy: "retain detail.save and the output directory, then retry --resume --print-a4; never reconstruct saved analysis",
     },
 ];
 
@@ -82,10 +82,40 @@ const fn process_extra_count() -> usize {
     count
 }
 
-const fn refusals()
--> [Refusal; LOCAL_REFUSALS.len() + project_save::COMMAND.refusals.len() + process_extra_count()] {
+const PRINT_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "reporter_browser_missing",
+        when: "no verified existing reporter browser is configured",
+        remedy: "run ds workstation configure --component chromium --target reporter --yes --output json once",
+    },
+    Refusal {
+        code: "reporter_pdf_unverified",
+        when: "the PDF disagrees with its source, digest, bytes or page receipt",
+        remedy: "retain the attempt and retry --resume --print-a4",
+    },
+];
+const fn report_extra_count() -> usize {
+    let mut count = 0;
+    let mut i = 0;
+    while i < ds_cli_report::export::COMMAND.refusals.len() {
+        if !save_declares(ds_cli_report::export::COMMAND.refusals[i].code) {
+            count += 1;
+        }
+        i += 1;
+    }
+    count + PRINT_REFUSALS.len()
+}
+
+const fn refusals() -> [Refusal;
+    LOCAL_REFUSALS.len()
+        + project_save::COMMAND.refusals.len()
+        + process_extra_count()
+        + report_extra_count()] {
     let mut result = [LOCAL_REFUSALS[0];
-        LOCAL_REFUSALS.len() + project_save::COMMAND.refusals.len() + process_extra_count()];
+        LOCAL_REFUSALS.len()
+            + project_save::COMMAND.refusals.len()
+            + process_extra_count()
+            + report_extra_count()];
     let mut offset = 0;
     let lists = [LOCAL_REFUSALS, project_save::COMMAND.refusals];
     let mut list = 0;
@@ -107,6 +137,21 @@ const fn refusals()
         }
         index += 1;
     }
+    let mut index = 0;
+    while index < ds_cli_report::export::COMMAND.refusals.len() {
+        let refusal = ds_cli_report::export::COMMAND.refusals[index];
+        if !save_declares(refusal.code) {
+            result[offset] = refusal;
+            offset += 1;
+        }
+        index += 1;
+    }
+    let mut index = 0;
+    while index < PRINT_REFUSALS.len() {
+        result[offset] = PRINT_REFUSALS[index];
+        offset += 1;
+        index += 1;
+    }
     result
 }
 
@@ -114,8 +159,8 @@ pub static COMMAND: Command = Command {
     id: "design.lv.project-run",
     path: &["design", "lv", "project-run"],
     contract: 1,
-    summary: "Process and save one project's LV transformer in one headless call.",
-    purpose: "Capture the explicit project's currently fenced transformer and configuration through project-export --project-config, process once with ds-network owner defaults, then project-save the exact layers and ds.lv-voltage-drop.analysis/v1 atomically on the working head. Success requires the save owner's fresh verified layer/analysis digests. Retain the bounded output directory; --resume reuses its exact captured source/result and deterministic operation ID, never re-exports or recomputes. Named versions and backups are not changed; no compute artifacts are uploaded. A4 printing is currently refused before any work: the native client lacks the fenced raw saved-analysis read needed for report.export voltage-drop. No Desktop or browser window is opened.",
+    summary: "Compute, save and optionally print one LV transformer to A4.",
+    purpose: "Capture the explicit project's currently fenced transformer and configuration through project-export --project-config, process once with ds-network owner defaults, then project-save the exact layers and ds.lv-voltage-drop.analysis/v1 atomically on the working head. Success requires the save owner's fresh verified layer/analysis digests. Retain the bounded output directory; --resume reuses its exact captured source/result and deterministic operation ID, never re-exports or recomputes. Named versions and backups are not changed; no compute artifacts are uploaded. With --print-a4, preflight the installed render_voltage_drop_result task and configured headless browser before effects, then fetch exact saved analysis under all three save pins and call report.export voltage-drop with matching held layers. Print failures retain saved:true/printed:false evidence. --resume --print-a4 retries from the first verified save without saving again; moved heads refuse. Configure an existing browser once with workstation configure --component chromium --target reporter. No Desktop or browser window is opened.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -148,14 +193,14 @@ pub static COMMAND: Command = Command {
         .choices(&["stable", "canary"]),
         Arg::switch(
             "resume",
-            "Retry the save from this directory's complete captured export/process artifacts; never process again.",
+            "Reuse captured export/process bytes; with --print-a4 retry the first successful save's print without saving again.",
         ),
         Arg::switch(
             "print-a4",
-            "Request A4 output; currently refuses before compute/save until the fenced saved-analysis read exists.",
+            "Render verified saved analysis to local A4 PDF with the configured headless browser.",
         ),
     ],
-    output: "Explicit project/lane/transformer, deterministic operation_id, input/result digests, captured artifact paths, and the exact verified save receipt. saved is true only after fresh owner verification; printed is false. Errors retain captured files and never claim a saved result or PDF.",
+    output: "Explicit project/lane/transformer, deterministic operation_id, input/result digests, captured artifact paths, and the exact verified save receipt. saved is true after owner verification; printed is true only after PDF receipt/digest/page verification. Print errors carry saved:true/printed:false and exact save evidence in detail. Generated PDFs stay local in the run directory.",
     examples: &[
         Example {
             command: "ds design lv project-run --project <id> --transformer T-1042 --out-dir ./T-1042-run --yes --output json",
@@ -163,8 +208,13 @@ pub static COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds design lv project-run --project <id> --transformer T-1042 --out-dir ./T-1042-run --resume --yes --output json",
-            note: "Retry the same captured save without exporting or computing again.",
+            command: "ds design lv project-run --project <id> --transformer T-1042 --out-dir ./T-1042-run --print-a4 --yes --output json",
+            note: "Compute, save and print with an existing configured browser.",
+            runnable: false,
+        },
+        Example {
+            command: "ds design lv project-run --project <id> --transformer T-1042 --out-dir ./T-1042-run --resume --print-a4 --yes --output json",
+            note: "Retry printing the first verified save without exporting, processing or saving again.",
             runnable: false,
         },
     ],
@@ -211,16 +261,35 @@ fn keep_receipt(path: &Path, command: &Command, value: Value) -> Result<Value, F
 
 // Only this closed set of existing semantic handlers is callable. No shell,
 // sibling argv, alternate transport or model authoring is added here.
+type SavedAnalysisRead = fn(&str, &str, &str, u64, &str, &str) -> Result<Vec<u8>, Failure>;
+
 struct Owners {
     export: Handler,
     process: Handler,
     save: fn(&Inputs, &Context, &str) -> Result<Value, Failure>,
+    preflight: fn() -> Result<(), Failure>,
+    analysis: SavedAnalysisRead,
+    print: Handler,
 }
 const OWNERS: Owners = Owners {
     export: project_export::run,
     process: process::run,
     save: project_save::run_for_project,
+    preflight: print_preflight,
+    analysis: ds_cli_auth::transformer_analysis_for_project,
+    print: ds_cli_report::export::run,
 };
+
+fn print_preflight() -> Result<(), Failure> {
+    ds_cli_report::export::voltage_drop_preflight()?;
+    ds_cli_report::export::voltage_drop_browser_preflight().map_err(|message| {
+        Failure::unavailable("reporter_browser_missing", message).remedy(PRINT_REFUSALS[0].remedy)
+    })
+}
+
+fn pdf_unverified(message: String) -> Failure {
+    Failure::failed("reporter_pdf_unverified", message).remedy(PRINT_REFUSALS[1].remedy)
+}
 
 fn invoke(
     command: &Command,
@@ -255,9 +324,15 @@ fn run_with(inputs: &Inputs, context: &Context, owners: &Owners) -> Result<Value
                 .remedy("Review the explicit project and transformer, then pass --yes."),
         );
     }
-    if inputs.switch("print-a4") {
-        return Err(Failure::unavailable("fast_lv_run_print_unavailable", "The pinned native client has no fenced raw saved-analysis read; no compute, save or print was attempted.")
-            .remedy(LOCAL_REFUSALS[6].remedy));
+    if inputs.switch("print-a4")
+        && let Err(error) = (owners.preflight)()
+    {
+        // A failed preflight has no effects. On a print retry preserve the
+        // validated captured save evidence even if the reporter vanished.
+        return Err(match captured_save_for_preflight(inputs) {
+            Ok(Some(saved)) => error.detail(json!({"saved":true,"printed":false,"save":saved,"out_dir":inputs.require("out-dir")?})),
+            _ => error,
+        });
     }
     let project = inputs.require("project")?;
     let transformer = inputs.require("transformer")?;
@@ -380,37 +455,249 @@ fn run_with(inputs: &Inputs, context: &Context, owners: &Owners) -> Result<Value
         return Err(incomplete("Captured source addresses another project."));
     }
     let operation_id = operation_id(&source, &processed);
-    let saved = invoke(
-        &project_save::COMMAND,
-        |inputs, context| (owners.save)(inputs, context, project),
-        &[
-            ("source", &source_path.to_string_lossy()),
-            ("input", &request_text),
-            ("result", &result_text),
-            ("process-receipt", &process_path.to_string_lossy()),
-            ("transformer", transformer),
-            ("operation-id", &operation_id),
-            ("lane", lane),
-        ],
-        &[],
-        context,
-    )?;
+    let saved = if inputs.switch("resume")
+        && inputs.switch("print-a4")
+        && save_path
+            .try_exists()
+            .map_err(|error| incomplete(error.to_string()))?
+    {
+        let bytes = project_save::read(&save_path.to_string_lossy(), 1024 * 1024)?;
+        let envelope: Value =
+            serde_json::from_slice(&bytes).map_err(|error| incomplete(error.to_string()))?;
+        let saved = project_save::receipt(&bytes, project_save::COMMAND.id)?;
+        if !envelope["run_operation_id"].is_null() && envelope["run_operation_id"] != operation_id {
+            return Err(incomplete(
+                "First save receipt does not match this captured operation.",
+            ));
+        }
+        saved
+    } else {
+        invoke(
+            &project_save::COMMAND,
+            |inputs, context| (owners.save)(inputs, context, project),
+            &[
+                ("source", &source_path.to_string_lossy()),
+                ("input", &request_text),
+                ("result", &result_text),
+                ("process-receipt", &process_path.to_string_lossy()),
+                ("transformer", transformer),
+                ("operation-id", &operation_id),
+                ("lane", lane),
+            ],
+            &[],
+            context,
+        )?
+    };
     require_verified_save(&saved, project, transformer, lane)?;
-    // A retry always calls the save owner again for fresh readback. The first
-    // verified receipt remains immutable; the returned receipt is this call's.
+    // Save-only retries refresh owner verification. Print retries use the first
+    // immutable save receipt and verify its fence through the raw analysis read.
     if !save_path
         .try_exists()
         .map_err(|error| incomplete(error.to_string()))?
     {
-        keep_receipt(&save_path, &project_save::COMMAND, saved.clone())?;
+        let mut envelope = serde_json::to_value(success_envelope(
+            project_save::COMMAND.id,
+            project_save::COMMAND.contract,
+            saved.clone(),
+        ))
+        .map_err(|error| incomplete(error.to_string()))?;
+        envelope["run_operation_id"] = json!(operation_id);
+        let bytes = serde_json::to_vec(&envelope).map_err(|error| incomplete(error.to_string()))?;
+        if bytes.len() > 1024 * 1024 {
+            return Err(incomplete("Save receipt exceeds 1 MiB."));
+        }
+        write_new(&save_path, &bytes, &RECEIPT)?;
     }
-    Ok(
-        json!({"project":project, "lane":lane, "transformer":transformer,
+    let mut outcome = json!({"project":project, "lane":lane, "transformer":transformer,
         "operation_id":operation_id, "input_sha256":processed["input_sha256"],
         "result_sha256":processed["result_sha256"], "out_dir":directory,
         "artifacts":{"source":source_path,"input":request,"result":result,"process_receipt":process_path,"first_verified_save_receipt":save_path},
-        "saved":true,"printed":false,"save":saved}),
+        "saved":true,"printed":false,"save":saved});
+    if inputs.switch("print-a4") {
+        match print_saved(owners, context, PrintRun { directory: &directory, project, transformer, lane, saved: &saved, input: &input_bytes, result: &result_bytes }) {
+            Ok(printed) => { outcome["printed"] = json!(true); outcome["print"] = printed; }
+            Err(error) => return Err(Failure::failed("fast_lv_run_print_failed", "The transformer was saved and verified; A4 printing failed.")
+                .remedy(LOCAL_REFUSALS[6].remedy)
+                .detail(json!({"saved":true,"printed":false,"save":saved,"run":outcome,"print_error":json!({"code":error.code(),"message":error.message(),"remedy":error.remedy_text(),"detail":error.detail_value()})}))),
+        }
+    }
+    Ok(outcome)
+}
+
+fn captured_save_for_preflight(inputs: &Inputs) -> Result<Option<Value>, Failure> {
+    if !inputs.switch("resume") {
+        return Ok(None);
+    }
+    let directory = Path::new(inputs.require("out-dir")?);
+    let project = inputs.require("project")?;
+    let transformer = inputs.require("transformer")?;
+    let lane = inputs.require("lane")?;
+    let source = read_receipt(&directory.join("source.json"), &project_export::COMMAND)?;
+    let processed = read_receipt(&directory.join("process.json"), &process::COMMAND)?;
+    let input = project_save::read(
+        &directory.join("request.json").to_string_lossy(),
+        ds_network::network::native_fast_lv::MAX_NATIVE_FAST_LV_INPUT_BYTES,
+    )?;
+    let result = project_save::read(
+        &directory.join("result.json").to_string_lossy(),
+        ds_network::network::native_fast_lv::MAX_NATIVE_FAST_LV_OUTPUT_BYTES,
+    )?;
+    let (captured_project, _, _) =
+        project_save::verify_receipts(&source, &processed, transformer, lane, &input, &result)?;
+    if captured_project != project {
+        return Err(incomplete("Captured save addresses another project."));
+    }
+    let bytes = project_save::read(&directory.join("save.json").to_string_lossy(), 1024 * 1024)?;
+    let envelope: Value =
+        serde_json::from_slice(&bytes).map_err(|error| incomplete(error.to_string()))?;
+    if !envelope["run_operation_id"].is_null()
+        && envelope["run_operation_id"] != operation_id(&source, &processed)
+    {
+        return Err(incomplete("Save operation differs."));
+    }
+    let saved = project_save::receipt(&bytes, project_save::COMMAND.id)?;
+    require_verified_save(&saved, project, transformer, lane)?;
+    Ok(Some(saved))
+}
+
+struct PrintRun<'a> {
+    directory: &'a Path,
+    project: &'a str,
+    transformer: &'a str,
+    lane: &'a str,
+    saved: &'a Value,
+    input: &'a [u8],
+    result: &'a [u8],
+}
+
+fn print_saved(owners: &Owners, context: &Context, run: PrintRun<'_>) -> Result<Value, Failure> {
+    let row = &run.saved["result"]["results"][0];
+    let content_digest = row["content_digest"]
+        .as_str()
+        .expect("verified save digest");
+    let source_sha = row["analysis_sha256"]
+        .as_str()
+        .expect("verified analysis digest");
+    // Fresh fenced server read on EVERY retry; never treat local analysis as
+    // evidence that the working head still holds the captured save.
+    let analysis = (owners.analysis)(
+        run.lane,
+        run.project,
+        run.transformer,
+        row["version"].as_u64().expect("verified version"),
+        content_digest,
+        source_sha,
+    )?;
+    if analysis.len() > ds_client_core::TRANSFORMER_ANALYSIS_RESPONSE_LIMIT
+        || sha256(&analysis) != source_sha
+    {
+        return Err(incomplete(
+            "Saved analysis bytes do not match the verified save.",
+        ));
+    }
+    let result: Value =
+        serde_json::from_slice(run.result).map_err(|error| incomplete(error.to_string()))?;
+    let jobs = result["jobs"]
+        .as_array()
+        .ok_or_else(|| incomplete("No captured result jobs."))?;
+    if jobs.len() != 1 || jobs[0]["transformer_name"] != run.transformer || jobs[0]["ok"] != true {
+        return Err(incomplete(
+            "Captured layers do not belong to this successful transformer.",
+        ));
+    }
+    let layers: std::collections::BTreeMap<String, Value> =
+        serde_json::from_value(jobs[0]["output"]["gdfs"].clone())
+            .map_err(|error| incomplete(error.to_string()))?;
+    if ds_command_kernel::report_export::jcs::layers_content_digest(&layers).map_err(incomplete)?
+        != content_digest
+    {
+        return Err(incomplete(
+            "Held process layers do not match the exact saved layer digest.",
+        ));
+    }
+    let input: Value =
+        serde_json::from_slice(run.input).map_err(|error| incomplete(error.to_string()))?;
+    let format = ds_command_kernel::report_formats::project_voltage_drop_report_format(
+        &input["jobs"][0]["config_dfs"],
     )
+    .map_err(incomplete)?
+    .token();
+    let receipt_path = run.directory.join("print.json");
+    if receipt_path
+        .try_exists()
+        .map_err(|error| incomplete(error.to_string()))?
+    {
+        let receipt = read_receipt(&receipt_path, &ds_cli_report::export::COMMAND)?;
+        let pdf = receipt["out_pdf"]
+            .as_str()
+            .ok_or_else(|| incomplete("Print receipt has no PDF."))?;
+        let pdf = Path::new(pdf);
+        if !pdf.starts_with(run.directory)
+            || pdf
+                .file_name()
+                .is_none_or(|name| name != "voltage-drop-a4.pdf")
+        {
+            return Err(incomplete("Print receipt points outside the captured run."));
+        }
+        ds_cli_report::export::verify_voltage_drop_pdf(
+            &receipt,
+            pdf,
+            source_sha,
+            run.transformer,
+            run.project,
+        )
+        .map_err(pdf_unverified)?;
+        return Ok(receipt);
+    }
+    // Every attempt gets absent paths. Preserve all previous attempts, even
+    // when an owner wrote a PDF but failed before returning its receipt.
+    let attempt = (1..=1000)
+        .find_map(|number| {
+            let path = run.directory.join(format!("print-{number}"));
+            match std::fs::create_dir(&path) {
+                Ok(()) => Some(Ok(path)),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => None,
+                Err(error) => Some(Err(incomplete(error.to_string()))),
+            }
+        })
+        .ok_or_else(|| incomplete("Print attempt limit reached; retain the run evidence."))??;
+    let analysis_path = attempt.join("saved-analysis.json");
+    write_new(&analysis_path, &analysis, &RECEIPT)?;
+    let request_path = attempt.join("request.json");
+    let pdf = attempt.join("voltage-drop-a4.pdf");
+    let request = json!({"schema":"ds.voltage-drop-pdf.render-request/v1",
+        "source_document":analysis_path,"source_sha256":source_sha,"layers":layers,
+        "report_format":format,"transformer":run.transformer,"project_label":run.project,"out_pdf":pdf});
+    write_new(
+        &request_path,
+        &serde_json::to_vec(&request).map_err(|error| incomplete(error.to_string()))?,
+        &RECEIPT,
+    )?;
+    let printed = invoke(
+        &ds_cli_report::export::COMMAND,
+        owners.print,
+        &[
+            ("task", "voltage-drop"),
+            ("request", &request_path.to_string_lossy()),
+        ],
+        &[],
+        context,
+    )?;
+    // Retain returned owner evidence even when verification fails.
+    keep_receipt(
+        &attempt.join("report.json"),
+        &ds_cli_report::export::COMMAND,
+        printed.clone(),
+    )?;
+    ds_cli_report::export::verify_voltage_drop_pdf(
+        &printed,
+        &pdf,
+        source_sha,
+        run.transformer,
+        run.project,
+    )
+    .map_err(pdf_unverified)?;
+    keep_receipt(&receipt_path, &ds_cli_report::export::COMMAND, printed)
 }
 
 fn operation_id(source: &Value, processed: &Value) -> String {
@@ -465,11 +752,12 @@ fn require_verified_save(
 
 pub fn render(value: &Value) -> String {
     format!(
-        "LV transformer {} saved and verified in {}.\nCaptured run: {}\nOperation: {}\nPrinted: false",
+        "LV transformer {} saved and verified in {}.\nCaptured run: {}\nOperation: {}\nPrinted: {}",
         value["transformer"].as_str().unwrap_or(""),
         value["project"].as_str().unwrap_or(""),
         value["out_dir"].as_str().unwrap_or(""),
-        value["operation_id"].as_str().unwrap_or("")
+        value["operation_id"].as_str().unwrap_or(""),
+        value["printed"]
     )
 }
 
@@ -485,6 +773,7 @@ mod tests {
         operations: Vec<String>,
         fail: Option<&'static str>,
         unverified: bool,
+        brief: bool,
     }
     thread_local! { static CALLS: RefCell<Calls> = RefCell::default(); }
 
@@ -510,7 +799,9 @@ mod tests {
                 "tr".to_owned(),
                 json!({"type":"FeatureCollection","features":[]}),
             )]),
-            &std::collections::BTreeMap::new(),
+            &CALLS.with(|c| if c.borrow().brief {
+                std::collections::BTreeMap::from([("project_settings".to_owned(), json!([{"parameter":"design_export_format","value":{"schema":"ds.design-output-selection/v1","voltage_drop_report":"brief"}}]))])
+            } else { std::collections::BTreeMap::new() }),
         )
         .unwrap();
         write_new(
@@ -528,14 +819,16 @@ mod tests {
         stage("process")?;
         let input = std::fs::read(inputs.require("input")?).unwrap();
         // Opaque owner bytes: composition must not rewrite or decode them.
-        let output = b"opaque native result bytes\n";
+        let output = serde_json::to_vec(&json!({"jobs":[{"transformer_name":"T1","ok":true,
+            "output":{"gdfs":{"tr":{"type":"FeatureCollection","features":[]}}}}]}))
+        .unwrap();
         write_new(
             Path::new(inputs.require("out")?),
-            output,
+            &output,
             &super::super::artifact::RESULT,
         )?;
         Ok(
-            json!({"jobs":1,"succeeded":1,"failed":0,"input_sha256":sha256(&input),"result_sha256":sha256(output)}),
+            json!({"jobs":1,"succeeded":1,"failed":0,"input_sha256":sha256(&input),"result_sha256":sha256(&output)}),
         )
     }
 
@@ -568,12 +861,84 @@ mod tests {
             &output,
         )?;
         assert_eq!(project, expected_project);
-        assert_eq!(output, b"opaque native result bytes\n");
+        assert!(serde_json::from_slice::<Value>(&output).unwrap()["jobs"][0]["ok"] == true);
         let verified = CALLS.with(|calls| !calls.borrow().unverified);
         Ok(
             json!({"project":project,"lane":inputs.require("lane")?,"result":{"project_id":project,
             "results":[{"transformer_name":inputs.require("transformer")?,"verified":verified,
-                "unchanged":false,"version":version+1,"content_digest":"b".repeat(64),"analysis_sha256":"c".repeat(64)}]}}),
+                "unchanged":false,"version":version+1,"content_digest":layer_digest(),"analysis_sha256":sha256(ANALYSIS)}]}}),
+        )
+    }
+
+    const ANALYSIS: &[u8] = b"{ \"number\": 1.000, \"saved\": true }\n";
+    fn layer_digest() -> String {
+        ds_command_kernel::report_export::jcs::layers_content_digest(
+            &std::collections::BTreeMap::from([(
+                "tr".into(),
+                json!({"type":"FeatureCollection","features":[]}),
+            )]),
+        )
+        .unwrap()
+    }
+    fn preflight() -> Result<(), Failure> {
+        stage("preflight")
+    }
+    fn analysis(
+        lane: &str,
+        project: &str,
+        transformer: &str,
+        version: u64,
+        digest: &str,
+        sha: &str,
+    ) -> Result<Vec<u8>, Failure> {
+        stage("analysis")?;
+        assert_eq!(
+            (lane, project, transformer, version),
+            ("canary", "explicit-project", "T1", 8)
+        );
+        assert_eq!(digest, layer_digest());
+        assert_eq!(sha, sha256(ANALYSIS));
+        Ok(ANALYSIS.to_vec())
+    }
+    fn print(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        stage("print")?;
+        assert_eq!(inputs.require("task")?, "voltage-drop");
+        let request: Value =
+            serde_json::from_slice(&std::fs::read(inputs.require("request")?).unwrap()).unwrap();
+        assert_eq!(
+            std::fs::read(request["source_document"].as_str().unwrap()).unwrap(),
+            ANALYSIS
+        );
+        assert_eq!(request["source_sha256"], sha256(ANALYSIS));
+        assert_eq!(
+            request["report_format"],
+            CALLS.with(|c| if c.borrow().brief {
+                "brief"
+            } else {
+                "extended"
+            })
+        );
+        assert_eq!(request["project_label"], "explicit-project");
+        let path = request["out_pdf"].as_str().unwrap();
+        assert!(!Path::new(path).exists());
+        let mut doc = lopdf::Document::with_version("1.5");
+        let pages = doc.new_object_id();
+        let page = doc.add_object(lopdf::dictionary! {"Type" => "Page", "Parent" => pages,
+        "MediaBox" => vec![0.into(),0.into(),595.into(),842.into()]});
+        doc.objects.insert(
+            pages,
+            lopdf::dictionary! {"Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1}
+                .into(),
+        );
+        let catalog = doc.add_object(lopdf::dictionary! {"Type" => "Catalog", "Pages" => pages});
+        doc.trailer.set("Root", catalog);
+        let mut pdf = Vec::new();
+        doc.save_to(&mut pdf).unwrap();
+        std::fs::write(path, &pdf).unwrap();
+        Ok(
+            json!({"schema":"ds.voltage-drop-pdf.render/v1","transformer":"T1","project_label":"explicit-project",
+            "out_pdf":path,"source_sha256":sha256(ANALYSIS),"output_sha256":sha256(&pdf),
+            "pages":1,"bytes":pdf.len(),"publication":"nothing_published"}),
         )
     }
 
@@ -581,6 +946,9 @@ mod tests {
         export,
         process: compute,
         save,
+        preflight,
+        analysis,
+        print,
     };
 
     fn context(confirmed: bool) -> Context {
@@ -610,6 +978,292 @@ mod tests {
     }
 
     #[test]
+    fn legacy_first_save_receipt_can_print_without_rewrite_or_resave() {
+        reset();
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("run");
+        run_with(&inputs(&directory, &[]), &context(true), &MOCK).unwrap();
+        let path = directory.join("save.json");
+        let mut envelope: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        envelope.as_object_mut().unwrap().remove("run_operation_id");
+        let first = serde_json::to_vec(&envelope).unwrap();
+        std::fs::write(&path, &first).unwrap();
+        let printed = run_with(
+            &inputs(&directory, &["--resume", "--print-a4"]),
+            &context(true),
+            &MOCK,
+        )
+        .unwrap();
+        assert_eq!(printed["printed"], true);
+        assert_eq!(std::fs::read(&path).unwrap(), first);
+        assert_eq!(
+            CALLS.with(|c| c.borrow().stages.clone()),
+            [
+                "export",
+                "process",
+                "save",
+                "preflight",
+                "analysis",
+                "print"
+            ]
+        );
+    }
+
+    #[test]
+    fn source_brief_selection_is_passed_explicitly_to_saved_analysis_presenter() {
+        reset();
+        CALLS.with(|c| c.borrow_mut().brief = true);
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("run");
+        let printed =
+            run_with(&inputs(&directory, &["--print-a4"]), &context(true), &MOCK).unwrap();
+        assert_eq!(printed["printed"], true);
+    }
+
+    #[test]
+    fn retry_preflight_keeps_captured_successful_save_evidence_without_effects() {
+        reset();
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("run");
+        run_with(&inputs(&directory, &[]), &context(true), &MOCK).unwrap();
+        fn missing() -> Result<(), Failure> {
+            Err(Failure::unavailable("reporter_browser_missing", "gone")
+                .remedy("configure chromium for reporter"))
+        }
+        let owners = Owners {
+            preflight: missing,
+            ..MOCK
+        };
+        let failure = run_with(
+            &inputs(&directory, &["--resume", "--print-a4"]),
+            &context(true),
+            &owners,
+        )
+        .unwrap_err();
+        assert_eq!(failure.code(), "reporter_browser_missing");
+        assert_eq!(failure.detail_value().unwrap()["saved"], true);
+        assert_eq!(failure.detail_value().unwrap()["printed"], false);
+        assert_eq!(
+            CALLS.with(|c| c.borrow().stages.clone()),
+            ["export", "process", "save"]
+        );
+    }
+
+    #[test]
+    fn print_preflight_refuses_before_directory_or_project_effects() {
+        for code in [
+            "reporter_engine_missing",
+            "unknown_task",
+            "reporter_browser_missing",
+        ] {
+            reset();
+            let temp = tempfile::tempdir().unwrap();
+            let directory = temp.path().join("run");
+            fn missing_reporter() -> Result<(), Failure> {
+                Err(Failure::unavailable("reporter_engine_missing", "missing")
+                    .remedy("install reporter"))
+            }
+            fn missing_task() -> Result<(), Failure> {
+                Err(Failure::unavailable("unknown_task", "missing").remedy("update reporter"))
+            }
+            fn missing_browser() -> Result<(), Failure> {
+                Err(Failure::unavailable("reporter_browser_missing", "missing")
+                    .remedy("configure chromium for reporter"))
+            }
+            let owners = Owners {
+                preflight: match code {
+                    "reporter_engine_missing" => missing_reporter,
+                    "unknown_task" => missing_task,
+                    _ => missing_browser,
+                },
+                ..MOCK
+            };
+            assert_eq!(
+                run_with(
+                    &inputs(&directory, &["--print-a4"]),
+                    &context(true),
+                    &owners
+                )
+                .unwrap_err()
+                .code(),
+                code
+            );
+            assert!(!directory.exists());
+            assert!(CALLS.with(|c| c.borrow().stages.is_empty()));
+        }
+    }
+
+    #[test]
+    fn saved_but_print_failed_resumes_without_save_export_compute_or_overwrite() {
+        reset();
+        CALLS.with(|c| c.borrow_mut().fail = Some("print"));
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("run");
+        let error =
+            run_with(&inputs(&directory, &["--print-a4"]), &context(true), &MOCK).unwrap_err();
+        assert_eq!(error.code(), "fast_lv_run_print_failed");
+        assert_eq!(error.detail_value().unwrap()["saved"], true);
+        assert_eq!(error.detail_value().unwrap()["printed"], false);
+        let first = std::fs::read(directory.join("save.json")).unwrap();
+        assert_eq!(
+            error.detail_value().unwrap()["save"],
+            read_receipt(&directory.join("save.json"), &project_save::COMMAND).unwrap()
+        );
+        assert_eq!(
+            std::fs::read(directory.join("print-1/saved-analysis.json")).unwrap(),
+            ANALYSIS
+        );
+        // Simulate an owner that wrote partial output before failing. Retry
+        // must choose a fresh attempt, never remove the failed output.
+        std::fs::write(
+            directory.join("print-1/voltage-drop-a4.pdf"),
+            b"partial pdf",
+        )
+        .unwrap();
+        CALLS.with(|c| c.borrow_mut().fail = None);
+        let result = run_with(
+            &inputs(&directory, &["--resume", "--print-a4"]),
+            &context(true),
+            &MOCK,
+        )
+        .unwrap();
+        assert_eq!(result["saved"], true);
+        assert_eq!(result["printed"], true);
+        assert_eq!(std::fs::read(directory.join("save.json")).unwrap(), first);
+        assert_eq!(
+            std::fs::read(directory.join("print-1/voltage-drop-a4.pdf")).unwrap(),
+            b"partial pdf"
+        );
+        let pdf = std::fs::read(directory.join("print-2/voltage-drop-a4.pdf")).unwrap();
+        let receipt = std::fs::read(directory.join("print.json")).unwrap();
+        let resumed = run_with(
+            &inputs(&directory, &["--resume", "--print-a4"]),
+            &context(true),
+            &MOCK,
+        )
+        .unwrap();
+        assert_eq!(resumed["print"], result["print"]);
+        assert_eq!(
+            std::fs::read(directory.join("print.json")).unwrap(),
+            receipt
+        );
+        assert_eq!(
+            std::fs::read(directory.join("print-2/voltage-drop-a4.pdf")).unwrap(),
+            pdf
+        );
+        assert_eq!(
+            CALLS.with(|c| c.borrow().stages.clone()),
+            [
+                "preflight",
+                "export",
+                "process",
+                "save",
+                "analysis",
+                "print",
+                "preflight",
+                "analysis",
+                "print",
+                "preflight",
+                "analysis"
+            ]
+        );
+    }
+
+    #[test]
+    fn moved_head_refuses_print_from_first_save_without_recompute_or_resave() {
+        fn moved(
+            _: &str,
+            project: &str,
+            transformer: &str,
+            version: u64,
+            _: &str,
+            _: &str,
+        ) -> Result<Vec<u8>, Failure> {
+            stage("analysis")?;
+            assert_eq!(
+                (project, transformer, version),
+                ("explicit-project", "T1", 8)
+            );
+            Err(Failure::conflict("auth_response_unreadable", "moved head")
+                .remedy("review working head")
+                .detail(json!({"http_status":409,"service_code":"analysis_stale"})))
+        }
+        reset();
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("run");
+        run_with(&inputs(&directory, &[]), &context(true), &MOCK).unwrap();
+        let first = std::fs::read(directory.join("save.json")).unwrap();
+        let owners = Owners {
+            analysis: moved,
+            ..MOCK
+        };
+        let failure = run_with(
+            &inputs(&directory, &["--resume", "--print-a4"]),
+            &context(true),
+            &owners,
+        )
+        .unwrap_err();
+        assert_eq!(failure.detail_value().unwrap()["saved"], true);
+        assert_eq!(
+            failure.detail_value().unwrap()["print_error"]["detail"]["http_status"],
+            409
+        );
+        assert_eq!(std::fs::read(directory.join("save.json")).unwrap(), first);
+        assert_eq!(
+            CALLS.with(|c| c.borrow().stages.clone()),
+            ["export", "process", "save", "preflight", "analysis"]
+        );
+        assert!(!directory.join("print-1").exists());
+    }
+
+    #[test]
+    fn mismatched_saved_layers_and_wrong_raw_analysis_never_reach_reporter() {
+        fn wrong(_: &str, _: &str, _: &str, _: u64, _: &str, _: &str) -> Result<Vec<u8>, Failure> {
+            stage("analysis")?;
+            Ok(b"{}".to_vec())
+        }
+        for wrong_bytes in [true, false] {
+            reset();
+            let temp = tempfile::tempdir().unwrap();
+            let directory = temp.path().join("run");
+            run_with(&inputs(&directory, &[]), &context(true), &MOCK).unwrap();
+            if !wrong_bytes {
+                let path = directory.join("save.json");
+                let mut saved: Value =
+                    serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                saved["data"]["result"]["results"][0]["content_digest"] = json!("a".repeat(64));
+                std::fs::write(path, saved.to_string()).unwrap();
+            }
+            fn same(
+                _: &str,
+                _: &str,
+                _: &str,
+                _: u64,
+                _: &str,
+                _: &str,
+            ) -> Result<Vec<u8>, Failure> {
+                stage("analysis")?;
+                Ok(ANALYSIS.to_vec())
+            }
+            let owners = Owners {
+                analysis: if wrong_bytes { wrong } else { same },
+                ..MOCK
+            };
+            assert_eq!(
+                run_with(
+                    &inputs(&directory, &["--resume", "--print-a4"]),
+                    &context(true),
+                    &owners
+                )
+                .unwrap_err()
+                .code(),
+                "fast_lv_run_print_failed"
+            );
+            assert!(!CALLS.with(|c| c.borrow().stages.contains(&"print")));
+        }
+    }
+
+    #[test]
     fn composes_exact_owner_artifacts_and_retries_without_export_or_compute() {
         reset();
         let temp = tempfile::tempdir().unwrap();
@@ -619,7 +1273,7 @@ mod tests {
         assert_eq!(result["printed"], false);
         assert_eq!(
             result["save"]["result"]["results"][0]["analysis_sha256"],
-            "c".repeat(64)
+            sha256(ANALYSIS)
         );
         assert_eq!(
             CALLS.with(|c| c.borrow().stages.clone()),
@@ -694,6 +1348,7 @@ mod tests {
             export,
             process: process::run,
             save,
+            ..MOCK
         };
         assert_eq!(
             run_with(&inputs(&directory, &[]), &context(true), &native)
@@ -717,12 +1372,6 @@ mod tests {
                 .unwrap_err()
                 .code(),
             "confirmation_required"
-        );
-        assert_eq!(
-            run_with(&inputs(&directory, &["--print-a4"]), &context(true), &MOCK)
-                .unwrap_err()
-                .code(),
-            "fast_lv_run_print_unavailable"
         );
         assert!(!directory.exists());
         std::fs::create_dir(&directory).unwrap();
@@ -854,6 +1503,7 @@ mod tests {
             export,
             process: compute,
             save: replaced,
+            ..MOCK
         };
         let refusal = run_with(&inputs(&directory, &[]), &context(true), &owners).unwrap_err();
         assert_eq!(refusal.code(), "fast_lv_save_input_invalid");

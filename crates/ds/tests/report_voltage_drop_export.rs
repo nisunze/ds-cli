@@ -2,6 +2,7 @@
 #![cfg(unix)]
 use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 use std::process::Command;
 
 struct Harness {
@@ -156,4 +157,54 @@ fn a4_owner_refusal_preserves_diagnostic_without_recomputation() {
         "{answer}"
     );
     assert_eq!(h.calls(), "task-schemas\nrender-voltage-drop-result\n");
+}
+
+#[test]
+fn project_run_discovers_missing_task_or_browser_before_any_effect() {
+    for mode in ["unavailable", "complete"] {
+        let h = Harness::new();
+        let directory = h.root.path().join("run");
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args([
+                "design",
+                "lv",
+                "project-run",
+                "--project",
+                "explicit-project",
+                "--transformer",
+                "T1",
+                "--print-a4",
+                "--yes",
+                "--output",
+                "json",
+                "--out-dir",
+            ])
+            .arg(&directory)
+            .env("DS_REPORT_BIN", h.root.path().join("ds-report"))
+            .env(
+                "DS_WORKSTATION_COMPONENT_ROOT",
+                h.root.path().join("components"),
+            )
+            .env("TEST_MODE", mode)
+            .env("TEST_LOG", h.root.path().join("calls"))
+            .env("DS_CONFIG_HOME", h.root.path().join("native-state"))
+            .env(
+                "DS_NATIVE_CLIENT_PROFILE_BUNDLE",
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../ds-cli-auth/tests/fixtures/development-catalog.json"),
+            )
+            .output()
+            .unwrap();
+        let answer: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            answer["error"]["code"],
+            if mode == "unavailable" {
+                "unknown_task"
+            } else {
+                "reporter_browser_missing"
+            }
+        );
+        assert!(!directory.exists());
+        assert_eq!(h.calls(), "task-schemas\n");
+    }
 }

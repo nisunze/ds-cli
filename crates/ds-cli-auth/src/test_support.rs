@@ -48,6 +48,8 @@ pub(crate) struct Scripted {
     /// Scripted answers for the transformer context route; Unreachable when
     /// empty.
     pub transformer_context: VecDeque<TransportResponse>,
+    pub transformer_analysis: VecDeque<ds_client_core::TransformerAnalysisResponse>,
+    pub analysis_bodies: Vec<serde_json::Value>,
     /// Every call recorded as `door bearer device-id|user`, or with the
     /// request body for the approval door.
     pub calls: Vec<String>,
@@ -117,6 +119,30 @@ impl FixtureTransport {
 }
 
 impl Transport for FixtureTransport {
+    fn transformer_analysis(
+        &mut self,
+        call: ds_client_core::TransformerAnalysisCall<'_>,
+    ) -> Result<
+        ds_client_core::TransformerAnalysisResponse,
+        ds_client_core::TransformerAnalysisTransportError,
+    > {
+        assert_eq!(call.method(), "POST");
+        assert_eq!(call.path(), "/api/v1/data");
+        assert_eq!(call.response_limit(), 32 * 1024 * 1024);
+        self.lock().calls.push(format!(
+            "transformer_analysis {} {}",
+            call.bearer_token(),
+            call.device_id().unwrap_or("user")
+        ));
+        let body = serde_json::from_slice(call.body().as_bytes()).unwrap();
+        let mut script = self.lock();
+        script.analysis_bodies.push(body);
+        script
+            .transformer_analysis
+            .pop_front()
+            .ok_or(ds_client_core::TransportError::Unreachable.into())
+    }
+
     fn survey_control(
         &mut self,
         _call: ds_client_core::SurveyControlCall<'_>,

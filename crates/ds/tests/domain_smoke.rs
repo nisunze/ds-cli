@@ -45,7 +45,7 @@ fn discoverable(command: &Value) -> bool {
 }
 
 #[test]
-fn lv_project_run_is_discoverable_and_print_gap_has_no_local_or_saved_effect() {
+fn lv_project_run_is_discoverable_and_print_preflight_has_no_project_effect() {
     let described = ds(&["capabilities", "design.lv.project-run", "--output", "json"]);
     assert_eq!(described.code, 0);
     let command = &described.envelope["data"]["command"];
@@ -77,9 +77,13 @@ fn lv_project_run_is_discoverable_and_print_gap_has_no_local_or_saved_effect() {
         "json",
     ]);
     assert_ne!(refused.code, 0);
-    assert_eq!(
-        refused.envelope["error"]["code"],
-        "fast_lv_run_print_unavailable"
+    assert!(
+        matches!(
+            refused.envelope["error"]["code"].as_str(),
+            Some("reporter_engine_missing" | "unknown_task" | "reporter_browser_missing")
+        ),
+        "{}",
+        refused.envelope
     );
     assert!(refused.envelope["data"].is_null());
     assert!(!directory.exists());

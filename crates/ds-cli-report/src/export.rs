@@ -217,6 +217,94 @@ const CONTENT_FLAGS: &[&str] = &[
     "admin-bounds-sha256",
 ];
 
+/// Discover the exact owner task before any project compute/save effect.
+pub fn voltage_drop_preflight() -> Result<(), Failure> {
+    require_voltage_drop_task()
+}
+
+/// Inspect the workstation-owned browser selection without effects. The
+/// composing command owns its refusal code and remedy.
+pub fn voltage_drop_browser_preflight() -> Result<(), String> {
+    let selected = ds_cli_workstation::policy::read_browser_selection(
+        ds_cli_workstation::detect::Platform::current(),
+    )?
+    .ok_or_else(|| "No verified reporter browser is configured.".to_owned())?;
+    if !Path::new(&selected.executable).is_file() {
+        return Err("The configured reporter browser is missing.".to_owned());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if std::fs::metadata(&selected.executable)
+            .map_err(|error| error.to_string())?
+            .permissions()
+            .mode()
+            & 0o111
+            == 0
+        {
+            return Err("The configured reporter browser is not executable.".to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn require_voltage_drop_task() -> Result<(), Failure> {
+    let schemas = crate::tasks::schemas()?;
+    if !schemas["tasks"].as_array().is_some_and(|tasks| {
+        tasks.iter().any(|task| {
+            task["name"] == "render_voltage_drop_result"
+                && task["subcommand"] == VOLTAGE_DROP_SUBCOMMAND
+        })
+    }) {
+        return Err(Failure::unavailable("unknown_task", "the installed reporter does not expose render_voltage_drop_result")
+            .remedy("install a reporter exposing render_voltage_drop_result; no network recomputation fallback is permitted"));
+    }
+    Ok(())
+}
+
+/// Verify the owner's receipt against its local artifact. No rendering or analysis here.
+pub fn verify_voltage_drop_pdf(
+    receipt: &Value,
+    pdf: &Path,
+    source_sha: &str,
+    transformer: &str,
+    project_label: &str,
+) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let invalid = || "The reporter PDF does not match its exact receipt.".to_owned();
+    let metadata = std::fs::symlink_metadata(pdf).map_err(|_| invalid())?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 64 * 1024 * 1024
+    {
+        return Err(invalid());
+    }
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(pdf)
+        .and_then(|file| file.take(64 * 1024 * 1024 + 1).read_to_end(&mut bytes))
+        .map_err(|_| invalid())?;
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err(invalid());
+    }
+    let pages = lopdf::Document::load_mem(&bytes)
+        .map_err(|_| invalid())?
+        .get_pages()
+        .len();
+    if receipt["schema"] != "ds.voltage-drop-pdf.render/v1"
+        || receipt["transformer"] != transformer
+        || receipt["project_label"] != project_label
+        || receipt["source_sha256"] != source_sha
+        || receipt["out_pdf"] != pdf.to_string_lossy().as_ref()
+        || receipt["output_sha256"] != format!("{:x}", Sha256::digest(&bytes))
+        || receipt["bytes"].as_u64() != Some(bytes.len() as u64)
+        || pages == 0
+        || receipt["pages"].as_u64() != Some(pages as u64)
+        || receipt["publication"] != "nothing_published"
+    {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let task = inputs.require("task")?;
     let subcommand = match task {
@@ -255,21 +343,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )
             .remedy("discover `ds report tasks --task render_voltage_drop_result` and supply its exact request"));
         }
-        // Discover the installed owner's task, never route missing analysis to
-        // the general exporter, which can replay or recompute the network.
-        let schemas = crate::tasks::schemas()?;
-        if !schemas["tasks"].as_array().is_some_and(|tasks| {
-            tasks.iter().any(|task| {
-                task["name"] == "render_voltage_drop_result"
-                    && task["subcommand"] == VOLTAGE_DROP_SUBCOMMAND
-            })
-        }) {
-            return Err(Failure::unavailable(
-                "unknown_task",
-                "the installed reporter does not expose render_voltage_drop_result",
-            )
-            .remedy("install a reporter exposing render_voltage_drop_result; no network recomputation fallback is permitted"));
-        }
+        require_voltage_drop_task()?;
     }
 
     // Where the engine's result document goes. A caller-named path is theirs
@@ -360,6 +434,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     .next("ds report tasks --task <name>")
     .detail(json!({
         "status": document.get("status"),
+        "code": document.get("code"),
+        "reason": document.get("reason"),
         "blockers": document.get("blockers"),
         "artifacts": document.get("artifacts").map(|artifacts| {
             artifacts.as_array().map_or(0, Vec::len)
@@ -544,4 +620,58 @@ pub fn render(data: &Value) -> String {
         out.push_str(&format!("\nresult document: {path}\n"));
     }
     out
+}
+
+#[cfg(test)]
+mod voltage_drop_tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn pdf_receipt_must_prove_identity_exact_digest_bytes_and_actual_pages() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("a4.pdf");
+        let mut doc = lopdf::Document::with_version("1.5");
+        let pages = doc.new_object_id();
+        let page = doc.add_object(lopdf::dictionary! {"Type" => "Page", "Parent" => pages,
+        "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()]});
+        doc.objects.insert(
+            pages,
+            lopdf::dictionary! {"Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1}
+                .into(),
+        );
+        let catalog = doc.add_object(lopdf::dictionary! {"Type" => "Catalog", "Pages" => pages});
+        doc.trailer.set("Root", catalog);
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        let sha = "a".repeat(64);
+        let receipt = json!({"schema":"ds.voltage-drop-pdf.render/v1","out_pdf":path,"source_sha256":sha,
+            "transformer":"T1","project_label":"project-a","bytes":bytes.len(),"pages":1,
+            "output_sha256":format!("{:x}",Sha256::digest(&bytes)),"publication":"nothing_published"});
+        verify_voltage_drop_pdf(&receipt, &path, &sha, "T1", "project-a").unwrap();
+        for key in [
+            "schema",
+            "out_pdf",
+            "source_sha256",
+            "transformer",
+            "project_label",
+            "bytes",
+            "pages",
+            "output_sha256",
+            "publication",
+        ] {
+            let mut bad = receipt.clone();
+            bad[key] = Value::Null;
+            assert_eq!(
+                verify_voltage_drop_pdf(&bad, &path, &sha, "T1", "project-a").unwrap_err(),
+                "The reporter PDF does not match its exact receipt."
+            );
+        }
+        let mut bad = receipt.clone();
+        bad["pages"] = json!(2);
+        assert!(verify_voltage_drop_pdf(&bad, &path, &sha, "T1", "project-a").is_err());
+        std::fs::write(&path, b"%PDF-truncated").unwrap();
+        assert!(verify_voltage_drop_pdf(&receipt, &path, &sha, "T1", "project-a").is_err());
+    }
 }
