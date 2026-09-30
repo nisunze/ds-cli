@@ -100,6 +100,11 @@ path can check it; its request's max_reported_rejections bounds its rows.",
             note: "Run a parameterized native projection with bounded output.",
             runnable: false,
         },
+        Example {
+            command: "ds dsgrid run --model ./model.dsgrid --operation analyze_model_defaults --params ./analysis.json --output json",
+            note: "Supply the native DefaultAnalysisRequest inside request; copy its revision and engineering root from project_criteria_workbench on this file.",
+            runnable: false,
+        },
     ],
     refusals: &[
         Refusal {
@@ -559,6 +564,16 @@ fn dispatch(
             analyze_network_topology(session.snapshot())
                 .map_err(|error| engine_error(operation_id, error))?,
         ),
+        "analyze_model_defaults" => {
+            let params: RequestParams<ds_grid_engine::DefaultAnalysisRequest> =
+                parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                session
+                    .analyze_model_defaults(&params.request)
+                    .map_err(|error| typed_engine_error(operation_id, error))?,
+            )
+        }
         "compute_support_demands" => {
             let request: SectionDemandsRequest = parse(operation_id, params)?;
             let mut store = ResultStore::new();
@@ -792,6 +807,14 @@ fn engine_error(operation_id: &str, error: impl std::fmt::Display) -> Failure {
 /// but automation never has to parse that prose to decide what authoring or
 /// search input is missing.
 fn spotting_error(operation_id: &str, error: SpottingPlanError) -> Failure {
+    typed_engine_error(operation_id, error)
+}
+
+/// Carry an owner's serializable refusal without interpreting its fields.
+fn typed_engine_error(
+    operation_id: &str,
+    error: impl std::fmt::Display + serde::Serialize,
+) -> Failure {
     let message = error.to_string();
     let refusal = serde_json::to_value(&error).unwrap_or_else(|serialization_error| {
         json!({
@@ -880,6 +903,131 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_analysis_admits_only_the_native_request_shape() {
+        let operation = "analyze_model_defaults";
+        let descriptor = operation_descriptor(operation).unwrap();
+        admit(&descriptor).expect("non-journaled native solve");
+        assert_eq!(descriptor.result_type, "DefaultAnalysisReport");
+        assert_eq!(descriptor.params.len(), 1);
+        assert_eq!(descriptor.params[0].name, "request");
+        assert_eq!(descriptor.params[0].value_type, "DefaultAnalysisRequest");
+        assert!(descriptor.params[0].required);
+
+        let request = json!({
+            "expected_revision": "rev:test",
+            "expected_engineering_input_root": "test-root",
+            "max_rows": 7,
+        });
+        let params = json!({ "request": request });
+        validate_params(&descriptor, &params).unwrap();
+        let parsed: RequestParams<ds_grid_engine::DefaultAnalysisRequest> =
+            parse(operation, &params).unwrap();
+        assert_eq!(serde_json::to_value(parsed.request).unwrap(), request);
+
+        validate_params(&descriptor, &json!({})).unwrap_err();
+        validate_params(&descriptor, &request).unwrap_err();
+        validate_params(&descriptor, &json!({ "request": request, "max_rows": 1 })).unwrap_err();
+        for invalid in [
+            json!({ "request": {} }),
+            json!({ "request": { "expected_revision": "rev:test" } }),
+            json!({ "request": { "expected_engineering_input_root": "test-root" } }),
+            json!({ "request": { "expected_revision": "rev:test",
+                "expected_engineering_input_root": "test-root", "capacity": 100 } }),
+            json!({ "request": { "expected_revision": "rev:test",
+                "expected_engineering_input_root": "test-root", "max_rows": "7" } }),
+        ] {
+            assert_eq!(
+                parse::<RequestParams<ds_grid_engine::DefaultAnalysisRequest>>(operation, &invalid)
+                    .err()
+                    .expect("malformed native request is refused")
+                    .code(),
+                "params_invalid"
+            );
+        }
+        let mut defaulted = request;
+        defaulted.as_object_mut().unwrap().remove("max_rows");
+        let native: ds_grid_engine::DefaultAnalysisRequest =
+            serde_json::from_value(defaulted.clone()).unwrap();
+        let parsed: RequestParams<ds_grid_engine::DefaultAnalysisRequest> =
+            parse(operation, &json!({ "request": defaulted })).unwrap();
+        assert_eq!(parsed.request, native, "defaults belong to the native type");
+    }
+
+    #[test]
+    fn default_analysis_dispatch_returns_the_exact_native_report_without_authoring() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
+        let package = ds_grid_exchange::unpack(&std::fs::read(path).unwrap()).unwrap();
+        let session = GridSession::open(package.snapshot);
+        let before = session.snapshot().clone();
+        let revision = session.current_revision().clone();
+        let request = ds_grid_engine::DefaultAnalysisRequest {
+            expected_revision: revision.revision_id.clone(),
+            expected_engineering_input_root: revision.roots.engineering_input_root.clone(),
+            max_rows: 1,
+        };
+        let native = session.analyze_model_defaults(&request).unwrap();
+        let report = dispatch(
+            "analyze_model_defaults",
+            &json!({ "request": request }),
+            &session,
+            &EngineeringAttributeEvidence::default(),
+            &StructureLabelPolicy::default(),
+        )
+        .unwrap();
+        assert_eq!(report, serde_json::to_value(&native).unwrap());
+        assert_eq!(report["model_revision"], revision.revision_id.as_str());
+        assert_eq!(
+            report["engineering_input_root"],
+            revision.roots.engineering_input_root
+        );
+        assert!(native.cases.total_count > 1);
+        assert!(native.cases.truncated);
+        assert_eq!(native.cases.rows.len(), 1);
+        assert_eq!(session.snapshot(), &before);
+        assert_eq!(session.current_revision(), &revision);
+    }
+
+    #[test]
+    fn default_analysis_dispatch_preserves_native_fence_and_default_refusals() {
+        let session = GridSession::open(ds_grid_model::GridModelSnapshot::default());
+        let request = json!({
+            "expected_revision": session.current_revision().revision_id,
+            "expected_engineering_input_root": session.current_revision().roots.engineering_input_root,
+            "max_rows": 1,
+        });
+        for (field, value, code) in [
+            ("expected_revision", json!("rev:stale"), "revision_mismatch"),
+            (
+                "expected_engineering_input_root",
+                json!("stale-root"),
+                "engineering_input_root_mismatch",
+            ),
+            ("max_rows", json!(0), "invalid_row_limit"),
+            ("max_rows", json!(10_001), "invalid_row_limit"),
+            ("max_rows", json!(1), "no_criterion_set"),
+        ] {
+            let mut request = request.clone();
+            request[field] = value;
+            let native_request = serde_json::from_value(request.clone()).unwrap();
+            let native = session.analyze_model_defaults(&native_request).unwrap_err();
+            let error = dispatch(
+                "analyze_model_defaults",
+                &json!({ "request": request }),
+                &session,
+                &EngineeringAttributeEvidence::default(),
+                &StructureLabelPolicy::default(),
+            )
+            .unwrap_err();
+            assert_eq!(error.code(), "operation_failed");
+            let detail = error.detail_value().unwrap();
+            assert_eq!(detail["refusal"], serde_json::to_value(&native).unwrap());
+            assert_eq!(detail["refusal"]["code"], code);
+            assert_eq!(detail["engine"], native.to_string());
+        }
+    }
 
     #[test]
     fn engineering_issue_layer_admits_exact_typed_request_wrapper() {
