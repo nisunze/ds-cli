@@ -697,7 +697,10 @@ fn edge_outputs_follow_the_kernel_output_policy() {
         );
     }
     assert!(EDGE_INDIVIDUAL_OUTPUTS.contains(&"voltage_drop_pdf"));
-    assert_eq!(edge_output("voltage_drop_pdf").content_type, "application/pdf");
+    assert_eq!(
+        edge_output("voltage_drop_pdf").content_type,
+        "application/pdf"
+    );
     let sheets = serde_json::json!({"project_settings":[{"parameter":"design_export_format",
         "value":{"schema":"ds.design-output-selection/v1",
             "geospatial":["voltage_drop_pdf"]}}]});
