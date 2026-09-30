@@ -40,7 +40,7 @@ pub static COMMAND: Command = Command {
     path: &["map", "grid", "lasso"],
     contract: 1,
     summary: "Select Grid Plan or Profile elements by lasso and attribute filters.",
-    purpose: "Changes transient selection only. The window fences model/revision and supplies its axis pin to the native spatial AND attribute query. CLI validates inputs before pairing; native topology/column/scene checks remain authoritative. No model effect, inferred pins/project or server route. Requires Desktop map.grid.lasso support.",
+    purpose: "Changes transient selection only. The window fences model/revision and supplies its axis pin to native spatial and attribute queries. Inputs are validated before pairing. No model effect or inferred project. Requires Desktop map.grid.lasso support.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
