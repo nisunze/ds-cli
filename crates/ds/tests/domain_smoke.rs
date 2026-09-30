@@ -10423,6 +10423,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.task.geometry.clear",
         "pm.task.block",
         "pm.task.unblock",
+        "pm.note.create",
         "pm.record.list",
         "pm.record.read",
         "pm.record.thread",
@@ -10473,6 +10474,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
                 | "pm.task.geometry.clear"
                 | "pm.task.block"
                 | "pm.task.unblock"
+                | "pm.note.create"
                 | "pm.record.create"
                 | "pm.record.reply"
                 | "pm.record.update"
@@ -10485,6 +10487,88 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
             "`{id}` declares the wrong effect class for its blast radius"
         );
     }
+}
+
+#[test]
+fn project_note_create_is_a_confirmed_project_write_with_one_markdown_source() {
+    let described = ok(&["capabilities", "pm.note.create", "--output", "json"]);
+    let command = &described["command"];
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "global_write");
+    assert_eq!(command["confirmation_required"], true);
+    assert!(
+        command["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|input| { input["name"] == "project" && input["required"] == true })
+    );
+    let args = [
+        "pm",
+        "note",
+        "create",
+        "--id",
+        "review-42",
+        "--title",
+        "Pole review",
+        "--body",
+        "Reviewed the selected pole substitutions.",
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_pm_refusal(&args), "confirmation_required");
+    let mut confirmed = args.to_vec();
+    confirmed.push("--yes");
+    assert!(
+        NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()),
+        "a shaped project note reaches native authorization without a desktop"
+    );
+    assert_eq!(
+        native_pm_refusal(&[
+            "pm",
+            "note",
+            "create",
+            "--title",
+            "Pole review",
+            "--body",
+            "review",
+            "--body-file",
+            "/tmp/another-review.md",
+            "--yes",
+            "--output",
+            "json"
+        ]),
+        "note_invalid"
+    );
+    assert_eq!(
+        native_pm_refusal(&[
+            "pm",
+            "note",
+            "create",
+            "--id",
+            "bad/id",
+            "--title",
+            "Pole review",
+            "--yes",
+            "--output",
+            "json"
+        ]),
+        "note_invalid"
+    );
+    let result = ok(&[
+        "capabilities",
+        "--search",
+        "modification note",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        result["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["id"] == "pm.note.create")
+    );
 }
 
 #[test]

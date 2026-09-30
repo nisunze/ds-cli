@@ -2066,6 +2066,11 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::record::thread::render,
     },
     Entry {
+        command: &ds_cli_pm::note::CREATE,
+        handler: ds_cli_pm::note::run,
+        render: ds_cli_pm::note::render,
+    },
+    Entry {
         command: &ds_cli_pm::record::create::COMMAND,
         handler: ds_cli_pm::record::create::run,
         render: ds_cli_pm::record::create::render,

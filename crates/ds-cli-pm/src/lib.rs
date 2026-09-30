@@ -58,6 +58,7 @@
 pub mod deletion;
 pub mod geometry;
 pub mod member;
+pub mod note;
 pub mod party;
 pub mod plan;
 pub mod record;
@@ -100,6 +101,7 @@ pub static DOMAIN: Domain = Domain {
         &geometry::read::COMMAND,
         &geometry::set::COMMAND,
         &geometry::clear::COMMAND,
+        &note::CREATE,
         &record::list::COMMAND,
         &record::read::COMMAND,
         &record::thread::COMMAND,
