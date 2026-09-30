@@ -1,6 +1,6 @@
 ---
 name: ds-project-work
-description: "Track authorized work on a named DS project through Project Work tasks, correspondence, design comments and verified asset links. Use while delivering or revising project work, recording real communications, submissions and versions; skip task creation for a read-only question."
+description: "Read a named DS project's current work and recent activity, or track authorized delivery through tasks, records and assets. Use for a grounded project briefing as well as delivery; a read-only question needs no new task."
 metadata:
   ds-chapters: project,assets,design
 ---
@@ -14,6 +14,35 @@ Never switch identity or rely on a saved or visible project to redirect a
 call. An ordinary answer to a read-only question needs no new task.
 An MCP typed profile may omit Project Work leaves; use the `project` and
 `correspondence` profiles or the broad chapter router when available.
+
+## Brief the person on what happened recently
+
+Name the exact project first. Read the live descriptors for `pm.plan`,
+`pm.record.list`, `pm.record.read` and, if files matter, `assets.list`. A small
+briefing starts with one bounded read:
+
+```
+ds pm plan --project <exact-id> --limit 20 --output json
+```
+
+Its `recent` rows name changed tasks; `attention` names blocked or late work;
+the project revision and `recentTotal` show scope. These rows are pointers,
+not descriptions of what was done. Read only the relevant tasks with
+`ds pm task read --project <exact-id> --task <id> --timeline --output json`.
+For decisions and handovers, ask for recent project notes, then read selected
+bodies rather than inferring from their subjects:
+
+```
+ds pm record list --project <exact-id> --category project_note --since <yyyy-mm-dd> --limit 20 --page 0 --output json
+ds pm record read --project <exact-id> --record <id> --output json
+```
+
+Use `ds assets list` in recent order only when the briefing needs an artifact
+or version; read back the selected asset before claiming it was published.
+State the time window, the source IDs, the difference between a task update and
+a completed deliverable, and any list truncation. If these bounded sources do
+not establish an answer, say what is missing. Do not scan the whole project,
+guess from filenames, or create a task or note simply to answer a question.
 
 1. Start with `ds capabilities pm --output json`, then the live descriptors
    for the commands you need. Read `pm.plan` for permissions, attention and
