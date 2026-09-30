@@ -780,6 +780,30 @@ fn render_doctor(data: &Value) -> String {
             agent["status"].as_str().unwrap_or("unknown"),
         ));
     }
+    if skills["status"] == "ready"
+        && skills["agents"]
+            .as_array()
+            .is_some_and(|agents| agents.iter().any(|agent| agent["status"] != "current"))
+    {
+        let installer = if cfg!(windows) {
+            &skills["installers"]["powershell"]["path"]
+        } else {
+            &skills["installers"]["shell"]["path"]
+        };
+        if let Some(path) = installer.as_str() {
+            if cfg!(windows) {
+                out.push_str(&format!(
+                    "  update owned agent skills: & '{}' install\n",
+                    path.replace('\'', "''")
+                ));
+            } else {
+                out.push_str(&format!(
+                    "  update owned agent skills: bash '{}' install\n",
+                    path.replace('\'', "'\\''")
+                ));
+            }
+        }
+    }
     if let Some(reason) = skills["reason"].as_str() {
         out.push_str(&format!("  {reason}\n"));
     }
@@ -861,6 +885,37 @@ fn render_version(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn doctor_gives_a_runnable_skill_refresh_when_an_owned_copy_is_stale() {
+        let report = json!({
+            "available": 1,
+            "unavailable": [],
+            "shell": { "status": "reachable" },
+            "skills": {
+                "status": "ready",
+                "bundle_path": "/opt/ds/ds-cli-skills",
+                "agents": [
+                    { "agent": "codex", "status": "stale" },
+                    { "agent": "claude", "status": "current" }
+                ],
+                "installers": {
+                    "shell": { "path": "/opt/ds/ds-cli-skills/scripts/install-skills.sh" },
+                    "powershell": { "path": "C:\\DS GridDesign\\scripts\\install-skills.ps1" }
+                }
+            }
+        });
+        let rendered = render_doctor(&report);
+        #[cfg(not(windows))]
+        assert!(
+            rendered.contains("bash '/opt/ds/ds-cli-skills/scripts/install-skills.sh' install")
+        );
+        #[cfg(windows)]
+        assert!(rendered.contains("& 'C:\\DS GridDesign\\scripts\\install-skills.ps1' install"));
+        let mut current = report;
+        current["skills"]["agents"][0]["status"] = json!("current");
+        assert!(!render_doctor(&current).contains("update owned agent skills"));
+    }
 
     fn top_hit(query: &str) -> Option<&'static str> {
         let words = words(query);
