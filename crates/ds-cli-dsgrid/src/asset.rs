@@ -7,7 +7,7 @@
 //! for a submitted version. These commands list them, save one to a file, and
 //! write a new package with one attachment added, replaced or removed.
 //!
-//! Every answer comes from `ds_grid_exchange::package_assets`: which leaves
+//! Answers come from the `ds_grid_exchange` package and origin owners: which leaves
 //! are protected, whether an attachment is stale, whether a PLS-CADD backup
 //! is characterised, and the proof that a repack changed nothing else. This
 //! module reads files, reaches the project owner for an exact revision, maps
@@ -35,7 +35,27 @@ const ASSET_NOT_FOUND: Refusal = Refusal {
 const ASSET_LEAF_AMBIGUOUS: Refusal = Refusal {
     code: "asset_leaf_ambiguous",
     when: "two different payloads carry --leaf",
-    remedy: "the package is inconsistent; re-convert it so each leaf is carried once",
+    remedy: "use local dsgrid asset extract with --resource-id, --expected-digest and --role resource|origin_resource; otherwise choose an unambiguous leaf",
+};
+const ASSET_SELECTOR_INVALID: Refusal = Refusal {
+    code: "asset_selector_invalid",
+    when: "neither or both --leaf and --resource-id are supplied, or --resource-id, --expected-digest and --role are not supplied together",
+    remedy: "pass --leaf alone, or --resource-id with --expected-digest and --role; read resource rows with dsgrid run --operation project_table",
+};
+const ASSET_DIGEST_INVALID: Refusal = Refusal {
+    code: "asset_digest_invalid",
+    when: "--expected-digest is not sha256: followed by 64 lowercase hexadecimal characters (or those 64 characters alone)",
+    remedy: "pass the resource row's content_digest unchanged, or its 64-character hex digest",
+};
+const ASSET_RESOURCE_NOT_FOUND: Refusal = Refusal {
+    code: "asset_resource_not_found",
+    when: "the verified package has no resource with exactly --resource-id",
+    remedy: "read this package's resources rows with dsgrid run --operation project_table and use an exact id",
+};
+const ASSET_RESOURCE_DIGEST_MISMATCH: Refusal = Refusal {
+    code: "asset_resource_digest_mismatch",
+    when: "the selected resource row or its resource-graph origin has no attestation matching --expected-digest",
+    remedy: "inspect the resource row or origin-authorities.v1.json again and pin the intended digest and role; no file was written",
 };
 const ASSET_LEAF_INVALID: Refusal = Refusal {
     code: "asset_leaf_invalid",
@@ -147,6 +167,12 @@ const LOCAL: &[Refusal] = package::SHARED_REFUSALS;
 /// Reaching the project owner for an exact revision.
 const NATIVE: &[Refusal] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
 const READ: &[Refusal] = &[ASSET_NOT_FOUND, ASSET_LEAF_AMBIGUOUS, ASSET_LEAF_INVALID];
+const EXACT_READ: &[Refusal] = &[
+    ASSET_SELECTOR_INVALID,
+    ASSET_DIGEST_INVALID,
+    ASSET_RESOURCE_NOT_FOUND,
+    ASSET_RESOURCE_DIGEST_MISMATCH,
+];
 const WRITE: &[Refusal] = &[OUTPUT_EXISTS, OUTPUT_UNWRITABLE];
 const EDIT: &[Refusal] = &[
     PACKAGE_DIGEST_MISMATCH,
@@ -174,8 +200,8 @@ const LISTING: &[Refusal] = &[
 ];
 
 const LIST_REFUSALS: [Refusal; LOCAL.len() + LISTING.len()] = join(&[LOCAL, LISTING]);
-const EXTRACT_REFUSALS: [Refusal; LOCAL.len() + READ.len() + WRITE.len() + 1] =
-    join(&[LOCAL, READ, WRITE, &[PACKAGE_INVALID]]);
+const EXTRACT_REFUSALS: [Refusal; LOCAL.len() + READ.len() + EXACT_READ.len() + WRITE.len() + 1] =
+    join(&[LOCAL, READ, EXACT_READ, WRITE, &[PACKAGE_INVALID]]);
 const ATTACH_REFUSALS: [Refusal; LOCAL.len() + EDIT.len() + ATTACH_ONLY.len() + WRITE.len()] =
     join(&[LOCAL, EDIT, ATTACH_ONLY, WRITE]);
 const DETACH_REFUSALS: [Refusal; LOCAL.len() + EDIT.len() + WRITE.len() + 1] =
@@ -257,21 +283,58 @@ pub static EXTRACT: Command = Command {
     path: &["dsgrid", "asset", "extract"],
     contract: 1,
     summary: "Save one file a local .dsgrid carries, e.g. its original .bak.",
-    purpose: "Recover the exact bytes of one package asset, such as v1's original upload pls-original-workspace.bak or a delivered backup, to open in PLS-CADD or hand over. Verifies them against the manifest's SHA-256 and size before writing a new file. A leaf carried by two payloads is refused, never guessed.",
+    purpose: "Recover exact package bytes into a new file without changing the package. Use --leaf for an unambiguous asset, or --resource-id with --expected-digest and --role resource (current row) or origin_resource (preserved resource-graph origin). Exact selection opens the fully verified package through the native owner; library-pinned packages are refused here. Read current ids and digests with dsgrid run --operation project_table and params {\"table_kind\":\"resources\"}; extract origin-authorities.v1.json for historical attestations. Origin selection requires that exact current resource id among interpreted_entity_ids and the same asset leaf. Leaf-only ambiguity still refuses; no re-conversion or fallback occurs.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[PATH, LEAF, OUT_FILE],
-    output: "Leaf, role, verified SHA-256 and byte count, and the new file.",
-    examples: &[Example {
-        command: "ds dsgrid asset extract --path ./model.dsgrid --leaf pls-original-workspace.bak --out ./v1-original.bak",
-        note: "The exact incoming PLS-CADD backup.",
-        runnable: false,
-    }],
+    args: &[
+        PATH,
+        Arg {
+            required: false,
+            ..LEAF
+        },
+        Arg::value(
+            "resource-id",
+            "<id>",
+            "Exact current resource row id; requires --expected-digest and --role instead of --leaf.",
+        ),
+        Arg::value(
+            "expected-digest",
+            "<sha256:digest>",
+            "Use the resource row's exact sha256: content_digest, or its 64-character hex digest.",
+        ),
+        Arg::value(
+            "role",
+            "<role>",
+            "Select the current resource or its preserved origin explicitly.",
+        )
+        .choices(&["resource", "origin_resource"]),
+        OUT_FILE,
+    ],
+    output: "Package SHA-256, leaf, role, verified SHA-256 and byte count, and the new file; exact selection also returns resource_id and its current-row media.",
+    examples: &[
+        Example {
+            command: "ds dsgrid asset extract --path ./model.dsgrid --leaf pls-original-workspace.bak --out ./v1-original.bak",
+            note: "The exact incoming PLS-CADD backup.",
+            runnable: false,
+        },
+        Example {
+            command: "ds dsgrid asset extract --path ./model.dsgrid --resource-id resource-current --expected-digest sha256:de2f010dbdf1070937268fd55aa254169b0e8ae94c067ea9d1254153fd246d2f --role resource --out ./current.012",
+            note: "Pin one resource's exact identity and bytes, even when its leaf is shared.",
+            runnable: false,
+        },
+    ],
     refusals: &EXTRACT_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["extract bak", "original workspace", "save backup"],
+    search: &[
+        "extract bak",
+        "original workspace",
+        "save backup",
+        "exact resource",
+        "historical resource",
+        "resource digest",
+    ],
     requires: Requires::Server,
     availability: available,
 };
@@ -391,8 +454,15 @@ pub fn list(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 
 pub fn extract(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let path = inputs.require("path")?;
+    let selector = extraction_selector(inputs)?;
     let bytes = read_package(path)?;
-    let mut answer = extracted(&bytes, inputs.require("leaf")?, inputs.require("out")?)?;
+    let out = inputs.require("out")?;
+    let mut answer = match selector {
+        ExtractionSelector::Leaf(leaf) => extracted(&bytes, leaf, out)?,
+        ExtractionSelector::Resource { id, digest, role } => {
+            extracted_resource(&bytes, id, digest, role, out)?
+        }
+    };
     answer.insert("path".into(), json!(path));
     Ok(Value::Object(answer))
 }
@@ -465,6 +535,146 @@ pub fn project_extract(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 
 // ── Shared plumbing ───────────────────────────────────────────────────────
+
+enum ExtractionSelector<'a> {
+    Leaf(&'a str),
+    Resource {
+        id: &'a str,
+        digest: &'a str,
+        role: &'a str,
+    },
+}
+
+fn extraction_selector(inputs: &Inputs) -> Result<ExtractionSelector<'_>, Failure> {
+    match (
+        inputs.value("leaf"),
+        inputs.value("resource-id"),
+        inputs.value("expected-digest"),
+        inputs.value("role"),
+    ) {
+        (Some(leaf), None, None, None) => Ok(ExtractionSelector::Leaf(leaf)),
+        (None, Some(id), Some(digest), Some(role)) => {
+            let hex = digest.strip_prefix("sha256:").unwrap_or(digest);
+            if hex.len() != 64
+                || !hex
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            {
+                return Err(Failure::invalid(
+                    ASSET_DIGEST_INVALID.code,
+                    "invalid resource SHA-256",
+                )
+                .remedy(ASSET_DIGEST_INVALID.remedy));
+            }
+            Ok(ExtractionSelector::Resource {
+                id,
+                digest: hex,
+                role,
+            })
+        }
+        _ => Err(Failure::invalid(
+            ASSET_SELECTOR_INVALID.code,
+            "choose one pinned extraction selector",
+        )
+        .remedy(ASSET_SELECTOR_INVALID.remedy)),
+    }
+}
+
+fn extracted_resource(
+    bytes: &[u8],
+    id: &str,
+    digest: &str,
+    role: &str,
+    out: &str,
+) -> Result<Map<String, Value>, Failure> {
+    // The exchange owner verifies all attestations, resource identity and
+    // resource/asset closure. The CLI only selects and projects those values;
+    // it does not parse the container or resolve resources by basename.
+    let package = ds_grid_exchange::package::unpack(bytes)
+        .map_err(|error| refusal(AssetError::Package(error)))?;
+    let resource = package
+        .snapshot
+        .resources
+        .iter()
+        .find(|row| row.id.as_str() == id)
+        .ok_or_else(|| {
+            Failure::invalid(ASSET_RESOURCE_NOT_FOUND.code, format!("no resource `{id}`"))
+                .remedy(ASSET_RESOURCE_NOT_FOUND.remedy)
+        })?;
+    let expected = format!("sha256:{digest}");
+    let byte_len = if role == "resource" && resource.content_digest == expected {
+        Some(resource.byte_len)
+    } else if role == "origin_resource" {
+        let registry = package
+            .assets
+            .iter()
+            .find(|asset| asset.invariant_leaf == ds_grid_exchange::origin::ORIGIN_AUTHORITIES_LEAF)
+            .map(|asset| ds_grid_exchange::decode_origin_authorities(&asset.bytes))
+            .transpose()
+            .map_err(|detail| {
+                refusal(AssetError::Package(
+                    ds_grid_exchange::package::PackageError::OriginAuthorityInvalid { detail },
+                ))
+            })?;
+        registry.and_then(|registry| {
+            registry
+                .records
+                .into_iter()
+                .find(|record| {
+                    record.scope == ds_grid_exchange::OriginAuthorityScope::ResourceGraph
+                        && record.asset_leaf == resource.invariant_leaf
+                        && record.content_digest == expected
+                        && record
+                            .interpreted_entity_ids
+                            .iter()
+                            .any(|entity| entity.as_str() == id)
+                })
+                .map(|record| record.byte_len)
+        })
+    } else {
+        None
+    };
+    let Some(byte_len) = byte_len else {
+        return Err(Failure::conflict(
+            ASSET_RESOURCE_DIGEST_MISMATCH.code,
+            format!("resource `{id}` has no `{role}` attestation for the expected digest"),
+        )
+        .remedy(ASSET_RESOURCE_DIGEST_MISMATCH.remedy)
+        .detail(json!({
+            "resource_id": id,
+            "role": role,
+            "expected": expected,
+            "current": resource.content_digest,
+        })));
+    };
+    let asset = package
+        .assets
+        .iter()
+        .find(|asset| {
+            asset.invariant_leaf == resource.invariant_leaf
+                && asset.bytes.len() as u64 == byte_len
+                && sha256_hex(&asset.bytes) == digest
+        })
+        .ok_or_else(|| {
+            Failure::invalid(
+                PACKAGE_INVALID.code,
+                "the verified resource has no embedded payload",
+            )
+            .remedy(PACKAGE_INVALID.remedy)
+        })?;
+    crate::apply::write_new(out, &asset.bytes)?;
+    let mut answer = Map::new();
+    answer.insert("package_sha256".into(), json!(sha256_hex(bytes)));
+    answer.insert("resource_id".into(), json!(resource.id.as_str()));
+    answer.insert("leaf".into(), json!(resource.invariant_leaf));
+    answer.insert("role".into(), json!(role));
+    answer.insert("media".into(), json!(resource.media));
+    answer.insert("sha256".into(), json!(digest));
+    answer.insert("byte_len".into(), json!(asset.bytes.len()));
+    answer.insert("verified".into(), json!(true));
+    answer.insert("out".into(), json!(out));
+    Ok(answer)
+}
 
 fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
