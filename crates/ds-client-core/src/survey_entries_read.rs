@@ -37,7 +37,6 @@ pub const SURVEY_ENTRIES_READ_MAX_LIMIT: usize = 5_000;
 /// exceed it must be narrowed (`updated_after`, `bbox`), never truncated.
 pub const SURVEY_ENTRIES_READ_RESPONSE_LIMIT: usize = 64 * 1024 * 1024;
 pub const SURVEY_ENTRIES_READ_TIMEOUT_SECONDS: u64 = 300;
-const MAX_IDENTIFIER_CHARS: usize = 128;
 
 /// One bounded read of one form.
 #[derive(Debug, Clone, PartialEq)]
@@ -58,7 +57,7 @@ impl SurveyEntriesReadRequest {
         limit: Option<usize>,
     ) -> Result<Self, ClientError> {
         let form = form.into();
-        if !identifier(&form) {
+        if !ds_command_kernel::survey::hold::valid_form_slug(&form) {
             return Err(invalid("the form is not one exact survey form slug"));
         }
         let updated_after = updated_after
@@ -442,14 +441,6 @@ fn collect_strings<'a>(
     }
 }
 
-fn identifier(input: &str) -> bool {
-    !input.is_empty()
-        && input.len() <= MAX_IDENTIFIER_CHARS
-        && input
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-}
-
 fn canonical_rfc3339(value: &str) -> Option<String> {
     let parsed = OffsetDateTime::parse(value.trim(), &Rfc3339).ok()?;
     parsed.to_offset(time::UtcOffset::UTC).format(&Rfc3339).ok()
@@ -485,6 +476,46 @@ mod tests {
     fn entry(doc: &str, photo: &str) -> Value {
         json!({"type":"Feature","geometry":{"type":"Point","coordinates":[29.7,-2.6]},
                "properties":{"doc_id":doc,"transformer_name":"ruhuha","photo":photo,"comment":"ok"}})
+    }
+
+    #[test]
+    fn a_listed_hyphenated_form_is_read_without_changing_its_slug() {
+        for form in ["field_notes_-_areas", "field_notes", "f", "_legacy_"] {
+            let request = SurveyEntriesReadRequest::new(form, None, None, false, Some(1))
+                .expect("exact form slug");
+            assert_eq!(request.form(), form);
+            assert_eq!(
+                request.payload("czgmdwth_gisagara")["form_slugs"],
+                json!([form])
+            );
+        }
+        assert!(SurveyEntriesReadRequest::new("f".repeat(128), None, None, false, None).is_ok());
+    }
+
+    #[test]
+    fn labels_paths_and_out_of_bounds_forms_remain_invalid() {
+        for form in [
+            "",
+            "Field Notes - Areas",
+            "Field_notes_-_areas",
+            " field_notes",
+            "field_notes ",
+            "field_notes\n",
+            "field_notes\0",
+            ".",
+            "..",
+            "../field_notes",
+            "field_notes/areas",
+            "field_notes\\areas",
+            "field_notes..areas",
+            "field_notes%2fareas",
+            "field_notés",
+            &"f".repeat(129),
+        ] {
+            let error = SurveyEntriesReadRequest::new(form, None, None, false, Some(1))
+                .expect_err("invalid form remains refused");
+            assert_eq!(error.kind(), ErrorKind::InvalidInput, "{form:?}");
+        }
     }
 
     #[test]

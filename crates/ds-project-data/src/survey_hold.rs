@@ -88,12 +88,7 @@ pub fn media_dir(root: &Path, scope: &Scope) -> PathBuf {
 }
 
 fn form_dir(root: &Path, scope: &Scope, form: &str) -> Result<PathBuf, String> {
-    if form.is_empty()
-        || form.len() > 128
-        || !form
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-    {
+    if !hold::valid_form_slug(form) {
         return Err("the form is not one exact survey form slug".into());
     }
     Ok(room_dir(root, scope).join("forms").join(form))
@@ -332,6 +327,96 @@ mod tests {
     fn feature(id: &str, updated: &str, deleted: bool) -> Value {
         json!({"type":"Feature","geometry":{"type":"Point","coordinates":[29.5,-2.0]},
                "properties":{"id":id,"metadata":{"firestore_updated_at":updated,"is_deleted":deleted}}})
+    }
+
+    #[test]
+    fn a_listed_hyphenated_form_is_held_and_reused_under_its_exact_slug() {
+        let dir = tempfile::tempdir().unwrap();
+        let scope = Scope {
+            principal: "uid-1".into(),
+            project: "czgmdwth_gisagara".into(),
+        };
+        let form = "field_notes_-_areas";
+        let row = json!({"type":"Feature","geometry":{"type":"Polygon","coordinates":[
+            [[29.5,-2.0],[29.6,-2.0],[29.6,-2.1],[29.5,-2.0]]
+        ]},"properties":{"id":"area-1","form_slug":form,"data":{"note":"observed area"},
+            "metadata":{"firestore_updated_at":"2026-09-30T00:00:00Z","is_deleted":false}}});
+        let held = refresh(
+            dir.path(),
+            &scope,
+            form,
+            &Filter::default(),
+            Refresh::Full,
+            at("2026-09-30T00:00:00Z"),
+            |request| -> Result<_, String> {
+                assert_eq!(request["eds_project_id"], scope.project);
+                assert_eq!(request["form_slugs"], json!([form]));
+                Ok(body(std::slice::from_ref(&row)))
+            },
+        )
+        .unwrap();
+        assert_eq!(held.source, Source::Replace);
+        assert_eq!(held.manifest.form, form);
+        let path = form_dir(dir.path(), &scope, form).unwrap();
+        assert!(path.ends_with(Path::new("forms").join(form)));
+        assert!(path.join(ROWS).is_file());
+        assert_eq!(
+            manifest(dir.path(), &scope, form).unwrap().unwrap().form,
+            form
+        );
+
+        let reused = refresh(
+            dir.path(),
+            &scope,
+            form,
+            &Filter::default(),
+            Refresh::Local,
+            at("2026-09-30T00:01:00Z"),
+            |_| -> Result<Vec<u8>, String> { panic!("local hold must not fetch") },
+        )
+        .unwrap();
+        assert_eq!(reused.source, Source::Held);
+        assert_eq!(
+            view(dir.path(), &scope, &reused.manifest, &View::default()).unwrap(),
+            vec![row]
+        );
+    }
+
+    #[test]
+    fn held_form_paths_keep_the_existing_bound_and_refuse_labels_and_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let scope = Scope {
+            principal: "uid-1".into(),
+            project: "p1".into(),
+        };
+        for form in ["field_notes", "f", "_legacy_", &"f".repeat(128)] {
+            assert!(form_dir(dir.path(), &scope, form).is_ok(), "{form:?}");
+        }
+        for form in [
+            "",
+            "Field Notes - Areas",
+            "Field_notes_-_areas",
+            " field_notes",
+            "field_notes ",
+            "field_notes\n",
+            "field_notes\0",
+            ".",
+            "..",
+            "../field_notes",
+            "field_notes/areas",
+            "field_notes\\areas",
+            "field_notes..areas",
+            "field_notes%2fareas",
+            "field_notés",
+            &"f".repeat(129),
+        ] {
+            assert_eq!(
+                manifest(dir.path(), &scope, form).unwrap_err(),
+                "the form is not one exact survey form slug",
+                "{form:?}"
+            );
+        }
+        assert!(!room_dir(dir.path(), &scope).exists());
     }
 
     #[test]

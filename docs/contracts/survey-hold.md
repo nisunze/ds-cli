@@ -49,6 +49,12 @@ the backend's to apply and are never re-derived locally.
 
 ## Reads
 
+An entries request and its held form use the same exact slug: 1..128 ASCII
+lowercase letters, digits, underscores or hyphens. A listed slug such as
+`field_notes_-_areas` is passed unchanged to `query_entries` and retained as
+the form directory name. Display labels, whitespace, path separators and
+traversal spellings are refused; no alias or normalization is applied.
+
 `Refresh` is `auto` (reuse a covering copy younger than its max age, default
 300 s; else refresh the changes since its cursor; else read the form), `delta`,
 `full` or `local` (answer only from the copy; never reach the cloud). A delta

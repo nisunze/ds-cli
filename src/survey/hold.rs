@@ -29,6 +29,16 @@ const MAX_TEXT: usize = 256;
 const MAX_BOUNDARY_BYTES: usize = 1024 * 1024;
 const BATCH_ROWS: usize = 64;
 
+/// One exact form slug for an entries read and its held copy. The native
+/// request and the store share this grammar; neither turns a label into a slug.
+pub fn valid_form_slug(form: &str) -> bool {
+    !form.is_empty()
+        && form.len() <= 128
+        && form
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'-'))
+}
+
 /// The working-area filter a copy was read under, in the fields `query_entries`
 /// takes. The empty filter is the whole form.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
