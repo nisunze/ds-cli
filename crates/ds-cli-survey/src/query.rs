@@ -41,7 +41,16 @@ const FILTER: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "One closed filter object; repeat at most eight times.",
+    summary: r#"One closed JSON object per flag; at most 8 filters, each 1..8192 UTF-8 bytes. Exact operator shapes (no extra, missing or duplicate keys):
+{"field":"<field>","op":"eq","value":"<string>"}
+{"field":"<field>","op":"neq","value":"<string>"}
+{"field":"<field>","op":"gte","value":"<string>"}
+{"field":"<field>","op":"lte","value":"<string>"}
+{"field":"<field>","op":"in","values":["<string>"]}
+{"field":"<field>","op":"between","from":"<string>","to":"<string>"}
+{"field":"<field>","op":"is_null"}
+{"field":"<field>","op":"not_null"}
+field: served queryable name, 1..128 ASCII lowercase letters/digits/underscores; created_by is public. Strings: <=2048 Unicode characters, no controls; empty allowed except between endpoints. in: 1..20 strings."#,
 };
 const ORDER: Arg = Arg::value("order", "<asc|desc>", "Aggregate row order.")
     .default("desc")
@@ -84,7 +93,7 @@ const QUERY_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_filter_invalid",
         when: "a repeated filter is oversized, not an exact JSON object, or violates its operator-specific fields",
-        remedy: "pass one closed JSON object per --filter",
+        remedy: "read the --filter shapes in `ds capabilities survey.query --output json` or `ds survey query --help`",
     },
     ds_cli_auth::SURVEY_ROUTE_UNAVAILABLE_REFUSAL,
     Refusal {
@@ -234,13 +243,18 @@ pub static COMMAND: Command = Command {
     output: "Lane, the named project, echoed form/metric/grouping, at most 200 aggregate rows, and truncation; never raw entries, billing claims, or credentials.",
     examples: &[
         Example {
-            command: "ds survey query --form <form-slug> --metric count --group-by created_by --output json",
+            command: "ds survey query --project <project-id> --form <form-slug> --metric count --group-by created_by --output json",
             note: "Compare recorded activity by surveyor. Resolve <form-slug> with `ds survey project-forms list`; the global form catalogue does not establish project participation.",
             runnable: false,
         },
         Example {
-            command: "ds survey query --form <form-slug> --metric count_distinct --distinct-field created_by --limit 50 --output json",
+            command: "ds survey query --project <project-id> --form <form-slug> --metric count_distinct --distinct-field created_by --limit 50 --output json",
             note: "Counts distinct public creators without returning any Survey entry.",
+            runnable: false,
+        },
+        Example {
+            command: "ds survey query --project <project-id> --form <form-slug> --metric count --filter '{\"field\":\"created_by\",\"op\":\"is_null\"}' --limit 1 --output json",
+            note: "Count missing public creators for quality review; resolve <form-slug> with `ds survey project-forms list`. No correction authority.",
             runnable: false,
         },
     ],
@@ -571,19 +585,31 @@ mod tests {
     }
 
     #[test]
-    fn every_closed_filter_operator_builds_without_auth() {
-        for raw in [
-            r#"{"field":"created_by","op":"eq","value":"a"}"#,
-            r#"{"field":"created_by","op":"neq","value":"a"}"#,
-            r#"{"field":"created_by","op":"gte","value":"a"}"#,
-            r#"{"field":"created_by","op":"lte","value":"z"}"#,
-            r#"{"field":"created_by","op":"in","values":["a","b"]}"#,
-            r#"{"field":"created_by","op":"between","from":"a","to":"z"}"#,
-            r#"{"field":"created_by","op":"is_null"}"#,
-            r#"{"field":"created_by","op":"not_null"}"#,
-        ] {
-            assert!(parse_filter(raw).is_ok(), "operator fixture failed: {raw}");
+    fn published_closed_filter_shapes_build_without_auth() {
+        let shapes = FILTER
+            .summary
+            .lines()
+            .filter(|line| line.starts_with('{'))
+            .collect::<Vec<_>>();
+        assert_eq!(shapes.len(), 8);
+        let mut operators = std::collections::BTreeSet::new();
+        for shape in shapes {
+            let raw = shape.replace("<field>", "created_by");
+            let object: Value = serde_json::from_str(&raw).unwrap();
+            operators.insert(object["op"].as_str().unwrap().to_owned());
+            let query = super::parse(&inputs(&["--form", "a_poles", "--filter", &raw]))
+                .unwrap_or_else(|failure| panic!("published shape {shape} refused: {failure:?}"));
+            assert_eq!(query.filters()[0].field(), "created_by");
         }
+        assert_eq!(
+            operators,
+            [
+                "eq", "neq", "gte", "lte", "in", "between", "is_null", "not_null"
+            ]
+            .map(str::to_owned)
+            .into_iter()
+            .collect()
+        );
     }
 
     #[test]

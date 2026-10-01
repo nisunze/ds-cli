@@ -26,16 +26,11 @@ GeoJSON keys, or an id remembered from another project. Review the complete
 set of overrides, then use `--yes`; the renderer still preserves its safe
 global/reference and geometry stack bands.
 
-The same list may also return read-only `runtime_layers` for the two loaded
-working-data roots: account-private `personal_notes` and project-owned
-`project_work`. Treat each root's `sourceId`, authority and freshness as one
-receipt. Its children are only the present Point, LineString and Polygon
-geometries. Use a child's `styleRef` with `ds style` only when its
-`styleState` is `ready`; pending/error is a hard hydration gate, not permission
-to guess a default. Never pass a runtime root or child id to `map layer reorder`.
-Table-only rows are counted honestly and
-their bodies are intentionally absent. `--refresh` refreshes canonical layer
-configuration, not these runtime roots.
+`ds map layer list` reads canonical project configuration, not loaded desktop
+runtime state. Account-private Notes and project-owned Project Work roots belong
+to their runtime host; this list does not infer their presence, freshness,
+geometry or style readiness. Never substitute a runtime root or child id for a
+canonical layer id. `--refresh` rebuilds canonical layer configuration only.
 
 Remote overlays use a native registry shared with the installed desktop. They work
 offline without sign-in. Browser-only overlays remain in browser IndexedDB.

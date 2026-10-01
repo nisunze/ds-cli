@@ -11,23 +11,22 @@ metadata:
 Every command also takes `--project <id>`; no saved selection.
 Never infer behavior from names like `city` or `phasing`.
 
-1. Read the vocabulary: `ds design group list --transformers a,b --output json`.
+1. Read the vocabulary: `ds design group list --project <id> --transformers a,b --output json`.
    Per group: `defined`, `allowed`, `needsModel`, and what each transformer
    carries today.
 2. Select the exact `.data.groups[].group` definition id, then plan: `ds design
-   group preview --group <definition-id> --transformers a,b --value <allowed-value>
+   group preview --project <id> --group <definition-id> --transformers a,b --value <allowed-value>
    --output json`. Read `.data.outcomes` back to the user — one row per
    transformer — and keep `.data.digest`.
-3. Commit only with the user's intent: `ds design group apply … --digest
-   <digest> --yes`, or `ds design group unassign … --digest <digest> --yes`
+3. Commit only with the user's intent: `ds design group apply --project <id> … --digest
+   <digest> --yes`, or `ds design group unassign --project <id> … --digest <digest> --yes`
    for a clearing (previewed with no `--value`).
 
 Use exact `allowed` values: `Phase 1` differs from `phase 1`. Never repair case
 or spelling.
 
-If a plan carries model evidence, report its returned model state and
-outstanding rows exactly. Never infer a model requirement from the definition
-id or fabricate a receipt.
+Report model evidence and outstanding rows exactly. Never infer a model
+requirement from a definition id or fabricate a receipt.
 
 **A stale digest is not a retry.** `design_plan_stale` means the project moved;
 preview again and show the new plan before applying.
@@ -35,13 +34,13 @@ preview again and show the new plan before applying.
 ## Exporting for a report
 
 A consumer chooses grouping with an explicit ordered list of definition ids.
-`ds design group export --transformers a,b --definition-ids region,wave
+`ds design group export --project <id> --transformers a,b --definition-ids region,wave
 --output json` returns that projection plus the `sha256` over its exact bytes.
 Use `--definition-ids` with the ids approved for that report; omit it only when
 the intended result is one explicit untagged group.
 
 Save it verbatim:
-`ds design group export --transformers a,b --output json | jq -r .data.document > tags.json`.
+`ds design group export --project <id> --transformers a,b --output json | jq -r .data.document > tags.json`.
 Never parse and re-serialize it: the digest is over those bytes and the report
 pins it.
 
@@ -52,9 +51,8 @@ could not carry, with the reason.
 
 ## Purpose-scoped temporary tags
 
-An agent may propose a temporary choice definition when a one-off report needs
-a classification the project does not govern. First list existing
-definitions and prefer a compatible one. If none exists:
+For a one-off classification, first list existing definitions and prefer a
+compatible one. If none exists, propose a temporary choice definition:
 
 - choose a stable, purpose-specific definition id and state its temporary
   purpose and intended retirement;
@@ -65,20 +63,17 @@ definitions and prefer a compatible one. If none exists:
 - never reuse `city`, `phasing` or an administrative semantic key for another
   meaning.
 
-After publication, clear the temporary assignments and archive the applied
-consumer grouping. Do not delete or silently repurpose the definition: its
-stable identity remains provenance for the published artifact even when
-nothing carries it.
+After publication, clear temporary assignments and archive the applied grouping.
+Keep the definition's stable identity as provenance; never delete or repurpose it.
 
 ## Governed administrative location
 
-Administrative location is neither retyped by an operator nor inferred by
-you. When the governed location path has resolved a transformer, one
-reusable operation materializes that evidence as **system-managed tags**:
+Never retype or infer administrative location. Governed transformer location
+evidence becomes **system-managed tags** through:
 
 ```
-ds design tag enrich-preview --transformers a,b --output json
-ds design tag enrich-apply   --transformers a,b --digest <plan-digest> --yes
+ds design tag enrich-preview --project <id> --transformers a,b --output json
+ds design tag enrich-apply --project <id> --transformers a,b --digest <plan-digest> --yes
 ```
 
 Read `.data.counts` first — the answer to "how many change?" — then
@@ -112,7 +107,7 @@ escalate: the remedy is to re-run enrichment. `ds design tag list` reports
 
 ## Hierarchy is metadata, never a name
 
-`ds design tag list --output json` gives, per definition: `management`,
+`ds design tag list --project <id> --output json` gives, per definition: `management`,
 `semanticNamespace`, `semanticKey` (`country`, `admin_level_1` … a
 jurisdiction-neutral ROLE), `parentDefinition`, `jurisdiction`, `allowed` and
 `allowedIds`.
@@ -125,7 +120,7 @@ jurisdiction-neutral ROLE), `parentDefinition`, `jurisdiction`, `allowed` and
   the values' `parent_value_id` are explicit. A jurisdiction with two levels is
   a complete hierarchy, not a broken five-level one.
 - A project may author its OWN hierarchy:
-  `ds design tag define --definition city --name City --values Kyabe
+  `ds design tag define --project <id> --definition city --name City --values Kyabe
   --parent-definition country --jurisdiction TD --semantic-namespace
   administrative --semantic-key admin_level_1 --yes`.
 
@@ -135,11 +130,11 @@ A report or an archive groups by an APPLIED, digest-pinned plan — never by an
 administrative column and never by a definition name:
 
 ```
-ds design consumer-grouping preview --purpose report_archive \
+ds design consumer-grouping preview --project <id> --purpose report_archive \
   --transformers a,b --definition-ids loc_admin_level_2,loc_admin_level_3 --output json
-ds design consumer-grouping apply   --purpose report_archive … --digest <plan-digest> --yes
-ds design consumer-grouping read    --purpose report_archive --output json
-ds design consumer-grouping archive --purpose report_archive --yes
+ds design consumer-grouping apply --project <id> --purpose report_archive … --digest <plan-digest> --yes
+ds design consumer-grouping read --project <id> --purpose report_archive --output json
+ds design consumer-grouping archive --project <id> --purpose report_archive --yes
 ```
 
 - **`--purpose` is a closed set.** `solar_report` binds each group to a governed

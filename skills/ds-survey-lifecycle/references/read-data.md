@@ -21,8 +21,12 @@ the task; the installed contract supplies flags, authority and refusals.
    ds survey query --project PROJECT --form FORM --metric count --group-by created_by --output json
    ```
 
-   Add only requested area/time/quality filters using the live `--filter`
-   grammar. A grouped response is capped at 200 rows. If truncated, narrow or
+   Discover the closed `--filter` shapes and bounds with
+   `ds capabilities survey.query --output json` or `ds survey query --help`.
+   That contract includes a bounded missing-creator quality example. Add only
+   requested area/time/quality filters using that grammar; do not infer operators
+   from another Survey command. A grouped response is capped at 200 rows. If
+   truncated, narrow or
    split the question into explicit disjoint scopes and retain each scope;
    never total overlapping groups or present the first page as the whole project.
 4. For coverage, obtain the intended area, target asset list or agreed expected

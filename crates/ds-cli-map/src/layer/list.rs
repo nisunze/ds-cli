@@ -45,12 +45,12 @@ pub static COMMAND: Command = Command {
     output: "Lane, project id, canonical layer_count and bounded layers with id, label, class, geometry, order, runtime_ids, style_ref, roles, visibility (count, any_visible, all_visible, next), source_state and in_zoom_range; more reports truncation; visibility_source names the native store. No desktop runtime state is read.",
     examples: &[
         Example {
-            command: "ds map layer list --output json",
-            note: "Use .data.layers[].id verbatim when planning order; runtime_layers are never reorder ids.",
+            command: "ds map layer list --project <project-id> --output json",
+            note: "Use .data.layers[].id verbatim when planning order; loaded Notes/PM roots belong to their runtime host.",
             runnable: false,
         },
         Example {
-            command: "ds map layer list --refresh --output json",
+            command: "ds map layer list --project <project-id> --refresh --output json",
             note: "Re-resolve metadata without requiring the map page to be open.",
             runnable: false,
         },

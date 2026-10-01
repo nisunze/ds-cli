@@ -13541,6 +13541,117 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
 }
 
 #[test]
+fn survey_discovery_examples_capture_required_project_and_form() {
+    // Non-runnable examples still guide callers; placeholders excuse unknown
+    // values, not omitted required inputs. Gate the two repaired contracts.
+    for id in ["survey.query", "map.layer.list"] {
+        let described = ok(&["capabilities", id, "--output", "json"]);
+        let command = &described["command"];
+        let required = command["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|input| input["required"] == true)
+            .map(|input| format!("--{}", input["name"].as_str().unwrap()))
+            .collect::<Vec<_>>();
+        assert!(required.contains(&"--project".to_owned()));
+        for example in command["examples"].as_array().unwrap() {
+            let text = example["command"].as_str().unwrap();
+            let words = text.split_whitespace().collect::<Vec<_>>();
+            for flag in &required {
+                let position = words.iter().position(|word| *word == flag.as_str());
+                assert!(
+                    position.is_some_and(|position| words
+                        .get(position + 1)
+                        .is_some_and(|value| !value.starts_with("--"))),
+                    "{id} example omits required {flag}: {text}"
+                );
+            }
+        }
+    }
+
+    let query = ok(&["capabilities", "survey.query", "--output", "json"]);
+    let quality = query["command"]["examples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|example| example["command"].as_str().unwrap().contains("--filter"))
+        .expect("bounded quality example")["command"]
+        .as_str()
+        .unwrap();
+    let arguments = quality
+        .split_whitespace()
+        .skip(1)
+        .map(|word| {
+            word.trim_matches('\'')
+                .replace("<project-id>", "test-project")
+                .replace("<form-slug>", "test_form")
+        })
+        .collect::<Vec<_>>();
+    assert!(arguments.windows(2).any(|pair| pair == ["--limit", "1"]));
+    let args = arguments.iter().map(String::as_str).collect::<Vec<_>>();
+    // The advertised command parses through the real boundary, then refuses
+    // our empty native identity. It cannot read an operator's project.
+    assert_eq!(native_refusal(&args), "headless_signed_out");
+    let mut without_project = arguments;
+    let position = without_project
+        .iter()
+        .position(|word| word == "--project")
+        .unwrap();
+    without_project.drain(position..position + 2);
+    assert_eq!(
+        native_refusal(
+            &without_project
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+        ),
+        "missing_input"
+    );
+}
+
+#[test]
+fn survey_discovery_skill_routes_to_grammar_and_keeps_runtime_layer_boundary() {
+    let survey = include_str!("../../../skills/ds-survey-lifecycle/references/read-data.md");
+    assert!(survey.contains("ds capabilities survey.query --output json"));
+    assert!(survey.contains("ds survey query --help"));
+    let layers = ok(&["capabilities", "map.layer.list", "--output", "json"]);
+    assert_eq!(layers["command"]["contract"], 5);
+    assert!(
+        layers["command"]["output"]
+            .as_str()
+            .unwrap()
+            .contains("No desktop runtime state is read.")
+    );
+    let skill = include_str!("../../../skills/ds-layer-management/SKILL.md")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(!skill.contains("runtime_layers"));
+    assert!(skill.contains("not loaded desktop runtime state"));
+    assert!(skill.contains("their runtime host"));
+
+    // Skill examples are outside Command::examples, but capture the same
+    // explicit project. Check command snippets without treating route-only
+    // mentions as invocations or duplicating their argument contracts.
+    let tags = include_str!("../../../skills/ds-design-tag-groups/SKILL.md");
+    let mut examples = 0;
+    for snippet in tags.split('`').skip(1).step_by(2) {
+        let words = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
+        for command in words.split("ds design ").skip(1) {
+            if command.contains(" --") {
+                assert!(
+                    command.contains("--project <id>"),
+                    "unscoped tag example: {command}"
+                );
+                examples += 1;
+            }
+        }
+    }
+    assert!(examples > 0, "tag examples were not inspected");
+}
+
+#[test]
 fn no_survey_example_names_a_deployment_form_slug() {
     // A form slug belongs to one deployment, so an example cannot carry a real
     // one — and the Survey chapter carried `lv_poles_survey`, a slug nothing in
