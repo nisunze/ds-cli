@@ -1197,6 +1197,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pm.party.create", "global_write", "headless_project"),
     ("pm.party.list", "read_only", "headless_project"),
     ("pm.party.update", "global_write", "headless_project"),
+    ("pm.note.create", "global_write", "headless_project"),
     ("pm.record.create", "global_write", "headless_project"),
     ("pm.record.list", "read_only", "headless_project"),
     ("pm.record.read", "read_only", "headless_project"),
