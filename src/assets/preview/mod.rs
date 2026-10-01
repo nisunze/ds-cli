@@ -45,6 +45,13 @@ fn decode(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, String> 
     let format = request.format;
     match format {
         Format::Md => text::markdown(bytes, request),
+        Format::Mp3 | Format::Wav | Format::Mp4 | Format::Webm => {
+            let head = &bytes[..bytes.len().min(super::RECOGNITION_HEAD_BYTES)];
+            if format::recognise(request.name.as_deref(), head, bytes.len() as u64).format != format {
+                return Err("media bytes do not match the recognised format".into());
+            }
+            Err("media is rendered by the host player; the kernel recognises and bounds it".into())
+        }
         Format::Html => Err("HTML is rendered only in a sandboxed attachment viewer; the kernel does not execute or decode it".into()),
         Format::Txt => text::plain(bytes, request),
         Format::Csv | Format::Tsv => tabular::delimited(bytes, request),

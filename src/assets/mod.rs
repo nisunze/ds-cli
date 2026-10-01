@@ -259,6 +259,10 @@ pub enum Format {
     Png,
     Webp,
     Tif,
+    Mp3,
+    Wav,
+    Mp4,
+    Webm,
     Zip,
     #[serde(rename = "7z")]
     SevenZ,
@@ -294,6 +298,10 @@ closed_vocabulary!(Format {
     Png => "png",
     Webp => "webp",
     Tif => "tif",
+    Mp3 => "mp3",
+    Wav => "wav",
+    Mp4 => "mp4",
+    Webm => "webm",
     Zip => "zip",
     SevenZ => "7z",
     TarGz => "tar.gz",
@@ -1835,7 +1843,7 @@ mod tests {
             let back: Format = serde_json::from_value(wire).unwrap();
             assert_eq!(back, *format);
         }
-        assert_eq!(Format::ALL.len(), 29);
+        assert_eq!(Format::ALL.len(), 33);
         assert_eq!(Format::SevenZ.as_str(), "7z");
         assert_eq!(Format::TarGz.to_string(), "tar.gz");
         for kind in Kind::ALL {

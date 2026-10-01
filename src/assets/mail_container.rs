@@ -250,6 +250,11 @@ fn member_row(part: &Part<'_>) -> ContainerMember {
             "image/jpeg" => Format::Jpg,
             "image/webp" => Format::Webp,
             "text/plain" => Format::Txt,
+            "text/html" => Format::Html,
+            "audio/mpeg" => Format::Mp3,
+            "audio/wav" | "audio/x-wav" => Format::Wav,
+            "video/mp4" => Format::Mp4,
+            "video/webm" => Format::Webm,
             _ => Format::Unknown,
         })
     } else {
@@ -552,6 +557,10 @@ pub fn extension_for(media_type: &str) -> &'static str {
         "application/wasm" => ".wasm",
         "image/webp" => ".webp",
         "text/xml" => ".xml",
+        "audio/mpeg" => ".mp3",
+        "audio/wav" | "audio/x-wav" => ".wav",
+        "video/mp4" => ".mp4",
+        "video/webm" => ".webm",
         _ => ".bin",
     }
 }

@@ -335,7 +335,18 @@ fn recognise_name(name: &str, bytes: u64, hint: Option<&str>) -> (Kind, Format) 
         return (recognition.kind, recognition.format);
     }
     if let Some(hint) = hint.map(str::trim).filter(|hint| !hint.is_empty()) {
-        let hinted = format::recognise(Some(&format!("file.{}", hint.to_lowercase())), &[], bytes);
+        let lower = hint.to_lowercase();
+        let media = match lower.split(';').next().unwrap_or("").trim() {
+            "audio/mpeg" => Some(Format::Mp3),
+            "audio/wav" | "audio/x-wav" => Some(Format::Wav),
+            "video/mp4" => Some(Format::Mp4),
+            "video/webm" => Some(Format::Webm),
+            _ => None,
+        };
+        if let Some(media) = media {
+            return (format::kind_of(media), media);
+        }
+        let hinted = format::recognise(Some(&format!("file.{}", lower)), &[], bytes);
         if hinted.format != Format::Unknown {
             return (hinted.kind, hinted.format);
         }
@@ -2987,6 +2998,26 @@ mod tests {
             .iter()
             .find_map(|folder| walk(folder, path))
             .unwrap_or_else(|| panic!("no folder {path}"))
+    }
+
+    #[test]
+    fn projected_media_names_and_mime_hints_are_narrow() {
+        for (name, mime, expected) in [
+            ("clip.mp4", "", Format::Mp4),
+            ("download.bin", "audio/mpeg", Format::Mp3),
+            ("download.bin", "audio/x-wav", Format::Wav),
+            ("download.bin", "video/webm; codecs=vp9", Format::Webm),
+        ] {
+            assert_eq!(recognise_name(name, 0, Some(mime)), (Kind::Other, expected));
+        }
+        assert_eq!(
+            recognise_name("review.pdf", 0, Some("video/mp4")),
+            (Kind::Doc, Format::Pdf)
+        );
+        assert_eq!(
+            recognise_name("download.bin", 0, Some("video/unknown")),
+            (Kind::Other, Format::Unknown)
+        );
     }
 
     #[test]

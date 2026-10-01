@@ -74,7 +74,12 @@ pub fn kind_of(format: Format) -> Kind {
         Format::Shp | Format::Kmz | Format::Kml | Format::Gpkg | Format::Geojson => Kind::Geo,
         Format::Jpg | Format::Png | Format::Webp | Format::Tif => Kind::Image,
         Format::Zip | Format::SevenZ | Format::TarGz => Kind::Pack,
-        Format::Dsgrid | Format::Unknown => Kind::Other,
+        Format::Mp3
+        | Format::Wav
+        | Format::Mp4
+        | Format::Webm
+        | Format::Dsgrid
+        | Format::Unknown => Kind::Other,
     }
 }
 
@@ -99,7 +104,11 @@ pub fn previewable(format: Format) -> bool {
         | Format::Jpg
         | Format::Png
         | Format::Webp
-        | Format::Tif => true,
+        | Format::Tif
+        | Format::Mp3
+        | Format::Wav
+        | Format::Mp4
+        | Format::Webm => true,
         Format::Html
         | Format::Doc
         | Format::Rtf
@@ -119,7 +128,7 @@ pub fn previewable(format: Format) -> bool {
 /// §4.2 per-format input cap; formats without a row share the input ceiling.
 pub fn format_cap_bytes(format: Format) -> u64 {
     match format {
-        Format::Pdf => MAX_PDF_BYTES,
+        Format::Pdf | Format::Mp3 | Format::Wav | Format::Mp4 | Format::Webm => MAX_PDF_BYTES,
         Format::Docx | Format::Doc | Format::Odt | Format::Rtf => MAX_DOCUMENT_BYTES,
         Format::Xlsx | Format::Xls | Format::Ods => MAX_WORKBOOK_BYTES,
         Format::Csv | Format::Tsv => MAX_DELIMITED_BYTES,
@@ -140,6 +149,9 @@ fn preview_note(format: Format) -> Option<&'static str> {
     Some(match format {
         Format::Pdf => {
             "pdf is rendered by pdf.js in the host (decision D8); the kernel recognises and bounds it"
+        }
+        Format::Mp3 | Format::Wav | Format::Mp4 | Format::Webm => {
+            "media is rendered by the host player; the kernel recognises and bounds it"
         }
         Format::Html => {
             "HTML is rendered only in a sandboxed attachment viewer; the kernel does not execute or decode it"
@@ -225,6 +237,10 @@ impl NameHint {
 /// nothing, and neither do the companion suffixes of a shapefile.
 fn claimed_format(suffix: &str) -> Option<Format> {
     Some(match suffix {
+        "mp3" => Format::Mp3,
+        "wav" => Format::Wav,
+        "mp4" => Format::Mp4,
+        "webm" => Format::Webm,
         "pdf" => Format::Pdf,
         "docx" => Format::Docx,
         "doc" => Format::Doc,
@@ -351,6 +367,36 @@ impl Magic {
 fn decide(hint: &NameHint, head: &[u8], bytes_len: u64) -> (Format, Vec<String>) {
     if head.is_empty() {
         return by_name_only(hint, bytes_len);
+    }
+    let media = if head.starts_with(b"ID3")
+        || (head.len() >= 2 && head[0] == 0xff && (head[1] & 0xfe) == 0xfa)
+    {
+        Some(Format::Mp3)
+    } else if head.starts_with(b"RIFF") && head.get(8..12) == Some(&b"WAVE"[..]) {
+        Some(Format::Wav)
+    } else if head.len() >= 12
+        && head.get(4..8) == Some(&b"ftyp"[..])
+        && [
+            &b"isom"[..],
+            &b"iso2"[..],
+            &b"mp41"[..],
+            &b"mp42"[..],
+            &b"avc1"[..],
+        ]
+        .contains(&&head[8..12])
+    {
+        Some(Format::Mp4)
+    } else if head.starts_with(&[0x1a, 0x45, 0xdf, 0xa3])
+        && head[..head.len().min(RECOGNITION_HEAD_BYTES)]
+            .windows(4)
+            .any(|value| value == b"webm")
+    {
+        Some(Format::Webm)
+    } else {
+        None
+    };
+    if let Some(format) = media {
+        return (format, name_notes(hint, format));
     }
     match magic_of(head) {
         Some(Magic::Zip) => {
@@ -830,6 +876,10 @@ fn describe_signature(format: Format) -> &'static str {
         Format::Png => "a PNG image",
         Format::Webp => "a WEBP image",
         Format::Tif => "a TIFF image",
+        Format::Mp3 => "MPEG audio",
+        Format::Wav => "RIFF WAVE audio",
+        Format::Mp4 => "an MP4 container",
+        Format::Webm => "a WebM container",
         Format::SevenZ => "a 7z archive",
         Format::TarGz => "a gzip stream",
         Format::Unknown => "not a recognised format",
@@ -863,6 +913,39 @@ mod tests {
     use super::*;
     use std::io::{Cursor, Write};
     use zip::write::{SimpleFileOptions, ZipWriter};
+
+    #[test]
+    fn media_magic_and_host_handover_are_bounded() {
+        for (name, bytes, expected) in [
+            ("wrong.txt", &b"ID3\x04\x00\x00"[..], Format::Mp3),
+            ("wrong.txt", &b"RIFF\x00\x00\x00\x00WAVE"[..], Format::Wav),
+            ("wrong.txt", &b"\x00\x00\x00\x18ftypisom"[..], Format::Mp4),
+            ("wrong.txt", &b"\x1a\x45\xdf\xa3webm"[..], Format::Webm),
+        ] {
+            let result = recognise(Some(name), bytes, bytes.len() as u64);
+            assert_eq!(result.format, expected);
+            assert!(result.previewable);
+            assert_eq!(kind_of(expected), Kind::Other);
+            let request = super::super::PreviewRequest {
+                schema: super::super::REQUEST_SCHEMA.into(),
+                format: expected,
+                name: Some(name.into()),
+                member: None,
+                sheet: None,
+                pages: None,
+                rows: None,
+            };
+            assert_eq!(
+                super::super::preview::preview(bytes, &request).unwrap_err(),
+                "media is rendered by the host player; the kernel recognises and bounds it"
+            );
+            assert!(super::super::check_format_cap(MAX_PDF_BYTES + 1, expected).is_err());
+        }
+        assert_ne!(
+            recognise(Some("fake.mp4"), b"not video", 9).format,
+            Format::Mp4
+        );
+    }
 
     fn zip_of(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
@@ -1165,7 +1248,11 @@ mod tests {
             assert!(format_cap_bytes(*format) <= MAX_PREVIEW_INPUT_BYTES);
             assert_eq!(
                 previewable(*format),
-                preview_note(*format).is_none() || *format == Format::Pdf
+                preview_note(*format).is_none()
+                    || matches!(
+                        format,
+                        Format::Pdf | Format::Mp3 | Format::Wav | Format::Mp4 | Format::Webm
+                    )
             );
         }
         assert_eq!(kind_of(Format::Unknown), Kind::Other);
