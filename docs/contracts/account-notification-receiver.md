@@ -15,7 +15,12 @@ the same primary shell for its own fresh token.
 
 ## Rolling wire compatibility
 
-Account `ready` schema 1 retains `revision` and optionally adds `last_signal`:
+The receiver requests the fixed `ready=v2` selector on the existing account
+stream route. Omitted selectors preserve the old exact `{schema, revision}`
+response; empty, duplicate or unsupported selectors are refused before stream
+authentication. This keeps open older clients compatible with the new backend.
+
+Negotiated account `ready` schema 1 retains `revision` and adds `last_signal`:
 null, or the exact existing `AccountSignal` identity (`schema`, `conversation_id`,
 `message_id`, `kind`, and `project_id` only for projects). The backend obtains
 it from the initial exact-document snapshot already read by the stream. No
