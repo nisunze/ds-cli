@@ -27,10 +27,12 @@ pub use gateway::{
     GATEWAY_REGISTRY_OPERATIONS, GATEWAY_REGISTRY_SCHEMA_VERSION,
 };
 mod layers;
+pub mod member_form_grants;
 mod profile;
 mod project_data;
 mod project_form_editor;
 mod project_forms;
+pub use transport::MemberFormGrantCall;
 mod project_report;
 mod projects;
 mod session;

@@ -1221,6 +1221,60 @@ impl ProjectManagementCall<'_> {
     }
 }
 
+pub struct MemberFormGrantCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl MemberFormGrantCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        "/api/v1/projects/access".into()
+    }
+    pub fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    /// One finite grant snapshot and exact receipt, capped at 128 KiB.
+    pub const fn response_limit(&self) -> usize {
+        crate::member_form_grants::MAX_BYTES
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        30
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(
+            serde_json::to_vec(&self.payload).expect("closed member form grant request"),
+        )
+    }
+}
+
 /// `POST /api/v1/projects` — create one project or edit one project's
 /// properties.
 ///
@@ -2946,6 +3000,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn member_form_grant(
+        &mut self,
+        _call: MemberFormGrantCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn device_approve(
         &mut self,
         _call: DeviceApproveCall<'_>,
@@ -3270,6 +3330,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn member_form_grant(
+        &mut self,
+        _call: MemberFormGrantCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn device_approve(
         &mut self,
         _call: DeviceApproveCall<'_>,
@@ -3566,6 +3632,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: ProjectManagementCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::project_management(self, call)
+    }
+    fn member_form_grant(
+        &mut self,
+        call: MemberFormGrantCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::member_form_grant(self, call)
     }
     fn device_approve(
         &mut self,

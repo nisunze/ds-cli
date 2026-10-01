@@ -1777,6 +1777,28 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    pub fn member_form_grant(
+        &mut self,
+        project: &str,
+        command: &crate::member_form_grants::Request,
+        now: u64,
+    ) -> Result<crate::member_form_grants::GrantResult, ClientError> {
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::member_form_grants::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            command,
+        )
+    }
+
     /// One governed action on the GLOBAL library and example catalog.
     ///
     /// No project id, because this catalog has none: a library release belongs
