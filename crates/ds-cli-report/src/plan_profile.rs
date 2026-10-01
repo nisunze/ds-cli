@@ -1,7 +1,7 @@
 //! `ds report plan-profile` — headless DS Grid sheet rendering through the
 //! reporter's typed task. The engine owns every projection and drawing byte.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -18,342 +18,128 @@ use crate::{DS_REPORT, EXPORT_TIMEOUT};
 pub static COMMAND: Command = Command {
     id: "report.plan-profile",
     path: &["report", "plan-profile"],
-    contract: 1,
+    contract: 2,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
-    purpose: "Produces SVG previews and one vector PDF from paired DS Grid projections. Choose horizontal and vertical scales independently; elevation breaks preserve vertical scale on steep sheets. Feature-code labels are off by default and configurable when shown. A notes manifest adds text or PNG/JPEG images to free panel space. The result names every preview and its digest-pinned PDF.",
+    purpose: "Resolve the named project canonical MV setup from its exact adopted printing-library revision, then render same-revision engine projections and approved front matter into one local PDF. Title, party logos, page order, scales, fonts and fixed publication version/date come only from that setup. Allowed model identity/title differences are explicit. Missing configuration or held approved assets refuses before output. Use report layout copy and report project mv-setup set to adopt and select; no print data is mutated by this command.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
-    authority: Authority::None,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
-        Arg::value(
-            "project",
-            "<id>",
-            "Exact project context for this print run.",
-        )
-        .required(),
+        crate::project::PROJECT_ARG,
+        crate::project::LANE_ARG,
         Arg::value(
             "scene",
             "<path>",
-            "Absolute project_profile_atlas scene JSON path.",
+            "Absolute same-revision project_profile_atlas scene JSON.",
         )
         .required(),
-        Arg::value("plan", "<path>", "Absolute project_plan row JSON path.").required(),
+        Arg::value(
+            "plan",
+            "<path>",
+            "Absolute same-revision project_plan rows JSON.",
+        )
+        .required(),
         Arg::value(
             "out-dir",
             "<path>",
-            "Fresh absolute directory for SVG previews and PDF.",
+            "Fresh absolute directory for the complete MV publication.",
         )
         .required(),
         Arg::value(
-            "format",
-            "<simple|advanced>",
-            "Sheet density and base scales.",
-        )
-        .required()
-        .choices(&["simple", "advanced"]),
-        Arg::value("title", "<text>", "Project title printed on every page.").required(),
-        Arg::value("sheet-title", "<text>", "Drawing title.").default("MV plan & profile"),
+            "model-identity",
+            "<text>",
+            "Only when the adopted template explicitly permits this model identity difference.",
+        ),
+        Arg::value(
+            "model-title",
+            "<text>",
+            "Only when the adopted template explicitly permits this model drawing title difference.",
+        ),
+        Arg::value(
+            "publication-assets",
+            "<json-file>",
+            "Map approved preserved_pdf asset ids to absolute held PDF paths; digests come from the adopted template.",
+        ),
         Arg::value(
             "side-profiles",
-            "<absolute.json>",
-            "Optional model-revision-pinned measured left/right terrain traces; omitted by default.",
+            "<path>",
+            "Optional same-model measured terrain traces.",
         ),
         Arg::value(
-            "drawing-revision",
-            "<issue>",
-            "Human-readable drawing issue in the title block; model hash remains in PDF metadata.",
-        )
-        .default("v0"),
-        Arg::value(
-            "drawing-date",
-            "<YYYY-MM-DD>",
-            "Optional date beside the drawing revision.",
+            "notes",
+            "<path>",
+            "Optional explicit scoped drawing annotations.",
         ),
-        Arg::value(
-            "title-country",
-            "<name>",
-            "Country or authority caption beneath the first logo.",
-        )
-        .default("Republic of Rwanda"),
-        Arg::value(
-            "title-employer",
-            "<name>",
-            "Employer caption beneath the second logo.",
-        )
-        .default("EDCL"),
-        Arg::value(
-            "title-contractor",
-            "<name>",
-            "Contractor caption beneath the third logo.",
-        ),
-        Arg::value(
-            "title-programme",
-            "<text>",
-            "Optional project programme wording from the project printing setup.",
-        ),
-        Arg::value(
-            "title-subject",
-            "<text>",
-            "Optional full project subject; arranged in two lines in the title block.",
-        ),
-        Arg::value(
-            "obstacle-sticks",
-            "<on|off>",
-            "Optional caps at validated surveyed-obstacle clearance thresholds above the ground-offset guide; off by default. Feature-clearance hairs use --clearance. Display only, not a design verdict.",
-        )
-        .default("off")
-        .choices(&["on", "off"]),
-        Arg::value(
-            "ink",
-            "<monochrome|reference_accents>",
-            "Mostly black pens or restrained conductor and structure accents from the approved 120 ACSR reference.",
-        )
-        .default("monochrome")
-        .choices(&["monochrome", "reference_accents"]),
-        Arg::value(
-            "horizontal-scale",
-            "<denominator>",
-            "Advanced format horizontal denominator, 500..10000.",
-        ),
-        Arg::value(
-            "vertical-scale",
-            "<denominator>",
-            "Advanced format preferred vertical denominator, 100..5000.",
-        ),
-        Arg::value(
-            "plan-scale",
-            "<denominator>",
-            "Advanced format plan denominator, 500..10000; must equal horizontal scale for the geographic plan scale.",
-        ),
-        Arg::value(
-            "panel-order",
-            "<profile_top|plan_top>",
-            "Place the profile or plan panel above the other.",
-        )
-        .default("profile_top")
-        .choices(&["profile_top", "plan_top"]),
-        Arg::value(
-            "label-orientation",
-            "<vertical|horizontal>",
-            "Station-aligned upward labels inside the profile, or the horizontal ledger.",
-        )
-        .default("vertical")
-        .choices(&["vertical", "horizontal"]),
-        Arg::value(
-            "long-axis",
-            "<on|off>",
-            "Permit rotated plan sections where the physical bend cannot fit the panel.",
-        )
-        .default("on")
-        .choices(&["on", "off"]),
-        Arg::value(
-            "angle-policy",
-            "<preserve_if_fit|split_at_authored>",
-            "Keep a physical angled span when its footprint fits the plan, or force an authored angle cut.",
-        )
-        .default("preserve_if_fit")
-        .choices(&["preserve_if_fit", "split_at_authored"]),
-        Arg::value(
-            "angle-gap-mm",
-            "<millimetres>",
-            "Local break-mark size at a plan angle section, 2..30 mm.",
-        ),
-        Arg::value(
-            "min-angle-deg",
-            "<degrees>",
-            "Minimum route deflection that opens a plan gap, 0..90 degrees.",
-        ),
-        Arg::value(
-            "plan-buffer-m",
-            "<metres>",
-            "Dashed plan corridor on either side of the route; default 6 m, zero hides it.",
-        ),
-        Arg::value(
-            "profile-grid",
-            "<on|off>",
-            "Draw major and minor station/elevation grids in the profile.",
-        )
-        .default("on")
-        .choices(&["on", "off"]),
-        Arg::value(
-            "profile-elevation-breaks",
-            "<on|off>",
-            "Reset the elevation datum midspan within a sheet where the preferred vertical scale cannot fit; matched wire elevations print on both sides.",
-        )
-        .default("on")
-        .choices(&["on", "off"]),
-        Arg::value(
-            "break-support-context",
-            "<once|repeat_labels>",
-            "Draw each support once by default, or repeat the two bounding support identities beside a midspan elevation break.",
-        )
-        .default("once")
-        .choices(&["once", "repeat_labels"]),
-        Arg::value(
-            "profile-continuations",
-            "<on|off>",
-            "Repeat the cut structure with incoming and outgoing wires and matched sheet references.",
-        )
-        .default("on")
-        .choices(&["on", "off"]),
-        Arg::value(
-            "attachments",
-            "<auto|show|hide>",
-            "Show exact engine profile attachment positions.",
-        )
-        .default("auto")
-        .choices(&["auto", "show", "hide"]),
-        Arg::value(
-            "span-labels",
-            "<auto|show|hide>",
-            "Show the engine's physical span labels once per attachment set.",
-        )
-        .default("auto")
-        .choices(&["auto", "show", "hide"]),
-        Arg::value(
-            "feature-codes",
-            "<auto|show|hide>",
-            "Profile feature-code labels, off by default; show enables the configured codes.",
-        )
-        .default("hide")
-        .choices(&["auto", "show", "hide"]),
-        Arg::value(
-            "feature-label-codes",
-            "<CODE,CODE,...>",
-            "Comma-separated surveyed codes; omitted means all eligible codes when labels are shown.",
-        ),
-        Arg::value(
-            "feature-label-orientation",
-            "<horizontal|vertical|follow_ground>",
-            "Profile feature-label text direction.",
-        )
-        .default("horizontal")
-        .choices(&["horizontal", "vertical", "follow_ground"]),
-        Arg::value(
-            "feature-label-size-pt",
-            "<4..12>",
-            "Profile feature-label font size in points.",
-        )
-        .default("5"),
-        Arg::value(
-            "feature-label-placement",
-            "<above|below|staggered>",
-            "Place feature-code labels relative to the ground line.",
-        )
-        .default("above")
-        .choices(&["above", "below", "staggered"]),
-        Arg::value(
-            "clearance",
-            "<auto|show|hide>",
-            "Show thin hairs only for extra code-specific clearance above the standard ground offset; auto shows them.",
-        )
-        .default("auto")
-        .choices(&["auto", "show", "hide"]),
         Arg::value(
             "context-pages",
-            "<manifest.json>",
-            "Ordered project-pinned LV map capture paths, one per output sheet.",
+            "<json-file>",
+            "Ordered model-pinned map captures for the drawing sheets.",
         ),
         Arg::value(
             "model-crs",
             "<declared-crs>",
-            "Selected model CRS, required for registered map context.",
-        ),
-        Arg::value(
-            "logos",
-            "<manifest.json>",
-            "JSON array of one to three absolute PNG/JPEG logo paths for the bottom title block.",
-        ),
-        Arg::value(
-            "notes",
-            "<absolute.json>",
-            "Optional ds.grid-plan-profile-notes/v1 manifest of scoped text or PNG/JPEG images placed in free plan/profile space.",
-        ),
-        Arg::value(
-            "label-rows",
-            "<json-file>",
-            "One to three ordered structure label lines built from canonical staking fields.",
+            "Declared model CRS for registered map context.",
         ),
         Arg::value(
             "sample-pages",
             "<count>",
-            "Render 1..20 representative sheets, retaining their original sheet numbers and full set count.",
+            "1..20 representative drawing sheets; front matter still follows the approved order.",
         ),
-        Arg::value(
-            "result",
-            "<path>",
-            "Keep the reporter receipt here; must not exist.",
-        ),
+        Arg::value("result", "<path>", "Fresh reporter receipt path."),
     ],
     output: "Model revision, projection SHA-256 digests, page count, SVG preview paths, PDF path and PDF SHA-256; notes and image digests when supplied.",
     examples: &[Example {
-        command: "ds report plan-profile --project gisagara --scene /tmp/profile.json --plan /tmp/plan.json --format simple --title Gisagara --out-dir /tmp/gisagara-sheets --output json",
+        command: "ds report plan-profile --project gisagara --scene /tmp/profile.json --plan /tmp/plan.json --out-dir /tmp/gisagara-sheets --output json",
         note: "Render a new simple A3 set from held engine projections.",
         runnable: false,
     }],
-    refusals: &[
-        Refusal {
-            code: "logo_manifest_invalid",
-            when: "the logo manifest cannot be read as a JSON array",
-            remedy: "provide a valid JSON array of one to three absolute PNG/JPEG paths",
-        },
-        Refusal {
-            code: "notes_manifest_invalid",
-            when: "the notes manifest path is not an absolute readable file",
-            remedy: "pass an existing absolute JSON path; the reporter validates the note schema and image bytes",
-        },
-        Refusal {
-            code: "label_rows_invalid",
-            when: "the structure label rows file cannot be read as JSON",
-            remedy: "provide valid JSON with one to three ordered label rows",
-        },
-        Refusal {
-            code: "request_encode_failed",
-            when: "the validated renderer request cannot be encoded as JSON",
-            remedy: "report the input and this build; the reporter was not started",
-        },
-        Refusal {
-            code: "request_write_failed",
-            when: "the renderer request file cannot be written locally",
-            remedy: "check output-path permissions and available disk space",
-        },
-        Refusal {
-            code: "reporter_engine_missing",
-            when: "ds-report is unavailable",
-            remedy: "install the matching reporter",
-        },
-        Refusal {
-            code: "projection_missing",
-            when: "the named scene or plan file is missing",
-            remedy: "obtain both projections from the same model revision",
-        },
-        Refusal {
-            code: "output_exists",
-            when: "the output directory or result file already exists",
-            remedy: "choose fresh output paths",
-        },
-        Refusal {
-            code: "engine_refused",
-            when: "the reporter cannot decode, pair, paginate or encode the sheets",
-            remedy: "read detail.engine and correct the inputs",
-        },
-        Refusal {
-            code: "invalid_scale",
-            when: "a scale denominator is not a whole number",
-            remedy: "use a positive integer in the printed scale range",
-        },
-        Refusal {
-            code: "invalid_feature_label_style",
-            when: "feature-code selection or font size is invalid",
-            remedy: "use 1..64 nonempty codes of at most 48 bytes and a font size from 4 to 12 pt",
-        },
-        Refusal {
-            code: "context_manifest_invalid",
-            when: "the context page manifest is unreadable or not a JSON array of paths",
-            remedy: "provide ordered complete map capture paths for this model revision",
-        },
-    ],
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 9 }>(&[
+        crate::project::NATIVE_READ_REFUSALS,
+        &[
+            crate::project::mv_setup::REFUSAL,
+            Refusal {
+                code: "projection_missing",
+                when: "scene or plan is absent",
+                remedy: "Acquire paired projections from the same model revision",
+            },
+            Refusal {
+                code: "output_exists",
+                when: "destination already exists",
+                remedy: "Choose fresh output and receipt paths",
+            },
+            Refusal {
+                code: "request_encode_failed",
+                when: "typed request cannot be encoded",
+                remedy: "Report the input and build identity",
+            },
+            Refusal {
+                code: "request_write_failed",
+                when: "typed request cannot be written",
+                remedy: "Check temporary storage permissions and free space",
+            },
+            Refusal {
+                code: "reporter_engine_missing",
+                when: "reporter is absent",
+                remedy: "Install the matching ds-report",
+            },
+            Refusal {
+                code: "engine_refused",
+                when: "reporter refuses setup, held assets or geometry pairing",
+                remedy: "Read the reporter keyed detail and correct the named input",
+            },
+            Refusal {
+                code: "context_manifest_invalid",
+                when: "an input manifest is missing, oversized or malformed",
+                remedy: "Supply a bounded JSON context array or publication asset map",
+            },
+            Refusal {
+                code: "invalid_scale",
+                when: "sample count is not 1..20",
+                remedy: "Supply 1..20 or omit sample-pages for a full publication",
+            },
+        ],
+    ]),
     reference: Some("docs/reference/report.md"),
     search: &["dsgrid", "print"],
     requires: Requires::Server,
@@ -362,47 +148,6 @@ pub static COMMAND: Command = Command {
 
 fn availability() -> Availability {
     DS_REPORT.availability()
-}
-
-fn feature_label_style(inputs: &Inputs) -> Result<Value, Failure> {
-    let size = inputs
-        .value("feature-label-size-pt")
-        .unwrap_or("5")
-        .parse::<f64>()
-        .map_err(|_| {
-            Failure::invalid(
-                "invalid_feature_label_style",
-                "feature-label-size-pt must be a number",
-            )
-        })?;
-    if !size.is_finite() || !(4.0..=12.0).contains(&size) {
-        return Err(Failure::invalid(
-            "invalid_feature_label_style",
-            "feature-label-size-pt must be 4..12",
-        ));
-    }
-    let mut codes = Vec::new();
-    let mut seen = BTreeSet::new();
-    if let Some(value) = inputs.value("feature-label-codes") {
-        for raw in value.split(',') {
-            let code = raw.trim();
-            if code.is_empty() || code.len() > 48 || codes.len() == 64 {
-                return Err(Failure::invalid(
-                    "invalid_feature_label_style",
-                    "feature-label-codes needs 1..64 nonempty codes of at most 48 bytes each",
-                ));
-            }
-            if seen.insert(code.to_ascii_uppercase()) {
-                codes.push(code.to_string());
-            }
-        }
-    }
-    Ok(json!({
-        "codes": codes,
-        "orientation": inputs.value("feature-label-orientation").unwrap_or("horizontal"),
-        "font_size_pt": size,
-        "placement": inputs.value("feature-label-placement").unwrap_or("above")
-    }))
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -448,78 +193,54 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             format!("result file exists: {}", result_path.display()),
         ));
     }
-    let scale = |name: &str| -> Result<Option<u32>, Failure> {
-        inputs
-            .value(name)
-            .map(|value| {
-                value.parse::<u32>().map_err(|_| {
-                    Failure::invalid("invalid_scale", format!("{name} must be a whole number"))
-                })
-            })
-            .transpose()
-    };
-    let decimal = |name: &str| -> Result<Option<f64>, Failure> {
-        inputs
-            .value(name)
-            .map(|value| {
-                value.parse::<f64>().map_err(|_| {
-                    Failure::invalid("invalid_scale", format!("{name} must be a decimal number"))
-                })
-            })
-            .transpose()
-    };
-    let selection = |name: &str| match inputs.value(name).unwrap_or("auto") {
-        "show" => Some(true),
-        "hide" => Some(false),
-        _ => None,
-    };
-    let context_page_files: Vec<PathBuf> = match inputs.value("context-pages") {
-        Some(path) => {
-            let bytes = std::fs::read(path)
-                .map_err(|e| Failure::invalid("context_manifest_invalid", e.to_string()))?;
-            serde_json::from_slice(&bytes)
-                .map_err(|e| Failure::invalid("context_manifest_invalid", e.to_string()))?
+    let mut fields = BTreeMap::new();
+    for (arg, field) in [
+        (
+            "model-identity",
+            ds_command_kernel::printing::mv::ModelField::Identity,
+        ),
+        (
+            "model-title",
+            ds_command_kernel::printing::mv::ModelField::Title,
+        ),
+    ] {
+        if let Some(value) = inputs.value(arg) {
+            fields.insert(field, value.to_owned());
         }
-        None => Vec::new(),
-    };
-    let logo_files: Vec<PathBuf> = match inputs.value("logos") {
-        Some(path) => {
-            let bytes = std::fs::read(path)
-                .map_err(|e| Failure::invalid("logo_manifest_invalid", e.to_string()))?;
-            serde_json::from_slice(&bytes)
-                .map_err(|e| Failure::invalid("logo_manifest_invalid", e.to_string()))?
-        }
-        None => Vec::new(),
-    };
-    let notes_path = inputs.value("notes").map(PathBuf::from);
-    if let Some(path) = &notes_path
-        && (!path.is_absolute() || !path.is_file())
-    {
-        return Err(Failure::invalid(
-            "notes_manifest_invalid",
-            format!(
-                "notes manifest must be an existing absolute file: {}",
-                path.display()
-            ),
-        ));
     }
-    let label_rows: Value = match inputs.value("label-rows") {
-        Some(path) => {
-            let bytes = std::fs::read(path)
-                .map_err(|e| Failure::invalid("label_rows_invalid", e.to_string()))?;
-            serde_json::from_slice(&bytes)
-                .map_err(|e| Failure::invalid("label_rows_invalid", e.to_string()))?
+    let resolved =
+        crate::project::mv_setup::resolve_project(inputs.require("lane")?, project, fields)?;
+    let read_manifest = |name: &str, empty: Value| -> Result<Value, Failure> {
+        let Some(path) = inputs.value(name) else {
+            return Ok(empty);
+        };
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .and_then(|f| f.take(1024 * 1024 + 1).read_to_end(&mut bytes))
+            .map_err(|e| Failure::invalid("context_manifest_invalid", e.to_string()))?;
+        if bytes.len() > 1024 * 1024 {
+            return Err(Failure::invalid(
+                "context_manifest_invalid",
+                "manifest exceeds 1 MiB",
+            ));
         }
-        None => json!([]),
+        serde_json::from_slice(&bytes)
+            .map_err(|e| Failure::invalid("context_manifest_invalid", e.to_string()))
     };
-    let mut settings = json!({"format":inputs.require("format")?,"ink_mode":inputs.value("ink").unwrap_or("monochrome"),"project_title":inputs.require("title")?,"sheet_title":inputs.value("sheet-title").unwrap_or("MV plan & profile"),"drawing_revision":inputs.value("drawing-revision").unwrap_or("v0"),"drawing_date":inputs.value("drawing-date").unwrap_or(""),"title_country":inputs.value("title-country").unwrap_or("Republic of Rwanda"),"title_employer":inputs.value("title-employer").unwrap_or("EDCL"),"title_contractor":inputs.value("title-contractor").unwrap_or(""),"title_programme":inputs.value("title-programme").unwrap_or(""),"title_subject":inputs.value("title-subject").unwrap_or(""),"show_obstacle_sticks":inputs.value("obstacle-sticks").unwrap_or("off")=="on"});
-    let mut geometry = json!({"horizontal_scale":scale("horizontal-scale")?,"vertical_scale":scale("vertical-scale")?,"plan_scale":scale("plan-scale")?,"panel_order":inputs.value("panel-order").unwrap_or("profile_top"),"structure_label_orientation":inputs.value("label-orientation").unwrap_or("vertical"),"long_axis_plot":inputs.value("long-axis").unwrap_or("on")=="on","plan_angle_policy":inputs.value("angle-policy").unwrap_or("preserve_if_fit"),"angle_gap_mm":decimal("angle-gap-mm")?.unwrap_or(7.0),"minimum_angle_deg":decimal("min-angle-deg")?.unwrap_or(0.0),"plan_buffer_m":decimal("plan-buffer-m")?.unwrap_or(6.0),"show_profile_grid":inputs.value("profile-grid").unwrap_or("on")=="on","profile_elevation_breaks":inputs.value("profile-elevation-breaks").unwrap_or("on")=="on","break_support_context":inputs.value("break-support-context").unwrap_or("once"),"show_profile_continuations":inputs.value("profile-continuations").unwrap_or("on")=="on","show_attachment_points":selection("attachments"),"show_span_labels":selection("span-labels"),"show_feature_codes":selection("feature-codes"),"show_clearance_thresholds":selection("clearance"),"structure_label_rows":label_rows});
-    geometry["feature_label_style"] = feature_label_style(inputs)?;
-    settings
-        .as_object_mut()
-        .expect("settings object")
-        .extend(geometry.as_object().expect("geometry object").clone());
-    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":notes_path,"out_dir":out_dir,"sample_pages":scale("sample-pages")?,"context_page_files":context_page_files,"logo_files":logo_files,"model_crs":inputs.value("model-crs"),"settings":settings});
+    let context_page_files = read_manifest("context-pages", json!([]))?;
+    let publication_assets = read_manifest("publication-assets", json!({}))?;
+    let sample_pages = inputs
+        .value("sample-pages")
+        .map(|value| {
+            value
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=20).contains(n))
+                .ok_or_else(|| Failure::invalid("invalid_scale", "sample-pages must be 1..20"))
+        })
+        .transpose()?;
+    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     ds_layer_store::private::write(&request_path, bytes)

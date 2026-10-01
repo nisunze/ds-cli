@@ -27,6 +27,7 @@ pub mod export;
 pub mod grouping;
 pub mod hold;
 pub mod map_inputs;
+pub mod mv_setup;
 mod neighbor_points;
 pub mod publish;
 pub mod reuse;
@@ -318,7 +319,7 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
 
 /// Several declared refusal lists as one, at compile time, so a command's
 /// list is still one `&'static [Refusal]` its help and descriptor read.
-const fn joined<const N: usize>(parts: &[&[Refusal]]) -> [Refusal; N] {
+pub(crate) const fn joined<const N: usize>(parts: &[&[Refusal]]) -> [Refusal; N] {
     let mut out = [NATIVE_PROFILE; N];
     let (mut at, mut part) = (0, 0);
     while part < parts.len() {

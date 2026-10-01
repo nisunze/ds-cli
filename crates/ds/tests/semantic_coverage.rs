@@ -46,7 +46,21 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pls.desktop.reports", "local_file_write", "none"),
     ("pls.desktop.restore", "local_file_write", "none"),
     ("pls.desktop.sheets-pdf", "local_file_write", "none"),
-    ("report.plan-profile-config", "local_file_write", "none"),
+    (
+        "report.project.mv-setup.set",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "report.project.mv-setup.resolve",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "report.plan-profile-config",
+        "local_file_write",
+        "headless_project",
+    ),
     ("report.plan-profile-config.schema", "discovery", "none"),
     ("report.spatial.workbook", "local_file_write", "none"),
     (
@@ -845,7 +859,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.bundle", "local_file_write", "none"),
     ("report.voltage-drop-combined", "local_file_write", "none"),
     ("report.artifact.remove", "global_write", "headless_project"),
-    ("report.plan-profile", "local_file_write", "none"),
+    (
+        "report.plan-profile",
+        "local_file_write",
+        "headless_project",
+    ),
     ("report.engine", "discovery", "none"),
     ("report.layout.new", "discovery", "none"),
     ("report.layout.edit", "read_only", "none"),

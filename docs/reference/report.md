@@ -919,109 +919,69 @@ type. Fixed titles, scales and furniture belong in the map’s `fit_around` list
 
 ### Native project MV overview
 
-For a repeatable print set, `report.plan-profile-config --project <id> --config
-/absolute/print.json` reads one JSON configuration and runs the Rust reporter
-once per named ink variant. Scene, plan, map context, logos and drawing settings
-are shared; only the ink mode and output directory vary. Relative source paths
-resolve beside the configuration file. The output root must be fresh, so an
-earlier issued PDF cannot be replaced by a rerun. The command writes
-`print-receipt.json` with the configuration digest and each PDF's digest, model
-revision and page count. A failed later variant leaves a partial receipt and
-the completed variants intact.
-`report.plan-profile-config schema` returns the required fields and a minimal
-two-variant JSON example without starting the reporter.
+MV uses the existing GLOBAL/PROJECT printing library. A global `ds.print-layout/v2`
+document declares its `mv` front-matter pages, complete A3 sheet presentation,
+required text, approved embedded logos and permitted model identity/title fields.
+Copy the exact approved revision into the project with `report layout copy`,
+customize the project document intentionally, then select **one** canonical
+revision for all models:
 
-```json
-{
-  "schema": "ds.grid-plan-profile-print/v1",
-  "project_id": "gisagara",
-  "scene_path": "sources/profile-scene.json",
-  "plan_path": "sources/plan.json",
-  "output_root": "v0-output",
-  "model_crs": "EPSG:32735",
-  "context_page_files": [],
-  "logo_files": ["sources/employer.png"],
-  "settings": {
-    "format": "advanced",
-    "project_title": "Project name",
-    "sheet_title": "MV Line Plan and Profile Drawings",
-    "horizontal_scale": 1500,
-    "vertical_scale": 800,
-    "plan_scale": 1500,
-    "show_feature_codes": false,
-    "drawing_revision": "v0"
-  },
-  "variants": [
-    {"name": "color", "ink_mode": "reference_accents"},
-    {"name": "monochrome", "ink_mode": "monochrome"}
-  ]
-}
+```bash
+ds report project mv-setup set --project <id> --selection /absolute/selection.json --yes --output json
+ds report project mv-setup resolve --project <id> --model-identity Model1 --output json
 ```
 
-The `settings` object uses the Rust reporter's typed `SheetSettings` fields;
-the CLI supplies `ink_mode` from each variant and the reporter validates the
-remaining values. Optional `side_profiles_path`, `notes_path` and
-`sample_pages` follow the same typed print request. `sample_pages` is a top-level
-positive integer for a proof subset; omit it to print the entire project.
-`settings` requires `format`, `project_title` and `sheet_title`; variant
-`ink_mode` stays outside it. The configuration references
-held source files; it never silently selects a newer model revision.
-When map context is supplied, `context_page_files` contains one pinned capture
-per sheet in the reporter's computed order.
+The selection schema is returned by `report layout schema` as `mv_selection`:
+`schema: ds.mv-print-selection/v1`, `layout_id`, exact 64-character `revision`,
+`external_version` (an approved simple number such as `Version 1`, `v1` or `1`),
+and an explicit calendar `issue_date` (`YYYY-MM-DD`). Neither field derives
+from the model hash or export date. Project settings holds exactly one
+`mv_printing_setup` row. The printing drawer offers the same intentional
+selection and exact-base save; it never chooses a default layout or issue.
+The receipt reports configured documents with `ready:false`: actual geometry
+and held PDF bytes are admitted by the reporter before destination output.
 
-Profile feature-code names are hidden by default. To show a selected set in a
-JSON print, add `"show_feature_codes": true` and, for example,
-`"feature_label_style": {"codes": ["ROAD", "RIVER"], "orientation":
-"horizontal", "font_size_pt": 5, "placement": "above"}` to `settings`.
-An empty `codes` array includes all eligible names. Orientation accepts
-`horizontal`, `vertical` or `follow_ground`; placement accepts `above`, `below`
-or `staggered`. The equivalent direct CLI controls are `--feature-codes show`,
-`--feature-label-codes ROAD,RIVER`, `--feature-label-orientation horizontal`,
-`--feature-label-size-pt 5` and `--feature-label-placement above`.
-The standard ground-offset guide stays continuous. Thin feature-clearance
-hairs appear only when a validated feature threshold exceeds that guide.
-Optional caps at surveyed physical obstacles are off unless
-`--obstacle-sticks on` is requested.
+A fixed `preserved_pdf` page pins a governed asset id and `sha256:` digest.
+A `model_preserved_pdf` page declares an explicit bounded `bindings` list of
+`model_identity`, `asset_id`, `sha256`. Model1 and Model2 therefore inherit one
+setup/revision/policy while selecting different approved covers; the shared
+naming page remains one fixed PDF pin. Identity matching is exact. Missing or
+ambiguous binding refuses; there is no fallback, generated naming inventory,
+or model-specific setup. The operator acquires approved PDFs through assets
+and passes a `publication_assets` map of only the resolved asset ids to held
+absolute paths. The reporter validates every digest and retains original
+components unchanged alongside the assembled booklet.
 
-`report.plan-profile --project <id>` renders one revision-pinned DS Grid scene
-and plan headlessly. Its A3 profile and plan order, structure labels, horizontal
-and vertical scales, span annotations, 6 m corridor and grid are authored inputs.
-The plan retains true geographic bends at the horizontal scale; profile station
-ordinates are a separate axis. `--plan-scale`, when set, must equal
-`--horizontal-scale`. `--angle-policy preserve_if_fit` keeps an angled span
-whole when its footprint fits; `split_at_authored` forces angle cuts.
-The renderer plans all feasible windows for an alignment before drawing any
-sheet. It minimizes the sheet count, then balances used widths without forcing
-a true plan bend straight. Ordinary page continuations share a structure;
-steep sections may add a midspan cut to preserve vertical scale. Incoming and
-outgoing conductors extend across matched station marks.
-`--profile-elevation-breaks on` keeps the preferred vertical scale by resetting
-the labeled elevation datum at a midspan station within the same sheet. The
-measured wire elevations are labeled on both sides of the cut. Each structure
-is drawn once; `--break-support-context repeat_labels` adds the identities of
-the two bounding supports beside both rulers. A section that still cannot fit
-adjusts its actual vertical denominator and prints it. Large holes in the
-pinned ground or conductor source are marked instead of interpolated.
-`--profile-continuations` controls matched page cuts. The manifest records
-each printed window.
-The compact drawing block carries the conventional revision, logo, project,
-sign-off and sheet fields without reducing either drawing panel.
-`--drawing-revision` defaults to `v0`; `--drawing-date` and
-`--title-country`, `--title-employer`, `--title-contractor`,
-`--title-programme` and `--title-subject` come from the project's printing
-identity. Up to three `--logos` keep their native aspect ratios. Alignment,
-station and scale notes sit in the free lower margin. The exact model
-revision stays in the result receipt and PDF information metadata; the
-visible revision is the human drawing issue. Every PDF page carries the
-mandatory discrete `DS GridDesign by datasolutions.rw` margin credit.
-`--span-labels show` prints each physical span length in both plan and
-profile, in black ink with a white halo in either colour mode.
-`--obstacle-sticks on` adds a short, thin cap at a validated native clearance
-threshold for a surveyed physical obstacle only when the obstacle height is
-positive and that threshold exceeds the standard ground-offset guide. When
-`--clearance hide` suppresses the feature-clearance hair, the cap keeps a thin
-stem back to the guide. These marks display the model's resolved requirement;
-they do not establish a separate design-case verdict.
+`report.plan-profile` contract 2 requires the named project's canonical setup
+and paired scene/plan projections from one unchanged model revision. Only
+`--model-identity` / `--model-title` fields explicitly allowed by the template
+can differ. Transient title, logo, date, version, scale, ink and presentation
+flags are retired. Their adoption remedy is to approve those choices in the
+project printing document and select its exact revision with
+`report project mv-setup set`. Missing adoption, changed revision, missing text
+or forbidden overrides return keyed actionable refusals. Desktop re-resolves
+the same command/receipt before preview or print and refuses stale receipts.
+MCP exposes the same declared commands.
+
+`report.plan-profile-config` contract 2 accepts `ds.grid-plan-profile-print/v2`
+with `project_id`, `scene_path`, `plan_path`, fresh `output_root`, and 1..8
+`variants` containing only a safe `name`. Optional geometry inputs are
+`sample_pages`, `side_profiles_path`, `notes_path`, `model_crs`,
+`context_page_files`; `model_fields` and `publication_assets` bind the same
+approved receipt/held assets. Relative paths resolve beside the configuration.
+V1 per-run `settings`, `logo_files`, and variant `ink_mode` refuse rather than
+silently changing approved furniture. `report plan-profile-config schema`
+returns the current example. A failed first publication creates no final
+output root; a later failure preserves completed variants and a partial
+receipt. Each result pins model revision, canonical setup digest, publication
+order, component digests and page count. A new global head never advances the
+project's adopted revision.
+
+The existing engine remains the geometry and engineering authority. DS
+publication inherits presentation choices without changing model structures,
+stationing, clearance or PLS-CADD behavior. Native five-report RTF capture and
+one-shot A4 RTF-to-PDF are separate controls. This A3 booklet does not alter them.
+
 `--side-profiles /absolute/traces.json` is optional and off when omitted. The
 file must be `ds.grid-side-profiles/v1` with the same model revision and
 measured, station-ordered trace segments:

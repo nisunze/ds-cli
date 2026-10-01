@@ -2494,6 +2494,23 @@ pub fn ensure_meter_type(
     .map(|receipt| receipt.result)
 }
 
+/// Select the canonical MV printing setup behind the settings read's exact base.
+pub fn mv_printing_selection_for_project(
+    lane: &str,
+    project: &str,
+    selection: ds_command_kernel::printing::mv::Selection,
+    expected_rows: Vec<serde_json::Value>,
+) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    settings_configuration(
+        lane,
+        project,
+        ds_client_core::ProjectConfigurationChange::MvPrintingSelection {
+            selection,
+            expected_rows,
+        },
+    )
+}
+
 pub fn design_output_rows_for_project(
     lane: &str,
     project: &str,
