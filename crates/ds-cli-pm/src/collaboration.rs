@@ -29,12 +29,17 @@ const UNREADABLE: Refusal = Refusal {
     when: "the collaboration response is incomplete or belongs to another request",
     remedy: "update the server and ds together; do not infer success from missing fields",
 };
+const INDEX_COMMAND_INVALID: Refusal = Refusal {
+    code: "pm_index_command_invalid",
+    when: "the public-index adapter received a command outside its closed read type",
+    remedy: "update ds and use pm project list; report a repeated adapter refusal",
+};
 
 pub static PROJECTS: Command = Command {
     id: "pm.project.list",
     path: &["pm", "project", "list"],
     contract: 1,
-    summary: "List authenticated collaboration projects, independently of membership selection.",
+    summary: "List authenticated collaboration projects outside member selection.",
     purpose: "Read the existing public Project Work index. Returns bounded status/cursor pages; eligible membership still governs assignments and notices. Never selects a project.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
@@ -56,7 +61,7 @@ pub static PROJECTS: Command = Command {
         note: "Follow next_cursor with --cursor; this does not select a project.",
         runnable: true,
     }],
-    refusals: &crate::read_refusals::<18>(&[PAGE_LIMIT, UNREADABLE]),
+    refusals: &crate::read_refusals::<19>(&[PAGE_LIMIT, UNREADABLE, INDEX_COMMAND_INVALID]),
     reference: Some("docs/reference/pm.md"),
     search: &["public projects", "collaboration", "project discovery"],
     requires: Requires::Server,

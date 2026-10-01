@@ -29,7 +29,7 @@ pub static RESOLVE: Command = Command {
     id: "report.project.mv-setup.resolve",
     path: &["report", "project", "mv-setup", "resolve"],
     contract: 1,
-    summary: "Resolve the canonical MV setup for one model's allowed title differences.",
+    summary: "Resolve canonical MV setup for one model's allowed title differences.",
     purpose: "Read the named project's adopted printing revision and canonical selection through the existing configuration and printing library. The kernel resolves all approved project furniture and fixed version/date, accepting only model identity/title fields the template permits. The receipt is the same input Desktop and ds-report consume. This resolves documents only: actual geometry and held approved PDF assets must still be validated by the local reporter before output.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,

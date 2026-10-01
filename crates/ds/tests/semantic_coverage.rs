@@ -1066,6 +1066,21 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("survey.form.types", "local_auth_state", "headless_user"),
     ("survey.form.update", "global_write", "headless_user"),
     ("survey.forms.list", "local_auth_state", "headless_user"),
+    (
+        "survey.member-grant.read",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "survey.member-grant.plan",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "survey.member-grant.apply",
+        "global_write",
+        "headless_project",
+    ),
     ("survey.photo.rotate-local", "local_file_write", "none"),
     ("survey.photo.rotate", "local_file_write", "headless_user"),
     ("survey.photo.publish", "global_write", "headless_user"),
@@ -1389,6 +1404,46 @@ fn every_shipping_command_has_a_pinned_semantic_contract_and_safe_invocation() {
             descriptor["authority"], authority,
             "`{id}` authority changed without a reviewed semantic assertion"
         );
+        if id.starts_with("survey.member-grant.") {
+            let inputs: BTreeMap<&str, &Value> = descriptor["inputs"]
+                .as_array()
+                .expect("member-grant inputs")
+                .iter()
+                .map(|input| (input["name"].as_str().expect("input name"), input))
+                .collect();
+            let required: BTreeSet<&str> = inputs
+                .iter()
+                .filter(|(_, input)| input["required"] == true)
+                .map(|(name, _)| *name)
+                .collect();
+            let applying = id == "survey.member-grant.apply";
+            let expected_required = if applying {
+                BTreeSet::from(["project", "member", "plan"])
+            } else {
+                BTreeSet::from(["project", "member"])
+            };
+            assert_eq!(
+                required, expected_required,
+                "`{id}` required capture changed"
+            );
+            assert_eq!(inputs["project"]["kind"], "value");
+            assert_eq!(inputs["member"]["kind"], "value");
+            assert_eq!(inputs["lane"]["default"], "stable");
+            assert_eq!(
+                inputs["lane"]["choices"],
+                serde_json::json!(["stable", "canary"])
+            );
+            assert_eq!(descriptor["confirmation_required"], applying);
+            if applying {
+                assert_eq!(inputs["plan"]["kind"], "value");
+                assert_eq!(descriptor["confirmation_flag"], "--yes");
+            } else if id == "survey.member-grant.plan" {
+                assert_eq!(inputs["forms"]["kind"], "value");
+                assert_eq!(inputs["forms"]["required"], false);
+                assert_eq!(inputs["all"]["kind"], "switch");
+                assert_eq!(inputs["all"]["required"], false);
+            }
+        }
         let path: Vec<&str> = descriptor["path"]
             .as_array()
             .expect("path")

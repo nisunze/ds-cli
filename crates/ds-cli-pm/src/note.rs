@@ -53,7 +53,7 @@ pub static CREATE: Command = Command {
     id: "pm.note.create",
     path: &["pm", "note", "create"],
     contract: 1,
-    summary: "Create a project-visible Markdown note for a human review or modification.",
+    summary: "Create a project-visible Markdown note for human review or editing.",
     purpose: "\
 Files a quick project note in Project Work, with its title and concise Markdown \
 body. The signed-in native credential must be allowed to contribute to the \

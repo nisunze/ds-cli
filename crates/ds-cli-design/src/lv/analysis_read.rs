@@ -123,10 +123,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 metadata["state"].as_str(),
                 Some("stale" | "needs_reprocess")
             );
-            return Err(Failure::conflict(if stale { "lv_analysis_stale" } else { "lv_analysis_missing" },
-                "The saved head has no current complete analysis; no calculation was attempted.")
-                .remedy(if stale { OWN[1].remedy } else { OWN[0].remedy })
-                .detail(json!({"project":project,"transformer":transformer,"lane":lane,
+            let reason =
+                "The saved head has no current complete analysis; no calculation was attempted.";
+            let failure = if stale {
+                Failure::conflict("lv_analysis_stale", reason).remedy(OWN[1].remedy)
+            } else {
+                Failure::conflict("lv_analysis_missing", reason).remedy(OWN[0].remedy)
+            };
+            return Err(failure.detail(json!({"project":project,"transformer":transformer,"lane":lane,
                     "version":snapshot.metadata().version(),"content_digest":snapshot.metadata().content_digest(),
                     "analysis_state":metadata["state"].as_str().unwrap_or("missing"),
                     "processed":false,"saved":false})));
