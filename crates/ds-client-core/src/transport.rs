@@ -2771,6 +2771,7 @@ impl ProjectReportCall<'_> {
 /// redirects so an exact validated origin can never hand credentials to a
 /// second origin.
 pub struct ProjectConfigurationCall<'a> {
+    pub(crate) expected_data: Option<&'a serde_json::Value>,
     pub(crate) profile: &'a ClientProfile,
     pub(crate) project: &'a str,
     pub(crate) settings: Option<&'a serde_json::Value>,
@@ -2823,7 +2824,17 @@ impl ProjectConfigurationCall<'_> {
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             self.settings
-                .map(|rows| save_config_body(self.project, self.sheet, rows))
+                .map(|rows| {
+                    let bytes = save_config_body(self.project, self.sheet, rows);
+                    if let Some(expected) = self.expected_data {
+                        let mut body: serde_json::Value =
+                            serde_json::from_slice(&bytes).expect("fixed save body");
+                        body["expected_data"] = expected.clone();
+                        serde_json::to_vec(&body).expect("fixed fenced save body")
+                    } else {
+                        bytes
+                    }
+                })
                 .unwrap_or_default(),
         )
     }

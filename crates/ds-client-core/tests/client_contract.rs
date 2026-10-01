@@ -8695,6 +8695,70 @@ fn settings_writes_are_validated_then_freshly_verified_without_feeder_catalog() 
     }
 }
 #[test]
+fn mv_printing_selection_fences_the_exact_base_and_requires_fresh_readback() {
+    use ds_client_core::ProjectConfigurationChange;
+    let selection: ds_command_kernel::printing::mv::Selection = serde_json::from_value(json!({
+        "schema":"ds.mv-print-selection/v1","layout_id":"approved_mv","revision":"a".repeat(64),"external_version":"Version 1","issue_date":"2026-10-01"
+    })).unwrap();
+    let base = vec![json!({"parameter":"unrelated_lv_choice","value":["xlsx"]})];
+    let expected = vec![
+        base[0].clone(),
+        json!({"parameter":"mv_printing_setup","value":selection}),
+    ];
+    for mode in ["stale_base", "wrong_readback", "saved"] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut current = json!({"sheets":{"project_settings":base}});
+        if mode == "stale_base" {
+            current["sheets"]["project_settings"][0]["value"] = json!(["xlsx", "shp"]);
+        }
+        let readback = if mode == "saved" {
+            json!({"sheets":{"project_settings":expected}})
+        } else {
+            json!({"sheets":{"project_settings":base}})
+        };
+        for response in [&current, &json!({"success":true}), &readback] {
+            transport
+                .0
+                .lock()
+                .unwrap()
+                .configurations
+                .push_back(TransportResponse::new(
+                    200,
+                    serde_json::to_vec(response).unwrap(),
+                ));
+        }
+        let mut client = signed_in(transport.clone(), MemoryStore::default());
+        let result = client.feeder_configuration(
+            "project_a",
+            Some(&ProjectConfigurationChange::MvPrintingSelection {
+                selection: selection.clone(),
+                expected_rows: base.clone(),
+            }),
+            NOW,
+        );
+        let state = transport.0.lock().unwrap();
+        match mode {
+            "stale_base" => {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::InvalidInput);
+                assert!(state.configuration_bodies.is_empty());
+            }
+            "wrong_readback" => {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::UnreadableResponse)
+            }
+            _ => {
+                assert_eq!(result.unwrap().summary["saved"], true);
+                assert_eq!(
+                    state.configuration_bodies,
+                    vec![
+                        json!({"action":"save_config","eds_project_id":"project_a","sheet_name":"project_settings","data":expected,"expected_data":base})
+                    ]
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn settings_invalid_mutations_never_reach_a_write() {
     use ds_client_core::ProjectConfigurationChange as Change;
     use serde_json::json;

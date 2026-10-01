@@ -1,0 +1,167 @@
+{
+  "project_settings": [
+    {
+      "parameter": "mv_printing_setup",
+      "value": {
+        "schema": "ds.mv-print-selection/v1",
+        "layout_id": "test_project_mv",
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "external_version": "v3",
+        "issue_date": "2026-10-01"
+      }
+    }
+  ],
+  "printing_setups": [
+    {
+      "id": "test_project_mv",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "inherited_from": {
+        "scope": "global",
+        "id": "test_global_mv",
+        "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "layout": {
+        "schema": "ds.print-layout/v2",
+        "id": "test_project_mv",
+        "name": "TEST ONLY test_project_mv",
+        "paper": {
+          "size": "A3",
+          "orientation": "landscape"
+        },
+        "page_mm": [
+          420,
+          297
+        ],
+        "elements": [
+          {
+            "id": "title",
+            "kind": "text",
+            "rect": [
+              12,
+              271,
+              350,
+              8
+            ],
+            "text": "{sheet_title} | {external_version} | {issue_date}",
+            "font_pt": 7
+          },
+          {
+            "id": "party",
+            "kind": "logo",
+            "rect": [
+              370,
+              272,
+              20,
+              10
+            ],
+            "asset": "test_party"
+          }
+        ],
+        "assets": {
+          "test_party": {
+            "label": "TEST ONLY generated pixel",
+            "png_data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+          }
+        },
+        "title_block": {},
+        "mv": {
+          "pages": [
+            {
+              "kind": "layout",
+              "layout": {
+                "schema": "ds.print-layout/v2",
+                "id": "test_cover",
+                "name": "TEST ONLY test_cover",
+                "paper": {
+                  "size": "A3",
+                  "orientation": "landscape"
+                },
+                "page_mm": [
+                  420,
+                  297
+                ],
+                "elements": [
+                  {
+                    "id": "cover_title",
+                    "kind": "text",
+                    "rect": [
+                      12,
+                      12,
+                      396,
+                      12
+                    ],
+                    "text": "{project_title} | {external_version} | {issue_date}",
+                    "font_pt": 10
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "plan_profile"
+            }
+          ],
+          "settings": {
+            "format": "advanced",
+            "ink_mode": "monochrome",
+            "project_title": "TEST ONLY project",
+            "sheet_title": "TEST ONLY drawing",
+            "horizontal_scale": 1500,
+            "vertical_scale": 500,
+            "plan_scale": 1500,
+            "panel_order": "profile_top",
+            "structure_label_orientation": "vertical",
+            "show_feature_codes": false,
+            "feature_label_style": {
+              "codes": [],
+              "orientation": "horizontal",
+              "font_size_pt": 5,
+              "placement": "above"
+            },
+            "show_clearance_thresholds": true,
+            "structure_label_rows": [
+              [
+                "engineering_number"
+              ],
+              [
+                "structure_type"
+              ]
+            ],
+            "long_axis_plot": true,
+            "plan_angle_policy": "preserve_if_fit",
+            "angle_gap_mm": 7,
+            "minimum_angle_deg": 0,
+            "plan_buffer_m": 6,
+            "show_profile_grid": true,
+            "show_attachment_points": true,
+            "show_span_labels": true,
+            "show_obstacle_sticks": false,
+            "show_profile_continuations": true,
+            "profile_elevation_breaks": true,
+            "break_support_context": "once",
+            "drawing_revision": "v0",
+            "drawing_date": "",
+            "title_country": "TEST ONLY country",
+            "title_employer": "TEST ONLY employer",
+            "title_consultant": "",
+            "title_contractor": "TEST ONLY contractor",
+            "title_programme": "TEST ONLY programme",
+            "title_subject": "TEST ONLY subject"
+          },
+          "required_text": [
+            "project_title",
+            "external_version",
+            "issue_date"
+          ],
+          "allowed_model_fields": [
+            "identity",
+            "title"
+          ],
+          "logos": [
+            "test_party"
+          ],
+          "font_family": "DejaVu Sans"
+        }
+      }
+    }
+  ]
+}
