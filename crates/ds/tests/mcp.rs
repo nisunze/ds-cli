@@ -2904,6 +2904,53 @@ fn typed_protocol_smoke_returns_the_cli_envelope() {
 }
 
 #[test]
+fn saved_lv_analysis_read_mcp_preserves_cli_refusal_without_model_effects() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("owner.zip");
+    std::fs::write(&path, b"owner bytes").unwrap();
+    let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
+            "design",
+            "lv",
+            "analysis-read",
+            "--project",
+            "explicit-project",
+            "--transformer",
+            "T1",
+            "--out",
+            path.to_str().unwrap(),
+            "--output",
+            "json",
+        ])
+        .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
+        .env("DS_CONFIG_HOME", temp.path())
+        .output()
+        .unwrap();
+    let expected: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(expected["error"]["code"], "lv_analysis_output_exists");
+    let (responses, _) = mcp_with_env(
+        &["--exposure", "commands"],
+        &[json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{
+                "name":"design_lv_analysis-read", "arguments":{
+                    "project":"explicit-project", "transformer":"T1", "out":path.to_str().unwrap()
+                }
+            }
+        })],
+        &[
+            ("DS_NATIVE_CLIENT_PROFILE_BUNDLE", bundle.as_path()),
+            ("DS_CONFIG_HOME", temp.path()),
+        ],
+    );
+    let result = &response(&responses, 1)["result"];
+    assert_eq!(result["isError"], true);
+    assert_eq!(result["structuredContent"], expected);
+    assert_eq!(std::fs::read(path).unwrap(), b"owner bytes");
+}
+
+#[test]
 fn an_unbounded_or_malformed_call_timeout_is_refused_before_serving() {
     for value in ["0", "86401", "soon"] {
         let output = Command::new(env!("CARGO_BIN_EXE_ds"))

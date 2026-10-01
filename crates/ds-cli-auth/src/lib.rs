@@ -1544,6 +1544,173 @@ pub fn saved_transformer_context_for_project(
     })
 }
 
+/// Exact saved layers and, when present, their server-fenced raw analysis.
+/// Both calls use one restored session; no project selection or second identity
+/// restoration can enter between the snapshot and its analysis read.
+pub struct SavedTransformerAnalysis {
+    pub snapshot: TransformerContext,
+    pub document: Option<Vec<u8>>,
+}
+
+pub fn saved_transformer_analysis_for_project(
+    lane: &str,
+    project: &str,
+    transformer: &str,
+) -> Result<HeadlessProjectReport<SavedTransformerAnalysis>, Failure> {
+    let held = headless_named_report(
+        lane,
+        project,
+        |device, project| {
+            let snapshot = device.transformer_context_saved(project, transformer)?;
+            let pins = match saved_analysis_pins(
+                snapshot.voltage_drop_metadata(),
+                snapshot.metadata().version(),
+                snapshot.metadata().content_digest(),
+            ) {
+                Ok(pins) => pins,
+                Err(error) => return Ok(Err(error)),
+            };
+            let document = pins
+                .map(|(version, digest, sha)| {
+                    device.transformer_analysis(project, transformer, version, &digest, &sha)
+                })
+                .transpose()?;
+            Ok(Ok(SavedTransformerAnalysis { snapshot, document }))
+        },
+        |client, project| {
+            let snapshot = client.transformer_context_saved(project, transformer, now())?;
+            let pins = match saved_analysis_pins(
+                snapshot.voltage_drop_metadata(),
+                snapshot.metadata().version(),
+                snapshot.metadata().content_digest(),
+            ) {
+                Ok(pins) => pins,
+                Err(error) => return Ok(Err(error)),
+            };
+            let document = pins
+                .map(|(version, digest, sha)| {
+                    client.transformer_analysis(project, transformer, version, &digest, &sha, now())
+                })
+                .transpose()?;
+            Ok(Ok(SavedTransformerAnalysis { snapshot, document }))
+        },
+    )?;
+    Ok(HeadlessProjectReport {
+        result: held.result?,
+        identity: held.identity,
+        user_email: held.user_email,
+        lane: held.lane,
+        project_id: held.project_id,
+        project_name: held.project_name,
+        project_status: held.project_status,
+    })
+}
+
+fn saved_analysis_pins(
+    metadata: Option<&Value>,
+    version: Option<u64>,
+    content_digest: Option<&str>,
+) -> Result<Option<(u64, String, String)>, Failure> {
+    let invalid = || {
+        Failure::failed(
+            "auth_response_unreadable",
+            "saved analysis metadata has invalid or oversized snapshot pins",
+        )
+        .remedy("Update ds and report the authoritative saved-analysis receipt; never infer missing pins or truncate its JSON.")
+    };
+    let Some(metadata) = metadata else {
+        return Ok(None);
+    };
+    match metadata["state"].as_str() {
+        Some("stale" | "missing" | "needs_reprocess") => return Ok(None),
+        Some("ready") => {}
+        _ => return Err(invalid()),
+    }
+    let version = version.filter(|v| *v > 0).ok_or_else(invalid)?;
+    let digest = content_digest.ok_or_else(invalid)?;
+    let sha = metadata["analysis_sha256"].as_str().ok_or_else(invalid)?;
+    let is_sha = |s: &str| {
+        s.len() == 64
+            && s.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    };
+    let bytes = metadata["json_bytes"].as_u64().ok_or_else(invalid)?;
+    if metadata["schema"] != "ds.lv-voltage-drop.analysis/v1"
+        || metadata["method"] != "ds-lv-vd/1"
+        || metadata["content_digest"] != digest
+        || !is_sha(digest)
+        || !is_sha(sha)
+        || bytes == 0
+        || bytes > ds_client_core::TRANSFORMER_ANALYSIS_RESPONSE_LIMIT as u64
+    {
+        return Err(invalid());
+    }
+    Ok(Some((version, digest.to_owned(), sha.to_owned())))
+}
+
+#[cfg(test)]
+mod saved_analysis_read_tests {
+    use super::*;
+
+    fn receipt() -> Value {
+        json!({"state":"ready", "schema":"ds.lv-voltage-drop.analysis/v1", "method":"ds-lv-vd/1",
+            "content_digest":"a".repeat(64), "analysis_sha256":"b".repeat(64), "json_bytes":123})
+    }
+
+    #[test]
+    fn saved_analysis_read_requires_the_same_snapshot_and_exact_pins() {
+        let meta = receipt();
+        let pins = saved_analysis_pins(Some(&meta), Some(3), Some(&"a".repeat(64)))
+            .unwrap()
+            .unwrap();
+        assert_eq!(pins, (3, "a".repeat(64), "b".repeat(64)));
+        assert!(saved_analysis_pins(Some(&meta), Some(4), Some(&"c".repeat(64))).is_err());
+        assert!(saved_analysis_pins(Some(&meta), None, Some(&"a".repeat(64))).is_err());
+        assert!(saved_analysis_pins(Some(&meta), Some(0), Some(&"a".repeat(64))).is_err());
+    }
+
+    #[test]
+    fn saved_analysis_read_never_infers_missing_or_stale_results() {
+        assert!(
+            saved_analysis_pins(None, Some(3), Some(&"a".repeat(64)))
+                .unwrap()
+                .is_none()
+        );
+        for state in ["stale", "missing", "needs_reprocess"] {
+            let mut meta = receipt();
+            meta["state"] = json!(state);
+            assert!(
+                saved_analysis_pins(Some(&meta), Some(3), Some(&"a".repeat(64)))
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn saved_analysis_read_refuses_unknown_malformed_and_oversized_receipts() {
+        for (key, value) in [
+            ("state", json!("guessed")),
+            ("schema", json!("old")),
+            ("method", json!("other")),
+            ("analysis_sha256", json!("B".repeat(64))),
+            ("json_bytes", json!(0)),
+            ("json_bytes", json!(-1)),
+            (
+                "json_bytes",
+                json!(ds_client_core::TRANSFORMER_ANALYSIS_RESPONSE_LIMIT + 1),
+            ),
+        ] {
+            let mut meta = receipt();
+            meta[key] = value;
+            assert!(
+                saved_analysis_pins(Some(&meta), Some(3), Some(&"a".repeat(64))).is_err(),
+                "{key}: {meta}"
+            );
+        }
+    }
+}
+
 /// Read the managed tile state of the caller's explicit project. The saved
 /// native selection is never read; there is no URL or action override.
 pub fn tile_list(

@@ -45,6 +45,49 @@ fn discoverable(command: &Value) -> bool {
 }
 
 #[test]
+fn saved_lv_analysis_read_is_discoverable_and_refuses_existing_output_before_auth() {
+    let described = native_ds(&[
+        "capabilities",
+        "design.lv.analysis-read",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(described.code, 0, "{}", described.envelope);
+    let command = &described.envelope["data"]["command"];
+    assert_eq!(command["effect"], "local_file_write");
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["availability"], "available");
+    assert!(
+        command["purpose"]
+            .as_str()
+            .unwrap()
+            .contains("never computes")
+    );
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("owner.zip");
+    std::fs::write(&path, b"owner bytes").unwrap();
+    let refused = native_ds(&[
+        "design",
+        "lv",
+        "analysis-read",
+        "--project",
+        "explicit-project",
+        "--transformer",
+        "T1",
+        "--out",
+        path.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_ne!(refused.code, 0);
+    assert_eq!(
+        refused.envelope["error"]["code"],
+        "lv_analysis_output_exists"
+    );
+    assert_eq!(std::fs::read(path).unwrap(), b"owner bytes");
+}
+
+#[test]
 fn lv_project_run_is_discoverable_and_print_preflight_has_no_project_effect() {
     let described = ds(&["capabilities", "design.lv.project-run", "--output", "json"]);
     assert_eq!(described.code, 0);
