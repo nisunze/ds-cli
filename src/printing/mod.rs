@@ -9,6 +9,8 @@ pub mod held_context;
 pub mod inventory;
 pub mod lifecycle;
 pub mod map;
+pub mod mv;
+pub mod mv_settings;
 pub mod names;
 pub mod network_fit;
 pub mod overrides;
@@ -42,6 +44,9 @@ pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
+    /// MV publication furniture in the existing shared printing library.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mv: Option<Box<mv::Template>>,
     pub schema: String,
     pub id: String,
     pub name: String,
@@ -856,6 +861,9 @@ fn no_stroke_or_bounded(value: f64, low: f64, high: f64) -> bool {
     value == 0. || bounded(value, low, high)
 }
 pub fn validate(layout: &Layout) -> Result<(), String> {
+    if let Some(mv) = &layout.mv {
+        mv::validate_template(layout, mv).map_err(|e| e.to_string())?;
+    }
     if layout.schema == LEGACY_SCHEMA {
         return upgrade(layout.clone()).map(|_| ());
     }
@@ -1376,6 +1384,7 @@ pub fn default_layout() -> Layout {
         opacity: opaque(),
     };
     complete(Layout {
+        mv: None,
         composition: None,
         transformer_bounds: None,
         project_overview: false,
@@ -1715,7 +1724,19 @@ pub enum Command {
     ProjectSettings {
         sheets: serde_json::Value,
         #[serde(default)]
+        project_id: Option<String>,
+        #[serde(default)]
         mode: Option<crate::report_formats::ReadinessMode>,
+    },
+    MvResolve {
+        sheets: Value,
+        project_id: String,
+        #[serde(default)]
+        model_fields: BTreeMap<mv::ModelField, String>,
+    },
+    MvSelectionPatch {
+        current: Vec<Value>,
+        selection: mv::Selection,
     },
     OutputSelection {
         #[serde(default)]
@@ -2128,8 +2149,13 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             element_id,
             phase,
         } => json!({ "layout": table_columns::set_phase(&layout, &element_id, phase)? }),
-        Command::ProjectSettings { sheets, mode } => {
+        Command::ProjectSettings {
+            sheets,
+            mode,
+            project_id,
+        } => {
             let mut result = crate::report_formats::inspect_project_settings(&sheets, mode)?;
+            result["mv"] = mv::inspect(&sheets, project_id.as_deref());
             result["transformer_instructions"] = sheets["project_settings"]
                 .as_array()
                 .and_then(|rows| {
@@ -2139,6 +2165,20 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 .map(|row| row["value"].clone())
                 .unwrap_or_else(|| json!({}));
             result
+        }
+        Command::MvResolve {
+            sheets,
+            project_id,
+            model_fields,
+        } => match mv::resolve(&sheets, &project_id, model_fields) {
+            Ok(resolved) => json!({"resolved":resolved,"refusal":Value::Null}),
+            Err(refusal) => json!({"resolved":Value::Null,"refusal":refusal}),
+        },
+        Command::MvSelectionPatch { current, selection } => {
+            match mv::patch_selection(&current, &selection) {
+                Ok(rows) => json!({"project_settings":rows,"refusal":Value::Null}),
+                Err(refusal) => json!({"project_settings":Value::Null,"refusal":refusal}),
+            }
         }
         Command::OutputSelection {
             selection,

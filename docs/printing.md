@@ -702,3 +702,30 @@ letter titles are reserved before aliases are assigned, so an existing `A` or
 `abbreviated` uses a measured prefix/ellipsis with the same full definition key,
 falling back to a letter when a prefix cannot fit or would be ambiguous. The
 native renderer owns font measurement; UI and CLI author the same closed mode.
+
+## Canonical MV publication inheritance
+
+`Layout.mv` extends this same library document with ordered `layout`,
+`preserved_pdf`, `model_preserved_pdf` and one `plan_profile` geometry slot.
+`printing::mv` owns closed selection/resolve/refusal schemas; `mv_settings`
+owns presentation extracted from the existing reporter, with no geometry or
+engineering dependency. Adopted templates explicitly declare every sheet choice,
+required text, permitted identity/title fields, ordered embedded logos and the
+bundled font. Ordinary LV documents omit `mv` and retain their wire bytes.
+
+One `mv_printing_setup` project parameter pins a project library id/revision,
+simple external publication number and fixed real calendar date. Resolve
+requires exact global copy lineage and exact adopted revision. It never reads
+a global head. A `model_preserved_pdf` binding names each permitted exact
+model identity with its approved asset id/digest. The resolved receipt records
+each chosen preserved page by index; a consumer re-resolves and compares the
+whole receipt, so changing a cover pin, project, issue or scale refuses. Model1
+and Model2 can share the same document and issue while preserving distinct covers
+and a fixed shared naming page. No fallback or inferred document text exists.
+
+ProjectSettings accepts explicit `project_id` for MV inspection. Configured
+documents are never printing readiness: model geometry and exact held PDF
+bytes remain required, and `ready` is false. MvSelectionPatch preserves other
+settings rows. Native persistence adds an exact-base expected-data fence and
+readback; adapters own IO, never layout decisions. Reporter renders the shared
+layout furniture and consumes the resolved ordered page pins before output.

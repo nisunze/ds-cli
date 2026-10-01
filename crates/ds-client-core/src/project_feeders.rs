@@ -9,6 +9,11 @@ pub const MAXIMUM: &str = "max_feeder_cable_size";
 pub enum ProjectConfigurationChange {
     /// Fetch Settings without requiring the unrelated feeder catalog.
     ReadSettings,
+    /// Exact-base fenced selection of the project canonical MV printing setup.
+    MvPrintingSelection {
+        selection: ds_command_kernel::printing::mv::Selection,
+        expected_rows: Vec<Value>,
+    },
     SaveSheet {
         sheet: String,
         value: Value,

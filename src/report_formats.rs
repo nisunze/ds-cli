@@ -1173,6 +1173,9 @@ pub fn selected_plan(
             return Err("Local output selection repeats an output".into());
         }
         if let Some((_, id)) = named_print_output(&output.format) {
+            if layouts.get(id).is_some_and(|layout| layout.mv.is_some()) {
+                return Err(format!("mv_print_requires_model_geometry: {id}: use report plan-profile with same-revision model projections"));
+            }
             if !layouts.contains_key(id) {
                 return Err(format!("Prepare printing setup {id} before selecting it"));
             }
@@ -1246,7 +1249,7 @@ pub fn inspect_project_settings(
             return Ok(
                 serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
             "setting":setting,"ready":false,"issues":[issue],"outputs":[],"papers":[],"refusal":refusal,
-            "voltage_drop_report":voltage_drop_report}),
+            "voltage_drop_report":voltage_drop_report,"mv":crate::printing::mv::inspect(sheets, None)}),
             );
         }
     };
@@ -1258,7 +1261,7 @@ pub fn inspect_project_settings(
     Ok(
         serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
         "setting":setting,"ready":true,"issues":[],"outputs":outputs,"papers":papers,"refusal":Value::Null,
-        "voltage_drop_report":voltage_drop_report}),
+        "voltage_drop_report":voltage_drop_report,"mv":crate::printing::mv::inspect(sheets, None)}),
     )
 }
 
@@ -1307,6 +1310,9 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
         let layouts = named_layouts(sheets)?;
         for format in &selected {
             if let Some((_, id)) = named_print_output(format) {
+                if layouts.get(id).is_some_and(|layout| layout.mv.is_some()) {
+                    return Err(format!("mv_print_requires_model_geometry: {id}: use the canonical project MV setup with report plan-profile; a transformer export cannot supply model geometry"));
+                }
                 if !layouts.contains_key(id) {
                     return Err(format!(
                         "Selected printing setup {id} is not in the sealed project printing inputs"

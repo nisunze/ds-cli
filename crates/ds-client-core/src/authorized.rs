@@ -115,18 +115,61 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
     if let Some((min, max)) = bounds {
         crate::project_feeders::validate(min, max)?;
     }
+    let expected_data = match change {
+        Some(ProjectConfigurationChange::MvPrintingSelection { expected_rows, .. }) => {
+            Some(json!(expected_rows))
+        }
+        _ => None,
+    };
     let mut send = |sheet: &str, settings: Option<&Value>| {
         crate::project_feeders::decode(transport.project_configuration(
             crate::ProjectConfigurationCall {
                 profile,
                 project,
                 settings,
+                expected_data: if settings.is_some() {
+                    expected_data.as_ref()
+                } else {
+                    None
+                },
                 sheet,
                 authority: authority.call(),
             },
         )?)
     };
     let mut document = send("project_settings", None)?;
+    if let Some(ProjectConfigurationChange::MvPrintingSelection {
+        selection,
+        expected_rows,
+    }) = change
+    {
+        if !ds_command_kernel::design_config::settings_equal(
+            &document["sheets"]["project_settings"],
+            &json!(expected_rows),
+        ) {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "mv_print_settings_conflict: reread project settings before selecting an MV setup",
+            ));
+        }
+        let rows = ds_command_kernel::printing::mv::patch_selection(expected_rows, selection)
+            .map_err(|e| ClientError::new(ErrorKind::InvalidInput, e.to_string()))?;
+        send("project_settings", Some(&json!(rows)))?;
+        document = send("project_settings", None)?;
+        if !ds_command_kernel::design_config::settings_equal(
+            &document["sheets"]["project_settings"],
+            &json!(rows),
+        ) {
+            return Err(ClientError::new(
+                ErrorKind::UnreadableResponse,
+                "MV printing selection readback differs from the saved rows",
+            ));
+        }
+        return Ok(crate::FeederConfiguration {
+            document,
+            summary: json!({"project":project,"saved":true}),
+        });
+    }
     let settings_change = match change {
         Some(ProjectConfigurationChange::ReadSettings) => Some(None),
         Some(ProjectConfigurationChange::SaveSheet { sheet, value }) => Some(Some((
