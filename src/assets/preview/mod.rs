@@ -22,7 +22,9 @@ pub mod tabular;
 pub mod text;
 pub mod xlsx;
 
-use super::{check_format_cap, container, format, Format, PreviewDoc, PreviewRequest};
+use super::{
+    check_format_cap, container, format, thousands, Block, Format, PreviewDoc, PreviewRequest,
+};
 
 pub fn preview(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, String> {
     let format = request.format;
@@ -70,10 +72,23 @@ fn decode(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, String> 
         Format::Shp | Format::Kmz | Format::Kml | Format::Gpkg | Format::Geojson => {
             geo::geo(bytes, request)
         }
-        Format::Pdf => Err(
-            "pdf is rendered by pdf.js in the host (decision D8); the kernel recognises and bounds pdf but does not decode it"
-                .into(),
-        ),
+        Format::Pdf => {
+            if !bytes.starts_with(b"%PDF-") {
+                return Err("pdf bytes do not carry a PDF header; the host renderer requires PDF bytes".into());
+            }
+            let mut doc = PreviewDoc::new(format);
+            doc.blocks.push(Block::Meta {
+                entries: vec![
+                    ("mime".into(), "application/pdf".into()),
+                    ("bytes".into(), format!("{} bytes", thousands(bytes.len() as u64))),
+                    ("renderer".into(), "pdf.js".into()),
+                ],
+            });
+            doc.notes.push(
+                "pdf pages are rendered by pdf.js in the host (decision D8); this metadata card does not decode pages".into(),
+            );
+            Ok(doc)
+        }
         Format::Msg => Err(
             "msg is recognised as mail but its decoder is slice 2; open the message externally or import it as eml"
                 .into(),
@@ -123,6 +138,37 @@ mod tests {
         let request = serde_json::to_vec(&request).unwrap();
         evaluate_with_bytes(bytes, &request)
             .map(|text| serde_json::from_str(&text).expect("preview result is JSON"))
+    }
+
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    fn assets_preview_pdf_member_uses_extracted_bytes_and_keeps_its_cap() {
+        let archive = zip_of(&[("documents/contract.pdf", b"%PDF-1.7 tiny")]);
+        let doc = preview(
+            &archive,
+            json!({"format": "pdf", "member": "documents/contract.pdf", "name": "bundle.zip"}),
+        )
+        .unwrap();
+        assert_eq!(doc["format"], "pdf");
+        assert_eq!(
+            doc["blocks"],
+            json!([{"type": "meta", "entries": [
+                ["mime", "application/pdf"], ["bytes", "13 bytes"], ["renderer", "pdf.js"]
+            ]}])
+        );
+
+        let mut oversized = b"%PDF-1.7\n".to_vec();
+        oversized.resize((super::super::MAX_PDF_BYTES + 1) as usize, b' ');
+        let archive = zip_of(&[("documents/contract.pdf", &oversized)]);
+        let error = preview(
+            &archive,
+            json!({"format": "pdf", "member": "documents/contract.pdf"}),
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("33,554,433") && error.contains("32 MiB"),
+            "{error}"
+        );
     }
 
     /// A two-sheet OOXML workbook with inline strings and no shared strings.

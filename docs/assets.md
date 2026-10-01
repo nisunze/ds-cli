@@ -56,6 +56,11 @@ Two host rules the kernel cannot check for them:
 | `extract_member` | `member`, `max_bytes?` (capped at 32 MiB) | `member`, `bytes`, `digest` (`sha256:<hex>`), `bytes_b64` (standard alphabet, padded) |
 | `preview` | `format`, `member?` (a path inside the bytes), `sheet?` (a worksheet name, xlsx only), `pages?` (≤ 5), `rows?` (≤ 200), `name?` | `ds.assets.preview_doc/v1` |
 
+PDF preview checks the signature and existing byte bounds, then returns a
+metadata block with MIME type, byte count and `pdf.js` as the renderer. The
+host holds and renders the bytes; the document contains no PDF content or
+guessed page count.
+
 Every result carries `action`; documents carry their own schema and the
 others carry `ds.assets.request/v1`. Request structs deny unknown fields;
 source rows handed to `tree` are foreign documents and tolerate them.

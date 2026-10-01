@@ -1793,13 +1793,12 @@ mod tests {
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg_attr(not(target_arch = "wasm32"), test)]
-    fn preview_dispatch_refuses_host_owned_and_undecodable_formats_by_name() {
+    fn preview_dispatch_refuses_undecodable_formats_by_name() {
         let refusal = |format: &str| {
             let preview =
                 request(json!({"schema": REQUEST_SCHEMA, "action": "preview", "format": format}));
             evaluate_with_bytes(b"%PDF-1.7 or anything", &preview).unwrap_err()
         };
-        assert!(refusal("pdf").contains("pdf.js"));
         assert!(refusal("msg").contains("slice 2"));
         assert!(refusal("zip").contains("container_walk"));
         assert!(refusal("unknown").contains("metadata card"));
@@ -2219,12 +2218,22 @@ mod tests {
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg_attr(not(target_arch = "wasm32"), test)]
-    fn assets_review_pdf_is_refused_with_the_pdf_js_sentence() {
+    fn assets_preview_pdf_returns_only_metadata_and_pdf_js_handover() {
         let ask = request(json!({"schema": REQUEST_SCHEMA, "action": "preview", "format": "pdf"}));
-        let error = evaluate_with_bytes(b"%PDF-1.7 tiny", &ask).unwrap_err();
+        let mut bytes =
+            b"%PDF-1.7\n/JS(alert('private')) /URI(https://example.invalid/private)\n".to_vec();
+        bytes.resize(1_298_576, b' ');
+        let doc: Value = serde_json::from_str(&evaluate_with_bytes(&bytes, &ask).unwrap()).unwrap();
         assert_eq!(
-            error,
-            "pdf is rendered by pdf.js in the host (decision D8); the kernel recognises and bounds pdf but does not decode it"
+            doc,
+            json!({
+                "schema": PREVIEW_DOC_SCHEMA, "action": "preview", "format": "pdf", "kind": "doc",
+                "bounded": true, "truncated": false,
+                "blocks": [{"type": "meta", "entries": [
+                    ["mime", "application/pdf"], ["bytes", "1,298,576 bytes"], ["renderer", "pdf.js"]
+                ]}],
+                "notes": ["pdf pages are rendered by pdf.js in the host (decision D8); this metadata card does not decode pages"]
+            })
         );
         let recognised: Value = serde_json::from_str(
             &evaluate(&request(json!({
@@ -2238,6 +2247,41 @@ mod tests {
         assert_eq!(recognised["format"], "pdf");
         assert_eq!(recognised["previewable"], true);
         assert!(recognised["reason"].as_str().unwrap().contains("pdf.js"));
+    }
+
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    fn assets_preview_pdf_requires_its_header_even_when_named_pdf() {
+        let ask = request(json!({
+            "schema": REQUEST_SCHEMA, "action": "preview", "format": "pdf", "name": "contract.pdf"
+        }));
+        for bytes in [b"".as_slice(), b"%PDF", b"not a PDF", b"\x89PNG\r\n\x1a\n"] {
+            assert_eq!(
+                evaluate_with_bytes(bytes, &ask).unwrap_err(),
+                "pdf bytes do not carry a PDF header; the host renderer requires PDF bytes"
+            );
+        }
+    }
+
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    fn assets_preview_pdf_handover_keeps_byte_and_page_bounds() {
+        let ask = request(json!({"schema": REQUEST_SCHEMA, "action": "preview", "format": "pdf"}));
+        let mut bytes = b"%PDF-1.7\n".to_vec();
+        bytes.resize(MAX_PDF_BYTES as usize, b' ');
+        assert!(evaluate_with_bytes(&bytes, &ask).is_ok());
+        bytes.push(b' ');
+        assert_eq!(
+            evaluate_with_bytes(&bytes, &ask).unwrap_err(),
+            "preview input is 33,554,433 bytes; the preview input bound is 32 MiB"
+        );
+        let ask = request(json!({
+            "schema": REQUEST_SCHEMA, "action": "preview", "format": "pdf", "pages": 6
+        }));
+        assert_eq!(
+            evaluate_with_bytes(b"%PDF-1.7\n", &ask).unwrap_err(),
+            "preview asks for 6 pages; the eager page bound is 5"
+        );
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
