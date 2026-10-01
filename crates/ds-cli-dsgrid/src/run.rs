@@ -105,6 +105,11 @@ path can check it; its request's max_reported_rejections bounds its rows.",
             note: "Supply the native DefaultAnalysisRequest inside request; copy its revision and engineering root from project_criteria_workbench on this file.",
             runnable: false,
         },
+        Example {
+            command: "ds dsgrid run --model ./model.dsgrid --operation compute_structure_conductor_loads --params ./conductor-loads.json --output json",
+            note: "Read conductor-only attachment and support forces for explicit structures at the pinned model head; upward demand is not anchored capacity or a strength failure.",
+            runnable: false,
+        },
     ],
     refusals: &[
         Refusal {
@@ -174,7 +179,7 @@ path can check it; its request's max_reported_rejections bounds its rows.",
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
-    search: &[],
+    search: &["conductor loads", "attachment forces", "upward demand", "model analysis"],
     requires: Requires::Server,
     availability: available,
 };
@@ -571,6 +576,16 @@ fn dispatch(
                 operation_id,
                 session
                     .analyze_model_defaults(&params.request)
+                    .map_err(|error| typed_engine_error(operation_id, error))?,
+            )
+        }
+        "compute_structure_conductor_loads" => {
+            let params: RequestParams<ds_grid_engine::StructureConductorLoadsRequest> =
+                parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                session
+                    .compute_structure_conductor_loads(&params.request)
                     .map_err(|error| typed_engine_error(operation_id, error))?,
             )
         }
@@ -1025,6 +1040,126 @@ mod tests {
             let detail = error.detail_value().unwrap();
             assert_eq!(detail["refusal"], serde_json::to_value(&native).unwrap());
             assert_eq!(detail["refusal"]["code"], code);
+            assert_eq!(detail["engine"], native.to_string());
+        }
+    }
+
+    #[test]
+    fn focused_conductor_analysis_admits_the_native_request_without_host_basis_defaults() {
+        let operation = "compute_structure_conductor_loads";
+        let descriptor = operation_descriptor(operation).unwrap();
+        admit(&descriptor).expect("non-journaled focused native solve");
+        assert_eq!(descriptor.result_type, "StructureConductorLoadsReport");
+        assert_eq!(descriptor.params.len(), 1);
+        assert_eq!(descriptor.params[0].name, "request");
+        assert_eq!(descriptor.params[0].value_type, "StructureConductorLoadsRequest");
+        assert!(descriptor.params[0].required);
+        let request = json!({
+            "expected_revision": "rev:test",
+            "expected_engineering_input_root": "test-root",
+            "structure_ids": ["str-focus"],
+        });
+        let params = json!({ "request": request });
+        validate_params(&descriptor, &params).unwrap();
+        let parsed: RequestParams<ds_grid_engine::StructureConductorLoadsRequest> =
+            parse(operation, &params).unwrap();
+        let native: ds_grid_engine::StructureConductorLoadsRequest =
+            serde_json::from_value(request.clone()).unwrap();
+        assert_eq!(parsed.request, native, "default limits belong to the native request");
+        validate_params(&descriptor, &request).unwrap_err();
+        validate_params(&descriptor, &json!({ "request": request, "structure_ids": [] }))
+            .unwrap_err();
+        for invalid in [
+            json!({ "expected_revision": "rev:test", "expected_engineering_input_root": "test-root" }),
+            json!({ "expected_revision": "rev:test", "expected_engineering_input_root": "test-root",
+                "structure_ids": ["str-focus"], "weight_span_basis": { "kind": "conventional" } }),
+            json!({ "expected_revision": "rev:test", "expected_engineering_input_root": "test-root",
+                "structure_ids": "str-focus" }),
+        ] {
+            assert_eq!(
+                parse::<RequestParams<ds_grid_engine::StructureConductorLoadsRequest>>(
+                    operation, &json!({ "request": invalid }),
+                ).err().expect("malformed native focus is refused").code(),
+                "params_invalid"
+            );
+        }
+    }
+
+    #[test]
+    fn focused_conductor_dispatch_preserves_native_vectors_and_never_authors() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
+        let package = ds_grid_exchange::unpack(&std::fs::read(path).unwrap()).unwrap();
+        let session = GridSession::open(package.snapshot);
+        let before = session.snapshot().clone();
+        let revision = session.current_revision().clone();
+        let structure_id = before.tension_section_supports[0].structure_id.clone();
+        let request = ds_grid_engine::StructureConductorLoadsRequest {
+            expected_revision: revision.revision_id.clone(),
+            expected_engineering_input_root: revision.roots.engineering_input_root.clone(),
+            structure_ids: vec![structure_id.clone()],
+            max_rows: 1,
+        };
+        let native = session.compute_structure_conductor_loads(&request).unwrap();
+        let report = dispatch(
+            "compute_structure_conductor_loads",
+            &json!({ "request": request }),
+            &session,
+            &EngineeringAttributeEvidence::default(),
+            &StructureLabelPolicy::default(),
+        ).unwrap();
+        assert_eq!(report, serde_json::to_value(&native).unwrap());
+        assert_eq!(report["model_revision"], revision.revision_id.as_str());
+        assert_eq!(report["engineering_input_root"], revision.roots.engineering_input_root);
+        assert_eq!(report["structure_ids"], json!([structure_id.as_str()]));
+        assert!(native.incident_section_count > 0);
+        assert!(native.evaluated_section_count > 0);
+        assert!(native.cases.total_count > 1 && native.cases.truncated);
+        let whole = &native.whole_support_conductor_loads;
+        assert!(whole.complete_case_state_count + whole.incomplete_case_state_count > 0);
+        assert!(whole.loads.rows.iter().all(|load| load.coverage.structure_id == structure_id));
+        assert!(whole.incomplete.rows.iter().all(|load| load.coverage.structure_id == structure_id));
+        assert!(report.get("clearance").is_none() && report.get("structures").is_none());
+        assert_eq!(session.snapshot(), &before);
+        assert_eq!(session.current_revision(), &revision);
+    }
+
+    #[test]
+    fn focused_conductor_dispatch_preserves_exact_native_refusals_and_pin_fields() {
+        let session = GridSession::open(ds_grid_model::GridModelSnapshot::default());
+        let request = json!({
+            "expected_revision": session.current_revision().revision_id,
+            "expected_engineering_input_root": session.current_revision().roots.engineering_input_root,
+            "structure_ids": ["str-missing"],
+            "max_rows": 1,
+        });
+        for (field, value, outer, nested) in [
+            ("expected_revision", json!("rev:stale"), "analysis_unavailable", Some("revision_mismatch")),
+            ("expected_engineering_input_root", json!("stale-root"), "analysis_unavailable", Some("engineering_input_root_mismatch")),
+            ("max_rows", json!(0), "analysis_unavailable", Some("invalid_row_limit")),
+            ("max_rows", json!(10_001), "analysis_unavailable", Some("invalid_row_limit")),
+            ("structure_ids", json!([]), "invalid_structure_selection", None),
+            ("structure_ids", json!(["str-missing", "str-missing"]), "invalid_structure_selection", None),
+            ("structure_ids", json!(["str-missing"]), "structure_not_found", None),
+        ] {
+            let mut request = request.clone();
+            request[field] = value;
+            let native_request = serde_json::from_value(request.clone()).unwrap();
+            let native = session.compute_structure_conductor_loads(&native_request).unwrap_err();
+            let error = dispatch(
+                "compute_structure_conductor_loads",
+                &json!({ "request": request }),
+                &session,
+                &EngineeringAttributeEvidence::default(),
+                &StructureLabelPolicy::default(),
+            ).unwrap_err();
+            assert_eq!(error.code(), "operation_failed");
+            let detail = error.detail_value().unwrap();
+            assert_eq!(detail["refusal"], serde_json::to_value(&native).unwrap());
+            assert_eq!(detail["refusal"]["code"], outer);
+            if let Some(code) = nested {
+                assert_eq!(detail["refusal"]["detail"]["refusal"]["code"], code);
+            }
             assert_eq!(detail["engine"], native.to_string());
         }
     }
