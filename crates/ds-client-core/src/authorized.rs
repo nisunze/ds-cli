@@ -153,7 +153,12 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
             ));
         }
         let rows = ds_command_kernel::printing::mv::patch_selection(expected_rows, selection)
-            .map_err(|e| ClientError::new(ErrorKind::InvalidInput, e.to_string()))?;
+            .map_err(|_| {
+                ClientError::new(
+                    ErrorKind::InvalidInput,
+                    "mv_print_selection_invalid: canonical MV selection or project settings are invalid",
+                )
+            })?;
         send("project_settings", Some(&json!(rows)))?;
         document = send("project_settings", None)?;
         if !ds_command_kernel::design_config::settings_equal(
