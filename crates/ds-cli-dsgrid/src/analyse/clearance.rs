@@ -23,6 +23,11 @@ const OWN: &[Refusal] = &[
         remedy: "run `ds dsgrid criteria clearance set` first",
     },
     Refusal {
+        code: "bound_case_reference_unresolved",
+        when: "a requested clearance binding names an absent analysis case or weather state",
+        remedy: "restore the missing analysis case or weather state, or update the named criterion-set binding through `ds dsgrid apply`",
+    },
+    Refusal {
         code: "feature_codes_without_clearances",
         when: "no feature code in the model carries clearances",
         remedy: "run `ds dsgrid feature-codes import` and `migrate` first",
@@ -196,32 +201,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             criterion_set_id,
             corridor_half_width_m,
         })
-        .map_err(|error| match error {
-            ClearanceReportError::CriterionSet(error) => map_set_error(error),
-            ClearanceReportError::ClearanceCriteriaNotConfigured { criterion_set } => {
-                Failure::invalid(
-                    "clearance_criteria_not_configured",
-                    format!("criterion set {criterion_set} has no survey-point clearance cases"),
-                )
-                .remedy("run `ds dsgrid criteria clearance set --voltage-class MV --vertical-case <label> --horizontal-case <label> --yes` first")
-                .next("ds dsgrid criteria show")
-            }
-            ClearanceReportError::AlignmentNotFound(id) => Failure::invalid(
-                "alignment_not_found",
-                format!("alignment `{id}` is not in the model"),
-            )
-            .remedy("use an alignment id of the model"),
-            ClearanceReportError::AlignmentHasNoRoute(id) => Failure::invalid(
-                "alignment_not_found",
-                format!("alignment `{id}` has no route"),
-            )
-            .remedy("use a routed alignment"),
-            ClearanceReportError::NoFeatureCodeClearances => Failure::invalid(
-                "feature_codes_without_clearances",
-                "no feature code carries clearances",
-            )
-            .remedy("run `ds dsgrid feature-codes import` and `migrate` first"),
-        })?;
+        .map_err(map_error)?;
     let finding_count = report.finding_count;
     let (findings, withheld) = package::take(report.findings.clone(), limit);
     let mut answer = json!({
@@ -264,6 +244,42 @@ fn structure_label(structure: &Value) -> String {
         .or_else(|| structure["structure_id"].as_str())
         .unwrap_or("?")
         .to_string()
+}
+
+pub(crate) fn map_error(error: ClearanceReportError) -> Failure {
+    match error {
+        ClearanceReportError::CriterionSet(error) => map_set_error(error),
+        ClearanceReportError::ClearanceCriteriaNotConfigured { criterion_set } => {
+            Failure::invalid(
+                "clearance_criteria_not_configured",
+                format!("criterion set {criterion_set} has no survey-point clearance cases"),
+            )
+            .remedy("run `ds dsgrid criteria clearance set --voltage-class MV --vertical-case <label> --horizontal-case <label> --yes` first")
+            .next("ds dsgrid criteria show")
+        }
+        error @ ClearanceReportError::BoundCaseReferenceUnresolved { .. } => Failure::invalid(
+            "bound_case_reference_unresolved",
+            error.to_string(),
+        )
+        .remedy("restore the missing analysis case or weather state, or update the named criterion-set binding through `ds dsgrid apply`")
+        .next("ds dsgrid describe --kind operations --id update_criterion_case_binding")
+        .detail(json!({ "refusal": error })),
+        ClearanceReportError::AlignmentNotFound(id) => Failure::invalid(
+            "alignment_not_found",
+            format!("alignment `{id}` is not in the model"),
+        )
+        .remedy("use an alignment id of the model"),
+        ClearanceReportError::AlignmentHasNoRoute(id) => Failure::invalid(
+            "alignment_not_found",
+            format!("alignment `{id}` has no route"),
+        )
+        .remedy("use a routed alignment"),
+        ClearanceReportError::NoFeatureCodeClearances => Failure::invalid(
+            "feature_codes_without_clearances",
+            "no feature code carries clearances",
+        )
+        .remedy("run `ds dsgrid feature-codes import` and `migrate` first"),
+    }
 }
 
 pub fn render(data: &Value) -> String {

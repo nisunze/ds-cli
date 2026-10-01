@@ -58,7 +58,8 @@ Opens one verified .dsgrid package and executes an operation published by the \
 native engine's live descriptor catalogue. Only non-journaled read, solve and \
 propose operations are admitted. The source file is never changed, no command \
 enters the model journal, and the typed result is recursively bounded with \
-explicit truncation receipts.",
+explicit truncation receipts. Profile index requests use the default native \
+atlas; copy its revision and axis pin from project_profile_atlas with default options.",
     chapter: Chapter::GridModel,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -179,7 +180,12 @@ path can check it; its request's max_reported_rejections bounds its rows.",
         },
     ],
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["conductor loads", "attachment forces", "upward demand", "model analysis"],
+    search: &[
+        "conductor loads",
+        "attachment forces",
+        "upward demand",
+        "model analysis",
+    ],
     requires: Requires::Server,
     availability: available,
 };
@@ -556,6 +562,19 @@ fn dispatch(
                     .map_err(|error| engine_error(operation_id, error))?,
             )
         }
+        "screen_selected_structure_usage" => {
+            let params: RequestParams<ds_grid_engine::SelectedStructureUsageRequest> =
+                parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                ds_grid_engine::selected_structure_usage_screening(
+                    session.snapshot(),
+                    &session.current_revision().revision_id,
+                    &params.request,
+                )
+                .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
         "calculate_stringing_and_structures" => {
             let params: RequestParams<NetworkCalculationRequest> = parse(operation_id, params)?;
             serialize(
@@ -627,7 +646,7 @@ fn dispatch(
                 operation_id,
                 session
                     .clearance_report(&options)
-                    .map_err(|error| engine_error(operation_id, error))?,
+                    .map_err(|error| typed_engine_error(operation_id, error))?,
             )
         }
         "engineering_issue_layer" => {
@@ -637,6 +656,33 @@ fn dispatch(
                 operation_id,
                 session
                     .engineering_issue_layer(&params.request)
+                    .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
+        "profile_geometry_create_plan" => {
+            let params: RequestParams<
+                ds_grid_engine::profile_geometry_create::ProfileGeometryCreateRequest,
+            > = parse(operation_id, params)?;
+            let index = native_profile_index(operation_id, session)?;
+            serialize(
+                operation_id,
+                ds_grid_engine::profile_geometry_create::plan_profile_geometry_create(
+                    session.snapshot(),
+                    &session.current_revision().revision_id,
+                    &index,
+                    &params.request,
+                )
+                .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
+        "profile_selection_lasso" => {
+            let params: RequestParams<ds_grid_engine::profile_lasso::ProfileSelectionLassoRequest> =
+                parse(operation_id, params)?;
+            let index = native_profile_index(operation_id, session)?;
+            serialize(
+                operation_id,
+                index
+                    .selection_lasso(&params.request)
                     .map_err(|error| engine_error(operation_id, error))?,
             )
         }
@@ -797,6 +843,18 @@ fn dispatch(
     }
 }
 
+fn native_profile_index(
+    operation_id: &str,
+    session: &GridSession,
+) -> Result<ds_grid_engine::profile_hit::ProfilePickIndex, Failure> {
+    let scene = session
+        .profile_atlas_scene(ProfileAtlasOptions::default())
+        .map_err(|error| engine_error(operation_id, error))?;
+    Ok(ds_grid_engine::profile_hit::ProfilePickIndex::from_scene(
+        &scene,
+    ))
+}
+
 fn serialize<T: serde::Serialize>(operation_id: &str, value: T) -> Result<Value, Failure> {
     serde_json::to_value(value).map_err(|error| {
         Failure::failed(
@@ -918,6 +976,117 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clearance_bound_case_refusals_preserve_native_identity_and_model_revision() {
+        use ds_grid_engine::{ClearanceCase, ClearanceReportOptions};
+        use ds_grid_model::{
+            AnalysisCaseId, AnalysisCaseRow, CableCondition, CaseBindingRole,
+            CriterionCaseBindingId, CriterionCaseBindingRow, CriterionSetId, CriterionSetRow,
+            GridModelSnapshot, SolverCapability, WeatherStateId, WindDirectionPolicy,
+        };
+
+        for (role, case, binding_role) in [
+            (
+                "vertical",
+                ClearanceCase::Vertical,
+                CaseBindingRole::SurveyPointVerticalClearance,
+            ),
+            (
+                "horizontal",
+                ClearanceCase::Horizontal,
+                CaseBindingRole::SurveyPointHorizontalClearance,
+            ),
+        ] {
+            for missing_weather in [false, true] {
+                let set_id = CriterionSetId::new("set-clearance").unwrap();
+                let case_id = AnalysisCaseId::new(format!("case-{role}-missing")).unwrap();
+                let mut snapshot = GridModelSnapshot::default();
+                snapshot.criterion_sets.push(CriterionSetRow {
+                    id: set_id.clone(),
+                    label: "Clearance".to_string(),
+                });
+                snapshot
+                    .criterion_case_bindings
+                    .push(CriterionCaseBindingRow {
+                        id: CriterionCaseBindingId::new("binding-clearance").unwrap(),
+                        set_id,
+                        role: binding_role,
+                        slot_ordinal: None,
+                        analysis_case_id: case_id.clone(),
+                    });
+                if missing_weather {
+                    snapshot.analysis_cases.push(AnalysisCaseRow {
+                        id: case_id.clone(),
+                        label: "Missing weather".to_string(),
+                        weather_state_id: WeatherStateId::new("weather-missing").unwrap(),
+                        condition: CableCondition::AfterCreep,
+                        wind_direction: WindDirectionPolicy::TransverseBothSigns,
+                        wire_load_factor: 1.0,
+                        structure_load_factor: None,
+                        solver: SolverCapability::RulingSpanCableState,
+                    });
+                }
+                let session = GridSession::open(snapshot);
+                let before = session.snapshot().clone();
+                let revision = session.current_revision().clone();
+                let options = ClearanceReportOptions {
+                    case,
+                    ..Default::default()
+                };
+                let native = session.clearance_report(&options).unwrap_err();
+                let expected = json!({
+                    "code": "bound_case_reference_unresolved",
+                    "detail": {
+                        "criterion_set": "set-clearance",
+                        "role": role,
+                        "analysis_case_id": case_id.as_str(),
+                        "reason": if missing_weather {
+                            "weather state weather-missing is not in the model"
+                        } else {
+                            "analysis case is not in the model"
+                        },
+                    },
+                });
+                assert_eq!(serde_json::to_value(&native).unwrap(), expected);
+                let direct = crate::analyse::clearance::map_error(native.clone());
+                assert_eq!(direct.code(), "bound_case_reference_unresolved");
+                assert_eq!(
+                    direct.class(),
+                    ds_cli_contract::outcome::ExitClass::InvalidInput
+                );
+                assert_eq!(direct.message(), native.to_string());
+                assert_eq!(direct.detail_value().unwrap()["refusal"], expected);
+                let declared = crate::analyse::clearance::COMMAND
+                    .refusals
+                    .iter()
+                    .find(|refusal| refusal.code == direct.code())
+                    .unwrap();
+                assert_eq!(direct.remedy_text(), Some(declared.remedy));
+
+                let error = dispatch(
+                    "clearance_report",
+                    &serde_json::to_value(&options).unwrap(),
+                    &session,
+                    &EngineeringAttributeEvidence::default(),
+                    &StructureLabelPolicy::default(),
+                )
+                .unwrap_err();
+                assert_eq!(error.code(), "operation_failed");
+                assert_eq!(error.class(), ds_cli_contract::outcome::ExitClass::Failed);
+                assert!(
+                    COMMAND
+                        .refusals
+                        .iter()
+                        .any(|refusal| refusal.code == error.code())
+                );
+                assert_eq!(error.detail_value().unwrap()["refusal"], expected);
+                assert_eq!(error.detail_value().unwrap()["engine"], native.to_string());
+                assert_eq!(session.snapshot(), &before);
+                assert_eq!(session.current_revision(), &revision);
+            }
+        }
+    }
 
     #[test]
     fn default_analysis_admits_only_the_native_request_shape() {
@@ -1052,7 +1221,10 @@ mod tests {
         assert_eq!(descriptor.result_type, "StructureConductorLoadsReport");
         assert_eq!(descriptor.params.len(), 1);
         assert_eq!(descriptor.params[0].name, "request");
-        assert_eq!(descriptor.params[0].value_type, "StructureConductorLoadsRequest");
+        assert_eq!(
+            descriptor.params[0].value_type,
+            "StructureConductorLoadsRequest"
+        );
         assert!(descriptor.params[0].required);
         let request = json!({
             "expected_revision": "rev:test",
@@ -1065,10 +1237,16 @@ mod tests {
             parse(operation, &params).unwrap();
         let native: ds_grid_engine::StructureConductorLoadsRequest =
             serde_json::from_value(request.clone()).unwrap();
-        assert_eq!(parsed.request, native, "default limits belong to the native request");
+        assert_eq!(
+            parsed.request, native,
+            "default limits belong to the native request"
+        );
         validate_params(&descriptor, &request).unwrap_err();
-        validate_params(&descriptor, &json!({ "request": request, "structure_ids": [] }))
-            .unwrap_err();
+        validate_params(
+            &descriptor,
+            &json!({ "request": request, "structure_ids": [] }),
+        )
+        .unwrap_err();
         for invalid in [
             json!({ "expected_revision": "rev:test", "expected_engineering_input_root": "test-root" }),
             json!({ "expected_revision": "rev:test", "expected_engineering_input_root": "test-root",
@@ -1078,8 +1256,12 @@ mod tests {
         ] {
             assert_eq!(
                 parse::<RequestParams<ds_grid_engine::StructureConductorLoadsRequest>>(
-                    operation, &json!({ "request": invalid }),
-                ).err().expect("malformed native focus is refused").code(),
+                    operation,
+                    &json!({ "request": invalid }),
+                )
+                .err()
+                .expect("malformed native focus is refused")
+                .code(),
                 "params_invalid"
             );
         }
@@ -1107,18 +1289,34 @@ mod tests {
             &session,
             &EngineeringAttributeEvidence::default(),
             &StructureLabelPolicy::default(),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(report, serde_json::to_value(&native).unwrap());
         assert_eq!(report["model_revision"], revision.revision_id.as_str());
-        assert_eq!(report["engineering_input_root"], revision.roots.engineering_input_root);
+        assert_eq!(
+            report["engineering_input_root"],
+            revision.roots.engineering_input_root
+        );
         assert_eq!(report["structure_ids"], json!([structure_id.as_str()]));
         assert!(native.incident_section_count > 0);
         assert!(native.evaluated_section_count > 0);
         assert!(native.cases.total_count > 1 && native.cases.truncated);
         let whole = &native.whole_support_conductor_loads;
         assert!(whole.complete_case_state_count + whole.incomplete_case_state_count > 0);
-        assert!(whole.loads.rows.iter().all(|load| load.coverage.structure_id == structure_id));
-        assert!(whole.incomplete.rows.iter().all(|load| load.coverage.structure_id == structure_id));
+        assert!(
+            whole
+                .loads
+                .rows
+                .iter()
+                .all(|load| load.coverage.structure_id == structure_id)
+        );
+        assert!(
+            whole
+                .incomplete
+                .rows
+                .iter()
+                .all(|load| load.coverage.structure_id == structure_id)
+        );
         assert!(report.get("clearance").is_none() && report.get("structures").is_none());
         assert_eq!(session.snapshot(), &before);
         assert_eq!(session.current_revision(), &revision);
@@ -1134,25 +1332,63 @@ mod tests {
             "max_rows": 1,
         });
         for (field, value, outer, nested) in [
-            ("expected_revision", json!("rev:stale"), "analysis_unavailable", Some("revision_mismatch")),
-            ("expected_engineering_input_root", json!("stale-root"), "analysis_unavailable", Some("engineering_input_root_mismatch")),
-            ("max_rows", json!(0), "analysis_unavailable", Some("invalid_row_limit")),
-            ("max_rows", json!(10_001), "analysis_unavailable", Some("invalid_row_limit")),
-            ("structure_ids", json!([]), "invalid_structure_selection", None),
-            ("structure_ids", json!(["str-missing", "str-missing"]), "invalid_structure_selection", None),
-            ("structure_ids", json!(["str-missing"]), "structure_not_found", None),
+            (
+                "expected_revision",
+                json!("rev:stale"),
+                "analysis_unavailable",
+                Some("revision_mismatch"),
+            ),
+            (
+                "expected_engineering_input_root",
+                json!("stale-root"),
+                "analysis_unavailable",
+                Some("engineering_input_root_mismatch"),
+            ),
+            (
+                "max_rows",
+                json!(0),
+                "analysis_unavailable",
+                Some("invalid_row_limit"),
+            ),
+            (
+                "max_rows",
+                json!(10_001),
+                "analysis_unavailable",
+                Some("invalid_row_limit"),
+            ),
+            (
+                "structure_ids",
+                json!([]),
+                "invalid_structure_selection",
+                None,
+            ),
+            (
+                "structure_ids",
+                json!(["str-missing", "str-missing"]),
+                "invalid_structure_selection",
+                None,
+            ),
+            (
+                "structure_ids",
+                json!(["str-missing"]),
+                "structure_not_found",
+                None,
+            ),
         ] {
             let mut request = request.clone();
             request[field] = value;
             let native_request = serde_json::from_value(request.clone()).unwrap();
-            let native = session.compute_structure_conductor_loads(&native_request).unwrap_err();
+            let native = session
+                .compute_structure_conductor_loads(&native_request)
+                .unwrap_err();
             let error = dispatch(
                 "compute_structure_conductor_loads",
                 &json!({ "request": request }),
                 &session,
                 &EngineeringAttributeEvidence::default(),
                 &StructureLabelPolicy::default(),
-            ).unwrap_err();
+            )
+            .unwrap_err();
             assert_eq!(error.code(), "operation_failed");
             let detail = error.detail_value().unwrap();
             assert_eq!(detail["refusal"], serde_json::to_value(&native).unwrap());
@@ -1207,6 +1443,204 @@ mod tests {
         let parsed: WholeModelSpottingParams =
             parse("plan_whole_model_spotting", &all).expect("omitted IDs");
         assert!(parsed.alignment_ids.is_none());
+    }
+
+    #[test]
+    fn selected_structure_usage_dispatch_preserves_native_basis_and_revision_fence() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
+        let mut snapshot = ds_grid_exchange::unpack(&std::fs::read(path).unwrap())
+            .unwrap()
+            .snapshot;
+        for section in &mut snapshot.tension_sections {
+            section.criterion_set_id = None;
+        }
+        let session = GridSession::open(snapshot);
+        let before = session.snapshot().clone();
+        let revision = session.current_revision().clone();
+        let mut request = ds_grid_engine::SelectedStructureUsageRequest {
+            structure_id: session.snapshot().structures[0].id.clone(),
+            expected_revision: revision.revision_id.clone(),
+        };
+        let operation = "screen_selected_structure_usage";
+        let descriptor = operation_descriptor(operation).unwrap();
+        admit(&descriptor).unwrap();
+        let params = json!({ "request": request });
+        validate_params(&descriptor, &params).unwrap();
+        let native = ds_grid_engine::selected_structure_usage_screening(
+            session.snapshot(),
+            &revision.revision_id,
+            &request,
+        )
+        .unwrap();
+        assert_eq!(
+            native.unavailable.as_ref().unwrap().code,
+            ds_grid_engine::SelectedStructureUsageUnavailableCode::NoCriterionSet
+        );
+        assert!(native.row.is_none());
+        let report = dispatch(
+            operation,
+            &params,
+            &session,
+            &EngineeringAttributeEvidence::default(),
+            &StructureLabelPolicy::default(),
+        )
+        .unwrap();
+        assert_eq!(report, serde_json::to_value(&native).unwrap());
+        assert_eq!(report["structure_id"], request.structure_id.as_str());
+        assert_eq!(report["model_revision"], revision.revision_id.as_str());
+
+        request.expected_revision = ds_grid_engine::RevisionId::from_content_root("stale");
+        let native = ds_grid_engine::selected_structure_usage_screening(
+            session.snapshot(),
+            &revision.revision_id,
+            &request,
+        )
+        .unwrap_err();
+        let error = dispatch(
+            operation,
+            &json!({ "request": request }),
+            &session,
+            &EngineeringAttributeEvidence::default(),
+            &StructureLabelPolicy::default(),
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "operation_failed");
+        assert_eq!(error.detail_value().unwrap()["engine"], native.to_string());
+        assert_eq!(session.snapshot(), &before);
+        assert_eq!(session.current_revision(), &revision);
+    }
+
+    #[test]
+    fn profile_index_dispatch_matches_native_selection_and_creation_without_authoring() {
+        use ds_grid_engine::profile_geometry_create::{
+            ProfileGeometryCreateOperation, ProfileGeometryCreateRequest,
+            plan_profile_geometry_create,
+        };
+        use ds_grid_engine::profile_hit::{ProfilePickIndex, ProfilePickKind};
+        use ds_grid_engine::profile_lasso::{
+            ProfileLassoMode, ProfileLassoPoint, ProfileSelectionLassoRequest,
+        };
+
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
+        let snapshot = ds_grid_exchange::unpack(&std::fs::read(path).unwrap())
+            .unwrap()
+            .snapshot;
+        let session = GridSession::open(snapshot);
+        let before = session.snapshot().clone();
+        let revision = session.current_revision().clone();
+        let scene = session
+            .profile_atlas_scene(ProfileAtlasOptions::default())
+            .unwrap();
+        let index = ProfilePickIndex::from_scene(&scene);
+        let point = |x, y| ProfileLassoPoint {
+            scene_x: x,
+            scene_y: y,
+        };
+        let bounds = scene.bounds;
+        let mut selection = ProfileSelectionLassoRequest {
+            model_revision: revision.revision_id.clone(),
+            axis_pin_digest: scene.axis_pin.digest.clone(),
+            polygon: vec![
+                point(bounds.min_x - 1.0, bounds.min_y - 1.0),
+                point(bounds.max_x + 1.0, bounds.min_y - 1.0),
+                point(bounds.max_x + 1.0, bounds.max_y + 1.0),
+                point(bounds.min_x - 1.0, bounds.max_y + 1.0),
+            ],
+            mode: ProfileLassoMode::Intersects,
+            families: vec![ProfilePickKind::Structure],
+            candidate_ids: None,
+        };
+        let native = index.selection_lasso(&selection).unwrap();
+        assert!(native.selected_count > 0);
+        let ground = scene
+            .bands
+            .iter()
+            .flat_map(|band| &band.ground)
+            .flat_map(|ground| ground.points.windows(2))
+            .next()
+            .expect("native ground segment");
+        let mut creation = ProfileGeometryCreateRequest {
+            model_revision: revision.revision_id.clone(),
+            axis_pin_digest: scene.axis_pin.digest.clone(),
+            scene_x: (ground[0].scene_x + ground[1].scene_x) / 2.0,
+            scene_y: (ground[0].scene_y + ground[1].scene_y) / 2.0,
+            tolerance_scene_units: 0.001,
+            operation: ProfileGeometryCreateOperation::GroundPoint {
+                id: ds_grid_model::TerrainPointId::new("tp-proposed").unwrap(),
+                feature_class: "GP".to_string(),
+            },
+        };
+        let proposal = plan_profile_geometry_create(
+            session.snapshot(),
+            &revision.revision_id,
+            &index,
+            &creation,
+        )
+        .unwrap();
+        assert!(proposal.command.is_some());
+        for (operation, params, expected) in [
+            (
+                "profile_selection_lasso",
+                json!({ "request": selection }),
+                serde_json::to_value(&native).unwrap(),
+            ),
+            (
+                "profile_geometry_create_plan",
+                json!({ "request": creation }),
+                serde_json::to_value(&proposal).unwrap(),
+            ),
+        ] {
+            let descriptor = operation_descriptor(operation).unwrap();
+            admit(&descriptor).unwrap();
+            validate_params(&descriptor, &params).unwrap();
+            let report = dispatch(
+                operation,
+                &params,
+                &session,
+                &EngineeringAttributeEvidence::default(),
+                &StructureLabelPolicy::default(),
+            )
+            .unwrap();
+            assert_eq!(report, expected);
+            assert_eq!(report["model_revision"], revision.revision_id.as_str());
+            assert_eq!(report["axis_pin_digest"], scene.axis_pin.digest);
+        }
+        selection.axis_pin_digest = "stale-axis".to_string();
+        creation.axis_pin_digest = "stale-axis".to_string();
+        for (operation, params, native) in [
+            (
+                "profile_selection_lasso",
+                json!({ "request": selection }),
+                index.selection_lasso(&selection).unwrap_err().to_string(),
+            ),
+            (
+                "profile_geometry_create_plan",
+                json!({ "request": creation }),
+                plan_profile_geometry_create(
+                    session.snapshot(),
+                    &revision.revision_id,
+                    &index,
+                    &creation,
+                )
+                .unwrap_err()
+                .to_string(),
+            ),
+        ] {
+            let error = dispatch(
+                operation,
+                &params,
+                &session,
+                &EngineeringAttributeEvidence::default(),
+                &StructureLabelPolicy::default(),
+            )
+            .unwrap_err();
+            assert_eq!(error.code(), "operation_failed");
+            assert_eq!(error.detail_value().unwrap()["engine"], native);
+        }
+        assert_eq!(session.snapshot(), &before);
+        assert_eq!(session.current_revision(), &revision);
     }
 
     #[test]
@@ -1286,9 +1720,15 @@ mod tests {
         .expect("native Profile sheet");
         assert_eq!(sheet["kind"], "terrain_point");
         assert_eq!(sheet["edit_layer"], "terrain");
-        assert_eq!(sheet["groups"][0]["fields"][1]["value"], 103.5);
+        let elevation = sheet["flat_fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|field| field["id"] == "z_m")
+            .expect("native elevation field");
+        assert_eq!(elevation["value"], 103.5);
         assert_eq!(
-            sheet["groups"][0]["fields"][1]["editor"]["command_kind"],
+            elevation["editor"]["command_kind"],
             "edit_profile_properties"
         );
     }
