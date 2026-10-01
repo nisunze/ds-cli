@@ -61,6 +61,55 @@ metadata block with MIME type, byte count and `pdf.js` as the renderer. The
 host holds and renders the bytes; the document contains no PDF content or
 guessed page count.
 
+### Native embedded PDF text host
+
+`crates/ds-assets-pdf-host` is a separate native host, outside the portable
+workspace and WASM artifact. `extract(bytes, PageRange { first, last })`
+accepts governed bytes, never a path, URL, credential, executable, password,
+environment or argv. CLI signed-read authorization and digest verification
+remain unchanged. Default metadata preview and PDF.js rendering remain unchanged.
+
+The opt-in returns `ds.assets.pdf_text/v1`, with actual `total_pages`, inclusive
+`first_page`/`last_page`, and `pages: [{page,text,text_bytes}]`. Page numbers
+are 1-based; no partial range is returned. `total_text_bytes` counts UTF-8
+text bytes; `truncated` is always false on success. The CLI adds exact asset
+identity, source digest and source byte count. Empty text establishes only
+that the page has no extractable embedded text. No OCR, remote references,
+annotations, external content or visual layout reconstruction are processed.
+
+Linux admits only `/usr/bin/prlimit`, `/usr/bin/pdfinfo` and
+`/usr/bin/pdftotext`, installed by `util-linux` and `poppler-utils`. The host
+uses a private temporary directory and a 0600 fixed input filename, removes
+them after success or refusal, clears the inherited environment, and supplies
+fixed locale/private HOME/TMPDIR. There is no shell, PATH lookup or fallback
+decoder. Other hosts/missing helpers refuse `pdf_text_unavailable`.
+
+| Resource | Hard bound |
+|---|---|
+| Governed input | 32 MiB and PDF signature |
+| Actual document pages | 10000 |
+| Requested inclusive range | 1–5 actual pages |
+| Decoder address space / CPU | 256 MiB / 5 seconds per subprocess, enforced by prlimit before exec |
+| Decoder operation deadline | 8 seconds shared by metadata and all selected pages |
+| Extracted UTF-8 text | 64 KiB per page (including decoder framing), 256 KiB total |
+| Metadata / diagnostics | 32 KiB / 16 KiB |
+| Decoder file size / descriptors / core | 256 KiB / 32 / disabled |
+
+The private closed decoder choice builds fixed arguments: metadata inspection,
+or text extraction for one validated numeric page. Pipe readers stop at their
+bounds, the host kills and reaps a timed-out/over-output child, and returns a
+refusal rather than truncated text. Poppler warnings/nonzero exits refuse
+malformed or unsupported content; diagnostics and private paths are not exposed.
+Encrypted PDFs, including password-free encrypted documents, are refused.
+Invalid UTF-8 or replacement characters refuse unsupported text.
+
+Process separation is intentional: the existing Rust reader's stream limits
+do not bound cumulative object allocation or CMap range expansion and its
+font fallback may silently guess characters. Poppler runs under OS limits;
+no reader/parser or process dependency enters the portable kernel. Dependency
+installation belongs to the operator; there is no automatic install or remote
+build. The CLI's process-boundary gate explicitly admits this one native owner.
+
 Every result carries `action`; documents carry their own schema and the
 others carry `ds.assets.request/v1`. Request structs deny unknown fields;
 source rows handed to `tree` are foreign documents and tolerate them.

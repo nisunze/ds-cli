@@ -31,6 +31,7 @@ manifests=(
 	"crates/ds-layer-store/Cargo.toml"
 	"crates/ds-project-data/Cargo.toml"
 	"crates/ds-report-host/Cargo.toml"
+	"crates/ds-assets-pdf-host/Cargo.toml"
 	"crates/ds-sync-runtime/Cargo.toml"
 	"crates/ds-tile-runtime/Cargo.toml"
 )
