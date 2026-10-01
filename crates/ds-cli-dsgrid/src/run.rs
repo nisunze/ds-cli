@@ -839,7 +839,7 @@ fn bound_result(mut result: Value, limit: usize) -> (Value, Vec<Value>) {
     (result, truncated)
 }
 
-fn bound_value(value: &mut Value, path: &str, limit: usize, truncated: &mut Vec<Value>) {
+pub(crate) fn bound_value(value: &mut Value, path: &str, limit: usize, truncated: &mut Vec<Value>) {
     match value {
         // A spotting plan's digest covers its whole content, diagnostic
         // `rejected.rows` and provisional `blocked_by` included: one shortened

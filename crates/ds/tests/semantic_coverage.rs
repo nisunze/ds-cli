@@ -630,6 +630,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid-exchange.sync", "local_file_write", "none"),
     // Already-shipping local model and PLS reads also need explicit pins.
     ("dsgrid.apply", "local_file_write", "none"),
+    ("dsgrid.reconcile-cable-source", "local_file_write", "none"),
     ("dsgrid.apply-batch", "local_file_write", "none"),
     ("dsgrid.apply-correction", "local_file_write", "none"),
     ("dsgrid.create", "local_file_write", "none"),

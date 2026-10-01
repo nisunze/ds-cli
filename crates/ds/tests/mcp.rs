@@ -1759,7 +1759,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // engine identity remains beside export so a delivery can name
             // the binary that produced it. The deprecated `combined` ZIP
             // alias is kept out of this profile.
-            "grid" => 32,
+            // One retained-source cable reconciliation leaf.
+            "grid" => 33,
             // Seventeen working-copy leaves plus bootstrap: the four
             // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
             // admin-refresh`, `dsgrid profile labels set|show`) were routed
@@ -1784,7 +1785,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Sixteen file-in/file-out leaves plus bootstrap. Native backup
             // preview belongs before import and restore in this workflow;
             // the installed canary already advertises all eighteen tools.
-            "grid-native" => 18,
+            // One retained-source cable reconciliation leaf.
+            "grid-native" => 19,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
@@ -1893,6 +1895,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "dsgrid_describe",
         "dsgrid_run",
         "dsgrid_apply",
+        "dsgrid_reconcile-cable-source",
         "dsgrid-exchange_inspect",
         "dsgrid-exchange_plan",
         "dsgrid-exchange_convert",

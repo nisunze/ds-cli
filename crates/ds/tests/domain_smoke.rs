@@ -16980,3 +16980,6 @@ fn exports_and_version_markers_refuse_malformed_requests_before_authentication()
     );
     std::fs::remove_dir_all(&root).ok();
 }
+
+#[path = "smoke/cable_source_reconcile.rs"]
+mod cable_source_reconcile;

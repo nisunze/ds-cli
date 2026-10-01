@@ -287,7 +287,8 @@ impl Profile {
             // installed canary already publishes this exact 32-tool set:
             // report.engine is the reporter identity needed to prove a
             // local export, while the new deprecated ZIP alias is excluded.
-            Self::Grid => 32,
+            // Exact retained-source cable reconciliation adds one file-authoring leaf.
+            Self::Grid => 33,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -382,7 +383,8 @@ impl Profile {
             // bootstrap tools. `dsgrid replace-structure` belongs beside
             // `import-structure`; `dsgrid.backup.preview` inspects the native
             // package before the same file workflow imports or restores it.
-            Self::GridNative => 18,
+            // Exact retained-source cable reconciliation adds one native package leaf.
+            Self::GridNative => 19,
             _ => 16,
         }
     }

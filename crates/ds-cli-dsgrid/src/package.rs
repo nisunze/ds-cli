@@ -6,6 +6,7 @@
 //! identical. A caller who learns `model_not_found` from `ds dsgrid inspect`
 //! must get the same code, with the same remedy, from `ds dsgrid validate`.
 
+use std::io::Read;
 use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
@@ -69,11 +70,22 @@ pub fn read_bytes(raw_path: &str) -> Result<Vec<u8>, Failure> {
         .detail(json!({ "byte_len": metadata.len(), "max_byte_len": MAX_PACKAGE_BYTES })));
     }
 
-    std::fs::read(path).map_err(|error| {
-        Failure::failed("model_unreadable", format!("cannot read `{raw_path}`"))
-            .remedy("check file permissions")
-            .detail(json!({ "detail": error.kind().to_string() }))
-    })
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| file.take(MAX_PACKAGE_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(|error| {
+            Failure::failed("model_unreadable", format!("cannot read `{raw_path}`"))
+                .remedy("check file permissions")
+                .detail(json!({ "detail": error.kind().to_string() }))
+        })?;
+    if bytes.len() as u64 > MAX_PACKAGE_BYTES {
+        return Err(
+            Failure::invalid("model_too_large", "the source grew above the read bound")
+                .remedy("use a bounded .dsgrid package")
+                .detail(json!({ "max_byte_len": MAX_PACKAGE_BYTES })),
+        );
+    }
+    Ok(bytes)
 }
 
 /// The cheap read: the package manifest, with no Arrow table decoded.

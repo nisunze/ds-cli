@@ -52,6 +52,7 @@ pub mod package;
 pub mod preview_receipt;
 pub mod profile;
 pub mod project;
+pub mod reconcile_cable_source;
 pub mod replace_structure;
 pub mod report;
 pub mod run;
@@ -99,6 +100,7 @@ pub static DOMAIN: Domain = Domain {
         &run::COMMAND,
         &preview_receipt::COMMAND,
         &apply::COMMAND,
+        &reconcile_cable_source::COMMAND,
         &apply_batch::COMMAND,
         &apply_batch::CORRECTION,
         &profile::labels::SHOW,
