@@ -655,8 +655,26 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 )?,
                 _ => Value::Null,
             };
+            // Deliberate LV/MV version markers are independent of legacy
+            // content revision groups. Both reads retain this exact authority.
+            let named = crate::design_versions::run(
+                profile,
+                transport,
+                authority,
+                project,
+                &crate::design_versions::Command::Object {
+                    kind: "mv_model".into(),
+                    command: Box::new(crate::design_versions::Command::Status {
+                        transformer: model.clone(),
+                    }),
+                },
+            )?;
+            let management = ds_command_kernel::grid_model_management::project(
+                &json!({"project":project,"model":model,"head":row,"named_head":named["head"]}),
+            )
+            .map_err(|_| bad())?;
             return Ok(Receipt {
-                data: json!({"project":project,"model":head_projection(row),"current_version":current}),
+                data: json!({"project":project,"model":head_projection(row),"current_version":current,"management":management}),
                 bytes: None,
             });
         }

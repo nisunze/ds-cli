@@ -438,16 +438,25 @@ pub fn authority_command(input: &[u8]) -> Result<Value, String> {
                 let key = request["idempotency_key"]
                     .as_str()
                     .ok_or("missing idempotency key")?;
+                let milestone = request
+                    .get("milestone")
+                    .filter(|v| !v.is_null())
+                    .map(|v| v.as_str().map(str::to_owned).ok_or("invalid milestone"))
+                    .transpose()?;
                 Command::Begin {
                     transformer: id.into(),
                     create: Create {
                         reason: reason.into(),
                         idempotency_key: key.into(),
+                        milestone: milestone.clone(),
                         ..Create::default()
                     },
                 }
                 .validate(project)?;
                 payload["version"] = json!({"reason":reason,"idempotency_key":key});
+                if let Some(milestone) = milestone {
+                    payload["version"]["milestone"] = json!(milestone);
+                }
                 if let Some(expected) = request.get("expected_source_update_time") {
                     let expected = expected
                         .as_str()
@@ -500,6 +509,21 @@ pub fn authority_command(input: &[u8]) -> Result<Value, String> {
                 }
                 "get_head" => check(&data["head"], false)?,
                 _ => check(&data["version"], true)?,
+            }
+            if operation == "create_version" {
+                if request
+                    .get("expected_source_update_time")
+                    .is_some_and(|expected| data["version"]["source_revision"] != *expected)
+                {
+                    return Err("created version differs from the captured source revision".into());
+                }
+                if request
+                    .get("milestone")
+                    .filter(|m| !m.is_null())
+                    .is_some_and(|m| data["version"]["milestone"] != *m)
+                {
+                    return Err("created version did not record the requested milestone".into());
+                }
             }
             Ok(data.clone())
         }
@@ -1131,5 +1155,26 @@ mod tests {
             {"object":{"kind":"mv_model","id":"model-a"},"count":2}
         ]}));
         assert!(run(&scope("", ""), &mut source, &summaries).is_err());
+    }
+    #[test]
+    fn browser_mv_named_version_preserves_milestone_and_source_fence() {
+        let input = json!({"action":"plan","operation":"create_version","project":"p",
+            "object":{"kind":"mv_model","id":"m"},"reason":"Reviewed",
+            "idempotency_key":"named-marker-1","expected_source_update_time":"r1","milestone":"Submission"});
+        let plan = authority_command(&serde_json::to_vec(&input).unwrap()).unwrap();
+        assert_eq!(plan["payload"]["version"]["milestone"], "Submission");
+        assert_eq!(plan["payload"]["version"]["expected_source_revision"], "r1");
+        assert!(plan["payload"].get("expected_head_revision_id").is_none());
+        let mut answer = input.clone();
+        answer["action"] = json!("accept");
+        answer["response"] = json!({"success":true,"data":{"version":{"project_id":"p",
+            "object":{"kind":"mv_model","id":"m"},"version_id":"v1","version":1,
+            "source_revision":"r1","milestone":"Submission","content_pinned":true}}});
+        assert!(authority_command(&serde_json::to_vec(&answer).unwrap()).is_ok());
+        answer["response"]["data"]["version"]["source_revision"] = json!("r2");
+        assert!(authority_command(&serde_json::to_vec(&answer).unwrap()).is_err());
+        answer["response"]["data"]["version"]["source_revision"] = json!("r1");
+        answer["response"]["data"]["version"]["milestone"] = json!("Dropped");
+        assert!(authority_command(&serde_json::to_vec(&answer).unwrap()).is_err());
     }
 }

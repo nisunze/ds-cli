@@ -1837,6 +1837,12 @@ pub mod grid_publication;
 /// Versions and revisions of one project DS Grid model: exact ordinals from
 /// the parent chain, and catalog pages grouped by version.
 pub mod grid_versions;
+pub mod grid_model_management;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = gridModelManagement)]
+pub fn grid_model_management_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    grid_model_management::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
 pub mod solar_seed;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSeed)]

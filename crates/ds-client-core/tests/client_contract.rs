@@ -11725,6 +11725,13 @@ fn grid_revision(id: &str, version: u64, parent: &str, digest: &str) -> serde_js
         "reason":"save","milestone":"","approval":{"status":"draft"},"created_by":"a@b.c"})
 }
 
+fn grid_named_head(revision: &str) -> TransportResponse {
+    project_response(
+        serde_json::json!({"head": {"project_id":"p-1","object":{"kind":"mv_model","id":"m"},
+        "source_revision":revision,"pinned_model_digest":"a".repeat(64),"published_version":0}}),
+    )
+}
+
 #[test]
 fn grid_show_reports_the_current_version_its_revision_count_and_the_head_ordinal() {
     use ds_client_core::grid_models::Command;
@@ -11737,6 +11744,7 @@ fn grid_show_reports_the_current_version_its_revision_count_and_the_head_ordinal
         "updated_at":"2026-09-25T10:00:00Z","backup":{"bucket":"private","object":"private"}});
     {
         let mut state = t.0.lock().unwrap();
+        state.design_versions.push_back(grid_named_head("rev-c"));
         state
             .grid_models
             .push_back(project_response(json!({"model":head})));
@@ -11754,6 +11762,12 @@ fn grid_show_reports_the_current_version_its_revision_count_and_the_head_ordinal
     let shown = client
         .grid_models("p-1", &Command::Show { model: "m".into() }, NOW + 1)
         .unwrap();
+    assert_eq!(shown.data["management"]["named_version"]["version"], 0);
+    assert_eq!(
+        shown.data["management"]["working_head"]["revision_id"],
+        "rev-c"
+    );
+    assert_eq!(shown.data["management"]["mutated"], false);
     assert_eq!(shown.data["model"]["head_version"], 2);
     assert_eq!(shown.data["model"]["approval_status"], "submitted");
     assert!(shown.data["model"].get("backup").is_none());
@@ -11768,6 +11782,42 @@ fn grid_show_reports_the_current_version_its_revision_count_and_the_head_ordinal
     assert_eq!(state.grid_bodies[0]["action"], "get_model");
     assert_eq!(state.grid_bodies[2]["cursor"], "page-2");
     assert!(state.grid_models.is_empty());
+}
+
+#[test]
+fn grid_show_refuses_a_moved_or_foreign_named_head_without_writing() {
+    use ds_client_core::grid_models::Command;
+    for foreign in [false, true] {
+        let t = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(t.clone(), MemoryStore::default());
+        let head = serde_json::json!({"project_id":"p-1","model_id":"m","head_revision_id":"rev-c",
+            "head_version":3,"head_version_revision_count":1,"head_model_digest":"a".repeat(64)});
+        let named = serde_json::json!({"head":{"project_id":if foreign {"other"} else {"p-1"},
+            "object":{"kind":"mv_model","id":"m"},"source_revision":if foreign {"rev-c"} else {"moved"},
+            "pinned_model_digest":"a".repeat(64),"published_version":1}});
+        {
+            let mut state = t.0.lock().unwrap();
+            state
+                .grid_models
+                .push_back(project_response(serde_json::json!({"model":head})));
+            state.design_versions.push_back(project_response(named));
+        }
+        assert_eq!(
+            client
+                .grid_models("p-1", &Command::Show { model: "m".into() }, NOW + 1)
+                .err()
+                .expect("a moved or foreign head must be refused")
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+        let state = t.0.lock().unwrap();
+        assert_eq!(state.grid_bodies.len(), 1);
+        assert!(state
+            .calls
+            .iter()
+            .filter(|c| c.starts_with("design_versions "))
+            .all(|c| c.contains("get_head") && !c.contains("create_version")));
+    }
 }
 
 #[test]
@@ -12177,6 +12227,10 @@ fn grid_show_uses_the_servers_stored_count_without_walking() {
         .push_back(project_response(json!({"model":{
         "project_id":"p-1","model_id":"m","head_revision_id":"rev-c","head_version":3,
         "head_version_revision_count":42,"head_model_digest":"a".repeat(64)}})));
+    t.0.lock()
+        .unwrap()
+        .design_versions
+        .push_back(grid_named_head("rev-c"));
     let shown = client
         .grid_models("p-1", &Command::Show { model: "m".into() }, NOW + 1)
         .unwrap();
