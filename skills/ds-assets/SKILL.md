@@ -43,6 +43,9 @@ project selection.
    headers, features, or a metadata card — never an image. Respect the
    `truncated` counts, and read a bound refusal as final: it carries the
    actual number, and the honest alternatives are `read` and `promote`.
+   For embedded PDF text, discover the native text option and its page-range
+   contract on `assets.preview`; it performs no OCR and does not change the
+   PDF.js visual renderer.
 6. Take a copy only when a real file is needed: `ds assets read --project <id> --asset <id>
    --out <new absolute path>`. The destination must be new; an existing file
    is never overwritten. Compare the returned `digest` with the catalogue

@@ -25,6 +25,10 @@ use std::path::{Path, PathBuf};
 /// from constants and typed inputs, never from a caller's string.
 const SPAWN_OWNERS: &[(&str, &str)] = &[
     (
+        "../ds-command-kernel/crates/ds-assets-pdf-host/src/lib.rs",
+        "native Assets PDF text owner runs only fixed /usr/bin/prlimit plus /usr/bin/pdfinfo or /usr/bin/pdftotext, closed decoder choice and validated numeric page, over private governed bytes with memory/CPU/deadline/output limits; no caller executable, argv, environment or URL",
+    ),
+    (
         "crates/ds-cli-server/src/solar_documents.rs",
         "captured Solar report renderer invokes only installed pandoc and libreoffice with fixed conversion options, private owner-verified resources and fixed report filenames; the caller supplies neither an executable nor argv",
     ),
@@ -107,6 +111,11 @@ fn spawning_files() -> BTreeSet<String> {
             rust_sources(&source, &mut sources);
         }
     }
+    // Only the explicitly linked native decoder joins this inventory.
+    rust_sources(
+        &root.join("../ds-command-kernel/crates/ds-assets-pdf-host/src"),
+        &mut sources,
+    );
     assert!(
         sources.len() > 50,
         "only {} source files found; the walk is not reaching the tree",

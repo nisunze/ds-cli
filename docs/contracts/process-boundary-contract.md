@@ -45,10 +45,11 @@ cannot deadlock the caller. The one current use is the fixed `ds-solar intake
 download authority and must never cross a temporary-file boundary.
 
 `ds-cli-exec` is not, however, the only place a process is created — there are
-four owner classes, and each is audited where it lives:
+named owner classes, and each is audited where it lives:
 
 | Owner class | Where | What it may spawn |
 |---|---|---|
+| Native Assets PDF text decoder | `ds-command-kernel/crates/ds-assets-pdf-host` (linked by `ds-cli-assets`) | fixed `/usr/bin/prlimit` executing only `/usr/bin/pdfinfo` or `/usr/bin/pdftotext`, over a private local copy of governed signed-read bytes; validated numeric pages, fixed resource limits, no executable/argv/environment/URL/password input |
 | A sibling DS executable | `crates/ds-cli-exec` | `ds-report`, `ds-solar`, under one named subcommand |
 | The platform package manager | `crates/ds-cli-workstation/src/install.rs` | one fixed manager with a `const` package identity |
 | An executable already on this machine, probed | `crates/ds-cli-workstation/src/detect.rs`, `verify.rs` | bounded version probes and the harmless verification smoke test |

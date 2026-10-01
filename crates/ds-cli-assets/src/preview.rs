@@ -6,7 +6,9 @@
 //! it carries, and a PDF says that its renderer is pdf.js in the host.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -21,20 +23,94 @@ const MAX_TEXT_LINES: usize = 40;
 /// The widest one grid column is padded to before it is cut.
 const COLUMN_WIDTH: usize = 24;
 
+const PDF_TEXT_PAGES: Arg = Arg::value(
+    "pdf-text-pages",
+    "<first:last>",
+    "PDF text for inclusive 1-based FIRST:LAST, at most 5 pages. Whole PDF only; replaces --pages.",
+);
+
+const PDF_REFUSALS: [Refusal; 7] = [
+    Refusal {
+        code: "pdf_page_range_invalid",
+        when: "range malformed, over 5 pages, or outside the document",
+        remedy: "use existing 1-based FIRST:LAST pages, at most 5",
+    },
+    Refusal {
+        code: "pdf_invalid",
+        when: "not a PDF, or the decoder warns or refuses content",
+        remedy: "review a valid PDF with assets read",
+    },
+    Refusal {
+        code: "pdf_encrypted",
+        when: "PDF encrypted, including password-free opening",
+        remedy: "use an authorized unencrypted PDF; no passwords accepted",
+    },
+    Refusal {
+        code: "pdf_resource_limit",
+        when: "native input, page, process or output limit exceeded",
+        remedy: "use a smaller PDF/range; no partial text returned",
+    },
+    Refusal {
+        code: "pdf_text_unsupported",
+        when: "text not decoded faithfully as UTF-8",
+        remedy: "review the original; no OCR or replacement text",
+    },
+    Refusal {
+        code: "pdf_text_unavailable",
+        when: "not Linux or a fixed native helper is missing",
+        remedy: "use Linux with poppler-utils and util-linux installed",
+    },
+    Refusal {
+        code: "pdf_decode_failed",
+        when: "private decoder staging or I/O fails",
+        remedy: "check local disk/host health; assets unchanged",
+    },
+];
+
+fn pdf_failure(error: ds_assets_pdf_host::Error) -> Failure {
+    let remedy = PDF_REFUSALS
+        .iter()
+        .find(|refusal| refusal.code == error.code)
+        .map(|refusal| refusal.remedy)
+        .unwrap_or("report the native PDF decoder refusal");
+    match error.code {
+        "pdf_text_unavailable" => {
+            Failure::unavailable("pdf_text_unavailable", error.message).remedy(remedy)
+        }
+        "pdf_page_range_invalid" => {
+            Failure::invalid("pdf_page_range_invalid", error.message).remedy(remedy)
+        }
+        "pdf_invalid" => Failure::invalid("pdf_invalid", error.message).remedy(remedy),
+        "pdf_encrypted" => Failure::invalid("pdf_encrypted", error.message).remedy(remedy),
+        "pdf_resource_limit" => {
+            Failure::invalid("pdf_resource_limit", error.message).remedy(remedy)
+        }
+        "pdf_text_unsupported" => {
+            Failure::invalid("pdf_text_unsupported", error.message).remedy(remedy)
+        }
+        "pdf_decode_failed" => Failure::invalid("pdf_decode_failed", error.message).remedy(remedy),
+        _ => Failure::internal(
+            "assets_unreadable",
+            "native PDF host returned an undeclared refusal",
+        ),
+    }
+}
+
 pub static COMMAND: Command = Command {
     id: "assets.preview",
     path: &["assets", "preview"],
     contract: 1,
     summary: "Preview one asset, or one pack member, as a bounded document.",
     purpose: "\
-Returns a preview document — text blocks, a bounded grid, mail headers, a \
-metadata card or feature geometry — decoded by the kernel on the host running \
-`ds` from bytes fetched through the catalogue's signed read. Never rendered \
-pixels: the caller gets text and the client does the drawing. A PDF answers a \
-metadata-only document that names pdf.js as its renderer. Anything over a \
-bound is refused with the bound and the actual number, never silently cut, \
-and no preview ever fetches remote content. A projected sys: row is refused \
-by name. Headless: no window.",
+Read signed catalogue bytes as text, grids, headers, geometry or metadata, \
+never pixels or remote content. PDF defaults to pdf.js metadata. Embedded \
+PDF text: --pdf-text-pages FIRST:LAST for a whole PDF, inclusive 1-based \
+range, at most 5 actual pages, last at most 10000. --pages/--rows select \
+ordinary preview only. Fixed Linux Poppler/prlimit required; other hosts or \
+missing helpers refuse. Limits: 32 MiB input; 10000 document pages; 256 MiB \
+address space and 5 CPU seconds per decoder; shared 8 seconds; text 64 KiB/page, \
+256 KiB total. No OCR, annotations, layout reconstruction or partial text. \
+Encrypted/malformed content refused. sys: bytes unavailable. Headless.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
@@ -44,20 +120,31 @@ by name. Headless: no window.",
         MEMBER_ARG,
         SHEET_ARG,
         PAGES_ARG,
+        PDF_TEXT_PAGES,
         ROWS_ARG,
         LANE_ARG,
         PROJECT_ARG,
     ],
     output: "\
-`ds.assets.preview_doc/v1`: `asset_id`, `member`, `kind`, `format`, a `note`, \
-and — as the format allows — `blocks`, `grid`, `headers`, `features` or `meta`, \
-each with its own `truncated` count.",
-    examples: &[Example {
-        command: "ds assets preview --project <exact-id> --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --output json",
-        note: "A geo member answers features; `ds assets promote` turns them into a local layer.",
-        runnable: false,
-    }],
-    refusals: &crate::refusals::<29>(&[
+Ordinary: `ds.assets.preview_doc/v1`, asset_id/member/kind/format/note plus \
+format-specific blocks/grid/headers/features/meta and truncated counts. \
+PDF text: `ds.assets.pdf_text/v1`, asset_id, source_digest, source_bytes, \
+total_pages, first_page, last_page, pages[{page,text,text_bytes}], \
+total_text_bytes, truncated:false, notes. Empty text is not proof of an \
+empty image.",
+    examples: &[
+        Example {
+            command: "ds assets preview --project <exact-id> --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --output json",
+            note: "Bounded geometry; use assets promote for a local layer.",
+            runnable: false,
+        },
+        Example {
+            command: "ds assets preview --project <exact-id> --asset a_7kq3nr2v0b1c --pdf-text-pages 2:3 --output json",
+            note: "Exactly pages 2 and 3; no OCR.",
+            runnable: false,
+        },
+    ],
+    refusals: &crate::refusals::<36>(&[
         crate::INVALID_NUMBER,
         crate::INVALID_ASSET_ID,
         crate::INVALID_MEMBER,
@@ -65,6 +152,13 @@ each with its own `truncated` count.",
         crate::ORIGIN_READ_FAILED,
         crate::ORIGIN_READ_UNAVAILABLE,
         crate::ASSETS_UNREADABLE,
+        PDF_REFUSALS[0],
+        PDF_REFUSALS[1],
+        PDF_REFUSALS[2],
+        PDF_REFUSALS[3],
+        PDF_REFUSALS[4],
+        PDF_REFUSALS[5],
+        PDF_REFUSALS[6],
     ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
@@ -80,6 +174,19 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
         "asset".into(),
         json!(crate::asset_id(inputs.require("asset")?, "asset")?),
     );
+    if let Some(range) = inputs.value("pdf-text-pages") {
+        let range = ds_assets_pdf_host::PageRange::parse(range).map_err(pdf_failure)?;
+        if inputs.value("member").is_some() || inputs.value("sheet").is_some() {
+            return Err(pdf_failure(ds_assets_pdf_host::Error {
+                code: "pdf_invalid",
+                message:
+                    "PDF text extraction accepts a whole PDF asset, without --member or --sheet"
+                        .into(),
+            }));
+        }
+        arguments.insert("pdf_text_first".into(), json!(range.first));
+        arguments.insert("pdf_text_last".into(), json!(range.last));
+    }
     // A whole-asset preview sends no member at all rather than an empty one,
     // which the walk would read as a member named "".
     if let Some(member) = inputs
@@ -119,6 +226,35 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = inputs.require("project")?;
     let asset_id = arguments["asset"].as_str().unwrap_or_default().to_owned();
     let (row, bytes) = crate::bytes(lane, project, &asset_id)?;
+    if let (Some(first), Some(last)) = (
+        arguments["pdf_text_first"].as_u64(),
+        arguments["pdf_text_last"].as_u64(),
+    ) {
+        if row["format"].as_str() != Some("pdf") {
+            return Err(pdf_failure(ds_assets_pdf_host::Error {
+                code: "pdf_invalid",
+                message: "PDF text extraction requires a catalogue PDF asset".into(),
+            }));
+        }
+        let document = ds_assets_pdf_host::extract(
+            &bytes,
+            ds_assets_pdf_host::PageRange {
+                first: first as u32,
+                last: last as u32,
+            },
+        )
+        .map_err(pdf_failure)?;
+        let mut document = serde_json::to_value(document).map_err(|_| {
+            Failure::internal(
+                "assets_unreadable",
+                "cannot encode the native PDF text document",
+            )
+        })?;
+        document["asset_id"] = json!(asset_id);
+        document["source_digest"] = json!(crate::digest_of(&bytes));
+        document["source_bytes"] = json!(bytes.len());
+        return Ok(document);
+    }
     // The kernel previews a member in the MEMBER's format: it is read off the
     // container's own directory walk (one more kernel call over the same
     // bytes, no round trip), never guessed from the pack.
@@ -169,6 +305,29 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn render(data: &Value) -> String {
+    if data["schema"] == "ds.assets.pdf_text/v1" {
+        let mut output = format!(
+            "{} · PDF text pages {}:{} of {}\n",
+            text_of(&data["asset_id"]),
+            data["first_page"],
+            data["last_page"],
+            data["total_pages"]
+        );
+        for page in data["pages"].as_array().into_iter().flatten() {
+            output.push_str(&format!(
+                "\nPage {}\n{}",
+                page["page"],
+                text_of(&page["text"])
+            ));
+            if !output.ends_with('\n') {
+                output.push('\n');
+            }
+        }
+        for note in data["notes"].as_array().into_iter().flatten() {
+            output.push_str(&format!("note: {}\n", text_of(note)));
+        }
+        return output;
+    }
     let mut out = format!(
         "{} · {}/{}",
         data["asset_id"].as_str().unwrap_or("preview"),
@@ -472,6 +631,47 @@ mod tests {
             .expect_err("a malformed request is refused before any round trip")
             .code()
             .to_string()
+    }
+
+    #[test]
+    fn pdf_text_range_is_native_validated_before_governed_read() {
+        let args = arguments(&inputs(&[
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--pdf-text-pages",
+            "2:4",
+        ]))
+        .unwrap();
+        assert_eq!(args["pdf_text_first"], 2);
+        assert_eq!(args["pdf_text_last"], 4);
+        for range in ["0:1", "2:1", "1:6", "1:10001", "2", "1:2:3"] {
+            assert_eq!(
+                refusal(&["--asset", "a_7kq3nr2v0b1c", "--pdf-text-pages", range]),
+                "pdf_page_range_invalid"
+            );
+        }
+        assert_eq!(
+            refusal(&[
+                "--asset",
+                "a_7kq3nr2v0b1c",
+                "--pdf-text-pages",
+                "1:1",
+                "--member",
+                "a.pdf"
+            ]),
+            "pdf_invalid"
+        );
+    }
+
+    #[test]
+    fn pdf_text_human_projection_keeps_every_extracted_line_and_unicode() {
+        let text = format!("Gisagara — αβΩ\n{}", "complete line\n".repeat(80));
+        let rendered = render(
+            &json!({ "schema": "ds.assets.pdf_text/v1", "asset_id": "a_7kq3nr2v0b1c", "total_pages": 3, "first_page": 2, "last_page": 2, "pages": [{"page": 2, "text": text}], "notes": ["No OCR"] }),
+        );
+        assert!(rendered.contains(&text));
+        assert!(rendered.contains("Page 2"));
+        assert!(!rendered.contains("more lines"));
     }
 
     #[test]

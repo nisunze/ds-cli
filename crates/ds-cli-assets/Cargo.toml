@@ -21,6 +21,7 @@ ds-client-core = { workspace = true }
 ds-command-kernel = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
+ds-assets-pdf-host = { path = "../../../ds-command-kernel/crates/ds-assets-pdf-host" }
 base64 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

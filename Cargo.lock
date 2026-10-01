@@ -966,6 +966,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-assets-pdf-host"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
+]
+
+[[package]]
 name = "ds-canvas-lite"
 version = "0.1.0"
 dependencies = [
@@ -987,6 +995,7 @@ name = "ds-cli-assets"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "ds-assets-pdf-host",
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-client-core",

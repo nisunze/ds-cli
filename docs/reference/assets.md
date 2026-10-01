@@ -121,7 +121,8 @@ and `.prj` companions resolved, not as four unrelated files.
 bounded grid, mail headers, feature geometry, or a metadata card. That keeps
 the CLI useful to an agent, which wants text, and keeps rendering in the
 client, which is where the person is. A PDF answers a metadata-only document
-naming its renderer, because rasterising a page in a terminal helps nobody.
+naming its renderer by default. The explicit native text option below answers
+a separate per-page text document; it does not rasterise pages.
 
 A preview never fetches remote content — no external images, no stylesheets,
 no fonts, no tracking pixel in an email. It is self-contained or it says it is
@@ -133,6 +134,22 @@ feature bound is **refused with the bound and the actual number**, and offered
 the honest alternative — read it to a file, or promote its geometry. A
 truncated render presented as the document is the one answer this surface will
 not give.
+
+### Embedded PDF text
+
+The optional PDF text mode is a native host operation, separate from the
+metadata card and PDF.js visual renderer. Discover its exact page grammar,
+output schema, bounds and refusals through `ds capabilities assets.preview`.
+It reads the same authorized, digest-verified catalogue bytes, writes a private
+temporary input, and deletes it after the call. It performs no OCR, annotation
+extraction, remote loading or cloud mutation. Empty text does not establish
+that the rendered page is empty.
+
+Linux requires the installed `poppler-utils` and `util-linux` packages at the
+fixed native paths. Missing helpers and other operating systems refuse
+`pdf_text_unavailable`; there is no alternate parser or ambient tool fallback.
+The operator owns dependency installation. The process admission and limits
+belong to the kernel's `docs/assets.md`, not the CLI adapter.
 
 ## Reads cost one page
 
