@@ -1114,6 +1114,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<serde_json::Value, ClientError> {
         fixed_device_call!(self, project_management, project, command)
     }
+    pub fn member_form_grant(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::member_form_grants::Request,
+    ) -> Result<ds_client_core::member_form_grants::GrantResult, ClientError> {
+        fixed_device_call!(self, member_form_grant, project, command)
+    }
     pub fn project_correspondence(
         &mut self,
         project: &str,

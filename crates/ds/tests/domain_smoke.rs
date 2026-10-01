@@ -16983,3 +16983,44 @@ fn exports_and_version_markers_refuse_malformed_requests_before_authentication()
 
 #[path = "smoke/cable_source_reconcile.rs"]
 mod cable_source_reconcile;
+
+#[test]
+fn member_form_grants_are_headless_bounded_and_apply_stops_before_unconfirmed_effect() {
+    for (id, confirmation) in [
+        ("survey.member-grant.read", false),
+        ("survey.member-grant.plan", false),
+        ("survey.member-grant.apply", true),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        assert_eq!(command["authority"], "headless_project");
+        assert_eq!(command["confirmation_required"], confirmation);
+        let inputs = command["inputs"].as_array().unwrap();
+        for name in ["project", "member"] {
+            assert!(
+                inputs
+                    .iter()
+                    .any(|arg| arg["name"] == name && arg["required"] == true)
+            );
+        }
+        assert!(!inputs.iter().any(|arg| matches!(
+            arg["name"].as_str(),
+            Some("role" | "actor" | "url" | "body" | "token" | "desktop-descriptor")
+        )));
+        assert!(command["output"].as_str().is_some());
+    }
+    let refused = ds(&[
+        "survey",
+        "member-grant",
+        "apply",
+        "--project",
+        "explicit-project",
+        "--member",
+        "member@example.com",
+        "--plan",
+        "missing-unconfirmed-plan.json",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refused.envelope["error"]["code"], "confirmation_required");
+}

@@ -300,7 +300,8 @@ impl Profile {
             // Three working-area leaves read, choose and forget which forms
             // the map loads for the project — a local choice, no fetch. The
             // photo leaves are `survey-media`'s (2026-09-20).
-            Self::SurveyProjects => 21,
+            // Single-target finite member grants add read/plan/apply.
+            Self::SurveyProjects => 24,
             // Twenty-one governed design-edit leaves plus the two bootstrap
             // tools. Version history and the pinned Working set project the
             // same bounded desktop-owned workflow without transporting
@@ -925,6 +926,9 @@ const SURVEY_MEDIA_COMMANDS: &[&str] = &[
 ];
 
 const SURVEY_PROJECT_COMMANDS: &[&str] = &[
+    "survey.member-grant.read",
+    "survey.member-grant.plan",
+    "survey.member-grant.apply",
     "survey.query",
     "survey.entries.select",
     "survey.entries.changes",
@@ -2378,6 +2382,20 @@ const PRINTING_COMMANDS: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn member_form_grant_workflow_is_on_the_existing_project_survey_profile() {
+        for id in [
+            "survey.member-grant.read",
+            "survey.member-grant.plan",
+            "survey.member-grant.apply",
+        ] {
+            assert!(
+                super::Profile::SurveyProjects.command_ids().contains(&id),
+                "missing {id}"
+            );
+        }
+    }
+
     use super::*;
 
     #[test]

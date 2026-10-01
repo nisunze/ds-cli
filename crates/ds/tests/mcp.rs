@@ -1794,7 +1794,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // create-from-template and the three working-area form leaves
             // (read, choose, forget which forms the map loads); the photo
             // leaves moved to survey-media.
-            "survey-projects" => 21,
+            "survey-projects" => 24,
             // Held survey photos (list, read), the one rotation and its
             // publication, and the offline file rotation, plus bootstrap.
             "survey-media" => 10,
@@ -2915,4 +2915,63 @@ fn an_unbounded_or_malformed_call_timeout_is_refused_before_serving() {
         let envelope: Value = serde_json::from_slice(&output.stdout).expect("one envelope");
         assert_eq!(envelope["error"]["code"], "invalid_number", "{value}");
     }
+}
+
+#[test]
+fn member_form_grants_project_survey_mcp_matches_cli_confirmation() {
+    let home = signed_out("member-grant");
+    let missing = home.0.join("absent-plan.json").display().to_string();
+    let responses = signed_out_mcp(
+        &home,
+        &["--exposure", "commands", "--profile", "survey-projects"],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"survey_member-grant_apply","arguments":{"project":"explicit-project","member":"member@example.com","plan":missing}}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"survey_member-grant_apply","arguments":{"project":"explicit-project","member":"member@example.com","plan":missing,"confirm":true}}}),
+        ],
+    );
+    let tools = response(&responses, 1)["result"]["tools"]
+        .as_array()
+        .unwrap();
+    assert!(tools.len() <= 24);
+    for verb in ["read", "plan", "apply"] {
+        let name = format!("survey_member-grant_{verb}");
+        let tool = tools
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap_or_else(|| panic!("missing {name}"));
+        let required = tool["inputSchema"]["required"].as_array().unwrap();
+        assert!(required.iter().any(|v| v == "project"));
+        assert!(required.iter().any(|v| v == "member"));
+        let props = tool["inputSchema"]["properties"].as_object().unwrap();
+        for forbidden in ["role", "actor", "url", "body", "token"] {
+            assert!(!props.contains_key(forbidden));
+        }
+    }
+    assert_eq!(
+        structured(&responses, 2)["error"]["code"],
+        "confirmation_required"
+    );
+    // Confirmation reaches the same admitted-profile guard as CLI before
+    // restoring any account or attempting the fixed grant transport.
+    assert_eq!(
+        structured(&responses, 3)["error"]["code"],
+        "native_profile_not_configured"
+    );
+    assert_eq!(
+        *structured(&responses, 3),
+        signed_out_cli(
+            &home,
+            &[
+                "survey",
+                "member-grant",
+                "apply",
+                "--project=explicit-project",
+                "--member=member@example.com",
+                &format!("--plan={missing}"),
+                "--yes",
+                "--output=json"
+            ]
+        )
+    );
 }

@@ -610,3 +610,32 @@ typed commands.
 For downloaded files, `ds survey photo rotate-local --input ./photo.jpg --degrees 90 --out ./rotated`
 uses the same Rust pixels offline and returns local image and thumbnail paths.
 Its `local_only` receipt cannot be submitted as a governed publication bundle.
+
+## One member's form grant
+
+Discover `survey.member-grant.read`, `.plan`, and `.apply`. They use the
+restored native account/device and an explicit project, without a Desktop.
+The existing project-access authority requires a current higher project role
+(or its existing app administrator bypass); an ordinary user cannot edit a
+member's form grant. The target must already be an active member with agreeing
+mirrored membership edges.
+
+Read the explicit grant and its effective form scope, then produce a dry-run
+plan using exact participating forms or the finite expansion of `--all`.
+Save that JSON output and apply it with `--yes`. Apply pins the actor, target,
+project, membership revision and form snapshot; a stale plan refuses without
+rebase. Empty/wildcard grants, role promotion, account creation and future-form
+autogrants are excluded. Existing role bypass and view/edit exclusions remain
+visible in the effective readback. Plans/readbacks cover at most 100 project
+form bindings and refuse larger projects without truncation.
+
+After apply, read again through the same command for fresh effective state.
+If the apply reply is lost, read before deciding on a new plan: replay of a
+committed plan is stale rather than silently reapplied. The saved native project
+is never read or changed. Older backend releases may refuse the additive v1
+project-access actions; use the matching release, not a legacy sharing fallback.
+
+The same commands are available through chapter `ds_survey` and typed MCP
+profile `survey-projects`. Typed apply uses `confirm:true`, which maps exactly
+to CLI `--yes`; read and plan need no confirmation. An older server refuses
+these additive actions without falling back to legacy member sharing.
