@@ -84,8 +84,10 @@ guess from filenames, or create a task or note simply to answer a question.
    the task with `pm.task.block` only when a record truly owes a response; a
    reply or justified waiver resolves that blocker. Filing a record does not
    send an email or message. Put design discussion on its object with
-   `design.comment.post`. There is no general `pm.task.comment` command:
-   do not claim a task comment was posted.
+   `design.comment.post`. Use `pm.task.comment` for ordinary task context and
+   `pm.task.comments` for readback. Keep a stable comment ID across retries;
+   after an uncertain reply, find that ID before claiming delivery or choosing
+   another ID. Task comments leave review state unchanged.
 5. Use `ds assets` for the exact submitted file, asset ID and sensitivity.
    Register uploaded documents with `assets.classify` using their real
    document number, revision and state, and read back the row. `assets.versions`
