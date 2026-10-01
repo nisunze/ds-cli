@@ -28,11 +28,11 @@
 //! ds-brain decodes with `DisallowUnknownFields`, so a key this file does not
 //! write is a key the request cannot carry.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::{
-    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
-    ProjectManagementCall, ServiceRefusal,
+    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, ProjectManagementCall,
+    ServiceRefusal, authorized::Authority,
 };
 
 /// The largest plan answer this owner will read. A project's whole graph —
@@ -67,6 +67,23 @@ pub enum Command {
     /// per-task endpoint would be a second answer that could disagree with
     /// this one.
     Graph,
+    /// Existing authenticated collaboration index, independent of saved selection.
+    PublicProjects {
+        status: String,
+        cursor: String,
+        limit: i64,
+    },
+    /// Existing task comment action; no project-chat authoring surface.
+    TaskCommentCreate {
+        task_id: String,
+        id: String,
+        body: String,
+    },
+    TaskComments {
+        task_id: String,
+        cursor: String,
+        limit: i64,
+    },
     /// The bounded project-side directory of people the server will accept
     /// for a Project Work assignment. It is separate from graph hydration so
     /// ordinary plan reads do not pay for a roster scan.
@@ -180,6 +197,9 @@ impl Command {
     fn action(&self) -> &'static str {
         match self {
             Self::Graph => "get_graph",
+            Self::PublicProjects { .. } => "list_public_projects",
+            Self::TaskCommentCreate { .. } => "create_comment",
+            Self::TaskComments { .. } => "get_context",
             Self::Assignees => "get_assignees",
             Self::Context { .. } => "get_context",
             Self::ProjectNoteCreate { .. } => "create_record",
@@ -199,6 +219,49 @@ impl Command {
         let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
         match self {
             Self::Graph | Self::Assignees => Ok(()),
+            Self::PublicProjects {
+                status,
+                cursor,
+                limit,
+            } => {
+                if !matches!(status.as_str(), "active" | "archived" | "testing")
+                    || !(1..=100).contains(limit)
+                    || cursor.len() > 256
+                    || cursor.trim() != cursor
+                {
+                    return Err(invalid(
+                        "public Project Work index needs a status, 1..100 limit and bounded cursor",
+                    ));
+                }
+                Ok(())
+            }
+            Self::TaskCommentCreate { task_id, id, body } => {
+                if !project_note_id_valid(task_id)
+                    || !project_note_id_valid(id)
+                    || body.trim().is_empty()
+                    || body.trim().len() > 4000
+                {
+                    return Err(invalid(
+                        "task comment needs stable task/id and 1..4000 UTF-8 bytes of text",
+                    ));
+                }
+                Ok(())
+            }
+            Self::TaskComments {
+                task_id,
+                cursor,
+                limit,
+            } => {
+                if !project_note_id_valid(task_id)
+                    || !(1..=100).contains(limit)
+                    || (!cursor.is_empty() && !project_note_id_valid(cursor))
+                {
+                    return Err(invalid(
+                        "task comments need one task, 1..100 limit and stable cursor",
+                    ));
+                }
+                Ok(())
+            }
             Self::Context { limit } => match limit {
                 Some(limit) if !(1..=MAX_CONTEXT_LIMIT).contains(limit) => Err(invalid(
                     "project management reads 1 through 100 context rows per collection",
@@ -319,6 +382,34 @@ impl Command {
         let mut payload = json!({ "action": self.action(), "ds_project": project });
         match self {
             Self::Graph | Self::Assignees => {}
+            Self::PublicProjects {
+                status,
+                cursor,
+                limit,
+            } => {
+                payload.as_object_mut().unwrap().remove("ds_project");
+                payload["status"] = json!(status);
+                payload["limit"] = json!(limit);
+                if !cursor.is_empty() {
+                    payload["cursor"] = json!(cursor);
+                }
+            }
+            Self::TaskCommentCreate { task_id, id, body } => {
+                payload["id"] = json!(id);
+                payload["data"] =
+                    json!({"task_id":task_id,"body":body,"kind":"comment","state":"open"});
+            }
+            Self::TaskComments {
+                task_id,
+                cursor,
+                limit,
+            } => {
+                payload["task_id"] = json!(task_id);
+                payload["limit"] = json!(limit);
+                if !cursor.is_empty() {
+                    payload["cursors"] = json!({"pm_comments":cursor});
+                }
+            }
             Self::Context { limit } => {
                 if let Some(limit) = limit {
                     payload["limit"] = json!(limit);
@@ -524,7 +615,17 @@ pub(crate) fn run<T: AuthorizedTransport>(
     project: &str,
     command: &Command,
 ) -> Result<Value, ClientError> {
-    let project = readable_project(project)?;
+    let project = if matches!(command, Command::PublicProjects { .. }) {
+        if !project.is_empty() {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "public Project Work index accepts no project",
+            ));
+        }
+        project
+    } else {
+        readable_project(project)?
+    };
     command.validate()?;
     let response = transport.project_management(ProjectManagementCall {
         profile,
@@ -569,7 +670,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
         // command and the bare result for a draft (`response.result ??
         // response`, api/pm.ts:184 and 208). The wrapper is unwrapped where it
         // exists so every caller reads one shape.
-        Command::Context { .. } => data
+        Command::Context { .. } | Command::TaskComments { .. } => data
             .get("context")
             .filter(|context| context.is_object())
             .cloned()
@@ -581,7 +682,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
             .unwrap_or(data),
         // Context creation returns `{item: <PMDoc>}` intact, including the
         // server-authored id and version for callers to shape.
-        Command::ProjectNoteCreate { .. }
+        Command::PublicProjects { .. }
+        | Command::TaskCommentCreate { .. }
+        | Command::ProjectNoteCreate { .. }
         | Command::Propose { .. }
         | Command::RequestAdmission { .. }
         | Command::Admit { .. }
@@ -589,6 +692,82 @@ pub(crate) fn run<T: AuthorizedTransport>(
         | Command::LogHours { .. } => data,
     };
     Ok(graph)
+}
+
+#[cfg(test)]
+mod collaboration_contract_tests {
+    use super::*;
+    #[test]
+    fn public_index_has_no_project_or_write_fields_and_bounds_pages() {
+        let command = Command::PublicProjects {
+            status: "active".into(),
+            cursor: "next-id".into(),
+            limit: 50,
+        };
+        command.validate().unwrap();
+        assert_eq!(
+            command.payload(""),
+            json!({"action":"list_public_projects","status":"active","cursor":"next-id","limit":50})
+        );
+        assert!(
+            Command::PublicProjects {
+                status: "all".into(),
+                cursor: String::new(),
+                limit: 50
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            Command::PublicProjects {
+                status: "active".into(),
+                cursor: String::new(),
+                limit: 101
+            }
+            .validate()
+            .is_err()
+        );
+    }
+    #[test]
+    fn task_comment_is_scoped_and_cursors_use_the_existing_collection_name() {
+        let command = Command::TaskCommentCreate {
+            task_id: "t".into(),
+            id: "comment-1".into(),
+            body: "Please check this task".into(),
+        };
+        command.validate().unwrap();
+        assert_eq!(
+            command.payload("p"),
+            json!({"action":"create_comment","ds_project":"p","id":"comment-1","data":{"task_id":"t","body":"Please check this task","kind":"comment","state":"open"}})
+        );
+        let page = Command::TaskComments {
+            task_id: "t".into(),
+            cursor: "old-comment".into(),
+            limit: 20,
+        };
+        assert_eq!(
+            page.payload("p")["cursors"],
+            json!({"pm_comments":"old-comment"})
+        );
+        assert!(
+            Command::TaskCommentCreate {
+                task_id: "t".into(),
+                id: "comment-1".into(),
+                body: " ".into()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            Command::TaskCommentCreate {
+                task_id: "t".into(),
+                id: "comment-1".into(),
+                body: "é".repeat(2001)
+            }
+            .validate()
+            .is_err()
+        );
+    }
 }
 
 #[cfg(test)]
@@ -820,10 +999,12 @@ mod tests {
         );
         let context = Command::Context { limit: Some(100) }.payload("p");
         assert_eq!(context["limit"], 100);
-        assert!(Command::Context { limit: None }
-            .payload("p")
-            .get("limit")
-            .is_none());
+        assert!(
+            Command::Context { limit: None }
+                .payload("p")
+                .get("limit")
+                .is_none()
+        );
     }
 
     /// The bounds the server enforces are refused here first, by the same
@@ -841,13 +1022,15 @@ mod tests {
         );
         assert!(Command::Context { limit: Some(100) }.validate().is_ok());
         let good = json!({"kind": "accept_assignment", "accept_assignment": {"task_id": "t"}});
-        assert!(Command::Commit {
-            command_id: "pm-1_a.b".into(),
-            base_revision: 0,
-            command: good.clone()
-        }
-        .validate()
-        .is_ok());
+        assert!(
+            Command::Commit {
+                command_id: "pm-1_a.b".into(),
+                base_revision: 0,
+                command: good.clone()
+            }
+            .validate()
+            .is_ok()
+        );
         assert_eq!(
             kind(Command::Commit {
                 command_id: "".into(),

@@ -6150,6 +6150,7 @@ fn refresh_body_with_tokens(
 struct DeviceAuthorizedProbe {
     inner: FixtureTransport,
     seen: Vec<&'static str>,
+    pm_bodies: Vec<serde_json::Value>,
 }
 
 impl DeviceAuthorizedProbe {
@@ -6157,6 +6158,7 @@ impl DeviceAuthorizedProbe {
         Self {
             inner,
             seen: Vec::new(),
+            pm_bodies: Vec::new(),
         }
     }
 
@@ -6188,6 +6190,28 @@ macro_rules! device_authorized_call {
 }
 
 impl AuthorizedTransport for DeviceAuthorizedProbe {
+    fn project_management(
+        &mut self,
+        call: ds_client_core::ProjectManagementCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.canonical_uid(), "uid-1");
+        assert_eq!(call.canonical_email(), "user@example.com");
+        assert_eq!(call.device_id(), Some("device-1"));
+        assert_eq!(call.bearer_token(), "ds-memory-access-jwt");
+        assert_eq!(
+            call.gateway_origin(),
+            "https://eds-gateway-3c0q477h.ue.gateway.dev"
+        );
+        assert_eq!(call.path(), "/api/v1/pm");
+        self.pm_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        Ok(TransportResponse::new(
+            200,
+            br#"{"success":true,"data":{"projects":[],"status":"active","next_cursor":""}}"#
+                .to_vec(),
+        ))
+    }
+
     fn project_data(
         &mut self,
         call: ds_client_core::ProjectDataCall<'_>,
@@ -6592,6 +6616,103 @@ fn device_authorization_refuses_profile_uid_and_expired_session_before_transport
         .unwrap_err();
     assert_eq!(error.kind(), ErrorKind::SignedOut);
     assert!(transport.seen.is_empty());
+}
+
+#[test]
+fn project_management_device_public_index_keeps_actor_lane_and_project_fences() {
+    use ds_client_core::project_management::Command;
+
+    let stable = profile(DeploymentLane::Stable);
+    let credential = device_credential(&stable);
+    let live = DeviceAccessSession::new("ds-memory-access-jwt".to_owned(), NOW + 300, NOW).unwrap();
+    assert_eq!(
+        credential
+            .authorize_api(&live, &stable, "other-uid", NOW)
+            .err()
+            .unwrap(),
+        ds_client_core::DeviceError::AuthorityMismatch
+    );
+    assert_eq!(
+        credential
+            .authorize_api(&live, &profile(DeploymentLane::Canary), "uid-1", NOW)
+            .err()
+            .unwrap(),
+        ds_client_core::DeviceError::AuthorityMismatch
+    );
+    let authorization = credential
+        .authorize_api(&live, &stable, "uid-1", NOW)
+        .unwrap();
+    let mut transport = DeviceAuthorizedProbe::new(FixtureTransport::default());
+    let index = Command::PublicProjects {
+        status: "active".into(),
+        cursor: String::new(),
+        limit: 50,
+    };
+    assert_eq!(
+        authorization
+            .project_management(&mut transport, "", &index, NOW)
+            .unwrap()["projects"],
+        json!([])
+    );
+    assert_eq!(
+        transport.pm_bodies,
+        vec![json!({"action":"list_public_projects","status":"active","limit":50})]
+    );
+    // The exemption names one closed read: a supplied project is still refused.
+    assert_eq!(
+        authorization
+            .project_management(&mut transport, "project-a", &index, NOW)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidInput
+    );
+    let comments = Command::TaskComments {
+        task_id: "t".into(),
+        cursor: String::new(),
+        limit: 20,
+    };
+    for project in ["", " project-a", "project-a "] {
+        assert_eq!(
+            authorization
+                .project_management(&mut transport, project, &comments, NOW)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InvalidInput
+        );
+    }
+    assert_eq!(
+        authorization
+            .project_management(&mut transport, &"a".repeat(201), &comments, NOW)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidInput
+    );
+    for project in ["project-a", "project-b", "project-a"] {
+        authorization
+            .project_management(&mut transport, project, &comments, NOW)
+            .unwrap();
+    }
+    assert_eq!(
+        transport
+            .pm_bodies
+            .iter()
+            .skip(1)
+            .map(|body| body["ds_project"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["project-a", "project-b", "project-a"]
+    );
+    assert_eq!(
+        authorization
+            .project_management(&mut transport, "", &index, NOW + 300)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::SignedOut
+    );
+    assert_eq!(
+        transport.pm_bodies.len(),
+        4,
+        "refused calls must not reach transport"
+    );
 }
 
 /// Governance is server-side: the five projectless doors answer a device

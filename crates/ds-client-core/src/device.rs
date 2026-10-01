@@ -1390,7 +1390,12 @@ impl DeviceApiAuthorization<'_> {
         command: &crate::project_management::Command,
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
+        if !matches!(
+            command,
+            crate::project_management::Command::PublicProjects { .. }
+        ) {
+            crate::authorized::validate_tiles(ds_project)?;
+        }
         self.ensure_active(now)?;
         crate::project_management::run(
             self.profile,
