@@ -10605,6 +10605,11 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         .collect();
     let expected: BTreeSet<&str> = [
         "pm.plan",
+        "pm.project.list",
+        "pm.task.comment",
+        "pm.task.comments",
+        "pm.task.subdivide",
+        "pm.task.progress",
         "pm.member.list",
         "pm.deletion.inventory",
         "pm.deletion.read",
@@ -10644,7 +10649,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "work command coverage list changed; add a specific smoke assertion for the new command before accepting it"
     );
     for command in commands {
-        if command["authority"] == "headless_project" {
+        if command["authority"] == "headless_project" || command["authority"] == "headless_user" {
             continue;
         }
         assert!(
@@ -10677,6 +10682,9 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
                 | "pm.task.geometry.clear"
                 | "pm.task.block"
                 | "pm.task.unblock"
+                | "pm.task.comment"
+                | "pm.task.subdivide"
+                | "pm.task.progress"
                 | "pm.note.create"
                 | "pm.record.create"
                 | "pm.record.reply"
@@ -16983,3 +16991,15 @@ fn exports_and_version_markers_refuse_malformed_requests_before_authentication()
 
 #[path = "smoke/cable_source_reconcile.rs"]
 mod cable_source_reconcile;
+
+#[test]
+fn pm_collaboration_adapters_declare_bounded_reads_and_confirmed_task_comment() {
+    let index = ok(&["capabilities", "pm.project.list", "--output", "json"]);
+    assert_eq!(index["command"]["authority"], "headless_user");
+    assert_eq!(index["command"]["effect"], "read_only");
+    let comment = ok(&["capabilities", "pm.task.comment", "--output", "json"]);
+    assert_eq!(comment["command"]["authority"], "headless_project");
+    assert_eq!(comment["command"]["effect"], "global_write");
+    let read = ok(&["capabilities", "pm.task.comments", "--output", "json"]);
+    assert_eq!(read["command"]["effect"], "read_only");
+}

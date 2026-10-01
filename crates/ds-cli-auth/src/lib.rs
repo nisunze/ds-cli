@@ -2893,6 +2893,35 @@ pub fn project_management_for_project(
     )
 }
 
+/// Read only the existing authenticated Project Work public index. This is
+/// intentionally not a named-project call and never observes saved selection.
+pub fn project_management_public_projects(
+    lane_value: &str,
+    command: &ds_client_core::project_management::Command,
+) -> Result<Value, Failure> {
+    if !matches!(
+        command,
+        ds_client_core::project_management::Command::PublicProjects { .. }
+    ) {
+        return Err(Failure::invalid(
+            "pm_index_command_invalid",
+            "public index accepts only its closed read command",
+        ));
+    }
+    command.validate().map_err(map_client)?;
+    let lane = Lane::parse(lane_value)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.project_management("", command).map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .project_management("", command, now())
+        .map_err(map_client)
+}
+
 /// One asset catalogue action scoped to the project named on this request.
 pub fn project_assets_for_project(
     lane_value: &str,
@@ -4755,11 +4784,11 @@ pub fn map_project_management_refusal(
         .next("ds pm plan"),
         (404, _) => Failure::unauthorized(
             "project_not_visible",
-            "the selected project is not a project this account is a member of",
+            "the named Project Work project is unavailable",
         )
         .detail(detail)
-        .remedy("choose an exact id from auth project list")
-        .next("ds auth project list"),
+        .remedy("choose an exact id from the authenticated Project Work index")
+        .next("ds pm project list"),
         (400 | 409 | 422, _) => Failure::invalid("pm_refused", message)
             .detail(detail)
             .remedy("read detail.service_message; correct the flag it names and retry")

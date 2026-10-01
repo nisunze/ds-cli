@@ -293,3 +293,18 @@ what a person may set is a waiver, with a reason, and it is not withdrawn.
 transposed day and month is the commonest scheduling mistake there is, and
 `2026-01-09` for the ninth of September is a perfectly valid date that quietly
 schedules the wrong week.
+
+
+The authenticated collaboration index is also available headlessly:
+`ds pm project list --status active --limit 50 --output json`. It returns the
+existing public Project Work index independently of the machine's selected
+project. Repeat with the exact `next_cursor` as `--cursor`; statuses are
+`active`, `archived` and `testing`. Assignment still requires an eligible member.
+
+Use `ds pm task comments --project <id> --task <task-id> --limit 50 --output json`
+for a task's existing context comments; follow `next_cursor` with `--cursor`.
+`ds pm task comment --project <id> --task <task-id> --id <stable-comment-id>
+--body "Review text" --yes` adds an ordinary comment of at most 4000 UTF-8 bytes.
+This uses the existing comment action and leaves review state unchanged. After
+an uncertain reply, read comments and look for the same id before choosing a new
+id; duplicate creation is refused without a second comment.

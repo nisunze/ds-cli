@@ -55,6 +55,7 @@
 //! command; a caller that still passes it is told `requires_window_retired`
 //! by the parser, with the remedy of dropping the flag.
 
+pub mod collaboration;
 pub mod deletion;
 pub mod geometry;
 pub mod member;
@@ -78,6 +79,9 @@ pub static DOMAIN: Domain = Domain {
     summary: "Tasks, milestones, records and the plan they sit in.",
     commands: &[
         &plan::COMMAND,
+        &collaboration::PROJECTS,
+        &collaboration::COMMENT,
+        &collaboration::COMMENTS,
         &member::COMMAND,
         &deletion::INVENTORY,
         &deletion::READ,
@@ -886,8 +890,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_pm_command_requires_the_project_on_its_own_request() {
+    fn every_project_scoped_pm_command_requires_its_own_project() {
         for command in DOMAIN.commands {
+            if command.id == "pm.project.list" {
+                assert_eq!(
+                    command.authority,
+                    ds_cli_contract::spec::Authority::HeadlessUser
+                );
+                assert_eq!(command.effect, ds_cli_contract::spec::Effect::ReadOnly);
+                assert!(command.arg("project").is_none());
+                continue;
+            }
             let project = command.arg("project").expect("PM command lacks --project");
             assert!(
                 project.required,
