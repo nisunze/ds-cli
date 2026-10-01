@@ -2893,6 +2893,55 @@ pub fn project_management_for_project(
     )
 }
 
+/// Read, plan or apply one finite member form grant through its existing authority.
+pub fn member_form_grant_for_project(
+    lane_value: &str,
+    project: &str,
+    request: &ds_client_core::member_form_grants::Request,
+) -> Result<HeadlessNamedProject<ds_client_core::member_form_grants::GrantResult>, Failure> {
+    headless_named_project_with(
+        lane_value,
+        project,
+        map_member_form_grant,
+        |device, project| device.member_form_grant(project, request),
+        |client, project| client.member_form_grant(project, request, now()),
+    )
+}
+
+fn map_member_form_grant(error: ClientError) -> Failure {
+    if let Some(refusal) = error.service_refusal() {
+        let sentence = refusal.message().unwrap_or("member form grant refused");
+        let failure = match refusal.code() {
+            _ if refusal.status()==400 && sentence.starts_with("Unknown action: member_form_grant_") => Failure::unavailable("member_grant_unavailable","the deployed project-access authority does not yet support finite member form grants").remedy("install and deploy the matching member form grant contract; do not fall back to legacy sharing"),
+            Some("member_form_grant_stale") => Failure::conflict("member_grant_stale", sentence)
+                .remedy("read and plan the exact grant again; never silently rebase"),
+            Some("member_form_grant_unauthorized") => {
+                Failure::unauthorized("member_grant_not_permitted", sentence)
+                    .remedy("ask a current higher project authority to manage this member")
+            }
+            Some("member_form_grant_member_required") => {
+                Failure::invalid("member_grant_member_required", sentence)
+                    .remedy("use an existing active member with agreeing project membership edges")
+            }
+            Some("member_form_grant_bound_exceeded") => {
+                Failure::invalid("member_grant_bound_exceeded", sentence)
+                    .remedy("this operation supports at most 100 current project form bindings")
+            }
+            Some("member_form_grant_invalid") => Failure::invalid("member_grant_invalid", sentence)
+                .remedy("use exact current participating form slugs and a fresh complete plan"),
+            _ if refusal.status() >= 500 => {
+                Failure::unavailable("member_grant_unavailable", sentence).remedy(
+                    "retry the read; verify effective state before retrying an uncertain apply",
+                )
+            }
+            _ => return map_client(error),
+        };
+        return failure
+            .detail(json!({"http_status":refusal.status(),"service_code":refusal.code()}));
+    }
+    map_client(error)
+}
+
 /// One asset catalogue action scoped to the project named on this request.
 pub fn project_assets_for_project(
     lane_value: &str,

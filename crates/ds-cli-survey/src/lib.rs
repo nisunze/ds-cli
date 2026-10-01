@@ -12,6 +12,7 @@ pub mod entries;
 pub mod forms;
 pub mod import;
 pub mod local;
+pub mod member_grants;
 pub mod migrate;
 pub mod moments;
 pub mod photo;
@@ -46,6 +47,9 @@ pub static DOMAIN: Domain = Domain {
         &moments::LIST_COMMAND,
         &moments::READ_COMMAND,
         &project_forms::READ_COMMAND,
+        &member_grants::READ_COMMAND,
+        &member_grants::PLAN_COMMAND,
+        &member_grants::APPLY_COMMAND,
         &project_forms::LIST_COMMAND,
         &project_forms::SETTINGS_COMMAND,
         &project_forms::EDITOR_COMMAND,
