@@ -1400,6 +1400,23 @@ impl DeviceApiAuthorization<'_> {
             command,
         )
     }
+    pub fn member_form_grant<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        command: &crate::member_form_grants::Request,
+        now: u64,
+    ) -> Result<crate::member_form_grants::GrantResult, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
+        self.ensure_active(now)?;
+        crate::member_form_grants::run(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            command,
+        )
+    }
     pub fn data_distribution<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
