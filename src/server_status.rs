@@ -823,6 +823,35 @@ mod tests {
     }
 
     #[test]
+    fn the_requested_operation_is_declared_with_matching_route_and_bounds() {
+        let request = run(json!({"kind": "request"}));
+        let descriptor: Value =
+            serde_json::from_str(include_str!("../routing/operations.json")).unwrap();
+        let name = request["operation"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("domains.sre.")
+            .expect("server status must request an SRE operation");
+        let operation = descriptor["domains"]["sre"]["operations"]
+            .get(name)
+            .expect("the requested server status operation must exist in the routing descriptor");
+        assert_eq!(request["method"], operation["gateway"]["method"]);
+        assert_eq!(request["path"], operation["gateway"]["path"]);
+        let policy = |field: &str| {
+            operation
+                .get(field)
+                .unwrap_or(&descriptor["operation_defaults"][field])
+        };
+        assert_eq!(&request["response_limit"], policy("response_cap_bytes"));
+        assert_eq!(&request["timeout_seconds"], policy("timeout_s"));
+        assert_eq!(policy("authority"), "gateway");
+        assert_eq!(policy("principal"), "user");
+        assert_eq!(policy("transport"), "json");
+        assert_eq!(operation["resolution"]["web"], "gateway");
+        assert_eq!(operation["resolution"]["desktop"], "gateway");
+    }
+
+    #[test]
     fn a_published_snapshot_is_admitted_unchanged() {
         let out = run(json!({"kind": "admit", "response": snapshot()}));
         assert_eq!(out["outcome"], "admitted");

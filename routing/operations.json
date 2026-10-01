@@ -1051,6 +1051,22 @@
         "routes bumped the client profile schema to v29."
       ],
       "operations": {
+        "server_status": {
+          "summary": "Read the published server status snapshot for the Dashboard.",
+          "transport": "json",
+          "authority": "gateway",
+          "principal": "user",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 4194304,
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/sre/server-status",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
         "overview": {
           "summary": "Read fleet health, service SLOs, stale work and incidents.",
           "doc": [
