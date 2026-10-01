@@ -258,7 +258,7 @@ pub static SHOW: Command = Command {
             "Show this revision's metadata instead of the head (no bytes fetched).",
         ),
     ],
-    output: "Head: model {head_revision_id, head_version, head_model_digest, approval_status, design_stage_id, updated_at, …} and current_version {version, version_revision_count, revision_ordinal_within_version, count_exact}. Revision: the revision record and its position in its version. Never a signed locator.",
+    output: "Head: model {head_revision_id, head_version, head_model_digest, approval_status, design_stage_id, updated_at, …}, current_version {version, version_revision_count, revision_ordinal_within_version, count_exact}, and management {working_head {revision_id, digest, revision_count}, named_version {version, label}, content_version, mutated:false}. named_version is the canonical LV/MV marker (0 means Unversioned); content_version is the legacy source group. Revision: the revision record and its position in its version. Never a signed locator.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),

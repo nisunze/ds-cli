@@ -68,7 +68,7 @@ These words are deliberately not interchangeable:
 | `ds dsgrid project retire` | Retire one superseded project model with explicit project, head revision, digest and reason; a byte-verified separate backup is mandatory, the receipt names it (`backup`: bucket, object, generation, digest, byte_length), and without it the command refuses `grid_retire_backup_unconfirmed`. Immutable revisions remain. | headless_project + `--yes` |
 | `ds dsgrid project restore` | Restore the exact retired head after verifying its separate backup; version-bound attachments retain their pins. | headless_project + `--yes` |
 | `ds dsgrid project list --include-deleted` | Include retired heads and their exact revision and digest for restoration; every row carries `head_version`, approval and update/retirement fields. | headless_project |
-| `ds dsgrid project show` | One model's current version, its revision count and the head's ordinal; with `--revision`, one revision's metadata. No bytes. | headless_project |
+| `ds dsgrid project show` | One model's current version, its revision count and the head's ordinal, plus a read-only management receipt separating the exact working head from the canonical named version and legacy content group; with `--revision`, one revision's metadata. No bytes. | headless_project |
 | `ds dsgrid project versions` | A model's versions, each with its revisions in save order and their ordinals. | headless_project |
 | `ds dsgrid project geojson` | Verify one immutable project revision and export its authored MV alignments as WGS84 GeoJSON. | headless_project |
 | `ds dsgrid project compare` | Entities added, changed and removed between two revisions or local packages. | headless_project |
