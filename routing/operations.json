@@ -721,6 +721,7 @@
         "account_stream": {
           "summary": "The account-wide server-sent event stream.",
           "transport": "sse",
+          "timeout_s": 55,
           "gateway": {
             "method": "GET",
             "path": "/api/v1/messaging/account-stream",
