@@ -250,6 +250,8 @@ fn decode(
             if result.plan.operation != "read"
                 || result.applied
                 || result.current_version != result.plan.base_version
+                || result.plan.before_forms != result.plan.after_forms
+                || result.plan.effective_before != result.plan.effective_after
             {
                 return Err(unreadable());
             }
@@ -477,6 +479,43 @@ mod tests {
         let wire = json!({"success":true,"data":GrantResult{plan:changed, applied:false, current_version:0}});
         assert!(decode(
             &serde_json::to_vec(&wire).unwrap(),
+            "p",
+            "manager@example.com",
+            &request
+        )
+        .is_err());
+    }
+    #[test]
+    fn member_form_grant_read_refuses_changed_scope_or_effective_permissions() {
+        let mut p = plan();
+        p.operation = "read".into();
+        p.before_forms = p.after_forms.clone();
+        p.effective_before = p.effective_after.clone();
+        let request = Request::Read {
+            member: p.target_user_email.clone(),
+        };
+        let valid =
+            json!({"success":true,"data":GrantResult{plan:p,applied:false,current_version:0}});
+        assert!(decode(
+            &serde_json::to_vec(&valid).unwrap(),
+            "p",
+            "manager@example.com",
+            &request
+        )
+        .is_ok());
+        let mut changed_grant = valid.clone();
+        changed_grant["data"]["plan"]["before_forms"] = json!(["old"]);
+        assert!(decode(
+            &serde_json::to_vec(&changed_grant).unwrap(),
+            "p",
+            "manager@example.com",
+            &request
+        )
+        .is_err());
+        let mut changed_permission = valid;
+        changed_permission["data"]["plan"]["effective_before"][0]["edit_allowed"] = json!(false);
+        assert!(decode(
+            &serde_json::to_vec(&changed_permission).unwrap(),
             "p",
             "manager@example.com",
             &request
