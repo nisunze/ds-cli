@@ -1959,6 +1959,21 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::plan::render,
     },
     Entry {
+        command: &ds_cli_pm::collaboration::PROJECTS,
+        handler: ds_cli_pm::collaboration::projects,
+        render: ds_cli_pm::collaboration::render,
+    },
+    Entry {
+        command: &ds_cli_pm::collaboration::COMMENT,
+        handler: ds_cli_pm::collaboration::comment,
+        render: ds_cli_pm::collaboration::render,
+    },
+    Entry {
+        command: &ds_cli_pm::collaboration::COMMENTS,
+        handler: ds_cli_pm::collaboration::comments,
+        render: ds_cli_pm::collaboration::render,
+    },
+    Entry {
         command: &ds_cli_pm::member::COMMAND,
         handler: ds_cli_pm::member::run,
         render: ds_cli_pm::member::render,
