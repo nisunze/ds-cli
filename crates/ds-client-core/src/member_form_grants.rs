@@ -90,9 +90,17 @@ fn email(s: &str) -> bool {
             .chars()
             .any(|c| c.is_whitespace() || c.is_control() || c == '/' || c == '\\')
 }
+fn form_id(s: &str) -> bool {
+    // Existing survey form authority: 2..=200 lowercase slug bytes.
+    (2..=200).contains(&s.len())
+        && s.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+        && s.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
+        && s.bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_' || c == b'-')
+}
 fn forms(values: &[String]) -> bool {
     values.len() <= MAX_FORMS
-        && values.iter().all(|s| segment(s))
+        && values.iter().all(|s| form_id(s))
         && values
             .iter()
             .collect::<std::collections::BTreeSet<_>>()
@@ -111,7 +119,7 @@ impl Plan {
             items.len() == self.bound_forms.len()
                 && items.len() <= MAX_FORMS
                 && items.iter().all(|r| {
-                    segment(&r.form)
+                    form_id(&r.form)
                         && self.bound_forms.contains(&r.form)
                         && (!r.only_own || r.read_allowed)
                         && (!r.edit_allowed || r.read_allowed)
@@ -357,11 +365,34 @@ mod tests {
             member: p.target_user_email.clone(),
             plan: p.clone(),
         };
+        assert!(decode(
+            &vec![b' '; MAX_BYTES + 1],
+            "p",
+            "manager@example.com",
+            &request
+        )
+        .is_err());
+        assert!(Request::Plan {
+            member: "member@example.com".into(),
+            forms: (0..=MAX_FORMS).map(|i| format!("form_{i}")).collect(),
+            all: false
+        }
+        .payload("p")
+        .is_err());
         let payload = request.payload("p").unwrap();
         assert_eq!(payload["action"], "member_form_grant_apply");
         assert_eq!(payload["data"]["plan"]["base_version"], 0);
         assert!(payload["data"].get("roles").is_none());
         assert!(request.payload("other").is_err());
+        for invalid in ["*", "Pole", "../pole", "p"] {
+            assert!(Request::Plan {
+                member: "member@example.com".into(),
+                forms: vec![invalid.into()],
+                all: false
+            }
+            .payload("p")
+            .is_err());
+        }
         assert!(Request::Plan {
             member: "member@example.com".into(),
             forms: vec![],
