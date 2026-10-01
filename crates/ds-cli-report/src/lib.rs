@@ -109,6 +109,8 @@ pub static DOMAIN: Domain = Domain {
         &project::archives::COMMAND,
         &project::settings::COMMAND,
         &project::settings::OUTPUTS_SET,
+        &project::mv_setup::SET,
+        &project::mv_setup::RESOLVE,
         &project::export::COMMAND,
         &project::publish::COMMAND,
         &project::map_inputs::COMMAND,

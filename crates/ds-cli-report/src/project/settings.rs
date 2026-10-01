@@ -252,6 +252,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // very configuration. When the server could not mint it, the document
     // says why, and `ready` must say no with that reason — never "ready"
     // for an export the kernel will refuse (cd193b7d).
+    output["mv"] =
+        ds_command_kernel::printing::mv::inspect(&sheets, Some(inputs.require("project")?));
     with_receipt_readiness(&mut output, &configuration.document);
     let receipt = receipt(lane, &configuration.summary);
     output["lane"] = receipt["lane"].clone();
@@ -302,7 +304,7 @@ fn with_receipt_readiness(output: &mut Value, document: &Value) {
 /// the kernel's `named_layouts` reads. A setup the selection names but the
 /// catalogue lacks is left out, so the kernel refuses it by its own rule. A
 /// sheet the configuration does serve is kept as served.
-fn sheets_with_printing_catalogue(
+pub(crate) fn sheets_with_printing_catalogue(
     lane: &str,
     project: &str,
     sheets: &Value,
@@ -320,6 +322,12 @@ fn sheets_with_printing_catalogue(
             .collect::<Vec<_>>(),
         None => stored_setup_ids(sheets),
     };
+    let mut wanted = wanted;
+    if let Ok(mv) = ds_command_kernel::printing::mv::selection(sheets) {
+        if !wanted.contains(&mv.layout_id) {
+            wanted.push(mv.layout_id);
+        }
+    }
     if wanted.is_empty() {
         return Ok(with_printing_setups(sheets, Vec::new()));
     }
@@ -349,7 +357,7 @@ fn sheets_with_printing_catalogue(
             &ds_cli_auth::PrintingRequest::Get { id: id.clone() },
         )?;
         setups
-            .push(json!({"id":setup["id"],"revision":setup["revision"],"layout":setup["layout"]}));
+            .push(json!({"id":setup["id"],"revision":setup["revision"],"layout":setup["layout"],"inherited_from":setup["inherited_from"]}));
     }
     Ok(with_printing_setups(sheets, setups))
 }

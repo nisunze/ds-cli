@@ -863,6 +863,16 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::project::settings::render,
     },
     Entry {
+        command: &ds_cli_report::project::mv_setup::RESOLVE,
+        handler: ds_cli_report::project::mv_setup::resolve,
+        render: ds_cli_report::project::mv_setup::render_resolve,
+    },
+    Entry {
+        command: &ds_cli_report::project::mv_setup::SET,
+        handler: ds_cli_report::project::mv_setup::set,
+        render: ds_cli_report::project::mv_setup::render,
+    },
+    Entry {
         command: &ds_cli_report::project::settings::OUTPUTS_SET,
         handler: ds_cli_report::project::settings::set,
         render: ds_cli_report::project::settings::render_set,
