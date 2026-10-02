@@ -443,6 +443,7 @@ impl<'a> StoreHost<'a> {
                     .about(&row.identity)
                     .detail(error),
             };
+            let receipt = receipt.for_publication(&row);
             // A remote finalize may have happened just before a local
             // revocation. Keep the row held in that case; a later idempotent
             // pass reconciles it rather than recording a receipt under a
@@ -493,6 +494,7 @@ impl<'a> StoreHost<'a> {
                 .about(&row.identity)
                 .detail(format!("{name} was not freed: {error}")),
         };
+        let receipt = receipt.for_publication(row);
         self.record_receipt(project, &receipt)?;
         self.housekeeping
             .lock()

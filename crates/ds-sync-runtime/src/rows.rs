@@ -157,6 +157,8 @@ pub struct Receipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_publish_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub head_revision: Option<i64>,
     /// The record's head identity after a committed publish (the OCC revision
     /// the grant pinned): the store advances the held head from the receipt
@@ -177,6 +179,7 @@ impl Receipt {
             outcome: outcome.into(),
             detail: None,
             work_id: None,
+            client_publish_id: None,
             head_revision: None,
             revision: None,
             transfers: Vec::new(),
@@ -186,6 +189,11 @@ impl Receipt {
 
     pub fn about(mut self, identity: &sync::Identity) -> Self {
         self.identity = Some(identity.clone());
+        self
+    }
+
+    pub fn for_publication(mut self, row: &LocalRow) -> Self {
+        self.client_publish_id = Some(row.client_publish_id.clone()).filter(|id| !id.is_empty());
         self
     }
 
@@ -478,6 +486,7 @@ pub fn store_row(project: &str, row: &LocalRow, now: u64) -> store::ArtifactRow 
         grant_engine: None,
         resource: Some(row.resource.clone()),
         client_publish_id: row.client_publish_id.clone(),
+        acknowledged_work_id: None,
         outputs: row
             .outputs
             .iter()
@@ -605,6 +614,7 @@ pub fn receipt_row(project: &str, receipt: &Receipt, now: u64) -> store::Receipt
         detail,
         grant_id: None,
         work_id: receipt.work_id.clone(),
+        client_publish_id: receipt.client_publish_id.clone(),
         head_revision: receipt.revision.clone(),
         head_sha256: None,
         head_counter: receipt.head_revision,

@@ -26,10 +26,10 @@ transition returns and nothing else; no host re-decides a state.
 
 | Row | Key | Fields |
 |---|---|---|
-| `artifact` | scope + identity | `scope {project | personal}`, `engine`, `operation`, `variant`, `sha256`, `size_bytes`, `produced_at_ms`, `base_revision?` (output-head OCC identity), `input_base_fingerprint?` (source-input digest for a derived artifact), `engine_release`, `engine_build_manifest_sha256?`, `bytes_locator` (host-opaque), `readable`, `state` (`held | uploading | published | conflict | refused`), `state_reason?`, `replay_key` (idempotency across attempts), `updated_at_ms` |
+| `artifact` | scope + identity | `scope {project | personal}`, `engine`, `operation`, `variant`, `sha256`, `size_bytes`, `produced_at_ms`, `base_revision?` (output-head OCC identity), `input_base_fingerprint?` (source-input digest for a derived artifact), `engine_release`, `engine_build_manifest_sha256?`, `client_publish_id`, `acknowledged_work_id?` (exact native commit evidence), `bytes_locator` (host-opaque), `readable`, `state` (`held | uploading | published | conflict | refused`), `state_reason?`, `replay_key` (idempotency across attempts), `updated_at_ms` |
 | `head` | scope + identity | `revision` (output-head OCC identity), `head_revision` (monotonic counter), `input_base_fingerprint?` (sealed source-input digest), `sha256`, `published_at_ms`, `read_at_ms` |
 | `grant` | scope + `grant_id` | `install_id`, `engines[{name, release, manifest_sha256?}]`, `expires_at_ms`, `raw` (the signed document, opaque) |
-| `receipt` | `receipt_id` | `action`, identity, `outcome`, `detail?`, `work_id?`, `head_revision?`, `committed_bytes?`, `at_ms` — append-only evidence |
+| `receipt` | `receipt_id` | `action`, identity, `outcome`, `detail?`, `work_id?`, `client_publish_id?` (captured publication binding), `head_revision?`, `committed_bytes?`, `at_ms` — append-only evidence |
 | `lease` | scope | `worker_id`, `taken_at_ms`, `expires_at_ms` |
 | `fence` | context | `account`, `deployment` (lane + origin), `install_id` — every row is stored under one fence; a row from another fence is never executed |
 
@@ -40,11 +40,21 @@ transition returns and nothing else; no host re-decides a state.
 - `LocalProduced { artifact }` → upsert `artifact` (`held`); the next plan is a `local_change` trigger (uploads never wait).
 - `HeadsRead { heads, read_at_ms }` → replace the scope's `head` rows; `read_at_ms` becomes the plan's `remote_read_at_ms`.
 - `GrantOpened { grant }` → upsert `grant`; superseded grants of the same scope are dropped.
-- `ActionReceipt { receipt }` → `upload` committed ⇒ `artifact.state = published` and a `head` row from the receipt (the head is carried, never re-read); `conflict` ⇒ `artifact.state = conflict` with `state_reason`; `refused` ⇒ `refused` with the reason; `download` committed ⇒ `artifact` row for the downloaded head (`held`, readable); `reclaimed` ⇒ the row's bytes are gone (`readable = false`, `bytes_locator` cleared) and its verdict stays as evidence; `reclaim_failed` changes no row; every receipt appended.
+- `ActionReceipt { receipt }` → a row-changing action binds the selected `client_publish_id` under its fence/scope/identity; a replaced row retains its state and only the attempt's receipt is appended. A cancelled row cannot be restated, but an exact `reclaimed` receipt may mark its bytes gone while preserving cancellation. `upload` committed additionally requires a nonempty `work_id` and matching explicit head digest, and records `artifact.acknowledged_work_id` with `artifact.state = published` and a `head` row from the receipt (the head is carried, never re-read); `conflict` ⇒ `artifact.state = conflict` with `state_reason`; `refused` ⇒ `refused` with the reason; `download` committed ⇒ `artifact` row for the downloaded head (`held`, readable); `reclaimed` ⇒ the row's bytes are gone (`readable = false`, `bytes_locator` cleared) and its verdict stays as evidence; `reclaim_failed` changes no row; every receipt appended.
 - `LeaseTake { worker_id, now_ms, ttl_ms }` → granted iff no live lease for the scope, else `refused: lease_held{worker_id, expires_at_ms}`. `LeaseRenew`, `LeaseRelease`. A lease is the ONLY thing that lets a worker drain: two workers never execute the same work.
 - `Logout` / `AccountSwitch { account }` → rows of another account are not visible; nothing is deleted (held bytes belong to the project); drains stop.
 - `Cancel { identity }` → `held`/`uploading` ⇒ `refused: cancelled` with the receipt; committed work is never undone.
 - `HandoffLegacy { rows: [legacy per-user outbox entries] }` (R4) → for each legacy row: an `artifact` row preserving identity, the original `bytes_locator`, digest, `replay_key` = the legacy row id, acknowledgements folded into `state`, unresolved failures as `state_reason`; a `receipt` per imported row naming its origin; **never silent loss**: a legacy row the shape does not admit becomes a `refused` artifact row with `handoff_unmapped` and the raw row kept in `detail`.
+
+The native Store acquires its SQLite writer transaction before reading the
+transition snapshot and receipt replay check; the same transaction persists
+all changes. This fences a late publication A receipt against a concurrent
+replacement or cancellation of publication B, including another connection.
+Optional publication/acknowledgement fields default to absent for historical
+rows and receipts. An identity-only old receipt never supplies a publication
+ACK. A newly sealed row cannot supply its own acknowledgement; native committed
+receipt/physical bytes and exact cloud per-output origin pins remain necessary
+for the report inventory to report verified publication.
 
 ## 4. Fences and identity
 

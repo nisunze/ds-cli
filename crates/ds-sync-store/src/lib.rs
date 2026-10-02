@@ -23,7 +23,7 @@ use ds_command_kernel::sync_store::{
     self as kernel, ArtifactRow, ArtifactState, Event, Fence, GrantRow, HeadRow, LeaseRow,
     QueueStatus, ReceiptRow, RowChange, Scope, Snapshot, Transition,
 };
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use std::path::Path;
 
 /// The on-disk schema this build reads and writes.
@@ -262,24 +262,31 @@ impl Store {
 
     /// Everything one scope holds under one fence.
     pub fn snapshot(&self, fence: &Fence, scope: &Scope) -> Result<Snapshot> {
+        Self::snapshot_on(&self.connection, fence, scope)
+    }
+
+    fn snapshot_on(connection: &Connection, fence: &Fence, scope: &Scope) -> Result<Snapshot> {
         let key = scope_key(scope);
-        let artifacts = self.rows::<ArtifactRow>(
+        let artifacts = Self::rows_on::<ArtifactRow>(
+            connection,
             "SELECT row FROM artifacts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND scope=?4 ORDER BY engine, operation, variant",
             fence,
             &key,
         )?;
-        let heads = self.rows::<HeadRow>(
+        let heads = Self::rows_on::<HeadRow>(
+            connection,
             "SELECT row FROM heads WHERE account=?1 AND deployment=?2 AND install_id=?3 AND scope=?4 ORDER BY engine, operation, variant",
             fence,
             &key,
         )?;
-        let grants = self.rows::<GrantRow>(
+        let grants = Self::rows_on::<GrantRow>(
+            connection,
             "SELECT row FROM grants WHERE account=?1 AND deployment=?2 AND install_id=?3 AND scope=?4 ORDER BY grant_id",
             fence,
             &key,
         )?;
-        let lease = self
-            .rows::<LeaseRow>(
+        let lease = Self::rows_on::<LeaseRow>(
+                connection,
                 "SELECT row FROM leases WHERE account=?1 AND deployment=?2 AND install_id=?3 AND scope=?4",
                 fence,
                 &key,
@@ -425,24 +432,34 @@ impl Store {
 
     /// Ask the kernel for the transition `event` causes from the stored
     /// snapshot, persist its row changes atomically, and return it. A
-    /// refused transition (no changes) is returned as the kernel spelled it.
+    /// refusal is returned as the kernel spelled it, including any audit
+    /// receipt that records the refused attempt without restating its row.
     pub fn apply(&mut self, fence: &Fence, now_ms: u64, event: Event) -> Result<Transition> {
+        // Acquire the writer before reading the transition's authority.
+        // Another connection cannot replace or cancel the selected row
+        // between its snapshot and this receipt's changes.
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let scope = event_scope(&event);
         let snapshot = match &scope {
-            Some(scope) => self.snapshot(fence, scope)?,
+            Some(scope) => Self::snapshot_on(&tx, fence, scope)?,
             // A handoff spans scopes: the kernel needs every artifact row of
             // this fence to keep the import idempotent.
             None => Snapshot {
-                artifacts: self.artifacts_of_fence(fence)?,
+                artifacts: Self::rows_on::<ArtifactRow>(
+                    &tx,
+                    "SELECT row FROM artifacts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND ?4 = ?4 ORDER BY scope, engine, operation, variant",
+                    fence,
+                    "",
+                )?,
                 ..Snapshot::default()
             },
         };
         // A receipt is appended once: the same receipt applied again (a
         // retried host call, a replayed log) changes nothing.
         if let Event::ActionReceipt { receipt } = &event {
-            let known: Option<i64> = self
-                .connection
-                .query_row(
+            let known: Option<i64> = tx.query_row(
                     "SELECT 1 FROM receipts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND receipt_id=?4",
                     params![fence.account, fence.deployment, fence.install_id, receipt.receipt_id],
                     |row| row.get(0),
@@ -468,7 +485,6 @@ impl Store {
             event,
         };
         let transition = kernel::apply(&request).map_err(Error::Kernel)?;
-        let tx = self.connection.transaction()?;
         for change in &transition.changes {
             persist(&tx, fence, change)?;
         }
@@ -624,7 +640,16 @@ impl Store {
         fence: &Fence,
         scope: &str,
     ) -> Result<Vec<T>> {
-        let mut statement = self.connection.prepare(sql)?;
+        Self::rows_on(&self.connection, sql, fence, scope)
+    }
+
+    fn rows_on<T: serde::de::DeserializeOwned>(
+        connection: &Connection,
+        sql: &str,
+        fence: &Fence,
+        scope: &str,
+    ) -> Result<Vec<T>> {
+        let mut statement = connection.prepare(sql)?;
         let rows = statement.query_map(
             params![fence.account, fence.deployment, fence.install_id, scope],
             |row| row.get::<_, String>(0),

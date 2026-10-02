@@ -67,7 +67,7 @@ pub fn standing(
 /// bytes freed, when they were.
 ///
 /// The kernel keys the `reclaimed` transition — bytes gone, locator
-/// cleared — by the receipt's identity, so the receipt carries `identity`
+/// cleared — by its identity and exact publication id. It carries `identity`
 /// only when the loser IS the identity's standing row (`loser_is_the_row`:
 /// [`record`] freeing the previous row before the new one takes the
 /// identity). A loser that never held the row — a completion a producer
@@ -106,6 +106,7 @@ pub fn free_superseded(
         )),
         grant_id: None,
         work_id: None,
+        client_publish_id: Some(loser.into()),
         head_revision: None,
         head_sha256: None,
         head_counter: None,

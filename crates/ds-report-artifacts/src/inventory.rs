@@ -154,7 +154,9 @@ pub fn read_snapshot(
                 client_publish_id: row.client_publish_id.clone(),
                 input_base_fingerprint: row.input_base_fingerprint.clone().unwrap_or_default(),
                 state: row.state,
-                acknowledged_work_id: None,
+                acknowledged_work_id: complete_row_pins_match
+                    .then(|| row.acknowledged_work_id.clone())
+                    .flatten(),
                 updated_at_ms: row.updated_at_ms,
                 reason: row.state_reason.clone(),
                 outputs: row
@@ -203,6 +205,24 @@ pub fn read_snapshot(
 fn committed_row_pins_match(receipt: &PublicationBatchReceipt, row: &ArtifactRow) -> bool {
     let mut ids = std::collections::BTreeSet::new();
     row.input_base_fingerprint.as_deref() == Some(receipt.input_base_fingerprint.as_str())
+        && row.engine_release == receipt.engine_version
+        && row.engine_build_manifest_sha256.as_deref()
+            == Some(receipt.engine_build_manifest_sha256.as_str())
+                .filter(|digest| !digest.is_empty())
+        && row.sha256
+            == ds_command_kernel::sync_store::inventory_digest(
+                &receipt
+                    .outputs
+                    .iter()
+                    .map(|output| (output.output_id.clone(), output.sha256.clone()))
+                    .collect::<Vec<_>>(),
+            )
+        && row.size_bytes
+            == receipt
+                .outputs
+                .iter()
+                .map(|output| output.size_bytes)
+                .sum::<u64>()
         && row.outputs.len() == receipt.outputs.len()
         && row.outputs.iter().all(|stored| {
             ids.insert(&stored.output_id)
@@ -342,6 +362,7 @@ mod tests {
             grant_engine: None,
             resource: Some("tx_1".into()),
             client_publish_id: receipt.client_publish_id.clone(),
+            acknowledged_work_id: None,
             outputs: receipt
                 .outputs
                 .iter()
@@ -414,6 +435,188 @@ mod tests {
                 .local_sets
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn bound_upload_ack_reaches_physical_inventory_and_still_requires_exact_cloud_origins() {
+        use ds_command_kernel::compute_artifact_inventory::{Declaration, Head, OutputOrigin};
+        use report::inventory::{CloudHead, ReadFact, ReadState};
+        let fixture = Fixture::new();
+        let artifact_root = fixture.0.join("report-artifacts");
+        let receipt = commit(
+            &artifact_root,
+            'a',
+            &["shp", "kmz", "xlsx", "geojson", "pdf__a3l", "pdf__a0l"],
+        );
+        let fence = Fence {
+            account: "owner-1".into(),
+            deployment: "fixture-deployment".into(),
+            install_id: "fixture-install".into(),
+        };
+        let scope = Scope::Project {
+            project: "project-1".into(),
+        };
+        let database = fixture.0.join("store.sqlite");
+        let mut store = ds_sync_store::Store::open(&database).unwrap();
+        store
+            .apply(&fence, 1, Event::LocalProduced { row: row(&receipt) })
+            .unwrap();
+        let acknowledgement = ReceiptRow {
+            receipt_id: "bound-ACK".into(),
+            scope: scope.clone(),
+            action: "upload".into(),
+            identity: Some(row(&receipt).identity),
+            outcome: "committed".into(),
+            detail: None,
+            grant_id: None,
+            work_id: Some("exact-work".into()),
+            client_publish_id: Some(receipt.client_publish_id.clone()),
+            head_revision: Some("exact-head".into()),
+            head_sha256: Some(row(&receipt).sha256),
+            head_counter: Some(1),
+            committed_bytes: None,
+            at_ms: 2,
+        };
+        let mut historical_receipt = acknowledgement.clone();
+        historical_receipt.receipt_id = "historical-identity-only".into();
+        historical_receipt.client_publish_id = None;
+        let refused = store
+            .apply(
+                &fence,
+                2,
+                Event::ActionReceipt {
+                    receipt: historical_receipt,
+                },
+            )
+            .unwrap();
+        assert_eq!(refused.refusals[0].code, "publication_replaced");
+        let before_ack = store.snapshot(&fence, &scope).unwrap();
+        assert!(before_ack.heads.is_empty());
+        let historical = read_snapshot(
+            &artifact_root,
+            "owner-1",
+            "project-1",
+            "tx_1",
+            &before_ack.artifacts,
+        )
+        .unwrap();
+        assert!(historical.sync_artifacts[0].acknowledged_work_id.is_none());
+        assert!(store
+            .apply(
+                &fence,
+                3,
+                Event::ActionReceipt {
+                    receipt: acknowledgement
+                }
+            )
+            .unwrap()
+            .refusals
+            .is_empty());
+        drop(store);
+        let stored = ds_sync_store::Store::open_read_only(&database)
+            .unwrap()
+            .unwrap()
+            .snapshot(&fence, &scope)
+            .unwrap()
+            .artifacts;
+        let mut snapshot =
+            read_snapshot(&artifact_root, "owner-1", "project-1", "tx_1", &stored).unwrap();
+        assert_eq!(
+            snapshot.sync_artifacts[0].acknowledged_work_id.as_deref(),
+            Some("exact-work")
+        );
+        let view = serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap();
+        assert_eq!(view["local_output_count"], 6);
+        assert_eq!(
+            view["published_output_count"], 0,
+            "a native ACK alone is not cloud readback"
+        );
+        snapshot.cloud_read = ReadFact {
+            state: ReadState::Ready,
+            error: None,
+        };
+        snapshot.cloud_head = Some(CloudHead {
+            owner: "owner-1".into(),
+            project: "project-1".into(),
+            head: Head {
+                work_id: "exact-work".into(),
+                engine: "network_reporter".into(),
+                engine_version: Some(receipt.engine_version.clone()),
+                engine_build_manifest_sha256: Some(receipt.engine_build_manifest_sha256.clone()),
+                operation: receipt.operation.clone(),
+                variant: "default".into(),
+                input_base_fingerprint: receipt.input_base_fingerprint.clone(),
+                head_revision: 1,
+                updated_at: "2026-10-02T03:00:00Z".into(),
+                outputs: receipt
+                    .outputs
+                    .iter()
+                    .map(|output| Declaration {
+                        output_id: output.output_id.clone(),
+                        format: output.format.clone(),
+                        content_type: output.content_type.clone(),
+                        sha256: output.sha256.clone(),
+                        size_bytes: output.size_bytes,
+                        paper_size: output.paper_size.clone(),
+                        presentation: None,
+                    })
+                    .collect(),
+                output_origins: Some(
+                    receipt
+                        .outputs
+                        .iter()
+                        .map(|output| {
+                            (
+                                output.output_id.clone(),
+                                OutputOrigin {
+                                    work_id: "exact-work".into(),
+                                    input_base_fingerprint: receipt.input_base_fingerprint.clone(),
+                                    engine_version: Some(receipt.engine_version.clone()),
+                                    engine_build_manifest_sha256: Some(
+                                        receipt.engine_build_manifest_sha256.clone(),
+                                    ),
+                                },
+                            )
+                        })
+                        .collect(),
+                ),
+            },
+        });
+        let view = serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap();
+        assert_eq!(view["published_output_count"], 6);
+        // A different work with identical bytes is not this publication's ACK.
+        let head = &mut snapshot.cloud_head.as_mut().unwrap().head;
+        head.work_id = "other-work".into();
+        for origin in head.output_origins.as_mut().unwrap().values_mut() {
+            origin.work_id = "other-work".into();
+        }
+        assert_eq!(
+            serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()
+                ["published_output_count"],
+            0
+        );
+        // Full native declaration validation also fences the ACK itself.
+        let mut unpinned = stored.clone();
+        unpinned[0].outputs[0].sha256 = "f".repeat(64);
+        let snapshot =
+            read_snapshot(&artifact_root, "owner-1", "project-1", "tx_1", &unpinned).unwrap();
+        assert!(snapshot.sync_artifacts[0].acknowledged_work_id.is_none());
+        assert_eq!(
+            serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()
+                ["published_output_count"],
+            0
+        );
+        let mut wrong_engine = stored.clone();
+        wrong_engine[0].engine_release = format!("ds-network-reporter@0.1.0+{}", "f".repeat(40));
+        let snapshot = read_snapshot(
+            &artifact_root,
+            "owner-1",
+            "project-1",
+            "tx_1",
+            &wrong_engine,
+        )
+        .unwrap();
+        assert!(snapshot.sync_artifacts[0].acknowledged_work_id.is_none());
     }
 
     #[test]

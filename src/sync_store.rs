@@ -122,6 +122,10 @@ pub struct ArtifactRow {
     pub resource: Option<String>,
     /// The server-side idempotency key of the publication.
     pub client_publish_id: String,
+    /// The exact work acknowledged for this publication, never inferred from
+    /// historical identity-only receipts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acknowledged_work_id: Option<String>,
     #[serde(default)]
     pub outputs: Vec<ArtifactOutput>,
     /// Host-opaque: a producer store reference, a path, an IndexedDB key —
@@ -205,6 +209,9 @@ pub struct ReceiptRow {
     pub grant_id: Option<String>,
     #[serde(default)]
     pub work_id: Option<String>,
+    /// The selected local publication this action actually attempted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_publish_id: Option<String>,
     #[serde(default)]
     pub head_revision: Option<String>,
     #[serde(default)]
@@ -552,6 +559,7 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
             }
             let mut next = row.clone();
             next.state = ArtifactState::Held;
+            next.acknowledged_work_id = None;
             next.state_reason = None;
             next.transfer_state = None;
             next.updated_at_ms = now;
@@ -601,10 +609,64 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
                 return Ok(t);
             };
             let existing = find_artifact(snapshot, &receipt.scope, identity);
+            // An operation slot may now hold B while an attempt on A is in
+            // flight. Keep that receipt as evidence without restating B.
+            if matches!(
+                receipt.action.as_str(),
+                "upload" | "conflict" | "refused" | "reclaimed"
+            ) {
+                let Some(row) = existing else {
+                    t.refuse(
+                        "publication_missing",
+                        "the receipt's publication is no longer held",
+                    );
+                    return Ok(t);
+                };
+                if receipt
+                    .client_publish_id
+                    .as_deref()
+                    .filter(|id| !id.is_empty())
+                    != Some(row.client_publish_id.as_str())
+                {
+                    t.refuse(
+                        "publication_replaced",
+                        "the receipt does not bind the current publication",
+                    );
+                    return Ok(t);
+                }
+                if receipt.action != "reclaimed"
+                    && row.state == ArtifactState::Refused
+                    && row.state_reason.as_deref() == Some("cancelled")
+                {
+                    t.refuse(
+                        "publication_cancelled",
+                        "the receipt cannot undo cancellation",
+                    );
+                    return Ok(t);
+                }
+                if receipt.action == "upload"
+                    && receipt.outcome == "committed"
+                    && (receipt.work_id.as_deref().is_none_or(str::is_empty)
+                        || receipt
+                            .head_sha256
+                            .as_deref()
+                            .is_some_and(|sha| sha != row.sha256))
+                {
+                    t.refuse(
+                        "publication_ack_unbound",
+                        "a committed receipt needs its exact work and output pins",
+                    );
+                    return Ok(t);
+                }
+            }
             let mut restate = |state: ArtifactState, reason: Option<String>| {
                 if let Some(row) = existing {
                     let mut next = row.clone();
                     next.state = state;
+                    next.acknowledged_work_id = (receipt.action == "upload"
+                        && receipt.outcome == "committed")
+                        .then(|| receipt.work_id.clone())
+                        .flatten();
                     next.state_reason = reason;
                     if !matches!(state, ArtifactState::Uploading) {
                         next.transfer_state = None;
@@ -755,6 +817,7 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
                     detail: None,
                     grant_id: None,
                     work_id: None,
+                    client_publish_id: Some(row.client_publish_id.clone()),
                     head_revision: None,
                     head_sha256: None,
                     head_counter: None,
@@ -874,6 +937,7 @@ fn handoff_one(snapshot: &Snapshot, handoff: &LegacyHandoff, now: u64, t: &mut T
         grant_engine: None,
         resource: None,
         client_publish_id: replay_key.clone(),
+        acknowledged_work_id: None,
         outputs,
         bytes_locator: locator,
         readable,
@@ -892,6 +956,7 @@ fn handoff_one(snapshot: &Snapshot, handoff: &LegacyHandoff, now: u64, t: &mut T
         detail: Some(legacy_row_evidence(legacy)),
         grant_id: None,
         work_id: None,
+        client_publish_id: None,
         head_revision: None,
         head_sha256: None,
         head_counter: None,
@@ -1307,6 +1372,7 @@ mod tests {
             grant_engine: None,
             resource: None,
             client_publish_id: key.into(),
+            acknowledged_work_id: None,
             outputs: vec![ArtifactOutput {
                 output_id: "xlsx".into(),
                 format: "xlsx".into(),
@@ -1333,6 +1399,7 @@ mod tests {
             detail: None,
             grant_id: None,
             work_id: None,
+            client_publish_id: Some("k1".into()),
             head_revision: None,
             head_sha256: None,
             head_counter: None,
@@ -1440,6 +1507,7 @@ mod tests {
     fn a_committed_upload_publishes_the_row_and_carries_the_head() {
         let mut r = receipt("upload", "committed", "a");
         r.head_revision = Some("rev2".into());
+        r.work_id = Some("work-k1".into());
         let t = apply(&request(
             Snapshot {
                 artifacts: vec![held("a", "k1")],
@@ -1449,7 +1517,7 @@ mod tests {
         ))
         .unwrap();
         assert!(
-            matches!(&t.changes[1], RowChange::UpsertArtifact(row) if row.state == ArtifactState::Published)
+            matches!(&t.changes[1], RowChange::UpsertArtifact(row) if row.state == ArtifactState::Published && row.acknowledged_work_id.as_deref() == Some("work-k1"))
         );
         assert!(
             matches!(&t.changes[2], RowChange::UpsertHead(head) if head.revision == "rev2" && head.read_at_ms == 1_000 && head.sha256 == SHA && head.outputs.len() == 1)
@@ -1469,6 +1537,104 @@ mod tests {
         assert!(
             matches!(&t.changes[1], RowChange::UpsertArtifact(row) if row.state == ArtifactState::Held && row.state_reason.as_deref() == Some("the gateway answered 503"))
         );
+    }
+
+    #[test]
+    fn receipts_bind_exact_publications_and_never_revive_cancelled_or_historical_rows() {
+        let current = held("a", "k2");
+        let mut ack = receipt("upload", "committed", "a");
+        ack.work_id = Some("work-k2".into());
+        ack.head_revision = Some("rev2".into());
+        let mut cancelled = current.clone();
+        cancelled.state = ArtifactState::Refused;
+        cancelled.state_reason = Some("cancelled".into());
+        let mut unbound = ack.clone();
+        unbound.client_publish_id = None;
+        let mut current_ack = ack.clone();
+        current_ack.client_publish_id = Some("k2".into());
+        let mut no_work = current_ack.clone();
+        no_work.work_id = None;
+        let mut wrong_output = current_ack.clone();
+        wrong_output.head_sha256 = Some("b".repeat(64));
+        for (row, attempt, reason) in [
+            (current.clone(), ack, "publication_replaced"),
+            (current.clone(), unbound, "publication_replaced"),
+            (cancelled, current_ack.clone(), "publication_cancelled"),
+            (current.clone(), no_work, "publication_ack_unbound"),
+            (current.clone(), wrong_output, "publication_ack_unbound"),
+        ] {
+            let transition = apply(&request(
+                Snapshot {
+                    artifacts: vec![row],
+                    ..Default::default()
+                },
+                Event::ActionReceipt { receipt: attempt },
+            ))
+            .unwrap();
+            assert_eq!(transition.refusals[0].code, reason);
+            assert!(artifacts(&transition).is_empty());
+            assert_eq!(
+                receipts(&transition).len(),
+                1,
+                "attempt remains audit evidence"
+            );
+            assert!(!transition
+                .changes
+                .iter()
+                .any(|change| matches!(change, RowChange::UpsertHead(_))));
+            assert!(transition.plan_trigger.is_none());
+        }
+        let transition = apply(&request(
+            Snapshot {
+                artifacts: vec![current.clone()],
+                ..Default::default()
+            },
+            Event::ActionReceipt {
+                receipt: current_ack,
+            },
+        ))
+        .unwrap();
+        assert_eq!(
+            artifacts(&transition)[0].acknowledged_work_id.as_deref(),
+            Some("work-k2")
+        );
+        let mut cancelled = current.clone();
+        cancelled.state = ArtifactState::Refused;
+        cancelled.state_reason = Some("cancelled".into());
+        let mut reclaimed = receipt("reclaimed", "cancelled", "a");
+        reclaimed.client_publish_id = Some("k2".into());
+        let transition = apply(&request(
+            Snapshot {
+                artifacts: vec![cancelled],
+                ..Default::default()
+            },
+            Event::ActionReceipt { receipt: reclaimed },
+        ))
+        .unwrap();
+        assert!(transition.refusals.is_empty());
+        assert_eq!(
+            artifacts(&transition)[0].state_reason.as_deref(),
+            Some("cancelled")
+        );
+        assert!(!artifacts(&transition)[0].readable);
+
+        let mut forged = current;
+        forged.acknowledged_work_id = Some("producer-cannot-ack".into());
+        let sealed = apply(&request(
+            Snapshot::default(),
+            Event::LocalProduced {
+                row: forged.clone(),
+            },
+        ))
+        .unwrap();
+        assert!(artifacts(&sealed)[0].acknowledged_work_id.is_none());
+        let mut historical = serde_json::to_value(forged).unwrap();
+        historical
+            .as_object_mut()
+            .unwrap()
+            .remove("acknowledged_work_id");
+        let historical: ArtifactRow = serde_json::from_value(historical).unwrap();
+        assert!(historical.acknowledged_work_id.is_none());
     }
 
     #[test]

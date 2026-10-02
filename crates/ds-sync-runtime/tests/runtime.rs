@@ -2065,7 +2065,9 @@ fn a_reclaim_the_producer_cannot_perform_is_reported_and_never_silent() {
 fn settle_as_lost(host: &StoreHost<'_>, row: &LocalRow) {
     host.record_receipt(
         PROJECT,
-        &ds_sync_runtime::Receipt::new("conflict", "superseded_by_head").about(&row.identity),
+        &ds_sync_runtime::Receipt::new("conflict", "superseded_by_head")
+            .about(&row.identity)
+            .for_publication(row),
     )
     .expect("the verdict is recorded");
     let stored = host
@@ -2302,6 +2304,15 @@ fn invariant_1_a_pass_killed_after_seal_after_transfer_or_before_ack_resumes_wit
     let resumed = h.run(vec![row.clone()], sync::Trigger::Startup);
     assert_eq!(outcomes(&resumed), vec!["upload:published"]);
     assert_eq!(fakes::lock(&h.world).commits, 1);
+    assert_eq!(
+        resumed.receipts[0].client_publish_id.as_deref(),
+        Some(row.client_publish_id.as_str())
+    );
+    assert_eq!(
+        stored_rows(&h, PROJECT)[0].acknowledged_work_id,
+        resumed.receipts[0].work_id
+    );
+    assert!(stored_rows(&h, PROJECT)[0].acknowledged_work_id.is_some());
 
     // (b) Killed after the transfer, before the restated declaration is
     // acknowledged: the bytes are in the session, the record has not
@@ -2590,6 +2601,11 @@ fn invariant_7_transfer_success_without_a_commit_receipt_leaves_the_row_held() {
     let rows = stored_rows(&h, PROJECT);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].state, ArtifactState::Held);
+    assert!(rows[0].acknowledged_work_id.is_none());
+    assert_eq!(
+        result.receipts[0].client_publish_id.as_deref(),
+        Some(row.client_publish_id.as_str())
+    );
     assert!(h
         .store
         .lock()
@@ -3097,6 +3113,11 @@ fn a_solar_seal_records_the_row_at_completion_and_the_pump_adopts_nothing() {
     let host = solar_pump(&h, &gateway, &producer, &reads, &online, "pump", PROJECT);
     let receipts = host.run_solar_publications(&publisher).unwrap();
     assert_eq!(solar_outcomes(&receipts), vec!["upload:published"]);
+    assert!(receipts[0].client_publish_id.is_some());
+    assert_eq!(
+        stored_rows(&h, PROJECT)[0].acknowledged_work_id,
+        receipts[0].work_id
+    );
     assert!(
         !host_receipt_actions(&h).contains(&"adopted".to_string()),
         "a sealed row is not adopted: {:?}",

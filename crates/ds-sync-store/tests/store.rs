@@ -45,6 +45,7 @@ fn row(op: &str, key: &str) -> ArtifactRow {
         grant_engine: None,
         resource: None,
         client_publish_id: key.into(),
+        acknowledged_work_id: None,
         outputs: vec![ArtifactOutput {
             output_id: "xlsx".into(),
             format: "xlsx".into(),
@@ -87,6 +88,7 @@ fn rows_survive_a_restart_and_stay_fenced_by_account() {
             detail: None,
             grant_id: Some("g".into()),
             work_id: Some("w".into()),
+            client_publish_id: Some("k1".into()),
             head_revision: Some("rev-2".into()),
             head_sha256: Some(SHA.into()),
             head_counter: Some(2),
@@ -435,7 +437,8 @@ fn invariant_5_a_store_fenced_by_account_deployment_and_install_shows_another_fe
                     outcome: "committed".into(),
                     detail: None,
                     grant_id: None,
-                    work_id: None,
+                    work_id: Some("w".into()),
+                    client_publish_id: Some("k1".into()),
                     head_revision: Some("rev-1".into()),
                     head_sha256: None,
                     head_counter: Some(1),
@@ -536,4 +539,90 @@ fn the_store_and_its_directory_are_private_to_the_account() {
     std::fs::set_permissions(&path, old).unwrap();
     drop(Store::open(&path).unwrap());
     assert_eq!(mode(&path), 0o600, "an existing store is tightened on open");
+}
+
+/// The blocked writer proves the read and update share one transaction:
+/// reading A before waiting for a competing writer would overwrite B here.
+#[test]
+fn late_ack_reads_replacement_after_acquiring_the_same_write_transaction() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+    static WAITING: AtomicBool = AtomicBool::new(false);
+    fn busy(attempt: i32) -> bool {
+        WAITING.store(true, Ordering::Release);
+        std::thread::sleep(Duration::from_millis(1));
+        attempt < 5000
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let mut writer = Store::open(&path).unwrap();
+    writer
+        .apply(
+            &fence("alice"),
+            1,
+            Event::LocalProduced {
+                row: row("a", "k1"),
+            },
+        )
+        .unwrap();
+    let mut late = Store::open(&path).unwrap();
+    late.connection_for_test().busy_handler(Some(busy)).unwrap();
+    let transaction = rusqlite::Transaction::new_unchecked(
+        writer.connection_for_test(),
+        rusqlite::TransactionBehavior::Immediate,
+    )
+    .unwrap();
+    let receipt = ReceiptRow {
+        receipt_id: "late-A".into(),
+        scope: scope(),
+        action: "upload".into(),
+        identity: Some(ident("a")),
+        outcome: "committed".into(),
+        detail: None,
+        grant_id: None,
+        work_id: Some("work-A".into()),
+        client_publish_id: Some("k1".into()),
+        head_revision: Some("head-A".into()),
+        head_sha256: Some(SHA.into()),
+        head_counter: Some(1),
+        committed_bytes: Some(10),
+        at_ms: 3,
+    };
+    WAITING.store(false, Ordering::Release);
+    let pending = std::thread::spawn(move || {
+        late.apply(&fence("alice"), 3, Event::ActionReceipt { receipt })
+    });
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !WAITING.load(Ordering::Acquire) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(
+        WAITING.load(Ordering::Acquire),
+        "receipt waits for the owned writer"
+    );
+    let replacement = row("a", "k2");
+    // Fixture-only competing seal on the same exact slot, committed while
+    // the late receipt is waiting for its writer transaction.
+    transaction
+        .execute(
+            "UPDATE artifacts SET replay_key=?1, row=?2 WHERE operation='a'",
+            rusqlite::params![
+                replacement.replay_key,
+                serde_json::to_string(&replacement).unwrap()
+            ],
+        )
+        .unwrap();
+    transaction.commit().unwrap();
+    let transition = pending.join().unwrap().unwrap();
+    assert_eq!(transition.refusals[0].code, "publication_replaced");
+    let snapshot = writer.snapshot(&fence("alice"), &scope()).unwrap();
+    assert_eq!(snapshot.artifacts, vec![replacement]);
+    assert!(snapshot.heads.is_empty());
+    assert_eq!(
+        writer
+            .receipts(&fence("alice"), &scope(), 10)
+            .unwrap()
+            .len(),
+        1
+    );
 }

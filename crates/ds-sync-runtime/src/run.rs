@@ -373,7 +373,7 @@ fn run_leased(
             sync::Action::Upload { identity, .. } => {
                 // A publication verdict affects only its row. A refused
                 // session affects every remaining gateway call in this pass.
-                let receipt = upload(host, project, &local, identity);
+                let receipt = bind_publication(upload(host, project, &local, identity), &local);
                 let credential_refused = receipt.outcome == "credential_refused";
                 let settled = settled_verdict(&receipt);
                 keep(host, project, &mut receipts, receipt);
@@ -407,7 +407,12 @@ fn run_leased(
                         "computed on {}, the record is at {current_revision}",
                         base_revision.as_deref().unwrap_or("no base"),
                     ));
-                keep(host, project, &mut receipts, receipt);
+                keep(
+                    host,
+                    project,
+                    &mut receipts,
+                    bind_publication(receipt, &local),
+                );
                 // The verdict is kept; the bytes are not. Online overwrites
                 // local, and a lost batch that stayed on disk was counted as
                 // queued for seven days on a machine where nothing was.
@@ -426,7 +431,12 @@ fn run_leased(
                         "the shared record already carries a later computation of this room"
                             .to_string(),
                     );
-                    keep(host, project, &mut receipts, receipt);
+                    keep(
+                        host,
+                        project,
+                        &mut receipts,
+                        bind_publication(receipt, &local),
+                    );
                     let receipt = reclaim(host, project, &local, identity, reason);
                     keep(host, project, &mut receipts, receipt);
                 } else {
@@ -436,7 +446,12 @@ fn run_leased(
             sync::Action::Refused { identity, reason } => {
                 let mut receipt = Receipt::new("refused", *reason);
                 receipt.identity = identity.clone();
-                keep(host, project, &mut receipts, receipt);
+                keep(
+                    host,
+                    project,
+                    &mut receipts,
+                    bind_publication(receipt, &local),
+                );
             }
         }
     }
@@ -459,6 +474,19 @@ fn run_leased(
     })
 }
 
+/// Bind only the publication selected in this pass, never a fresh lookup
+/// of the operation slot after the gateway answered.
+fn bind_publication(receipt: Receipt, local: &[LocalRow]) -> Receipt {
+    match receipt
+        .identity
+        .as_ref()
+        .and_then(|identity| local.iter().find(|row| &row.identity == identity))
+    {
+        Some(row) => receipt.for_publication(row),
+        None => receipt,
+    }
+}
+
 /// Free the bytes of the local row a verdict was passed on, and say so.
 ///
 /// Never silent: a reclaim that freed nothing because the batch was already
@@ -477,7 +505,7 @@ fn reclaim(
             .about(identity)
             .detail("the row this verdict was passed on is no longer in the local inventory");
     };
-    match host.reclaim(project, row) {
+    let receipt = match host.reclaim(project, row) {
         Ok(bytes) => {
             let mut receipt =
                 Receipt::new("reclaimed", verdict)
@@ -493,7 +521,8 @@ fn reclaim(
         Err(error) => Receipt::new("reclaim_failed", verdict)
             .about(identity)
             .detail(format!("{} was not freed: {error}", batch_name(row))),
-    }
+    };
+    receipt.for_publication(row)
 }
 
 /// How a receipt names the batch it is about: by its publish id, which is
