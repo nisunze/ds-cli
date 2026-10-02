@@ -753,11 +753,7 @@ pub fn output(format: &str) -> Result<Output, String> {
     };
     Ok(Output {
         output_id: format.into(),
-        format: if format == "geojson" {
-            "geojsonzip".into()
-        } else {
-            format.into()
-        },
+        format: format.into(),
         content_type,
         suffix: suffix.into(),
     })
@@ -1230,12 +1226,13 @@ fn selected_plan_for_purpose(
     let mut outputs = Vec::new();
     for token in tokens {
         let output = output(&token)?;
-        if named_print_output(&output.format).is_none()
-            && !INDIVIDUAL.contains(&output.format.as_str())
+        // Membership is defined by selection tokens, not artifact wire formats.
+        if named_print_output(&output.output_id).is_none()
+            && !INDIVIDUAL.contains(&output.output_id.as_str())
         {
             return Err(format!(
                 "Unsupported individual report output: {}",
-                output.format
+                output.output_id
             ));
         }
         if !seen.insert(output.output_id.clone()) {
@@ -2735,5 +2732,30 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn individual_geojson_selection_uses_the_reporter_wire_token() {
+        let sheets = json!({"project_settings":[{"parameter":"report_formats","value":"shp"}]});
+        let selection: DesignOutputSelection = serde_json::from_value(json!({
+            "schema":OUTPUT_SELECTION_SCHEMA, "geospatial":["geojson", "shp"]
+        }))
+        .unwrap();
+        let planned = selected_plan(&sheets, false, Some(&selection)).unwrap();
+        assert_eq!(
+            planned
+                .iter()
+                .map(|output| output.output_id.as_str())
+                .collect::<Vec<_>>(),
+            ["shp", "geojson", "voltage_drop"]
+        );
+        let geojson = &planned[1];
+        assert_eq!(geojson.format, "geojson");
+        assert_eq!(geojson.content_type, "application/zip");
+        assert_eq!(geojson.suffix, "_geojson.zip");
+        assert!(options(&[])
+            .unwrap()
+            .iter()
+            .any(|row| row["value"] == "geojson"));
     }
 }

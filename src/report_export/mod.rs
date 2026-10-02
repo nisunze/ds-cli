@@ -1626,6 +1626,7 @@ pub fn valid_artifact_filename(filename: &str, format: &str) -> bool {
         "network_information" => filename.ends_with(".network-information.json"),
         "voltage_drop" => filename.ends_with(".voltage-drop.json"),
         "voltage_drop_pdf" => filename.ends_with(" voltage drop.pdf"),
+        "geojson" => filename.ends_with("_geojson.zip"),
         "geojsonseq" => filename.ends_with("_geojsonl.zip"),
         "gpkg" => filename.ends_with(".gpkg"),
         "pdf_a0" => filename.ends_with(".a0.pdf"),
@@ -3789,6 +3790,10 @@ mod tests {
     #[test]
     fn artifact_filenames_follow_their_format() {
         assert!(valid_artifact_filename("tx_a.shp.zip", "shp"));
+        assert!(valid_artifact_filename("tx_a_geojson.zip", "geojson"));
+        assert!(!valid_artifact_filename("tx_a_geojsonl.zip", "geojson"));
+        assert!(!valid_artifact_filename("tx_a.zip", "geojson"));
+        assert!(!valid_artifact_filename("tx_a_geojson.zip", "geojsonzip"));
         assert!(valid_artifact_filename(
             "tx_a.network-information.json",
             "network_information"
