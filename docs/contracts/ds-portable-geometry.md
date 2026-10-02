@@ -21,9 +21,9 @@ The former partial haversine snapshot is removed.
 
 The default feature set has no dependencies. `editing`, `sampling` and `tin`
 add portable operations without dependencies; `profile` adds the `index`
-feature (`rstar`). `geojson` adds serde/JSON and the retained revision/extent
-modules; `overlay` adds the one `geo` predicate/boolean engine. The application
-kernel explicitly requests `overlay`. Consumers select capabilities instead
+feature (`rstar`). `geojson` adds serde/JSON and region/measurement/extent
+modules; `revision` adds the retained identity/comparison snapshots; `overlay` adds the one `geo` predicate/boolean engine. The application
+kernel explicitly requests `overlay` and `revision`. Consumers select capabilities instead
 of inheriting the polygon engine for scalar distance or LV line splitting.
 Cartesian primitives preserve admitted coordinate space, arithmetic, first-hit
 ties, authored vertices and payload interpolation. The governing policy is

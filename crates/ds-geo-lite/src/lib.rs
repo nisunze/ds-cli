@@ -20,10 +20,10 @@
 
 #[cfg(feature = "overlay")]
 pub mod admission;
-#[cfg(feature = "geojson")]
+#[cfg(feature = "revision")]
 #[path = "../../../vendor/ds-geo-lite/geo/comparison.rs"]
 pub mod comparison;
-#[cfg(feature = "geojson")]
+#[cfg(feature = "revision")]
 #[path = "../../../vendor/ds-geo-lite/geo/identity.rs"]
 pub mod identity;
 #[cfg(feature = "overlay")]

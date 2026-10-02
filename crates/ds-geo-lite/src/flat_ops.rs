@@ -1,4 +1,10 @@
-use crate::{coords_to_flat, flat_to_coords, operations, types::Coord};
+#[cfg(any(feature = "editing", feature = "sampling"))]
+use crate::coords_to_flat;
+#[cfg(any(feature = "editing", feature = "profile"))]
+use crate::flat_to_coords;
+use crate::operations;
+#[cfg(any(feature = "editing", feature = "profile", feature = "sampling"))]
+use crate::types::Coord;
 
 /// Classify independently-stationed profile alignments.
 ///
@@ -246,7 +252,7 @@ pub fn offset_line(coords_flat: &[f64], distance_m: f64, right_side: bool) -> Ve
 /// Pack multiple coordinate sequences into a flat array.
 /// Format: [segment_count, len1, len2, …, …coords1, …coords2, …]
 /// where each len is the number of f64 values (coord_count × 2).
-#[cfg(any(feature = "editing", feature = "sampling"))]
+#[cfg(feature = "editing")]
 fn pack_segments(segments: &[Vec<Coord>]) -> Vec<f64> {
     let flats: Vec<Vec<f64>> = segments.iter().map(|s| coords_to_flat(s)).collect();
     let total: usize = flats.iter().map(|f| f.len()).sum();

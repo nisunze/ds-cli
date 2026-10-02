@@ -23,11 +23,11 @@ pub fn ring_contains_by<T>(
     edges: RingEdges,
     arithmetic: RayArithmetic,
 ) -> bool {
-    if ring.len() < 3 {
+    if ring.is_empty() {
         return false;
     }
     let count = match edges {
-        RingEdges::Consecutive => ring.len() - 1,
+        RingEdges::Consecutive => ring.len().saturating_sub(1),
         _ => ring.len(),
     };
     let mut inside = false;
@@ -107,7 +107,7 @@ pub fn point_on_segment(point: Point, a: Point, b: Point, tolerance: SegmentTole
                     .hypot(b[1] - a[1])
                     .max(tolerance.minimum_length)
     };
-    if orientation(a, b, point).abs() > determinant {
+    if !(orientation(a, b, point).abs() <= determinant) {
         return false;
     }
     point[0] >= a[0].min(b[0]) - tolerance.bounds
@@ -191,11 +191,11 @@ pub fn locate_in_ring_by<T>(
     edges: RingEdges,
     arithmetic: RayArithmetic,
 ) -> PointLocation {
-    if ring.len() < 3 {
+    if ring.is_empty() {
         return PointLocation::Outside;
     }
     let count = match edges {
-        RingEdges::Consecutive => ring.len() - 1,
+        RingEdges::Consecutive => ring.len().saturating_sub(1),
         _ => ring.len(),
     };
     for i in 0..count {
@@ -224,6 +224,42 @@ pub fn locate_in_ring_by<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn edge_walks_preserve_degenerate_input_until_the_caller_admits_a_polygon() {
+        let edge = [[0., 0.], [10., 10.]];
+        assert!(ring_contains_by(
+            &edge,
+            [1., 5.],
+            |p| *p,
+            RingEdges::Consecutive,
+            RayArithmetic::ProductFirst
+        ));
+        assert_eq!(
+            locate_in_ring_by(
+                &edge,
+                [5., 5.],
+                |p| *p,
+                SegmentTolerance::EXACT,
+                RingEdges::Consecutive,
+                RayArithmetic::ProductFirst
+            ),
+            PointLocation::Boundary
+        );
+        assert!(!ring_contains_by::<Point>(
+            &[],
+            [1., 5.],
+            |p| *p,
+            RingEdges::Consecutive,
+            RayArithmetic::ProductFirst
+        ));
+        assert!(!point_on_segment(
+            [f64::NAN, 0.],
+            edge[0],
+            edge[1],
+            SegmentTolerance::EXACT
+        ));
+    }
+
     #[test]
     fn half_open_and_boundary_classification_remain_distinct() {
         let ring = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]];

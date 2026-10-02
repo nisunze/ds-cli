@@ -285,6 +285,9 @@ pub fn point_in_polygon(point: RegionCoord, rings: &[RegionRing]) -> bool {
 /// Exposed because ranking a pick by distance needs the same containment answer
 /// the region predicate uses — a click inside a polygon scores zero distance.
 pub fn point_in_ring(point: RegionCoord, ring: &[RegionCoord]) -> bool {
+    if ring.len() < 3 {
+        return false;
+    }
     crate::predicates::ring_contains_by(
         ring,
         point,
