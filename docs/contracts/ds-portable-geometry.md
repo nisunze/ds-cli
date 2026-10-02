@@ -268,3 +268,7 @@ The 2026-10-02 canonical geometry handoff uses
 against their existing pins, requires their canonical files to exist, removes
 only those retired entries and preserves every remaining source pin. It reads
 no dirty Network source. Ordinary refresh still requires a clean checkout.
+
+`planar` enables the Grid polygon/ring gateway over the overlay engine;
+`corridor` enables its dependency-free Cartesian XYZ corridor helper. They are
+separate from `editing`, so Network WASM does not compile unused Grid helpers.
