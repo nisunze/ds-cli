@@ -213,7 +213,7 @@ command!(
     resolve,
     "style.resolve",
     &["style", "resolve"],
-    "Resolve one exact entity, source, target and role to a governed revision.",
+    "Resolve an exact style key to a governed document revision.",
     LocalAuthState,
     &[PROJECT_ARG, ENTITY, SOURCE, TARGET, ROLE, INK, LANE_ARG],
     "Exact style_ref, revision_id, content_sha256, scope and held document; unknown tuple is refused by name."
@@ -258,7 +258,7 @@ command!(
     inventory,
     "style.catalogue.inventory",
     &["style", "catalogue", "inventory"],
-    "Inventory a bounded page of exact catalogue and project style documents.",
+    "Inventory a bounded page of catalogue and project style documents.",
     LocalAuthState,
     &[PROJECT_ARG, ALL_PROJECTS, CURSOR, LIMIT, LANE_ARG],
     "Exact paths, raw documents, revisions, resolver mappings, obsolete declarations, inventory digest, scope and continuation; selected project is not an all-project census."
@@ -267,7 +267,7 @@ command!(
     backup_create,
     "style.catalogue.backup.create",
     &["style", "catalogue", "backup", "create"],
-    "Create an immutable API backup of the reviewed complete style inventory.",
+    "Back up the reviewed complete style inventory through the API.",
     GlobalWrite,
     &[PROJECT_ARG, ALL_PROJECTS, INVENTORY, LANE_ARG],
     "Immutable backup_id, complete exact entries and inventory_sha256; no style is deleted."
@@ -285,7 +285,7 @@ command!(
     retirement_plan,
     "style.catalogue.retirement.plan",
     &["style", "catalogue", "retirement", "plan"],
-    "Plan explicitly declared obsolete-style retirement against an exact backup.",
+    "Plan declared obsolete-style retirement against an exact backup.",
     LocalAuthState,
     &[PROJECT_ARG, ALL_PROJECTS, INVENTORY, BACKUP, LANE_ARG],
     "Deletion-disabled dry run, ids, reasons, replacements, current heads, dependencies and blocked candidates; main session needs owner approval for any later API deletion."
