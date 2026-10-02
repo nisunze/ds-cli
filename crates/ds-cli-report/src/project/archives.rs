@@ -12,7 +12,7 @@ use super::{LANE_ARG, PROJECT_ARG};
 pub static COMMAND: Command = Command {
     id: "report.project.archives",
     path: &["report", "project", "archives"],
-    contract: 2,
+    contract: 3,
     summary: "List the named project's published Compounded Report ZIPs.",
     purpose: "\
 Read the audience-fenced archive registry, newest first, with the server's JSON \
@@ -26,8 +26,10 @@ reports and pull remote heads. No URL or action override.",
     args: &[LANE_ARG, PROJECT_ARG],
     output: "\
 Lane/project, count and archives: identity, cloud locator, actor/time, status, \
-transformer/district scope, artifact coverage, errors, layout and composition. \
-layout_collapsed reports unresolved foldering; download_url_expires_at, \
+transformer scope, group_count/groups (first-level labels) and grouping (kind \
+plan|flat|recorded|legacy_district|unrecorded, key, plan identity), artifact \
+coverage, errors, layout and composition. layout_collapsed reports unresolved \
+foldering; download_url_expires_at, \
 download_url_seconds_remaining and download_url_expired report URL validity. \
 composition_template/schema are server-owned authoring objects, null when absent.",
     examples: &[Example {
@@ -52,6 +54,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .result()
         .iter()
         .map(|archive| {
+            let groups = archive.groups();
             let mut row = json!({
                 "stem": archive.stem(),
                 "filename": archive.filename(),
@@ -62,8 +65,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "status": archive.status(),
                 "transformer_count": archive.transformer_count(),
                 "transformers": archive.transformers(),
-                "district_count": archive.district_count(),
-                "districts": archive.districts(),
                 "individual_artifact_transformer_count": archive.individual_artifact_transformer_count(),
                 "missing_individual_artifact_count": archive.missing_individual_artifact_count(),
                 "errors": archive.errors(),
@@ -94,13 +95,18 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "layout_collapsed": archive.archive_layout().map(|layout| layout_collapsed(
                     layout.file_level().or(layout.transformer_grouping()),
                     layout.combine_per_district(),
-                    archive.district_count(),
+                    groups.filed_no_group(),
                     archive.transformer_count(),
                 )),
             });
-            row.as_object_mut()
-                .expect("row is an object")
-                .extend(
+            let object = row.as_object_mut().expect("row is an object");
+            object.extend(
+                grouping_fields(groups)
+                    .as_object()
+                    .expect("grouping is an object")
+                    .clone(),
+            );
+            object.extend(
                     download_validity(archive.download_url(), now)
                         .as_object()
                         .expect("validity is an object")
@@ -117,19 +123,37 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     Ok(output)
 }
 
+/// The kernel's reading of the archive's grouping: ds-brain's generic groups
+/// and plan identity, or the pre-plan district pair on an older archive —
+/// never both, never re-decided here.
+fn grouping_fields(groups: &ds_cli_auth::ArchiveGroups) -> Value {
+    json!({
+        "group_count": groups.count,
+        "groups": groups.labels,
+        "grouping": {
+            "kind": groups.kind,
+            "key": groups.key,
+            "plan": groups.plan,
+            "detail": groups.detail,
+        },
+    })
+}
+
 /// The one thing a row can say about the tree that was actually built: a run
-/// that asked for district or sector folders and resolved no district filed
-/// every artifact under `_unassigned/`. The recorded layout is the request;
-/// this is its outcome, and the two are not the same claim.
+/// that asked for group folders and resolved no group filed every artifact
+/// under `_unassigned/`. The recorded layout is the request; this is its
+/// outcome, and the two are not the same claim. A flat archive (no plan
+/// applied) asked for no groups, which the kernel's `filed_no_group` already
+/// tells apart.
 fn layout_collapsed(
     file_level: Option<&str>,
     combine_per_district: bool,
-    district_count: u64,
+    filed_no_group: bool,
     transformer_count: u64,
 ) -> bool {
     let foldering_requested =
         combine_per_district || matches!(file_level, Some(level) if level != "root");
-    foldering_requested && district_count == 0 && transformer_count > 0
+    foldering_requested && filed_no_group && transformer_count > 0
 }
 
 /// The three derived fields that let a caller judge a signed download before
@@ -254,13 +278,15 @@ pub fn render(data: &Value) -> String {
             let file_level = archive["archive_layout"]["file_level"]
                 .as_str()
                 .unwrap_or("unrecorded");
+            let noun = group_noun(archive);
             out.push_str(&format!(
-                "  {:<34} {:<8} {} transformer(s) · {} layout · {} district(s) · {}{}\n",
+                "  {:<34} {:<8} {} transformer(s) · {} layout · {} {noun}(s){} · {}{}\n",
                 archive["stem"].as_str().unwrap_or("?"),
                 archive["status"].as_str().unwrap_or("?"),
                 archive["transformer_count"].as_u64().unwrap_or(0),
                 file_level,
-                archive["district_count"].as_u64().unwrap_or(0),
+                archive["group_count"].as_u64().unwrap_or(0),
+                grouping_note(archive),
                 archive["created_at"].as_str().unwrap_or("?"),
                 download_note(archive),
             ));
@@ -276,12 +302,36 @@ pub fn render(data: &Value) -> String {
                     "_unassigned/"
                 };
                 out.push_str(&format!(
-                    "    {requested} foldering requested · 0 district(s) — every artifact filed under {folder}\n",
+                    "    {requested} foldering requested · 0 {noun}(s) — every artifact filed under {folder}\n",
                 ));
             }
         }
     }
     out
+}
+
+/// What one row's groups are called: districts on a pre-plan archive, groups
+/// otherwise.
+fn group_noun(archive: &Value) -> &'static str {
+    if archive["grouping"]["kind"] == "legacy_district" {
+        "district"
+    } else {
+        "group"
+    }
+}
+
+/// The grouping key, or that no plan was applied — so a flat archive never
+/// reads as a collapsed one.
+fn grouping_note(archive: &Value) -> String {
+    let grouping = &archive["grouping"];
+    match grouping["kind"].as_str() {
+        Some("flat") => " (no plan applied, flat)".to_owned(),
+        Some("plan") => grouping["key"]
+            .as_str()
+            .map(|key| format!(" by {key}"))
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
 }
 
 /// What is left of one signed download, for the operator who never asks for
@@ -373,17 +423,87 @@ mod tests {
     }
 
     #[test]
-    fn requested_foldering_with_no_district_is_collapsed() {
+    fn requested_foldering_with_no_group_is_collapsed() {
         // The D4 archive: `--file-level sector` over 195 transformers, and a
         // manifest whose whole tree is `_unassigned/_unassigned/`.
-        assert!(layout_collapsed(Some("sector"), false, 0, 195));
-        assert!(layout_collapsed(Some("district"), false, 0, 195));
-        assert!(layout_collapsed(Some("root"), true, 0, 195));
-        // Districts resolved, nothing was asked for, or nothing was filed.
-        assert!(!layout_collapsed(Some("sector"), false, 7, 195));
-        assert!(!layout_collapsed(Some("root"), false, 0, 195));
-        assert!(!layout_collapsed(None, false, 0, 195));
-        assert!(!layout_collapsed(Some("sector"), false, 0, 0));
+        assert!(layout_collapsed(Some("sector"), false, true, 195));
+        assert!(layout_collapsed(Some("district"), false, true, 195));
+        assert!(layout_collapsed(Some("root"), true, true, 195));
+        // Groups resolved, nothing was asked for, or nothing was filed.
+        assert!(!layout_collapsed(Some("sector"), false, false, 195));
+        assert!(!layout_collapsed(Some("root"), false, true, 195));
+        assert!(!layout_collapsed(None, false, true, 195));
+        assert!(!layout_collapsed(Some("sector"), false, true, 0));
+    }
+
+    /// The registry rows ds-brain writes (a plan-grouped and a flat archive)
+    /// and a pre-plan one, decoded by the kernel exactly as the native client
+    /// does, then shaped and rendered by this command.
+    #[test]
+    fn brain_generic_groups_and_legacy_districts_reach_the_row_and_render() {
+        let doc: Value = serde_json::from_str(include_str!(
+            "../../../../../ds-command-kernel/tests/fixtures/compounded-archive-groups.json"
+        ))
+        .unwrap();
+        let rows: Vec<Value> = doc["compounded_reports"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| {
+                let groups = ds_command_kernel::report::archive_groups::decode(
+                    &serde_json::from_value(entry.clone()).unwrap(),
+                )
+                .unwrap();
+                let mut row = grouping_fields(&groups);
+                for key in [
+                    "stem",
+                    "status",
+                    "transformer_count",
+                    "created_at",
+                    "archive_layout",
+                ] {
+                    row[key] = entry[key].clone();
+                }
+                row["download_url"] = Value::Null;
+                row["layout_collapsed"] = json!(layout_collapsed(
+                    entry["archive_layout"]["file_level"].as_str(),
+                    entry["archive_layout"]["combine_per_district"]
+                        .as_bool()
+                        .unwrap_or(false),
+                    groups.filed_no_group(),
+                    entry["transformer_count"].as_u64().unwrap(),
+                ));
+                row
+            })
+            .collect();
+        assert_eq!(rows[0]["group_count"], 2);
+        assert_eq!(rows[0]["groups"], json!(["Huye", "Nyamagabe"]));
+        assert_eq!(rows[0]["grouping"]["kind"], "plan");
+        assert_eq!(rows[0]["grouping"]["key"], "loc_admin_level_2");
+        assert_eq!(rows[0]["grouping"]["plan"]["revision"], 3);
+        assert_eq!(rows[1]["grouping"]["kind"], "flat");
+        // A flat archive asked for no groups: it is not a collapsed one.
+        assert_eq!(rows[1]["layout_collapsed"], false);
+        assert_eq!(rows[2]["grouping"]["kind"], "legacy_district");
+        assert_eq!(rows[2]["group_count"], 3);
+        assert!(rows.iter().all(|row| row.get("district_count").is_none()));
+
+        let rendered = render(&json!({
+            "lane": "stable",
+            "project": {"project_name": "Huye 2", "ds_project": "huye-2"},
+            "count": 3,
+            "archives": rows,
+        }));
+        assert!(
+            rendered.contains("transformer layout · 2 group(s) by loc_admin_level_2"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("0 group(s) (no plan applied, flat)"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("3 district(s) ·"), "{rendered}");
+        assert!(!rendered.contains("foldering requested"), "{rendered}");
     }
 
     #[test]
@@ -396,7 +516,8 @@ mod tests {
                 "stem": "aderm-2026-09-06",
                 "status": "success",
                 "transformer_count": 195,
-                "district_count": 0,
+                "group_count": 0,
+                "grouping": {"kind": "plan", "key": "loc_admin_level_2"},
                 "created_at": "2026-09-06T11:00:00Z",
                 "download_url": "https://storage.googleapis.com/b/o.zip?Expires=1788696000",
                 "download_url_seconds_remaining": 20,
@@ -406,13 +527,13 @@ mod tests {
             }],
         }));
         assert!(
-            rendered.contains("sector layout · 0 district(s)"),
+            rendered.contains("sector layout · 0 group(s) by loc_admin_level_2"),
             "{rendered}"
         );
         assert!(rendered.contains("download expires in 20s"), "{rendered}");
         assert!(
             rendered.contains(
-                "sector foldering requested · 0 district(s) — every artifact filed under _unassigned/_unassigned/"
+                "sector foldering requested · 0 group(s) — every artifact filed under _unassigned/_unassigned/"
             ),
             "{rendered}"
         );
@@ -429,7 +550,8 @@ mod tests {
                     "stem": "held",
                     "status": "success",
                     "transformer_count": 12,
-                    "district_count": 3,
+                    "group_count": 3,
+                    "grouping": {"kind": "legacy_district", "key": "district"},
                     "created_at": "2026-09-06T11:00:00Z",
                     "download_url": "https://storage.googleapis.com/b/o.zip?Expires=1788696000",
                     "download_url_expired": true,
@@ -441,7 +563,8 @@ mod tests {
                     "stem": "legacy",
                     "status": "success",
                     "transformer_count": 4,
-                    "district_count": 0,
+                    "group_count": 0,
+                    "grouping": {"kind": "unrecorded"},
                     "created_at": "2026-08-01T09:00:00Z",
                     "download_url": Value::Null,
                     "archive_layout": Value::Null,

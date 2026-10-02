@@ -278,10 +278,29 @@ where it is inspected, re-planned and applied, and a project without it is one
 of the causes the service reports here as `auth_input_invalid`.
 
 The receipt does not confirm the foldering. `--file-level sector|district` and
-`--combine-per-group` are a request: when no administrative value resolves,
-the requested layout silently collapses to `_unassigned` folders while the run
+`--combine-per-group` are a request: when no group value resolves, the
+requested layout silently collapses to `_unassigned` folders while the run
 still reports `success`, which the archives registry row exposes as
-`district_count: 0` and `ds` derives there as `layout_collapsed`.
+`group_count: 0` under an applied plan and `ds` derives there as
+`layout_collapsed`.
+
+**Archive rows carry the archive's grouping as the kernel reads it** (command
+contract 3). `group_count` and `groups` are the first-level group labels the
+archive covers (`_unassigned` excluded), and `grouping` says where they came
+from: `kind` is `plan` (an applied `report_archive` plan, whose identity —
+`purpose`, ordered `definition_ids`, `plan_digest`, `projection_sha256`,
+`revision`, `member_count`, `unassigned_count` and the plan's own all-level
+`group_count` — is under `plan`, and whose first definition id is `key`),
+`flat` (no plan was applied; the archive is flat by contract, never
+`layout_collapsed`, with the service's sentence in `detail`), `recorded`,
+`legacy_district` (an archive written before grouping plans: its
+`district_count`/`districts` fill `group_count`/`groups`, `key: "district"`)
+or `unrecorded`. Generic fields win on presence; the district pair is read only
+when none is present. A contradictory record (count and labels disagree, a flat
+archive naming groups, a malformed plan block) refuses the listing as
+unreadable instead of guessing. The decoding is
+`ds-command-kernel::report::archive_groups`, the same one the application uses.
+Contract 2 rows carried `district_count`/`districts`; those keys are gone.
 
 **Both commands describe the layout in the report layer's own vocabulary.**
 `archive_layout` carries the recorded spelling plus `level`, `level_key`,
