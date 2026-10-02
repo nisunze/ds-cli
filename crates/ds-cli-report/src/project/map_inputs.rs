@@ -96,25 +96,8 @@ fn read_context_batch<T>(
     read()
 }
 fn parse_bounds(raw: &str, name: &str, max_span: f64) -> Result<[f64; 4], Failure> {
-    let values = raw
-        .split(',')
-        .map(|part| part.trim().parse::<f64>().map_err(invalid))
-        .collect::<Result<Vec<_>, _>>()?;
-    let bounds: [f64; 4] = values.try_into().map_err(|_| {
-        invalid(format!(
-            "--{name} needs four WGS84 coordinates: west,south,east,north"
-        ))
-    })?;
-    if bounds.iter().any(|value| !value.is_finite())
-        || !(-180.0..=180.0).contains(&bounds[0])
-        || !(-90.0..=90.0).contains(&bounds[1])
-        || !(-180.0..=180.0).contains(&bounds[2])
-        || !(-90.0..=90.0).contains(&bounds[3])
-        || bounds[2] <= bounds[0]
-        || bounds[3] <= bounds[1]
-        || bounds[2] - bounds[0] > max_span
-        || bounds[3] - bounds[1] > max_span
-    {
+    let bounds = ds_cli_contract::args::bbox(raw).map_err(|error| invalid(error.message()))?;
+    if bounds[2] - bounds[0] > max_span || bounds[3] - bounds[1] > max_span {
         return Err(invalid(format!(
             "--{name} needs a valid WGS84 rectangle no wider or taller than {max_span} degrees"
         )));

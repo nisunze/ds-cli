@@ -782,38 +782,7 @@ pub const INVALID_PAIR: Refusal = Refusal {
     remedy: "write it as --<flag> name=value",
 };
 
-/// Parse `west,south,east,north`, applying the same bounds the application
-/// applies, so a wrong box is a local refusal rather than a round trip.
-pub fn bbox(raw: &str) -> Result<[f64; 4], Failure> {
-    let parts: Vec<&str> = raw.split(',').map(str::trim).collect();
-    let refuse = |message: &str| {
-        Failure::invalid("invalid_bbox", message.to_string())
-            .remedy(INVALID_BBOX.remedy)
-            .detail(json!({ "given": raw }))
-    };
-    if parts.len() != 4 {
-        return Err(refuse("--bbox takes four comma-separated degrees"));
-    }
-    let mut values = [0f64; 4];
-    for (slot, part) in values.iter_mut().zip(&parts) {
-        *slot = part
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .ok_or_else(|| refuse("--bbox values must be finite numbers"))?;
-    }
-    let [west, south, east, north] = values;
-    if !(-180.0..=180.0).contains(&west) || !(-180.0..=180.0).contains(&east) {
-        return Err(refuse("--bbox longitudes must be within -180..180"));
-    }
-    if !(-90.0..=90.0).contains(&south) || !(-90.0..=90.0).contains(&north) {
-        return Err(refuse("--bbox latitudes must be within -90..90"));
-    }
-    if west >= east || south >= north {
-        return Err(refuse("--bbox needs west below east and south below north"));
-    }
-    Ok(values)
-}
+pub use ds_cli_contract::args::bbox;
 
 /// A number flag, held to the bound stated in its own summary.
 pub fn number(raw: &str, flag: &str, min: f64, max: f64) -> Result<f64, Failure> {
