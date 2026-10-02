@@ -4602,6 +4602,30 @@ fn map_project_report_service_code(
     refusal: Option<&ds_client_core::ServiceRefusal>,
 ) -> Failure {
     match code {
+        ProjectReportServiceCode::CombinedInputsNotCurrent
+        | ProjectReportServiceCode::CombinedInputsPublicationPending => {
+            let pending = code == ProjectReportServiceCode::CombinedInputsPublicationPending;
+            let rooms = refusal.and_then(|refusal| refusal.detail_text("missing_rooms"));
+            let count = refusal
+                .and_then(|refusal| refusal.detail_integer("missing_individual_artifact_count"));
+            let mut message = if pending {
+                "Combined inputs are pending publication; no archive was published.".to_owned()
+            } else {
+                "Combined inputs are not current; no archive was published.".to_owned()
+            };
+            if let Some(rooms) = rooms {
+                message.push_str(&format!(" Rooms (name:cause): {rooms}"));
+            }
+            let failure = if pending {
+                Failure::conflict("combined_inputs_publication_pending", message)
+            } else {
+                Failure::conflict("combined_inputs_not_current", message)
+            };
+            failure
+                .remedy(if pending { "run `ds report outbox drain`, then retry this command" } else { "generate current individual reports for the named rooms, then retry this command" })
+                .next(if pending { "ds report outbox drain" } else { "ds report project scope" })
+                .detail(serde_json::json!({"missing_rooms": rooms, "missing_individual_artifact_count": count}))
+        }
         ProjectReportServiceCode::NoIndividualArtifacts => {
             // The route names each room and its closed cause; a room the
             // reporter could not build (killed for memory, unreachable) reads as
@@ -6158,6 +6182,60 @@ pub use ds_client_core::feedback::Command as FeedbackCommand;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owner_readiness_refusal_crosses_the_cli_boundary_without_a_locator() {
+        use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
+        for (code, cause) in [
+            ("combined_inputs_not_current", "report_stale"),
+            (
+                "combined_inputs_publication_pending",
+                "report_publication_pending",
+            ),
+            ("combined_inputs_not_current", ""),
+        ] {
+            let transport = FixtureTransport::with_sign_in(SIGN_IN);
+            let causes = if cause.is_empty() {
+                vec![]
+            } else {
+                vec![serde_json::json!({"transformer":"tx_b", "code":cause, "detail":"PRIVATE"})]
+            };
+            transport
+                .lock()
+                .project_reports
+                .push_back(ds_client_core::TransportResponse::new(
+                    409,
+                    serde_json::to_vec(&serde_json::json!({"status":"refused", "code":code,
+                    "missing_individual_artifact_count":causes.len(),
+                    "missing_individual_artifact_causes":causes}))
+                    .unwrap(),
+                ));
+            let mut client = signed_in(transport.clone());
+            let request = CompoundedReportRequest::new(
+                ds_client_core::TransformerSet::new(vec!["tx_a".into(), "tx_b".into()]).unwrap(),
+                ds_client_core::ReportFileLevel::Transformer,
+                false,
+                false,
+            );
+            let failure = map_client(
+                client
+                    .compounded_report("project", &request, NOW)
+                    .unwrap_err(),
+            );
+            assert_eq!(failure.code(), code);
+            if !cause.is_empty() {
+                assert!(failure.message().contains("tx_b"));
+            }
+            assert!(failure.message().contains("no archive was published"));
+            let detail = failure.detail_value().unwrap();
+            assert!(detail.get("published").is_none());
+            assert!(!detail.to_string().contains("PRIVATE"));
+            let script = transport.lock();
+            assert_eq!(script.report_bodies.len(), 1);
+            assert_eq!(script.report_bodies[0]["eds_project_id"], "project");
+            assert_eq!(script.report_bodies[0]["action"], "download_transfo");
+        }
+    }
 
     #[test]
     fn restored_layer_identity_requires_exact_uid_audience_and_project() {

@@ -33,6 +33,8 @@ pub(crate) const DEVICE_ACCESS_TOKEN: &str = "device-access-token";
 /// What the scripted transport will answer, and what it saw.
 #[derive(Default)]
 pub(crate) struct Scripted {
+    pub project_reports: VecDeque<TransportResponse>,
+    pub report_bodies: Vec<serde_json::Value>,
     pub sign_in: Option<Vec<u8>>,
     pub refresh: Option<Vec<u8>>,
     /// One `200` body per lifecycle bucket read, in call order.
@@ -350,9 +352,16 @@ impl Transport for FixtureTransport {
 
     fn project_report(
         &mut self,
-        _call: ProjectReportCall<'_>,
+        call: ProjectReportCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
+        let mut script = self.lock();
+        script
+            .report_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).expect("report JSON"));
+        script
+            .project_reports
+            .pop_front()
+            .ok_or(TransportError::Unreachable)
     }
 }
 
