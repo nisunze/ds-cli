@@ -28,6 +28,13 @@ const ROLE: Arg = Arg::value(
     "Exact role, such as map, focused, context, mv_context or project; no fallback is inferred.",
 )
 .required();
+const INK: Arg = Arg::value(
+    "ink",
+    "<colour|monochrome>",
+    "Governed paper ink document; colour preserves the default tuple, monochrome requires target print.",
+)
+.choices(&["colour", "monochrome"])
+.default("colour");
 const MANIFEST_REVISION: Arg = Arg::value(
     "expected-manifest",
     "<64hex>",
@@ -208,7 +215,7 @@ command!(
     &["style", "resolve"],
     "Resolve one exact entity, source, target and role to a governed revision.",
     LocalAuthState,
-    &[PROJECT_ARG, ENTITY, SOURCE, TARGET, ROLE, LANE_ARG],
+    &[PROJECT_ARG, ENTITY, SOURCE, TARGET, ROLE, INK, LANE_ARG],
     "Exact style_ref, revision_id, content_sha256, scope and held document; unknown tuple is refused by name."
 );
 command!(
@@ -298,6 +305,11 @@ fn run(inputs: &Inputs, id: &str) -> Result<Value, Failure> {
                     ds_command_kernel::style_resolution::Target::Screen
                 },
                 role: inputs.require("role")?.into(),
+                ink: if inputs.require("ink")? == "monochrome" {
+                    ds_command_kernel::style_resolution::Ink::Monochrome
+                } else {
+                    ds_command_kernel::style_resolution::Ink::Colour
+                },
             };
             ds_command_kernel::style_resolution::resolve(&snapshot, &key)
                 .map(|binding| json!(binding))
