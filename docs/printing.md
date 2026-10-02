@@ -869,3 +869,30 @@ bytes remain required, and `ready` is false. MvSelectionPatch preserves other
 settings rows. Native persistence adds an exact-base expected-data fence and
 readback; adapters own IO, never layout decisions. Reporter renders the shared
 layout furniture and consumes the resolved ordered page pins before output.
+
+## Governed standard document captures
+
+`printing::standards` consumes `ds.print-standard/v1` documents captured through
+an authorized project API. Each `(template_id, page_role)` document pins its
+complete layout, ordered logo slots and semantic resolver keys by immutable
+revision and normalized content digest. Native and WASM instantiate the same
+held document. No layout generator, typography seed, pen catalogue or style
+selection belongs to this consumer. Missing or ambiguous captures and stale
+content have named refusals.
+
+Every standard layout also holds `attribution`: its physical type size, SVG and
+native PDF font families, colour, right inset and baseline. These are governed
+printing-document values, with no defaults in the standard consumer. Licensing
+content remains mandatory once per page. The SVG carries this same policy into
+PDF conversion; assembly preserves an already stamped page. Older layouts
+without this additive capture keep their pre-existing native PDF stamp.
+
+The Styles API capture boundary is `printing::resolved_styles::consume`. Its
+input is the sole resolver's `prepare_print` receipt plus the exact request
+keys. The consumer validates the project, source/target/role and immutable
+style revisions and forwards the original documents unchanged. LV needs all
+canonical LV entities with `focused`, `context`, and `project` print roles,
+for every explicit source kind present, plus MV context, buildings, contours,
+roads and rivers. Colour and monochrome require API-selected governed variants;
+the resolver owner must extend its owning contract if ink is not yet a captured
+dimension. Physical scaling and labels remain in the resolved documents.

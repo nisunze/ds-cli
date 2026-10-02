@@ -49,6 +49,9 @@ pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
+    /// Governed attribution typography; content is mandatory on standard pages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<attribution::Style>,
     /// Physical colour or monochrome pens, shared by preview and delivery.
     #[serde(default, skip_serializing_if = "standards::InkMode::is_colour")]
     pub ink_mode: standards::InkMode,
@@ -893,6 +896,9 @@ fn no_stroke_or_bounded(value: f64, low: f64, high: f64) -> bool {
     value == 0. || bounded(value, low, high)
 }
 pub fn validate(layout: &Layout) -> Result<(), String> {
+    if let Some(style) = &layout.attribution {
+        style.validate()?;
+    }
     if !layout.transformer_overrides.is_empty() {
         let mut base = layout.clone();
         base.transformer_overrides.clear();
@@ -1436,6 +1442,7 @@ pub fn default_layout() -> Layout {
         opacity: opaque(),
     };
     complete(Layout {
+        attribution: None,
         ink_mode: standards::InkMode::Colour,
         mv: None,
         composition: None,

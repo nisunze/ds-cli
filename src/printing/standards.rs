@@ -302,6 +302,11 @@ impl Templates {
                     .into(),
             );
         }
+        if document.layout.attribution.is_none() {
+            return Err(
+                "print_template_invalid: standard requires governed attribution typography".into(),
+            );
+        }
         if document.layout.paper.size != paper
             || !document.layout.styles.is_empty()
             || !document.layout.style_refs.is_empty()
