@@ -5,7 +5,7 @@ use ds_cli_contract::{
     spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires},
 };
 use serde_json::{Value, json};
-use std::{fs::File, io::Read};
+use std::{fs::OpenOptions, io::Read};
 pub static COMMAND: Command = Command {
     id: "survey.entries.delete-plan",
     path: &["survey", "entries", "delete-plan"],
@@ -85,13 +85,51 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if !meta.is_file() || meta.len() > 3 * 1024 * 1024 {
         return Err(invalid_document());
     }
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(0x0020_0000);
+    }
+    let file = options.open(path).map_err(|_| invalid_document())?;
+    let opened = file.metadata().map_err(|_| invalid_document())?;
+    if !opened.is_file() || opened.len() > 3 * 1024 * 1024 {
+        return Err(invalid_document());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if meta.dev() != opened.dev() || meta.ino() != opened.ino() {
+            return Err(invalid_document());
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if opened.file_attributes() & 0x0000_0400 != 0 {
+            return Err(invalid_document());
+        }
+    }
     let mut bytes = Vec::new();
-    File::open(path)
-        .map_err(|_| invalid_document())?
-        .take(3 * 1024 * 1024 + 1)
+    file.take(3 * 1024 * 1024 + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| invalid_document())?;
+    if bytes.len() > 3 * 1024 * 1024 {
+        return Err(invalid_document());
+    }
     let document: Value = serde_json::from_slice(&bytes).map_err(|_| invalid_document())?;
+    if !document
+        .as_object()
+        .is_some_and(|o| o.keys().all(|k| matches!(k.as_str(), "prior" | "rows")))
+    {
+        return Err(invalid_document());
+    }
     let request = json!({"operation":"mutation","mode":"delete_cascade_preview", "project_id":inputs.require("project")?,
         "form_id":inputs.require("form")?,"doc_id":inputs.require("doc-id")?,"mutation_id":inputs.require("idempotency-key")?,
         "now":inputs.require("now")?,"prior":document["prior"],"rows":document["rows"]});
