@@ -251,14 +251,6 @@ impl ServerSessions {
         Ok(held.entry(key).or_insert(session).clone())
     }
 
-    /// The projects this Server already holds a session for, in id order.
-    pub fn open_projects(&self) -> Vec<String> {
-        self.sessions
-            .lock()
-            .map(|held| held.keys().map(|(_, project)| project.clone()).collect())
-            .unwrap_or_default()
-    }
-
     /// Every project this owner has handed this Server durable work for, read
     /// from the rows themselves. Local, unnarrowed, and the only "directory"
     /// this host has: what its owner already asked it to do. It answers
@@ -461,7 +453,7 @@ mod tests {
             assert_eq!(context.principal_uid, "uid-a");
         }
         assert!(
-            sessions.open_projects().is_empty(),
+            sessions.sessions.lock().unwrap().is_empty(),
             "admission opens no session"
         );
     }

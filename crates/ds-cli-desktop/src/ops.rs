@@ -483,19 +483,6 @@ pub const OFFLINE: Refusal = Refusal {
     when: "offline mode is on and the operation needs the network",
     remedy: "run `ds desktop offline set --enabled false`, or run a command that works from prepared local data",
 };
-/// The API itself did not answer, which reaches every bridge operation that
-/// needs the network for the same reason [`OFFLINE`] does — so it is declared
-/// once here too.
-///
-/// It is `unavailable`, not `failed`: nothing about the request is wrong and
-/// the identical call succeeds once the service answers. The re-read is not
-/// caution for its own sake — a request that never answered may still have
-/// been applied, so repeating a write blind is how a duplicate is made.
-pub const BACKEND_UNREACHABLE: Refusal = Refusal {
-    code: "backend_unreachable",
-    when: "the Data Solutions API did not answer",
-    remedy: "restore the connection and retry; re-read first, because an unanswered write may already have been applied",
-};
 
 /// What the application says when a project operation is asked for without a
 /// project session. Matched case-insensitively against its own message.

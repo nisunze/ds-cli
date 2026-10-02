@@ -150,26 +150,6 @@ pub const LAYER_REMOVE: BridgeOp = BridgeOp {
     operation: "map.temporary_layer.remove",
     arguments: &["layerId"],
 };
-pub const LAYERS_LIST: BridgeOp = BridgeOp {
-    operation: "map.layers.list",
-    arguments: &["scope", "refresh", "limit"],
-};
-pub const LAYERS_REORDER: BridgeOp = BridgeOp {
-    operation: "map.layers.reorder",
-    arguments: &["orders", "apply"],
-};
-pub const REMOTE_LAYER_ADD: BridgeOp = BridgeOp {
-    operation: "map.remote_layer.add",
-    arguments: &["name", "kind", "url", "tileSize", "attribution", "visible"],
-};
-pub const REMOTE_LAYER_REMOVE: BridgeOp = BridgeOp {
-    operation: "map.remote_layer.remove",
-    arguments: &["layerId"],
-};
-pub const REMOTE_LAYER_VISIBILITY: BridgeOp = BridgeOp {
-    operation: "map.remote_layer.visibility",
-    arguments: &["layerId", "visible"],
-};
 pub const ZOOM_TO: BridgeOp = BridgeOp {
     operation: "map.zoom_to",
     arguments: &["bbox", "layerId", "padding"],
@@ -552,6 +532,7 @@ pub const EVIDENCE_HEIGHT: &str = "height";
 
 /// The whole receipt, in the order it is written. Seven keys, fixed: a
 /// screenshot is evidence only if what is written beside it does not vary.
+#[cfg(test)]
 pub const EVIDENCE_RECEIPT_KEYS: &[&str] = &[
     "path",
     "bytes",
@@ -568,7 +549,6 @@ pub const EVIDENCE_RECEIPT_KEYS: &[&str] = &[
 
 /// Adding, removing or moving is a redraw. Anything slower is a hung webview.
 pub const UI_TIMEOUT: Duration = Duration::from_secs(60);
-pub const API_TIMEOUT: Duration = Duration::from_secs(2 * 60);
 /// A capture has to wait for tiles, labels and the panel to settle before the
 /// frame is worth keeping, then write and digest a PNG. Longer than a redraw,
 /// far shorter than a vector tool.

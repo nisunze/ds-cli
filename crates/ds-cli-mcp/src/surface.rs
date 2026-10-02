@@ -596,6 +596,7 @@ impl Profile {
         }
     }
 
+    #[cfg(test)]
     pub fn includes_chapter(self, chapter: Chapter) -> bool {
         match self {
             Self::AuthContext => chapter == Chapter::Project,

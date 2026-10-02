@@ -1241,10 +1241,6 @@ fn lane(inputs: &Inputs) -> Result<Lane, Failure> {
     Lane::parse(inputs.value("lane").unwrap_or("stable"))
 }
 
-pub fn lane_from_token(value: &str) -> Result<Lane, Failure> {
-    Lane::parse(value)
-}
-
 fn exact_request_id(request: &str, stored: &str) -> Result<(), Failure> {
     if request == stored {
         Ok(())

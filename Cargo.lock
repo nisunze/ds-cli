@@ -1122,10 +1122,8 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
  "ds-cli-dsgrid",
- "ds-command-kernel",
  "ds-grid-exchange",
  "ds-io",
- "ds-layer-store",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1287,7 +1285,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "tempfile",
  "tokio",
  "tower",
@@ -1422,7 +1419,6 @@ name = "ds-columnar"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
- "arrow-buffer",
  "arrow-ipc",
  "arrow-schema",
  "ds-io",
@@ -1430,7 +1426,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "thiserror",
 ]
 
 [[package]]
@@ -1631,7 +1626,6 @@ dependencies = [
  "delaunator",
  "ds-cleaning",
  "ds-geo",
- "ds-geo-ops",
  "ds-graph",
  "ds-grid-physics",
  "encoding_rs",
@@ -1683,7 +1677,6 @@ dependencies = [
  "ds-graph",
  "ds-profile",
  "rayon",
- "regex",
  "rstar",
  "serde",
  "serde_json",
@@ -1789,7 +1782,6 @@ dependencies = [
  "ds-solar-contracts",
  "serde",
  "serde_json",
- "tracing",
 ]
 
 [[package]]
@@ -1831,7 +1823,6 @@ dependencies = [
  "ds-solar-contracts",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "thiserror",
 ]
 

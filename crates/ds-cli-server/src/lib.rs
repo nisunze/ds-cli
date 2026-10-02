@@ -597,7 +597,6 @@ pub static INPUT: Command = command(
 pub const STATE_DIR_ARG: Arg = STATE;
 pub const LANE_ARG: Arg = LANE;
 pub const PROJECT_ARG: Arg = PROJECT;
-pub static SERVER_TARGET_ARGS: &[Arg] = &[STATE, LANE, PROJECT];
 
 /// One typed refusal back from the Server, re-raised under the CLI's own class
 /// and code so an operation executed on the Server fails exactly like the same
@@ -851,15 +850,6 @@ pub fn working_area_forms_clear(inputs: &Inputs, _: &Context) -> Result<Value, F
         Some(b"{}"),
         32 * 1024 * 1024,
     )?)
-}
-pub fn render_layers_list(value: &Value) -> String {
-    ds_layer_ops::render_list(value)
-}
-pub fn render_layers_visibility(value: &Value) -> String {
-    ds_layer_ops::render_visibility(value)
-}
-pub fn render_layers_reorder(value: &Value) -> String {
-    ds_layer_ops::render_reorder(value)
 }
 
 pub static DOMAIN: Domain = Domain {
