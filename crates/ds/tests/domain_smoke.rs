@@ -18032,3 +18032,86 @@ fn pls_structure_translate_names_local_models_and_accepts_them_by_quantities() {
     );
     std::fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn dsgrid_command_descriptors_inline_the_four_authoring_shapes() {
+    let mut authored = Vec::new();
+    for (id, param, ty, field) in [
+        ("create_route_node", "row", "RouteNodeRow", "role"),
+        ("create_structure", "row", "StructureRow", "orientation_rad"),
+        (
+            "author_terrain_source",
+            "row",
+            "TerrainSourceRow",
+            "vertical_datum",
+        ),
+        (
+            "create_tension_section_set_path",
+            "members",
+            "TensionSectionSetMember",
+            "slot",
+        ),
+    ] {
+        let data = ok(&[
+            "dsgrid", "describe", "--kind", "commands", "--id", id, "--output", "json",
+        ]);
+        let param = data["descriptor"]["params"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == param)
+            .unwrap();
+        assert!(param["type_schemas"][ty]["properties"][field].is_object());
+        assert!(
+            data.to_string().len() < 32 * 1024,
+            "selected authoring descriptor stays bounded"
+        );
+        if matches!(id, "create_route_node" | "author_terrain_source") {
+            let schema = &param["type_schemas"][ty];
+            let row = from_published_shape(
+                schema,
+                &schema["$defs"],
+                &json!({
+                    "id":format!("schema-smoke-{id}"), "provider":"field_survey",
+                }),
+            );
+            authored.push(json!({"command_id":format!("smoke-{id}"),
+                "command":{"command_kind":id,"row":row}}));
+        }
+    }
+    // The inline row shapes alone suffice to author valid native mutations.
+    let model = common::fixture();
+    let head = ok(&["dsgrid", "validate", "--model", &model, "--output", "json"])["model"]["authored_revision"].clone();
+    let dir = tempfile::tempdir().unwrap();
+    let batch = dir.path().join("commands.json");
+    let output = dir.path().join("authored.dsgrid");
+    std::fs::write(
+        &batch,
+        serde_json::to_vec(&json!({"expected_revision":head,"commands":authored})).unwrap(),
+    )
+    .unwrap();
+    let applied = ok(&[
+        "dsgrid",
+        "apply-batch",
+        "--model",
+        &model,
+        "--batch",
+        batch.to_str().unwrap(),
+        "--out",
+        output.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(applied["operations"]["create_route_node"], 1);
+    assert_eq!(applied["operations"]["author_terrain_source"], 1);
+    let validated = ok(&[
+        "dsgrid",
+        "validate",
+        "--model",
+        output.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(validated["model"]["valid"], true);
+    assert_ne!(validated["model"]["authored_revision"], head);
+}
