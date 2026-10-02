@@ -52,6 +52,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .result()
         .iter()
         .map(|archive| {
+            let (district_count, districts) = district_scope(archive.groups());
             let mut row = json!({
                 "stem": archive.stem(),
                 "filename": archive.filename(),
@@ -62,8 +63,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "status": archive.status(),
                 "transformer_count": archive.transformer_count(),
                 "transformers": archive.transformers(),
-                "district_count": archive.district_count(),
-                "districts": archive.districts(),
+                "district_count": district_count,
+                "districts": districts,
                 "individual_artifact_transformer_count": archive.individual_artifact_transformer_count(),
                 "missing_individual_artifact_count": archive.missing_individual_artifact_count(),
                 "errors": archive.errors(),
@@ -94,7 +95,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "layout_collapsed": archive.archive_layout().map(|layout| layout_collapsed(
                     layout.file_level().or(layout.transformer_grouping()),
                     layout.combine_per_district(),
-                    archive.district_count(),
+                    district_count,
                     archive.transformer_count(),
                 )),
             });
@@ -115,6 +116,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     output["composition_template"] = json!(headless.result().composition_template());
     output["composition_schema"] = json!(headless.result().composition_schema());
     Ok(output)
+}
+
+// This legacy CLI projection consumes the already-decoded native answer.
+// Generic grouping labels must never be relabelled as districts.
+fn district_scope(
+    groups: &ds_command_kernel::report::archive_groups::ArchiveGroups,
+) -> (u64, &[String]) {
+    if groups.kind == ds_command_kernel::report::archive_groups::ArchiveGroupingKind::LegacyDistrict
+    {
+        (groups.count, &groups.labels)
+    } else {
+        (0, &[])
+    }
 }
 
 /// The one thing a row can say about the tree that was actually built: a run
@@ -302,6 +316,31 @@ fn download_note(archive: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_district_projection_uses_the_native_group_contract() {
+        use ds_command_kernel::report::archive_groups::{ArchiveGroupingFields, decode};
+        let legacy = decode(
+            &serde_json::from_value::<ArchiveGroupingFields>(json!({
+                "district_count":1,"districts":["Nyamagabe"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            district_scope(&legacy),
+            (1, ["Nyamagabe".to_string()].as_slice())
+        );
+        let generic = decode(
+            &serde_json::from_value::<ArchiveGroupingFields>(json!({
+                "group_count":1,"groups":["Sector A"],
+                "district_count":1,"districts":["stale legacy value"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(district_scope(&generic), (0, [].as_slice()));
+    }
 
     const HOUR: u64 = 3_600;
 
