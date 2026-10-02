@@ -540,7 +540,12 @@ mod tests {
             .contains("style_resolution_required"));
         let references = LAYERS
             .iter()
-            .map(|(source, _)| (source.to_string(), format!("fixture/context-{source}")))
+            .map(|(source, _)| {
+                (
+                    source.to_string(),
+                    format!("fixture/context-{source}_print"),
+                )
+            })
             .collect();
         let configured = configure(layout, true, references, None).unwrap();
         assert!(selected(&configured));
@@ -549,7 +554,7 @@ mod tests {
         assert_eq!(configured.elements, before.elements);
         assert_eq!(
             configured.style_refs["neighbor_customers"],
-            "fixture/context-customers"
+            "fixture/context-customers_print"
         );
         assert!(!configured
             .style_overrides

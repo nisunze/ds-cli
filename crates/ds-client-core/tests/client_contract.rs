@@ -13770,6 +13770,7 @@ fn headless_style_governance_captures_exact_projects_and_seed_review_fences() {
                 source_kind: "saved_design".into(),
                 target: Target::Print,
                 role: "focused".into(),
+                ink: Default::default(),
             },
             style_ref: "fixture/focused_print".into(),
             revision_id: "b".repeat(64),
