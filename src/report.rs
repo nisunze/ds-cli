@@ -123,23 +123,6 @@ impl PublicationStage {
     }
 }
 
-/// The stage a queue row is at, from the persisted artifact-state token.
-///
-/// The tokens are [`crate::sync_store::ArtifactState::as_str`]'s, read as data
-/// rather than matched on the enum so that a store written by an older build
-/// still reads. An unknown token is not guessed: the caller is told, because
-/// inventing a stage is exactly how three surfaces came to disagree.
-pub fn publication_stage(state: &str) -> Result<PublicationStage, String> {
-    match state {
-        "held" => Ok(PublicationStage::Queued),
-        "uploading" => Ok(PublicationStage::Drained),
-        "published" => Ok(PublicationStage::Acknowledged),
-        "conflict" => Ok(PublicationStage::Conflicted),
-        "refused" => Ok(PublicationStage::Refused),
-        other => Err(format!("unknown publication state `{other}`")),
-    }
-}
-
 pub fn publication_state(
     engine: &str,
     enqueue: bool,
@@ -382,11 +365,6 @@ pub struct ArchiveLayout {
     #[serde(default)]
     pub transformer_folders: Option<bool>,
 }
-
-/// Every level a compounded archive may nest to, in nesting order. `flat` and
-/// `district_sector` are the legacy twin's spellings of the ends of the same
-/// scale.
-pub const ARCHIVE_LEVELS: &[&str] = &["root", "district", "sector", "district_sector", "flat"];
 
 /// The label key a level is read under. Two levels deliberately share one:
 /// `district_sector` IS a sector-level archive under the legacy spelling, and
@@ -844,26 +822,6 @@ mod tests {
         assert_eq!(out["result"]["engineering"]["count"], 0);
     }
 
-    /// The whole persisted queue vocabulary maps onto a stage, and nothing is
-    /// invented. This matters because the blocker was three surfaces answering
-    /// "is this room's report current?" differently: if one token here had no
-    /// stage, or an unknown token guessed one, that disagreement would be back.
-    #[test]
-    fn every_persisted_queue_token_names_exactly_one_stage() {
-        let table = [
-            ("held", PublicationStage::Queued),
-            ("uploading", PublicationStage::Drained),
-            ("published", PublicationStage::Acknowledged),
-            ("conflict", PublicationStage::Conflicted),
-            ("refused", PublicationStage::Refused),
-        ];
-        for (token, expected) in table {
-            assert_eq!(publication_stage(token).unwrap(), expected, "{token}");
-        }
-        assert!(publication_stage("drained").is_err());
-        assert!(publication_stage("").is_err());
-    }
-
     /// `sealed` is the stage the defect erased: 593 verified artifacts on one
     /// PC read as "never ran". It is outstanding work and must never be
     /// reachable from a queue token, because a sealed batch is precisely one
@@ -876,9 +834,6 @@ mod tests {
         assert!(!PublicationStage::Acknowledged.outstanding());
         assert!(!PublicationStage::Conflicted.outstanding());
         assert!(!PublicationStage::Refused.outstanding());
-        for token in ["held", "uploading", "published", "conflict", "refused"] {
-            assert_ne!(publication_stage(token).unwrap(), PublicationStage::Sealed);
-        }
         assert_eq!(
             serde_json::to_value(PublicationStage::Sealed).unwrap(),
             serde_json::json!("sealed")
@@ -1043,7 +998,6 @@ mod tests {
         assert_eq!(combined["label_key"], "pctl_layout_per_district");
         assert_eq!(combined["label_level_key"], "pctl_layout_sector");
         assert_eq!(combined["combine_per_district"], true);
-        assert!(ARCHIVE_LEVELS.contains(&"district_sector"));
         // The artifact name rides the same command surface, so a card and a
         // headless caller ask one question of one owner.
         let reply: serde_json::Value = serde_json::from_str(

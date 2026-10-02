@@ -379,18 +379,6 @@ impl DataDistributionRequest {
         }
     }
 
-    /// A read of a cloud-resident dataset, as opposed to the seeding door.
-    pub const fn is_foundation(&self) -> bool {
-        matches!(
-            self,
-            Self::UpiLookup { .. }
-                | Self::CustomersQuery { .. }
-                | Self::ParcelsQuery { .. }
-                | Self::SpatialPlan { .. }
-                | Self::SpatialExecute { .. }
-        )
-    }
-
     /// Whether a blink may be answered by sending this request again. Every
     /// action but one is a read whose second answer is the first one's; a
     /// spatial execution is billed per run, so a dropped answer is not a
@@ -1055,7 +1043,6 @@ mod tests {
             &[upi.action(), village.action(), parcels.action()],
             &FOUNDATION_ACTIONS[..3]
         );
-        assert!(upi.is_foundation() && !DataDistributionRequest::ListDatasets {}.is_foundation());
         // Never in the profile-pinned seeding vocabulary.
         for action in FOUNDATION_ACTIONS {
             assert!(!crate::DATA_DISTRIBUTION_ACTIONS.contains(&action));
@@ -2049,7 +2036,6 @@ mod tests {
         };
         parcels.validate().unwrap();
         assert_eq!(parcels.action(), "parcels_query");
-        assert!(parcels.is_foundation());
         let body: Value = serde_json::from_slice(&parcels.body("p1")).unwrap();
         assert_eq!(body["action"], "parcels_query");
         assert_eq!(body["boundary"]["type"], "Polygon");

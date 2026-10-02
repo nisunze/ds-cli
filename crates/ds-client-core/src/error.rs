@@ -622,10 +622,6 @@ impl ClientError {
         self.survey_form_read_service_code
     }
 
-    pub const fn is_transient(&self) -> bool {
-        matches!(self.kind, ErrorKind::Transient)
-    }
-
     /// Record that the [`crate::WeakNetwork`] policy retried this call before
     /// a transient error stood, so the message says so instead of reading as
     /// one blink. A definitive answer that arrived after a retry is left as it

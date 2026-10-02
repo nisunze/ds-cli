@@ -393,9 +393,6 @@ impl DevicePendingAuthorization {
         self.result
             .complete_request(&self.private_key, &self.code_verifier.0, &self.nonce.0)
     }
-    pub fn into_private_key(self) -> DevicePrivateKey {
-        self.private_key
-    }
     pub fn parse_complete(
         self,
         response: TransportResponse,

@@ -5502,7 +5502,7 @@ fn project_report_operations_are_six_fixed_selected_project_actions() {
             NOW + 1,
         )
         .unwrap();
-    assert_eq!(named.into_rows().len(), 2);
+    assert_eq!(named.rows().len(), 2);
 
     let calls = transport.calls();
     assert!(calls.iter().any(|call| call.contains(

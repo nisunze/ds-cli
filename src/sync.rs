@@ -574,26 +574,6 @@ fn grant_scope_problem(
     }
 }
 
-/// Why the grants in hand do not cover one scope, if they do not.
-///
-/// The plan reads this to decide whether to ask for a grant; the sync runtime
-/// reads the SAME function to state, on the row that could not upload, which
-/// fact refused it. One vocabulary, so a row can never again print "no work
-/// grant covers this publication" over an expired grant or a wrong install.
-pub fn scope_problem(
-    project: &str,
-    install_id: &str,
-    now_ms: u64,
-    grants: &[Grant],
-    scope: &str,
-) -> Option<&'static str> {
-    nearest_problem(
-        grants
-            .iter()
-            .map(|grant| grant_scope_problem(project, install_id, now_ms, grant, scope)),
-    )
-}
-
 /// Every code this module can put on a held publication, as one closed
 /// vocabulary.
 ///
@@ -615,37 +595,6 @@ pub const SCOPE_PROBLEMS: [&str; 7] = [
 /// held for want of grant scope, whatever the reason.
 pub fn is_scope_problem(code: &str) -> bool {
     SCOPE_PROBLEMS.contains(&code)
-}
-
-/// What to do about a scope problem, naming an action rather than a state.
-///
-/// A refusal that says only what is wrong leaves the operator to guess what to
-/// do; every code this module can emit answers that here.
-pub fn scope_remedy(problem: &str) -> &'static str {
-    match problem {
-        "no_grant" => {
-            "this install holds no work grant for this project; the next sync asks ds-brain for one"
-        }
-        "grant_expired" => {
-            "the grant covering this scope ran out; sync again to have a fresh one opened"
-        }
-        "grant_engine_missing" => {
-            "no grant in hand is for this engine release; sync again to open one for the release these bytes were produced by"
-        }
-        "grant_resource_missing" => {
-            "a grant is opened per resource and the ones in hand are for others; sync again to open this resource's own"
-        }
-        "grant_project_mismatch" => {
-            "the grants in hand belong to another project; sync this project to have its own opened"
-        }
-        "grant_install_mismatch" => {
-            "the grants in hand were issued to another installation; sign in again on this machine so they are re-issued to it"
-        }
-        "grant_open_failed" => {
-            "the authority's own answer is above; a timeout or an unreachable signer clears on the next sync, a refusal needs the account's access to this project checked"
-        }
-        _ => "sync again; the grant receipt on this run names what the authority answered",
-    }
 }
 
 pub fn plan(input: &Input) -> Result<Plan, String> {
@@ -1286,117 +1235,6 @@ mod tests {
         assert_ne!(scope_key("a\u{0}b", ""), scope_key("a", "b"));
         assert_eq!(scope_release(&scope_key("rel", "TX-1")), "rel");
         assert_eq!(scope_release(&scope_key("rel", "")), "rel");
-    }
-
-    /// A held row must be able to say WHICH fact refused it, and what to do.
-    /// These are the codes `ds-sync-runtime` writes onto the row the Sync
-    /// Center renders, so they are the operator's whole vocabulary.
-    #[test]
-    fn a_held_row_can_name_its_own_cause_and_a_remedy() {
-        let scope = scope_key(REL, "TX-1");
-        let cases: Vec<(Vec<Grant>, &str)> = vec![
-            (vec![], "no_grant"),
-            (vec![grant_for(1, "TX-1")], "grant_expired"),
-            (
-                vec![grant_for(10_000_000, "TX-9")],
-                "grant_resource_missing",
-            ),
-            (
-                {
-                    let mut g = grant_for(10_000_000, "TX-1");
-                    g.engines[0].release = "ds-network-reporter@9.9.9+beef".into();
-                    vec![g]
-                },
-                "grant_engine_missing",
-            ),
-            (
-                {
-                    let mut g = grant_for(10_000_000, "TX-1");
-                    g.project = "another".into();
-                    vec![g]
-                },
-                "grant_project_mismatch",
-            ),
-            (
-                {
-                    let mut g = grant_for(10_000_000, "TX-1");
-                    g.install_id = "another-install".into();
-                    vec![g]
-                },
-                "grant_install_mismatch",
-            ),
-        ];
-        let mut seen: BTreeSet<&str> = BTreeSet::new();
-        for (grants, expected) in &cases {
-            let problem = scope_problem("p", "install-1", 10_000, grants, &scope);
-            assert_eq!(problem, Some(*expected), "for {grants:?}");
-            assert!(seen.insert(expected), "each cause is distinct: {expected}");
-            let remedy = scope_remedy(expected);
-            assert!(
-                remedy.len() > 20 && !remedy.contains("no work grant covers"),
-                "a remedy names an action, not the symptom: {remedy}"
-            );
-        }
-        assert_eq!(
-            scope_problem(
-                "p",
-                "install-1",
-                10_000,
-                &[grant_for(10_000_000, "TX-1")],
-                &scope
-            ),
-            None,
-            "the grant for this exact scope covers it"
-        );
-        assert_ne!(
-            scope_remedy("grant_open_failed"),
-            scope_remedy("no_grant"),
-            "a failed request and an absent grant are not the same row"
-        );
-    }
-
-    /// The vocabulary is closed and every member of it is answerable. A code
-    /// that a row can carry but no reader recognises is how the cause reaches
-    /// the receipt and still never reaches the operator.
-    #[test]
-    fn every_code_a_held_row_can_carry_is_in_the_closed_vocabulary() {
-        let scope = scope_key(REL, "TX-1");
-        for grants in [
-            vec![],
-            vec![grant_for(1, "TX-1")],
-            vec![grant_for(10_000_000, "TX-9")],
-            {
-                let mut g = grant_for(10_000_000, "TX-1");
-                g.engines[0].release = "ds-network-reporter@9.9.9+beef".into();
-                vec![g]
-            },
-            {
-                let mut g = grant_for(10_000_000, "TX-1");
-                g.project = "another".into();
-                vec![g]
-            },
-            {
-                let mut g = grant_for(10_000_000, "TX-1");
-                g.install_id = "another-install".into();
-                vec![g]
-            },
-        ] {
-            let problem = scope_problem("p", "install-1", 10_000, &grants, &scope)
-                .expect("none of these cover the scope");
-            assert!(
-                is_scope_problem(problem),
-                "{problem} is emitted but not declared"
-            );
-        }
-        assert!(is_scope_problem("grant_open_failed"));
-        assert!(!is_scope_problem("published"));
-        let fallback = scope_remedy("something_else_entirely");
-        let mut remedies: BTreeSet<&str> = BTreeSet::new();
-        for code in SCOPE_PROBLEMS {
-            let remedy = scope_remedy(code);
-            assert_ne!(remedy, fallback, "{code} has no remedy of its own");
-            assert!(remedies.insert(remedy), "{code} restates another remedy");
-        }
     }
 
     #[test]

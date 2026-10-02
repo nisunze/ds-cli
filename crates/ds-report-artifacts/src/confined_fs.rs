@@ -150,7 +150,7 @@ impl HeldFileLock {
     /// wedged, and a holder whose lock outlived it on a filesystem that does
     /// not release advisory locks, look identical from outside. The heartbeat
     /// is what separates them, so any operation that can hold this lock for
-    /// longer than [`LOCK_HEARTBEAT_INTERVAL_MS`] renews it as it works.
+    /// long critical sections renews it as it works.
     /// A failed renew is not fatal — the work below the lock is still sound —
     /// so this reports the failure instead of ending the critical section.
     pub fn renew(&mut self, now_ms: u64) -> Result<(), String> {
@@ -172,9 +172,6 @@ impl HeldFileLock {
         self.owner.as_ref()
     }
 }
-
-/// How often a long critical section restamps its heartbeat.
-pub const LOCK_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 
 /// How long a heartbeat may go unrenewed before the record stops counting as
 /// a live holder's claim. Generous on purpose: a suspended laptop, a paused

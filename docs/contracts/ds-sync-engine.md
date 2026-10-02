@@ -168,7 +168,7 @@ two terminal states `conflicted` and `refused`.
 It is *derived*, never persisted. `sync_store::ArtifactState` is a SQLite
 column and the report activity projection validates its five tokens, so
 renaming it would be a data migration that strands every queue already on
-disk. `publication_stage()` maps the tokens one-to-one
+disk. The activity projection maps the tokens one-to-one
 (`held → queued`, `uploading → drained`, `published → acknowledged`) and
 refuses an unknown one rather than guessing.
 

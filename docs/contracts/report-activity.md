@@ -50,7 +50,7 @@ reading and derives nothing of its own.
 
 The lock carries an owner record: pid, the boot it was taken in, the holder's
 process start time, the executable name, and a heartbeat renewed while the
-holder works (`LOCK_HEARTBEAT_INTERVAL_MS`). A pid alone is not evidence of
+holder works. A pid alone is not evidence of
 liveness, because pids are reused; a lock may be released automatically only
 when the recorded holder is proved gone — an earlier boot, an exited process,
 or a live pid whose start time differs from the record — AND its heartbeat is
