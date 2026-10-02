@@ -31,7 +31,9 @@ pub fn canonical_transformer_reference(value: &str) -> String {
     canonical
 }
 
-pub fn transformer_set(names: impl IntoIterator<Item = String>) -> Result<Vec<String>, String> {
+pub fn transformer_set(
+    names: impl IntoIterator<Item = String>,
+) -> Result<Vec<String>, &'static str> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     for name in names {
@@ -42,17 +44,17 @@ pub fn transformer_set(names: impl IntoIterator<Item = String>) -> Result<Vec<St
                 .chars()
                 .any(|ch| ch.is_control() && ch != '\n' && ch != '\t')
         {
-            return Err("a transformer name is empty, untrimmed, or outside its bound".into());
+            return Err("a transformer name is empty, untrimmed, or outside its bound");
         }
         let canonical = canonical_transformer_reference(&name);
         if canonical.chars().count() > MAX_NAME_CHARS {
-            return Err("a canonical transformer name is outside its bound".into());
+            return Err("a canonical transformer name is outside its bound");
         }
         if seen.insert(canonical.clone()) {
             out.push(canonical);
         }
         if out.len() > MAX_TRANSFORMERS {
-            return Err("one request names more transformers than the fixed bound".into());
+            return Err("one request names more transformers than the fixed bound");
         }
     }
     Ok(out)

@@ -18,9 +18,11 @@ use crate::{ClientError, ErrorKind, TransportResponse};
 
 /// The most transformers one request may name. ds-brain's own compounded and
 /// retirement paths accept no more, so a larger list is refused locally.
-pub const PROJECT_REPORT_MAX_TRANSFORMERS: usize = 500;
+pub const PROJECT_REPORT_MAX_TRANSFORMERS: usize =
+    ds_command_kernel::report::transformers::MAX_TRANSFORMERS;
 /// One transformer reference name never exceeds this many characters.
-pub const PROJECT_REPORT_MAX_TRANSFORMER_CHARS: usize = 200;
+pub const PROJECT_REPORT_MAX_TRANSFORMER_CHARS: usize =
+    ds_command_kernel::report::transformers::MAX_NAME_CHARS;
 /// A retirement reason is bounded operator prose, never a document.
 pub const PROJECT_REPORT_MAX_REASON_CHARS: usize = 512;
 const MAX_TEXT_CHARS: usize = 8_192;
@@ -111,7 +113,6 @@ impl TransformerSet {
 /// Match ds-brain's `CanonicalTransformerReferenceName`: lowercase ASCII
 /// reference keys, separators/punctuation folded to `_`, no leading digit,
 /// and the legacy aggregate aliases collapsed to one key.
-use ds_command_kernel::report::transformers::canonical_transformer_reference;
 
 /// One compounded report request: an explicit scope (empty = every active
 /// saved transformer), the archive layout, and the force bit.
