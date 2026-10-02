@@ -15,5 +15,4 @@ uuid = { version = "1", features = ["v4"] }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 [dev-dependencies]
-tempfile = "3"
 ds-sync-store = { path = "../ds-sync-store" }

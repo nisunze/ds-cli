@@ -446,7 +446,7 @@ mod tests {
         let receipt = commit(
             &artifact_root,
             'a',
-            &["shp", "kmz", "xlsx", "geojson", "pdf__a3l", "pdf__a0l"],
+            &["shp", "kmz", "xlsx", "geojson", "pdf__a3l"],
         );
         let fence = Fence {
             account: "owner-1".into(),
@@ -526,7 +526,7 @@ mod tests {
             Some("exact-work")
         );
         let view = serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap();
-        assert_eq!(view["local_output_count"], 6);
+        assert_eq!(view["local_output_count"], 5);
         assert_eq!(
             view["published_output_count"], 0,
             "a native ACK alone is not cloud readback"
@@ -583,7 +583,7 @@ mod tests {
             },
         });
         let view = serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap();
-        assert_eq!(view["published_output_count"], 6);
+        assert_eq!(view["published_output_count"], 5);
         // A different work with identical bytes is not this publication's ACK.
         let head = &mut snapshot.cloud_head.as_mut().unwrap().head;
         head.work_id = "other-work".into();

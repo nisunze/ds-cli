@@ -9,6 +9,7 @@ use ds_command_kernel::local_models::{
 use sha2::{Digest, Sha256};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg(test)]
 pub struct StoredDraft {
     pub base: PackageIdentity,
     pub draft: LocalDraft,
@@ -198,6 +199,7 @@ pub fn stage_draft_at(
 /// Read only the independently pinned draft while holding the shared lock.
 /// Verify retained base bytes and the draft's exact size/digest before return.
 /// `None` means no pin, even if complete or partial orphan files exist.
+#[cfg(test)]
 pub fn read_draft_at(
     root: &Path,
     scope: &Scope,

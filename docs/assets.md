@@ -17,7 +17,7 @@ Hosts own byte acquisition (signed reads, uploads, drag-drop), the catalogue
 (`pdf.js`, decision D8 — the kernel recognises and bounds pdf and decodes
 nothing of it), geo feature decoding (`ds-io` in ds-network, decision D20 —
 the kernel plans, resolves shapefile companions and bounds what comes back),
-and worker dispatch: any input above `MAX_MAIN_THREAD_BYTES` (1 MiB) runs
+and worker dispatch: any input above the 1 MiB main-thread threshold (1 MiB) runs
 through the compute worker pool, never the main-thread kernel singleton.
 This module owns no storage, no network IO, no filesystem and no browser API,
 and no preview references remote content as fetchable. Extraction to disk
@@ -150,7 +150,7 @@ only ever present on projected rows and is never written to Firestore, D16).
 `member_count_total`. Members are classified from their names (a listing
 reads the central directory, not the members); a member whose format is a
 pack is `nested: true` and is not walked — the one nested level
-(`MAX_NESTED_ARCHIVE_LEVELS`) is walked by the host chaining
+is walked by the host chaining
 `extract_member` then `container_walk`. Shapefile sidecars (`.dbf`, `.shx`,
 `.prj`, `.cpg`, case-insensitive stem match) fold into their `.shp` row's
 `companions` and lose their own rows; a `.shp` without both `.dbf` and `.shx`
@@ -209,9 +209,9 @@ document is legitimately cut at a display bound the result says so through
 | `MAX_DOC_BLOCKS` | 200 | md, txt, docx |
 | `MAX_INLINE_IMAGE_BYTES` × `MAX_INLINE_IMAGES` | 1 MiB × 20 | docx inline images |
 | `MAX_PDF_EAGER_PAGES` | 5 | a host rule for pdf.js |
-| `MAX_CONTAINER_MEMBERS` / `MAX_CONTAINER_DEPTH` / `MAX_NESTED_ARCHIVE_LEVELS` | 5,000 / 8 / 1 | `container_walk` (`truncated: true`, `member_count_total` keeps counting) |
+| `MAX_CONTAINER_MEMBERS` / `MAX_CONTAINER_DEPTH` / nested archive levels | 5,000 / 8 / 1 | `container_walk` (`truncated: true`, `member_count_total` keeps counting) |
 | `MAX_TREE_SOURCE_ROWS` / `MAX_QUERY_CHARS` | 20,000 / 200 | each `tree` source list, `folders`, `assets` / `query` |
-| `MAX_MAIN_THREAD_BYTES` | 1 MiB | host dispatch: above it, the worker pool |
+| the 1 MiB main-thread threshold | 1 MiB | host dispatch: above it, the worker pool |
 | `RECOGNITION_HEAD_BYTES` | 64 KiB | the head a host should send with `recognise` |
 
 Decoders carry private scan bounds of their own (shared strings, worksheet

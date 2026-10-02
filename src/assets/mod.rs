@@ -6,7 +6,7 @@
 //! Hosts own byte acquisition (signed reads, uploads, drag-drop), PDF
 //! rendering (`pdf.js`, decision D8), geo feature decoding (`ds-io`, decision
 //! D20), catalogue storage (ds-brain) and the worker dispatch above
-//! [`MAX_MAIN_THREAD_BYTES`] (§4.4). Nothing here touches a filesystem, a
+//! the host’s 1 MiB threshold (§4.4). Nothing here touches a filesystem, a
 //! socket or a browser API, and no preview ever references remote content as
 //! fetchable (§4.2).
 //!
@@ -87,9 +87,6 @@ pub const MAX_GEO_BYTES: u64 = 20 * MIB;
 pub const MAX_CONTAINER_MEMBERS: usize = 5_000;
 /// §3.4: directory levels a member path may have.
 pub const MAX_CONTAINER_DEPTH: usize = 8;
-/// §3.4: archives inside the archive that are walked; deeper ones are
-/// reported as `pack` without walking.
-pub const MAX_NESTED_ARCHIVE_LEVELS: usize = 1;
 /// §4.2: features a geo preview may carry (matches the `ds map` scene bound);
 /// above it the preview is refused and promotion is the honest alternative.
 pub const MAX_GEO_FEATURES: u64 = 20_000;
@@ -109,10 +106,6 @@ pub const MAX_MAIL_BODY_BYTES: usize = 200_000;
 pub const MAX_PDF_EAGER_PAGES: u32 = 5;
 /// §4.2: longest edge of an image thumbnail.
 pub const MAX_THUMBNAIL_PX: u32 = 2048;
-/// §4.4: inputs at or under this size may run on the main-thread kernel;
-/// larger ones go through the compute worker pool. A host rule, published
-/// here so both hosts read one number.
-pub const MAX_MAIN_THREAD_BYTES: u64 = MIB;
 /// §2.5: rows accepted per tree source list (and for `folders` / `assets`).
 pub const MAX_TREE_SOURCE_ROWS: usize = 20_000;
 /// §2.6: characters in a tree `query`.

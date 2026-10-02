@@ -1532,10 +1532,6 @@ impl TransformerStatusRow {
     pub fn row(&self) -> &Value {
         &self.row
     }
-    /// Take the row, for a caller that hands it straight to a kernel module.
-    pub fn into_row(self) -> Value {
-        self.row
-    }
 }
 
 /// The bounded status rows of one project's transformers, or of the exact
@@ -1559,9 +1555,6 @@ impl TransformerStatusList {
     }
     pub fn is_empty(&self) -> bool {
         self.transformers.is_empty()
-    }
-    pub fn into_rows(self) -> Vec<TransformerStatusRow> {
-        self.transformers
     }
 }
 

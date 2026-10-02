@@ -44,7 +44,7 @@ explicit. A host must retain the previous projection during a transient read,
 display held local files immediately, and refresh in the background with an
 owner/project generation guard. The native IO binding is
 `ds_report_artifacts::inventory::read_snapshot`, called by
-`StoreHost::report_inventory_snapshot` under its existing fence. It hashes
+the native host under its existing fence. It hashes
 selected current bytes, checks immutable commit/output pins, and performs no
 recovery, adoption, reclaim or remote call. A missing/corrupt current output
 refuses the fresh read rather than resurrecting an older shadowed output.

@@ -36,8 +36,6 @@ pub const MAX_RELATED_ROWS: usize = 250;
 pub const MAX_RECORD_BODY_CHARS: usize = 8_000;
 /// How much of a task description one read carries (cli-pm.ts:105).
 pub const MAX_TEXT_LENGTH: usize = 4_000;
-/// The highest page index a caller may ask for (cli-pm.ts:381).
-pub const MAX_PAGE_INDEX: i64 = 10_000;
 
 // ── task rows ───────────────────────────────────────────────────────────
 

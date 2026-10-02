@@ -189,18 +189,3 @@ pub fn cloud_dataset(resource: &ReferenceResource) -> Dataset {
 /// The kernel records the area rule against this provider name
 /// (`project_dataset_cache::acquisition_selection`); one constant, re-exported.
 pub use ds_command_kernel::project_dataset_cache::CLOUD_READ_PROVIDER;
-
-/// The one sentence every host prints when a cloud-resident dataset is asked
-/// to be installed nationally or downloaded as a bundle. Seeding per project
-/// is not refused: that is how the project holds what it needs.
-pub fn cloud_only_message(resource: &ReferenceResource) -> String {
-    let command = match resource.layer.as_str() {
-        "rwanda_upi_parcels" => "ds data parcels query --boundary …, or seed the project's extents",
-        "edcl_customers" => "ds data customers query --boundary …, or seed the project's extents",
-        _ => "ds data",
-    };
-    format!(
-        "{} is cloud-resident; it is never installed nationally or downloaded as a bundle — read it bounded ({command}) or `ds data project-cache seed --dataset {}`",
-        resource.layer, resource.layer
-    )
-}

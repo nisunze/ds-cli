@@ -16,7 +16,7 @@
 //!   counted in `member_count_total`, and the listing says `truncated: true`.
 //! * A member deeper than [`MAX_CONTAINER_DEPTH`] path segments is counted and
 //!   left out of the listing, again as `truncated: true`.
-//! * `MAX_NESTED_ARCHIVE_LEVELS` is one: an archive *inside* this archive is
+//! * One nested archive level is supported: an archive *inside* this archive is
 //!   listed as `kind: pack`, `nested: true`, and is not walked here. The host
 //!   walks that one level deliberately — [`extract_member`] on the nested row,
 //!   then [`walk`] on the bytes it gets back — so nothing recurses on its own
@@ -50,7 +50,7 @@ const SHAPEFILE_REQUIRED: usize = 2;
 
 /// Lists the central directory of `bytes` (no member is inflated). Bounds
 /// `MAX_CONTAINER_MEMBERS`, `MAX_CONTAINER_DEPTH` and
-/// `MAX_NESTED_ARCHIVE_LEVELS` report `truncated: true`, never a short list.
+/// one nested archive level report `truncated: true`, never a short list.
 pub fn walk(bytes: &[u8]) -> Result<Container, String> {
     // A message is a container too (correspondence.md §Asset): its MIME
     // parts are the members. Bytes that are not a ZIP are tried as one before
@@ -313,7 +313,7 @@ fn is_folder_entry(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::assets::{MAX_NESTED_ARCHIVE_LEVELS, MAX_PREVIEW_INPUT_BYTES};
+    use crate::assets::MAX_PREVIEW_INPUT_BYTES;
     use std::io::Write;
     use zip::write::{SimpleFileOptions, ZipWriter};
 
@@ -457,7 +457,6 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn assets_zip_nested_archive_is_reported_not_walked() {
-        assert_eq!(MAX_NESTED_ARCHIVE_LEVELS, 1);
         let inner = zip_of(&[("inner/one.txt", b"one")], false);
         let outer = zip_of(
             &[("bundle/inner.zip", &inner), ("read.me", b"hello")],

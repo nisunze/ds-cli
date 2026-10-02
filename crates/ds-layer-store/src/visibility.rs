@@ -19,6 +19,7 @@ pub use crate::scoped::{UpdateError, MAX_STORE_BYTES};
 pub const MAX_PROJECT_ENTRIES: usize = 50_000;
 
 /// `<lane>/<uid>/<project>` → runtime layer id → desired visibility.
+#[cfg(test)]
 pub type VisibilityStore = scoped::Store<BTreeMap<String, bool>>;
 
 const KIND: Kind<BTreeMap<String, bool>> = Kind {

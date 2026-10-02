@@ -254,23 +254,6 @@ impl<'a> StoreHost<'a> {
         })
     }
 
-    /// Read verified still-held report bytes and this fence's store facts.
-    /// No adoption, reclaim, queue transition, receipt inference or gateway IO.
-    pub fn report_inventory_snapshot(
-        &self,
-        root: &Path,
-        transformer: &str,
-    ) -> Result<ds_command_kernel::report::inventory::Snapshot, String> {
-        let rows = self.snapshot()?.artifacts;
-        ds_report_artifacts::inventory::read_snapshot(
-            root,
-            &self.fence.account,
-            &self.project,
-            transformer,
-            &rows,
-        )
-    }
-
     pub fn read_at(&self) -> Result<Option<u64>, String> {
         self.with_store(|store| {
             store

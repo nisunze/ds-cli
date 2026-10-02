@@ -774,11 +774,6 @@ fn a_cloud_resident_row_seeds_through_its_bounded_read() {
         assert_eq!(resolved.dataset.parameters["layer"], "rwanda_upi_parcels");
         assert!(matches!(resolved.source, DeclaredSource::Cloud(_)));
     }
-    // Installing it nationally is still refused by name.
-    assert!(
-        ds_project_data::declared::cloud_only_message(&parcels).contains("project-cache seed"),
-        "the refusal points at the per-project seed"
-    );
     // A retired broad layer names its detailed alternatives.
     match ds_project_data::declared::resolve(&rows, "powerlines") {
         Err(Failure::Retired(message)) => assert!(message.contains("hv_line, mv_line, lv_line")),
