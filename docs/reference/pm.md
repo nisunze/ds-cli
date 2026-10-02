@@ -215,6 +215,40 @@ The write is the ordinary `create_task` / `update_task_fields` command every
 other `ds pm` write sends, against the revision it read, through the same
 headless door.
 
+## Which model version: exact DS Grid model links
+
+A task, milestone or project note can name a whole DS Grid project model at
+one exact catalog version. A catalog version stays open until a bump
+supersedes it, so the link pins one immutable **catalog revision** and carries
+that revision's version and `.dsgrid` digest, read from the catalog — never a
+display name. ds-brain checks the pin again inside the Project Work write.
+The contract is ds-brain
+`docs/contracts/work-links-and-spatial-anchors.md` (DS Grid model versions).
+
+```bash
+ds dsgrid project versions --model <model-id> --output json                       # revisions grouped by version
+ds pm model-link add    --task T4 --model <model-id> --version 3 --yes            # pins version 3's newest revision now
+ds pm model-link add    --note N1 --model <model-id> --revision <revision-id> --yes
+ds pm model-link list   --task T4 --output json                                   # links[]: model_id, revision_id, model_version, model_digest, attached_by/at
+ds pm model-link list   --model <model-id> --output json                          # every task, milestone and note linking it
+ds pm model-link remove --task T4 --model <model-id> --revision <revision-id> --yes
+```
+
+- `--version N` alone pins the newest revision of version N **as it stands
+  now**; a later save into version N does not move the link. `--revision`
+  pins exactly; with both, they must agree (`model_version_mismatch`).
+- Two revisions of one model are two links; `remove` takes the exact revision
+  and leaves the others. Adding a link that is already there changes nothing
+  and keeps its first attribution.
+- A link outlives retirement of its model: it can still be read and removed,
+  but a retired model cannot be newly linked.
+- Task geometry links (`dsgrid_structure`, `dsgrid_alignment`) are separate
+  and untouched; `ds pm task geometry set` keeps model links on the task.
+- Linking freezes nothing. This is not the design-version `vN` marker, and an
+  immutable external submission stays a Project Work record.
+- `list --model` reads project notes from the bounded context page;
+  `notes_truncated: true` says the page was cut.
+
 ## A third party proposes; the PM admits
 
 The plan is not only the schedule editor's to write. A member with the
@@ -288,6 +322,10 @@ what a person may set is a waiver, with a reason, and it is not withdrawn.
 | `object_unresolved` / `object_ambiguous` | a number, id or label is not in the model, or names two objects (`detail` lists them) |
 | `references_incompatible` | structures and an alignment, or two alignments, in one proposal |
 | `too_many_objects` / `geometry_too_large` / `links_bound_exceeded` / `buffer_out_of_range` | a bound, with its number |
+| `model_link_source_invalid` | `model-link` needs exactly one `--task` or `--note`, and a note must be a project note |
+| `model_link_invalid` | a model or revision id is not an exact catalog id, neither `--revision` nor `--version` was given, or the item holds 128 links |
+| `model_version_not_found` | the project's catalog has no such model, revision or version |
+| `model_version_mismatch` | `--version` disagrees with the catalog version of `--revision` |
 
 `--start 01-09-2026` is refused here rather than at the engine on purpose: a
 transposed day and month is the commonest scheduling mistake there is, and

@@ -2081,6 +2081,21 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::geometry::clear::render,
     },
     Entry {
+        command: &ds_cli_pm::model_link::ADD,
+        handler: ds_cli_pm::model_link::add,
+        render: ds_cli_pm::model_link::render,
+    },
+    Entry {
+        command: &ds_cli_pm::model_link::REMOVE,
+        handler: ds_cli_pm::model_link::remove,
+        render: ds_cli_pm::model_link::render,
+    },
+    Entry {
+        command: &ds_cli_pm::model_link::LIST,
+        handler: ds_cli_pm::model_link::list,
+        render: ds_cli_pm::model_link::render,
+    },
+    Entry {
         command: &ds_cli_pm::task::proposals::PROPOSE,
         handler: ds_cli_pm::task::proposals::run_propose,
         render: ds_cli_pm::task::proposals::render_propose,

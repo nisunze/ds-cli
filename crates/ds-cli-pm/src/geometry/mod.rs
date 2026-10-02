@@ -33,7 +33,7 @@ use ds_command_kernel::local_models::Scope;
 use ds_command_kernel::task_geometry::{
     self, IndexInput, ObjectIndex, Proposal, ProposeRequest, Source,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 pub const FROM_ARG: Arg = Arg {
     name: "from",
@@ -289,27 +289,13 @@ pub fn proposal_json(proposal: &Proposal) -> Value {
     serde_json::to_value(proposal).unwrap_or(Value::Null)
 }
 
-/// A link's nine wire fields and nothing else: the command decoder refuses
-/// an unknown field, and a link the graph answers may one day carry a
-/// projection the engine did not author.
+/// A link's authored wire fields and nothing else — the kernel's one list,
+/// which includes an exact DS Grid model pin's `model_version` and
+/// `model_digest`: the command decoder refuses an unknown field, a link the
+/// graph answers may one day carry a projection the engine did not author,
+/// and a pin re-sent without its fields would no longer say what it pinned.
 pub fn wire_link(link: &Value) -> Value {
-    let mut out = Map::new();
-    for key in [
-        "kind",
-        "project_id",
-        "entity_id",
-        "form_slug",
-        "object_type",
-        "object_revision",
-        "label",
-        "attached_by",
-        "attached_at",
-    ] {
-        if let Some(value) = link.get(key).filter(|v| !v.is_null()) {
-            out.insert(key.into(), value.clone());
-        }
-    }
-    Value::Object(out)
+    ds_command_kernel::project_management::model_links::wire_link(link)
 }
 
 /// The task's `ds_object` links this family attached — the trace of a

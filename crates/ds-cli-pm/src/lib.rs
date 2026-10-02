@@ -59,6 +59,7 @@ pub mod collaboration;
 pub mod deletion;
 pub mod geometry;
 pub mod member;
+pub mod model_link;
 pub mod note;
 pub mod party;
 pub mod plan;
@@ -105,6 +106,9 @@ pub static DOMAIN: Domain = Domain {
         &geometry::read::COMMAND,
         &geometry::set::COMMAND,
         &geometry::clear::COMMAND,
+        &model_link::ADD,
+        &model_link::REMOVE,
+        &model_link::LIST,
         &note::CREATE,
         &record::list::COMMAND,
         &record::read::COMMAND,

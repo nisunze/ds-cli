@@ -10774,6 +10774,9 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.task.geometry.read",
         "pm.task.geometry.set",
         "pm.task.geometry.clear",
+        "pm.model-link.add",
+        "pm.model-link.remove",
+        "pm.model-link.list",
         "pm.task.block",
         "pm.task.unblock",
         "pm.note.create",
@@ -10825,6 +10828,8 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
                 | "pm.task.log-hours"
                 | "pm.task.geometry.set"
                 | "pm.task.geometry.clear"
+                | "pm.model-link.add"
+                | "pm.model-link.remove"
                 | "pm.task.block"
                 | "pm.task.unblock"
                 | "pm.task.comment"
@@ -10843,6 +10848,114 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
             "`{id}` declares the wrong effect class for its blast radius"
         );
     }
+}
+
+#[test]
+fn model_links_pin_an_exact_catalog_revision_and_refuse_before_any_round_trip() {
+    for (id, effect) in [
+        ("pm.model-link.add", "global_write"),
+        ("pm.model-link.remove", "global_write"),
+        ("pm.model-link.list", "read_only"),
+    ] {
+        let command = ok(&["capabilities", id, "--output", "json"])["command"].clone();
+        assert_eq!(command["authority"], "headless_project");
+        assert_eq!(command["requires"], "server");
+        assert_eq!(command["effect"], effect);
+    }
+    let add = |extra: &[&str]| {
+        let mut args = vec!["pm", "model-link", "add"];
+        args.extend_from_slice(extra);
+        args.extend(["--output", "json"]);
+        native_pm_refusal(&args)
+    };
+    // A write is behind the confirmation gate.
+    assert_eq!(
+        add(&["--task", "T4", "--model", "model-a", "--revision", "rev-1"]),
+        "confirmation_required"
+    );
+    // Exactly one source.
+    assert_eq!(
+        add(&[
+            "--task",
+            "T4",
+            "--note",
+            "N1",
+            "--model",
+            "model-a",
+            "--revision",
+            "rev-1",
+            "--yes"
+        ]),
+        "model_link_source_invalid"
+    );
+    assert_eq!(
+        add(&["--model", "model-a", "--revision", "rev-1", "--yes"]),
+        "model_link_source_invalid"
+    );
+    // A display name is never an identity, and a pin needs a revision or a version.
+    assert_eq!(
+        add(&[
+            "--task",
+            "T4",
+            "--model",
+            "Feeder 7",
+            "--revision",
+            "rev-1",
+            "--yes"
+        ]),
+        "model_link_invalid"
+    );
+    assert_eq!(
+        add(&["--task", "T4", "--model", "model-a", "--yes"]),
+        "model_link_invalid"
+    );
+    assert_eq!(
+        add(&[
+            "--task",
+            "T4",
+            "--model",
+            "model-a",
+            "--version",
+            "0",
+            "--yes"
+        ]),
+        "model_link_invalid"
+    );
+    // A shaped request reaches native authorization; a signed-out catalog read
+    // is not reported as a missing version.
+    assert!(
+        NATIVE_AUTH_CODES.contains(
+            &add(&[
+                "--task",
+                "T4",
+                "--model",
+                "model-a",
+                "--revision",
+                "rev-1",
+                "--yes"
+            ])
+            .as_str()
+        ),
+        "a shaped model link reaches native authorization without a desktop"
+    );
+    assert_eq!(
+        native_pm_refusal(&["pm", "model-link", "list", "--output", "json"]),
+        "model_link_source_invalid"
+    );
+    assert_eq!(
+        native_pm_refusal(&[
+            "pm",
+            "model-link",
+            "list",
+            "--task",
+            "T4",
+            "--model",
+            "model-a",
+            "--output",
+            "json"
+        ]),
+        "model_link_source_invalid"
+    );
 }
 
 #[test]
