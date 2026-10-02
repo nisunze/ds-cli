@@ -64,6 +64,27 @@ pub(super) fn state_root() -> Result<PathBuf, StoreError> {
     Ok(root)
 }
 
+pub(super) fn read_only_state_root() -> Result<Option<PathBuf>, StoreError> {
+    let base = local_app_data()?;
+    validate_absolute_local_path(&base)?;
+    validate_directory(&base)?;
+    let product = base.join("Data Solutions");
+    let root = product.join("ds");
+    if !existing_private_dir(&product)? || !existing_private_dir(&root)? {
+        return Ok(None);
+    }
+    Ok(Some(root))
+}
+
+pub(super) fn existing_private_dir(path: &Path) -> Result<bool, StoreError> {
+    validate_optional_directory(path)?;
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(_) => Err(StoreError::Unavailable),
+    }
+}
+
 pub(super) fn probe() -> Result<(), StoreError> {
     let base = local_app_data()?;
     validate_absolute_local_path(&base)?;

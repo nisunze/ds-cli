@@ -575,6 +575,31 @@ pub fn probe_identity_without_selection(
     Ok(probe_credential_identity(lane)?.map(|(_, _, identity)| identity))
 }
 
+/// Existing atomic provider state only: no lease, cleanup, provider request or
+/// saved selection. The same closed device decoder supplies its identity.
+pub(crate) fn probe_identity_read_only(
+    lane: Lane,
+) -> Result<Option<crate::ProviderIdentity>, Failure> {
+    let (profile, _, _) = profile::load_device(lane)?;
+    let Some(bytes) = NativeDeviceStore::read_only(&state_key(&profile))? else {
+        return Ok(None);
+    };
+    let bytes = Zeroizing::new(bytes);
+    let credential = match DeviceCredential::decode_protected(&bytes, &profile) {
+        Ok(credential) => credential,
+        Err(_) if DevicePendingAuthorization::decode_protected(&bytes, &profile).is_ok() => {
+            return Ok(None);
+        }
+        Err(error) => return Err(device_failure(error)),
+    };
+    crate::ProviderIdentity::new(
+        lane.token(),
+        profile.credential_audience_sha256(),
+        credential.uid(),
+    )
+    .map(Some)
+}
+
 /// The device credential and the identity it names, with nothing about a
 /// project read at all.
 fn probe_credential_identity(
