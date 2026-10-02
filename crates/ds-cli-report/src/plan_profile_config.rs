@@ -20,9 +20,9 @@ use crate::{DS_REPORT, EXPORT_TIMEOUT};
 pub static COMMAND: Command = Command {
     id: "report.plan-profile-config",
     path: &["report", "plan-profile-config"],
-    contract: 2,
-    summary: "Print plan/profile variants from a JSON configuration.",
-    purpose: "Bind same-revision geometry and held approved assets to the project canonical MV setup, then render named publication destinations. All printing furniture inherits the exact adopted revision and fixed version/date; V1 transient settings are refused. Discover the V2 configuration with report plan-profile-config schema. Every output uses a fresh directory and a digest-pinned receipt.",
+    contract: 3,
+    summary: "Print an atomic standard MV booklet from project JSON.",
+    purpose: "Bind same-revision geometry and held approved assets to the project canonical MV setup, then render named publication destinations. All printing furniture inherits the exact adopted revision and fixed version/date; V1 transient settings are refused. Discover the V2 configuration with report plan-profile-config schema. The complete job commits one fresh output directory only after every booklet, preview and receipt succeeds.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -42,16 +42,17 @@ pub static COMMAND: Command = Command {
         )
         .required(),
     ],
-    output: "One receipt with the configuration SHA-256, model revision, page count and digest-pinned PDF for every completed variant; a partial receipt if a later variant fails.",
+    output: "One atomic receipt with configuration SHA-256, exact model revision, ordered PNG previews, layout-plan digest and PDF digest for every booklet. Failure leaves the destination absent.",
     examples: &[Example {
         command: "ds report plan-profile-config --project gisagara --config /project/prints/plan-profile.json --output json",
         note: "Render every named variant from one pinned configuration; see docs/reference/report.md for the schema.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 10 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 11 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
+            crate::project::mv_setup::STYLE_REFUSAL,
             Refusal {
                 code: "mv_print_legacy_request_refused",
                 when: "a V1 configuration supplies transient approved printing furniture",
@@ -85,12 +86,12 @@ pub static COMMAND: Command = Command {
             Refusal {
                 code: "receipt_write_failed",
                 when: "the batch receipt cannot be saved",
-                remedy: "check destination permissions and free space; preserve completed variant directories",
+                remedy: "check destination permissions and free space; the destination remains absent on failure",
             },
             Refusal {
                 code: "engine_refused",
                 when: "the Rust reporter rejects a variant's source or settings",
-                remedy: "read the partial batch receipt and reporter detail; correct the pinned inputs",
+                remedy: "read the reporter detail and correct the pinned inputs; no part of the job was committed",
             },
             Refusal {
                 code: "reporter_engine_missing",
@@ -108,7 +109,7 @@ pub static COMMAND: Command = Command {
 pub static SCHEMA: Command = Command {
     id: "report.plan-profile-config.schema",
     path: &["report", "plan-profile-config", "schema"],
-    contract: 2,
+    contract: 3,
     summary: "Describe the JSON plan/profile print configuration.",
     purpose: "Return versioned geometry/asset/destination fields, the exact staking workbook Description binding schema, and a complete minimal example inheriting the canonical project printing setup. This is local discovery and does not render a sheet.",
     chapter: Chapter::Reports,
@@ -144,12 +145,14 @@ pub fn schema_run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure
 
 fn schema_document() -> Value {
     json!({"schema":"ds.grid-plan-profile-print/v2",
-        "required":["schema","project_id","scene_path","plan_path","output_root","variants"],
-        "optional":["sample_pages","side_profiles_path","notes_path","structure_descriptions_path","model_crs","context_page_files","model_fields","publication_assets"],
+        "required":["schema","project_id","scene_path","plan_path","output_root"],
+        "optional":["preview_only","variants","sample_pages","side_profiles_path","notes_path","structure_descriptions_path","model_crs","context_page_files","model_fields","publication_assets"],
+        "alignment_context":ds_command_kernel::printing::mv_context::schema(),
         "structure_description_binding":ds_command_kernel::printing::structure_descriptions::schema(),
+        "override_rule":"Declarative changes belong in the existing revision-fenced project layout (mv.settings, pages and ordinary title furniture), validated by report.layout.schema; this job refuses transient settings. The mv_standardize layout intent canonizes approved cover/naming with standard index/key-plan/notes and A3 defaults.",
         "settings_rule":"All text, logos, layout, scales, fonts, ink and fixed version/date inherit the project's canonical adopted MV setup. This configuration only binds geometry, held approved assets and destinations. V1 transient settings are refused.",
         "path_rule":"Relative paths resolve beside the configuration; output_root must be fresh.",
-        "example":{"schema":"ds.grid-plan-profile-print/v2","project_id":"project-id","scene_path":"sources/profile-scene.json","plan_path":"sources/plan.json","output_root":"publication-output","variants":[{"name":"publication"}]}
+        "example":{"schema":"ds.grid-plan-profile-print/v2","project_id":"project-id","scene_path":"sources/profile-scene.json","plan_path":"sources/plan.json","output_root":"publication-output"}
     })
 }
 
@@ -170,6 +173,8 @@ struct PrintConfig {
     plan_path: PathBuf,
     output_root: PathBuf,
     #[serde(default)]
+    preview_only: bool,
+    #[serde(default)]
     side_profiles_path: Option<PathBuf>,
     #[serde(default)]
     notes_path: Option<PathBuf>,
@@ -185,6 +190,7 @@ struct PrintConfig {
     model_fields: BTreeMap<ds_command_kernel::printing::mv::ModelField, String>,
     #[serde(default)]
     publication_assets: BTreeMap<String, PathBuf>,
+    #[serde(default = "standard_variant")]
     variants: Vec<PrintVariant>,
 }
 
@@ -192,6 +198,12 @@ struct PrintConfig {
 #[serde(deny_unknown_fields)]
 struct PrintVariant {
     name: String,
+}
+
+fn standard_variant() -> Vec<PrintVariant> {
+    vec![PrintVariant {
+        name: "booklet".into(),
+    }]
 }
 
 fn decode_config(bytes: &[u8]) -> Result<PrintConfig, Failure> {
@@ -289,7 +301,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let config = decode_config(&bytes)?;
     let base = config_path.parent().expect("absolute file has parent");
     let output_root = validate(&config, project, base)?;
-    let resolved = crate::project::mv_setup::resolve_project(
+    let (resolved, style_resolution) = crate::project::mv_setup::resolve_project_print(
         inputs.require("lane")?,
         project,
         config.model_fields.clone(),
@@ -307,6 +319,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     for variant in &config.variants {
         let out_dir = staging.path().join(&variant.name);
         let request = json!({
+            "preview_only":config.preview_only,
             "project_id": config.project_id,
             "scene_path": resolve(base, &config.scene_path),
             "plan_path": resolve(base, &config.plan_path),
@@ -315,6 +328,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "structure_descriptions_path": config.structure_descriptions_path.as_deref().map(|p| resolve(base, p)),
             "out_dir": out_dir,
             "settings": resolved.settings,
+            "style_resolution": style_resolution,
             "mv_setup": resolved,
             "publication_assets": config.publication_assets.iter().map(|(id,p)|(id.clone(),resolve(base,p))).collect::<BTreeMap<_,_>>(),
             "sample_pages": config.sample_pages,
@@ -339,23 +353,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let completed = match DS_REPORT.call("render-grid-plan-profile", &args, EXPORT_TIMEOUT) {
             Ok(completed) => completed,
             Err(error) => {
-                if !variants.is_empty() {
-                    save_receipt(&receipt_path, &config_sha256, project, "partial", &variants)?;
-                }
-                return Err(error.detail(json!({"variant":variant.name,"receipt_path":receipt_path,"completed_variants":variants})));
+                return Err(error.detail(json!({"variant":variant.name,"committed":false})));
             }
         };
         let document = std::fs::read(&result_path)
             .ok()
             .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
         if !completed.succeeded() || document.is_none() {
-            if !variants.is_empty() {
-                save_receipt(&receipt_path, &config_sha256, project, "partial", &variants)?;
-            }
             return Err(Failure::failed(
                 "engine_refused",
                 format!(
-                    "variant '{}' failed; completed variants remain in {}",
+                    "variant '{}' failed; the atomic destination was not committed: {}",
                     variant.name,
                     output_root.display()
                 ),
@@ -365,15 +373,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             ));
         }
         let mut document = document.expect("checked above");
-        if variants.is_empty() {
-            std::fs::create_dir(&output_root)
-                .map_err(|e| Failure::failed("output_create_failed", e.to_string()))?;
-        }
-        std::fs::rename(&out_dir, output_root.join(&variant.name))
-            .map_err(|e| Failure::failed("output_create_failed", e.to_string()))?;
         relocate_paths(&mut document, staging.path(), &output_root);
         ds_layer_store::private::write_atomic(
-            &output_root.join(&variant.name).join("manifest.json"),
+            &staging.path().join(&variant.name).join("manifest.json"),
             serde_json::to_vec_pretty(&document)
                 .map_err(|e| Failure::internal("receipt_write_failed", e.to_string()))?,
         )
@@ -387,14 +389,60 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "full_page_count":document["full_page_count"],
             "pdf":document["pdf"],
             "pdf_sha256":document["pdf_sha256"],
-            "context_pages":document["context_pages"]
+            "context_pages":document["context_pages"],
+            "booklet_plan":document["booklet_plan"],
+            "booklet_previews":document["booklet_previews"]
         }));
-        save_receipt(&receipt_path, &config_sha256, project, "partial", &variants)?;
     }
-    save_receipt(&receipt_path, &config_sha256, project, "ok", &variants)?;
+    save_receipt(
+        &staging.path().join("print-receipt.json"),
+        &config_sha256,
+        project,
+        "ok",
+        &variants,
+    )?;
+    commit_job(staging, &output_root)?;
     Ok(
         json!({"config_sha256":config_sha256,"project_id":project,"status":"ok","receipt_path":receipt_path,"variants":variants}),
     )
+}
+
+fn commit_job(staging: tempfile::TempDir, destination: &Path) -> Result<(), Failure> {
+    // A completed directory is the sole commit boundary. Linux renameat2
+    // refuses a concurrent creator, including an empty directory.
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let source = std::ffi::CString::new(staging.path().as_os_str().as_bytes())
+            .map_err(|e| Failure::invalid("print_config_invalid", e.to_string()))?;
+        let target = std::ffi::CString::new(destination.as_os_str().as_bytes())
+            .map_err(|e| Failure::invalid("print_config_invalid", e.to_string()))?;
+        // SAFETY: both C strings remain alive for the synchronous syscall.
+        if unsafe {
+            libc::renameat2(
+                libc::AT_FDCWD,
+                source.as_ptr(),
+                libc::AT_FDCWD,
+                target.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        } != 0
+        {
+            return Err(Failure::failed(
+                "output_create_failed",
+                std::io::Error::last_os_error().to_string(),
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        if destination.symlink_metadata().is_ok() {
+            return Err(Failure::invalid("output_exists", "destination exists"));
+        }
+        std::fs::rename(staging.path(), destination)
+            .map_err(|e| Failure::failed("output_create_failed", e.to_string()))
+    }
 }
 
 fn relocate_paths(value: &mut Value, from: &Path, to: &Path) {
@@ -444,12 +492,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn atomic_job_commit_refuses_existing_delivery_and_moves_one_complete_directory() {
+        let parent = tempfile::tempdir().unwrap();
+        let destination = parent.path().join("delivery");
+        std::fs::create_dir(&destination).unwrap();
+        let staging = tempfile::tempdir_in(parent.path()).unwrap();
+        std::fs::write(staging.path().join("receipt.json"), b"complete").unwrap();
+        assert!(commit_job(staging, &destination).is_err());
+        assert_eq!(std::fs::read_dir(&destination).unwrap().count(), 0);
+        std::fs::remove_dir(&destination).unwrap();
+        let staging = tempfile::tempdir_in(parent.path()).unwrap();
+        std::fs::write(staging.path().join("receipt.json"), b"complete").unwrap();
+        commit_job(staging, &destination).unwrap();
+        assert_eq!(
+            std::fs::read(destination.join("receipt.json")).unwrap(),
+            b"complete"
+        );
+    }
+
+    #[test]
     fn variant_names_cannot_escape_or_collide() {
         let source = tempfile::tempdir().unwrap();
         std::fs::write(source.path().join("scene.json"), "{}").unwrap();
         std::fs::write(source.path().join("plan.json"), "{}").unwrap();
         let make = |names: &[&str]| PrintConfig {
             schema: "ds.grid-plan-profile-print/v2".into(),
+            preview_only: false,
             project_id: "p".into(),
             scene_path: "scene.json".into(),
             plan_path: "plan.json".into(),
@@ -512,6 +580,6 @@ mod tests {
         let config: PrintConfig = serde_json::from_value(example).unwrap();
         assert_eq!(config.schema, "ds.grid-plan-profile-print/v2");
         assert_eq!(config.variants.len(), 1);
-        assert_eq!(config.variants[0].name, "publication");
+        assert_eq!(config.variants[0].name, "booklet");
     }
 }

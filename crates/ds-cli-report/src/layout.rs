@@ -102,9 +102,9 @@ pub static NEW: Command = Command {
 pub static EDIT: Command = Command {
     id: "report.layout.edit",
     path: &["report", "layout", "edit"],
-    contract: 1,
+    contract: 2,
     summary: "Validate and apply one print document intent.",
-    purpose: "Apply a local Rust intent; discover op/layout grammar with map.print.schema --section edit. set_adjacent_networks binds neighboring circuits to role-specific print_context_existing_new_v1 seeds, distinguishing new, existing and unknown status. Focused pens and view stay exact. Optional policy changes context colours. Returns a document; saving is separate. See the reference for shade and table edits.",
+    purpose: "Apply a local kernel print intent. mv_standardize preserves approved cover/naming and canonizes A3 booklet defaults; mv_booklet_preview admits every PNG against its plan. Discover typed grammar with report layout schema. Adjacent-network, table and shade edits remain kernel intents. Saving and selection use the revision-fenced library; this call returns a document or receipt.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -124,6 +124,8 @@ pub static EDIT: Command = Command {
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &[
+        "mv booklet",
+        "front matter",
         "adjacent transformers",
         "neighbor circuits",
         "print context",
