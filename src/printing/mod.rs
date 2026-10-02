@@ -11,6 +11,9 @@ pub mod inventory;
 pub mod lifecycle;
 pub mod map;
 pub mod mv;
+pub mod mv_booklet;
+pub mod mv_context;
+pub mod mv_placement;
 pub mod mv_settings;
 pub mod names;
 pub mod network_fit;
@@ -1762,6 +1765,18 @@ pub enum Command {
         current: Vec<Value>,
         selection: mv::Selection,
     },
+    MvBookletPlan {
+        setup: Box<mv::Resolved>,
+        model_revision: String,
+        pages: Vec<mv_booklet::Page>,
+    },
+    MvStandardize {
+        layout: Layout,
+    },
+    MvBookletPreview {
+        plan: mv_booklet::Plan,
+        previews: Vec<mv_booklet::Preview>,
+    },
     OutputSelection {
         #[serde(default)]
         selection: Option<crate::report_formats::DesignOutputSelection>,
@@ -2213,6 +2228,18 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 Ok(rows) => json!({"project_settings":rows,"refusal":Value::Null}),
                 Err(refusal) => json!({"project_settings":Value::Null,"refusal":refusal}),
             }
+        }
+        Command::MvBookletPlan {
+            setup,
+            model_revision,
+            pages,
+        } => serde_json::to_value(mv_booklet::plan(&setup, &model_revision, pages)?)
+            .map_err(|e| e.to_string())?,
+        Command::MvStandardize { layout } => {
+            json!({"standard":mv::STANDARD,"layout":mv::standardize(layout)?})
+        }
+        Command::MvBookletPreview { plan, previews } => {
+            mv_booklet::preview_document(&plan, &previews)?
         }
         Command::OutputSelection {
             selection,
