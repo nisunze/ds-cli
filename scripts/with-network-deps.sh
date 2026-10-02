@@ -15,17 +15,20 @@ repo_root=$(git rev-parse --show-toplevel) || {
     echo "with-network-deps: run from a ds-cli checkout" >&2
     exit 64
 }
-expected_network_sha=$(tr -d '\r\n' <"$repo_root/pins/ds-network.rev")
+expected_network_sha=$(cat "$repo_root/pins/ds-network.rev")
+expected_network_sha=${expected_network_sha%$'\r'}
 if [[ ! "$expected_network_sha" =~ ^[0-9a-f]{40}$ ]]; then
     echo "with-network-deps: pins/ds-network.rev is not one exact Git SHA" >&2
     exit 66
 fi
-expected_native_core_sha=$(tr -d '\r\n' <"$repo_root/pins/ds-client-core.rev")
+expected_native_core_sha=$(cat "$repo_root/pins/ds-client-core.rev")
+expected_native_core_sha=${expected_native_core_sha%$'\r'}
 if [[ ! "$expected_native_core_sha" =~ ^[0-9a-f]{40}$ ]]; then
     echo "with-network-deps: pins/ds-client-core.rev is not one exact Git SHA" >&2
     exit 66
 fi
-expected_command_kernel_sha=$(tr -d '\r\n' <"$repo_root/pins/ds-command-kernel.rev")
+expected_command_kernel_sha=$(cat "$repo_root/pins/ds-command-kernel.rev")
+expected_command_kernel_sha=${expected_command_kernel_sha%$'\r'}
 if [[ ! "$expected_command_kernel_sha" =~ ^[0-9a-f]{40}$ ]]; then
     echo "with-network-deps: pins/ds-command-kernel.rev is not one exact Git SHA" >&2
     exit 66

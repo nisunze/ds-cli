@@ -956,6 +956,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-layer-store",
+ "ds-report-artifacts",
  "ds-solar-contracts",
  "ds-sync-store",
  "serde_json",
@@ -1538,6 +1539,7 @@ dependencies = [
 name = "ds-geo-ops"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
  "rstar",
 ]
 
