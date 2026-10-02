@@ -103,6 +103,32 @@ Where the proof exposes a missing operation, extend its owning contract in a
 bounded slice and verify the result through CLI/MCP before adding UI behavior.
 This scope does not authorize generating a future BOQ or changing quantities.
 
+## LV in two print modes
+
+LV network content prints in exactly two modes. They differ in purpose, palette
+and pen authority, and neither borrows the other's treatment. Mixing them is
+the most frequent printing error, so this section is the authority both hosts,
+the CLI skills and delivery instructions defer to.
+
+| | Standalone LV transformer sheet | LV inside an MV plan/profile sheet |
+| --- | --- | --- |
+| Purpose | the issued drawing of one transformer's LV network | context that places the MV route among the LV it supplies |
+| Main content | the LV network; geography is subordinate | the MV route, structures and profile conductors |
+| LV palette | categorical engineering palette: lines by cable size, poles by structure type, existing and new apart; every drawn category named in the legend | one bluish family graded by importance (new LV design darker; customers and existing LV lighter), quieter than the red MV pens; no categorical palette |
+| Furniture | pole and customer schedules, Network Information, categorical legend | no LV schedules; MV structure labels and staking facts |
+| Pen authority | `Layout.style_overrides` (template pens) over the governed `_print` documents | the reserved context pens of the MV context print capture (`ds-network-reporter` `docs/plan-profile-printing.md`) |
+
+- An instruction scoped to one mode never changes the other. "Uniform bluish,
+  even customers" is an MV context instruction and never recolours a
+  transformer sheet; a cable-size or structure palette is a transformer-sheet
+  instruction and never reaches MV context.
+- A standalone sheet whose LV lines and poles print in one flat colour is a
+  defect unless its template deliberately authors monochrome and the legend
+  says so. Deliberate monochrome stays valid.
+- Acceptance inspects one dense page of each mode at paper size: on the sheet,
+  every drawn category appears in the legend; in the booklet, LV reads as blue
+  context beneath the red MV route.
+
 ## Canonical next-export defaults
 
 Published global samples and project-adopted revisions are the starting point,
@@ -116,9 +142,10 @@ The preferred MV reference is the October 1 Nyamagabe Model 1 A3 booklet:
 `Nyamagabe-MV-Model1-Plan-and-Profile-A3.pdf`, 100 A3 landscape pages,
 SHA-256 `13e82d117c84c0b80b2cff271de3927a1ca6335bc09a967a3f7ed7d6c689d9cb`.
 Its approved MV wire hierarchy is independent of secondary LV/customer context.
-Individual LV transformer sheets retain their own categorical engineering
-palette; an MV background treatment never silently replaces it. Project-specific
-parties, logos and contract facts are not global product defaults.
+LV keeps the two print modes defined in [LV in two print modes](#lv-in-two-print-modes):
+an MV background treatment never replaces a transformer sheet's categorical
+palette. Project-specific parties, logos and contract facts are not global
+product defaults.
 
 MV structure labels use the existing staking table's authored Structure
 Description alongside the existing structure name. A placed description takes
