@@ -3952,6 +3952,51 @@ fn pls_desktop_verbs_refuse_windows_only_off_windows_and_create_nothing() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The toolkit is the one desktop verb that only writes files: on this host
+/// it writes every embedded adapter, its manifest pins match what it wrote,
+/// the Word adapter is where the PLS-CADD drivers call it, and a second run
+/// into the same folder refuses rather than overwriting.
+#[test]
+fn pls_desktop_toolkit_writes_every_pinned_file_and_refuses_a_rerun() {
+    use sha2::{Digest, Sha256};
+    let root = temp_root("pls-toolkit");
+    std::fs::create_dir_all(&root).unwrap();
+    let out = root.join("toolkit");
+    let out_text = out.display().to_string();
+    let args = [
+        "pls", "desktop", "toolkit", "--out", &out_text, "--output", "json",
+    ];
+    let data = ok(&args);
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(out.join("toolkit-manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["schema"], "ds.pls.desktop_toolkit.v1");
+    assert_eq!(manifest["toolkit"], data["toolkit"]);
+    let files = manifest["files"].as_array().unwrap();
+    assert_eq!(data["files"].as_u64(), Some(files.len() as u64));
+    assert!(files.len() >= 100, "the whole toolkit, not the run subset");
+    for file in files {
+        let path = file["path"].as_str().unwrap();
+        let bytes = std::fs::read(out.join(path)).unwrap();
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&bytes)),
+            file["sha256"].as_str().unwrap(),
+            "{path}"
+        );
+    }
+    for expected in [
+        "adapters/pls-cadd/ds-desktop-deliver.ps1",
+        "adapters/pls-cadd/pls-dialog-catalog.psd1",
+        "adapters/pls-cadd/interim/pls-quick-restore-interim.ps1",
+        "adapters/word/pls-rtf-to-pdf.ps1",
+        "lab/pls-sagtension.py",
+    ] {
+        assert!(out.join(expected).is_file(), "{expected} was not written");
+    }
+    let again = ds(&args);
+    assert_eq!(again.envelope["error"]["code"], "output_exists");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn capability_search_finds_the_pls_cadd_desktop_verbs() {
     for (query, expected) in [
@@ -3964,6 +4009,7 @@ fn capability_search_finds_the_pls_cadd_desktop_verbs() {
         ("structure usage report", "pls.desktop.reports"),
         ("plan and profile", "pls.desktop.sheets-pdf"),
         ("pls-cadd version", "pls.desktop.check"),
+        ("pls toolkit", "pls.desktop.toolkit"),
     ] {
         let data = ok(&["capabilities", "--search", query, "--output", "json"]);
         let results = data["results"].as_array().expect("search results");
@@ -4005,8 +4051,11 @@ fn every_offline_command_is_available_without_any_engine_binary() {
             // with no digest-pinned release catalog, never for want of a binary.
             && id != "dsgrid.model.prepare-project"
             // These verbs drive an installed Windows PLS-CADD application;
-            // only the embedded dialog catalogue is host-independent.
-            && !(id.starts_with("pls.desktop.") && id != "pls.desktop.dialogs")
+            // only the embedded catalogue and the toolkit writer are
+            // host-independent.
+            && !(id.starts_with("pls.desktop.")
+                && id != "pls.desktop.dialogs"
+                && id != "pls.desktop.toolkit")
         {
             checked += 1;
             assert_eq!(

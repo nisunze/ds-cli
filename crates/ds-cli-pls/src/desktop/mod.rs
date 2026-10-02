@@ -9,7 +9,7 @@
 //!
 //! * [`bundle`] embeds the toolkit byte for byte, each file with its sha256
 //!   pinned in source, and extracts it into a private temporary folder per
-//!   call;
+//!   call; [`toolkit`] writes the same bytes into a folder an operator names;
 //! * `run` starts Windows PowerShell 5.1 on exactly one ds entry script, with
 //!   a static switch list and typed values — never a caller-supplied argv;
 //! * `failure` turns the one result document an entry writes, and the
@@ -20,9 +20,10 @@
 //!
 //! The verbs refuse `windows_only` anywhere else, and `pls_cadd_not_found`
 //! where PLS-CADD is not installed at the path every driver pins. `dialogs`
-//! is the exception: it only reads the embedded catalogue, so it answers on
-//! any host. A build without the `desktop-adapters` feature embeds nothing,
-//! and every verb, `dialogs` included, refuses `adapters_not_embedded` first.
+//! and `toolkit` are the exceptions: they only read the embedded bytes, so they
+//! answer on any host. A build without the `desktop-adapters` feature embeds
+//! nothing, and every verb, those two included, refuses
+//! `adapters_not_embedded` first.
 
 pub mod autosag;
 pub mod bundle;
@@ -36,6 +37,7 @@ pub mod reports;
 pub mod restore;
 mod run;
 pub mod sheets_pdf;
+pub mod toolkit;
 
 use std::path::{Path, PathBuf};
 
@@ -464,6 +466,7 @@ mod tests {
         &autosag::COMMAND,
         &reports::COMMAND,
         &sheets_pdf::COMMAND,
+        &toolkit::COMMAND,
     ];
 
     #[test]
@@ -509,6 +512,7 @@ mod tests {
         assert!(bundle::embedded());
         assert!(adapter_availability().is_available());
         assert!((dialogs::COMMAND.availability)().is_available());
+        assert!((toolkit::COMMAND.availability)().is_available());
     }
 
     #[test]

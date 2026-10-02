@@ -679,6 +679,11 @@ static PLS_ENTRIES: &[Entry] = &[
         handler: ds_cli_pls::desktop::sheets_pdf::run,
         render: ds_cli_pls::desktop::sheets_pdf::render,
     },
+    Entry {
+        command: &ds_cli_pls::desktop::toolkit::COMMAND,
+        handler: ds_cli_pls::desktop::toolkit::run,
+        render: ds_cli_pls::desktop::toolkit::render,
+    },
 ];
 
 static REPORT_ENTRIES: &[Entry] = &[
