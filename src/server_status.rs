@@ -648,6 +648,7 @@ fn decode_agents(value: &Value) -> Result<Value, String> {
         "main_count",
         "subagent_count",
         "supervisor_count",
+        "orphan_count",
         "inprocess_subagent_count",
         "discarded_noise_count",
         "cpu_window_seconds",
@@ -892,7 +893,7 @@ mod tests {
             },
             "task_manager": {
                 "agents": {
-                    "count": 2.0, "cpu_window_seconds": 10.04, "sampled_unix": 1_699_999_998.25,
+                    "count": 2.0, "orphan_count": 1.0, "cpu_window_seconds": 10.04, "sampled_unix": 1_699_999_998.25,
                     "machine_cpu_percent": 1484.8, "agents_cpu_percent": 1279.1,
                     "agents": [{
                         "pid": 4242.0, "product": "claude", "orphaned": false,
@@ -1285,6 +1286,8 @@ mod tests {
         assert_eq!(agents["sampled_unix"], json!(1_699_999_998.25));
         assert_eq!(agents["machine_cpu_percent"], json!(1484.8));
         assert_eq!(agents["agents_cpu_percent"], json!(1279.1));
+        // Workers a finished session left running are counted apart.
+        assert_eq!(agents["orphan_count"], json!(1.0));
         assert_eq!(
             decoded["task_manager"]["process_report"]["cpu_window_seconds"],
             json!(10.04)
