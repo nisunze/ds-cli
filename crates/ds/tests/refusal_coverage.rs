@@ -120,6 +120,14 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
 /// unscanned while the test passed.
 const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
     (
+        "ds-cli-style/src/governance.rs",
+        "backend codes are selected only from this module's declared REFUSALS; \
+         unknown service codes use the ordinary native style classifier. The \
+         resolver adapter preserves the kernel style_resolution::Error code \
+         (unknown, ambiguous, invalid or revision_mismatch), all declared in \
+         that same roster, instead of inventing another CLI vocabulary",
+    ),
+    (
         "ds-cli-auth/src/correspondence.rs",
         "the code is ds-brain's own `PM_REFUSED`/`ASSET_REFUSED` reason token \
          (correspondence.md §Refusals), relayed verbatim as the contract's \
