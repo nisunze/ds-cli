@@ -851,6 +851,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("mcp.install", "machine_write", "none"),
     ("mcp.serve", "read_only", "none"),
     ("pls.structure-substitute", "local_file_write", "none"),
+    // A dry run translates and compares in memory; the write stages a new
+    // output root on this machine and publishes nothing.
+    ("pls.structure-translate", "local_file_write", "none"),
     ("pls.backup-create", "artifact_write", "none"),
     ("pls.compare-don", "discovery", "none"),
     ("pls.delivery-verify", "discovery", "none"),

@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Structure Translation"
+  short_description: "Name local structure models into the canonical library"
+  default_prompt: "Use $ds-structure-translation to read this design's staking table, decide one canonical member for each local structure model, translate the PLS-CADD backup and accept it by its bill of quantities."
