@@ -173,7 +173,8 @@ pub const OUTPUT_SELECTION_SCHEMA: &str = "ds.design-output-selection/v1";
 /// for every host that describes it (`options`) or reads it.
 pub const VOLTAGE_DROP_REPORT_FIELD: &str = "voltage_drop_report";
 
-/// How the per-transformer `voltage_drop` report is laid out. Owner ruling
+/// How the per-transformer `voltage_drop_pdf` report is laid out. Saved
+/// `voltage_drop` JSON is analysis data and has no print-layout choice. Owner ruling
 /// 2026-09-29: the extended report is the default, and the choice is the
 /// project's, configured with its design exports.
 #[derive(Debug, Clone, Copy, Default, Serialize, JsonSchema, PartialEq, Eq)]
@@ -577,7 +578,7 @@ pub fn voltage_drop_report_option() -> Value {
 /// The voltage-drop report layout a project's sealed settings ask for: the
 /// versioned selection's choice, read by the one reader, and `extended` for
 /// an absent export row or any legacy shape, none of which could choose.
-/// The reporter writes this into each voltage-drop document it produces.
+/// The reporter applies this to the A4 PDF, never to the saved analysis bytes.
 pub fn project_voltage_drop_report_format(
     sheets: &Value,
 ) -> Result<VoltageDropReportFormat, String> {
@@ -593,23 +594,38 @@ pub fn options(setups: &[Value]) -> Result<Vec<Value>, String> {
     if setups.len() > 200 {
         return Err("Printing setup catalog exceeds 200 entries".into());
     }
-    let mut result: Vec<Value> = INDIVIDUAL.iter().filter(|f| !f.starts_with("pdf_")).map(|f|
-        serde_json::json!({"value":f,"selection_field":if TABULAR.contains(f) { "tabular" } else { "geospatial" },"label":match *f {
-            "geojson" => "GeoJSON".to_string(),
-            "voltage_drop_pdf" => "Voltage drop · PDF A4".to_string(),
-            _ => f.to_ascii_uppercase(),
-        }})
-    ).collect();
-    // Both voltage-drop outputs share one report layout choice and its
-    // default, so no host re-states `extended` as the default.
-    for row in &mut result {
-        if row["value"] == "voltage_drop" || row["value"] == "voltage_drop_pdf" {
-            row["report_format"] = voltage_drop_report_option();
+    let mut result = Vec::new();
+    for format in INDIVIDUAL
+        .iter()
+        .filter(|format| !format.starts_with("pdf_"))
+    {
+        let definition = output(format)?;
+        let (label, description, display_group) = match *format {
+            "shp" => ("Shapefile layers (ZIP)", "Network layers as shapefiles in a ZIP archive.", "data_exports"),
+            "kmz" => ("Google Earth layers (KMZ)", "Styled network layers for Google Earth.", "data_exports"),
+            "xlsx" => ("Network workbook (XLSX)", "Classified network quantities and LV pole tables in an Excel workbook.", "reports"),
+            "gpkg" => ("GeoPackage layers (GPKG)", "Network layers in one GeoPackage database.", "data_exports"),
+            "geojson" => ("GeoJSON layers (ZIP)", "Network layers as GeoJSON files in a ZIP archive.", "data_exports"),
+            "network_information" => ("Network information (JSON)", "Classified quantities with descriptions and units, plus transformer names and capacities; the same information table as the workbook, without geometry.", "data_exports"),
+            "voltage_drop" => ("Voltage-drop results (JSON)", "Exact saved voltage-drop analysis and its status, provenance and available results. Exporting does not recalculate it.", "data_exports"),
+            "voltage_drop_pdf" => ("Voltage-drop report (A4 PDF)", "A4 report presenting the saved voltage-drop analysis, with brief or extended detail. Reporting does not recalculate it.", "reports"),
+            _ => return Err(format!("Output presentation is not declared: {format}")),
+        };
+        let file_format = definition.suffix.rsplit('.').next().unwrap_or("");
+        let mut option = serde_json::json!({
+            "value": format,
+            "label": label,
+            "description": description,
+            "file_format": file_format,
+            "display_group": display_group,
+            "selection_field": if TABULAR.contains(format) { "tabular" } else { "geospatial" },
+            "class": output_class(format),
+        });
+        if *format == "voltage_drop_pdf" {
+            option["report_format"] = voltage_drop_report_option();
+            option["paper"] = serde_json::json!("A4");
         }
-        if row["value"] == "voltage_drop_pdf" {
-            row["class"] = serde_json::json!("print");
-            row["paper"] = serde_json::json!("A4");
-        }
+        result.push(option);
     }
     let mut ids = std::collections::BTreeSet::new();
     for setup in setups {
@@ -629,6 +645,10 @@ pub fn options(setups: &[Value]) -> Result<Vec<Value>, String> {
         let mut option = serde_json::json!({
             "value":format!("pdf__{id}"),
             "label":format!("PDF · {name}"),
+            "description":"Sheets using this print template; available as PDF, PNG or JPEG.",
+            "file_format":"pdf",
+            "display_group":"reports",
+            "class":"print",
             "layout_id":id,
             "formats":["pdf","png","jpeg"]
         });
@@ -2090,6 +2110,59 @@ mod tests {
     }
 
     #[test]
+    fn human_output_metadata_distinguishes_reports_from_saved_json_without_changing_policy() {
+        let rows = options(&[json!({"id":"detail","name":"Detail"})]).unwrap();
+        for row in &rows {
+            let value = row["value"].as_str().unwrap();
+            let definition = output(value).unwrap();
+            assert_eq!(
+                row["file_format"],
+                definition.suffix.rsplit('.').next().unwrap()
+            );
+            assert_eq!(row["class"], output_class(value));
+            assert!(row["description"]
+                .as_str()
+                .is_some_and(|text| !text.trim().is_empty()));
+            assert!(matches!(
+                row["display_group"].as_str(),
+                Some("reports" | "data_exports")
+            ));
+        }
+        let row = |value: &str| rows.iter().find(|row| row["value"] == value).unwrap();
+        assert_eq!(row("voltage_drop")["label"], "Voltage-drop results (JSON)");
+        assert_eq!(
+            row("network_information")["label"],
+            "Network information (JSON)"
+        );
+        for value in ["voltage_drop", "network_information"] {
+            assert_eq!(row(value)["file_format"], "json");
+            assert_eq!(row(value)["display_group"], "data_exports");
+            assert!(row(value)["report_format"].is_null());
+            assert_eq!(output(value).unwrap().content_type, "application/json");
+        }
+        assert_eq!(
+            row("voltage_drop_pdf")["label"],
+            "Voltage-drop report (A4 PDF)"
+        );
+        assert_eq!(row("voltage_drop_pdf")["file_format"], "pdf");
+        assert_eq!(row("voltage_drop_pdf")["display_group"], "reports");
+        assert_eq!(row("xlsx")["display_group"], "reports");
+        assert_eq!(row("pdf__detail")["display_group"], "reports");
+
+        // Presentation cannot add a PDF, change a stored choice or its placement.
+        let stored = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],
+            "geospatial":["gpkg"],"tabular":["voltage_drop","network_information"],
+            "voltage_drop_report":"brief","execution":{"voltage_drop":["web"]}});
+        let selection = stored_output_selection(&stored).unwrap();
+        assert_eq!(serde_json::to_value(&selection).unwrap(), stored);
+        assert!(!selection
+            .tokens()
+            .unwrap()
+            .contains(&"voltage_drop_pdf".into()));
+        assert_eq!(selection.placements("voltage_drop"), vec![Placement::Web]);
+    }
+
+    #[test]
     fn output_selection_normalization_has_one_alias_and_bound_policy() {
         let selection = normalize_output_selection(
             None,
@@ -2354,7 +2427,8 @@ mod tests {
     }
 
     /// Hosts learn the choice, its field and its default from the kernel: the
-    /// selection schema and the `voltage_drop` option row both carry it.
+    /// selection schema and the A4 `voltage_drop_pdf` option row both carry it;
+    /// the raw JSON option has no layout choice.
     #[test]
     fn the_voltage_drop_layout_is_declared_with_its_default() {
         let schema = output_selection_schema();
@@ -2372,7 +2446,7 @@ mod tests {
         assert_eq!(voltage_drop_report_option(), expected);
         let rows = options(&[]).unwrap();
         for row in &rows {
-            if row["value"] == "voltage_drop" || row["value"] == "voltage_drop_pdf" {
+            if row["value"] == "voltage_drop_pdf" {
                 assert_eq!(row["report_format"], expected);
             } else {
                 assert!(row["report_format"].is_null(), "{row}");
