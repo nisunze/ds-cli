@@ -3217,7 +3217,8 @@ fn member_form_grants_project_survey_mcp_matches_cli_confirmation() {
     let tools = response(&responses, 1)["result"]["tools"]
         .as_array()
         .unwrap();
-    assert!(tools.len() <= 24);
+    // Cascade preview and delete add two leaves to this existing profile.
+    assert!(tools.len() <= 26);
     for verb in ["read", "plan", "apply"] {
         let name = format!("survey_member-grant_{verb}");
         let tool = tools
