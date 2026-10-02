@@ -62,6 +62,10 @@ pub enum SurveyEntriesSelectServiceCode {
 /// unreadable from the headless lane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectReportServiceCode {
+    /// The owner refused before ZIP publication because inputs are not current.
+    CombinedInputsNotCurrent,
+    /// A device report must finish publication before combined preparation.
+    CombinedInputsPublicationPending,
     /// The run finished but no transformer had an individual report to package.
     NoIndividualArtifacts,
     /// The applied grouping moved after the request pinned its digest.

@@ -1005,6 +1005,8 @@ struct ProjectReportRefusalWire {
     missing_individual_artifact_count: Option<i64>,
     #[serde(default)]
     missing_individual_artifact_causes: Vec<MissingArtifactCauseWire>,
+    #[serde(default)]
+    download_files_urls: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -1075,6 +1077,12 @@ fn project_report_service_code(response: &TransportResponse) -> Option<ProjectRe
     }
     let wire: ProjectReportRefusalWire = serde_json::from_slice(&response.body).ok()?;
     match (response.status, wire.code.as_str(), wire.status.as_str()) {
+        (409, "combined_inputs_not_current", _) => {
+            Some(ProjectReportServiceCode::CombinedInputsNotCurrent)
+        }
+        (409, "combined_inputs_publication_pending", _) => {
+            Some(ProjectReportServiceCode::CombinedInputsPublicationPending)
+        }
         (424, "no_individual_transformer_artifacts", _) => {
             Some(ProjectReportServiceCode::NoIndividualArtifacts)
         }
@@ -1092,7 +1100,27 @@ fn project_report_service_code(response: &TransportResponse) -> Option<ProjectRe
 /// remedy. The body is consulted first and the status remains the fallback.
 fn classify_project_report_response(response: &TransportResponse) -> ClientError {
     if let Some(code) = project_report_service_code(response) {
+        if matches!(
+            code,
+            ProjectReportServiceCode::CombinedInputsNotCurrent
+                | ProjectReportServiceCode::CombinedInputsPublicationPending
+        ) && serde_json::from_slice::<ProjectReportRefusalWire>(&response.body)
+            .is_ok_and(|wire| !wire.download_files_urls.is_empty())
+        {
+            return ClientError::new(
+                ErrorKind::UnreadableResponse,
+                "the report owner returned a publication locator with a readiness refusal",
+            );
+        }
         let (kind, message) = match code {
+            ProjectReportServiceCode::CombinedInputsNotCurrent => (
+                ErrorKind::InvalidInput,
+                "combined inputs are not current; no archive was published",
+            ),
+            ProjectReportServiceCode::CombinedInputsPublicationPending => (
+                ErrorKind::InvalidInput,
+                "combined inputs are pending publication; no archive was published",
+            ),
             ProjectReportServiceCode::NoIndividualArtifacts => (
                 ErrorKind::InvalidInput,
                 "no selected transformer had an individual report to package",
@@ -1106,13 +1134,18 @@ fn classify_project_report_response(response: &TransportResponse) -> ClientError
                 "the applied report grouping does not cover every requested transformer",
             ),
         };
-        if code == ProjectReportServiceCode::NoIndividualArtifacts {
+        if matches!(
+            code,
+            ProjectReportServiceCode::NoIndividualArtifacts
+                | ProjectReportServiceCode::CombinedInputsNotCurrent
+                | ProjectReportServiceCode::CombinedInputsPublicationPending
+        ) {
             // The body was bounded and parsed once already to name the code.
             if let Ok(wire) = serde_json::from_slice::<ProjectReportRefusalWire>(&response.body) {
                 let details = missing_rooms_details(&wire);
                 let refusal = crate::ServiceRefusal::with_details(
                     response.status,
-                    Some("no_individual_transformer_artifacts"),
+                    Some(&wire.code),
                     None,
                     Some(&details),
                 );
@@ -1752,6 +1785,48 @@ mod project_report_refusal_tests {
             error.project_report_service_code(),
             Some(ProjectReportServiceCode::NoIndividualArtifacts)
         );
+    }
+
+    #[test]
+    fn combined_readiness_refusals_keep_closed_codes_and_bounded_rooms() {
+        for (token, code) in [
+            (
+                "combined_inputs_not_current",
+                ProjectReportServiceCode::CombinedInputsNotCurrent,
+            ),
+            (
+                "combined_inputs_publication_pending",
+                ProjectReportServiceCode::CombinedInputsPublicationPending,
+            ),
+        ] {
+            let error = refusal(
+                409,
+                &format!(
+                    r#"{{"code":"{token}","missing_individual_artifact_count":1,"missing_individual_artifact_causes":[{{"transformer":"tx_b","code":"report_stale","detail":"PRIVATE"}}]}}"#
+                ),
+            );
+            assert_eq!(error.project_report_service_code(), Some(code));
+            let detail = error.service_refusal().unwrap();
+            assert_eq!(
+                detail.detail_text("missing_rooms"),
+                Some("tx_b:report_stale")
+            );
+            assert_eq!(
+                detail.detail_integer("missing_individual_artifact_count"),
+                Some(1)
+            );
+            assert!(!format!("{error:?}").contains("PRIVATE"));
+        }
+    }
+
+    #[test]
+    fn a_readiness_refusal_cannot_claim_a_published_locator() {
+        let error = refusal(
+            409,
+            r#"{"code":"combined_inputs_not_current","download_files_urls":["gs://b/run.zip"]}"#,
+        );
+        assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
+        assert_eq!(error.project_report_service_code(), None);
     }
 
     /// 409 carries two unrelated causes; the status cannot tell them apart.
