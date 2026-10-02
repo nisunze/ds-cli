@@ -139,7 +139,7 @@ the CLI skills and delivery instructions defer to.
 | Main content | the LV network; geography is subordinate | the MV route, structures and profile conductors |
 | LV palette | categorical engineering palette: lines by cable size, poles by structure type, existing and new apart; every drawn category named in the legend | one bluish family graded by importance (new LV design darker; customers and existing LV lighter), quieter than the red MV pens; no categorical palette |
 | Furniture | pole and customer schedules, Network Information, categorical legend | no LV schedules; MV structure labels and staking facts |
-| Pen authority | `Layout.style_overrides` (template pens) over the governed `_print` documents | the reserved context pens of the MV context print capture (`ds-network-reporter` `docs/plan-profile-printing.md`) |
+| Pen authority | declarative `Layout.style_overrides` over the exact resolved focused documents | independent documents resolved for `role: mv_context`, held by exact revision in the MV context print capture |
 
 - An instruction scoped to one mode never changes the other. "Uniform bluish,
   even customers" is an MV context instruction and never recolours a

@@ -28,10 +28,16 @@ Changing project during an asynchronous read refuses the stale snapshot.
 
 The seed manifest is declarative, independently versioned and available through
 the Styles API. Its complete documents and exact tuple bindings are data.
-Seeding creates missing documents only, with immutable version records; it
-never replaces an authored head or makes a live/tile/print sibling follow it.
-Installation initializes the standard set through the authorized idempotent
-API operation before printing. A packaged preview is not a persisted document.
+Seeding creates missing documents with immutable version records and preserves
+authored heads. The reviewed manifest may also declare an exact migration with
+the observed head and original content digest. Today's 37 legacy paper-scaling
+migrations archive the original document and persist the previously effective
+all-one factors; they change no rendered size. A changed head refuses the
+reviewed plan. No live/tile/print sibling follows another document.
+Installation initializes the standard set and applies these reviewed migrations
+through the authorized idempotent API operation before upgraded consumers are
+released. An unmigrated baseline refuses resolution rather than enlarging pens.
+A packaged preview is not a persisted document.
 
 `prepare_print(snapshot, layer_keys)` consumes explicit template keys and returns
 held `style_refs`, `print_styles`, `style_revisions` and `resolution_revision`.
