@@ -569,6 +569,29 @@ pub fn ensure_desktop(tool: &Tool, arguments: &Value, executable: &PathBuf) -> R
         &mut launch,
         &mut wait,
     )
+    .map_err(|failure| declared_desktop_guidance(tool, failure))
+}
+
+/// The gate reports the command's own published remedy rather than inventing
+/// another sign-in workflow. Native CLI and paired Desktop state are separate.
+fn declared_desktop_guidance(tool: &Tool, failure: Failure) -> Failure {
+    if !matches!(failure.code(), "desktop_not_paired" | "desktop_signed_out") {
+        return failure;
+    }
+    let remedy = tool.descriptor["refusals"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|refusal| refusal["code"].as_str() == Some(failure.code()))
+        .and_then(|refusal| refusal["remedy"].as_str());
+    match remedy {
+        Some(remedy) => failure
+            .remedy(remedy)
+            .next("ds desktop list")
+            .next("ds desktop status --target desktop:<instance_id>")
+            .next("ds auth status"),
+        None => failure,
+    }
 }
 
 /// The deterministic gate behind [`ensure_desktop`]. It has injectable
@@ -709,6 +732,9 @@ fn desktop_status(
                     .collect(),
             ));
         }
+        if let Some(failure) = target_refusal(&envelope["error"]) {
+            return Err(failure);
+        }
         return Err(not_paired(
             "desktop status refused before pairing completed",
         ));
@@ -723,6 +749,31 @@ fn desktop_status(
             .as_str()
             .is_some_and(|project| !project.is_empty()),
     })
+}
+
+/// Naming an absent or malformed runtime remains that same typed refusal
+/// through MCP; it must never become a reason to launch another Desktop.
+fn target_refusal(error: &Value) -> Option<Failure> {
+    let message = error["message"].as_str()?;
+    let mut failure = match error["code"].as_str()? {
+        "desktop_target_not_live" => Failure::invalid("desktop_target_not_live", message),
+        "desktop_target_mismatch" => Failure::invalid("desktop_target_mismatch", message),
+        "unknown_target" => Failure::invalid("unknown_target", message),
+        "target_host_unsupported" => Failure::invalid("target_host_unsupported", message),
+        _ => return None,
+    };
+    if let Some(remedy) = error["remedy"].as_str() {
+        failure = failure.remedy(remedy);
+    }
+    if let Some(detail) = error.get("detail") {
+        failure = failure.detail(detail.clone());
+    }
+    for command in error["next"].as_array().into_iter().flatten() {
+        if let Some(command) = command.as_str() {
+            failure = failure.next(command);
+        }
+    }
+    Some(failure)
 }
 
 fn bounded(value: &str) -> String {
@@ -1976,6 +2027,70 @@ mod tests {
         .expect_err("sign-out is an authority refusal");
         assert_eq!(failure.code(), "desktop_signed_out");
         assert_eq!(launched, 0);
+    }
+
+    #[test]
+    fn a_signed_out_gate_uses_the_live_commands_remedy_and_lists_explicit_targets() {
+        let remedy = "native CLI sign-in is separate from Desktop; inspect available instances";
+        let mut descriptor = descriptor();
+        descriptor["refusals"].as_array_mut().unwrap().push(json!({
+            "code": "desktop_signed_out",
+            "when": "the paired Desktop is signed out",
+            "remedy": remedy,
+        }));
+        let tool = tool_from_descriptor(&descriptor).expect("the live command supplies guidance");
+        let failure = ensure_desktop_with(
+            tool.authority,
+            false,
+            &mut || {
+                Ok(DesktopState::Paired {
+                    signed_in: false,
+                    project_selected: false,
+                })
+            },
+            &mut || panic!("a signed-out instance must not launch another Desktop"),
+            &mut || panic!("a live instance must not be polled"),
+        )
+        .expect_err("the native caller cannot make its paired Desktop signed in");
+        let failure = declared_desktop_guidance(&tool, failure);
+        assert_eq!(failure.code(), "desktop_signed_out");
+        assert_eq!(failure.remedy_text(), Some(remedy));
+        assert!(
+            failure
+                .next_commands()
+                .iter()
+                .any(|next| next == "ds desktop list")
+        );
+        assert!(
+            failure
+                .next_commands()
+                .iter()
+                .any(|next| { next == "ds desktop status --target desktop:<instance_id>" })
+        );
+        assert_eq!(tool.descriptor["refusals"][1]["remedy"], remedy);
+    }
+
+    #[test]
+    fn a_status_target_refusal_keeps_its_code_detail_and_remedy_through_the_gate() {
+        let error = json!({
+            "code": "desktop_target_not_live",
+            "message": "the named instance is not live",
+            "remedy": "name one from `ds desktop list`",
+            "detail": { "target": "11111111111111111111111111111111" },
+            "next": ["ds desktop list"],
+        });
+        let refusal = target_refusal(&error).expect("target refusal remains explicit");
+        assert_eq!(refusal.code(), "desktop_target_not_live");
+        assert_eq!(refusal.remedy_text(), error["remedy"].as_str());
+        assert_eq!(refusal.detail_value(), Some(&error["detail"]));
+        assert_eq!(refusal.next_commands(), ["ds desktop list"]);
+        assert!(
+            target_refusal(&json!({
+                "code": "auth_rejected",
+                "message": "a different failure",
+            }))
+            .is_none()
+        );
     }
 
     #[test]

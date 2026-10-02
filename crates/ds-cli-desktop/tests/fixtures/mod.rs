@@ -402,6 +402,16 @@ impl Bridge {
         self.log.lock().expect("log").clear();
     }
 
+    /// The native caller may remain signed in while this Desktop signs out.
+    pub fn sign_out(&self) {
+        let mut session = self.session.lock().expect("session");
+        session["signed_in"] = json!(false);
+        session["uid"] = Value::Null;
+        session["email"] = Value::Null;
+        session["project"] = Value::Null;
+        session["windows"][0]["project"] = Value::Null;
+    }
+
     /// Stop answering and release the port, so a restart can take it.
     pub fn stop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);

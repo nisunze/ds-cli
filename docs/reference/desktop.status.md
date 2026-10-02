@@ -2,17 +2,19 @@
 
 Tier-4 reference. `ds desktop status --help` is the contract.
 
-## Why pairing rather than a second login
+## Native sign-in and paired Desktop authority
 
-When DS GridDesign is running it already holds a signed-in Firebase session, a
-selected project, and live map/design context. A second CLI login would mean a
-second identity to manage, a second token to store, and a second thing that
-can be signed in while the other is signed out.
+`ds auth status` reports the native CLI's credential for one lane.
+`ds desktop status` reports one running Desktop's session and map/design
+context. Those states can differ: a signed-in native CLI does not sign a
+Desktop in, and a Desktop signing out does not sign the native CLI out.
 
-So `ds` borrows the application's authority instead. The application publishes
-a private descriptor; `ds` finds it, authenticates to a random-loopback bridge
-with the short-lived pairing secret inside it, and asks the application to
-perform named semantic operations using the session it already has.
+Headless project commands use the protected native identity and their explicit
+project. For Desktop-owned operations, the application publishes a private
+descriptor; `ds` authenticates to its loopback bridge with the pairing secret
+and asks for named semantic operations under the compatible Desktop session.
+Run `ds desktop list` to identify ready instances, then name the intended one
+with `--target desktop:<instance_id>`.
 
 Two invariants make this safe, and both belong to the application:
 
@@ -97,20 +99,12 @@ circular: this is the command whose job is to report whether a desktop is
 running. Gating it on a desktop running means the one call that could explain
 the situation is the one call that refuses to.
 
-So "not paired" is a **success**:
-
-```json
-{
-  "paired": false,
-  "signed_in": false,
-  "project": null,
-  "design_context": null,
-  "reason": "no_session",
-  "remedy": "start DS GridDesign, then run `ds desktop status`",
-  "searched": ["stable", "canary", "dev", "dev-canary"],
-  "unusable": []
-}
-```
+An untargeted "not paired" answer is a **success** with `reason: no_session`.
+Its `signed_in: false` describes Desktop state, independently of native
+authentication. The answer guides the caller to `ds desktop list` and an
+explicit instance target; start DS GridDesign if no instance is running.
+An explicit target that is not live remains `desktop_target_not_live`, even
+when no other instance is running.
 
 When exactly one instance is live, `status` describes it and reports its
 `instance` id and how that id was identified (`minted` by the instance, or
@@ -157,24 +151,10 @@ receive the readiness and mutation-state fields.
 
 ## Refusals
 
-`ds desktop status --help` is the live list, with the remedy for each. What is
-worth saying here is what the seven codes are *about*, because they divide into
-three different failures that look alike from outside:
-
-| Code | Meaning |
-|---|---|
-| `desktop_ambiguous` | more than one profile is responsive; name one with `--desktop-descriptor` |
-| `descriptor_unusable` | a descriptor exists but is unreadable, stale, or not loopback |
-| `desktop_unreachable` | the descriptor names a port nothing answers on |
-| `pairing_rejected` | the application refused the secret; the descriptor is stale |
-| `desktop_refused` | the session answered and declined the status request |
-| `desktop_unreadable` | the reply could not be read within its bound |
-| `desktop_contract_mismatch` | the reply does not match this build's contract |
-
-The first three are about *finding* a session, the next two about *reaching*
-one, and the last two about *understanding* what came back. Branch on
-`error.code`; the class and exit code arrive with the envelope and follow the
-output contract's table.
+`ds desktop status --help` is the live list with each remedy. Refusals distinguish
+an ambiguous or invalid instance target, an unusable descriptor, and a session
+that could not be reached or understood. Branch on `error.code`; the class,
+exit code, and remedy arrive with the envelope.
 
 "Not paired" appears nowhere above, because it is a success — see the previous
 section.

@@ -8,6 +8,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use crate::DESCRIPTOR_ARG;
+use ds_cli_desktop::ops;
 
 pub static COMMAND: Command = Command {
     id: "map.design.upload-to-local",
@@ -18,7 +19,9 @@ pub static COMMAND: Command = Command {
 Names a desktop file and one exact layer inside it. The running application \
 uses its native parser and bounded upload workspace, then adds that layer to \
 the shared local-layer store. The CLI receives only a receipt and never \
-transports feature rows. Nothing is staged into transformer design data.",
+transports feature rows. Nothing is staged into transformer design data. Native \
+CLI sign-in is separate from Desktop; run `ds desktop list`, then name the \
+ready instance with --target desktop:<instance_id>.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
@@ -33,6 +36,7 @@ transports feature rows. Nothing is staged into transformer design data.",
         .required(),
         Arg::value("name", "<text>", "Name of the new local layer.").required(),
         DESCRIPTOR_ARG,
+        ops::TARGET_ARG,
     ],
     output: "The new local layer id, source file and layer, feature count, and persisted=false.",
     examples: &[Example {
@@ -44,6 +48,10 @@ transports feature rows. Nothing is staged into transformer design data.",
         crate::NOT_PAIRED,
         crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
+        ops::TARGET_NOT_LIVE,
+        ops::TARGET_MISMATCH,
+        ops::UNKNOWN_TARGET,
+        ops::HOST_UNSUPPORTED,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,
         Refusal {
@@ -94,4 +102,41 @@ pub fn render(data: &Value) -> String {
         crate::plural(data["features"].as_u64().unwrap_or(0), "feature"),
         data["layer"].as_str().unwrap_or(""),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_instance_target_is_an_admitted_upload_input_with_declared_refusals() {
+        let tokens = [
+            "--path",
+            "incoming.zip",
+            "--source-layer",
+            "lv_lines",
+            "--name",
+            "incoming",
+            "--target",
+            "desktop:11111111111111111111111111111111",
+        ]
+        .map(str::to_owned);
+        let inputs = ds_cli_contract::parse(&COMMAND, &tokens)
+            .expect("the target named by the ambiguity remedy must be accepted");
+        assert_eq!(
+            inputs.value("target"),
+            Some("desktop:11111111111111111111111111111111")
+        );
+        for refusal in [ops::TARGET_NOT_LIVE, ops::TARGET_MISMATCH] {
+            assert!(
+                COMMAND.refusals.iter().any(|declared| {
+                    declared.code == refusal.code
+                        && declared.when == refusal.when
+                        && declared.remedy == refusal.remedy
+                }),
+                "a target must expose its routing refusal: {}",
+                refusal.code,
+            );
+        }
+    }
 }

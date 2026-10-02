@@ -710,6 +710,100 @@ fn the_mcp_gate_reads_a_live_instance_from_this_enumeration_and_never_reaches_it
     untouched(&[&alpha, &beta]);
 }
 
+#[test]
+fn an_explicit_status_target_is_not_live_when_no_instances_are_running() {
+    let _machine = Machine::new();
+    let refusal = refused(
+        Invocation::signed_in().run(
+            &ds_cli_desktop::status::COMMAND,
+            ds_cli_desktop::status::run,
+            &["--target", &target(DEAD)],
+        ),
+        "an explicit target must not turn into an untargeted empty status",
+    );
+    assert_eq!(refusal.code(), "desktop_target_not_live");
+    assert_eq!(refusal.next_commands(), ["ds desktop list"]);
+    assert_eq!(refusal.detail_value().unwrap()["target"], DEAD);
+
+    let untargeted = Invocation::signed_in()
+        .run(
+            &ds_cli_desktop::status::COMMAND,
+            ds_cli_desktop::status::run,
+            &[],
+        )
+        .expect("an untargeted empty status remains a successful answer");
+    assert_eq!(untargeted["paired"], false);
+    let remedy = untargeted["remedy"].as_str().unwrap();
+    assert!(remedy.contains("native CLI sign-in is separate"));
+    assert!(remedy.contains("ds desktop list"));
+
+    let malformed = refused(
+        Invocation::signed_in().run(
+            &ds_cli_desktop::status::COMMAND,
+            ds_cli_desktop::status::run,
+            &["--target", "desktop:invalid"],
+        ),
+        "a malformed target retains the kernel's refusal",
+    );
+    assert!(
+        ds_cli_desktop::status::COMMAND
+            .refusals
+            .iter()
+            .any(|declared| { declared.code == malformed.code() })
+    );
+    assert_eq!(malformed.code(), "desktop_target_mismatch");
+}
+
+#[test]
+fn a_signed_in_native_caller_can_list_and_target_a_ready_desktop_beside_a_signed_out_one() {
+    let machine = Machine::new();
+    let alpha = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
+    alpha.sign_out();
+    let beta = Bridge::start(BETA, Some("project-b"), SHARED_NAME);
+    machine.publish(&alpha);
+    machine.publish(&beta);
+
+    let signed_out = Invocation::signed_in()
+        .run(
+            &ds_cli_desktop::status::COMMAND,
+            ds_cli_desktop::status::run,
+            &["--target", &target(ALPHA)],
+        )
+        .expect("the named Desktop's signed-out state is an answer");
+    assert_eq!(signed_out["paired"], true);
+    assert_eq!(signed_out["signed_in"], false);
+    let remedy = signed_out["remedy"].as_str().expect("actionable guidance");
+    assert!(remedy.contains("native CLI sign-in is separate"));
+    assert!(remedy.contains("ds desktop list"));
+    assert!(remedy.contains("--target desktop:<instance_id>"));
+
+    let listed = Invocation::signed_in()
+        .run(
+            &ds_cli_desktop::list::COMMAND,
+            ds_cli_desktop::list::run,
+            &[],
+        )
+        .expect("both live instances can be inspected");
+    assert_eq!(listed["live"], 2);
+    assert_eq!(listed["instances"][0]["instance_id"], ALPHA);
+    assert_eq!(listed["instances"][0]["can_serve"], false);
+    assert_eq!(listed["instances"][1]["instance_id"], BETA);
+    assert_eq!(listed["instances"][1]["can_serve"], true);
+
+    let ready = Invocation::signed_in()
+        .run(
+            &ds_cli_desktop::status::COMMAND,
+            ds_cli_desktop::status::run,
+            &["--target", &target(BETA)],
+        )
+        .expect("the explicitly selected ready Desktop answers");
+    assert_eq!(ready["instance"], BETA);
+    assert_eq!(ready["signed_in"], true);
+    assert_eq!(ready["project"], "project-b");
+    assert!(ready.get("remedy").is_none());
+    untouched(&[&alpha, &beta]);
+}
+
 /// Two explicit answers to one question must be the same instance. A pinned
 /// descriptor file and a `--target` that name different runtimes refuse before
 /// either instance is asked to perform anything — the file's admitted identity

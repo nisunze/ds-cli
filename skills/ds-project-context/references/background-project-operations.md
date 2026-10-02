@@ -61,7 +61,7 @@ deprecated alias for that ZIP, not a different deliverable.
 7. Hand over: `ds report project archives --project <exact-id> --output json` lists the registry
    newest first; `download_url` is a short-lived signed link when present.
 
-Do not loop single-transformer report commands and then request a Combined Report
-archive; the service reuses fresh individual artifacts itself. `report project
-combined` is the only way to request that archive; no paired command composes
-one.
+Request the ZIP archive through `report project compounded`; the service reuses
+fresh individual artifacts itself. Verify coverage and publication in the
+returned receipt and `report project archives`. The deprecated `report project
+combined` alias requests the same ZIP; no paired command composes this archive.

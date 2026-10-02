@@ -35,16 +35,20 @@ pub static COMMAND: Command = Command {
     purpose: "\
 Answers whether a DS GridDesign session is running on this machine, whether it \
 is signed in, which project is selected, and whether a transformer is open in \
-the design editor. Run this first when a command refuses with an authority \
-error. Not being paired is an answer, not a failure: the command succeeds and \
-says what is missing.",
+the design editor. These are the paired Desktop's states, separate from native \
+CLI sign-in (`ds auth status`). Run `ds desktop list` to find ready instances \
+and `ds desktop status --target desktop:<instance_id>` to name one. A missing \
+or signed-out Desktop does not mean the native CLI is signed out. Not being \
+paired is an answer, not a failure; an explicit target must be live.",
     chapter: Chapter::Project,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[ops::TARGET_ARG, ops::DESCRIPTOR_ARG],
     output: "\
-`paired`, `signed_in`, `project` and `design_context` always present. When \
+`paired`, `signed_in`, `project` and `design_context` always present; \
+`signed_in` describes the named Desktop, not native CLI authentication. A \
+missing or signed-out Desktop includes guidance to list and target instances. When \
 paired, the instance id and how it was identified, the install profile and the \
 application's process id. `design_context` is null unless a project transformer \
 is open for editing; a current desktop also reports its project, context type, \
@@ -65,6 +69,7 @@ credential.",
     refusals: &[
         ops::AMBIGUOUS,
         ops::TARGET_NOT_LIVE,
+        ops::TARGET_MISMATCH,
         ops::UNKNOWN_TARGET,
         ops::HOST_UNSUPPORTED,
         Refusal {
@@ -189,14 +194,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
 
     let enumeration = discover::enumerate();
-    if enumeration.is_empty() {
+    if enumeration.is_empty() && target.is_none() {
         return Ok(json!({
             "paired": false,
             "signed_in": false,
             "project": Value::Null,
             "design_context": Value::Null,
             "reason": "no_session",
-            "remedy": "start DS GridDesign, then run `ds desktop status`",
+            "remedy": ops::NOT_PAIRED.remedy,
+            "next": ["ds desktop list", "ds desktop status --target desktop:<instance_id>", "ds auth status"],
             "searched": PROFILES.iter().map(|(profile, _)| *profile).collect::<Vec<_>>(),
             "unusable": crate::list::unusable(&enumeration),
         }));
@@ -245,7 +251,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 fn paired_data(profile: &str, descriptor: &discover::Descriptor, session: SessionView) -> Value {
-    json!({
+    let mut data = json!({
         "paired": true,
         "instance": descriptor.instance_id,
         "identity": descriptor.identity.wire(),
@@ -257,7 +263,17 @@ fn paired_data(profile: &str, descriptor: &discover::Descriptor, session: Sessio
         "email": session.email,
         "project": session.project,
         "design_context": session.design_context.map(design_context_data),
-    })
+    });
+    if !session.signed_in {
+        data["reason"] = json!("signed_out");
+        data["remedy"] = json!(ops::SIGNED_OUT.remedy);
+        data["next"] = json!([
+            "ds desktop list",
+            "ds desktop status --target desktop:<instance_id>",
+            "ds auth status"
+        ]);
+    }
+    data
 }
 
 fn design_context_data(context: DesignContextView) -> Value {
@@ -394,7 +410,10 @@ pub fn render(data: &Value) -> String {
             ));
         }
     } else {
-        out.push_str("signed out\n  → sign in to DS GridDesign\n");
+        out.push_str(&format!(
+            "signed out\n  → {}\n",
+            data["remedy"].as_str().unwrap_or(ops::SIGNED_OUT.remedy),
+        ));
     }
     out
 }

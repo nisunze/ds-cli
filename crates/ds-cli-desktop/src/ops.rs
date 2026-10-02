@@ -76,7 +76,18 @@ pub struct BridgeOp {
 /// or the one live instance the kernel selects for the host `--target` (or
 /// `DS_TARGET`) named.
 pub fn paired(explicit: Option<&str>) -> Result<Descriptor, Failure> {
-    Ok(bridge::paired(explicit)?.descriptor)
+    Ok(bridge::paired(explicit)
+        .map_err(|failure| {
+            if failure.code() == NOT_PAIRED.code {
+                failure
+                    .remedy(NOT_PAIRED.remedy)
+                    .next("ds desktop list")
+                    .next("ds desktop status --target desktop:<instance_id>")
+            } else {
+                failure
+            }
+        })?
+        .descriptor)
 }
 
 /// The host this dispatch named, as text. Resolved once, by dispatch, from the
@@ -352,7 +363,7 @@ pub fn paired_availability() -> Availability {
 pub const NOT_PAIRED: Refusal = Refusal {
     code: "desktop_not_paired",
     when: "no DS GridDesign session is running on this machine",
-    remedy: "start DS GridDesign, then run `ds desktop status`",
+    remedy: "native CLI sign-in is separate from Desktop; start DS GridDesign, run `ds desktop list`, then name a ready instance with --target desktop:<instance_id>",
 };
 /// Two instances can serve the work and nothing says which.
 ///
@@ -384,7 +395,7 @@ pub const TARGET_NOT_LIVE: Refusal = Refusal {
 };
 pub const TARGET_MISMATCH: Refusal = Refusal {
     code: "desktop_target_mismatch",
-    when: "--target named a live instance on another lane or account",
+    when: "--target is malformed or named a live instance on another lane or account",
     remedy: "name one that can serve this, from `ds desktop list`",
 };
 /// The saved CLI project is not open in any instance that could serve the
@@ -460,7 +471,7 @@ pub const UNREADABLE: Refusal = Refusal {
 pub const SIGNED_OUT: Refusal = Refusal {
     code: "desktop_signed_out",
     when: "the application is running but signed out, or has no project selected",
-    remedy: "sign in and select a project in DS GridDesign",
+    remedy: "native CLI sign-in is separate from Desktop; run `ds desktop list`, then name a ready instance with --target desktop:<instance_id>; if none is ready, sign in and select a project in DS GridDesign",
 };
 /// Offline mode reaches every bridge operation that needs the network, so it is
 /// declared once here rather than repeated in each command that can meet it.
@@ -528,7 +539,8 @@ pub fn classify_signed_out(failure: Failure) -> Failure {
         "the paired session is signed out, or has no project selected",
     )
     .remedy(SIGNED_OUT.remedy)
-    .next("ds desktop status")
+    .next("ds desktop list")
+    .next("ds desktop status --target desktop:<instance_id>")
 }
 
 // ---------------------------------------------------------------------------
@@ -809,10 +821,19 @@ mod tests {
     fn an_application_refusal_is_only_reclassified_when_it_really_is_signed_out() {
         let signed_out = Failure::failed("desktop_refused", "refused")
             .detail(json!({ "detail": "No active project. Open a project first." }));
+        let classified = classify_signed_out(signed_out);
         assert_eq!(
-            classify_signed_out(signed_out).code(),
+            classified.code(),
             "desktop_signed_out",
             "the application's own signed-out prose must become the named refusal"
+        );
+        assert_eq!(classified.remedy_text(), Some(SIGNED_OUT.remedy));
+        assert_eq!(
+            classified.next_commands(),
+            [
+                "ds desktop list",
+                "ds desktop status --target desktop:<instance_id>"
+            ]
         );
 
         let other = Failure::failed("desktop_refused", "refused")
