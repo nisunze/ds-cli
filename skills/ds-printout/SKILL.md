@@ -65,15 +65,15 @@ context. Do not seed every dataset by habit or substitute reference
 transformers for the project network. Check carried/omitted layers, coverage,
 freshness and digests; exclude optional layers only if the map's purpose survives.
 
-Source rules: [sources and context](references/sources-and-context.md).
+See [sources and context](references/sources-and-context.md).
 
 ## Author sheets from the contract
 
-Start from the published paper/family default; compare the project recipe.
-Keep source identity/revision when adopting a copy. Preserve globals, live-map
-styles, unselected output policy and subject exceptions. Compose each paper
-independently: a reduced A0 is not a readable A3. Inspect a concrete recipe
-before any required approval.
+Start with the governed standard; discover `report.layout.schema` and
+`report.export`. For LV, read [standard sets](references/lv-standard.md).
+Preserve source identity/revision, globals, live-map styles, unselected output
+policy and exceptions. Compose each paper independently; a reduced A0 is not
+readable A3. Inspect the recipe before approval.
 
 Read live schema and optimistic revision. `report.project.export` supports local
 same-paper recipe proofs (discover inputs): they keep provenance, leave saved

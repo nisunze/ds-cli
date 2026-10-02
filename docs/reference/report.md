@@ -89,6 +89,34 @@ The schemas are never copied into this repository. They are read from the
 engine installed on this machine, at the version actually installed, so they
 cannot be stale.
 
+## Governed LV printing
+
+Start with the standard job; no layout or paper choice is required:
+
+```sh
+ds report layout schema --output json
+ds report tasks --task export_lv_standard --output json
+ds report export --task lv-standard --request ./lv-job.json \
+  --result ./lv-receipt.json --output json
+```
+
+The kernel registry names the independent A0/A3 transformer and combined
+templates. Each combined PDF starts with six A0 pages: cover, key map with
+drawing references, sheet index, legend, notes and revisions. The job pins
+project parties, contract, logos/digests, model version and issue identity.
+It supplies exact-version held layers and optional context. Focused circuits
+own schedules and labels; neighbours use muted unlabelled pens. Missing
+optional context is an omission receipt. Dense schedules continue at readable
+type in both the standalone and combined PDFs. PNG previews precede PDFs.
+
+Use the discovered `ds.print-standard-overrides/v1` schema for declarative
+issue text, monochrome ink or named transformer furniture patches. To retain
+a scoped patch in a saved project layout, apply `set_transformer_override`
+with `report layout edit` and persist the returned layout with `report layout
+update` and its exact expected revision. All validation belongs to the kernel.
+Local exports publish nothing; keep the receipts for visual QA and later
+delivery. Georeference and switchable PDF layers remain outside standard v1.
+
 ## Voltage-drop printing
 
 Print a complete, already calculated voltage-drop JSON to A4 through the
@@ -103,7 +131,10 @@ ds report export --task voltage-drop --request ./a4-request.json \
 Author the request from the installed owner's schema. This route passes the
 request unchanged and refuses when that render task is unavailable. The
 project label is presentation only; it grants no project authority. Missing
-analysis must be produced by the network owner before printing.
+analysis must be produced by the network owner before printing. Admitted
+reserved, incomplete and refused saved analyses produce explicit A4 status
+pages without inventing results. Optional governed printing identity carries
+the project display label and digest-pinned logos onto every A4 title block.
 
 `report.voltage-drop-combined` prints one local A3 overview for an exact
 transformer roster from held voltage-drop result files. The reporter owns
