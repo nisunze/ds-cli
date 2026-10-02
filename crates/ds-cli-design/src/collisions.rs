@@ -67,12 +67,12 @@ Lane and project identity, `checked`, `pairs` (null when unknown), the \
 detection run would cover. With --regions, ranked evidence without geometry, total and more.",
     examples: &[
         Example {
-            command: "ds design collisions --output json",
+            command: "ds design collisions --project demo --regions --limit 10 --output json",
             note: "`.data.pairs` is null when the project has never been checked.",
             runnable: false,
         },
         Example {
-            command: "ds design collisions",
+            command: "ds design collisions --project demo",
             note: "Read before `ds report project compounded`: a collision blocks it.",
             runnable: false,
         },
