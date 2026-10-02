@@ -1,6 +1,6 @@
 ---
 name: ds-style-composite
-description: Style independent DS screen or print documents through `ds style`: colour/icon/size, a second field, line type, casing and hatching.
+description: "Author independent DS screen or print documents through ds: categorical palettes/icons/text, zoom, contrast and exact print revision recovery."
 metadata:
   ds-chapters: map-presentation
   ds-mcp-profile: map
@@ -9,9 +9,10 @@ metadata:
 # Style a DS map layer
 
 Everything goes through `ds style`, which reuses the Style Center's own
-authoring and governed save path. Never edit style JSON by hand, never call
-the styles API, never compose a paint expression, dash array or pattern image
-yourself — there is no flag that takes one, by design.
+authoring and governed save path. Discover the live command and inspect its
+contract before editing. Declarative instruction JSON uses the compiled
+instruction schema; do not invent MapLibre expressions, call a styles API, or
+write request-specific code.
 
 ## Pick screen or print before appearance
 
@@ -43,12 +44,14 @@ and verify the corresponding screen document stayed unchanged.
 
 ## Pick the axis first
 
-A document has three independent axes. They compose; none replaces another.
-Choosing wrong is the expensive mistake, because two of them cost a field.
+Choose primary category, secondary field, scale or drawing convention independently.
 
 | the request sounds like | axis | commands |
 |---|---|---|
 | "make the poles teal", "use the school icon", "bigger dots" | **base appearance** | `appearance plan` / `set` |
+| "colour each cable size", "different icons or label text by type" | **primary category** | discover categorical |
+| "smaller at overview", "collide only far out" | **screen scale** | discover zoom |
+| "review satellite contrast" | **opt-in contrast** | discover preset |
 | "show which ones are draft", "tell approved from proposed" | **second dimension** (a field) | `dimension plan` / `set` / `clear` |
 | "show which way it flows", "it's invisible on satellite", "hatch the proposed areas" | **cartography** (no field) | `cartography plan` / `set` |
 
@@ -66,7 +69,8 @@ Choosing wrong is the expensive mistake, because two of them cost a field.
 4. `ds style <command> --help` is the contract: bounds, closed choices and
    refusals live there, not here.
 
-All operations use native sign-in and name their project with `--project <id>`; no desktop is needed.
+Project reads and publishes use native sign-in and name their project explicitly;
+no desktop is needed. The compiled instruction schema is available without sign-in.
 Only backend-published editor refs can be authored. Reads and writes need the
 backend online. Use `--field-type` when a domain has no declared match-label type.
 
@@ -81,7 +85,7 @@ replaces a field-driven colour expression, so plan first.
 
 `ds style dimension plan --project <id> --ref <ref> --field <field> --channel halo --value
 <highlight>=<px>:<#hex> --value <other>=0`. Take the field from
-`.data.fields`, never `.data.colorField`. Type the value labels the way
+`.data.fields`; redundant colour plus width on one field is supported. Type the value labels the way
 the published field domains says the map carries them.
 
 `halo` differentiates hardest (a ring; on lines a hollow casing, on fills the
@@ -118,6 +122,23 @@ spacing on a line that is already directional is one flag. Do not send
 direction detail together with a non-directional `--line-type`, or
 `--pattern-*` together with `--fill-pattern solid`; both are refused as
 `invalid_cartography`.
+
+## Declarative replay and revision recovery
+
+For a repeatable configuration, discover instruction schema and instruction
+plan/set. Read the exact field domains, property bounds and catalog icons for
+the addressed ref. Use its storage content digest to fence the reviewed JSON;
+if a digest conflict occurs, read and compare the new document before replay.
+The satellite preset is opt-in and targets one exact screen ref; select tiled
+and live design refs explicitly. Preserve category identities and secondary
+encodings when reviewing contrast.
+
+Print styles are shipped standards with independent histories. Discover print
+versions list/read/compare/restore to recover a known appearance. Restore must
+use the current head from the authoritative list; it appends a revision.
+Printed receipts pin the style and layout revisions. Bind standards by their
+returned stable ids, then customize declaratively. A create-only print clone
+that already exists must be edited at its returned print ref.
 
 Stops at: cartographic taste — an effect the vocabulary cannot express is a
 product decision for the operator, never an invented flag.
