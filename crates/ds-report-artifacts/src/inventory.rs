@@ -326,7 +326,13 @@ mod tests {
                 operation: "export-tx_1".into(),
                 variant: "default".into(),
             },
-            sha256: "e".repeat(64),
+            sha256: inventory_digest(
+                &receipt
+                    .outputs
+                    .iter()
+                    .map(|output| (output.output_id.clone(), output.sha256.clone()))
+                    .collect::<Vec<_>>(),
+            ),
             size_bytes: receipt.outputs.iter().map(|r| r.size_bytes).sum(),
             produced_at_ms: 111,
             base_revision: None,
@@ -549,11 +555,11 @@ mod tests {
         for output in outputs {
             let prior = matches!(output["output_id"].as_str().unwrap(), "shp" | "kmz");
             assert_eq!(
-                output["client_publish_id"],
+                output["client_publish_id"].as_str(),
                 if prior {
-                    &old.client_publish_id
+                    Some(old.client_publish_id.as_str())
                 } else {
-                    &recent.client_publish_id
+                    Some(recent.client_publish_id.as_str())
                 }
             );
         }
