@@ -2,8 +2,7 @@
 name: ds-structure-translation
 description: Translate a local designer's PLS-CADD structure models (EDCL-style names such as S190_1p_strain_12, HS255T-OFFHor_12, C 1000_2p_tfo_ 12) into the canonical library, one local model to one canonical member, with the design's staking table as the key. You decide the map from the evidence, ask the owner where it stops, apply it, and accept it when DS's blind staking table carries the same bill of quantities.
 metadata:
-  ds-chapters: pls-cadd, grid-model
-  ds-mcp-profile: pls
+  ds-chapters: grid-model, pls-cadd
 ---
 
 # Translate local structure models into the canonical library

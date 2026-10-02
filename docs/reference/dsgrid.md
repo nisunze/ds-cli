@@ -361,6 +361,17 @@ ds dsgrid describe --kind operations --id plan_optimum_spotting --output json
 ds dsgrid run --model model.dsgrid --operation plan_optimum_spotting --params spotting.json --output json
 ```
 
+Whole-support resistance evidence starts from one structure's native binding.
+`support_resistance_binding` reads the exact realization, placement,
+applied-load and analysis-case pins an external resistance check must cite;
+it authors nothing:
+
+```text
+ds dsgrid run --model model.dsgrid --operation support_resistance_binding --params support-binding.json --output json
+```
+
+with `{"request": {"structure_id": "<structure id>"}}` as the parameters.
+
 A successful proposal includes the objective, structures, spans, per-span and
 per-structure engineering evidence, bounded rejected alternatives,
 infeasibility when applicable, and atomic canonical commands. A planning

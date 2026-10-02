@@ -179,12 +179,11 @@ pub static COMMAND: Command = Command {
     ],
     reference: Some("docs/reference/pls.md"),
     search: &[
-        "translate",
         "rename structures",
         "structure names",
         "canonical library",
         "staking table",
-        "bill of quantities",
+        "quantities",
         "boq",
         "edcl",
     ],

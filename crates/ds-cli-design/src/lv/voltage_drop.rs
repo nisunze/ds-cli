@@ -806,10 +806,12 @@ mod tests {
             assert_eq!(row["transformer_nature"], nature);
             assert_eq!(row["compliant"], Value::Null);
             assert!(
+                // A legacy false vd_calculate_<nature> no longer reserves; the
+                // method reserves fill-ins and upgrades as not fully surveyed.
                 row["calculation"]
                     .as_str()
                     .unwrap()
-                    .contains(&format!("vd_calculate_{nature}"))
+                    .contains(&format!("a {nature} transformer is not calculated"))
             );
         }
         let document = document(&out);

@@ -111,11 +111,6 @@ path can check it; its request's max_reported_rejections bounds its rows.",
             note: "Read conductor-only attachment and support forces for explicit structures at the pinned model head; upward demand is not anchored capacity or a strength failure.",
             runnable: false,
         },
-        Example {
-            command: "ds dsgrid run --model ./model.dsgrid --operation support_resistance_binding --params ./support-binding.json --output json",
-            note: "Supply request.structure_id to read native realization, placement, applied-load and case pins for external whole-support resistance evidence.",
-            runnable: false,
-        },
     ],
     refusals: &[
         Refusal {
