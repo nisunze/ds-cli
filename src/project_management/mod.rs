@@ -46,7 +46,7 @@ pub mod writes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use hierarchy::{ordered_rows, OrderedRow};
+pub use hierarchy::{ordered_rows, Hierarchy, OrderedRow};
 pub use projections::{
     effort, proposals, Attention, AttentionKind, CorrespondenceAttentionRecord,
     CorrespondenceBlockedTask, CorrespondenceParty, CorrespondencePlan, Dashboard, Phase, Proposal,
@@ -159,6 +159,7 @@ pub struct Vocabulary {
 #[serde(rename_all = "camelCase")]
 pub struct PlanReply {
     pub schema: &'static str,
+    pub hierarchy: Hierarchy,
     pub project: String,
     pub revision: i64,
     pub today: String,
@@ -228,6 +229,7 @@ fn plan(request: PlanRequest) -> Result<PlanReply, String> {
 
     Ok(PlanReply {
         schema: SCHEMA,
+        hierarchy: hierarchy::hierarchy(&graph.tasks),
         project: graph.project_id.clone(),
         revision: graph.revision,
         dashboard: projections::dashboard(&graph, &day),
@@ -291,6 +293,14 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             let request: PlanRequest = serde_json::from_slice(input)
                 .map_err(|error| format!("Invalid project management request: {error}"))?;
             serde_json::to_string(&plan(request)?).map_err(|error| error.to_string())
+        }
+        "hierarchy" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Request { schema: String, action: String, tasks: Vec<hierarchy::TimelineTask> }
+            let request: Request = serde_json::from_slice(input).map_err(|e| e.to_string())?;
+            let _ = (&request.schema, &request.action);
+            serde_json::to_string(&hierarchy::timeline_hierarchy(&request.tasks)).map_err(|e| e.to_string())
         }
         other => Err(format!("Unsupported project management action `{other}`.")),
     }
