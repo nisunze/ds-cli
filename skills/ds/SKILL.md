@@ -13,7 +13,7 @@ Use `--output json` for agents.
 
 ## Find one command
 
-Check the installed surface and follow its discovery tiers. Memory is not evidence.
+Check installed discovery; memory is not evidence.
 
 ```
 ds --version
@@ -23,7 +23,7 @@ ds capabilities <domain> --output json
 ds capabilities --search '<words>' --output json
 ```
 
-Try domain and product terms first.
+Try domain terms first.
 
 ## Read, then invoke, the contract
 
@@ -49,11 +49,10 @@ projects or lanes.
 
 ## Through MCP
 
-The broad server exposes `ds_catalog` and chapter routers: select from the
-catalogue, `describe`, then invoke with declared arguments. Set envelope
-`confirm: true` only when required. A typed profile advertises leaf tools
-instead. Branch on the DS envelope, follow typed remedies; `ds-mcp-host`
-covers installation and profile selection.
+Use `ds_catalog` and chapter routers: select, `describe`, then invoke declared
+arguments. Set envelope `confirm: true` only when required. Typed profiles
+advertise leaf tools. Follow DS envelopes and remedies; `ds-mcp-host` covers
+installation and profiles.
 
 ## Where `ds` stops, and who continues
 
