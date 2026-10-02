@@ -19,6 +19,19 @@ fn category_field(id: &str) -> &str {
         _ => "",
     }
 }
+fn role_label(id: &str) -> &str {
+    match id.trim_start_matches("neighbor_") {
+        "tr" | "transformers" => "Transformers",
+        "lv_lines" => "LV feeders",
+        "lv_poles" => "LV poles",
+        "customers" => "House connections",
+        "service_cables" => "Service cables",
+        "tapping_poles" => "Tapping poles",
+        "mv_lines" | "existing_mv_lines" => "MV lines",
+        "mv_poles" | "existing_mv_poles" => "MV poles",
+        _ => id,
+    }
+}
 /// Pin the project-wide vocabulary before preparing individual sheets. Pens
 /// then agree on every sheet, regardless of which categories occur locally.
 pub fn seed_category_palette(
@@ -197,6 +210,15 @@ pub fn materialize(
                 style.fill = style.stroke.clone();
             }
             match id {
+                "tr" => {
+                    style.radius_mm = 2.5;
+                }
+                "customers" => {
+                    style.radius_mm = 0.65;
+                }
+                "service_cables" => {
+                    style.width_mm = if existing { 0.18 } else { 0.3 };
+                }
                 "mv_lines" | "mv_poles" => {
                     style.stroke = if existing { "#59616b" } else { "#9c3124" }.into();
                     style.fill = if existing {
@@ -281,7 +303,7 @@ pub fn materialize(
                             _ => "Unclassified",
                         }
                     },
-                    id.trim_start_matches("neighbor_").replace('_', " "),
+                    role_label(id),
                     if category.is_empty() { "" } else { " · " },
                     category
                 )
