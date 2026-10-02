@@ -214,6 +214,9 @@ impl Overrides {
 }
 
 pub fn registry() -> Value {
+    let mut override_schema = serde_json::to_value(schemars::schema_for!(Overrides)).unwrap();
+    override_schema["properties"]["schema"]["const"] = json!(OVERRIDE_SCHEMA);
+    override_schema["properties"]["template_version"]["const"] = json!(VERSION);
     json!({"schema":TEMPLATE_SCHEMA,"version":VERSION,"templates":[
         {"id":Kind::LvTransformerA0.id(),"kind":"lv_transformer_a0","paper":"A0"},
         {"id":Kind::LvTransformerA3.id(),"kind":"lv_transformer_a3","paper":"A3"},
@@ -223,7 +226,7 @@ pub fn registry() -> Value {
         "optional_context":"omit with diagnostics","adjacent_networks":"muted, no labels or schedule rows",
         "identity":"explicit issue date, project parties, contract, logos and model version",
         "pdf":"vector geometry; mixed page sizes retained","schedule_overflow":"automatic numbered continuation sheets; never silently omit rows"},
-        "override_schema":schemars::schema_for!(Overrides),"identity_schema":schemars::schema_for!(Identity)})
+        "override_schema":override_schema,"identity_schema":schemars::schema_for!(Identity)})
 }
 
 /// Immutable printing documents captured through the authorized API. Layouts
