@@ -1,11 +1,9 @@
-# DS Grid to authority — program contracts (copies)
+# DS Grid to authority — program contracts (pointer)
 
-Copies of `~/programs/dsgrid-authority/contracts/` landed with the code that
-honours them (charter convention: "contracts live with the code"). The kernel
-carries the copies whose decisions its doors implement (`ds-client-core`
-`project_management`, `project_assets`, `design_annotations`, `known_columns`;
-`ds_command_kernel::{project_management, assets, design_config}`).
-
-| Contract | Landed here by |
-|---|---|
-| 01-server-required | 01-A (2026-09-20): Required 1 decisions 1–17 |
+The kernel holds no copy. The program index is ds-network
+[`docs/contracts/dsgrid-authority/README.md`](https://github.com/nisunze/ds-network/blob/run/docs/contracts/dsgrid-authority/README.md);
+[01-server-required](01-server-required.md), whose Required 1 decisions the
+kernel's doors implement (`ds-client-core` `project_management`,
+`project_assets`, `design_annotations`, `known_columns`;
+`ds_command_kernel::{project_management, assets, design_config}`), is owned by
+ds-cli.
