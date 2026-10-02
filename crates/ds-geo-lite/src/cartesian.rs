@@ -29,12 +29,35 @@ pub fn interpolate(a: Point, b: Point, t: f64) -> Point {
     [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
 }
 
+/// Denominator evaluation is explicit because fused arithmetic can move a foot.
+#[derive(Clone, Copy, Debug)]
+pub enum SegmentDenominator {
+    SquaredSum,
+    FusedSum,
+    Provided(f64),
+}
+
 /// Unclamped segment parameter. A zero-length segment returns zero.
 pub fn segment_parameter(point: Point, a: Point, b: Point) -> f64 {
+    segment_parameter_with(point, a, b, SegmentDenominator::SquaredSum, 0.0)
+}
+
+/// Preserve a caller's denominator and squared-length degeneracy threshold.
+pub fn segment_parameter_with(
+    point: Point,
+    a: Point,
+    b: Point,
+    arithmetic: SegmentDenominator,
+    minimum_squared_length: f64,
+) -> f64 {
     let dx = b[0] - a[0];
     let dy = b[1] - a[1];
-    let denom = dx * dx + dy * dy;
-    if denom <= 0.0 {
+    let denom = match arithmetic {
+        SegmentDenominator::SquaredSum => dx * dx + dy * dy,
+        SegmentDenominator::FusedSum => dx.mul_add(dx, dy * dy),
+        SegmentDenominator::Provided(value) => value,
+    };
+    if denom <= minimum_squared_length {
         return 0.0;
     }
     ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / denom
@@ -50,8 +73,27 @@ pub fn point_segment_distance_with(
     b: Point,
     arithmetic: DistanceArithmetic,
 ) -> f64 {
-    let t = segment_parameter(point, a, b).clamp(0.0, 1.0);
-    distance_with(point, interpolate(a, b, t), arithmetic)
+    point_segment_distance_with_options(
+        point,
+        a,
+        b,
+        arithmetic,
+        SegmentDenominator::SquaredSum,
+        0.0,
+    )
+}
+
+pub fn point_segment_distance_with_options(
+    point: Point,
+    a: Point,
+    b: Point,
+    distance_arithmetic: DistanceArithmetic,
+    denominator: SegmentDenominator,
+    minimum_squared_length: f64,
+) -> f64 {
+    let t =
+        segment_parameter_with(point, a, b, denominator, minimum_squared_length).clamp(0.0, 1.0);
+    distance_with(point, interpolate(a, b, t), distance_arithmetic)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -235,7 +277,9 @@ pub fn simplify_forward_collinear_by<T: Clone + PartialEq>(
             position(&window[1]),
             position(&window[2]),
         );
-        let cross = orientation(a, b, c);
+        // Keep the original adjacent-vector evaluation: translating c to a
+        // instead of b can round a near-collinear turn differently.
+        let cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
         let forward = (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]);
         if cross != 0.0 || forward < 0.0 {
             simplified.push(window[1].clone());
@@ -248,6 +292,42 @@ pub fn simplify_forward_collinear_by<T: Clone + PartialEq>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collinear_reduction_preserves_a_rounded_adjacent_vector_turn() {
+        let points = [
+            [542504588.846221, 969537270.7349102],
+            [-627777760.5482227, -938698922.4377396],
+            [-1798060109.942666, -2846935115.6103897],
+        ];
+        // An origin-based determinant rounds this turn to zero. The original
+        // Canvas adjacent-vector calculation retains the authored middle point.
+        assert_eq!(simplify_forward_collinear_by(&points, |p| *p), points);
+    }
+
+    #[test]
+    fn segment_modes_keep_threshold_and_fused_hit_arithmetic_explicit() {
+        let (point, a, b) = ([5., 3.], [0., 0.], [10., 0.]);
+        assert_eq!(
+            point_segment_distance_with_options(
+                point,
+                a,
+                b,
+                DistanceArithmetic::Hypot,
+                SegmentDenominator::FusedSum,
+                0.0
+            ),
+            3.0
+        );
+        assert_eq!(
+            segment_parameter_with(point, a, b, SegmentDenominator::Provided(100.0), 100.0),
+            0.0
+        );
+        assert_eq!(
+            segment_parameter_with(point, a, a, SegmentDenominator::FusedSum, 0.0),
+            0.0
+        );
+    }
 
     #[test]
     fn nearest_ties_keep_the_first_segment_and_zero_segments_are_skipped() {

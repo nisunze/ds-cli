@@ -23,9 +23,13 @@ pub mod admission;
 #[cfg(feature = "revision")]
 #[path = "../../../vendor/ds-geo-lite/geo/comparison.rs"]
 pub mod comparison;
+#[cfg(feature = "geojson")]
+pub mod geojson;
 #[cfg(feature = "revision")]
 #[path = "../../../vendor/ds-geo-lite/geo/identity.rs"]
 pub mod identity;
+#[cfg(feature = "overlay")]
+pub mod overlay;
 #[cfg(feature = "overlay")]
 pub mod spatial_predicate;
 #[cfg(feature = "geojson")]

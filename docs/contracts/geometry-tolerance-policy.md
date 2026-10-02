@@ -11,8 +11,10 @@ no universal epsilon and no implicit CRS selection.
 
 - Geodesic distance/area use the existing 6,371,000 m sphere. Projected engineering
   distances retain their explicitly chosen metric CRS; they are not haversine.
-- Cartesian distance preserves squared-sum arithmetic by default. Hypot arithmetic
-  is an explicit compatibility option, not a silent numerical replacement.
+- Cartesian distance preserves squared-sum arithmetic by default. Hypot distance
+  and fused segment denominators are explicit compatibility options. A caller
+  with a stored length may supply its denominator; squared-length degeneracy
+  thresholds remain explicit. None is a silent numerical replacement.
 - Computational degeneracy, coordinate bounds, determinant/area tolerances,
   dimensionless segment parameters, metric reach and screen pixels are separate.
 - A user-configured physical tolerance is not permission to spend that tolerance
@@ -54,3 +56,18 @@ engine. Native TIN admission/edge limits remain in the native consumer.
 Remaining compatibility thresholds and numerical differences are inventoried in
 `ds-network/docs/design/geometry-toolkit-consolidation.md`. New consumers choose
 one documented mode; they do not add private epsilons or geometric repair.
+
+## Boolean operations and coordinate traversal
+
+`overlay::polygons` is the shared polygon engine boundary for intersection,
+union, difference and symmetric difference. It uses the existing `geo` engine,
+its even-odd fill rule and planar WGS84 longitude/latitude coordinates. Each
+input must be a valid, finite, closed Polygon/MultiPolygon with at most 50,000
+coordinates. Invalid topology is refused; no private epsilon or healing pass
+is applied. Output is always a 2D MultiPolygon, including empty results. Feature
+attributes and CRS selection belong to the consumer.
+
+`geojson::map_coordinates` owns the former binding's recursive XY traversal.
+The consumer supplies the coordinate transform. Additional ordinates, properties,
+authored bbox fields, null geometries and malformed leaves keep their previous
+behavior. The traversal does not choose a projection or invent a bbox update.
