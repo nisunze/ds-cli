@@ -564,6 +564,17 @@ fn live_wal_current_report_is_observed_without_content_schema_or_lease_effects()
         .unwrap();
     assert!(lease.refusals.is_empty(), "{:?}", lease.refusals);
     let latest = fixture.commit('b', &["pdf__a3l", "pdf__a0l"]);
+    let held_lease = writer
+        .snapshot(
+            &fixture.fence(),
+            &Scope::Project {
+                project: PROJECT.into(),
+            },
+        )
+        .unwrap()
+        .lease
+        .unwrap();
+    assert_eq!(held_lease.worker_id, "fixture-live-writer");
     let before = fixture.files();
     let contains = |bytes: &[u8], needle: &str| {
         bytes
