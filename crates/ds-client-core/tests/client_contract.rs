@@ -13596,3 +13596,85 @@ fn compounded_archive_list_refuses_a_contradictory_grouping() {
         .unwrap_err();
     assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
 }
+
+/// The generic layout knobs ds-brain writes are read, and the kernel's
+/// vocabulary describes the archive from them before the legacy spellings.
+#[test]
+fn compounded_archive_layout_reads_the_generic_knobs() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project_report(
+        200,
+        include_bytes!("../../../tests/fixtures/compounded-archive-groups.json"),
+    );
+    transport.push_project_report(
+        200,
+        &serde_json::to_vec(&serde_json::json!({
+            "compounded_reports": [{
+                "stem": "depth-one",
+                "archive_layout": {
+                    "group_depth": 1, "transformer_folders": false,
+                    "combine_per_group": false, "combine_per_district": false,
+                    "file_level": "transformer", "transformer_grouping": "district_sector"
+                }
+            }]
+        }))
+        .unwrap(),
+    );
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+
+    let archives = client.compounded_report_list("project_a", NOW + 1).unwrap();
+    let plan = archives[0].archive_layout().unwrap();
+    assert_eq!(plan.group_depth(), None);
+    assert_eq!(plan.transformer_folders(), Some(true));
+    assert_eq!(plan.combine_per_group(), Some(true));
+    assert_eq!(plan.report_layout().describe()["level"], "transformer");
+    assert_eq!(plan.report_layout().describe()["combine_per_group"], true);
+    // A pre-plan layout records no generic knob and keeps its legacy reading.
+    let legacy = archives[2].archive_layout().unwrap();
+    assert_eq!(
+        (
+            legacy.group_depth(),
+            legacy.transformer_folders(),
+            legacy.combine_per_group()
+        ),
+        (None, None, None)
+    );
+    assert_eq!(legacy.report_layout().describe()["level"], "transformer");
+    assert_eq!(
+        legacy.report_layout().describe()["combine_per_group"],
+        false
+    );
+
+    let archives = client.compounded_report_list("project_a", NOW + 1).unwrap();
+    let depth_one = archives[0].archive_layout().unwrap();
+    assert_eq!(depth_one.group_depth(), Some(1));
+    assert_eq!(depth_one.transformer_folders(), Some(false));
+    // The generic pair wins over the legacy words kept beside it.
+    assert_eq!(depth_one.report_layout().describe()["level"], "district");
+}
+
+#[test]
+fn compounded_archive_layout_refuses_malformed_generic_knobs() {
+    for layout in [
+        serde_json::json!({"group_depth": -1}),
+        serde_json::json!({"group_depth": "1"}),
+        serde_json::json!({"group_depth": 65}),
+        serde_json::json!({"group_depth": 1.5}),
+        serde_json::json!({"transformer_folders": "yes"}),
+        serde_json::json!({"combine_per_group": 1}),
+    ] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_project_report(
+            200,
+            &serde_json::to_vec(&serde_json::json!({
+                "compounded_reports": [{"stem": "s", "archive_layout": layout}]
+            }))
+            .unwrap(),
+        );
+        let mut client = signed_in(transport.clone(), MemoryStore::default());
+        let error = client
+            .compounded_report_list("project_a", NOW + 1)
+            .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnreadableResponse, "{layout}");
+    }
+}

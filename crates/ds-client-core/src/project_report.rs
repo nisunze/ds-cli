@@ -877,7 +877,14 @@ pub struct CompoundedArchiveLayout {
     file_level: Option<String>,
     transformer_grouping: Option<String>,
     combine_per_district: bool,
+    group_depth: Option<u32>,
+    transformer_folders: Option<bool>,
+    combine_per_group: Option<bool>,
 }
+
+/// The deepest grouping level a recorded layout may name. A plan has at most
+/// a handful of ordered definitions; anything beyond this is not a layout.
+const MAX_ARCHIVE_GROUP_DEPTH: u64 = 64;
 
 impl CompoundedArchiveLayout {
     pub fn file_level(&self) -> Option<&str> {
@@ -893,6 +900,32 @@ impl CompoundedArchiveLayout {
     }
     pub const fn combine_per_district(&self) -> bool {
         self.combine_per_district
+    }
+    /// The generic knobs ds-brain writes on every current entry: how many of
+    /// the applied plan's levels the tree descends (`None` = every level),
+    /// whether each transformer gets its own folder, and whether one combined
+    /// report is added per first-level group. `None` when not recorded.
+    pub const fn group_depth(&self) -> Option<u32> {
+        self.group_depth
+    }
+    pub const fn transformer_folders(&self) -> Option<bool> {
+        self.transformer_folders
+    }
+    pub const fn combine_per_group(&self) -> Option<bool> {
+        self.combine_per_group
+    }
+    /// The recorded layout as the kernel's report layer reads it, so a host
+    /// describes the archive in the one vocabulary (`describe()`), generic
+    /// knobs first, then the current spelling, then the legacy twin.
+    pub fn report_layout(&self) -> ds_command_kernel::report::ArchiveLayout {
+        ds_command_kernel::report::ArchiveLayout {
+            file_level: self.file_level.clone(),
+            transformer_grouping: self.transformer_grouping.clone(),
+            combine_per_district: Some(self.combine_per_district),
+            combine_per_group: self.combine_per_group,
+            group_depth: self.group_depth,
+            transformer_folders: self.transformer_folders,
+        }
     }
 }
 
@@ -1122,10 +1155,27 @@ pub(crate) fn decode_compounded_list(
                     Some(Value::Bool(value)) => *value,
                     Some(_) => return Err(unreadable()),
                 };
+                let flag = |key: &str| match layout.get(key) {
+                    None | Some(Value::Null) => Ok(None),
+                    Some(Value::Bool(value)) => Ok(Some(*value)),
+                    Some(_) => Err(unreadable()),
+                };
+                let transformer_folders = flag("transformer_folders")?;
+                let combine_per_group = flag("combine_per_group")?;
+                let group_depth = match layout.get("group_depth") {
+                    None | Some(Value::Null) => None,
+                    Some(value) => match value.as_u64() {
+                        Some(depth) if depth <= MAX_ARCHIVE_GROUP_DEPTH => Some(depth as u32),
+                        _ => return Err(unreadable()),
+                    },
+                };
                 Some(CompoundedArchiveLayout {
                     file_level,
                     transformer_grouping,
                     combine_per_district,
+                    group_depth,
+                    transformer_folders,
+                    combine_per_group,
                 })
             }
         };
