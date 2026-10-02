@@ -313,6 +313,17 @@ transformer). Until 2026-09-11 `ds report project archives` ignored the legacy
 spelling entirely and reported a foldered archive as having no layout at all,
 which is how one archive came to be described two ways.
 
+Current archives also record ds-brain's generic knobs — `group_depth` (how many
+of the applied plan's levels the tree descends; null is every level),
+`transformer_folders` and `combine_per_group` — and `archives` carries them on
+`archive_layout` beside the legacy spellings. When either of the first two is
+recorded the kernel resolves the level from them first (depth 0 is `root`, or
+`flat` with transformer folders; depth 1 is `district`; deeper is `sector`;
+every level is `transformer` with folders, else `sector`), because ds-brain
+writes the legacy words only for older readers. `layout_collapsed` reads that
+resolved level: `root` and `flat` request no group folders unless a combined
+report per group was asked for.
+
 The registry's `download_url` is freshly signed by the service with about an
 hour of validity, but has been observed arriving with seconds left, so a caller
 must never assume a returned URL is still usable. `ds` reads each URL's own

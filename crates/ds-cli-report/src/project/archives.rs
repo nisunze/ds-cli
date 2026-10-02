@@ -7,6 +7,8 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
+use ds_command_kernel::report::ArchiveLayout;
+
 use super::{LANE_ARG, PROJECT_ARG};
 
 pub static COMMAND: Command = Command {
@@ -28,8 +30,8 @@ reports and pull remote heads. No URL or action override.",
 Lane/project, count and archives: identity, cloud locator, actor/time, status, \
 transformer scope, group_count/groups (first-level labels) and grouping (kind \
 plan|flat|recorded|legacy_district|unrecorded, key, plan identity), artifact \
-coverage, errors, layout and composition. layout_collapsed reports unresolved \
-foldering; download_url_expires_at, \
+coverage, errors, layout (recorded generic and legacy knobs plus kernel level) \
+and composition. layout_collapsed reports unresolved foldering; download_url_expires_at, \
 download_url_seconds_remaining and download_url_expired report URL validity. \
 composition_template/schema are server-owned authoring objects, null when absent.",
     examples: &[Example {
@@ -70,31 +72,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "errors": archive.errors(),
                 "artifact_index_state": archive.artifact_index_state(),
                 "archive_members": archive.archive_members(),
-                // The layout as the registry recorded it, plus the report
-                // layer's own vocabulary for it — so a legacy archive written
-                // under `transformer_grouping` alone is described here exactly
-                // as the application describes it, instead of as no layout.
-                "archive_layout": archive.archive_layout().map(|layout| {
-                    let mut recorded = json!({
-                        "file_level": layout.file_level(),
-                        "transformer_grouping": layout.transformer_grouping(),
-                        "combine_per_district": layout.combine_per_district(),
-                    });
-                    let vocabulary = super::archive_layout_vocabulary(
-                        layout.file_level(),
-                        layout.transformer_grouping(),
-                        layout.combine_per_district(),
-                    );
-                    recorded
-                        .as_object_mut()
-                        .expect("layout is an object")
-                        .extend(vocabulary.as_object().expect("vocabulary is an object").clone());
-                    recorded
-                }),
+                "archive_layout": archive
+                    .archive_layout()
+                    .map(|layout| layout_fields(&layout.report_layout())),
                 "composition": archive.composition(),
                 "layout_collapsed": archive.archive_layout().map(|layout| layout_collapsed(
-                    layout.file_level().or(layout.transformer_grouping()),
-                    layout.combine_per_district(),
+                    &layout.report_layout(),
                     groups.filed_no_group(),
                     archive.transformer_count(),
                 )),
@@ -145,15 +128,36 @@ fn grouping_fields(groups: &ds_cli_auth::ArchiveGroups) -> Value {
 /// outcome, and the two are not the same claim. A flat archive (no plan
 /// applied) asked for no groups, which the kernel's `filed_no_group` already
 /// tells apart.
-fn layout_collapsed(
-    file_level: Option<&str>,
-    combine_per_district: bool,
-    filed_no_group: bool,
-    transformer_count: u64,
-) -> bool {
-    let foldering_requested =
-        combine_per_district || matches!(file_level, Some(level) if level != "root");
+fn layout_collapsed(layout: &ArchiveLayout, filed_no_group: bool, transformer_count: u64) -> bool {
+    let combine =
+        layout.combine_per_group == Some(true) || layout.combine_per_district == Some(true);
+    let foldering_requested = combine || !matches!(layout.level(), "root" | "flat");
     foldering_requested && filed_no_group && transformer_count > 0
+}
+
+/// The layout as the registry recorded it — the generic knobs ds-brain writes
+/// (`group_depth`, `transformer_folders`, `combine_per_group`) and the legacy
+/// spellings it keeps beside them — plus the report layer's own vocabulary
+/// for it, resolved generic first. A legacy archive written under
+/// `transformer_grouping` alone is described exactly as the application
+/// describes it, instead of as no layout.
+fn layout_fields(layout: &ArchiveLayout) -> Value {
+    let mut fields = json!({
+        "file_level": layout.file_level,
+        "transformer_grouping": layout.transformer_grouping,
+        "combine_per_district": layout.combine_per_district == Some(true),
+        "group_depth": layout.group_depth,
+        "transformer_folders": layout.transformer_folders,
+        "combine_per_group": layout.combine_per_group,
+    });
+    fields.as_object_mut().expect("layout is an object").extend(
+        layout
+            .describe()
+            .as_object()
+            .expect("vocabulary is an object")
+            .clone(),
+    );
+    fields
 }
 
 /// The three derived fields that let a caller judge a signed download before
@@ -275,7 +279,8 @@ pub fn render(data: &Value) -> String {
     );
     if let Some(archives) = data["archives"].as_array() {
         for archive in archives {
-            let file_level = archive["archive_layout"]["file_level"]
+            // The level the kernel resolved, generic knobs first.
+            let level = archive["archive_layout"]["level"]
                 .as_str()
                 .unwrap_or("unrecorded");
             let noun = group_noun(archive);
@@ -284,19 +289,19 @@ pub fn render(data: &Value) -> String {
                 archive["stem"].as_str().unwrap_or("?"),
                 archive["status"].as_str().unwrap_or("?"),
                 archive["transformer_count"].as_u64().unwrap_or(0),
-                file_level,
+                level,
                 archive["group_count"].as_u64().unwrap_or(0),
                 grouping_note(archive),
                 archive["created_at"].as_str().unwrap_or("?"),
                 download_note(archive),
             ));
             if archive["layout_collapsed"].as_bool().unwrap_or(false) {
-                let requested = if file_level == "root" {
+                let requested = if matches!(level, "root" | "flat") {
                     "district"
                 } else {
-                    file_level
+                    level
                 };
-                let folder = if matches!(requested, "sector" | "transformer") {
+                let folder = if matches!(requested, "sector" | "district_sector" | "transformer") {
                     "_unassigned/_unassigned/"
                 } else {
                     "_unassigned/"
@@ -422,18 +427,73 @@ mod tests {
         }
     }
 
+    fn layout(value: Value) -> ArchiveLayout {
+        serde_json::from_value(value).unwrap()
+    }
+
     #[test]
     fn requested_foldering_with_no_group_is_collapsed() {
+        let sector = layout(json!({"file_level": "sector"}));
         // The D4 archive: `--file-level sector` over 195 transformers, and a
         // manifest whose whole tree is `_unassigned/_unassigned/`.
-        assert!(layout_collapsed(Some("sector"), false, true, 195));
-        assert!(layout_collapsed(Some("district"), false, true, 195));
-        assert!(layout_collapsed(Some("root"), true, true, 195));
+        assert!(layout_collapsed(&sector, true, 195));
+        assert!(layout_collapsed(
+            &layout(json!({"file_level": "district"})),
+            true,
+            195
+        ));
+        assert!(layout_collapsed(
+            &layout(json!({"file_level": "root", "combine_per_district": true})),
+            true,
+            195
+        ));
+        // The generic knobs ask for group folders the same way.
+        assert!(layout_collapsed(
+            &layout(json!({"group_depth": 1, "transformer_folders": false})),
+            true,
+            195
+        ));
+        assert!(layout_collapsed(
+            &layout(json!({"group_depth": 0, "combine_per_group": true})),
+            true,
+            195
+        ));
         // Groups resolved, nothing was asked for, or nothing was filed.
-        assert!(!layout_collapsed(Some("sector"), false, false, 195));
-        assert!(!layout_collapsed(Some("root"), false, true, 195));
-        assert!(!layout_collapsed(None, false, true, 195));
-        assert!(!layout_collapsed(Some("sector"), false, true, 0));
+        assert!(!layout_collapsed(&sector, false, 195));
+        assert!(!layout_collapsed(
+            &layout(json!({"file_level": "root"})),
+            true,
+            195
+        ));
+        assert!(!layout_collapsed(
+            &layout(json!({"group_depth": 0, "transformer_folders": true})),
+            true,
+            195
+        ));
+        assert!(!layout_collapsed(&sector, true, 0));
+    }
+
+    /// The layout knobs ds-brain writes are recorded on the row and resolve
+    /// the level before the legacy words kept beside them.
+    #[test]
+    fn the_row_records_and_describes_the_generic_layout() {
+        let fields = layout_fields(&layout(json!({
+            "group_depth": 1, "transformer_folders": false,
+            "combine_per_group": true, "combine_per_district": true,
+            "file_level": "transformer", "transformer_grouping": "district_sector",
+        })));
+        assert_eq!(fields["group_depth"], 1);
+        assert_eq!(fields["transformer_folders"], false);
+        assert_eq!(fields["combine_per_group"], true);
+        assert_eq!(fields["file_level"], "transformer");
+        assert_eq!(fields["level"], "district");
+        assert_eq!(fields["level_key"], "pctl_layout_district");
+        assert_eq!(fields["label_key"], "pctl_layout_per_district");
+        // A legacy-only layout records no generic knob and keeps its reading.
+        let legacy = layout_fields(&layout(json!({"transformer_grouping": "district_sector"})));
+        assert_eq!(legacy["group_depth"], Value::Null);
+        assert_eq!(legacy["transformer_folders"], Value::Null);
+        assert_eq!(legacy["level"], "district_sector");
     }
 
     /// The registry rows ds-brain writes (a plan-grouped and a flat archive)
@@ -455,21 +515,14 @@ mod tests {
                 )
                 .unwrap();
                 let mut row = grouping_fields(&groups);
-                for key in [
-                    "stem",
-                    "status",
-                    "transformer_count",
-                    "created_at",
-                    "archive_layout",
-                ] {
+                for key in ["stem", "status", "transformer_count", "created_at"] {
                     row[key] = entry[key].clone();
                 }
+                let recorded = layout(entry["archive_layout"].clone());
+                row["archive_layout"] = layout_fields(&recorded);
                 row["download_url"] = Value::Null;
                 row["layout_collapsed"] = json!(layout_collapsed(
-                    entry["archive_layout"]["file_level"].as_str(),
-                    entry["archive_layout"]["combine_per_district"]
-                        .as_bool()
-                        .unwrap_or(false),
+                    &recorded,
                     groups.filed_no_group(),
                     entry["transformer_count"].as_u64().unwrap(),
                 ));
@@ -522,7 +575,7 @@ mod tests {
                 "download_url": "https://storage.googleapis.com/b/o.zip?Expires=1788696000",
                 "download_url_seconds_remaining": 20,
                 "download_url_expired": false,
-                "archive_layout": {"file_level": "sector", "combine_per_district": false},
+                "archive_layout": {"file_level": "sector", "level": "sector", "combine_per_district": false},
                 "layout_collapsed": true,
             }],
         }));
@@ -556,7 +609,7 @@ mod tests {
                     "download_url": "https://storage.googleapis.com/b/o.zip?Expires=1788696000",
                     "download_url_expired": true,
                     "download_url_seconds_remaining": 0,
-                    "archive_layout": {"file_level": "district", "combine_per_district": false},
+                    "archive_layout": {"file_level": "district", "level": "district", "combine_per_district": false},
                     "layout_collapsed": false,
                 },
                 {
