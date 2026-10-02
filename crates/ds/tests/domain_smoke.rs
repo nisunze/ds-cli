@@ -17907,7 +17907,7 @@ fn survey_delete_preview_runs_the_real_kernel_and_admits_no_write() {
 }
 
 #[test]
-fn survey_delete_declares_native_effect_and_validates_before_auth() {
+fn survey_delete_declares_native_effect_and_honors_packaged_availability() {
     let descriptor = ok(&["capabilities", "survey.entries.delete", "--output", "json"]);
     assert_eq!(descriptor["command"]["effect"], "global_write");
     assert_eq!(descriptor["command"]["authority"], "headless_project");
@@ -17937,7 +17937,9 @@ fn survey_delete_declares_native_effect_and_validates_before_auth() {
     ]);
     assert_eq!(
         reply.envelope["error"]["code"],
-        "survey_delete_plan_invalid"
+        if descriptor["command"]["availability"] == "unavailable" {
+            descriptor["command"]["unavailable"]["code"].as_str().unwrap()
+        } else { "survey_delete_plan_invalid" }
     );
     std::fs::remove_dir_all(root).unwrap();
 }

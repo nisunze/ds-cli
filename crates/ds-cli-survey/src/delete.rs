@@ -5,7 +5,7 @@ use ds_cli_contract::{
     spec::{Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires},
 };
 use serde_json::{Value, json};
-const OWN: [Refusal; 4] = [
+const OWN: [Refusal; 3] = [
     Refusal {
         code: "survey_delete_document_invalid",
         when: "held inventory is not a regular bounded closed JSON document",
@@ -20,11 +20,6 @@ const OWN: [Refusal; 4] = [
         code: "survey_delete_incomplete",
         when: "a transport, version, authority or receipt failure stops remote replay",
         remedy: "inspect detail.failure and acknowledged receipts; recheck authority or version; never change the file, key or clock for an exact retry",
-    },
-    Refusal {
-        code: "auth_input_invalid",
-        when: "native project scope differs from the planned scope",
-        remedy: "use the exact project reviewed by delete-plan",
     },
 ];
 const REFUSALS: &[Refusal] = &{
@@ -120,5 +115,42 @@ mod tests {
         assert!(COMMAND.effect.needs_confirmation());
         assert_eq!(COMMAND.authority, Authority::HeadlessProject);
         assert!(COMMAND.summary.len() < 70);
+    }
+    #[test]
+    fn handler_rejects_an_invalid_full_plan_before_loading_native_authority() {
+        let path = std::env::temp_dir().join(format!(
+            "ds-survey-delete-invalid-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, br#"{"rows":[]}"#).unwrap();
+        let raw = path.to_string_lossy();
+        let args = [
+            "--project",
+            "p",
+            "--form",
+            "poles",
+            "--doc-id",
+            "n",
+            "--document",
+            &raw,
+            "--idempotency-key",
+            "review",
+            "--now",
+            "invalid-clock",
+        ];
+        let inputs = ds_cli_contract::parse(
+            &COMMAND,
+            &args.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let context = Context {
+            confirmed: true,
+            output: ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json, false, true),
+        };
+        assert_eq!(
+            run(&inputs, &context).unwrap_err().code(),
+            "survey_delete_plan_invalid"
+        );
+        std::fs::remove_file(path).unwrap();
     }
 }
