@@ -35,9 +35,13 @@ pub struct Project {
     display_name: Option<String>,
     role: Option<String>,
     status: ProjectStatus,
+    lifecycle_facts: serde_json::Value,
 }
 
 impl Project {
+    pub fn lifecycle(&self, now_ms: i64) -> serde_json::Value {
+        crate::project_properties::lifecycle_projection(&self.lifecycle_facts, now_ms)
+    }
     pub fn ds_project(&self) -> &str {
         &self.ds_project
     }
@@ -121,10 +125,32 @@ impl ProjectDirectory {
                         "one project identity appeared in more than one lifecycle bucket",
                     ));
                 }
+                for value in [
+                    &row.expires_at,
+                    &row.expiration_reason,
+                    &row.expiration_support_email,
+                    &row.expiration_support_phone,
+                    &row.read_only_reason,
+                ] {
+                    if value
+                        .as_ref()
+                        .is_some_and(|v| v.chars().count() > 512 || v.chars().any(char::is_control))
+                    {
+                        return Err(unreadable());
+                    }
+                }
+                let lifecycle_facts = serde_json::json!({
+                    "ds_project":id,"display_name":row.display_name,"project_name":row.project_name,
+                    "lifecycle_state":row.lifecycle_state,"is_archived":row.is_archived,
+                    "is_expired":row.is_expired,"read_only_reason":row.read_only_reason,
+                    "expires_at":row.expires_at,"expiration_reason":row.expiration_reason,
+                    "expiration_support_email":row.expiration_support_email,"expiration_support_phone":row.expiration_support_phone,
+                });
                 let project_name = bounded_trimmed(row.project_name.unwrap_or_default(), 500)?;
                 let display_name = optional_bounded(row.display_name, 500)?;
                 let role = optional_bounded(row.role, 100)?;
                 projects.push(Project {
+                    lifecycle_facts,
                     ds_project: id,
                     project_name,
                     display_name,
@@ -224,6 +250,18 @@ pub(crate) struct WireProject {
     is_archived: Option<bool>,
     #[serde(default)]
     is_testing: Option<bool>,
+    #[serde(default)]
+    expires_at: Option<String>,
+    #[serde(default)]
+    expiration_reason: Option<String>,
+    #[serde(default)]
+    expiration_support_email: Option<String>,
+    #[serde(default)]
+    expiration_support_phone: Option<String>,
+    #[serde(default)]
+    is_expired: Option<bool>,
+    #[serde(default)]
+    read_only_reason: Option<String>,
 }
 
 impl WireProject {
@@ -391,5 +429,25 @@ mod tests {
         );
 
         assert!(!ProjectDirectory::from_buckets(vec![]).unwrap().elevated());
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+    #[test]
+    fn project_directory_preserves_expiry_contacts_for_the_native_projection() {
+        let wire = serde_json::from_value::<WireProject>(serde_json::json!({"eds_project_id":"p","expires_at":"2026-10-02T00:00:00Z","expiration_support_email":"help@example.com"})).unwrap();
+        let directory = ProjectDirectory::from_buckets(vec![(
+            ProjectStatus::Active,
+            WireBucket {
+                rows: vec![wire],
+                elevated: false,
+            },
+        )])
+        .unwrap();
+        let result = directory.projects()[0].lifecycle(0);
+        assert_eq!(result["supportEmail"], "help@example.com");
+        assert_eq!(result["chip"]["tone"], "far");
     }
 }

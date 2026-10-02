@@ -263,6 +263,8 @@ pub struct Stamp {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Governance {
+    /// Final technical locks block entry; cooperative leases remain warn-only.
+    pub entry_blocked: bool,
     pub state: GovernanceState,
     /// ds-brain's own `write_block_code`, echoed.
     pub code: String,
@@ -954,6 +956,7 @@ fn governance(row: &Map<String, Value>, locally_locked: bool) -> Governance {
     let Some(computed) = row.get("computed").and_then(object) else {
         // No verdict was published at all. Not open — unjudged.
         return Governance {
+            entry_blocked: false,
             state: GovernanceState::Unknown,
             code: String::new(),
             message_key: "dsr_gov_unavailable".into(),
@@ -967,6 +970,8 @@ fn governance(row: &Map<String, Value>, locally_locked: bool) -> Governance {
         || EDIT_LOCK_CODES.contains(&code.as_str());
     if edit_locked {
         return Governance {
+            entry_blocked: computed.get("write_blocked") == Some(&Value::Bool(true))
+                && code == "TRANSFORMER_FINAL_LOCKED",
             state: GovernanceState::Locked,
             code,
             message_key: "dsr_gov_locked".into(),
@@ -976,6 +981,7 @@ fn governance(row: &Map<String, Value>, locally_locked: bool) -> Governance {
     }
     if computed.get("write_blocked") == Some(&Value::Bool(true)) {
         return Governance {
+            entry_blocked: false,
             state: GovernanceState::Blocked,
             code,
             message_key: "dsr_gov_blocked".into(),
@@ -988,6 +994,7 @@ fn governance(row: &Map<String, Value>, locally_locked: bool) -> Governance {
         // override never reports a lock the server already denies — it is
         // reachable only from Open.
         return Governance {
+            entry_blocked: false,
             state: GovernanceState::Locked,
             code,
             message_key: "dsr_gov_live_edit_lock".into(),
@@ -996,6 +1003,7 @@ fn governance(row: &Map<String, Value>, locally_locked: bool) -> Governance {
         };
     }
     Governance {
+        entry_blocked: false,
         state: GovernanceState::Open,
         code,
         message_key: "dsr_gov_open".into(),
@@ -1565,6 +1573,21 @@ mod tests {
 
     fn request(rows: Value) -> Value {
         json!({"schema": SCHEMA, "server_rows": rows})
+    }
+
+    #[test]
+    fn only_a_final_server_write_lock_blocks_edit_entry() {
+        for (code, blocked, expected) in [
+            ("TRANSFORMER_FINAL_LOCKED", true, true),
+            ("TRANSFORMER_FINAL_LOCKED", false, false),
+            ("TRANSFORMER_EDIT_LOCKED", true, false),
+            ("PROJECT_EXPIRED", true, false),
+            ("", false, false),
+        ] {
+            let row = json!({"computed":{"write_blocked":blocked,"write_block_code":code}});
+            assert_eq!(governance(row.as_object().unwrap(), false).entry_blocked, expected);
+        }
+        assert!(!governance(json!({}).as_object().unwrap(), true).entry_blocked);
     }
 
     #[test]

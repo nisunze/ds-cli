@@ -124,7 +124,11 @@ pub(super) fn evaluate(r: &Value) -> Result<Value, String> {
                 .flatten()
                 .find(|v| !text(v).is_empty());
                 if let Some(id) = id {
-                    found.push(json!({"formSlug":row["form_slug"],"docId":id}));
+                    found.push(if r["projection"] == "rows" {
+                        row.clone()
+                    } else {
+                        json!({"formSlug":row["form_slug"],"docId":id})
+                    });
                 }
             }
             Ok(json!(found))
@@ -177,6 +181,12 @@ pub(super) fn evaluate(r: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn edge_candidate_projection_keeps_only_matching_rows() {
+        let edge = json!({"form_slug":"lines","feature":{"id":"e","geometry":{"type":"LineString"},"properties":{"metadata":{"client_version":2},"connectivity":{"precedent":"n"}}}});
+        let other = json!({"form_slug":"lines","feature":{"id":"other","geometry":{"type":"LineString"},"properties":{"connectivity":{"precedent":"other"}}}});
+        assert_eq!(evaluate(&json!({"mode":"edges","node_id":"n","rows":[edge.clone(),other],"projection":"rows"})).unwrap(),json!([edge]));
+    }
     #[test]
     fn deleted_edges_and_nodes_are_never_cascade_targets() {
         let edge = json!({"form_slug":"lines","feature":{"id":"e","geometry":{"type":"LineString"},"properties":{"connectivity":{"precedent":"n"}}}});

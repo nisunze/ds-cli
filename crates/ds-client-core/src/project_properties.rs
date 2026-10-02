@@ -803,3 +803,9 @@ mod tests {
         assert_eq!(error.project_properties_service_code(), None);
     }
 }
+
+/// Lifecycle facts shared by native project readers and the browser's WASM.
+/// Support contacts are supplied by the project, never installation constants.
+pub fn lifecycle_projection(project: &serde_json::Value, now_ms: i64) -> serde_json::Value {
+    ds_command_kernel::project_lifecycle::project(project, now_ms)
+}

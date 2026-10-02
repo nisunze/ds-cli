@@ -1,6 +1,57 @@
 use super::MAX_SURVEY_FIELDS;
 use serde_json::{json, Map, Value};
 
+/// The evaluator's operator vocabulary, also used by authoring clients.
+#[derive(Clone, Copy, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Operator {
+    Equals,
+    NotEquals,
+    Contains,
+    NotContains,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+    IsTrue,
+    IsFalse,
+    IsEmpty,
+    NotEmpty,
+    InArray,
+    NotInArray,
+}
+impl Operator {
+    const ALL: [Self; 14] = [
+        Self::Equals,
+        Self::NotEquals,
+        Self::Contains,
+        Self::NotContains,
+        Self::Gt,
+        Self::Gte,
+        Self::Lt,
+        Self::Lte,
+        Self::IsTrue,
+        Self::IsFalse,
+        Self::IsEmpty,
+        Self::NotEmpty,
+        Self::InArray,
+        Self::NotInArray,
+    ];
+    fn requires_value(self) -> bool {
+        !matches!(
+            self,
+            Self::IsTrue | Self::IsFalse | Self::IsEmpty | Self::NotEmpty
+        )
+    }
+}
+pub(super) fn operators() -> Value {
+    json!(Operator::ALL.map(|op| {
+        let value = serde_json::to_value(op).unwrap();
+        let label = match op { Operator::Gt => ">", Operator::Gte => ">=", Operator::Lt => "<", Operator::Lte => "<=", _ => "" };
+        json!({"value":value,"requires_value":op.requires_value(),"label":label,"label_key":format!("ff_op_{}",value.as_str().unwrap())})
+    }))
+}
+
 fn string(v: &Value) -> String {
     match v {
         Value::Null => String::new(),
@@ -31,16 +82,19 @@ fn condition(c: &Value, values: &Value) -> bool {
     let raw = &values[&key];
     let actual = string(raw).to_lowercase();
     let target = string(&c["value"]).to_lowercase();
-    match c["operator"]
+    let token = c["operator"]
         .as_str()
         .or(c["op"].as_str())
-        .unwrap_or("equals")
-    {
-        "equals" => actual == target,
-        "not_equals" => actual != target,
-        "contains" => actual.contains(&target),
-        "not_contains" => !actual.contains(&target),
-        "gt" | "gte" | "lt" | "lte" => {
+        .unwrap_or("equals");
+    let Ok(op) = serde_json::from_value::<Operator>(json!(token)) else {
+        return false;
+    };
+    match op {
+        Operator::Equals => actual == target,
+        Operator::NotEquals => actual != target,
+        Operator::Contains => actual.contains(&target),
+        Operator::NotContains => !actual.contains(&target),
+        Operator::Gt | Operator::Gte | Operator::Lt | Operator::Lte => {
             let (Some(a), Some(b)) = (number(raw), number(&c["value"])) else {
                 return false;
             };
@@ -51,11 +105,11 @@ fn condition(c: &Value, values: &Value) -> bool {
                 _ => a <= b,
             }
         }
-        "is_true" => actual == "true",
-        "is_false" => raw.is_null() || actual == "false",
-        "is_empty" => empty(raw),
-        "not_empty" => !empty(raw),
-        op @ ("in_array" | "not_in_array") => {
+        Operator::IsTrue => actual == "true",
+        Operator::IsFalse => raw.is_null() || actual == "false",
+        Operator::IsEmpty => empty(raw),
+        Operator::NotEmpty => !empty(raw),
+        op @ (Operator::InArray | Operator::NotInArray) => {
             let choices = c["values"]
                 .as_array()
                 .map(|a| a.iter().map(string).collect::<Vec<_>>())
@@ -68,13 +122,12 @@ fn condition(c: &Value, values: &Value) -> bool {
                         .collect()
                 });
             let found = choices.iter().any(|s| s.to_lowercase() == actual);
-            if op == "in_array" {
+            if matches!(op, Operator::InArray) {
                 found
             } else {
                 !found
             }
         }
-        _ => false,
     }
 }
 fn combine(items: &[Value], mode: &str, test: impl Fn(&Value) -> bool) -> bool {
@@ -233,4 +286,21 @@ pub(super) fn evaluate(request: &Value) -> Result<Value, String> {
         }
     }
     Ok(json!({"visible_keys":keys,"data":data,"errors":errors}))
+}
+
+#[cfg(test)]
+mod vocabulary_tests {
+    use super::*;
+    #[test]
+    fn exported_vocabulary_is_the_evaluators_enum() {
+        let rows = operators();
+        assert_eq!(rows.as_array().unwrap().len(), 14);
+        for row in rows.as_array().unwrap() {
+            assert!(serde_json::from_value::<Operator>(row["value"].clone()).is_ok());
+        }
+        assert!(condition(
+            &json!({"field":"x","operator":"in_array","values":["a","b"]}),
+            &json!({"x":"a"})
+        ));
+    }
 }

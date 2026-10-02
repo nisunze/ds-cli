@@ -1139,8 +1139,20 @@
       }
     },
     "survey_entries": {
-      "summary": "Governed Survey entry creation with a verified commit receipt.",
+      "summary": "Governed Survey entry mutations with bounded acknowledgements.",
       "operations": {
+        "delete": {
+          "summary": "Soft-delete one exact survey entry with an explicit replay key.",
+          "transport": "json",
+          "action_key": "operation",
+          "actions": ["delete"],
+          "idempotency": "idempotent_with_key",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 65536,
+          "gateway": { "method": "PUT", "path": "/api/v1/entries/mutate", "backend": "ds_brain_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
         "create": {
           "summary": "Create one exact survey entry or replay its stable idempotency key.",
           "transport": "json",

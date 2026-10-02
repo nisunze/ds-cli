@@ -22,9 +22,11 @@ pub use ds_command_kernel::report::archive_groups::{
 
 /// The most transformers one request may name. ds-brain's own compounded and
 /// retirement paths accept no more, so a larger list is refused locally.
-pub const PROJECT_REPORT_MAX_TRANSFORMERS: usize = 500;
+pub const PROJECT_REPORT_MAX_TRANSFORMERS: usize =
+    ds_command_kernel::report::transformers::MAX_TRANSFORMERS;
 /// One transformer reference name never exceeds this many characters.
-pub const PROJECT_REPORT_MAX_TRANSFORMER_CHARS: usize = 200;
+pub const PROJECT_REPORT_MAX_TRANSFORMER_CHARS: usize =
+    ds_command_kernel::report::transformers::MAX_NAME_CHARS;
 /// A retirement reason is bounded operator prose, never a document.
 pub const PROJECT_REPORT_MAX_REASON_CHARS: usize = 512;
 const MAX_TEXT_CHARS: usize = 8_192;
@@ -94,31 +96,8 @@ impl TransformerSet {
     /// order so the request and its exact per-transformer receipt cannot
     /// disagree after the service normalizes a name.
     pub fn new(names: impl IntoIterator<Item = String>) -> Result<Self, ClientError> {
-        let mut out = Vec::new();
-        for name in names {
-            if !bounded(&name, PROJECT_REPORT_MAX_TRANSFORMER_CHARS, false) {
-                return Err(ClientError::new(
-                    ErrorKind::InvalidInput,
-                    "a transformer name is empty, untrimmed, or outside its bound",
-                ));
-            }
-            let canonical = canonical_transformer_reference(&name);
-            if canonical.chars().count() > PROJECT_REPORT_MAX_TRANSFORMER_CHARS {
-                return Err(ClientError::new(
-                    ErrorKind::InvalidInput,
-                    "a canonical transformer name is outside its bound",
-                ));
-            }
-            if !out.contains(&canonical) {
-                out.push(canonical);
-            }
-        }
-        if out.len() > PROJECT_REPORT_MAX_TRANSFORMERS {
-            return Err(ClientError::new(
-                ErrorKind::InvalidInput,
-                "one request names more transformers than the fixed bound",
-            ));
-        }
+        let out = ds_command_kernel::report::transformers::transformer_set(names)
+            .map_err(|message| ClientError::new(ErrorKind::InvalidInput, message))?;
         Ok(Self(out))
     }
 
@@ -138,31 +117,6 @@ impl TransformerSet {
 /// Match ds-brain's `CanonicalTransformerReferenceName`: lowercase ASCII
 /// reference keys, separators/punctuation folded to `_`, no leading digit,
 /// and the legacy aggregate aliases collapsed to one key.
-fn canonical_transformer_reference(value: &str) -> String {
-    let lowered = value.to_lowercase();
-    let mut canonical = String::with_capacity(lowered.len());
-    for ch in lowered.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            canonical.push(ch);
-        } else {
-            canonical.push('_');
-        }
-    }
-    let mut canonical = canonical.trim_matches('_').to_owned();
-    if matches!(
-        canonical.as_str(),
-        "all_transformers" | "combined_transformers" | "combined_transformer"
-    ) {
-        return "combined_transformer".to_owned();
-    }
-    if canonical.is_empty() {
-        canonical.push_str("transformer");
-    }
-    if canonical.as_bytes()[0].is_ascii_digit() {
-        canonical.insert(0, '_');
-    }
-    canonical
-}
 
 /// One compounded report request: an explicit scope (empty = every active
 /// saved transformer), the archive layout, and the force bit.

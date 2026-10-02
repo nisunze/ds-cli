@@ -319,6 +319,8 @@ fn mutate(r: &Value) -> Result<Value, String> {
 }
 pub(super) fn evaluate(r: &Value) -> Result<Value, String> {
     match r["mode"].as_str() {
+        Some("delete_cascade_preview") => super::delete_cascade::preview(r),
+        Some("delete_cascade") => super::delete_cascade::plan(r),
         Some("identity") => identity(&r["payload"]),
         Some("normalize") => normalize(r),
         Some("capture") => capture(r),

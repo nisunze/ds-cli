@@ -1,6 +1,7 @@
 //! Offline survey semantics shared by native hosts and WASM. Hosts own IO only.
 mod access;
 mod bridge;
+mod delete_cascade;
 mod draft;
 mod entry;
 mod factory;
@@ -31,6 +32,8 @@ pub fn survey_evaluate(bytes: &[u8]) -> Result<Value, String> {
         return Err("Survey request exceeds 1 MiB".into());
     }
     match request["operation"].as_str() {
+        Some("operators") => Ok(fields::operators()),
+        Some("readiness") => Ok(entry::readiness(&request["schema"])),
         Some("fill") => fill::evaluate(&request),
         Some("factory") => factory::evaluate(&request),
         Some("bridge") => bridge::evaluate(&request),

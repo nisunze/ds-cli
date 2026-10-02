@@ -791,6 +791,36 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     /// Create one Survey entry through the governed, atomically idempotent
     /// backend authority. The selected project is injected separately and is
     /// verified again against the exact 201 receipt.
+    /// Replay a fully validated local plan under one captured native principal.
+    pub fn survey_delete(
+        &mut self,
+        project: &str,
+        request: &crate::SurveyDeleteRequest,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        if request.project() != project {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "Survey delete project mismatch",
+            ));
+        }
+        crate::authorized::validate_survey_entry_create(project)?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::survey_delete::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            request,
+        )
+    }
+
     pub fn survey_entry_create(
         &mut self,
         project_id: &str,

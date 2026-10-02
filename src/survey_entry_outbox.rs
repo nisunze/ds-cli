@@ -102,6 +102,17 @@ pub struct Request {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Event {
+    AdmitBatch {
+        current_uid: String,
+        headers: Vec<Header>,
+    },
+    Summary {
+        current_uid: Option<String>,
+        project_id: Option<String>,
+        online: bool,
+        #[serde(default)]
+        blobs: BlobCounts,
+    },
     Admit {
         current_uid: String,
         header: Header,
@@ -216,6 +227,87 @@ pub struct Reply {
     pub schema: &'static str,
     pub actions: Vec<Action>,
     pub eligible_again: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<Summary>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Counts {
+    pub pending: u64,
+    pub syncing: u64,
+    pub failed: u64,
+    pub conflict: u64,
+}
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlobCounts {
+    pub pending: u64,
+    pub uploading: u64,
+    pub failed: u64,
+}
+#[derive(Debug, Serialize)]
+pub struct Summary {
+    pub state: &'static str,
+    pub scoped: Counts,
+    pub other: Counts,
+}
+fn add(counts: &mut Counts, status: &Status) {
+    match status {
+        Status::Pending => counts.pending += 1,
+        Status::Syncing => counts.syncing += 1,
+        Status::Failed => counts.failed += 1,
+        Status::Conflict => counts.conflict += 1,
+        Status::Synced => {}
+    }
+}
+fn summary(
+    headers: &[serde_json::Value],
+    uid: Option<&str>,
+    project: Option<&str>,
+    online: bool,
+    blobs: &BlobCounts,
+) -> Summary {
+    let mut scoped = Counts::default();
+    let mut other = Counts::default();
+    for header in headers {
+        if uid.is_none() || header["owner_uid"].as_str() != uid {
+            continue;
+        }
+        let Ok(status) = serde_json::from_value::<Status>(header["status"].clone()) else {
+            continue;
+        };
+        add(
+            if header["project_id"].as_str() == project {
+                &mut scoped
+            } else {
+                &mut other
+            },
+            &status,
+        );
+    }
+    let state = if scoped.conflict > 0 {
+        "conflict"
+    } else if scoped.failed > 0 || blobs.failed > 0 {
+        "failed"
+    } else if scoped.syncing > 0 || blobs.uploading > 0 {
+        "syncing"
+    } else if scoped.pending > 0 || blobs.pending > 0 {
+        if online {
+            "pending"
+        } else {
+            "offline"
+        }
+    } else if online {
+        "synced"
+    } else {
+        "offline"
+    };
+    Summary {
+        state,
+        scoped,
+        other,
+    }
 }
 
 fn valid_text(v: &str, max: usize) -> bool {
@@ -288,6 +380,27 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     {
         return Err("Unsupported or oversized Survey entry outbox command.".into());
     }
+    if let Event::Summary {
+        current_uid,
+        project_id,
+        online,
+        blobs,
+    } = &req.event
+    {
+        return serde_json::to_string(&Reply {
+            schema: SCHEMA,
+            actions: vec![],
+            eligible_again: false,
+            summary: Some(summary(
+                &req.headers,
+                current_uid.as_deref(),
+                project_id.as_deref(),
+                *online,
+                blobs,
+            )),
+        })
+        .map_err(|e| e.to_string());
+    }
     let mut headers = Vec::new();
     let mut actions = Vec::new();
     let mut malformed_predecessors = std::collections::BTreeSet::new();
@@ -333,7 +446,42 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
     }
     let mut eligible = false;
+
     match req.event {
+        Event::Summary { .. } => unreachable!("summary returned before replay"),
+        Event::AdmitBatch {
+            current_uid,
+            headers: batch,
+        } => {
+            if batch.is_empty() || batch.len() > 500 || !valid_text(&current_uid, 512) {
+                return Err("Survey batch admission exceeds its bound".into());
+            }
+            let project = &batch[0].project_id;
+            let mut ids = std::collections::BTreeSet::new();
+            for header in &batch {
+                if !valid(header)
+                    || !owned(header, &current_uid)
+                    || &header.project_id != project
+                    || !ids.insert(&header.id)
+                {
+                    return Err(
+                        "Survey batch admission has an invalid or duplicate identity".into(),
+                    );
+                }
+            }
+            for mut header in batch {
+                header.status = Status::Pending;
+                header.attempts = 0;
+                header.lease = 0;
+                header.next_attempt_at = 0;
+                header.conflict_rebased = false;
+                header.error = None;
+                header.failure_code = None;
+                header.subeffect_phase = None;
+                header.legacy_confirmed = false;
+                actions.push(Action::Admitted { header });
+            }
+        }
         Event::Admit {
             current_uid,
             mut header,
@@ -368,6 +516,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 });
                 return serde_json::to_string(&Reply {
                     schema: SCHEMA,
+                    summary: None,
                     actions,
                     eligible_again: false,
                 })
@@ -723,6 +872,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     }
     serde_json::to_string(&Reply {
         schema: SCHEMA,
+        summary: None,
         actions,
         eligible_again: eligible,
     })
@@ -883,5 +1033,62 @@ mod tests {
             json!({"kind":"result","current_uid":"u","id":"a","generation":"11111111-1111-1111-1111-111111111111","lease":0,"outcome":{"kind":"success"}}),
         );
         assert!(r["actions"].as_array().unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod summary_tests {
+    use super::*;
+    #[test]
+    fn blob_priority_and_offline_states_share_the_entry_summary() {
+        assert_eq!(
+            summary(&[], None, None, false, &BlobCounts::default()).state,
+            "offline"
+        );
+        assert_eq!(
+            summary(
+                &[],
+                None,
+                None,
+                true,
+                &BlobCounts {
+                    pending: 1,
+                    uploading: 0,
+                    failed: 0
+                }
+            )
+            .state,
+            "pending"
+        );
+        assert_eq!(
+            summary(
+                &[],
+                None,
+                None,
+                true,
+                &BlobCounts {
+                    pending: 1,
+                    uploading: 1,
+                    failed: 0
+                }
+            )
+            .state,
+            "syncing"
+        );
+        assert_eq!(
+            summary(
+                &[],
+                None,
+                None,
+                false,
+                &BlobCounts {
+                    pending: 1,
+                    uploading: 1,
+                    failed: 1
+                }
+            )
+            .state,
+            "failed"
+        );
     }
 }
