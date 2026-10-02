@@ -32,7 +32,7 @@ default, `canary` where the box is linked on canary).
 Until 2026-09-20 eight of these nine commands relayed through the paired
 desktop (`requires: window`). That path is retired: `--desktop-descriptor`
 is no longer an input, and a caller that still passes it is told
-`requires_window_retired`.
+`unknown_flag`.
 
 ## The shape of a session
 
@@ -312,7 +312,7 @@ what a person may set is a waiver, with a reason, and it is not withdrawn.
 | `work_revision_conflict` | the plan moved; re-read and decide again |
 | `task_not_found` / `record_not_found` | no such id in the named project |
 | `invalid_choice` | a state, priority, type, placement or scheduling value outside the vocabulary `ds pm plan` publishes |
-| `requires_window_retired` | `--desktop-descriptor` was passed; drop it |
+| `unknown_flag` | `--desktop-descriptor` was passed; drop it |
 | `nothing_to_update` | an update with no change flag — refused before a round trip |
 | `invalid_assignment` | `--request`, `--owner` and `--withdraw` are three different intents |
 | `invalid_date` | a schedule flag that is not `YYYY-MM-DD` |

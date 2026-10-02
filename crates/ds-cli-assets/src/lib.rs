@@ -54,7 +54,7 @@
 //! refused by name (`origin_read_unavailable`) — a projected row is read from
 //! the surface that owns it. **A window path.** `--desktop-descriptor` is not
 //! an input of any `ds assets` command; a caller that still passes it is told
-//! `requires_window_retired` by the parser.
+//! `unknown_flag` by the parser.
 
 pub mod attach;
 pub mod backup;

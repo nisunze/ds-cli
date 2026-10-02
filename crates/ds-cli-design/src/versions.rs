@@ -12,23 +12,19 @@ pub const PROJECT: Arg = Arg::value(
     "Explicit project authorized for this request; saved selection is unused.",
 )
 .required();
-const TRANSFORMER: Arg = Arg::value(
-    "transformer",
-    "<name>",
-    "Compatibility spelling for one LV object; use either this or --object.",
-);
 const KIND: Arg = Arg::value(
     "kind",
     "<kind>",
     "Governed object kind; MV versions pin immutable content revisions.",
 )
 .choices(&["lv_transformer", "mv_model"])
-.default("lv_transformer");
+.required();
 const OBJECT: Arg = Arg::value(
     "object",
     "<id>",
     "Exact LV transformer or MV project model identity.",
-);
+)
+.required();
 const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "design_version_refused",
@@ -37,8 +33,8 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "invalid_input",
-        when: "Object spelling is ambiguous or a local request is invalid",
-        remedy: "Pass --project and either --transformer or --kind with --object; never combine the two object spellings.",
+        when: "A local request is invalid",
+        remedy: "Pass --project, --kind and the exact --object identity.",
     },
 ];
 const fn command(
@@ -51,7 +47,7 @@ const fn command(
     Command {
         id,
         path,
-        contract: 2,
+        contract: 3,
         summary,
         purpose: "Use one explicit project and captured identity without Desktop or active-project state. ds-brain alone assigns vN ordinals. An MV vN marks a milestone such as a submission; show names the content revision its attachments bind to. LV comparison uses exact snapshots; MV comparison reports pinned content-revision metadata without claiming geometry comparison. Local browser rooms are not published history. Restore is LV-only.",
         chapter: Chapter::Design,
@@ -72,26 +68,14 @@ pub static LIST: Command = command(
     "design.version.list",
     &["design", "version", "list"],
     "List governed LV or MV versions and their pinned source.",
-    &[
-        PROJECT,
-        KIND,
-        OBJECT,
-        TRANSFORMER,
-        crate::transformer::LANE_ARG,
-    ],
+    &[PROJECT, KIND, OBJECT, crate::transformer::LANE_ARG],
     Effect::ReadOnly,
 );
 pub static STATUS: Command = command(
     "design.version.status",
     &["design", "version", "status"],
     "Read the exact saved LV or MV version head.",
-    &[
-        PROJECT,
-        KIND,
-        OBJECT,
-        TRANSFORMER,
-        crate::transformer::LANE_ARG,
-    ],
+    &[PROJECT, KIND, OBJECT, crate::transformer::LANE_ARG],
     Effect::ReadOnly,
 );
 pub static COMPARE: Command = command(
@@ -102,7 +86,6 @@ pub static COMPARE: Command = command(
         PROJECT,
         KIND,
         OBJECT,
-        TRANSFORMER,
         Arg::value("from", "<vN>", "Exact assigned version on the left.").required(),
         Arg::value(
             "to",
@@ -122,7 +105,6 @@ pub static SHOW: Command = command(
         PROJECT,
         KIND,
         OBJECT,
-        TRANSFORMER,
         Arg::value("version", "<vN>", "Exact assigned version.").required(),
         crate::transformer::LANE_ARG,
     ],
@@ -136,7 +118,6 @@ pub static BEGIN: Command = command(
         PROJECT,
         KIND,
         OBJECT,
-        TRANSFORMER,
         Arg::value(
             "reason",
             "<text>",
@@ -199,7 +180,6 @@ pub static RESTORE: Command = command(
         PROJECT,
         KIND,
         OBJECT,
-        TRANSFORMER,
         Arg::value("version", "<vN>", "Exact assigned LV version to restore.").required(),
         Arg::value("reason", "<text>", "Why this version is being restored.").required(),
         Arg::value(
@@ -213,17 +193,7 @@ pub static RESTORE: Command = command(
     Effect::GlobalWrite,
 );
 fn object(i: &Inputs) -> Result<String, Failure> {
-    match (i.value("object"), i.value("transformer")) {
-        (Some(object), None) => Ok(object.into()),
-        (None, Some(transformer)) if i.require("kind")? == "lv_transformer" => {
-            Ok(transformer.into())
-        }
-        _ => Err(Failure::invalid(
-            "invalid_input",
-            "Choose either --kind/--object or the LV --transformer compatibility spelling",
-        )
-        .remedy("Pass exactly one object spelling and an explicit --project")),
-    }
+    Ok(i.require("object")?.into())
 }
 fn ask(i: &Inputs, request: Request) -> Result<Value, Failure> {
     let request = Request::Object {

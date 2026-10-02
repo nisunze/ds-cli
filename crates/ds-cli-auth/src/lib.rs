@@ -4767,7 +4767,7 @@ fn map_service_refusal(
                 "service_message": refusal.message(),
             }))
             .remedy("list published versions and choose one exact version_id that exists")
-            .next("ds design version list --transformer <name> --output json"),
+            .next("ds design version list --project <project-id> --kind lv_transformer --object <name> --output json"),
         Some("print_layout_invalid") => Failure::invalid("print_layout_invalid", message)
             .remedy(
                 "correct the layout against ds report layout schema; if the refused field is \

@@ -575,9 +575,8 @@ fn seed_commands_require_explicit_project_and_refuse_retired_desktop_input() {
             "json",
         ]);
         let (reply, code) = ds(&command);
-        // The retired window path is refused by its own name on every
-        // Server command, not as a typo of a flag the command never had.
-        assert_eq!(reply["error"]["code"], "requires_window_retired");
+        // Undeclared inputs are rejected before authentication.
+        assert_eq!(reply["error"]["code"], "unknown_flag");
         assert_eq!(code, 2);
     }
 }

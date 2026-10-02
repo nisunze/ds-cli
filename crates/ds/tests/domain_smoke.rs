@@ -6766,7 +6766,7 @@ fn design_version_status_uses_an_explicit_project_without_desktop_context() {
             .iter()
             .map(|input| input["name"].as_str().unwrap())
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["project", "kind", "object", "transformer", "lane"])
+        BTreeSet::from(["project", "kind", "object", "lane"])
     );
     assert_eq!(
         native_refusal(&[
@@ -6784,7 +6784,7 @@ fn design_version_status_uses_an_explicit_project_without_desktop_context() {
             "--output",
             "json"
         ]),
-        "invalid_input"
+        "unknown_flag"
     );
 }
 
@@ -6812,7 +6812,6 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
             "idempotency-key",
             "lane",
             "reason",
-            "transformer",
             "project",
             "kind",
             "object",
@@ -6827,7 +6826,9 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
         "begin",
         "--project",
         "p-1",
-        "--transformer",
+        "--kind",
+        "lv_transformer",
+        "--object",
         "tx_a",
         "--reason",
         "Issued for construction",
@@ -6846,7 +6847,9 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
             "design",
             "version",
             "begin",
-            "--transformer",
+            "--kind",
+            "lv_transformer",
+            "--object",
             "tx_a",
             "--reason",
             "Issued for construction",
@@ -6884,7 +6887,6 @@ fn design_version_restore_is_a_confirmed_headless_project_write() {
             "idempotency-key",
             "lane",
             "reason",
-            "transformer",
             "version",
             "project",
             "kind",
@@ -6897,7 +6899,9 @@ fn design_version_restore_is_a_confirmed_headless_project_write() {
         "restore",
         "--project",
         "p-1",
-        "--transformer",
+        "--kind",
+        "lv_transformer",
+        "--object",
         "tx_a",
         "--version",
         "v1",
@@ -10382,8 +10386,8 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         ]);
         assert_eq!(
             native_refusal(&argv),
-            "requires_window_retired",
-            "`ds {}` must refuse the retired window path by name",
+            "unknown_flag",
+            "`ds {}` must refuse undeclared inputs before authentication",
             args.join(" ")
         );
     }
@@ -11664,8 +11668,7 @@ fn a_well_formed_pm_call_ends_at_the_native_credential_and_never_at_a_window() {
             args.join(" ")
         );
     }
-    // A caller who learned the window path from an older release is told it
-    // is retired, by name — before any credential is consulted.
+    // Undeclared flags fail before any credential is consulted.
     for args in &calls {
         let mut argv = args.clone();
         argv.extend([
@@ -11676,8 +11679,8 @@ fn a_well_formed_pm_call_ends_at_the_native_credential_and_never_at_a_window() {
         ]);
         assert_eq!(
             native_pm_refusal(&argv),
-            "requires_window_retired",
-            "`ds {}` must refuse the retired window path by name",
+            "unknown_flag",
+            "`ds {}` must refuse undeclared inputs before authentication",
             args.join(" ")
         );
     }
@@ -12442,8 +12445,7 @@ fn a_well_formed_assets_call_ends_at_the_native_credential_and_never_at_a_window
             args.join(" ")
         );
     }
-    // A caller who learned the window path from an older release is told it
-    // is retired, by name — before any credential is consulted.
+    // Undeclared flags fail before any credential is consulted.
     for args in &calls {
         let mut argv = args.clone();
         argv.extend(["--project", "test_project"]);
@@ -12455,8 +12457,8 @@ fn a_well_formed_assets_call_ends_at_the_native_credential_and_never_at_a_window
         ]);
         assert_eq!(
             native_refusal(&argv),
-            "requires_window_retired",
-            "`ds {}` must refuse the retired window path by name",
+            "unknown_flag",
+            "`ds {}` must refuse undeclared inputs before authentication",
             args.join(" ")
         );
     }
