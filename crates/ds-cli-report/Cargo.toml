@@ -13,6 +13,8 @@ publish.workspace = true
 # client; the local reporter engine commands need no credential at all.
 ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
+# Native selection of held plan/profile publication geometry.
+ds-grid-engine = { workspace = true }
 ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
@@ -50,3 +52,6 @@ tempfile = "3"
 ds-cli-workstation = { path = "../ds-cli-workstation" }
 # Verify the reporter PDF page receipt using the reporter's parser/version.
 lopdf = { version = "0.45", default-features = false }
+
+[dev-dependencies]
+ds-grid-exchange = { workspace = true }

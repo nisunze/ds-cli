@@ -3258,3 +3258,28 @@ fn member_form_grants_project_survey_mcp_matches_cli_confirmation() {
         )
     );
 }
+
+#[test]
+fn mcp_grid_describe_preserves_inline_authoring_schemas() {
+    let ids = [
+        "create_route_node",
+        "create_structure",
+        "author_terrain_source",
+        "create_tension_section_set_path",
+    ];
+    let requests: Vec<Value> = ids.iter().enumerate().map(|(index, id)| json!({
+        "jsonrpc":"2.0", "id":index + 1, "method":"tools/call", "params":{
+            "name":ds_cli_mcp::surface::chapter_tool_name(Chapter::GridModel),
+            "arguments":{"operation":"invoke","command":"dsgrid.describe","arguments":{"kind":"commands","id":id}}
+        }
+    })).collect();
+    let (responses, _) = mcp(&["--exposure", "chapters"], &requests);
+    for (index, id) in ids.iter().enumerate() {
+        let result = &response(&responses, (index + 1) as i64)["result"];
+        let direct = cli(&[
+            "dsgrid", "describe", "--kind", "commands", "--id", id, "--output", "json",
+        ]);
+        assert_eq!(result["structuredContent"], direct);
+        assert!(result.to_string().len() < ds_cli_mcp::surface::MAX_RESULT_BYTES);
+    }
+}
