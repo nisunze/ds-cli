@@ -438,7 +438,7 @@ fn qualify_failure(folders: &[&str]) -> Option<Value> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use super::*;
     use crate::desktop::bundle;
@@ -459,7 +459,7 @@ mod tests {
                 );
             }
         }
-        let watcher = bundle::text("pls-dialog-watch.ps1").unwrap();
+        let watcher = bundle::pls_cadd_text("pls-dialog-watch.ps1").unwrap();
         for (outcome, _) in OUTCOMES {
             assert!(
                 watcher.contains(&format!("'{outcome}'")),

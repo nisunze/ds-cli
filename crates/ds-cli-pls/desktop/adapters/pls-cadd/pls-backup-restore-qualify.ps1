@@ -320,8 +320,13 @@ function Set-CommonFileDialogPath {
         throw "Common-file dialog must expose exactly one enabled filename Edit with id $($profile.Controls.CommonFileName); found $($edits.Count)"
     }
     $editHandle = [IntPtr] ([long] $edits[0].handle)
-    [DsGridBackupRestoreNative]::SendMessage($editHandle, 0x000C,
-        [IntPtr]::Zero, $Path) | Out-Null
+    # The modern (IFileDialog) picker ignores WM_SETTEXT on its filename Edit: the readback matches but PLS
+    # writes the default name (host Magese 2026-09-26: Backup went to r1\nyamagabe.bak). Select all and type
+    # the path as WM_CHAR, which goes through the control's own change notifications (works for classic too).
+    [DsGridBackupRestoreNative]::SendMessage($editHandle, 0x00B1, [IntPtr] 0, [IntPtr] (-1)) | Out-Null
+    foreach ($ch in [int[]][char[]]$Path) {
+        [DsGridBackupRestoreNative]::SendMessage($editHandle, 0x0102, [IntPtr] $ch, [IntPtr] 1) | Out-Null
+    }
     Start-Sleep -Milliseconds 250
     $value = New-Object System.Text.StringBuilder 32768
     [DsGridBackupRestoreNative]::SendMessage($editHandle, 0x000D,
@@ -372,7 +377,37 @@ function Select-FreshRestoreDirectory {
     $currentThread = [DsGridBackupRestoreNative]::GetCurrentThreadId()
     $expectedAddress = "Address: $Directory"
     $observed = @()
+    # Focus-free first: type into the address bar's own Edit (id 41477) as WM_CHAR and send it Enter. SendKeys
+    # below needs the foreground, which Windows refuses while another app (e.g. the operator's editor) holds it
+    # (host Magese 2026-09-26: three attempts lost their keys). The address toolbar check proves either route.
+    $addrEdit = @((Get-DialogChildren $Dialog.handle) | Where-Object { $_.id -eq 41477 -and $_.class -ceq 'Edit' }) | Select-Object -First 1
+    if ($addrEdit) {
+        $ae = [IntPtr] ([long] $addrEdit.handle)
+        [DsGridBackupRestoreNative]::SendMessage($ae, 0x00B1, [IntPtr] 0, [IntPtr] (-1)) | Out-Null
+        foreach ($ch in [int[]][char[]]$Directory) {
+            [DsGridBackupRestoreNative]::SendMessage($ae, 0x0102, [IntPtr] $ch, [IntPtr] 1) | Out-Null
+        }
+        [DsGridBackupRestoreNative]::SendMessage($ae, 0x0100, [IntPtr] 0x0D, [IntPtr] 0x001C0001) | Out-Null   # WM_KEYDOWN Enter
+        [DsGridBackupRestoreNative]::SendMessage($ae, 0x0102, [IntPtr] 0x0D, [IntPtr] 0x001C0001) | Out-Null   # WM_CHAR CR
+        $until = [DateTime]::UtcNow.AddSeconds(10)
+        do {
+            Start-Sleep -Milliseconds 250
+            $observed = @((Get-DialogChildren $Dialog.handle) | Where-Object {
+                $_.id -eq 1001 -and $_.class -ceq 'ToolbarWindow32' -and $_.visible -and
+                ([string] $_.title).Equals($expectedAddress, [System.StringComparison]::OrdinalIgnoreCase) })
+        } while ($observed.Count -ne 1 -and [DateTime]::UtcNow -lt $until)
+        Write-Journal 'restore_directory_focus_free' ([ordered]@{ path = $Directory; navigated = ($observed.Count -eq 1) })
+    }
     for ($attempt = 1; $attempt -le 3 -and $observed.Count -ne 1; $attempt++) {
+        # The picker opens in PLS's last-used folder; on the Drive mount a folder of large report files takes
+        # seconds to load and keys sent before its address toolbar exists are lost ('found []', host Magese
+        # 2026-09-26). Wait for a visible 'Address: ' toolbar before typing.
+        $ready = [DateTime]::UtcNow.AddSeconds(20)
+        while ([DateTime]::UtcNow -lt $ready -and -not @((Get-DialogChildren $Dialog.handle) | Where-Object {
+                    $_.id -eq 1001 -and $_.class -ceq 'ToolbarWindow32' -and $_.visible -and ([string] $_.title) -like 'Address: *' })) {
+            Start-Sleep -Milliseconds 250
+        }
+        Start-Sleep -Milliseconds 500
         $foregroundPid = [uint32] 0
         $foregroundThread = [DsGridBackupRestoreNative]::GetWindowThreadProcessId(
             [DsGridBackupRestoreNative]::GetForegroundWindow(), [ref] $foregroundPid)
@@ -417,6 +452,10 @@ function Select-FreshRestoreDirectory {
             $notFound = @(Get-ProcessWindows ([int] $targetPid) | Where-Object { $_.title -ceq 'File Explorer' }) | Select-Object -First 1
         } while ($observed.Count -ne 1 -and -not $notFound -and
             [DateTime]::UtcNow -lt $deadline)
+        if ($observed.Count -ne 1 -and -not $notFound) {
+            # keys lost: the next attempt's Ctrl+L reselects the whole address (never Esc: it cancels the picker)
+            Write-Journal 'restore_directory_navigation_retry' ([ordered]@{ path = $Directory; attempt = $attempt })
+        }
         if ($notFound -and $observed.Count -ne 1) {
             Write-Journal 'restore_directory_shell_not_found' ([ordered]@{ path = $Directory; attempt = $attempt })
             $box = [IntPtr] ([long] $notFound.handle)

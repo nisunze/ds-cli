@@ -10,6 +10,8 @@ if ($PSVersionTable.PSVersion -lt [version] '7.2') {
 }
 $repo = Split-Path -Parent $PSScriptRoot
 $desktop = Join-Path $repo 'crates/ds-cli-pls/desktop'
+$plsCadd = Join-Path $desktop 'adapters/pls-cadd'
+$word = Join-Path $desktop 'adapters/word'
 $bundle = Join-Path $repo 'crates/ds-cli-pls/src/desktop/bundle.rs'
 $analyzer = Import-Module -Name $AnalyzerManifest -PassThru -ErrorAction Stop
 if ($analyzer.Name -ne 'PSScriptAnalyzer' -or $analyzer.Version -ne [version] '1.24.0') {
@@ -65,19 +67,27 @@ $disk = @(Get-ChildItem -LiteralPath $desktop -File -Recurse | ForEach-Object {
 $difference = @(Compare-Object ($paths | Sort-Object) ($disk | Sort-Object) -CaseSensitive)
 Assert-That ($difference.Count -eq 0) 'The bundle.rs declaration and desktop files differ.'
 $cases.Add('exact_bundle_file_set')
+# Every file is product code in one third-party area: adapters/<third party>/ or lab/.
+$areas = @('adapters/pls-cadd/', 'adapters/word/', 'lab/')
 $fileEvidence = @()
+$powershellCount = 0
 foreach ($entry in $declared) {
     $relative = $entry.Groups['path'].Value
-    Assert-That ($relative -match '^[a-z0-9/-]+\.(ps1|psm1|psd1)$' -and $relative -notmatch '\.\.') "Unsafe or unexpected bundle path: $relative"
+    Assert-That ($relative -match '^[A-Za-z0-9./-]+\.(ps1|psm1|psd1|py|tsv|md)$' -and $relative -notmatch '\.\.') "Unsafe or unexpected bundle path: $relative"
+    Assert-That ($relative -ceq 'adapters/README.md' -or @($areas | Where-Object { $relative.StartsWith($_, [System.StringComparison]::Ordinal) }).Count -eq 1) "Bundle path outside the adapter and lab areas: $relative"
     $path = Join-Path $desktop $relative
     $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     Assert-That ($actual -ceq $entry.Groups['sha'].Value) "Bundle pin differs for $relative"
-    Read-TestAst $path | Out-Null
-    $findings = @(Invoke-ScriptAnalyzer -Path $path -Settings $settings -IncludeRule PSUseCompatibleSyntax)
-    Assert-That ($findings.Count -eq 0) "PowerShell 5.1 syntax incompatibility in ${relative}: $($findings | Out-String)"
+    if ($relative -match '\.(ps1|psm1|psd1)$') {
+        Read-TestAst $path | Out-Null
+        $findings = @(Invoke-ScriptAnalyzer -Path $path -Settings $settings -IncludeRule PSUseCompatibleSyntax)
+        Assert-That ($findings.Count -eq 0) "PowerShell 5.1 syntax incompatibility in ${relative}: $($findings | Out-String)"
+        $powershellCount++
+    }
     $fileEvidence += [ordered]@{ path = $relative; sha256 = $actual }
 }
-$cases.Add('all_bundle_files_parse_and_target_5_1')
+$cases.Add('all_bundle_files_pinned_inside_their_areas')
+$cases.Add('all_powershell_files_parse_and_target_5_1')
 
 $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ('ds-pls-powershell-' + [guid]::NewGuid().ToString('N'))
 [System.IO.Directory]::CreateDirectory($scratch) | Out-Null
@@ -98,8 +108,8 @@ try {
     Assert-That ($newFindings.Count -ge 2) 'The explicit 5.1 syntax rule failed to reject PS7-only syntax.'
     $cases.Add('ps7_syntax_rejected_for_5_1')
 
-    . (Import-TestFunction (Join-Path $desktop 'ds-desktop-lib.ps1') 'Read-DsScriptAst')
-    . (Import-TestFunction (Join-Path $desktop 'interim/pls-interim-loader.ps1') 'Get-AstFunctions')
+    . (Import-TestFunction (Join-Path $plsCadd 'ds-desktop-lib.ps1') 'Read-DsScriptAst')
+    . (Import-TestFunction (Join-Path $plsCadd 'interim/pls-interim-loader.ps1') 'Get-AstFunctions')
     $rejectedAst = [System.Collections.Generic.List[object]]::new()
     $rejectedFunctions = [System.Collections.Generic.List[object]]::new()
     Assert-Refuses { Read-DsScriptAst $bad | ForEach-Object { $rejectedAst.Add($_) } } 'PowerShell parse error' 'delivery_loader_rejects_malformed_helper'
@@ -115,7 +125,7 @@ try {
     Assert-That (-not (Test-Path -LiteralPath $marker)) 'Parsing a helper executed its top-level code.'
     $cases.Add('loaders_preserve_valid_ast_without_execution')
 
-    $libPath = Join-Path $desktop 'ds-desktop-lib.ps1'
+    $libPath = Join-Path $plsCadd 'ds-desktop-lib.ps1'
     $libAst = Read-TestAst $libPath
     $reportLists = @($libAst.FindAll({ param($node)
         $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
@@ -136,7 +146,7 @@ try {
     Assert-That ($supplementedReports.Count -eq 6 -and @($supplementedReports | Where-Object { $_.id -eq 40020 }).Count -eq 1) 'Supplementary wind/weight spans require the explicit option.'
     $cases.Add('canonical_five_reports_exact_native_ids_and_optional_supplement')
 
-    . (Import-TestFunction (Join-Path $desktop 'pls-rtf-to-pdf.ps1') 'Set-PlsReportPaper')
+    . (Import-TestFunction (Join-Path $word 'pls-rtf-to-pdf.ps1') 'Set-PlsReportPaper')
     foreach ($paper in 'A4', 'A3') {
         $sections = @(1, 2 | ForEach-Object { [pscustomobject]@{ PageSetup = [pscustomobject]@{ Orientation = 0; PageWidth = 1; PageHeight = 2 } } })
         Set-PlsReportPaper $sections $paper
@@ -147,7 +157,7 @@ try {
     $cases.Add('a4_default_and_explicit_a3_all_sections')
     Assert-Refuses { Set-PlsReportPaper @() 'A2' } 'ValidateSet|validation' 'unsupported_report_paper_negative'
 
-    Import-Module (Join-Path $desktop 'pls-window-classification.psm1') -Force -DisableNameChecking
+    Import-Module (Join-Path $plsCadd 'pls-window-classification.psm1') -Force -DisableNameChecking
     $handle = [long] 8589934593
     $frame = "$handle vis=True en=True [PLS-CADD] 'same title'"
     $modal = "27 vis=True en=True [Dialog] 'same title'"
@@ -179,6 +189,7 @@ try {
     analyzer_manifest_sha256 = (Get-FileHash -LiteralPath $AnalyzerManifest -Algorithm SHA256).Hash.ToLowerInvariant()
     target_syntax = '5.1'
     bundle_count = $fileEvidence.Count
+    powershell_count = $powershellCount
     ps7_negative_findings = $newFindings.Count
     bundle_files = $fileEvidence
     case_count = $cases.Count

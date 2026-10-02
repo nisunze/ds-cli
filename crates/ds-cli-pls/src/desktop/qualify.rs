@@ -183,7 +183,7 @@ pub fn render(data: &Value) -> String {
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use super::*;
     use crate::desktop::run::tests::declared_parameters;
@@ -223,7 +223,8 @@ mod tests {
     /// written from the script, so this is the check that it still is.
     #[test]
     fn every_manifest_key_read_is_written_by_the_qualifier() {
-        let qualifier = crate::desktop::bundle::text("pls-backup-restore-qualify.ps1").unwrap();
+        let qualifier =
+            crate::desktop::bundle::pls_cadd_text("pls-backup-restore-qualify.ps1").unwrap();
         for key in [
             "schema = 'ds.pls.backup_restore_qualification.v1'",
             "status = 'qualified_backup_roundtrip_local_only'",

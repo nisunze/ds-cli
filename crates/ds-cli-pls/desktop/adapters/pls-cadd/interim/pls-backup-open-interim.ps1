@@ -2,7 +2,10 @@ param(
     [Parameter(Mandatory = $true)][int] $ProcessId,
     [Parameter(Mandatory = $true)][long] $MainWindowHandle,
     [Parameter(Mandatory = $true)][string] $OutputPath,
-    [Parameter(Mandatory = $true)][string] $EvidenceDirectory
+    [Parameter(Mandatory = $true)][string] $EvidenceDirectory,
+    # PLS File > Backup also frames files the structures reference outside the project folder (PLS-POLE .POL/.lic
+    # models and components of Method 2 files, 2026-09-29): name the common root that holds them all
+    [string] $SourceRoot
 )
 # INTERIM (2026-09-24) - File > Backup (33347) of the project that is OPEN in a running
 # PLS-CADD, with the characterized qualify-driver Invoke-PlsBackup (Backup picker ->
@@ -53,7 +56,7 @@ while ([DateTime]::UtcNow -lt $deadline) {
 if ($late -eq 'not_seen') { Write-Journal 'backup_completion_prompt_not_seen' ([ordered]@{ waited_seconds = 60 }) }
 $run.completion_prompt_after_return = $late
 $digest = Get-PlsFileSha256 $out
-$inventory = Get-PlsNativeBackupInventory $out $null $null
+$inventory = Get-PlsNativeBackupInventory $out $null $(if ($SourceRoot) { $SourceRoot } else { $null })
 Write-PlsJsonCreateNew (Join-Path $EvidenceDirectory 'backup-inventory.json') $inventory
 $result = [ordered]@{
     schema = 'ds.pls.interim_backup.v1'

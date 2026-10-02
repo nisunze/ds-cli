@@ -3799,7 +3799,7 @@ fn pls_terrain_reconcile_then_deviation_labels_is_dry_run_first_and_code_only() 
 fn pls_desktop_dialogs_reads_the_catalogue_the_drivers_decide_by() {
     let all = ok(&["pls", "desktop", "dialogs", "--output", "json"]);
     assert_eq!(all["version"], "2026-09-30");
-    assert_eq!(all["count"], 58);
+    assert_eq!(all["count"], 65);
     assert!(
         all["rule"]
             .as_str()

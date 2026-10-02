@@ -16,7 +16,7 @@ use serde_json::{Map, Value, json};
 
 use super::bundle;
 
-pub const CATALOG_PATH: &str = "pls-dialog-catalog.psd1";
+pub const CATALOG_PATH: &str = "adapters/pls-cadd/pls-dialog-catalog.psd1";
 
 /// Every decision the watcher's `switch ($entry.Action)` implements.
 pub const ACTIONS: &[&str] = &[
@@ -334,7 +334,7 @@ impl Reader {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use std::collections::BTreeSet;
 
@@ -345,8 +345,11 @@ mod tests {
         let catalog = embedded().expect("the catalogue parses");
         assert_eq!(catalog.version, "2026-09-30");
         // Pinned: a catalogue entry is a decision, and adding one is as
-        // deliberate as the new digest the bundle test then asks for.
-        assert_eq!(catalog.entries.len(), 58);
+        // deliberate as the new digest the bundle test then asks for. 65 = the
+        // 58 embedded before 2026-10-02 plus the seven ds-work recorded after
+        // vendoring (three model/backup stops, Preferences, its part-file
+        // prompt, and the two Optimum Spotting dialogs).
+        assert_eq!(catalog.entries.len(), 65);
         let names: BTreeSet<&str> = catalog.entries.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names.len(), catalog.entries.len(), "entry names are unique");
     }
@@ -392,7 +395,7 @@ mod tests {
     /// up. Every catalogued action must be one of its arms.
     #[test]
     fn every_catalogued_action_is_one_the_watcher_implements() {
-        let watcher = bundle::text("pls-dialog-watch.ps1").unwrap();
+        let watcher = bundle::pls_cadd_text("pls-dialog-watch.ps1").unwrap();
         for action in ACTIONS {
             let arm = format!("'{action}'");
             assert!(
@@ -418,7 +421,8 @@ mod tests {
     #[test]
     fn the_profile_pins_pls_cadd_16_81() {
         let profile =
-            parse_data_file(bundle::text("pls-backup-restore-profile.psd1").unwrap()).unwrap();
+            parse_data_file(bundle::pls_cadd_text("pls-backup-restore-profile.psd1").unwrap())
+                .unwrap();
         assert_eq!(profile["ProductVersion"], "16.81");
         assert_eq!(
             profile["ExecutableSha256"],

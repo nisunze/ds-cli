@@ -8,6 +8,13 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 
+[features]
+# The third-party adapter layer: the PowerShell and Python toolkit under
+# `desktop/`, embedded byte for byte. Off, nothing is embedded and every
+# `ds pls desktop` verb refuses `adapters_not_embedded`.
+default = ["desktop-adapters"]
+desktop-adapters = []
+
 [dependencies]
 ds-cli-contract = { workspace = true }
 serde = { workspace = true }

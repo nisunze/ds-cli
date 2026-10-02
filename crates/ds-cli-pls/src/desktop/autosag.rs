@@ -155,7 +155,7 @@ pub fn render(data: &Value) -> String {
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use super::*;
     use crate::desktop::run::tests::declared_parameters;

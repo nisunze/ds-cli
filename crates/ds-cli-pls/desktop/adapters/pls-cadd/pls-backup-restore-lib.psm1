@@ -303,7 +303,8 @@ function Get-PlsNativeBackupInventory {
             $header = Read-PlsAsciiLine $stream
             if ($null -eq $header) { break }
             $headerMatch = [regex]::Match($header,
-                "^TYPE='\*\*\*PLSBACKUPFILE\*\*\*' VERSION='3\.1' UNITS='SI' SOURCE='([^']+)' USER='([^']*)' FILENAME='([^']+)'$")
+                # PLS writes each member's own units: cable files saved in PLS-CADD's editor are 'US' (2026-09-26)
+                "^TYPE='\*\*\*PLSBACKUPFILE\*\*\*' VERSION='3\.1' UNITS='(?:SI|US)' SOURCE='([^']+)' USER='([^']*)' FILENAME='([^']+)'$")
             if (-not $headerMatch.Success) {
                 throw "Invalid PLSBACKUPFILE v3.1 header at byte $recordOffset"
             }

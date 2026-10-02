@@ -96,7 +96,7 @@ pub fn render(data: &Value) -> String {
     text
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use super::*;
 

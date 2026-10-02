@@ -3,12 +3,13 @@
 //! Every other command in this domain reads or writes PLS files through a
 //! typed task. These run the application: native Restore, AutoSag, the six
 //! deliverable reports, the plan & profile PDF and the File > Backup of a
-//! saved project. The owner of that work is the set of PowerShell drivers
-//! proven on the Nyamagabe delivery (ds-work `ea67e9b`), and this module does
-//! not re-implement any of it:
+//! saved project. The work is done by the product-owned third-party adapters
+//! under `crates/ds-cli-pls/desktop/adapters/`, proven on the Nyamagabe
+//! delivery, and this module does not re-implement any of it:
 //!
-//! * [`bundle`] embeds the drivers byte for byte, each with its sha256 pinned
-//!   in source, and extracts them into a private temporary folder per call;
+//! * [`bundle`] embeds the toolkit byte for byte, each file with its sha256
+//!   pinned in source, and extracts it into a private temporary folder per
+//!   call;
 //! * `run` starts Windows PowerShell 5.1 on exactly one ds entry script, with
 //!   a static switch list and typed values — never a caller-supplied argv;
 //! * `failure` turns the one result document an entry writes, and the
