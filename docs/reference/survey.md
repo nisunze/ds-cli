@@ -655,3 +655,26 @@ The same commands are available through chapter `ds_survey` and typed MCP
 profile `survey-projects`. Typed apply uses `confirm:true`, which maps exactly
 to CLI `--yes`; read and plan need no confirmation. An older server refuses
 these additive actions without falling back to legacy member sharing.
+
+## Delete a node and held connected edges
+
+Discover `survey.entries.delete-plan`, then `survey.entries.delete`. Both take
+an explicit project, node form/document, regular non-symlink `--document` JSON
+(`prior` and `rows` only, at most 3 MiB), replay key and RFC3339 clock. Rust
+selects live connected edges and validates all targets together, at most 500.
+The supplied rows determine coverage; these commands cannot prove complete
+server connectivity. The preview is read-only and grants no authority.
+
+Delete requires `--yes` and native project authority. It replays the exact plan
+as individual governed deletes, stops at the first unacknowledged target, and
+retains confirmed receipts in error detail. Remote replay is not atomic; lost
+responses may follow committed writes, and backend replay receipts are not
+recorded atomically with mutations. Preserve the exact file, key and clock;
+review conflicts or ambiguous receipts before deciding to retry. No automatic
+retry or version rebase occurs. BigQuery synchronization remains unconfirmed.
+
+`survey_delete_document_invalid` requires a regular bounded closed inventory;
+`survey_delete_plan_invalid` requires corrected identities, clock or targets;
+`survey_delete_incomplete` requires inspecting the confirmed prefix and failed
+index before retry. Both commands are in chapter `ds_survey` and typed profile
+`survey-projects`; typed delete uses `confirm:true` for CLI `--yes`.

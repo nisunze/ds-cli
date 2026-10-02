@@ -970,6 +970,8 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.entries.select",
     "survey.entries.changes",
     "survey.entries.create",
+    "survey.entries.delete-plan",
+    "survey.entries.delete",
     "survey.project-forms.list",
     "survey.project-form.settings",
     "survey.project-forms.read",

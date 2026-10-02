@@ -17905,3 +17905,39 @@ fn survey_delete_preview_runs_the_real_kernel_and_admits_no_write() {
     assert_eq!(reply["intents"][1]["payload"]["doc_id"], "e");
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn survey_delete_declares_native_effect_and_validates_before_auth() {
+    let descriptor = ok(&["capabilities", "survey.entries.delete", "--output", "json"]);
+    assert_eq!(descriptor["command"]["effect"], "global_write");
+    assert_eq!(descriptor["command"]["authority"], "headless_project");
+    let root = temp_root("survey-delete-invalid");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("held.json");
+    std::fs::write(&path, r#"{"rows":[]}"#).unwrap();
+    let reply = ds(&[
+        "survey",
+        "entries",
+        "delete",
+        "--project",
+        "p",
+        "--form",
+        "poles",
+        "--doc-id",
+        "n",
+        "--document",
+        path.to_str().unwrap(),
+        "--idempotency-key",
+        "review",
+        "--now",
+        "invalid-clock",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        reply.envelope["error"]["code"],
+        "survey_delete_plan_invalid"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}

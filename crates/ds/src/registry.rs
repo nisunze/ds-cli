@@ -1642,6 +1642,11 @@ static SURVEY_ENTRIES: &[Entry] = &[
         render: ds_cli_survey::create::render,
     },
     Entry {
+        command: &ds_cli_survey::delete::COMMAND,
+        handler: ds_cli_survey::delete::run,
+        render: ds_cli_survey::delete::render,
+    },
+    Entry {
         command: &ds_cli_survey::delete_plan::COMMAND,
         handler: ds_cli_survey::delete_plan::run,
         render: ds_cli_survey::delete_plan::render,

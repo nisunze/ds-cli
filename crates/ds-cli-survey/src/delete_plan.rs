@@ -79,8 +79,7 @@ fn invalid_document() -> Failure {
     )
     .remedy("pass a regular bounded JSON object with prior and rows")
 }
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let path = inputs.require("document")?;
+pub(crate) fn load_document(path: &str) -> Result<Value, Failure> {
     let meta = std::fs::symlink_metadata(path).map_err(|_| invalid_document())?;
     if !meta.is_file() || meta.len() > 3 * 1024 * 1024 {
         return Err(invalid_document());
@@ -130,6 +129,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     {
         return Err(invalid_document());
     }
+    Ok(document)
+}
+pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let document = load_document(inputs.require("document")?)?;
     let request = json!({"operation":"mutation","mode":"delete_cascade_preview", "project_id":inputs.require("project")?,
         "form_id":inputs.require("form")?,"doc_id":inputs.require("doc-id")?,"mutation_id":inputs.require("idempotency-key")?,
         "now":inputs.require("now")?,"prior":document["prior"],"rows":document["rows"]});

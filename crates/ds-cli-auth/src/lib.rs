@@ -3605,6 +3605,20 @@ pub fn survey_entries_changes(
 }
 
 /// Create one governed Survey entry in the caller's explicit project.
+/// Execute the kernel's closed held-row deletion plan; no selection is read.
+pub fn survey_delete(
+    lane: &str,
+    project: &str,
+    request: &ds_client_core::SurveyDeleteRequest,
+) -> Result<HeadlessNamedProject<serde_json::Value>, Failure> {
+    headless_named_project(
+        lane,
+        project,
+        |device, project| device.survey_delete(project, request),
+        |client, project| client.survey_delete(project, request, now()),
+    )
+}
+
 pub fn survey_entry_create(
     lane_value: &str,
     project: &str,
