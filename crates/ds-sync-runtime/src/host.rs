@@ -511,92 +511,6 @@ impl<'a> StoreHost<'a> {
                 && stored.state_reason.as_deref() == Some("cancelled")
         }))
     }
-
-    /// The verified handoff of the legacy per-user outbox (§5 of the headless
-    /// runtime contract): a presentation client hands its rows over the typed
-    /// bridge, the host establishes every row's bytes through the producer
-    /// store that owns them (`verify`), the kernel admits or refuses each row
-    /// with its reason, the store commits, and only then is each row
-    /// acknowledged back — the source retires a row on that acknowledgement
-    /// and never before.
-    pub fn handoff(
-        &self,
-        rows: Vec<Value>,
-        verify: &dyn Fn(&store::LegacyOutboxRow) -> store::BytesEvidence,
-    ) -> Result<Value, String> {
-        if rows.len() > MAX_ROWS {
-            return Err("the handoff exceeds its bound".to_string());
-        }
-        let mut handoffs: Vec<store::LegacyHandoff> = Vec::new();
-        let mut skipped: Vec<Value> = Vec::new();
-        for value in rows {
-            let id = text(&value, "id");
-            let row: store::LegacyOutboxRow = match serde_json::from_value(value) {
-                Ok(row) => row,
-                Err(error) => {
-                    skipped.push(
-                        json!({"id": id, "reason": format!("unreadable legacy row: {error}")}),
-                    );
-                    continue;
-                }
-            };
-            if row.owner_uid != self.fence.account {
-                skipped.push(json!({"id": row.id, "reason": "the row belongs to another account"}));
-                continue;
-            }
-            let bytes = verify(&row);
-            handoffs.push(store::LegacyHandoff { row, bytes });
-        }
-        let ids: Vec<(String, String)> = handoffs
-            .iter()
-            .map(|handoff| {
-                (
-                    handoff.row.id.clone(),
-                    handoff
-                        .row
-                        .client_publish_id
-                        .clone()
-                        .filter(|value| !value.is_empty())
-                        .unwrap_or_else(|| handoff.row.id.clone()),
-                )
-            })
-            .collect();
-        let transition = self.apply(store::Event::HandoffLegacy { rows: handoffs })?;
-        // Acknowledged means committed: a receipt this transition wrote, or a
-        // row the store already held from an earlier handoff whose
-        // acknowledgement the source may have lost.
-        let known = self.known_artifacts()?;
-        let mut acknowledged: Vec<Value> = Vec::new();
-        for (legacy_id, replay_key) in ids {
-            let receipt_id = format!("handoff:{legacy_id}");
-            let written = transition.changes.iter().find_map(|change| match change {
-                store::RowChange::AppendReceipt(receipt) if receipt.receipt_id == receipt_id => {
-                    Some(receipt.outcome.clone())
-                }
-                _ => None,
-            });
-            let outcome = written.or_else(|| {
-                known
-                    .iter()
-                    .any(|row| row.replay_key == replay_key || row.replay_key == legacy_id)
-                    .then(|| "already_held".to_string())
-            });
-            if let Some(outcome) = outcome {
-                acknowledged.push(json!({
-                    "legacyId": legacy_id,
-                    "receiptId": receipt_id,
-                    "outcome": outcome,
-                }));
-            }
-        }
-        Ok(json!({
-            "schema": "ds.sync-handoff/v1",
-            "project": self.project,
-            "acknowledged": acknowledged,
-            "skipped": skipped,
-            "planTrigger": transition.plan_trigger,
-        }))
-    }
 }
 
 impl SyncHost for StoreHost<'_> {
@@ -1092,8 +1006,7 @@ impl Producer for Producers<'_> {
 /// A producer for a host that holds no local byte source of its own yet.
 ///
 /// Its inventory is empty, so [`StoreHost::local`] returns exactly the rows the
-/// durable store already holds — a verified handoff's rows, another engine's
-/// rows — and no more. A transfer is a typed refusal, never a different door:
+/// durable store already holds, including another engine's rows, and no more. A transfer is a typed refusal, never a different door:
 /// a host with no producer cannot move bytes, and says so rather than pretend.
 /// This is the honest producer for the Linux server until a native publication
 /// source is wired to it.

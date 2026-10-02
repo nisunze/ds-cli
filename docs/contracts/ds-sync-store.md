@@ -1,8 +1,7 @@
 # The sync store — one durable queue and artifact store per execution context
 
 **Status:** contract, 2026-09-11, under `ds-application-runtime.md` §1
-("Durability and ownership"). Slices R1 (the store), R4 (the verified handoff)
-and R8 (fences, leases, lifecycle) of the sync gate campaign.
+("Durability and ownership"). The store, fences, leases and lifecycle of the sync gate campaign.
 
 ## 1. What it is
 
@@ -18,9 +17,9 @@ shaped by the kernel and persisted by the host of each execution context:
 The kernel module `sync_store` owns the ROW SHAPES and every TRANSITION over
 them as pure functions (`evaluate(&[u8])`, WASM `syncStore`): recording a
 local artifact, recording the remote heads and when they were read, holding a
-grant, applying an action receipt, taking and releasing a worker lease,
-fencing, and importing legacy pending work. Hosts perform the writes the
-transition returns and nothing else; no host re-decides a state.
+grant, applying an action receipt, taking and releasing a worker lease, and
+fencing. Hosts perform the writes the transition returns and nothing else;
+no host re-decides a state.
 
 ## 2. Rows
 
@@ -44,7 +43,6 @@ transition returns and nothing else; no host re-decides a state.
 - `LeaseTake { worker_id, now_ms, ttl_ms }` → granted iff no live lease for the scope, else `refused: lease_held{worker_id, expires_at_ms}`. `LeaseRenew`, `LeaseRelease`. A lease is the ONLY thing that lets a worker drain: two workers never execute the same work.
 - `Logout` / `AccountSwitch { account }` → rows of another account are not visible; nothing is deleted (held bytes belong to the project); drains stop.
 - `Cancel { identity }` → `held`/`uploading` ⇒ `refused: cancelled` with the receipt; committed work is never undone.
-- `HandoffLegacy { rows: [legacy per-user outbox entries] }` (R4) → for each legacy row: an `artifact` row preserving identity, the original `bytes_locator`, digest, `replay_key` = the legacy row id, acknowledgements folded into `state`, unresolved failures as `state_reason`; a `receipt` per imported row naming its origin; **never silent loss**: a legacy row the shape does not admit becomes a `refused` artifact row with `handoff_unmapped` and the raw row kept in `detail`.
 
 The native Store acquires its SQLite writer transaction before reading the
 transition snapshot and receipt replay check; the same transaction persists

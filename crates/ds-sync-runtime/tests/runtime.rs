@@ -479,36 +479,6 @@ fn an_unauthorized_identity_moves_no_byte_and_advances_nothing() {
     );
 }
 
-/// A lane whose authority predates the report door answers 403
-/// `WORK_GRANT_REQUIRED`. That is a statement about the server's version,
-/// not about this account, so the publication is held — never refused, never
-/// reclaimed — and publishes on the first pass after the lane opens the door.
-#[test]
-fn a_lane_whose_authority_predates_the_door_holds_the_row_until_it_opens() {
-    use ds_sync_runtime::store::ArtifactState;
-    let harness = Harness::new();
-    fakes::lock(&harness.world).door_closed = true;
-    let row = local_row(b"first report");
-
-    let outcome = harness.run(vec![row.clone()], sync::Trigger::Startup);
-    assert_eq!(outcomes(&outcome), vec!["upload:failed"]);
-    let detail = outcome.receipts[0].detail.clone().expect("a cause");
-    assert!(
-        detail.contains("does not open the report door yet"),
-        "the row says why it is held: {detail}"
-    );
-    assert_eq!(stored_rows(&harness, PROJECT)[0].state, ArtifactState::Held);
-    assert!(
-        fakes::lock(&harness.world).reclaims.is_empty(),
-        "nothing was freed"
-    );
-
-    fakes::lock(&harness.world).door_closed = false;
-    let opened = harness.run(vec![row], sync::Trigger::Manual);
-    assert_eq!(outcomes(&opened), vec!["upload:published"]);
-    assert_eq!(fakes::lock(&harness.world).commits, 1);
-}
-
 #[test]
 fn one_unreachable_open_does_not_hold_other_uploads_in_the_batch() {
     let harness = Harness::new();
@@ -1183,7 +1153,7 @@ fn server_host<'a>(
 #[test]
 fn a_server_host_executes_the_loop_and_refuses_to_upload_without_a_gateway() {
     let harness = Harness::new();
-    // A row the store already holds (as a verified handoff would leave one) and
+    // A row the store already holds (through the producer seal) and
     // that the record does not, so the plan wants an upload.
     let bytes = vec![21_u8; 4096];
     seed_store_only_row(&harness, &bytes);
@@ -1233,131 +1203,12 @@ fn a_server_startup_without_a_gateway_fails_loudly_rather_than_proceeding_blind(
     );
 }
 
-#[test]
-fn a_server_host_records_a_handoff_and_survives_restart() {
-    let harness = Harness::new();
-    let gateway = ds_sync_runtime::UnavailableGateway {
-        reason: "no native gateway credential is wired to this server yet".into(),
-    };
-    // A legacy per-user outbox row handed to the server. Bytes are "verified"
-    // by the harness (the server's own producer store would do this live).
-    let producer = ds_sync_runtime::StoreOnlyProducer;
-    let reads = ds_sync_runtime::VerifiedReads::new(harness.reads_root.clone());
-    let online = || true;
-    let host = StoreHost::new(
-        harness.store.clone(),
-        fence(),
-        "server-worker-1".into(),
-        PROJECT,
-        &gateway,
-        &producer,
-        &reads,
-        &online,
-    )
-    .expect("server host");
-    let legacy = serde_json::json!({
-        "id": "legacy-1",
-        "owner_uid": "account-1",
-        "project_id": PROJECT,
-        "engine": "network_reporter",
-        "operation": "export-tx_1",
-        "variant": "default",
-        "engine_version": fakes::RELEASE,
-        "input_base_fingerprint": fakes::FINGERPRINT,
-        "client_publish_id": "publish-legacy-1",
-        "status": "synced",
-        "outputs": [{
-            "output_id": "xlsx",
-            "local_path": "network_reporter:batch:publish-legacy-1",
-            "sha256": format!("{:x}", sha2::Sha256::digest([21_u8; 4096])),
-            "size_bytes": 4096,
-        }],
-    });
-    let result = host
-        .handoff(vec![legacy], &|_row| {
-            ds_sync_runtime::store::BytesEvidence::Verified {
-                locator: "network_reporter:batch:publish-legacy-1".into(),
-            }
-        })
-        .expect("handoff");
-    let acknowledged = result["acknowledged"].as_array().expect("acknowledged");
-    assert_eq!(acknowledged.len(), 1, "the one row is acknowledged");
-    assert_eq!(acknowledged[0]["outcome"], "imported");
-
-    // A restart: the projects to resume are read from the durable store, and
-    // the imported row is present under this fence.
-    let projects = projects_of_fence(&harness.store, &fence()).expect("projects");
-    assert_eq!(projects, vec![PROJECT.to_string()]);
-
-    // The store-read shows the imported artifact under this fence — a fresh
-    // host over the same durable store, the way a restart gets one.
-    let store_read = {
-        let producer = ds_sync_runtime::StoreOnlyProducer;
-        let reads = ds_sync_runtime::VerifiedReads::new(harness.reads_root.clone());
-        let host = StoreHost::new(
-            harness.store.clone(),
-            fence(),
-            "server-worker-2".into(),
-            PROJECT,
-            &gateway,
-            &producer,
-            &reads,
-            &online,
-        )
-        .expect("server host");
-        host.store_read().expect("store read")
-    };
-    assert!(
-        store_read["artifacts"].as_array().is_some_and(|rows| rows
-            .iter()
-            .any(|row| row["client_publish_id"] == "publish-legacy-1")),
-        "the imported publication is durable across the restart",
-    );
-}
-
-/// Seed one held artifact row directly, as a verified handoff would leave it.
+/// Seed one held artifact through the producer's normal store event.
 fn seed_store_only_row(harness: &Harness, bytes: &[u8]) {
-    let gateway = ds_sync_runtime::UnavailableGateway {
-        reason: "seed".into(),
-    };
-    let producer = ds_sync_runtime::StoreOnlyProducer;
-    let reads = ds_sync_runtime::VerifiedReads::new(harness.reads_root.clone());
-    let online = || true;
-    let host = StoreHost::new(
-        harness.store.clone(),
-        fence(),
-        "seed-worker".into(),
-        PROJECT,
-        &gateway,
-        &producer,
-        &reads,
-        &online,
-    )
-    .expect("seed host");
-    let legacy = serde_json::json!({
-        "id": "seed-1",
-        "owner_uid": "account-1",
-        "project_id": PROJECT,
-        "engine": "network_reporter",
-        "operation": "export-tx_1",
-        "variant": "default",
-        "engine_version": fakes::RELEASE,
-        "input_base_fingerprint": fakes::FINGERPRINT,
-        "client_publish_id": "publish-seed-1",
-        "status": "held",
-        "outputs": [{
-            "output_id": "xlsx",
-            "local_path": "network_reporter:batch:publish-seed-1",
-            "sha256": format!("{:x}", sha2::Sha256::digest(bytes)),
-            "size_bytes": bytes.len(),
-        }],
-    });
-    host.handoff(vec![legacy], &|_row| {
-        ds_sync_runtime::store::BytesEvidence::Verified {
-            locator: "network_reporter:batch:publish-seed-1".into(),
-        }
-    })
-    .expect("seed handoff");
+    let mut row = local_row(bytes);
+    row.client_publish_id = "publish-seed-1".into();
+    row.bytes_locator = "network_reporter:batch:publish-seed-1".into();
+    harness.seal(&[row]);
 }
 
 #[test]

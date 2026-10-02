@@ -62,13 +62,9 @@ impl TransformerContextMetadata {
 }
 
 #[derive(Deserialize)]
-#[serde(untagged)]
-enum TransformerContextPayload {
-    Envelope {
-        success: bool,
-        data: TransformerBatch,
-    },
-    Direct(TransformerBatch),
+struct TransformerContextPayload {
+    success: bool,
+    data: TransformerBatch,
 }
 
 #[derive(Deserialize)]
@@ -136,14 +132,10 @@ pub(crate) fn decode_context(
     }
     let payload: TransformerContextPayload =
         serde_json::from_slice(&response.body).map_err(|_| unreadable())?;
-    let batch = match payload {
-        TransformerContextPayload::Envelope {
-            success: true,
-            data,
-        } => data,
-        TransformerContextPayload::Envelope { success: false, .. } => return Err(unreadable()),
-        TransformerContextPayload::Direct(data) => data,
-    };
+    if !payload.success {
+        return Err(unreadable());
+    }
+    let batch = payload.data;
     if batch.total != 1 || batch.results.len() != 1 {
         return Err(unreadable());
     }

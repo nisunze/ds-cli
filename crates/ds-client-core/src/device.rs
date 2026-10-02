@@ -1723,8 +1723,7 @@ impl DeviceApiAuthorization<'_> {
         crate::shared_assets::run(self.profile, transport, self.authority(), project, command)
     }
     /// One governed catalogue action on the project's assets, on a device
-    /// session. The same door the restored-user path takes, index forms and
-    /// their one fallback included.
+    /// session. The same door the restored-user path takes, including index forms.
     pub fn project_assets<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

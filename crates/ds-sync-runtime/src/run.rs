@@ -663,8 +663,7 @@ enum Stage {
 /// not publish reports here, or the project is closed) and a 400 at `open`
 /// (the project's inputs do not produce this declaration) are refusals. A 401
 /// refuses the session, holds the row and ends this pass. Every
-/// other answer is about the moment, not the publication — a lane whose
-/// server predates this door, a 5xx, no network, or a 400
+/// other answer is about the moment, not the publication — a 5xx, no network, or a 400
 /// at `finalize` for bytes the record has not seen yet — and holds the row.
 fn record_refusal(
     identity: &sync::Identity,
@@ -673,21 +672,15 @@ fn record_refusal(
     work_id: Option<String>,
     transfers: Vec<TransferReceipt>,
 ) -> Receipt {
-    let predates_door = error.code.as_deref() == Some("WORK_GRANT_REQUIRED");
     let outcome = match error.status {
         Some(401) => "credential_refused",
         Some(409) => "conflict",
-        Some(403) if !predates_door => "refused",
+        Some(403) => "refused",
         Some(400) if stage == Stage::Open => "refused",
         _ => "failed",
     };
     let detail = if error.credential_refused() {
         credential_refusal_detail().to_string()
-    } else if predates_door {
-        format!(
-            "{}; this lane's authority does not open the report door yet, so the publication is held until it does",
-            error.detail
-        )
     } else {
         error.detail
     };

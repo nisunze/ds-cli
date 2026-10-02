@@ -13,10 +13,6 @@
 //! - a lease per scope, so two windows, instances, background hosts or
 //!   workers never drain the same work;
 //! - every action leaves a receipt (append-only evidence);
-//! - the legacy per-user outbox is handed off row by row, never silently
-//!   dropped, with the original replay identity, digest, acknowledgement and
-//!   unresolved failure preserved and the bytes' presence verified by the host
-//!   before the row is admitted.
 
 use crate::sync::{Identity, Trigger};
 use serde::{Deserialize, Serialize};
@@ -136,7 +132,7 @@ pub struct ArtifactRow {
     pub state: ArtifactState,
     #[serde(default)]
     pub state_reason: Option<String>,
-    /// Idempotency across attempts and across the handoff.
+    /// Idempotency across attempts.
     pub replay_key: String,
     pub updated_at_ms: u64,
     /// The transport's own persisted state for an in-flight transfer.
@@ -248,106 +244,6 @@ pub struct Snapshot {
     pub lease: Option<LeaseRow>,
 }
 
-/// One output of a legacy per-user outbox row. `session_uri` is a scoped
-/// bearer credential in that store; it is not read here and never copied
-/// into evidence.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct LegacyOutput {
-    pub output_id: String,
-    /// The producer's own locator for the bytes (a native batch reference on
-    /// desktop); the host reads it, the store never does.
-    #[serde(default)]
-    pub local_path: String,
-    #[serde(default)]
-    pub format: String,
-    #[serde(default)]
-    pub content_type: String,
-    #[serde(default)]
-    pub sha256: String,
-    #[serde(default)]
-    pub size_bytes: u64,
-    #[serde(default)]
-    pub expected_sha256: Option<String>,
-    #[serde(default)]
-    pub expected_size_bytes: Option<u64>,
-    #[serde(default)]
-    pub state: String,
-}
-
-impl LegacyOutput {
-    pub fn digest(&self) -> String {
-        self.expected_sha256
-            .clone()
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| self.sha256.clone())
-    }
-    pub fn size(&self) -> u64 {
-        self.expected_size_bytes
-            .filter(|value| *value > 0)
-            .unwrap_or(self.size_bytes)
-    }
-}
-
-/// A legacy per-user outbox row as the browser stored it (`kind:
-/// compute_artifact` in the `outbox` object store). Only the fields the
-/// handoff reads are typed; the rest travels in `rest` so the receipt keeps
-/// the whole row as evidence.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct LegacyOutboxRow {
-    pub id: String,
-    #[serde(default)]
-    pub owner_uid: String,
-    #[serde(default)]
-    pub project_id: String,
-    pub engine: String,
-    pub operation: String,
-    #[serde(default = "default_variant")]
-    pub variant: String,
-    #[serde(default)]
-    pub engine_version: String,
-    #[serde(default)]
-    pub engine_build_manifest_sha256: Option<String>,
-    #[serde(default)]
-    pub input_base_fingerprint: String,
-    #[serde(default)]
-    pub client_publish_id: Option<String>,
-    #[serde(default)]
-    pub status: String,
-    #[serde(default)]
-    pub phase: String,
-    #[serde(default)]
-    pub error: Option<String>,
-    #[serde(default)]
-    pub failure_code: Option<String>,
-    #[serde(default)]
-    pub created_at: u64,
-    #[serde(default)]
-    pub outputs: Vec<LegacyOutput>,
-    #[serde(flatten)]
-    pub rest: Value,
-}
-
-fn default_variant() -> String {
-    "default".into()
-}
-
-/// What the host established about a legacy row's bytes before the handoff.
-/// Copied metadata is never proof that bytes arrived: the host reads them
-/// through its own producer store and checks the digests, or says it could not.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum BytesEvidence {
-    Verified { locator: String },
-    Missing { reason: String },
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct LegacyHandoff {
-    pub row: LegacyOutboxRow,
-    pub bytes: BytesEvidence,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Event {
@@ -389,9 +285,6 @@ pub enum Event {
         /// observed. `None` preserves the existing identity-only UI action.
         #[serde(default)]
         expected_replay_key: Option<String>,
-    },
-    HandoffLegacy {
-        rows: Vec<LegacyHandoff>,
     },
 }
 
@@ -831,157 +724,8 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
             ),
             None => t.refuse("unknown_identity", identity.operation.clone()),
         },
-        Event::HandoffLegacy { rows } => {
-            if rows.len() > MAX_ROWS {
-                return Err("legacy handoff exceeds its bound".into());
-            }
-            for handoff in rows {
-                handoff_one(snapshot, handoff, now, &mut t);
-            }
-            t.plan_trigger = Some(Trigger::Startup);
-        }
     }
     Ok(t)
-}
-
-/// One legacy row becomes exactly one artifact row and one receipt naming its
-/// origin — never silent loss. A row the shape cannot admit, or whose bytes
-/// the host could not verify, is kept as a refused row whose reason says what
-/// happened and what recovers it.
-fn handoff_one(snapshot: &Snapshot, handoff: &LegacyHandoff, now: u64, t: &mut Transition) {
-    let legacy = &handoff.row;
-    let replay_key = legacy
-        .client_publish_id
-        .clone()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| legacy.id.clone());
-    let identity = Identity {
-        engine: legacy.engine.clone(),
-        operation: legacy.operation.clone(),
-        variant: legacy.variant.clone(),
-    };
-    let scope = Scope::Project {
-        project: legacy.project_id.clone(),
-    };
-    // Already handed off, or already recorded by the producer under the same
-    // publish id: the store holds it; nothing is imported twice.
-    if snapshot
-        .artifacts
-        .iter()
-        .any(|row| row.replay_key == replay_key || row.replay_key == legacy.id)
-    {
-        return;
-    }
-    let outputs: Vec<ArtifactOutput> = legacy
-        .outputs
-        .iter()
-        .map(|output| ArtifactOutput {
-            output_id: output.output_id.clone(),
-            format: output.format.clone(),
-            content_type: output.content_type.clone(),
-            sha256: output.digest(),
-            size_bytes: output.size(),
-        })
-        .collect();
-    let digests_complete =
-        !outputs.is_empty() && outputs.iter().all(|output| output.sha256.len() == 64);
-    let pairs: Vec<(String, String)> = outputs
-        .iter()
-        .map(|output| (output.output_id.clone(), output.sha256.clone()))
-        .collect();
-    let (state, reason) = match (legacy.status.as_str(), legacy.phase.as_str()) {
-        ("synced", _) | (_, "published") => (ArtifactState::Published, None),
-        ("conflict", _) | (_, "stored_stale") => (ArtifactState::Conflict, legacy.error.clone()),
-        _ => (ArtifactState::Held, legacy.error.clone()),
-    };
-    let (state, reason, readable, locator, outcome) = if legacy.project_id.is_empty()
-        || !digests_complete
-    {
-        (
-            ArtifactState::Refused,
-            Some(
-                "handoff_unmapped: the legacy row names no project or carries no complete output digests; no automatic remedy — run the engine again to reproduce this publication"
-                    .to_string(),
-            ),
-            false,
-            format!("legacy:{}", legacy.id),
-            "unmapped",
-        )
-    } else {
-        match &handoff.bytes {
-            BytesEvidence::Verified { locator } => {
-                (state, reason, true, locator.clone(), "imported")
-            }
-            BytesEvidence::Missing { reason: why } => (
-                ArtifactState::Refused,
-                Some(format!(
-                    "handoff_bytes_missing: {why}; run the engine again to reproduce this publication"
-                )),
-                false,
-                format!("legacy:{}", legacy.id),
-                "bytes_missing",
-            ),
-        }
-    };
-    t.changes.push(RowChange::UpsertArtifact(ArtifactRow {
-        scope: scope.clone(),
-        identity: identity.clone(),
-        sha256: inventory_digest(&pairs),
-        size_bytes: outputs.iter().map(|output| output.size_bytes).sum(),
-        produced_at_ms: legacy.created_at,
-        base_revision: None,
-        input_base_fingerprint: Some(legacy.input_base_fingerprint.clone())
-            .filter(|v| !v.is_empty()),
-        engine_release: legacy.engine_version.clone(),
-        engine_build_manifest_sha256: legacy.engine_build_manifest_sha256.clone(),
-        grant_engine: None,
-        resource: None,
-        client_publish_id: replay_key.clone(),
-        acknowledged_work_id: None,
-        outputs,
-        bytes_locator: locator,
-        readable,
-        state,
-        state_reason: reason,
-        replay_key,
-        updated_at_ms: now,
-        transfer_state: None,
-    }));
-    t.changes.push(RowChange::AppendReceipt(ReceiptRow {
-        receipt_id: format!("handoff:{}", legacy.id),
-        scope,
-        action: "handoff".into(),
-        identity: Some(identity),
-        outcome: outcome.into(),
-        detail: Some(legacy_row_evidence(legacy)),
-        grant_id: None,
-        work_id: None,
-        client_publish_id: None,
-        head_revision: None,
-        head_sha256: None,
-        head_counter: None,
-        committed_bytes: None,
-        at_ms: now,
-    }));
-}
-
-/// The whole legacy row as evidence on its handoff receipt — every field the
-/// handoff read and every field it did not — minus the scoped upload
-/// credentials the legacy store kept beside each output.
-fn legacy_row_evidence(legacy: &LegacyOutboxRow) -> String {
-    let mut kept = match serde_json::to_value(legacy) {
-        Ok(Value::Object(map)) => map,
-        _ => serde_json::Map::new(),
-    };
-    kept.remove("session_uri");
-    if let Some(Value::Array(outputs)) = kept.get_mut("outputs") {
-        for output in outputs.iter_mut() {
-            if let Value::Object(map) = output {
-                map.remove("session_uri");
-            }
-        }
-    }
-    serde_json::to_string(&Value::Object(kept)).unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -1177,8 +921,7 @@ pub fn queue_status(
             ArtifactState::Conflict | ArtifactState::Refused => {
                 // Reclaimable only while the bytes are still here: a
                 // `reclaimed` receipt clears the locator and the readable
-                // flag, and a handoff whose bytes were never verified holds
-                // nothing to free.
+                // flag. A row without readable bytes holds nothing to free.
                 if row.readable && !row.bytes_locator.is_empty() {
                     entry.reclaimable_batches += 1;
                     entry.reclaimable_bytes =
@@ -1835,83 +1578,6 @@ mod tests {
                 if row.state == ArtifactState::Refused
                     && row.state_reason.as_deref() == Some("cancelled")
         ));
-    }
-
-    fn legacy(id: &str, project: &str, status: &str, phase: &str, outputs: Value) -> Value {
-        json!({
-            "kind": "compute_artifact", "id": id, "owner_uid": "u", "project_id": project, "root": "/r",
-            "client_run_id": "run-1", "engine": "network_reporter", "operation": id, "variant": "default",
-            "engine_version": "r", "engine_build_manifest_sha256": SHA, "input_base_fingerprint": "base-9",
-            "client_publish_id": format!("pub-{id}"), "status": status, "phase": phase, "attempts": 1,
-            "created_at": 5, "updated_at": 6, "synced_at": null, "error": "The producing engine build is not admitted.",
-            "failure_code": "ENGINE_BUILD_NOT_ADMITTED", "outputs": outputs
-        })
-    }
-
-    #[test]
-    fn the_legacy_handoff_keeps_every_row_verifies_bytes_and_names_what_it_could_not_map() {
-        let output = json!({"output_id": "xlsx", "local_path": "/x", "format": "xlsx", "content_type": "application/x", "sha256": SHA, "size_bytes": 7, "state": "pending", "session_uri": "https://storage/secret-session"});
-        let rows: Vec<LegacyHandoff> = serde_json::from_value(json!([
-            {"row": legacy("report-1", "p", "failed", "pending", json!([output.clone()])), "bytes": {"kind": "verified", "locator": "batch:pub-report-1"}},
-            {"row": legacy("report-2", "p", "synced", "published", json!([output.clone()])), "bytes": {"kind": "verified", "locator": "batch:pub-report-2"}},
-            {"row": legacy("report-3", "p", "pending", "pending", json!([output.clone()])), "bytes": {"kind": "missing", "reason": "no committed batch names pub-report-3"}},
-            {"row": legacy("orphan", "", "pending", "pending", json!([])), "bytes": {"kind": "missing", "reason": "no project"}}
-        ]))
-        .unwrap();
-        let t = apply(&request(Snapshot::default(), Event::HandoffLegacy { rows })).unwrap();
-        let rows = artifacts(&t);
-        let evidence = receipts(&t);
-        assert_eq!(rows.len(), 4);
-        assert_eq!(evidence.len(), 4);
-        assert_eq!(rows[0].state, ArtifactState::Held);
-        assert_eq!(
-            rows[0].state_reason.as_deref(),
-            Some("The producing engine build is not admitted.")
-        );
-        assert_eq!(rows[0].bytes_locator, "batch:pub-report-1");
-        assert_eq!(rows[0].replay_key, "pub-report-1");
-        assert_eq!(rows[0].base_revision, None);
-        assert_eq!(rows[0].input_base_fingerprint.as_deref(), Some("base-9"));
-        assert_eq!(
-            rows[0].sha256,
-            inventory_digest(&[("xlsx".into(), SHA.into())])
-        );
-        assert_eq!(rows[1].state, ArtifactState::Published);
-        assert_eq!(rows[2].state, ArtifactState::Refused);
-        assert!(rows[2]
-            .state_reason
-            .as_deref()
-            .unwrap()
-            .starts_with("handoff_bytes_missing: no committed batch"));
-        assert!(!rows[2].readable);
-        assert_eq!(rows[3].state, ArtifactState::Refused);
-        assert!(rows[3]
-            .state_reason
-            .as_deref()
-            .unwrap()
-            .starts_with("handoff_unmapped"));
-        assert_eq!(evidence[0].outcome, "imported");
-        assert_eq!(evidence[2].outcome, "bytes_missing");
-        assert_eq!(evidence[3].outcome, "unmapped");
-        let kept = evidence[0].detail.as_deref().unwrap();
-        assert!(kept.contains("ENGINE_BUILD_NOT_ADMITTED") && kept.contains("\"attempts\":1"));
-        assert!(
-            !kept.contains("secret-session"),
-            "a scoped upload credential never becomes evidence"
-        );
-        assert_eq!(t.plan_trigger, Some(Trigger::Startup));
-        // Re-running the handoff imports nothing twice — by publish id or by legacy id.
-        let snapshot = Snapshot {
-            artifacts: rows.into_iter().cloned().collect(),
-            ..Default::default()
-        };
-        let rows: Vec<LegacyHandoff> = serde_json::from_value(json!([
-            {"row": legacy("report-1", "p", "failed", "pending", json!([])), "bytes": {"kind": "verified", "locator": "x"}},
-            {"row": legacy("orphan", "", "pending", "pending", json!([])), "bytes": {"kind": "missing", "reason": "no project"}}
-        ]))
-        .unwrap();
-        let again = apply(&request(snapshot, Event::HandoffLegacy { rows })).unwrap();
-        assert!(again.changes.is_empty());
     }
 
     #[test]

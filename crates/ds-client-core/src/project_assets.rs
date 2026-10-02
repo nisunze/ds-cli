@@ -31,13 +31,6 @@
 //! `list`, `tree` and `get`; each carries `view: "index"`. Their answers carry
 //! ds-brain's `index` meta untouched, plus `index_status: "served"`.
 //!
-//! A ds-brain that predates the index refuses `view` by strict decoding with
-//! 400 `VALIDATION_FAILED`. On exactly that typed refusal an index form is
-//! retried ONCE as its catalogue form, and the answer is marked
-//! `index_status: "unavailable"` — never presented as the index. A request
-//! with no catalogue form (a folder path, a projected `sys:` id) is not
-//! retried: the answer is the marker alone and the caller decides.
-
 use std::io::Read;
 
 use serde_json::{json, Value};
@@ -68,8 +61,7 @@ pub const INDEX_SCHEMA: &str = "ds.assets.index/v1";
 pub const TREE_SCHEMA: &str = "ds.assets.tree/v1";
 /// `index_status` when the answer is the index.
 pub const INDEX_SERVED: &str = "served";
-/// `index_status` when this deployment's ds-brain does not serve the index:
-/// the answer is the catalogue's, or the marker alone.
+/// Status used by ds-cli's catalogue projections when they have no shared index.
 pub const INDEX_UNAVAILABLE: &str = "unavailable";
 /// The sources the shared index never holds (assets-index §2), with the
 /// root each feeds: they exist only on a Desktop or Server, which projects
@@ -561,39 +553,12 @@ impl Command {
         payload
     }
 
-    /// Whether this is an index form, which an old ds-brain refuses by
-    /// strict decoding.
+    /// Whether this is an index form.
     pub fn is_index(&self) -> bool {
         matches!(
             self,
             Self::IndexList(_) | Self::IndexTree { .. } | Self::IndexGet { .. }
         )
-    }
-
-    /// The old catalogue call an index form falls back to: the same request
-    /// without the index fields. `None` when there is none — a folder path
-    /// names an index folder the catalogue cannot address, a projected id is
-    /// a row the catalogue never held — and for anything not an index form.
-    pub fn catalogue_form(&self) -> Option<Self> {
-        let form = match self {
-            Self::IndexList(list) if list.folder.is_none() => Self::List {
-                folder_id: None,
-                kind: list.kind.clone(),
-                status: list.status.clone(),
-                sensitivity: list.sensitivity.clone(),
-                since: list.since.clone(),
-                limit: list.limit,
-                cursor: list.cursor.clone(),
-            },
-            Self::IndexTree { .. } => Self::Folders,
-            Self::IndexGet { asset_id } if minted(asset_id) => Self::Get {
-                asset_id: asset_id.clone(),
-            },
-            _ => return None,
-        };
-        // An index cursor may be longer than any catalogue cursor; one the
-        // catalogue could not take has no catalogue form either.
-        form.well_formed().then_some(form)
     }
 }
 
@@ -732,18 +697,7 @@ fn own_tree_rows(folders: &Value, project: &str, level: usize) -> Result<(), Cli
     Ok(())
 }
 
-/// The one refusal an old ds-brain answers an index form with: strict
-/// decoding of `view`, 400 `VALIDATION_FAILED`. Matched on the typed status
-/// and code, never on the sentence.
-fn index_refused(error: &ClientError) -> bool {
-    error.service_refusal().is_some_and(|refusal| {
-        refusal.status() == 400 && refusal.code() == Some("validation_failed")
-    })
-}
-
-/// Serve an index form: the index when ds-brain serves it, otherwise ONE
-/// retry as its catalogue form marked `index_status: "unavailable"`, or the
-/// marker alone when it has no catalogue form.
+/// Serve the index form and relay service refusals without another request.
 fn run_index<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
@@ -751,24 +705,7 @@ fn run_index<T: AuthorizedTransport>(
     project: &str,
     command: &Command,
 ) -> Result<Value, ClientError> {
-    let mut data = match call(profile, transport, authority, command.payload(project)) {
-        Ok(data) => data,
-        Err(error) if index_refused(&error) => {
-            let Some(catalogue) = command.catalogue_form() else {
-                return Ok(json!({ "index_status": INDEX_UNAVAILABLE }));
-            };
-            // The catalogue form is never an index form, so this is the one
-            // retry: a refusal of it crosses as it is.
-            let answer = run(profile, transport, authority, project, &catalogue, None)?;
-            let mut data = match command {
-                Command::IndexGet { .. } => json!({ "asset": answer }),
-                _ => answer,
-            };
-            data["index_status"] = json!(INDEX_UNAVAILABLE);
-            return Ok(data);
-        }
-        Err(error) => return Err(error),
-    };
+    let mut data = call(profile, transport, authority, command.payload(project))?;
     match command {
         Command::IndexList(list) => {
             let rows = data["assets"].as_array().ok_or_else(bad)?;
@@ -812,7 +749,7 @@ fn run_index<T: AuthorizedTransport>(
 /// `Ingest` is the one transaction: `ingest_start`, the upload, then
 /// `ingest_finalize`, verified against the name, digest and size the caller
 /// declared. The reader is consumed once. An index form is served by
-/// [`run_index`], with its one fallback.
+/// [`run_index`].
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
@@ -1241,90 +1178,6 @@ mod tests {
             |l| l.cursor = Some("c".repeat(MAX_INDEX_CURSOR_CHARS + 1))
         )));
         assert!(Command::IndexTree { refresh: true }.validate("").is_err());
-    }
-
-    #[test]
-    fn an_index_form_falls_back_only_to_a_catalogue_call_that_says_the_same() {
-        let mut filtered = index_list();
-        filtered.kind = Some("doc".into());
-        filtered.cursor = Some("c_9".into());
-        filtered.order = IndexOrder::Name;
-        filtered.refresh = true;
-        assert_eq!(
-            Command::IndexList(filtered).catalogue_form(),
-            Some(Command::List {
-                folder_id: None,
-                kind: Some("doc".into()),
-                status: None,
-                sensitivity: None,
-                since: None,
-                limit: 50,
-                cursor: Some("c_9".into()),
-            })
-        );
-        // An index folder path is not a catalogue folder id; an index cursor
-        // longer than any catalogue cursor is not one either.
-        let mut folder = index_list();
-        folder.folder = Some("Transformers/TX-104".into());
-        assert_eq!(Command::IndexList(folder).catalogue_form(), None);
-        let mut long = index_list();
-        long.cursor = Some("c".repeat(600));
-        assert_eq!(Command::IndexList(long).catalogue_form(), None);
-        assert_eq!(
-            Command::IndexTree { refresh: true }.catalogue_form(),
-            Some(Command::Folders)
-        );
-        assert_eq!(
-            Command::IndexGet {
-                asset_id: "a_7kq3nr2v0b1c".into()
-            }
-            .catalogue_form(),
-            Some(Command::Get {
-                asset_id: "a_7kq3nr2v0b1c".into()
-            })
-        );
-        assert_eq!(
-            Command::IndexGet {
-                asset_id: "sys:transformers:TX-104".into()
-            }
-            .catalogue_form(),
-            None
-        );
-        assert_eq!(list().catalogue_form(), None);
-    }
-
-    #[test]
-    fn only_the_strict_decoding_refusal_reads_as_an_old_ds_brain() {
-        let old = refusal(
-            400,
-            br#"{"success":false,"error":{"code":"VALIDATION_FAILED","message":"Invalid assets request"}}"#,
-        );
-        assert!(index_refused(&old));
-        for (status, body) in [
-            (
-                400,
-                &br#"{"success":false,"error":{"code":"ASSET_REFUSED","message":"x"}}"#[..],
-            ),
-            (
-                409,
-                br#"{"success":false,"error":{"code":"ASSETS_INDEX_MOVED","message":"x"}}"#,
-            ),
-            (
-                422,
-                br#"{"success":false,"error":{"code":"VALIDATION_FAILED","message":"x"}}"#,
-            ),
-            (400, b"{}"),
-        ] {
-            assert!(!index_refused(&refusal(status, body)), "{status}");
-        }
-        let moved = refusal(
-            409,
-            br#"{"success":false,"error":{"code":"ASSETS_INDEX_MOVED","message":"the index moved"}}"#,
-        );
-        assert_eq!(
-            moved.service_refusal().and_then(|r| r.code()),
-            Some("assets_index_moved")
-        );
     }
 
     #[test]

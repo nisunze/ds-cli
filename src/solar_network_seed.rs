@@ -541,10 +541,7 @@ fn parse_lv_tags(
 ) -> Result<BTreeMap<String, (String, String)>, SolarNetworkSeedError> {
     let document: TagDocument = serde_json::from_str(&request.lv_tag_projection.document)
         .map_err(|error| reject("solar_network_seed_lv_tags_invalid", error))?;
-    if !matches!(
-        document.schema_version.as_str(),
-        "ds-report.design-tags/v2" | "ds-report.design-tags/v3"
-    ) {
+    if document.schema_version != "ds-report.design-tags/v3" {
         return Err(reject(
             "solar_network_seed_lv_tags_schema_unsupported",
             document.schema_version,
@@ -1235,6 +1232,25 @@ mod tests {
         assert!(error
             .to_string()
             .contains("solar_network_seed_lv_phase_missing"));
+    }
+
+    #[test]
+    fn the_lv_tag_projection_requires_the_current_schema() {
+        let mut input = request();
+        input["lv_tag_projection"]["document"] = json!(input["lv_tag_projection"]["document"]
+            .as_str()
+            .unwrap()
+            .replace("ds-report.design-tags/v3", "ds-report.design-tags/v2"));
+        input["lv_tag_projection"]["sha256"] = json!(sha256(
+            input["lv_tag_projection"]["document"]
+                .as_str()
+                .unwrap()
+                .as_bytes()
+        ));
+        let error = plan_solar_network_seed(&serde_json::to_vec(&input).unwrap()).unwrap_err();
+        assert!(error
+            .to_string()
+            .starts_with("solar_network_seed_lv_tags_schema_unsupported:"));
     }
 
     #[test]

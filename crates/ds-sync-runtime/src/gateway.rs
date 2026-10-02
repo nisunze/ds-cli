@@ -380,8 +380,12 @@ mod tests {
         );
         assert_eq!(refusal_detail(409, None), "the gateway answered 409");
         assert_eq!(
-            refusal_field(Some(r#"{"error":{"code":"WORK_GRANT_REQUIRED"}}"#), "code").as_deref(),
-            Some("WORK_GRANT_REQUIRED")
+            refusal_field(
+                Some(r#"{"error":{"code":"INSUFFICIENT_PERMISSIONS"}}"#),
+                "code"
+            )
+            .as_deref(),
+            Some("INSUFFICIENT_PERMISSIONS")
         );
         let long = format!(
             r#"{{"error":{{"code":"CONFLICT","message":"{}"}}}}"#,

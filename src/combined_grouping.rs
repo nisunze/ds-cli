@@ -64,7 +64,6 @@ const MAX_ID_CHARS: usize = 256;
 const SHOWN: usize = 8;
 
 const TAG_SCHEMA_CURRENT: &str = "ds-report.design-tags/v3";
-const TAG_SCHEMA_LEGACY: &str = "ds-report.design-tags/v2";
 const LV_TRANSFORMER: &str = "lv_transformer";
 const SINGLE: &str = "single";
 
@@ -524,8 +523,7 @@ fn parse_document(request: &Request<'_>) -> Result<Document, Refusal> {
     }
     let document: Document = serde_json::from_str(request.document)
         .map_err(|error| projection(format!("the tag projection is unreadable: {error}")))?;
-    if document.schema_version != TAG_SCHEMA_CURRENT && document.schema_version != TAG_SCHEMA_LEGACY
-    {
+    if document.schema_version != TAG_SCHEMA_CURRENT {
         return Err(projection(format!(
             "the tag projection is {}; this kernel reads {TAG_SCHEMA_CURRENT}",
             document.schema_version
@@ -1175,9 +1173,11 @@ mod tests {
         })
         .expect_err("another project's projection");
         assert_eq!(other.code, RefusalCode::ProjectionInvalid);
-        let v9 = doc.replace(TAG_SCHEMA_CURRENT, "ds-report.design-tags/v9");
-        let refusal = run(&v9, &scope, &["city"], &[]).expect_err("schema");
-        assert_eq!(refusal.code, RefusalCode::ProjectionInvalid);
+        for schema in ["ds-report.design-tags/v2", "ds-report.design-tags/v9"] {
+            let invalid = doc.replace(TAG_SCHEMA_CURRENT, schema);
+            let refusal = run(&invalid, &scope, &["city"], &[]).expect_err("schema");
+            assert_eq!(refusal.code, RefusalCode::ProjectionInvalid);
+        }
     }
 
     #[test]
