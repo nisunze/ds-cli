@@ -133,7 +133,7 @@ fn partial_iterations_keep_each_output_in_its_own_producing_generation() {
     input["snapshot"]["local_sets"][0]["artifacts"]
         .as_array_mut()
         .unwrap()
-        .retain(|artifact| artifact["format"] == "pdf");
+        .retain(|artifact| artifact["outputId"].as_str().unwrap().starts_with("pdf__"));
     input["snapshot"]["sync_artifacts"][0]["outputs"]
         .as_array_mut()
         .unwrap()
