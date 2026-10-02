@@ -713,12 +713,17 @@ pub fn load_features(raw: &str, flag: &str, max: usize) -> Result<Supplied, Fail
     }
 
     let mut kinds = BTreeSet::new();
-    let mut bounds: Option<[f64; 4]> = None;
+    let bounds = if value.is_array() {
+        ds_geo_lite::viewport::geojson_bounds(
+            &json!({"type":"FeatureCollection", "features":value}),
+        )
+    } else {
+        ds_geo_lite::viewport::geojson_bounds(&value)
+    };
     for feature in &features {
         if let Some(kind) = feature["geometry"]["type"].as_str() {
             kinds.insert(kind.to_string());
         }
-        extend_bounds(&mut bounds, &feature["geometry"]["coordinates"]);
     }
 
     Ok(Supplied {
@@ -760,37 +765,6 @@ fn spell(kind: &str) -> &str {
 
 pub fn kinds_of(supplied: &Supplied) -> Vec<String> {
     supplied.kinds.iter().cloned().collect()
-}
-
-/// Walk a nested GeoJSON coordinate array, widening `bounds`.
-///
-/// This is arithmetic over the caller's own input, not geometry: it derives
-/// no length, no area and no projection, and asks no engine anything. It
-/// exists so `map draw --zoom` can move the map to what it just drew without
-/// the caller computing an extent by hand.
-fn extend_bounds(bounds: &mut Option<[f64; 4]>, node: &Value) {
-    let Some(items) = node.as_array() else { return };
-    if let (Some(x), Some(y)) = (
-        items.first().and_then(Value::as_f64),
-        items.get(1).and_then(Value::as_f64),
-    ) {
-        if !x.is_finite() || !y.is_finite() {
-            return;
-        }
-        match bounds {
-            Some(box_) => {
-                box_[0] = box_[0].min(x);
-                box_[1] = box_[1].min(y);
-                box_[2] = box_[2].max(x);
-                box_[3] = box_[3].max(y);
-            }
-            None => *bounds = Some([x, y, x, y]),
-        }
-        return;
-    }
-    for item in items {
-        extend_bounds(bounds, item);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -954,6 +928,21 @@ mod tests {
             assert_eq!(supplied.features.len(), 1);
             assert_eq!(kinds_of(supplied), vec!["LineString".to_string()]);
         }
+    }
+
+    #[test]
+    fn zoom_extent_reads_geometry_collections_and_excludes_non_wgs84_pairs() {
+        let supplied = load(
+            "ds-map-extent-collection.geojson",
+            r#"{
+            "type":"Feature","properties":{},"geometry":{"type":"GeometryCollection","geometries":[
+                {"type":"Point","coordinates":[30,-2,800]},
+                {"type":"LineString","coordinates":[[31,-1],[500000,4700000],[-181,-2]]}
+            ]}}
+        "#,
+        )
+        .unwrap();
+        assert_eq!(supplied.bbox, Some([30., -2., 31., -1.]));
     }
 
     #[test]
