@@ -49,6 +49,11 @@ PLS surface here: `ds-cli-pls` (native-file tasks over `ds-grid-tasks` + `ds-io`
 - Kernel-first ordering suggests the kernel owns it and the CLI adapts.
 
 ### C5 — Docs copied from ds-network (slice S3)
+**Contract copies resolved 2026-10-02:** ds-cli owns `dsgrid-authority/01`;
+00, 02, 04 and `program/03`, `program/04` are pointer stubs to ds-network. The
+skill and reference overlaps below remain open. The bullets are the
+2026-09-22 state.
+
 - `docs/contracts/dsgrid-authority/00, 02, 04` are byte-identical copies of
   ds-network's; `01-server-required.md` has **diverged** from ds-network.
 - `docs/contracts/program/04-structure-rules-spotting.md` differs from
