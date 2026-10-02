@@ -111,6 +111,11 @@ path can check it; its request's max_reported_rejections bounds its rows.",
             note: "Read conductor-only attachment and support forces for explicit structures at the pinned model head; upward demand is not anchored capacity or a strength failure.",
             runnable: false,
         },
+        Example {
+            command: "ds dsgrid run --model ./model.dsgrid --operation support_resistance_binding --params ./support-binding.json --output json",
+            note: "Supply request.structure_id to read native realization, placement, applied-load and case pins for external whole-support resistance evidence.",
+            runnable: false,
+        },
     ],
     refusals: &[
         Refusal {
@@ -184,6 +189,8 @@ path can check it; its request's max_reported_rejections bounds its rows.",
         "conductor loads",
         "attachment forces",
         "upward demand",
+        "support resistance",
+        "anchorage evidence",
         "model analysis",
     ],
     requires: Requires::Server,
@@ -1408,6 +1415,149 @@ mod tests {
             }
             assert_eq!(detail["engine"], native.to_string());
         }
+    }
+
+    #[test]
+    fn support_resistance_binding_admits_only_the_native_structure_request() {
+        let operation = "support_resistance_binding";
+        let descriptor = operation_descriptor(operation).unwrap();
+        admit(&descriptor).expect("non-journaled native read");
+        assert_eq!(descriptor.result_type, "SupportResistanceBindingReport");
+        assert_eq!(descriptor.params.len(), 1);
+        assert_eq!(descriptor.params[0].name, "request");
+        assert_eq!(
+            descriptor.params[0].value_type,
+            "SupportResistanceBindingRequest"
+        );
+        assert!(descriptor.params[0].required);
+        let request = json!({ "structure_id": "str-focus" });
+        let params = json!({ "request": request });
+        validate_params(&descriptor, &params).unwrap();
+        let parsed: RequestParams<ds_grid_engine::SupportResistanceBindingRequest> =
+            parse(operation, &params).unwrap();
+        assert_eq!(serde_json::to_value(parsed.request).unwrap(), request);
+
+        for invalid in [
+            json!({}),
+            request.clone(),
+            json!({ "request": request, "row": {} }),
+        ] {
+            assert_eq!(
+                validate_params(&descriptor, &invalid).unwrap_err().code(),
+                "params_invalid"
+            );
+        }
+        let session = GridSession::open(ds_grid_model::GridModelSnapshot::default());
+        for invalid in [
+            json!({ "request": {} }),
+            json!({ "request": { "structure_id": "" } }),
+            json!({ "request": { "structure_id": 1 } }),
+            json!({ "request": { "structure_id": "str-focus", "capacity_n": 100 } }),
+        ] {
+            assert_eq!(
+                dispatch(
+                    operation,
+                    &invalid,
+                    &session,
+                    &EngineeringAttributeEvidence::default(),
+                    &StructureLabelPolicy::default(),
+                )
+                .unwrap_err()
+                .code(),
+                "params_invalid"
+            );
+        }
+    }
+
+    #[test]
+    fn support_resistance_binding_dispatch_preserves_native_pins_without_authoring() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
+        let mut snapshot = ds_grid_exchange::unpack(&std::fs::read(path).unwrap())
+            .unwrap()
+            .snapshot;
+        // Use direct placements to keep this transport parity check independent
+        // of terrain coverage; aligned-placement applicability belongs to the engine.
+        for structure in &mut snapshot.structures {
+            structure.alignment_id = None;
+            structure.station_m = None;
+            structure.profile_offset_m = None;
+        }
+        let session = GridSession::open(snapshot);
+        let before = session.snapshot().clone();
+        let revision = session.current_revision().clone();
+        let request = ds_grid_engine::SupportResistanceBindingRequest {
+            structure_id: before.tension_section_supports[0].structure_id.clone(),
+        };
+        let native = session.support_resistance_binding(&request).unwrap();
+        let report = dispatch(
+            "support_resistance_binding",
+            &json!({ "request": request }),
+            &session,
+            &EngineeringAttributeEvidence::default(),
+            &StructureLabelPolicy::default(),
+        )
+        .unwrap();
+        assert_eq!(report, serde_json::to_value(&native).unwrap());
+        assert_eq!(report["model_revision"], revision.revision_id.as_str());
+        assert_eq!(
+            report["engineering_input_root"],
+            revision.roots.engineering_input_root
+        );
+        assert_eq!(
+            report["binding"]["structure_id"],
+            request.structure_id.as_str()
+        );
+        for field in [
+            "actual_realization_digest",
+            "placement_digest",
+            "applied_load_input_root",
+        ] {
+            assert!(
+                report["binding"][field]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("sha256:")
+            );
+        }
+        assert!(!native.binding.case_digests.is_empty());
+        assert_eq!(
+            native.binding.case_digests.len(),
+            before.analysis_cases.len()
+        );
+        assert!(report.get("support_resistance_checks").is_none());
+        assert_eq!(session.snapshot(), &before);
+        assert_eq!(session.current_revision(), &revision);
+    }
+
+    #[test]
+    fn support_resistance_binding_dispatch_preserves_missing_structure_refusal() {
+        let session = GridSession::open(ds_grid_model::GridModelSnapshot::default());
+        let before = session.snapshot().clone();
+        let revision = session.current_revision().clone();
+        let request = ds_grid_engine::SupportResistanceBindingRequest {
+            structure_id: ds_grid_model::StructureId::new("str-missing").unwrap(),
+        };
+        let native = session.support_resistance_binding(&request).unwrap_err();
+        assert_eq!(native, "structure_not_found");
+        let error = dispatch(
+            "support_resistance_binding",
+            &json!({ "request": request }),
+            &session,
+            &EngineeringAttributeEvidence::default(),
+            &StructureLabelPolicy::default(),
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "operation_failed");
+        assert_eq!(error.detail_value().unwrap()["engine"], native);
+        assert!(
+            COMMAND
+                .refusals
+                .iter()
+                .any(|refusal| refusal.code == error.code())
+        );
+        assert_eq!(session.snapshot(), &before);
+        assert_eq!(session.current_revision(), &revision);
     }
 
     #[test]
