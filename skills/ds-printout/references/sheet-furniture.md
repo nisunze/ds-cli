@@ -67,3 +67,21 @@ Read the shared status output. Label-placement notes count map text hidden to
 avoid overlap or clipping; they do not imply missing source records. Furniture
 findings and schedule row omissions remain problems to resolve. Table schematics
 are compact editing aids, not measured export geometry: inspect a real render.
+
+## MV booklet furniture
+
+Use the selected governed MV A3 standard. North arrows and legends cannot
+intersect measured route or structure-label boxes; a weighted preference is
+insufficient. Deflection captions reserve their columns before profile label
+placement. Local elevation-datum labels and their leaders stay below the scale
+band. An impossible placement refuses the atomic job, naming the conflict.
+The cover, naming, sheet index, key plan and notes are page roles in the shared
+layout path; they are not an agent-authored HTML assembly. Preview every role
+through the same portable page inventory and PNG hashes used for PDF delivery.
+
+For MV, all paper appearance comes from governed printing/Layout documents and
+API-resolved style replies: pens/scaling, fonts, labels/halos, casing/dashes and
+table typography. Placement consumes these values and native geometry. Source
+kind and focus/context role never select a pen in renderer code. Preserve
+today's default rasters while migrating configuration; seed ownership remains
+with print-styles.
