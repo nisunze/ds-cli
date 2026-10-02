@@ -297,9 +297,9 @@ pub fn simplify_forward_collinear_by<T: Clone + PartialEq>(
             position(&window[1]),
             position(&window[2]),
         );
-        // Keep the original adjacent-vector evaluation: translating c to a
-        // instead of b can round a near-collinear turn differently.
-        let cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+        // Preserve the original Canvas origin-vector determinant. An
+        // algebraically equivalent adjacent-vector form can round differently.
+        let cross = orientation(a, b, c);
         let forward = (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]);
         if cross != 0.0 || forward < 0.0 {
             simplified.push(window[1].clone());
@@ -331,15 +331,30 @@ mod tests {
     }
 
     #[test]
-    fn collinear_reduction_preserves_a_rounded_adjacent_vector_turn() {
+    fn collinear_reduction_preserves_a_rounded_origin_vector_turn() {
+        let points = [
+            [7191584856.923134, -1474724867.5598488],
+            [1957430568.2409458, -106873244.3426876],
+            [-16920353649.379017, 4826494470.982347],
+        ];
+        // The adjacent-vector determinant rounds to zero, while the original
+        // calculation retains this authored middle point.
+        assert_eq!(simplify_forward_collinear_by(&points, |p| *p), points);
+    }
+
+    #[test]
+    fn collinear_reduction_retains_original_rounded_zero_behavior() {
         let points = [
             [542504588.846221, 969537270.7349102],
             [-627777760.5482227, -938698922.4377396],
             [-1798060109.942666, -2846935115.6103897],
         ];
-        // An origin-based determinant rounds this turn to zero. The original
-        // Canvas adjacent-vector calculation retains the authored middle point.
-        assert_eq!(simplify_forward_collinear_by(&points, |p| *p), points);
+        // The original determinant rounds to zero here. Changing its arithmetic
+        // would retain a vertex that Canvas previously removed.
+        assert_eq!(
+            simplify_forward_collinear_by(&points, |p| *p),
+            [points[0], points[2]]
+        );
     }
 
     #[test]
