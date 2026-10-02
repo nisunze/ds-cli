@@ -231,16 +231,21 @@ fn signed_dayspan(from_date: &str, to_date: &str) -> Option<i64> {
     Some(epoch_days(to_date)? - epoch_days(from_date)?)
 }
 
+/// The one lateness predicate: an open task with a stated past finish.
+fn is_late(task: &CanonicalProjectTask, today: &str) -> bool {
+    !matches!(
+        task.delivery_state,
+        DeliveryState::Complete | DeliveryState::Cancelled
+    ) && !task.finish_date.is_empty()
+        && task.finish_date.as_str() < today
+}
+
 /// `effort(task, today)`: the one fold that reads a task's estimate, hours
 /// and planned finish together. `late` here IS the attention rule below —
 /// the same predicate, so a task cannot be late on the plan and on time on
 /// its own row.
 pub fn effort(task: &CanonicalProjectTask, today: &str) -> TaskEffort {
-    let resolved = matches!(
-        task.delivery_state,
-        DeliveryState::Complete | DeliveryState::Cancelled
-    );
-    let late = !resolved && !task.finish_date.is_empty() && task.finish_date.as_str() < today;
+    let late = is_late(task, today);
     let estimate_vs_actual = task
         .estimated_hours
         .map(|estimated| task.actual_hours - estimated);
@@ -303,7 +308,7 @@ pub fn proposals(graph: &CanonicalProjectGraph) -> Vec<Proposal> {
 
 /// `dayspan` (views.ts:110-115): whole days between two calendar dates, or 0
 /// if either is unparseable — and never negative.
-fn dayspan(from_date: &str, to_date: &str) -> i64 {
+pub(super) fn dayspan(from_date: &str, to_date: &str) -> i64 {
     match (epoch_days(from_date), epoch_days(to_date)) {
         (Some(from), Some(to)) => (to - from).max(0),
         _ => 0,
@@ -369,15 +374,7 @@ pub fn dashboard(graph: &CanonicalProjectGraph, today: &str) -> Dashboard {
         // unscheduled task carries is less than every date. Late therefore
         // requires a finish date to exist, exactly as `attention` requires it:
         // a task cannot have slipped past a date it has not got.
-        past_planned_finish: tasks
-            .iter()
-            .filter(|task| {
-                !task.finish_date.is_empty()
-                    && task.finish_date.as_str() < today
-                    && task.delivery_state != DeliveryState::Complete
-                    && task.delivery_state != DeliveryState::Cancelled
-            })
-            .count(),
+        past_planned_finish: tasks.iter().filter(|task| is_late(task, today)).count(),
         under_review: tasks
             .iter()
             .filter(|task| in_review(task.review_state))
@@ -512,7 +509,7 @@ pub fn attention(graph: &CanonicalProjectGraph, today: &str) -> Vec<Attention> {
                 DeliveryState::Complete | DeliveryState::Cancelled
             );
             let blocker_count = task.open_blocker_count + task.descendant_blocker_count;
-            // Unlike the dashboard, `late` requires a finish date to exist:
+            // As on the dashboard, `late` requires a finish date to exist:
             // an unscheduled task cannot have slipped past a date it has not.
             // The predicate is `effort`'s, so the row and the plan agree.
             let effort = effort(task, today);

@@ -10,6 +10,7 @@
 //! parent chain (missing or cyclic) is repaired deterministically rather than
 //! throwing: the timeline must still draw.
 
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
@@ -22,7 +23,7 @@ use super::wire::{CanonicalProjectTask, TaskPlacement};
 struct Node<'a> {
     id: &'a str,
     parent_id: Option<&'a str>,
-    order: usize,
+    order: f64,
     placement: TaskPlacement,
 }
 
@@ -106,7 +107,11 @@ fn chunks(text: &str) -> Vec<Chunk<'_>> {
 /// share the one nameless pile, exactly as `task.parentTaskId ?? ''` does.
 fn sibling_order(tasks: &[CanonicalProjectTask]) -> BTreeMap<&str, usize> {
     let mut by_parent: BTreeMap<&str, Vec<&CanonicalProjectTask>> = BTreeMap::new();
+    let mut seen = std::collections::BTreeSet::new();
     for task in tasks {
+        if !seen.insert(task.id.as_str()) {
+            continue;
+        }
         by_parent
             .entry(task.parent_task_id.as_deref().unwrap_or(""))
             .or_default()
@@ -130,7 +135,7 @@ fn sibling_order(tasks: &[CanonicalProjectTask]) -> BTreeMap<&str, usize> {
 /// there while it collates titles elsewhere.
 fn compare_siblings(left: &Node<'_>, right: &Node<'_>) -> Ordering {
     left.order
-        .cmp(&right.order)
+        .total_cmp(&right.order)
         .then_with(|| left.id.cmp(right.id))
 }
 
@@ -172,21 +177,104 @@ pub struct OrderedRow {
 /// `wbs_by_task` is this walk indexed by id; the list form is what a bounded
 /// task listing pages over.
 pub fn ordered_rows(tasks: &[CanonicalProjectTask]) -> Vec<OrderedRow> {
+    hierarchy(tasks)
+        .nodes
+        .into_iter()
+        .map(|node| OrderedRow {
+            id: node.task_id,
+            wbs: node.wbs,
+            depth: node.depth,
+        })
+        .collect()
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HierarchyNode {
+    pub task_id: String,
+    pub parent_id: Option<String>,
+    pub depth: usize,
+    pub wbs: String,
+    pub child_ids: Vec<String>,
+    pub flat_index: usize,
+    pub source_index: usize,
+    pub order: f64,
+}
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Hierarchy {
+    pub nodes: Vec<HierarchyNode>,
+    pub root_ids: Vec<String>,
+    pub ordered_ids: Vec<String>,
+    pub broken_cycle_ids: Vec<String>,
+    pub orphaned_ids: Vec<String>,
+    pub duplicate_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineTask {
+    id: String,
+    #[serde(default)]
+    parent_id: Option<String>,
+    #[serde(default)]
+    order: Option<f64>,
+    #[serde(default)]
+    placement: TaskPlacement,
+}
+pub fn timeline_hierarchy(tasks: &[TimelineTask]) -> Hierarchy {
+    walk(
+        tasks
+            .iter()
+            .map(|task| Node {
+                id: &task.id,
+                parent_id: task.parent_id.as_deref(),
+                order: task.order.unwrap_or(0.0),
+                placement: task.placement,
+            })
+            .collect(),
+    )
+}
+pub fn hierarchy(tasks: &[CanonicalProjectTask]) -> Hierarchy {
     let order = sibling_order(tasks);
+    walk(
+        tasks
+            .iter()
+            .map(|task| Node {
+                id: &task.id,
+                parent_id: task.parent_task_id.as_deref(),
+                order: order.get(task.id.as_str()).copied().unwrap_or(0) as f64,
+                placement: task.placement,
+            })
+            .collect(),
+    )
+}
+
+fn walk(input: Vec<Node<'_>>) -> Hierarchy {
+    let mut duplicate_ids = Vec::new();
+    let mut source_indices = Vec::new();
     let mut nodes: Vec<Node<'_>> = Vec::new();
     let mut index_of: BTreeMap<&str, usize> = BTreeMap::new();
-    for task in tasks {
-        if index_of.contains_key(task.id.as_str()) {
+    for (source_index, node) in input.into_iter().enumerate() {
+        if index_of.contains_key(node.id) {
+            duplicate_ids.push(node.id.to_string());
             continue;
         }
-        index_of.insert(task.id.as_str(), nodes.len());
-        nodes.push(Node {
-            id: &task.id,
-            parent_id: task.parent_task_id.as_deref(),
-            order: order.get(task.id.as_str()).copied().unwrap_or(0),
-            placement: task.placement,
-        });
+        index_of.insert(node.id, nodes.len());
+        source_indices.push(source_index);
+        nodes.push(node);
     }
+    let mut orphaned_ids: Vec<String> = nodes
+        .iter()
+        .filter(|node| {
+            node.parent_id.is_some_and(|parent| {
+                !parent.is_empty() && (parent == node.id || !index_of.contains_key(parent))
+            })
+        })
+        .map(|node| node.id.to_string())
+        .collect();
+    orphaned_ids.sort();
+    let mut broken_cycle_ids = Vec::new();
 
     // `resolveParents`: an absent, self-referential or unknown parent re-roots.
     let mut parent_of: Vec<Option<usize>> = nodes
@@ -201,12 +289,12 @@ pub fn ordered_rows(tasks: &[CanonicalProjectTask]) -> Vec<OrderedRow> {
     // The iterative ancestor walk with a settled set: O(n) overall, no
     // recursion, and a cut point chosen from the cycle's own members.
     let mut settled = vec![false; nodes.len()];
+    let mut on_path = vec![false; nodes.len()];
     for start in 0..nodes.len() {
         if settled[start] {
             continue;
         }
         let mut path: Vec<usize> = Vec::new();
-        let mut on_path = vec![false; nodes.len()];
         let mut cursor = Some(start);
         while let Some(current) = cursor {
             if settled[current] {
@@ -223,6 +311,7 @@ pub fn ordered_rows(tasks: &[CanonicalProjectTask]) -> Vec<OrderedRow> {
                     })
                     .unwrap_or(current);
                 parent_of[cut] = None;
+                broken_cycle_ids.push(nodes[cut].id.to_string());
                 break;
             }
             on_path[current] = true;
@@ -231,6 +320,7 @@ pub fn ordered_rows(tasks: &[CanonicalProjectTask]) -> Vec<OrderedRow> {
         }
         for visited in path {
             settled[visited] = true;
+            on_path[visited] = false;
         }
     }
 
@@ -262,15 +352,23 @@ pub fn ordered_rows(tasks: &[CanonicalProjectTask]) -> Vec<OrderedRow> {
         }
     }
 
-    let mut rows: Vec<OrderedRow> = Vec::with_capacity(nodes.len());
+    let mut rows: Vec<HierarchyNode> = Vec::with_capacity(nodes.len());
     let mut stack: Vec<(usize, String, usize)> = roots
         .iter()
         .rev()
         .map(|root| (*root, labels.get(root).cloned().unwrap_or_default(), 0))
         .collect();
     while let Some((index, label, depth)) = stack.pop() {
-        rows.push(OrderedRow {
-            id: nodes[index].id.to_string(),
+        rows.push(HierarchyNode {
+            task_id: nodes[index].id.to_string(),
+            parent_id: parent_of[index].map(|parent| nodes[parent].id.to_string()),
+            child_ids: children[index]
+                .iter()
+                .map(|child| nodes[*child].id.to_string())
+                .collect(),
+            flat_index: rows.len(),
+            source_index: source_indices[index],
+            order: nodes[index].order,
             wbs: label.clone(),
             depth,
         });
@@ -278,7 +376,18 @@ pub fn ordered_rows(tasks: &[CanonicalProjectTask]) -> Vec<OrderedRow> {
             stack.push((*child, format!("{label}.{}", position + 1), depth + 1));
         }
     }
-    rows
+    broken_cycle_ids.sort();
+    Hierarchy {
+        root_ids: roots
+            .iter()
+            .map(|root| nodes[*root].id.to_string())
+            .collect(),
+        ordered_ids: rows.iter().map(|row| row.task_id.clone()).collect(),
+        nodes: rows,
+        broken_cycle_ids,
+        orphaned_ids,
+        duplicate_ids,
+    }
 }
 
 #[cfg(test)]

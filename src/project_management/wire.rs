@@ -777,6 +777,19 @@ pub(crate) fn optional_instant(value: Option<&Value>) -> Option<String> {
 /// argument the browser passes: the session's selected project, used only when
 /// the payload names none of its own.
 pub fn decode_project_graph(value: &Value, fallback_project: &str) -> CanonicalProjectGraph {
+    decode_graph(value, fallback_project, false)
+}
+
+/// Canonical drafts can temporarily have an empty title while being edited;
+/// keep their task positions. The write planners still require a valid title.
+pub(super) fn decode_canonical_graph(
+    value: &Value,
+    fallback_project: &str,
+) -> CanonicalProjectGraph {
+    decode_graph(value, fallback_project, true)
+}
+
+fn decode_graph(value: &Value, fallback_project: &str, draft: bool) -> CanonicalProjectGraph {
     let raw = record(Some(value));
     CanonicalProjectGraph {
         field_model: decode_field_model(raw.get("field_model")),
@@ -787,7 +800,7 @@ pub fn decode_project_graph(value: &Value, fallback_project: &str) -> CanonicalP
         calendar: decode_project_calendar(raw.get("calendar")),
         tasks: records(raw.get("tasks"))
             .into_iter()
-            .filter_map(decode_task)
+            .filter_map(|task| decode_task_fields(task, draft))
             .collect(),
         dependencies: records(raw.get("dependencies"))
             .into_iter()
@@ -1198,6 +1211,10 @@ fn decode_task_assignment(raw: &Map<String, Value>) -> Assignment {
 /// properties dialog decide editability from the document instead of from a
 /// hand-maintained list of field names.
 pub fn decode_task(envelope: &Map<String, Value>) -> Option<CanonicalProjectTask> {
+    decode_task_fields(envelope, false)
+}
+
+fn decode_task_fields(envelope: &Map<String, Value>, draft: bool) -> Option<CanonicalProjectTask> {
     let mut raw = record(envelope.get("data")).clone();
     for (key, value) in record(envelope.get("computed")) {
         raw.insert(key.clone(), value.clone());
@@ -1218,7 +1235,10 @@ pub fn decode_task(envelope: &Map<String, Value>) -> Option<CanonicalProjectTask
         .collect();
 
     let id = non_empty(text(raw.get("id")))?;
-    let title = non_empty(text(raw.get("title")))?;
+    let title = text(raw.get("title"));
+    if !draft && title.is_empty() {
+        return None;
+    }
     if raw.get("is_deleted") == Some(&Value::Bool(true)) {
         return None;
     }

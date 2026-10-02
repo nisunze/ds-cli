@@ -15,15 +15,10 @@
 //! server and the desktop reach the same authority through the same bytes.
 //! The defect it closes is a plan that differs by host.
 //!
-//! **Translated, not improved.** The browser's rules are reproduced as they
-//! were, including the ones nothing on the wire declares: the schedule state
-//! inferred from date presence, the 480-minute working day, closeout inferred
-//! from delivery, the legacy `done`/`doing` status words, and a residual that
-//! stays review-required until somebody classifies it. Each carries the
-//! `wire.ts` or `views.ts` line it came from. Where the browser is arguably
-//! wrong — an unscheduled task counting as past its planned finish because an
-//! empty date string sorts before every real one — the kernel is wrong in
-//! exactly the same way, on purpose, and says so at the site.
+//! Native and WASM hosts share the same projections, hierarchy repairs and
+//! validated write planners. Date presence still determines schedule state,
+//! and work-day conversion is 480 minutes. Lateness requires a stated finish:
+//! unscheduled work cannot slip past a date it never had.
 //!
 //! **Pure by the crate's contract**: no clock, no IO, no network. `today` is an
 //! input, and the caller that has a clock supplies it.
@@ -34,18 +29,21 @@
 //! respond`) and the fold of the engine's answer. Same doctrine — the browser's
 //! rules, translated as they were, reachable without a window.
 
+mod browser;
+mod command_wire;
 pub mod correspondence;
 mod hierarchy;
 pub mod model_links;
 pub mod projections;
 pub mod reads;
+mod wasm_writes;
 pub mod wire;
 pub mod writes;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use hierarchy::{ordered_rows, OrderedRow};
+pub use hierarchy::{ordered_rows, Hierarchy, OrderedRow};
 pub use projections::{
     effort, proposals, Attention, AttentionKind, CorrespondenceAttentionRecord,
     CorrespondenceBlockedTask, CorrespondenceParty, CorrespondencePlan, Dashboard, Phase, Proposal,
@@ -53,7 +51,7 @@ pub use projections::{
 };
 pub use wire::{decode_project_graph, CanonicalProjectGraph, ProjectGraphPermissions};
 
-/// The request/reply schema of this module's one action.
+/// The shared request/reply schema for plans, hierarchy and write preparation.
 pub const SCHEMA: &str = "ds.project-management/v1";
 
 /// A canonical graph of ten thousand tasks and their residuals, with room to
@@ -94,6 +92,8 @@ struct PlanRequest {
     ds_project: String,
     /// The canonical graph exactly as the engine published it.
     graph: Value,
+    #[serde(default = "browser::wire_format")]
+    graph_format: String,
     #[serde(default)]
     limit: Option<i64>,
 }
@@ -156,6 +156,7 @@ pub struct Vocabulary {
 #[serde(rename_all = "camelCase")]
 pub struct PlanReply {
     pub schema: &'static str,
+    pub hierarchy: Hierarchy,
     pub project: String,
     pub revision: i64,
     pub today: String,
@@ -213,7 +214,7 @@ fn plan(request: PlanRequest) -> Result<PlanReply, String> {
             ));
         }
     };
-    let graph = decode_project_graph(&request.graph, &request.ds_project);
+    let graph = browser::graph(&request.graph, &request.ds_project, &request.graph_format)?;
     let day = request.today;
 
     let all_phases = projections::phases(&graph);
@@ -225,6 +226,7 @@ fn plan(request: PlanRequest) -> Result<PlanReply, String> {
 
     Ok(PlanReply {
         schema: SCHEMA,
+        hierarchy: hierarchy::hierarchy(&graph.tasks),
         project: graph.project_id.clone(),
         revision: graph.revision,
         dashboard: projections::dashboard(&graph, &day),
@@ -289,6 +291,21 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 .map_err(|error| format!("Invalid project management request: {error}"))?;
             serde_json::to_string(&plan(request)?).map_err(|error| error.to_string())
         }
+        "hierarchy" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Request {
+                schema: String,
+                action: String,
+                tasks: Vec<hierarchy::TimelineTask>,
+            }
+            let request: Request = serde_json::from_slice(input).map_err(|e| e.to_string())?;
+            let _ = (&request.schema, &request.action);
+            serde_json::to_string(&hierarchy::timeline_hierarchy(&request.tasks))
+                .map_err(|e| e.to_string())
+        }
+        "task.create" | "task.update" | "task.assign" | "task.respond" | "task.sort-key"
+        | "task.owner-write" | "command.encode" => wasm_writes::evaluate(input),
         other => Err(format!("Unsupported project management action `{other}`.")),
     }
 }
@@ -297,6 +314,109 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn browser_canonical_graph_uses_the_same_lateness_and_timestamps() {
+        let reply = run(json!({
+            "schema": SCHEMA, "action": "plan", "today": "2026-10-02",
+            "graph_format": "canonical", "graph": {"projectId": "p", "revision": 7,
+                "tasks": [
+                    {"id": "late", "title": "Late", "finishDate": "2026-10-01",
+                     "deliveryState": "in_progress", "updatedAt": 1790812800000i64, "updatedBy": "owner"},
+                    {"id": "inbox", "title": "Unscheduled", "finishDate": "", "placement": "inbox"},
+                    {"id": "done", "title": "Done", "finishDate": "2026-10-01", "deliveryState": "complete"}
+                ], "permissions": {"view": true, "editSchedule": true}
+            }
+        })).unwrap();
+        assert_eq!(reply["project"], "p");
+        assert_eq!(reply["dashboard"]["pastPlannedFinish"], 1);
+        assert_eq!(reply["attentionTotal"], 1);
+        assert_eq!(reply["recent"][0]["updatedBy"], "owner");
+        assert_eq!(reply["permissions"]["editSchedule"], true);
+    }
+
+    #[test]
+    fn wasm_write_planners_keep_exact_model_pins_and_share_native_refusals() {
+        let graph = json!({"projectId": "p", "revision": 7,
+            "tasks": [{"id": "parent", "title": "Parent", "responsibleEmail": "old@example.com"}],
+            "permissions": {"view": true, "editSchedule": true, "contribute": true}
+        });
+        let link = json!({"kind": "ds_object", "projectId": "p", "objectType": "mv_model",
+            "entityId": "model-1", "objectRevision": "revision-1", "modelVersion": 3,
+            "modelDigest": "a".repeat(64), "attachedBy": "owner@example.com"});
+        let create = run(json!({"schema": SCHEMA, "action": "task.create",
+            "graph_format": "canonical", "graph": graph, "now": 123,
+            "input": {"id": "new", "kind": "child", "parentTaskId": "parent",
+                "title": " New ", "links": [link], "startDate": "2026-10-01", "finishDate": "2026-10-02"}
+        })).unwrap();
+        assert_eq!(create["prepared"]["baseRevision"], 7);
+        assert_eq!(create["draftCommand"]["task"]["durationMinutes"], 960);
+        assert_eq!(create["draftCommand"]["task"]["links"][0], link);
+        let encoded = run(json!({"schema": SCHEMA, "action": "command.encode",
+            "command": create["draftCommand"]}))
+        .unwrap();
+        assert_eq!(encoded, create["prepared"]["command"]);
+        assert_eq!(
+            encoded["create_task"]["links"][0]["object_revision"],
+            "revision-1"
+        );
+        assert_eq!(
+            encoded["create_task"]["links"][0]["model_digest"],
+            "a".repeat(64)
+        );
+        let update = run(json!({"schema": SCHEMA, "action": "task.update",
+            "graph_format": "canonical", "graph": graph,
+            "input": {"task": "parent", "progress": 50, "links": [link]}}))
+        .unwrap();
+        assert_eq!(
+            update["prepared"]["commands"][0]["update_task_fields"]["links"][0]["model_version"],
+            3
+        );
+        let assign = run(json!({"schema": SCHEMA, "action": "task.assign", "graph_format": "canonical",
+            "graph": graph, "input": {"task": "parent", "mode": "owner", "owner": "NEW@example.com"}})).unwrap();
+        assert_eq!(
+            assign["prepared"]["command"]["assign_task"]["responsible_email"],
+            "new@example.com"
+        );
+        assert_eq!(
+            assign["prepared"]["command"]["assign_task"]["collaborator_emails"],
+            json!(["old@example.com"])
+        );
+        let respond = run(
+            json!({"schema": SCHEMA, "action": "task.respond", "graph_format": "canonical",
+            "graph": graph, "input": {"task": "parent", "response": "accept"}}),
+        )
+        .unwrap();
+        assert_eq!(respond["prepared"]["command"]["kind"], "accept_assignment");
+        let mut readonly = graph;
+        readonly["permissions"]["editSchedule"] = json!(false);
+        let refusal = run(
+            json!({"schema": SCHEMA, "action": "task.create", "graph_format": "canonical",
+            "graph": readonly, "input": {"id": "new", "title": "New", "kind": "parent"}}),
+        )
+        .unwrap_err();
+        assert!(refusal.contains("editor access"));
+    }
+
+    #[test]
+    fn command_codec_keeps_geojson_properties_and_model_pin_updates() {
+        let geometry = json!({"type": "Feature", "properties": {"operatorKey": "unchanged"},
+            "geometry": {"type": "Point", "coordinates": [30, -2]}});
+        let command = json!({"kind": "update_task_fields", "taskId": "t",
+            "fields": {"geometry": geometry, "links": [{"objectRevision": "rev", "modelVersion": 3}]}});
+        let encoded =
+            run(json!({"schema": SCHEMA, "action": "command.encode", "command": command})).unwrap();
+        assert_eq!(encoded["update_task_fields"]["geometry"], geometry);
+        assert_eq!(
+            encoded["update_task_fields"]["links"][0]["object_revision"],
+            "rev"
+        );
+        assert!(run(
+            json!({"schema": SCHEMA, "action": "command.encode", "command":
+            {"kind": "update_dependency", "dependencyId": "d", "type": "FS", "lagMinutes": 15}})
+        )
+        .is_err());
+    }
 
     fn run(request: Value) -> Result<Value, String> {
         evaluate(&serde_json::to_vec(&request).expect("request serialises"))
