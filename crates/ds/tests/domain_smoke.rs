@@ -14993,6 +14993,170 @@ fn vector_fixture(root: &std::path::Path) -> (PathBuf, PathBuf) {
 }
 
 #[test]
+fn vector_cli_file_and_json_packets_match_the_kernel_and_frozen_native_baseline() {
+    use ds_command_kernel::vector_ops::{VectorRequest, evaluate, execute};
+
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../ds-command-kernel/tests/fixtures/vector_processing_packets.json"
+    ))
+    .unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    assert_eq!(fixture["cases"].as_array().unwrap().len(), 7);
+    for (index, case) in fixture["cases"].as_array().unwrap().iter().enumerate() {
+        let mut request = case["request"].clone();
+        request["source"] = fixture["documents"][request["source"].as_str().unwrap()].clone();
+        if request.get("against").is_some() {
+            request["against"] = fixture["documents"][request["against"].as_str().unwrap()].clone();
+        }
+        let typed: VectorRequest = serde_json::from_value(request.clone()).unwrap();
+        assert_eq!(execute(&typed).unwrap(), case["expected"]);
+        let encoded: Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&request).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(encoded, case["expected"]);
+
+        let source_json = request["source"].to_string();
+        let against_json = request.get("against").map(Value::to_string);
+        let source = directory.path().join(format!("source-{index}.geojson"));
+        let against = directory.path().join(format!("against-{index}.geojson"));
+        std::fs::write(&source, &source_json).unwrap();
+        if let Some(text) = &against_json {
+            std::fs::write(&against, text).unwrap();
+        }
+        for from_file in [false, true] {
+            let operation = request["operation"].as_str().unwrap();
+            let mut arguments = vec![
+                "data".to_owned(),
+                "vector".to_owned(),
+                operation.to_owned(),
+                if from_file {
+                    "--source"
+                } else {
+                    "--source-json"
+                }
+                .to_owned(),
+                if from_file {
+                    source.to_str().unwrap().to_owned()
+                } else {
+                    source_json.clone()
+                },
+            ];
+            if let Some(text) = &against_json {
+                arguments.extend([
+                    if from_file {
+                        "--against"
+                    } else {
+                        "--against-json"
+                    }
+                    .to_owned(),
+                    if from_file {
+                        against.to_str().unwrap().to_owned()
+                    } else {
+                        text.clone()
+                    },
+                ]);
+            }
+            for (field, flag) in [
+                ("limit", "--limit"),
+                ("radius_m", "--radius-m"),
+                ("segments", "--segments"),
+                ("interval_m", "--interval-m"),
+            ] {
+                if let Some(value) = request.get(field) {
+                    arguments.extend([flag.to_owned(), value.to_string()]);
+                }
+            }
+            if request["include_ends"] == true {
+                arguments.push("--include-ends".to_owned());
+            }
+            let output = directory
+                .path()
+                .join(format!("result-{index}-{from_file}.geojson"));
+            let mut expected = case["expected"].clone();
+            if request["result_projection"] == "complete_produced" {
+                arguments.extend(["--out".to_owned(), output.to_str().unwrap().to_owned()]);
+                expected["written_to"] = json!(output.to_str().unwrap());
+                expected["result"] = Value::Null;
+            }
+            arguments.extend(["--output".to_owned(), "json".to_owned()]);
+            let arguments: Vec<&str> = arguments.iter().map(String::as_str).collect();
+            assert_eq!(ok(&arguments), expected, "packet {index}, file {from_file}");
+            if output.exists() {
+                let written: Value =
+                    serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
+                assert_eq!(written, case["expected"]["result"]);
+                assert_eq!(
+                    refusal(&arguments),
+                    "output_refused",
+                    "an existing complete result must require --overwrite"
+                );
+                let unchanged: Value =
+                    serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
+                assert_eq!(unchanged, written);
+            }
+            assert_eq!(std::fs::read(&source).unwrap(), source_json.as_bytes());
+            if let Some(text) = &against_json {
+                assert_eq!(std::fs::read(&against).unwrap(), text.as_bytes());
+            }
+        }
+    }
+}
+
+#[test]
+fn vector_controller_parameter_refusals_cannot_overwrite_an_owner_file() {
+    use ds_command_kernel::vector_ops::{ResultProjection, SCHEMA, VectorRequest, execute};
+
+    let source = json!({"type":"Feature","id":"owner-line",
+        "properties":{"label":"owner", "nested":{"keep":[1,null,true]}},
+        "geometry":{"type":"LineString","coordinates":[[30.,-2.],[30.002,-2.]]}});
+    let source_json = source.to_string();
+    let directory = tempfile::tempdir().unwrap();
+    let output = directory.path().join("owner.geojson");
+    std::fs::write(&output, b"owner bytes").unwrap();
+    for (flag, spelling, radius_m, segments, limit) in [
+        ("--radius-m", "NaN", f64::NAN, 8, None),
+        ("--radius-m", "inf", f64::INFINITY, 8, None),
+        ("--radius-m", "0", 0.0, 8, None),
+        ("--segments", "0", 25.0, 0, None),
+        ("--segments", "65", 25.0, 65, None),
+        ("--limit", "0", 25.0, 8, Some(0)),
+        ("--limit", "20001", 25.0, 8, Some(20_001)),
+    ] {
+        let typed = VectorRequest::Buffer {
+            schema: SCHEMA.into(),
+            source: source.clone(),
+            radius_m,
+            segments,
+            limit,
+            result_projection: ResultProjection::CompleteProduced,
+        };
+        let expected = execute(&typed).unwrap_err();
+        let mut arguments = vec![
+            "data",
+            "vector",
+            "buffer",
+            "--source-json",
+            &source_json,
+            "--out",
+            output.to_str().unwrap(),
+            "--overwrite",
+            "--output",
+            "json",
+        ];
+        if flag != "--radius-m" {
+            arguments.extend(["--radius-m", "25"]);
+        }
+        arguments.extend([flag, spelling]);
+        let refused = ds(&arguments);
+        assert_ne!(refused.code, 0);
+        assert_eq!(refused.envelope["error"]["code"], expected.code);
+        assert_eq!(refused.envelope["error"]["message"], expected.message);
+        assert_eq!(refused.envelope["error"]["remedy"], expected.remedy);
+        assert_eq!(std::fs::read(&output).unwrap(), b"owner bytes");
+    }
+}
+
+#[test]
 fn vector_json_text_and_file_inputs_produce_the_same_native_answers() {
     let root = temp_root("vector-json-inputs");
     let (feeder, road) = vector_fixture(&root);
