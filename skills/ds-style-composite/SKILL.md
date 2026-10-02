@@ -22,9 +22,10 @@ The layout's atomic intent takes the project context pen; do not recolour the
 focused categorical network or main MV conductors to create that background.
 Keep customer body/outline and legend swatches consistent with the chosen pen.
 
-Determine the output first. For printed sheets, select a returned `_print` ref
-and verify `style read` reports `target: print`. A bare or `_vt` ref styles the
-interactive map; a print request never authorizes changing it. Style Center
+Discover style resolve for the exact entity/source/target/role/ink combination;
+use its governed id and revision. Colour and monochrome resolve independently;
+unknown combinations need the style owner. Verify the target with style read.
+A print request never authorizes changing a screen document. Style Center
 edits the selected document, not an overall style shared by both outputs.
 
 A screen document may seed a new print document through the create-only print
