@@ -1,4 +1,5 @@
 //! Shared saved portfolio analysis projection for native and WASM consumers.
+use crate::is_solar_id as identifier;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -36,13 +37,6 @@ fn count(value: &Value) -> Value {
         .as_f64()
         .filter(|n| n.fract() == 0. && (0. ..=200.).contains(n))
         .map_or(Value::Null, |n| json!(n as u64))
-}
-fn identifier(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 128
-        && s.as_bytes()[0].is_ascii_alphanumeric()
-        && s.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
     if bytes.is_empty() || bytes.len() > 8 * 1024 * 1024 {

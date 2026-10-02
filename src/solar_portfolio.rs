@@ -455,14 +455,7 @@ fn validate_membership(cities: &[String]) -> Result<(), SolarPortfolioError> {
 }
 
 fn validate_identifier(value: &str, label: &str) -> Result<(), SolarPortfolioError> {
-    let mut chars = value.chars();
-    let valid = value.len() <= 128
-        && chars
-            .next()
-            .is_some_and(|first| first.is_ascii_alphanumeric())
-        && chars
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'));
-    if !valid {
+    if !crate::is_solar_id(value) {
         return Err(invalid(format!("{label} is outside the closed id grammar")));
     }
     Ok(())

@@ -1,3 +1,4 @@
+use ds_command_kernel::is_solar_id as canonical_id;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -397,16 +398,6 @@ pub(crate) fn canonical_media_role(value: &str) -> bool {
 
 pub(crate) fn canonical_media_file_name(value: &str) -> bool {
     bounded_text(value, 255) && value != "." && value != ".." && !value.contains(['/', '\\'])
-}
-
-fn canonical_id(value: &str) -> bool {
-    let mut chars = value.chars();
-    value.len() <= 128
-        && chars
-            .next()
-            .is_some_and(|character| character.is_ascii_alphanumeric())
-        && chars
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
 }
 
 pub(crate) fn canonical_uuid(value: &str) -> bool {

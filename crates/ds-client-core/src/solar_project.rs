@@ -3,6 +3,7 @@ use crate::{
     authorized::{classify_tile_error, Authority},
     AuthorizedTransport, ClientError, ClientProfile, ErrorKind, SolarProjectCall, UploadBytesCall,
 };
+use ds_command_kernel::is_solar_id as id;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -59,13 +60,6 @@ pub enum Command {
         calculation: Output,
         reports: Vec<Output>,
     },
-}
-fn id(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 128
-        && s.as_bytes()[0].is_ascii_alphanumeric()
-        && s.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 fn sha(s: &str) -> bool {
     s.len() == 64
