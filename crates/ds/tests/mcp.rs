@@ -2025,6 +2025,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // workflow beside the retained desktop-owned operations.
             "printing" => 26,
             "printing-maps" => 7,
+            // Eleven existing guided leaves, eleven new authoring leaves and
+            // nine resolver/catalogue leaves. Mirrors the explicitly closed
+            // STYLE_COMMANDS profile, including both bootstrap tools.
+            "styles" => 33,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
             // also carries this machine's prepared local layer catalogue,
             // which is the same "one host's own layers" workflow as the local
@@ -2545,6 +2549,9 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
         "dsgrid-exchange.convert",
         "workstation.plan",
         "workstation.configure",
+        // The resolver's screen/print cartographic target is a dimension of
+        // the governed style key; execution still uses the native server.
+        "style.resolve",
     ];
     const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|server>";
     /// `ds mcp install --host` names an MCP host *program* — Claude Code,

@@ -157,20 +157,19 @@ pub const REFUSALS: &[Refusal] = &[
     },
 ];
 fn named(failure: Failure) -> Failure {
-    if let Some(detail) = failure.detail_value() {
-        if let Some(code) = detail["service_code"].as_str() {
-            if let Some(refusal) = REFUSALS.iter().find(|r| r.code == code) {
-                let message = detail["service_message"]
-                    .as_str()
-                    .unwrap_or(failure.message());
-                let result = match code {
-                    "style_governance_forbidden" => Failure::unauthorized(refusal.code, message),
-                    "style_governance_failed" => Failure::failed(refusal.code, message),
-                    _ => Failure::invalid(refusal.code, message),
-                };
-                return result.remedy(refusal.remedy).detail(detail.clone());
-            }
-        }
+    if let Some(detail) = failure.detail_value()
+        && let Some(code) = detail["service_code"].as_str()
+        && let Some(refusal) = REFUSALS.iter().find(|r| r.code == code)
+    {
+        let message = detail["service_message"]
+            .as_str()
+            .unwrap_or(failure.message());
+        let result = match code {
+            "style_governance_forbidden" => Failure::unauthorized(refusal.code, message),
+            "style_governance_failed" => Failure::failed(refusal.code, message),
+            _ => Failure::invalid(refusal.code, message),
+        };
+        return result.remedy(refusal.remedy).detail(detail.clone());
     }
     crate::native::named(failure)
 }

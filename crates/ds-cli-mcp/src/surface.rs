@@ -403,9 +403,9 @@ impl Profile {
             // package before the same file workflow imports or restores it.
             // Exact retained-source cable reconciliation adds one native package leaf.
             Self::GridNative => 19,
-            // The existing eleven guided leaves plus eleven primary/zoom/
-            // preset/JSON leaves form the complete authoring workflow;
-            // two bootstrap tools accompany that closed command set.
+            // Eleven existing guided leaves, eleven primary/zoom/preset/JSON
+            // leaves and nine resolver/catalogue leaves make the closed
+            // authoring and governance workflow (31 leaves plus bootstrap).
             Self::Styles => STYLE_COMMANDS.len() + 2,
             _ => 16,
         }
