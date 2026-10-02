@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ClientError, ErrorKind, TransportResponse};
 
-pub(crate) const MAX_PROJECT_ID_CHARS: usize = 200;
 const MAX_TILE_LAYERS: usize = 10_000;
 const MAX_TEXT_CHARS: usize = 8_192;
 
@@ -520,13 +519,7 @@ struct PreflightWire {
 }
 
 pub(crate) fn validate_project(project: &str) -> Result<(), ClientError> {
-    if !bounded(project, MAX_PROJECT_ID_CHARS, false) {
-        return Err(ClientError::new(
-            ErrorKind::InvalidInput,
-            "the selected project id is empty, untrimmed, or outside its 200-character bound",
-        ));
-    }
-    Ok(())
+    crate::validate_project_id(project)
 }
 
 pub(crate) fn decode_operation(

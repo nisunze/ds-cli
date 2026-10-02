@@ -5,6 +5,8 @@
 //! atomic [`RefreshTokenStore`] adapters. Ordinary callers receive identity and
 //! project values, never Firebase ID/refresh tokens or an arbitrary URL/path API.
 
+mod project_id;
+pub use project_id::{validate_project_id, MAX_PROJECT_ID_CHARS};
 mod authorized;
 mod project_feeders;
 pub use project_feeders::{FeederConfiguration, ProjectConfigurationChange};
