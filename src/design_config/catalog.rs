@@ -57,7 +57,7 @@ fn hazards(rows: &Value, stored: Option<String>, scoped: bool) -> Value {
             let key = (text(&row["client"]), text(&row["country"]));
             *scopes.entry(key).or_default() += 1;
         }
-        for name in super::alias_list(&row["misspelled_names"])
+        for name in super::alias_list(field(row, "misspelled_names", "misspellednames"))
             .into_iter()
             .chain(std::iter::once(clean.clone()))
         {
@@ -120,10 +120,53 @@ fn hazards(rows: &Value, stored: Option<String>, scoped: bool) -> Value {
     Value::Object(answer)
 }
 
+/// Unambiguous reporting aliases, normalized once for all catalogue readers.
+/// An alias claimed by different canonical names is omitted, regardless of order.
+pub fn alias_map(rows: &Value) -> BTreeMap<String, String> {
+    let mut aliases = BTreeMap::new();
+    let mut ambiguous = BTreeSet::new();
+    for row in rows.as_array().into_iter().flatten() {
+        let Some(clean) = canonical(row) else {
+            continue;
+        };
+        for name in super::alias_list(field(row, "misspelled_names", "misspellednames"))
+            .into_iter()
+            .chain(std::iter::once(clean.clone()))
+        {
+            let key = name.trim().to_lowercase();
+            if aliases
+                .insert(key.clone(), clean.clone())
+                .is_some_and(|previous| previous != clean)
+            {
+                ambiguous.insert(key);
+            }
+        }
+    }
+    for key in ambiguous {
+        aliases.remove(&key);
+    }
+    aliases
+}
+
+fn field<'a>(row: &'a Value, canonical: &str, sanitized: &str) -> &'a Value {
+    row.get(canonical)
+        .or_else(|| {
+            row.as_object()?.iter().find_map(|(key, value)| {
+                (key.to_ascii_lowercase()
+                    .chars()
+                    .filter(char::is_ascii_alphanumeric)
+                    .collect::<String>()
+                    == sanitized)
+                    .then_some(value)
+            })
+        })
+        .unwrap_or(&Value::Null)
+}
+
 /// One catalogue row's canonical name, or `None` when the row declares none.
 /// A row with no canonical name groups nothing and validates nothing.
 pub fn canonical(row: &Value) -> Option<String> {
-    let name = row["clean_name"].as_str()?.trim();
+    let name = field(row, "clean_name", "cleanname").as_str()?.trim();
     (!name.is_empty()).then(|| name.to_owned())
 }
 
@@ -168,6 +211,23 @@ mod tests {
             ],
             "project_settings": []
         })
+    }
+
+    #[test]
+    fn aliases_use_legacy_headers_unicode_and_order_independent_ambiguity() {
+        let mut rows = json!([
+            {"Clean Name":" École ","Misspelled Names":["ÉDUCATION","Shared","null"]},
+            {"clean_name":"Clinic","misspelled_names":" Shared ## HÔPITAL "},
+            {"clean_name":"Clinic","misspelled_names":["shared"]}
+        ]);
+        let aliases = alias_map(&rows);
+        assert_eq!(aliases["éducation"], "École");
+        assert_eq!(aliases["école"], "École");
+        assert_eq!(aliases["hôpital"], "Clinic");
+        assert!(!aliases.contains_key("shared"));
+        assert!(!aliases.contains_key("null"));
+        rows.as_array_mut().unwrap().reverse();
+        assert_eq!(alias_map(&rows), aliases);
     }
 
     #[test]
